@@ -340,7 +340,7 @@ local function testMatchFODO (var, mth)
       { expr = \t -> assert(t).mu2[#t]-0.25 },
     },
     objective = {
-      method=mth, fmin = 1e-8, maxcall = 100, !summary=2, debug=2, bisect=5
+      method=mth, fmin = 1e-8, maxcall = 100, summary=2, debug=2, bisect=5
     },
   }
 end
@@ -348,14 +348,23 @@ end
 function TestMatch:testMatchFODOJAC ()
   local var = { k1f=0.28, k1d=-0.28 }
   local status, fmin, ncall = testMatchFODO(var, 'LD_JACOBIAN')
-  print("fmin=", fmin)
-
-  -- check results
+-- print(status, fmin, ncall, fmin)
   assertEquals      (status ,  'FMIN_REACHED'         )
   assertEquals      (ncall  ,  10                     ) -- 4 iterations
   assertAlmostEquals(fmin   ,  3.0368820358e-13, 1e-16)
   assertAlmostEquals(var.k1f,  0.29599989525034, 1e-12)
   assertAlmostEquals(var.k1d, -0.30241971341642, 1e-12)
+end
+
+function TestMatch:testMatchFODOLMD ()
+  local var = { k1f=0.28, k1d=-0.28 }
+  local status, fmin, ncall = testMatchFODO(var, 'LD_LMDIF')
+-- print(status, fmin, ncall, fmin)
+!  assertEquals      (status ,  'FMIN_REACHED'         )
+!  assertEquals      (ncall  ,  10                     ) -- 4 iterations
+!  assertAlmostEquals(fmin   ,  3.0368820358e-13, 1e-16)
+!  assertAlmostEquals(var.k1f,  0.29599989525034, 1e-12)
+!  assertAlmostEquals(var.k1d, -0.30241971341642, 1e-12)
 end
 
 -- Function matching ----------------------------------------------------------o
@@ -397,7 +406,7 @@ local function testMatchFunc1 (x, mth)
     },
     objective = {
       exec = testFuncFn,
-      method=mth, maxcall=100, !summary=2, debug=2,
+      method=mth, maxcall=100, summary=2, debug=2,
     },
   }
 end
@@ -413,7 +422,7 @@ local function testMatchFunc2 (x, mth)
     },
     objective = {
       exec = testFuncFn,
-      method=mth, maxcall=100, fmin=sqrt(8/27)+1e-3, !summary=2, !debug=2,
+      method=mth, maxcall=100, fmin=sqrt(8/27)+1e-3, summary=2, !debug=2,
     },
   }
 end
@@ -437,12 +446,12 @@ local function testMatchFunc3 (x, mth)
     },
     objective = {
       exec := math.exp(x:prod()) - 0.5*(x[1]^3+x[2]^3+1)^2,
-      method=mth, tol=1e-8, maxcall=500, grad=false, !summary=2, !debug=2,
+      method=mth, tol=1e-8, maxcall=500, grad=false, summary=2, debug=2,
     },
   }
 end
 
--- Example #71 from Hock-Schittkowsky test suite
+-- Example #71 from Hock-Schittkowsky test suite (all aglos fail)
 
 local function testMatchFunc4 (x, mth)
   return match {
@@ -465,7 +474,7 @@ local function testMatchFunc4 (x, mth)
   }
 end
 
- -- same as Func4 but formulated with constraints
+ -- same as Func4 but formulated with constraints (i.e. Least Squares problem)
 local function testMatchFunc5 (x, mth)
   local fmin = 17.014016822208
   local fn =\ x[1]*x[4] * (x[1]+x[2]+x[3]) + x[3]
@@ -477,23 +486,23 @@ local function testMatchFunc5 (x, mth)
       { var = 'x[3]' },
       { var = 'x[4]' },
     },
-    equalities = {
+    equalities = { tol=5e-7,
       { expr := fn() - fmin },
       { expr := x[1]^2+x[2]^2+x[3]^2+x[4]^2 - 40 },
     },
-    inequalities = {
+    inequalities = { tol=5e-7,
       { expr := 25 - x[1]*x[2]*x[3]*x[4] },
-      { expr := 0.9999999999999999 - x[1] },
-      { expr := 1 - x[2] },
-      { expr := 1 - x[3] },
-      { expr := 1 - x[4] },
-      { expr := x[1] - 2 },
-      { expr := x[2] - 5.0000000000000001 },
-      { expr := x[3] - 5.0000000000000001 },
-      { expr := x[4] - 2 },
+      { expr := 1 - x[1] },
+!     { expr := 1 - x[2] },  -- useless constraints
+!     { expr := 1 - x[3] },  -- useless constraints
+!     { expr := 1 - x[4] },  -- useless constraints
+!     { expr := x[1] - 2 },  -- useless constraints
+!     { expr := x[2] - 5 },  -- useless constraints
+!     { expr := x[3] - 5 },  -- useless constraints
+!     { expr := x[4] - 2 },  -- useless constraints
     },
     objective = {
-      method=mth, ftol=1e-8, maxcall=3000, grad=false, summary=2, debug=2,
+      method=mth, ftol=3e-8, maxcall=500, grad=false, summary=2, debug=2, !rcond=1e-8
     },
   }
 end
@@ -565,6 +574,16 @@ function TestMatch:testMatchFuncMMA5 () -- difficult problem...
   assertAlmostEquals(x[4], 1.36157388, 1e-8) -- 1.3794082
 end
 
+function TestMatch:testMatchFuncMMA6 () -- MAD-X example
+  local x = vector {0}
+  local status, fmin, ncall = testMatchFunc6(x, 'LD_MMA')
+-- print(status, fmin, ncall, fmin) ; x:print('x')
+  assertEquals      (status, 'FMIN_REACHED')                          -- SUCCESS
+  assertEquals      (ncall , 122       )
+  assertAlmostEquals(fmin  , 0  , 1e-12)
+  assertAlmostEquals(x[1]  , 3.5, 1e-12)
+end
+
 -- Constrained Optimization BY Linear Approximations (Simplex) ----------------o
 
 function TestMatch:testMatchFuncCOB1 ()
@@ -623,6 +642,16 @@ function TestMatch:testMatchFuncCOB5 () -- difficult problem...
   assertAlmostEquals(x[4], 1.3794085, 1e-7) -- 1.3794082
 end
 
+function TestMatch:testMatchFuncCOB6 () -- MAD-X example
+  local x = vector {0}
+  local status, fmin, ncall = testMatchFunc6(x, 'LN_COBYLA')
+-- print(status, fmin, ncall, fmin) ; x:print('x')
+  assertEquals      (status, 'FMIN_REACHED')                          -- SUCCESS
+  assertEquals      (ncall , 17        )
+  assertAlmostEquals(fmin  , 0  , 1e-12)
+  assertAlmostEquals(x[1]  , 3.5, 1e-12)
+end
+
 -- Sequential Least-Squares Quadratic Programming -----------------------------o
 
 function TestMatch:testMatchFuncSQP1 ()
@@ -673,12 +702,22 @@ function TestMatch:testMatchFuncSQP5 () -- difficult problem...
   local x = vector {1, 5, 5, 1}
   local status, fmin, ncall = testMatchFunc5(x, 'LD_SLSQP')
 -- print(status, fmin, ncall, fmin) ; x:print('x')
-  assertEquals      (status, 'ROUNDOFF_LIMITED' )                     -- SUCCESS
+  assertEquals      (status, 'ROUNDOFF_LIMITED' )                     -- FAILURE
   assertEquals      (ncall , 40           )
   assertAlmostEquals(x[1], 1.000000, 1e-6) -- 1.0000000
   assertAlmostEquals(x[2], 4.725791, 1e-6) -- 4.7429994
   assertAlmostEquals(x[3], 3.844321, 1e-6) -- 3.8211503
   assertAlmostEquals(x[4], 1.376114, 1e-6) -- 1.3794082
+end
+
+function TestMatch:testMatchFuncSPQ6 () -- MAD-X example
+  local x = vector {0}
+  local status, fmin, ncall = testMatchFunc6(x, 'LD_SLSQP')
+-- print(status, fmin, ncall, fmin) ; x:print('x')
+  assertEquals      (status, 'FMIN_REACHED')                          -- SUCCESS
+  assertEquals      (ncall , 17        )
+  assertAlmostEquals(fmin  , 0  , 1e-12)
+  assertAlmostEquals(x[1]  , 3.5, 1e-12)
 end
 
 -- Jacobian -------------------------------------------------------------------o
@@ -719,12 +758,12 @@ function TestMatch:testMatchFuncJAC3 ()
   assertAlmostEquals(x[5]  , -0.762504, 1e-5)
 end
 
-function TestMatch:testMatchFuncJAC4 () -- difficult problem...
+function TestMatch:testMatchFuncJAC4 () -- difficult problem... or ill posed?
   local x = vector {1, 5, 5, 1}
   local status, fmin, ncall = testMatchFunc4(x, 'LD_JACOBIAN')
 -- print(status, fmin, ncall, fmin) ; x:print('x')
-  assertEquals      (status, 'FTOL_REACHED' )                         -- FAILURE
-  assertEquals      (ncall , 30             )
+  assertEquals       (status, 'MAXCALL_REACHED') !'FTOL_REACHED')     -- FAILURE
+  assertEquals       (ncall , 30             ) -- oscillates
 !  assertAlmostEquals(x[1], 1.00000000, 1e-8) -- 1.0000000
 !  assertAlmostEquals(x[2], 4.74299963, 1e-8) -- 4.7429994
 !  assertAlmostEquals(x[3], 3.82114998, 1e-8) -- 3.8211503
@@ -735,17 +774,89 @@ function TestMatch:testMatchFuncJAC5 () -- difficult problem...
   local x = vector {1, 5, 5, 1}
   local status, fmin, ncall = testMatchFunc5(x, 'LD_JACOBIAN')
 -- print(status, fmin, ncall, fmin) ; x:print('x')
-!  assertEquals      (status, 'FTOL_REACHED' )
-!  assertEquals      (ncall , 30             ) -- 5 iterations 5x(1+5)
-  assertAlmostEquals(x[1], 1.00000000, 1e-8) -- 1.0000000
-  assertAlmostEquals(x[2], 4.74299963, 1e-8) -- 4.7429994
-  assertAlmostEquals(x[3], 3.82114998, 1e-8) -- 3.8211503
-  assertAlmostEquals(x[4], 1.37940829, 1e-8) -- 1.3794082
+  assertEquals      (status, 'ROUNDOFF_LIMITED') !'FTOL_REACHED')     -- SUCCESS
+  assertEquals      (ncall , 142        )
+  assertAlmostEquals(x[1], 1.00000, 5e-4) -- 1.0000000
+  assertAlmostEquals(x[2], 4.74296, 5e-4) -- 4.7429994
+  assertAlmostEquals(x[3], 3.82120, 5e-4) -- 3.8211503
+  assertAlmostEquals(x[4], 1.37940, 5e-4) -- 1.3794082
 end
 
 function TestMatch:testMatchFuncJAC6 () -- MAD-X example
   local x = vector {0}
   local status, fmin, ncall = testMatchFunc6(x, 'LD_JACOBIAN')
+-- print(status, fmin, ncall, fmin) ; x:print('x')
+  assertEquals      (status, 'FMIN_REACHED')                          -- SUCCESS
+  assertEquals      (ncall , 17        )
+  assertAlmostEquals(fmin  , 0  , 1e-12)
+  assertAlmostEquals(x[1]  , 3.5, 1e-12)
+end
+
+-- Levengberg-Marquardt -------------------------------------------------------o
+
+function TestMatch:testMatchFuncLMD1 ()
+  local x = vector {1.234, 5.678}
+  local status, fmin, ncall = testMatchFunc1(x, 'LD_LMDIF')
+-- print(status, fmin, ncall, fmin) ; x:print('x')
+  assertEquals      (status, 'XTOL_REACHED'  )                        -- SUCCESS
+  assertEquals      (ncall , 16              )
+  assertAlmostEquals(fmin  , sqrt(8/27), 1e-8)
+  assertAlmostEquals(x[1]  ,      1/3  , 1e-8)
+  assertAlmostEquals(x[2]  ,      8/27 , 1e-8)
+end
+
+function TestMatch:testMatchFuncLMD2 ()
+  local x = vector {1.234, 5.678}
+  local status, fmin, ncall = testMatchFunc2(x, 'LD_LMDIF')
+-- print(status, fmin, ncall, fmin) ; x:print('x')
+  assertEquals      (status, 'FMIN_REACHED'  )                        -- SUCCESS
+  assertEquals      (ncall , 16              )
+  assertAlmostEquals(fmin  , sqrt(8/27), 1e-8)
+  assertAlmostEquals(x[1]  ,      1/3  , 1e-8)
+  assertAlmostEquals(x[2]  ,      8/27 , 1e-8)
+end
+
+function TestMatch:testMatchFuncLMD3 ()
+  local x = vector {-1.8, 1.7, 1.9, -0.8, -0.8}
+  local status, fmin, ncall = testMatchFunc3(x, 'LD_LMDIF')
+-- print(status, fmin, ncall, fmin) ; x:print('x')
+  assertEquals      (status, 'FTOL_REACHED' )                         -- SUCCESS
+  assertEquals      (ncall ,  25            ) -- 5 iterations
+  assertAlmostEquals(fmin  ,  0.053996, 5e-6) -- find another minimum (close)...
+  assertAlmostEquals(x[1]  , -1.72693 , 5e-6) -- fstp=-5.12167e-11
+  assertAlmostEquals(x[2]  ,  1.60702 , 5e-6) -- cval= 4.40930e-14
+  assertAlmostEquals(x[3]  ,  1.80897 , 5e-6)
+  assertAlmostEquals(x[4]  , -0.762504, 5e-6)
+  assertAlmostEquals(x[5]  , -0.762504, 5e-6)
+end
+
+function TestMatch:testMatchFuncLMD4 () -- difficult problem... or ill posed?
+  local x = vector {1, 5, 5, 1}
+  local status, fmin, ncall = testMatchFunc4(x, 'LD_LMDIF')
+-- print(status, fmin, ncall, fmin) ; x:print('x')
+  assertEquals       (status, 'MAXCALL_REACHED') !'FTOL_REACHED')     -- FAILURE
+!  assertEquals      (ncall , 30            ) -- oscillates
+!  assertAlmostEquals(x[1], 1.00000000, 1e-8) -- 1.0000000
+!  assertAlmostEquals(x[2], 4.74299963, 1e-8) -- 4.7429994
+!  assertAlmostEquals(x[3], 3.82114998, 1e-8) -- 3.8211503
+!  assertAlmostEquals(x[4], 1.37940829, 1e-8) -- 1.3794082
+end
+
+function TestMatch:testMatchFuncLMD5 () -- difficult problem...
+  local x = vector {1, 5, 5, 1}
+  local status, fmin, ncall = testMatchFunc5(x, 'LD_LMDIF')
+-- print(status, fmin, ncall, fmin) ; x:print('x')
+  assertEquals      (status, 'ROUNDOFF_LIMITED') !'FTOL_REACHED')     -- SUCCESS
+  assertEquals      (ncall , 146        )
+  assertAlmostEquals(x[1], 1.00000, 7e-4) -- 1.0000000
+  assertAlmostEquals(x[2], 4.74296, 7e-4) -- 4.7429994
+  assertAlmostEquals(x[3], 3.82120, 7e-4) -- 3.8211503
+  assertAlmostEquals(x[4], 1.37940, 7e-4) -- 1.3794082
+end
+
+function TestMatch:testMatchFuncLMD6 () -- MAD-X example
+  local x = vector {0}
+  local status, fmin, ncall = testMatchFunc6(x, 'LD_LMDIF')
 -- print(status, fmin, ncall, fmin) ; x:print('x')
   assertEquals      (status, 'FMIN_REACHED')                          -- SUCCESS
   assertEquals      (ncall , 17        )
