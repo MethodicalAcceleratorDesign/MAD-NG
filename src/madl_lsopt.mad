@@ -57,14 +57,18 @@ end
 local function eval_fun (env)
   local var = env.__var
   local grdf in var
-
-  var.grdf = false ; var.fun() ; var.grdf = grdf  -- compute function (only)
+  var.grdf = false
+  local ret = var.fun()   -- compute function (only)
+  var.grdf = grdf
+  return ret
 end
 
 local function eval_jac (env)
   local var = env.__var
-
-  var.funf = true ; var.fun() ; var.funf = nil    -- compute jacobian (only)
+  var.funf = true
+  local ret = var.fun()   -- compute jacobian (only)
+  var.funf = nil
+  return ret
 end
 
 -- Check/adjust variables to domain -------------------------------------------o
@@ -86,24 +90,18 @@ local function check_vars (env)
   end
 
   if env.debug >= 1 and nadj > 0 then
-    io.write("nlopt: ", nadj, " variables ajusted (bounds or slope).\n")
+    printf("nlopt: %d variables ajusted (bounds or slope).\n", nadj)
   end
 
   return nadj
 end
-
---[[ MAD-X rules: same as forcing xmin/xmax...
-  local dv = min(max(1e-12, xstp[i]), (xmin[i] - x[i])*0.5)
-  x[i], nadj = xmin[i]+2*dv, nadj+1
-  local dv = min(max(1e-12, xstp[i]), (x[i] - xmax[i])*0.5)
-  x[i], nadj = xmax[i]-2*dv, nadj+1
---]]
 
 local function adjust_vars (env)
   local var = env.__var
   local n, x, dx, xmin, xmax in var
   local scl = 1
 
+  -- compute shrink factor
   for i=1,n do
     if dx[i] ~= 0 then
       local s = 1
@@ -118,104 +116,50 @@ local function adjust_vars (env)
     x:add(dx,x) ; dx:mul(scl,dx) ; x:sub(dx,x)
 
     if env.debug >= 1 then
-      io.write("nlopt: variables step scaled by ", scl, ".\n")
+      printf("nlopt: variables step scaled by % -.6e.\n", scl)
     end
-  end
-end
-
--- Stopping criteria ----------------------------------------------------------o
-
-local function check_stop (env)
-  local var = env.__var
-  local status = var.status
-
-  env.dtime = os.clock()-var.time0 -- update timer (after fun call)
-
-  if env.stop then
-    var.status = _C.NLOPT_FORCED_STOP
-    if env.debug >= 1 then io.write("nlopt: forced to stop.\n") end
-
-  elseif var.maxcall > 0 and env.ncall >= var.maxcall then
-   var.status = _C.NLOPT_MAXEVAL_REACHED
-
-  elseif var.maxtime > 0 and env.dtime >= var.maxtime then
-   var.status = _C.NLOPT_MAXTIME_REACHED
-
-  elseif var.ccnt > 0 then
-    -- not a feasible point -> continue
-
-  elseif var.fval <= var.fmin then
-    var.status = _C.NLOPT_STOPVAL_REACHED
-
-  elseif abs(var.fstp) - var.ftol <= 0 or
-         abs(var.fstp) - var.frtol*abs(var.fval) <= 0 then
-    var.status = _C.NLOPT_FTOL_REACHED
-
-  elseif var.xtolf and env.ncall > 1 then
-    local ax, adx = abs(var.x), abs(var.dx)
-
-    if (adx - var.xtol):max() <= 0 or (adx - var.xrtol*ax):max() <= 0 then
-      var.status = _C.NLOPT_XTOL_REACHED
-
-    elseif (adx - eps*ax):max() <= 0 then
-      var.status = _C.NLOPT_ROUNDOFF_LIMITED
-    end
-  end
-
-  return var.status ~= status
-end
-
--- Bisection ------------------------------------------------------------------o
-
-local function bisection (env, bisec)
-  local var = env.__var
-  local x, dx, fun, fval, grdf, backup in var
-  local bak, ret = backup(var)
-
-  var.grdf = false                               -- disable Jacobian
-  for i=1,bisec do
-    if env.debug >= 1 then printf("nlopt: trying Bisection %d.\n", i) end
-    dx:div(2,dx) ; x:add(dx,x) ; var.fval = fval -- for var.fstp
-    ret = fun()                                  -- call user command/function
-    if ret and var.fval < fval then break end    -- new minimum found
-  end
-  var.grdf = grdf                                -- restore Jacobian
-
-  if var.fval < fval then                        -- new minimum found
-    if env.debug >= 1 then io.write("nlopt: Bisection succeeded.\n") end
-    if check_stop(env) then return true end      -- check criteria
-    var.funf = true ; fun() ; var.funf = nil     -- compute Jacobian (only)
-  elseif var.fval > fval or not ret then
-    if env.debug >= 1 then io.write("nlopt: Bisection failed, restoring.\n") end
-    backup(bak, var)                             -- restore initial case
   end
 end
 
 -- Remove useless (or invalid) constraints and variables ----------------------o
 
-local function reject_cons (env, A, B, ir)
+local function reject_cons (env, A, B, ir_)
+  local var = env.__var
   local i, tol = 1, env.objective.jtol or eps
   local fn = \t,x => if x <= tol^2 then t[#t+1]=i end i=i+1 return t end
+  local ir = ir_ or {}
 
   -- compute row norm, collect rows to remove
   A:sumsqr'row' :foldl(fn, ir)
 
-  -- debug info
-  if ir[1] and env.debug >= 1 then
-    io.write("nlopt: Rejecting constraints (rows) no ")
-    for i=1,#ir do io.write(ir[i], " ") end
-    io.write("\n")
+  if ir[1] then
+    -- track removed constraints
+    if var.sumdisp > 0 then
+      local crej in var ; crej.n = crej.n+1
+      for _,i in ipairs(ir) do crej[i] = (crej[i] or 0)+1 end
+    end
+
+    -- keep at least first row...
+    if #ir == A.nrow then table.remove(ir,1) end
+
+    -- remove selected rows
+    A:remrow(ir) ; B:remrow(ir)
+
+    -- debug info
+    if env.debug >= 1 then
+      io.write("nlopt: rejecting constraints (rows) no ")
+      for i=1,#ir do io.write(ir[i], " ") end
+      io.write("\n")
+    end
   end
 
-  -- remove selected rows
-  A:remrow(ir) ; B:remrow(ir)
-
-  return #ir
+  return ir
 end
 
-local function reject_vars (env, A, rx, rdx, ic)
+local function reject_vars (env, A, rx, rdx, ic_)
   local n, xslp, xmin, xmax in env.__var
-  local j, k, iic = 1, 0, {}
+  local j, k, iic, ic = 1, 0, {}, ic_ or {}
+  local jstra in env.objective
 
   for i=1,n do
     -- column already rejected
@@ -224,76 +168,114 @@ local function reject_vars (env, A, rx, rdx, ic)
     else
       local ii = i-k
       local xi = rx[ii]-rdx[ii]
-      if rdx[ii]*xslp[i] < 0 then -- or xi < xmin[i] or xi > xmax[i] then
+      if rdx[ii]*xslp[i] < 0 or                             -- slope
+         jstra == 1 and (xi < xmin[i] or xi > xmax[i]) then -- bounding box
         table.insert(ic,j,i) ; iic[#iic+1], j = ii, j+1
       end
     end
   end
 
-  -- debug info
-  if iic[1] and env.debug >= 1 then
-    io.write("nlopt: Rejecting variables (cols) no ")
-    for i=1,#ic do io.write(ic[i], " ") end
-    io.write("\n")
+  if iic[1] then
+    -- keep at least first column...
+    if #iic == A.ncol then table.remove(iic,1) end
+
+    -- remove selected columns
+    A:remcol(iic) ; rx:remrow(iic)
+
+    -- debug info
+    if env.debug >= 1 then
+      io.write("nlopt: rejecting variables (cols) no ")
+      for i=1,#ic do io.write(ic[i], " ") end
+      io.write("\n")
+    end
   end
 
-  -- remove selected columns
-  A:remcol(iic) ; rx:remrow(iic)
+  return iic
+end
 
-  return #iic
+-- Bisection ------------------------------------------------------------------o
+
+local function bisection (env, bisec)
+  local var = env.__var
+  local x, dx, fval, backup in var
+  local bak, nbi, ret = backup(var, 'fun'), 0
+
+  for i=1,bisec do
+    if env.debug >= 1 then printf("nlopt: trying Bisection %d.\n", i) end
+    dx:div(2,dx) ; x:add(dx,x) ; var.fval = fval        -- for var.fstp
+    ret = eval_fun(env)                                 -- call user cmd/fun
+    if ret and var.fval < fval then                     -- better minimum found
+      nbi, fval = i, var.fval ; backup(var, bak, 'fun') -- update backup
+    elseif nbi > 0 then break end
+  end
+
+  backup(bak, var, 'fun')                             -- restore best/init case
+
+  if nbi > 0 then                                     -- new minimum found
+    if env.debug >= 1 then printf("nlopt: Bisection succeeded [%d].\n", nbi) end
+    if var.chkstp(env) then return true end           -- check criteria
+  elseif var.fval > fval or not ret then
+    if env.debug >= 1 then io.write("nlopt: Bisection failed.\n") end
+  end
+
+  return nbi
 end
 
 -- Levenberg-Marquardt --------------------------------------------------------o
 
 local function ld_lmdif (env)
   local var, objective = env.__var, env.objective
-  local n, p, q, x, dx, eval, ejac, lval, ljac, jacf, backup in var
-  local jrand, jitr, jtau, bisec in objective
+  local n, p, q, x, dx, fgrd, eval, ejac, lval, ljac, jacf, backup in var
+  local jitr, jtau, bisec in objective
 
   -- default setup
-  jrand = jrand == true and rand or jrand
   jitr, jtau, bisec = jitr or 20, jtau or 1e-3, bisec or 3
 
-  -- check domain (and adjust x to bbox)
+  -- check domain (and adjust x to bbox if any)
   check_vars(env)
 
   -- compute function (only)
   eval_fun(env)
 
   -- check stopping criteria
-  if check_stop(env) then return true end
+  if var.chkstp(env) then return true end
 
-  -- LM persistent variables
+  -- persistent variables
   local bak, nu, mu = {}, 2
 
   while true do
     -- compute jacobian
     eval_jac(env)
 
-    -- build Ax=b
+    -- build Ax=G
     local J, B = matrix(p+q,n), vector(p+q)
-        if ljac == nil then ejac:copy(J) ; eval:copy(B)
-    elseif ejac == nil then ljac:copy(J) ; lval:copy(B)
-    else   ejac:concat(ljac, J) ;  eval:concat(lval, B)
+    if p > 0 then ejac:copy(J,1    ) ; eval:copy(B,1  ) end
+    if q > 0 then ljac:copy(J,1+p*n) ; lval:copy(B,1+p) end
+    if J:is_const() then -- Jacobian is full of zeros
+      var.status = _C.NLOPT_ROUNDOFF_LIMITED ; return
     end
-    local A, G, ir = J:tmul(J), J:tmul(B), {}
-
-    -- initialise damping term.
-    if mu == nil then mu = jtau*A:max('diag') end
 
     -- debug info
-    if env.debug >= 2 then
-      dspmat(J, "J") ; dspmat(B, "B") ;
-      dspmat(A, "A") ; dspmat(G, "G") ;
-    end
+    if env.debug >= 2 then dspmat(J, "J") ; dspmat(B, "B") end
 
     -- reject constraints with insufficient row norm in Jacobian (jtol)
-    reject_cons(env, A, G, ir)
+    reject_cons(env, J, B)
+
+    local A, G = J:tmul(J), J:tmul(B)
+
+    -- debug info
+    if env.debug >= 2 then dspmat(A, "A") ; dspmat(G, "G") ; end
+
+    -- initialise damping term
+    if mu == nil then mu = jtau*A:max('diag') end
 
     -- backup current status
     backup(var, bak)
 
   ::damping_loop::
+    if nu > 2 and env.debug >= 2 then
+      printf("nlopt: rolling back, trying with mu=% -.6e\n", mu)
+    end
 
     local ic, rx, rdx, rk, sv = {}, x:copy()
 
@@ -302,20 +284,18 @@ local function ld_lmdif (env)
       -- A = A + mu*I
       local A = A:mapij \x,i,j -> i==j and x+mu or x
 
-      -- one Gauss-Newton step using SVD to find min_x ||b - Ax||
+      -- one Gauss-Newton step using SVD to find min_x ||G - Ax||
       rdx, rk, sv = A:ssolve(G, objective.rcond)
 
       -- debug info
       if env.debug >= 1 then
         io.write("nlopt: Gauss-Newton step using SVD, \z
                   rank=", rk, ", rcond=", objective.rcond or 'eps', '\n')
-        if env.debug >= 2 then
-          dspmat(A, "A") ; dspmat(G, "G") ; dspmat(sv, "JACOBIAN-SV")
-        end
+        if env.debug >= 2 then dspmat(sv, "JACOBIAN-SV") end
       end
 
       -- reject variables with wrong slope
-      if not jacf or reject_vars(env, A, rx, rdx, ic) == 0 then break end
+      if #reject_vars(env, A, rx, rdx, ic) == 0 then break end
     end
 
     -- update variables, rejected variables don't move
@@ -328,12 +308,16 @@ local function ld_lmdif (env)
     eval_fun(env)
 
     -- check stopping criteria
-    if check_stop(env) then return true end
+    if var.chkstp(env) then return true end
 
     -- try bisection if fval increases
-    if var.fstp > 0 and bisec >= 1 and bisection(env,bisec) then return true end
+    local nbi = 0
+    if var.fstp > 0 and bisec >= 1 then
+      nbi = bisection(env, bisec)
+      if nbi == true then return true end
+    end
 
-    -- check step improvement (update damping term)
+    -- check LM-step quality (vs linear model)
     local dF, dL = 0, dx:dot(mu*dx+G)
     if eval then dF = dF + bak.eval:sumsqr() - var.eval:sumsqr() end
     if lval then dF = dF + bak.lval:sumsqr() - var.lval:sumsqr() end
@@ -341,13 +325,16 @@ local function ld_lmdif (env)
 
     -- debug info
     if env.debug >= 2 then
-      printf("mu=% -.6e, rho=% -.6e, dF=% -.6e, dL=% -.6e\n", mu, rho, dF, dL)
+      printf("nlopt: LMD factors mu=% -.6e, rho=% -.6e, dF=% -.6e, dL=% -.6e\n",
+              mu, rho, dF, dL)
     end
 
-    if rho > 0 then   -- decrease damping term, reset nu
+    if dL > 0 and dF > 0 then -- decrease damping term, reset nu (LM step)
       mu, nu = mu*max(1/3, 1-(2*rho-1)^3), 2
-    else              -- increase damping term, cancel step, restore backup
-      backup(bak, var)
+    elseif nbi > 0 then       -- decrease damping term, reset nu (Bisec step)
+      mu, nu = mu/(nbi+1), 2
+    else                      -- increase damping term, cancel step
+      backup(bak, var, 'var')
       mu, nu = mu*nu, 2*nu
       goto damping_loop
     end
@@ -358,63 +345,55 @@ end
 
 local function ld_jacobian (env)
   local var, objective = env.__var, env.objective
-  local n, p, q, x, dx, eval, ejac, lval, ljac, jacf in var
-  local jrand, jitr, bisec in objective
+  local n, p, q, x, dx, fgrd, eval, ejac, lval, ljac, jacf in var
+  local jitr, bisec in objective
 
   -- default setup
-  jrand, jitr, bisec = jrand == true and rand or jrand, jitr or 20, bisec or 3
+  jitr, bisec = jitr or 20, bisec or 3
 
-  -- check domain (and adjust x to bbox)
+  -- check domain (and adjust x to bbox if any)
   check_vars(env)
 
   -- compute function (only)
   eval_fun(env)
 
   -- check stopping criteria
-  if check_stop(env) then return true end
+  if var.chkstp(env) then return true end
 
   while true do
     -- compute jacobian
     eval_jac(env)
 
-    -- build Jx=b
-    local J, B, rx = matrix(p+q,n), vector(p+q), x:copy()
-        if ljac == nil then ejac:copy(J) ; eval:copy(B)
-    elseif ejac == nil then ljac:copy(J) ; lval:copy(B)
-    else   ejac:concat(ljac, J) ;  eval:concat(lval, B)
+    -- build Jx=B
+    local J, B = matrix(p+q,n), vector(p+q)
+    if p > 0 then ejac:copy(J,1    ) ; eval:copy(B,1  ) end
+    if q > 0 then ljac:copy(J,1+p*n) ; lval:copy(B,1+p) end
+    if J:is_const() then -- Jacobian is full of zeros
+      var.status = _C.NLOPT_ROUNDOFF_LIMITED ; return
     end
 
     -- debug info
     if env.debug >= 2 then dspmat(J, "J") ; dspmat(B, "B") end
 
-    local ir, ic, rdx, rk, sv = {}, {}
-
     -- reject constraints with insufficient row norm in Jacobian (jtol)
-    reject_cons(env, J, B, ir)
+    reject_cons(env, J, B)
+
+    local ic, rx, rdx, rk, sv = {}, x:copy()
 
     -- solve and reduce system
     for i=1,jitr do
-      -- one Newton-Raphson step using SVD to find min_x ||b - Jx||
+      -- one Newton-Raphson step using SVD to find min_x ||B - Jx||
       rdx, rk, sv = J:ssolve(B, objective.rcond)
 
       -- debug info
       if env.debug >= 1 then
         io.write("nlopt: Newton-Raphson step using SVD, \z
                   rank=", rk, ", rcond=", objective.rcond or 'eps', '\n')
-        if env.debug >= 2 then
-          dspmat(J, "J") ; dspmat(B, "B") ; dspmat(sv, "JACOBIAN-SV")
-        end
+        if env.debug >= 2 then dspmat(sv, "JACOBIAN-SV") end
       end
 
       -- reject variables with wrong slope
-      if not jacf or reject_vars(env, J, rx, rdx, ic) == 0 then break end
-    end
-
-    -- add some randomness to dx
-    if jrand then
-      rdx:print('rdx')
-      rdx:map(\x -> x+(jrand()-jrand())*var.hjac, 'in')
-      rdx:print('rdx rand')
+      if #reject_vars(env, J, rx, rdx, ic) == 0 then break end
     end
 
     -- update variables, rejected variables don't move
@@ -427,12 +406,22 @@ local function ld_jacobian (env)
     eval_fun(env)
 
     -- check stopping criteria
-    if check_stop(env) then return true end
+    if var.chkstp(env) then return true end
 
     -- try bisection if fval increases
-    if var.fstp > 0 and bisec >= 1 and bisection(env,bisec) then return true end
+    if var.fstp > 0 and bisec >= 1 then
+      if bisection(env, bisec) == true then return true end
+    end
   end
 end
+
+--    -- add some randomness to dx
+--    jrand = jrand == true and rand or jrand
+--    if jrand then
+--      rdx:print('rdx')
+--      rdx:map(\x -> x+(jrand()-jrand())*var.dh, 'in')
+--      rdx:print('rdx rand')
+--    end
 
 -- LSOPT lib ------------------------------------------------------------------o
 
