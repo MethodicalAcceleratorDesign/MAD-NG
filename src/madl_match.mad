@@ -175,55 +175,6 @@ local expr_weights = { -- default weight = 1
   alfa11 = 10, alfa22 = 10, alfa33 = 10,
 }
 
--- summary --------------------------------------------------------------------o
-
-local function disp_summ (env)
-  local variables, equalities, inequalities, weights in env
-  local var = env.__var
-  local n, p, q, eval, ewgt, lval, lwgt in var
-  local s1, s2, s3, v1, v2, v3
-
-  env.dtime = os.clock()-var.time0 -- update timer before display
-
-  if var.status == _C.NLOPT_RUNNING then
-    s1, s2, s3 = 'Curr. Value', 'Curr. Step ', 'cval=%-.5e [%d]'
-    v1, v2, v3 =  var.x       ,  var.dx      ,  var.cval
-  else
-    s1, s2, s3 = 'Final Value', 'Init. Value', 'status=%s'
-    v1, v2, v3 =  var.x       ,  var.x0      ,  retstr[var.status]
-  end
-
-  if p+q > 0 then
-    io.write"\n Constraints                Type        Kind        Weight     Penalty Value\n"
-    io.write"-----------------------------------------------------------------------------\n"
-
-    for i=1,p do
-      local e, v = equalities[i] or {}, eval[i]/ewgt[i]
-      printf("%2d: % -23s % -11s % -10s % -10.5g % -.7e\n",
-                i, e.name or '', 'equality', e.kind or ' .', ewgt[i], abs(v))
-    end
-
-    for i=1,q do
-      local e, v = inequalities[i] or {}, lval[i]/lwgt[i]
-      printf("%2d: % -23s % -11s % -10s % -10.5g % -.5e\n",
-                i+p, e.name or '', 'inequality', e.kind or ' .', lwgt[i], v < 0 and 0 or v)
-    end
-  end
-
-  printf("\n Variables                  %s  %s  Lower Limit  Upper Limit\n", s1, s2)
-  io.write"-------------------------------------------------------------------------------\n"
-
-  for i=1,n do
-    local xmin = var.xmin[i] > -1e100 and strfmt("% -.5e",var.xmin[i]) or '  .'
-    local xmax = var.xmax[i] <  1e100 and strfmt("% -.5e",var.xmax[i]) or '  .'
-    printf(" % -25s % -.5e % -.5e % -12s % -12s\n",
-           variables[i].var, v1[i], v2[i], xmin, xmax)
-  end
-
-  local fmt = "\n ncall=%d [%ds], fbst=%-.7e, fstp=%-.5e, "..s3.."\n\n"
-  printf(fmt, env.ncall, env.dtime, var.fval, var.fstp, v3, var.ccnt)
-end
-
 -- getters/setters ------------------------------------------------------------o
 
 local function mklocacc (env, fun, vnam, vidx)
@@ -335,6 +286,99 @@ local function accessors (env)
   end
 end
 
+-- summary --------------------------------------------------------------------o
+
+local function disp_summ (env)
+  local variables, equalities, inequalities, weights in env
+  local var = env.__var
+  local n, p, q, eval, ewgt, lval, lwgt, crej in var
+  local s1, s2, s3, v1, v2, v3
+
+  env.dtime = os.clock()-var.time0 -- update timer before display
+
+  if var.status == _C.NLOPT_RUNNING then
+    s1, s2, s3 = 'Curr. Value', 'Curr. Step ', 'cval=%-.5e [%d]'
+    v1, v2, v3 =  var.x       ,  var.dx      ,  var.cval
+  else
+    s1, s2, s3 = 'Final Value', 'Init. Value', 'status=%s'
+    v1, v2, v3 =  var.x       ,  var.x0      ,  retstr[var.status]
+  end
+
+  if p+q > 0 then
+    io.write"\n Constraints                Type        Kind        Weight     Penalty Value\n"
+    io.write"-----------------------------------------------------------------------------\n"
+
+    for i=1,p do
+      local e, v = equalities[i] or {}, eval[i]/ewgt[i]
+      printf("%2d: % -23s % -11s % -10s % -10.5g % -.5e%s\n",
+                i, e.name or '', 'equality', e.kind or ' .', ewgt[i],
+                abs(v), crej[i] == crej.n and ' *' or '')
+    end
+
+    for i=1,q do
+      local e, v = inequalities[i] or {}, lval[i]/lwgt[i]
+      printf("%2d: % -23s % -11s % -10s % -10.5g % -.5e%s\n",
+                i+p, e.name or '', 'inequality', e.kind or ' .', lwgt[i],
+                v < 0 and 0 or v, crej[i+p] == crej.n and ' *' or '')
+    end
+  end
+
+  printf("\n Variables                  %s  %s  Lower Limit  Upper Limit\n", s1, s2)
+  io.write"-------------------------------------------------------------------------------\n"
+
+  for i=1,n do
+    local xmin = var.xmin[i] > -1e100 and strfmt("% -.5e",var.xmin[i]) or '  .'
+    local xmax = var.xmax[i] <  1e100 and strfmt("% -.5e",var.xmax[i]) or '  .'
+    printf(" % -25s % -.5e % -.5e % -12s % -12s\n",
+           variables[i].var, v1[i], v2[i], xmin, xmax)
+  end
+
+  local fmt = "\n ncall=%d [%ds], fbst=%-.7e, fstp=%-.5e, "..s3.."\n\n"
+  printf(fmt, env.ncall, env.dtime, var.fval, var.fstp, v3, var.ccnt)
+end
+
+-- stopping criteria ----------------------------------------------------------o
+
+local function check_stop (env)
+  local var = env.__var
+  local status = var.status
+
+  env.dtime = os.clock()-var.time0 -- update timer (after fun call)
+
+  if env.stop then
+    var.status = _C.NLOPT_FORCED_STOP
+    if env.debug >= 1 then io.write("nlopt: forced to stop.\n") end
+
+  elseif var.maxcall > 0 and env.ncall >= var.maxcall then
+   var.status = _C.NLOPT_MAXEVAL_REACHED
+
+  elseif var.maxtime > 0 and env.dtime >= var.maxtime then
+   var.status = _C.NLOPT_MAXTIME_REACHED
+
+  elseif var.ccnt > 0 then
+    -- not a feasible point -> continue
+
+  elseif var.fval <= var.fmin then
+    var.status = _C.NLOPT_STOPVAL_REACHED
+
+  elseif abs(var.fstp) - var.ftol <= 0 or
+         abs(var.fstp) - var.frtol*abs(var.fval) <= 0 then
+    var.status = _C.NLOPT_FTOL_REACHED
+
+  elseif var.xtolf and env.ncall > 1 then
+    local ax, adx = var.x:abs(), var.dx:abs()
+
+    if (adx - var.xtol):max() <= 0 or (adx - var.xrtol*ax):max() <= 0 then
+      var.status = _C.NLOPT_XTOL_REACHED
+
+    elseif (adx - eps*ax):max() <= 0 then
+      var.status = _C.NLOPT_ROUNDOFF_LIMITED
+    end
+  end
+
+  return var.status ~= status
+end
+
 -- optimizer functions --------------------------------------------------------o
 
 -- print matrix (debug helper)
@@ -369,20 +413,21 @@ local function update_vars (env)
   end
 end
 
-local function backup_fun (src, dst, dom_)
+local function backup_fun (src, dst, typ_)
+  if is_string(dst) and is_nil(typ_) then typ_, dst = dst end -- right shift
   dst = dst or {}
 
   dst.fval, dst.fstp, dst.cval, dst.ccnt =
   src.fval, src.fstp, src.cval, src.ccnt
 
-  if src.x    then dst.x    = src.x   :copy(dst.x   ) end
-  if src.dx   then dst.dx   = src.dx  :copy(dst.dx  ) end
+  if src.x  then dst.x  = src.x :copy(dst.x ) end
+  if src.dx then dst.dx = src.dx:copy(dst.dx) end
 
-  if dom_ ~= 'var' then -- 'only variables, skip'
+  if typ_ ~= 'var' then -- 'only variables, skip'
     if src.eval then dst.eval = src.eval:copy(dst.eval) end
     if src.lval then dst.lval = src.lval:copy(dst.lval) end
 
-    if dom_ ~= 'fun' then -- 'only variables and functions, skip'
+    if typ_ ~= 'fun' then -- 'only variables and functions, skip'
       if src.fgrd then dst.fgrd = src.fgrd:copy(dst.fgrd) end
       if src.ejac then dst.ejac = src.ejac:copy(dst.ejac) end
       if src.ljac then dst.ljac = src.ljac:copy(dst.ljac) end
@@ -471,8 +516,9 @@ local function compute_fgrd (env)
   var.ltmp, var.lval = var.lval, var.ltmp
   x:copy(xtmp) ; dx:copy(dtmp)
 
-  -- estimate jacobian step (2^-7*|dx|, MAD-X uses 2^-15*|x|)
-  local dh = 0.0078125*dx:minabs() -- to review (dh[i] vs dx[i] ?)
+  -- estimate dh from last step or current point
+  local dh = 1e-4*dx:norm()
+  if dh == 0 then dh = 1e-8*x:norm() end
   if dh == 0 then dh = 1e-10 end
 
   if env.debug >= 1 then
@@ -494,7 +540,7 @@ local function compute_fgrd (env)
   end
 
   -- restore (swap) states
-  var.fval, var.fstp, var.cval, var.ccnt, var.hjac = fval, fstp, cval, ccnt, dh
+  var.fval, var.fstp, var.cval, var.ccnt = fval, fstp, cval, ccnt
   var.xtmp, var.x    = xtmp, x
   var.dtmp, var.dx   = dtmp, dx
   var.etmp, var.eval = etmp, eval
@@ -620,6 +666,7 @@ local function exec (self)
       n    = n,                            -- number of variables
       x    = vector(n),                    -- variables values
       dx   = vector(n),                    -- variables steps
+      dh   = 0,                            -- variables gradient step
       x0   = vector(n),                    -- variables initial values
       xstp = vector(n),                    -- variables initial steps
       xslp = vector(n),                    -- variables slopes
@@ -653,14 +700,13 @@ local function exec (self)
 
       ccnt = 0,                            -- number of violated constraints
       cval = 0,                            -- constraints value
+      crej = {n=0},                        -- constraints always rejected
 
       fun  = nil,                          -- objective func (see above)
       funf = nil,                          -- objective func computed flag
       valf = valf,                         -- objective func value flag
       grdf = grdf,                         -- objective func gradient flag
-      jacf = nil,                          -- objective func jacobian flag (reduce)
       optf = nil,                          -- objective func optimiser flag (reduce)
-      hjac = nil,                          -- objective func jacobian step
       fval = inf,                          -- objective func value (dummy init)
       fbst = inf,                          -- objective func best value
       sbst = 0,                            -- objective func best value step
@@ -680,7 +726,10 @@ local function exec (self)
       status   = _C.NLOPT_RUNNING,         -- algorithm status
       errmsg   = nil,                      -- algorithm error message
       fjit     = false,                    -- JIT must be flushed (C API)
+
+      -- services
       backup   = backup_fun,               -- backup routine to rollback
+      chkstp   = check_stop,               -- stopping criteria routine
       time0    = os.clock(),               -- start time
     },
   }
@@ -722,9 +771,6 @@ local function exec (self)
 
   -- xtol and xrtol flag
   var.xtolf = max(var.xrtol, var.xtol:max()) > 0
-
-  -- jacobian flag (reduce system during solve)
-  var.jacf = var.xslp:max() > 0
 
   -- equality constraints
   for i=1,p do
@@ -810,7 +856,8 @@ local match = command 'match' {
   objective = {
     method=nil, submethod=nil, fmin=nil, tol=nil, rtol=nil, reset=nil,
     exec=nil, grad=nil, maxtime=nil, maxcall=nil, summary=nil, debug=nil,
-    bisec=nil, rcond=nil, jtol=nil, jitr=nil, jrand=nil -- jacobian only
+    -- jacobian only
+    bisec=nil, rcond=nil, jtol=nil, jitr=nil, jstra=nil, jrand=nil
   },
 
   usrdef=nil,           -- user defined data attached to matching environment
