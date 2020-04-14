@@ -424,8 +424,10 @@ local function backup_fun (src, dst, typ_)
   if src.dx then dst.dx = src.dx:copy(dst.dx) end
 
   if typ_ ~= 'var' then -- 'only variables, skip'
-    if src.eval then dst.eval = src.eval:copy(dst.eval) end
-    if src.lval then dst.lval = src.lval:copy(dst.lval) end
+    if src.eval then dst.eval = src.eval:copy(dst.eval)
+                     dst.eprv = src.eprv:copy(dst.eprv) end
+    if src.lval then dst.lval = src.lval:copy(dst.lval)
+                     dst.lprv = src.lprv:copy(dst.lprv) end
 
     if typ_ ~= 'fun' then -- 'only variables and functions, skip'
       if src.fgrd then dst.fgrd = src.fgrd:copy(dst.fgrd) end
@@ -441,8 +443,8 @@ end
 local function compute_fval (env)
   local command, objective, equalities, inequalities in env
   local var = env.__var
-  local p, q, x, fgrd, eval, ejac, ewgt, lval, ljac, lwgt, valf, optf in var
-  local xbst, ebst, lbst in var
+  local p, q, x, fgrd, eval, eprv, ejac, ewgt, lval, lprv, ljac, lwgt,
+        valf, optf, xbst, ebst, lbst in var
   local fval, res = 0, nil
 
   env.ncall = env.ncall + 1
@@ -461,13 +463,15 @@ local function compute_fval (env)
   end
 
   if equalities.exec ~= nil
-  then equalities.exec(x, eval, ejac)             -- call user defined function
-  else for i=1,p do eval[i] = ewgt[i]*equalities[i].expr(res, env) end
+  then eval:copy(eprv) ; equalities.exec(x, eval, ejac)   -- call user function
+  else for i=1,p do
+    eprv[i], eval[i] = eval[i], ewgt[i]*equalities[i].expr(res, env) end
   end
 
   if inequalities.exec ~= nil
-  then inequalities.exec(x, lval, ljac)           -- call user defined function
-  else for i=1,q do lval[i] = lwgt[i]*inequalities[i].expr(res, env) end
+  then lval:copy(lprv) ; inequalities.exec(x, lval, ljac) -- call user function
+  else for i=1,q do
+    lprv[i], lval[i] = lval[i], lwgt[i]*inequalities[i].expr(res, env) end
   end
 
   -- compute sqrt(\sum_i(w_i c_i(x))^2)/(\sum_i w_i)
@@ -501,13 +505,9 @@ end
 -- compute gradient and (in)equalities jacobians
 local function compute_fgrd (env)
   local var = env.__var
-  local n, p, q, x, dx, fval, fstp, cval, ccnt, fgrd, eval, ejac, lval, ljac,
-        xtmp, dtmp, etmp, ltmp in var
-
-  -- cleanup
-  fgrd:zeros()
-  if ejac ~= nil then ejac:zeros() end
-  if ljac ~= nil then ljac:zeros() end
+  local nbr = not env.objective.broyden
+  local n, p, q, x, dx, fval, fstp, fgrd, eval, eprv, ejac, lval, lprv, ljac,
+        cval, ccnt, xtmp, dtmp, etmp, ltmp, jbroy in var
 
   -- backup (swap) states
   var.xtmp, var.x    = var.x   , var.xtmp
@@ -517,7 +517,8 @@ local function compute_fgrd (env)
   x:copy(xtmp) ; dx:copy(dtmp)
 
   -- estimate dh from last step or current point
-  local dh = 1e-4*dx:norm()
+  local dxn = dx:norm()
+  local dh  = 1e-4*dxn
   if dh == 0 then dh = 1e-8*x:norm() end
   if dh == 0 then dh = 1e-10 end
 
@@ -525,18 +526,33 @@ local function compute_fgrd (env)
     printf("nlopt: computing gradient and jacobian(s) with dh=%-.6e\n", dh)
   end
 
+  local Be, Bl
+  if not nbr then
+    if ejac then Be = ejac + (eval - eprv - ejac*dx)*dx:t()/dxn end
+    if ljac then Bl = ljac + (lval - lprv - ljac*dx)*dx:t()/dxn end
+  end
+
   -- compute jacobian
   for iv=1,n do
-    xtmp[iv] = x[iv]+dh ; var.fval = fval
+    if nbr or dxn == 0 or dtmp[iv] < 0.8*dxn then -- finite difference required
+      xtmp[iv] = x[iv]+dh ; var.fval = fval
 
-    local dfval = compute_fval(env)
-    if dfval == nil then fval = nil ; break end
+      local dfval = compute_fval(env)
+      if dfval == nil then fval = nil ; break end
 
-    fgrd[iv] = (dfval-fval)/dh
-    for i=1,p do ejac:set(i,iv, (etmp[i]-eval[i])/dh) end
-    for i=1,q do ljac:set(i,iv, (ltmp[i]-lval[i])/dh) end
+      fgrd[iv] = (dfval-fval)/dh
+      for i=1,p do ejac:set(i,iv, (etmp[i]-eval[i])/dh) end
+      for i=1,q do ljac:set(i,iv, (ltmp[i]-lval[i])/dh) end
 
-    xtmp[iv] = x[iv]
+      xtmp[iv] = x[iv]
+    else                                          -- Broyden's rank one update
+      if Be then ejac:setcol(iv, Be:getcol(iv)) end
+      if Bl then ljac:setcol(iv, Bl:getcol(iv)) end
+
+      if env.debug >= 1 then
+        printf("nlopt: Broyden's update for variable %d\n", iv)
+      end
+    end
   end
 
   -- restore (swap) states
@@ -683,6 +699,7 @@ local function exec (self)
       p    = p,                            -- number of equalities
       efun = nil,                          -- equalities function (see above)
       eval = p>0 and vector(p) or nil,     -- equalities values
+      eprv = p>0 and vector(p) or nil,     -- equalities previous values
       ewgt = p>0 and vector(p) or nil,     -- equalities weights
       ebst = p>0 and vector(p) or nil,     -- equalities best values
       etol = p>0 and vector(p) or nil,     -- equalities tolerances
@@ -692,6 +709,7 @@ local function exec (self)
       q    = q,                            -- number of inequalities
       lfun = nil,                          -- inequalities function (see above)
       lval = q>0 and vector(q) or nil,     -- inequalities values
+      lprv = q>0 and vector(q) or nil,     -- inequalities previous values
       lwgt = q>0 and vector(q) or nil,     -- inequalities weights
       lbst = q>0 and vector(q) or nil,     -- inequalities best values
       ltol = q>0 and vector(q) or nil,     -- inequalities tolerances
@@ -854,8 +872,8 @@ local match = command 'match' {
   weights = {},
   -- objective to minimize or maximize
   objective = {
-    method=nil, submethod=nil, fmin=nil, tol=nil, rtol=nil, reset=nil,
-    exec=nil, grad=nil, maxtime=nil, maxcall=nil, summary=nil, debug=nil,
+    exec=nil, method=nil, submethod=nil, fmin=nil, tol=nil, rtol=nil, reset=nil,
+    grad=nil, broyden=nil, maxtime=nil, maxcall=nil, summary=nil, debug=nil,
     -- jacobian only
     bisec=nil, rcond=nil, jtol=nil, jitr=nil, jstra=nil, jrand=nil
   },
