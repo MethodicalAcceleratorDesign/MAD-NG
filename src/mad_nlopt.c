@@ -22,11 +22,12 @@
 #include "mad_log.h"
 #include "mad_nlopt.h"
 
-#define CHK_(  c) ensure((c) == 1, "unable to configure nlopt");
-#define CHK( s,c) do { CHK_(c) if (a->debug) printf("nlopt: %s set\n",#s); } while(0)
-#define CHKS(s,c) do { CHK_(c) if (a->debug) printf("nlopt: %s set to '%s'\n"  ,#s,a->s); } while(0)
-#define CHKI(s,c) do { CHK_(c) if (a->debug) printf("nlopt: %s set to %d\n"    ,#s,a->s); } while(0)
-#define CHKN(s,c) do { CHK_(c) if (a->debug) printf("nlopt: %s set to % -.6e\n",#s,a->s); } while(0)
+#define CHK_(  c) ensure((c) == 1, "NLOPT config error '%s': %s.",\
+                                   nlopt_result_to_string(c), nlopt_get_errmsg(opt))
+#define CHK( s,c) do { CHK_(c); if (a->debug) printf("nlopt: %s set.\n",#s); } while(0)
+#define CHKS(s,c) do { CHK_(c); if (a->debug) printf("nlopt: %s set to '%s'.\n"  ,#s,a->s); } while(0)
+#define CHKI(s,c) do { CHK_(c); if (a->debug) printf("nlopt: %s set to %d.\n"    ,#s,a->s); } while(0)
+#define CHKN(s,c) do { CHK_(c); if (a->debug) printf("nlopt: %s set to % -.6e.\n",#s,a->s); } while(0)
 
 #define INF INFINITY
 
@@ -50,13 +51,13 @@ void mad_nlopt (nlopt_args_t *a)
 {
   assert(a);
 
-  // retrieve algorithm full name (and sanity check)
-  a->algonam = nlopt_algorithm_name(a->algo);
-  ensure(a->algonam, "invalid nlopt algorithm id=%d", a->algo);
-  CHKS(algonam, 1);
-
   // create optimizer, set algorithm and problem dimension
   nlopt_opt opt = nlopt_create(a->algo, a->n); a->opt = opt;
+
+  // retrieve algorithm full name (and sanity check)
+  a->algonam = nlopt_algorithm_name(a->algo);
+  ensure(a->algonam, "invalid nlopt algorithm id=%d.", a->algo);
+  CHKS(algonam, 1);
 
   // set objective function to minimize
   CHK(fun, nlopt_set_min_objective(opt, a->fun, a->fdat));
