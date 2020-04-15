@@ -286,6 +286,16 @@ local function accessors (env)
   end
 end
 
+-- debug ----------------------------------------------------------------------o
+
+-- print matrix (debug helper)
+local function dspmat(mat, nam)
+  if mat ~= nil then
+    local fmt = option.numfmt;
+    option.numfmt = "% -.16e" ; mat:print(nam) ; option.numfmt = fmt
+  end
+end
+
 -- summary --------------------------------------------------------------------o
 
 local function disp_summ (env)
@@ -341,53 +351,47 @@ end
 
 local function check_stop (env)
   local var = env.__var
-  local status = var.status
 
-  env.dtime = os.clock()-var.time0 -- update timer (after fun call)
+  env.dtime = os.clock()-var.time0 -- update timer
 
   if env.stop then
-    var.status = _C.NLOPT_FORCED_STOP
     if env.debug >= 1 then io.write("nlopt: forced to stop.\n") end
+    var.status = _C.NLOPT_FORCED_STOP        ; return true
 
   elseif var.maxcall > 0 and env.ncall >= var.maxcall then
-   var.status = _C.NLOPT_MAXEVAL_REACHED
+    var.status = _C.NLOPT_MAXEVAL_REACHED    ; return true
 
   elseif var.maxtime > 0 and env.dtime >= var.maxtime then
-   var.status = _C.NLOPT_MAXTIME_REACHED
+    var.status = _C.NLOPT_MAXTIME_REACHED    ; return true
+  end
 
-  elseif var.ccnt > 0 then
-    -- not a feasible point -> continue
+  if var.ccnt == 0 then -- feasible point
+    local fval, fstp, fmin, ftol, frtol in var
 
-  elseif var.fval <= var.fmin then
-    var.status = _C.NLOPT_STOPVAL_REACHED
+    if fval <= fmin then
+      var.status = _C.NLOPT_STOPVAL_REACHED  ; return true
 
-  elseif abs(var.fstp) - var.ftol <= 0 or
-         abs(var.fstp) - var.frtol*abs(var.fval) <= 0 then
-    var.status = _C.NLOPT_FTOL_REACHED
-
-  elseif var.xtolf and env.ncall > 1 then
-    local ax, adx = var.x:abs(), var.dx:abs()
-
-    if (adx - var.xtol):max() <= 0 or (adx - var.xrtol*ax):max() <= 0 then
-      var.status = _C.NLOPT_XTOL_REACHED
-
-    elseif (adx - eps*ax):max() <= 0 then
-      var.status = _C.NLOPT_ROUNDOFF_LIMITED
+    elseif abs(fstp)-ftol <= 0 or abs(fstp)-frtol*(abs(fval)+eps) <= 0 then
+      var.status = _C.NLOPT_FTOL_REACHED     ; return true
     end
   end
 
-  return var.status ~= status
+  if env.ncall > 1 then
+    local x, dx, xtol, xrtol, xtolf in var
+    local ax, adx = var.x:abs(), var.dx:abs()
+
+    if xtolf and ((adx-xtol):max() <= 0 or (adx-xrtol*(ax+eps)):max() <= 0) then
+      var.status = _C.NLOPT_XTOL_REACHED     ; return true
+
+    elseif xrtol < eps and (adx-eps*(ax+eps)):max() <= 0 then
+      var.status = _C.NLOPT_ROUNDOFF_LIMITED ; return true
+    end
+  end
+
+  return false
 end
 
 -- optimizer functions --------------------------------------------------------o
-
--- print matrix (debug helper)
-local function dspmat(mat, nam)
-  if mat ~= nil then
-    local fmt = option.numfmt;
-    option.numfmt = "% -.16e" ; mat:print(nam) ; option.numfmt = fmt
-  end
-end
 
 -- invalid variable domain (helper)
 local function invalid_dom (env)
