@@ -29,7 +29,7 @@ local _C, command, vector, matrix, warn, option                  in MAD
 local fnil                                                       in MAD.gfunc
 local assertf, errorf, printf, strsplit, log2num                 in MAD.utility
 local is_nil, is_string, is_iterable, is_mappable, is_callable   in MAD.typeid
-local eps, inf                                                   in MAD.constant
+local eps, inf, nan                                              in MAD.constant
 
 local abs, sqrt, min, max in math
 
@@ -198,7 +198,7 @@ local function mklocacc (env, fun, vnam, vidx)
               local k, v = debug.getlocal(flvl, vidx)
               assert(k == vnam, 'invalid local variable in setter')
               debug.setlocal(flvl, vidx, x)
-              var.flush = var.fjit
+              var.flush = var.jitf
             end
 end
 
@@ -211,7 +211,7 @@ local function mkupvacc (env, fun, vnam, vidx)
         \x => local k = debug.getupvalue(fun, vidx)
               assert(k == vnam, 'invalid upvalue in setter')
               debug.setupvalue(fun, vidx, x)
-              var.flush = var.fjit
+              var.flush = var.jitf
             end
 end
 
@@ -301,7 +301,7 @@ end
 local function disp_summ (env)
   local variables, equalities, inequalities, weights in env
   local var = env.__var
-  local n, p, q, eval, ewgt, lval, lwgt, crej in var
+  local m, n, p, c, cwgt, crej in var
   local s1, s2, s3, v1, v2, v3
 
   env.dtime = os.clock()-var.time0 -- update timer before display
@@ -314,22 +314,22 @@ local function disp_summ (env)
     v1, v2, v3 =  var.x       ,  var.x0      ,  retstr[var.status]
   end
 
-  if p+q > 0 then
+  if m > 0 then
     io.write"\n Constraints                Type        Kind        Weight     Penalty Value\n"
     io.write"-----------------------------------------------------------------------------\n"
 
     for i=1,p do
-      local e, v = equalities[i] or {}, eval[i]/ewgt[i]
+      local e, v = equalities[i] or {}, c[i]/cwgt[i]
       printf("%2d: % -23s % -11s % -10s % -10.5g % -.5e%s\n",
-                i, e.name or '', 'equality', e.kind or ' .', ewgt[i],
+                i, e.name or '', 'equality', e.kind or ' .', cwgt[i],
                 abs(v), crej[i] == crej.n and ' *' or '')
     end
 
-    for i=1,q do
-      local e, v = inequalities[i] or {}, lval[i]/lwgt[i]
+    for i=p+1,m do
+      local e, v = inequalities[i-p] or {}, c[i]/cwgt[i]
       printf("%2d: % -23s % -11s % -10s % -10.5g % -.5e%s\n",
-                i+p, e.name or '', 'inequality', e.kind or ' .', lwgt[i],
-                v < 0 and 0 or v, crej[i+p] == crej.n and ' *' or '')
+                i, e.name or '', 'inequality', e.kind or ' .', cwgt[i],
+                v < 0 and 0 or v, crej[i] == crej.n and ' *' or '')
     end
   end
 
@@ -349,7 +349,7 @@ end
 
 -- stopping criteria ----------------------------------------------------------o
 
-local function check_stop (env)
+local function chkstp (env)
   local var = env.__var
 
   env.dtime = os.clock()-var.time0 -- update timer
@@ -391,15 +391,34 @@ local function check_stop (env)
   return false
 end
 
+-- backup state ---------------------------------------------------------------o
+
+local function backup (src, dst, typ_)
+  if is_string(dst) and is_nil(typ_) then typ_, dst = dst end -- right shift
+  dst = dst or {}
+
+  dst.fval, dst.fstp, dst.cval, dst.ccnt, dst.dh =
+  src.fval, src.fstp, src.cval, src.ccnt, src.dh
+
+  dst.x, dst.dx = src.x:copy(dst.x), src.dx:copy(dst.dx)
+
+  if typ_ ~= 'var' then -- 'only variables, skip'
+    dst.c = src.c:copy(dst.c)
+    if typ_ ~= 'fun' then -- 'only variables and functions, skip'
+      if src.fgrd then dst.fgrd = src.fgrd:copy(dst.fgrd) end
+      if src.cjac then dst.cjac = src.cjac:copy(dst.cjac) end
+    end
+  end
+
+  return dst
+end
+
 -- optimizer functions --------------------------------------------------------o
 
 -- invalid variable domain (helper)
 local function invalid_dom (env)
   local var = env.__var
-
-  var.fval, var.fstp, var.cval, var.ccnt = inf, inf, inf, inf
-  if var.eval ~= nil then var.eval:ones(inf) end
-  if var.lval ~= nil then var.lval:ones(inf) end
+  var.fval, var.fstp, var.cval, var.ccnt = nan, nan, nan, nan
 end
 
 -- update variables (helper)
@@ -417,91 +436,61 @@ local function update_vars (env)
   end
 end
 
-local function backup_fun (src, dst, typ_)
-  if is_string(dst) and is_nil(typ_) then typ_, dst = dst end -- right shift
-  dst = dst or {}
-
-  dst.fval, dst.fstp, dst.cval, dst.ccnt =
-  src.fval, src.fstp, src.cval, src.ccnt
-
-  if src.x  then dst.x  = src.x :copy(dst.x ) end
-  if src.dx then dst.dx = src.dx:copy(dst.dx) end
-
-  if typ_ ~= 'var' then -- 'only variables, skip'
-    if src.eval then dst.eval = src.eval:copy(dst.eval)
-                     dst.eprv = src.eprv:copy(dst.eprv) end
-    if src.lval then dst.lval = src.lval:copy(dst.lval)
-                     dst.lprv = src.lprv:copy(dst.lprv) end
-
-    if typ_ ~= 'fun' then -- 'only variables and functions, skip'
-      if src.fgrd then dst.fgrd = src.fgrd:copy(dst.fgrd) end
-      if src.ejac then dst.ejac = src.ejac:copy(dst.ejac) end
-      if src.ljac then dst.ljac = src.ljac:copy(dst.ljac) end
-    end
-  end
-
-  return dst
-end
-
 -- compute objective function(s)
 local function compute_fval (env)
   local command, objective, equalities, inequalities in env
   local var = env.__var
-  local p, q, x, fgrd, eval, eprv, ejac, ewgt, lval, lprv, ljac, lwgt,
-        valf, optf, xbst, ebst, lbst in var
+  local m, n, p, q, x, c, ctol in var
   local fval, res = 0, nil
 
   env.ncall = env.ncall + 1
   env.dtime = os.clock()-var.time0
 
-  update_vars(env)                                -- update user variables
+  update_vars(env)                            -- update user variables
 
   if command ~= nil then
-    res = command(env)                            -- call user defined command
-    if is_nil(res) then return end                -- invalid domain, return nil
+    res = command(env)                        -- call user defined command
+    if is_nil(res) then return end            -- invalid domain, return nil
   end
 
   if objective.exec ~= nil then
-    fval = objective.exec(x, fgrd)                -- call user defined function
-    if fval == nil then return end                -- invalid domain, return nil
+    fval = objective.exec(x, var.fgrd)        -- call user defined function
+    if fval == nil then return end            -- invalid domain, return nil
   end
 
   if equalities.exec ~= nil
-  then eval:copy(eprv) ; equalities.exec(x, eval, ejac)   -- call user function
-  else for i=1,p do
-    eprv[i], eval[i] = eval[i], ewgt[i]*equalities[i].expr(res, env) end
+  then equalities.exec(x, c, var.cjac)        -- call user function
+  else for i=1,p do c[i] = equalities[i].expr(res, env) end
   end
 
-  if inequalities.exec ~= nil
-  then lval:copy(lprv) ; inequalities.exec(x, lval, ljac) -- call user function
-  else for i=1,q do
-    lprv[i], lval[i] = lval[i], lwgt[i]*inequalities[i].expr(res, env) end
+  if inequalities.exec ~= nil then
+    local lval, ljac = vector(q), matrix(q,n)
+    inequalities.exec(x, lval, ljac)          -- call user function
+    lval:copy(c,1+p) ; ljac:copy(cjac,1+p*n)
+  else
+    for i=1,q do c[p+i] = inequalities[i].expr(res, env) end
   end
 
-  -- compute sqrt(\sum_i(w_i c_i(x))^2)/(\sum_i w_i)
-  local etol, ltol, fwgt in var
+  c:emul(var.cwgt, c)                         -- apply weights
+
+  -- compute penalty function
   local cv, cn = 0, 0
-
   for i=1,p do
-    if abs(eval[i]) > etol[i] then cn = cn+1 end cv = cv+eval[i]^2
+    if abs(c[i]) > ctol[i] then cn = cn+1 end cv = cv+c[i]^2
   end
-  if optf
-  then for i=1,q do -- nlopt algorithms prefer to have full jacobian
-    if lval[i] > ltol[i] then cn = cn+1 end cv = cv+lval[i]^2 end
-  else for i=1,q do -- mad algorithms prefer to have reduced jacobian
-    if lval[i] > ltol[i] then cv, cn = cv+lval[i]^2, cn+1 else lval[i]=0 end end
+  if var.optf
+  then for i=p+1,m do -- nlopt algorithms prefer to have full jacobian
+    if c[i] > ctol[i] then cn = cn+1 end cv = cv+c[i]^2 end
+  else for i=p+1,m do -- mad algorithms prefer to have reduced jacobian
+    if c[i] > ctol[i] then cv, cn = cv+c[i]^2, cn+1 else c[i]=0 end end
   end
 
-  var.ccnt, var.cval = cn, sqrt(cv)/fwgt
-  if valf then fval = fval + var.cval end
-  var.fval, var.fstp = fval, fval-var.fval
+  -- TODO: to review
+  var.ccnt, var.cval = cn, sqrt(cv)/m
+  if var.valf then fval = fval + var.cval end
+  var.fval, var.fstp = fval, fval-var.fval   --var.prv.fval
 
-  if var.cval < var.cbst then
-    var.fbst, var.cbst, var.sbst = var.fval, var.cval, var.fstp
-    x:copy(xbst)
-    if eval then eval:copy(ebst) end
-    if lval then lval:copy(lbst) end
-  end
+  if var.cval < var.bst.cval then backup(var, var.bst, 'fun') end
 
   -- var: fval, fstp, cval, ccnt, eval, lval, [fgrd, ejac, ljac]
   return fval
@@ -510,16 +499,11 @@ end
 -- compute gradient and (in)equalities jacobians
 local function compute_fgrd (env)
   local var = env.__var
-  local nbr = not env.objective.broyden
-  local n, p, q, x, dx, fval, fstp, fgrd, eval, eprv, ejac, lval, lprv, ljac,
-        cval, ccnt, xtmp, dtmp, etmp, ltmp, jbroy in var
+  local nbr = not env.objective.broyden or env.ncall == 1
+  local n, p, q, x, dx, fval, fgrd, c, cjac, bak in var
 
-  -- backup (swap) states
-  var.xtmp, var.x    = var.x   , var.xtmp
-  var.dtmp, var.dx   = var.dx  , var.dtmp
-  var.etmp, var.eval = var.eval, var.etmp
-  var.ltmp, var.lval = var.lval, var.ltmp
-  x:copy(xtmp) ; dx:copy(dtmp)
+  -- backup states
+  backup(var, bak, 'fun')
 
   -- estimate dh from last step or current point
   local dxn = dx:norm()
@@ -531,51 +515,41 @@ local function compute_fgrd (env)
     printf("nlopt: computing gradient and jacobian(s) with dh=%-.6e\n", dh)
   end
 
-  local Be, Bl
-  if not nbr then
-    if ejac then Be = ejac + (eval - eprv - ejac*dx)*dx:t()/dxn end
-    if ljac then Bl = ljac + (lval - lprv - ljac*dx)*dx:t()/dxn end
-  end
+  local Bc
+  if not nbr then Bc = cjac + (c - prv.c - cjac*dx)*dx:t()/dxn end
 
   -- compute jacobian
   for iv=1,n do
-    if nbr or dxn == 0 or dtmp[iv] < 0.8*dxn then -- finite difference required
-      xtmp[iv] = x[iv]+dh ; var.fval = fval
+    if nbr or dx[iv] < 0.8*dxn then             -- finite difference required
+      x[iv] = x[iv]+dh ; var.fval = fval
 
       local dfval = compute_fval(env)
       if dfval == nil then fval = nil ; break end
 
       fgrd[iv] = (dfval-fval)/dh
-      for i=1,p do ejac:set(i,iv, (etmp[i]-eval[i])/dh) end
-      for i=1,q do ljac:set(i,iv, (ltmp[i]-lval[i])/dh) end
+      cjac:setcol(iv, (bak.c - c)/dh)
 
-      xtmp[iv] = x[iv]
-    else                                          -- Broyden's rank one update
-      if Be then ejac:setcol(iv, Be:getcol(iv)) end
-      if Bl then ljac:setcol(iv, Bl:getcol(iv)) end
-
+      x[iv] = bak.x[iv]
+    else                                        -- Broyden's rank one update
+      cjac:setcol(iv, Bc:getcol(iv))
       if env.debug >= 1 then
         printf("nlopt: Broyden's update for variable %d\n", iv)
       end
     end
   end
 
-  -- restore (swap) states
-  var.fval, var.fstp, var.cval, var.ccnt = fval, fstp, cval, ccnt
-  var.xtmp, var.x    = xtmp, x
-  var.dtmp, var.dx   = dtmp, dx
-  var.etmp, var.eval = etmp, eval
-  var.ltmp, var.lval = ltmp, lval
+  -- restore states (keep fgrd and cjac unchanged)
+  backup(bak, var, 'fun')
   update_vars(env)
 
-  -- var: fgrd, ejac, ljac
+  -- var: fgrd, cjac
   return fval
 end
 
 -- functions factory
 local function nlopt_functions (env)
   local var = env.__var
-  local x, p, q, fgrd, ejac, ljac, method in var
+  local x, p, q, fgrd, cjac, method in var
 
   -- objective function
   local fun = function ()
@@ -591,9 +565,8 @@ local function nlopt_functions (env)
         dspmat(x, "X")
       end
       if var.grdf and fval then
-        dspmat(fgrd, "GRAD-F"     )
-        dspmat(ejac, "JACOBIAN-EQ")
-        dspmat(ljac, "JACOBIAN-LE")
+        dspmat(fgrd, "F-GRD")
+        dspmat(cjac, "C-JAC")
       end
     end
 
@@ -665,6 +638,7 @@ local function exec (self)
   local n =    variables.nvar or #variables
   local p =   equalities.nequ or #equalities
   local q = inequalities.nequ or #inequalities
+  local m = p+q
 
   -- check sizes compatiblity
   assert(n > 0, "invalid objective (variables expected)")
@@ -684,62 +658,48 @@ local function exec (self)
     usrdef       = self.usrdef,
 
     __var  = { -- hidden variables
+      m    = m,                            -- number of constraints
       n    = n,                            -- number of variables
+      p    = p,                            -- number of equalities
+      q    = q,                            -- number of inequalities
+
       x    = vector(n),                    -- variables values
       dx   = vector(n),                    -- variables steps
       dh   = 0,                            -- variables gradient step
       x0   = vector(n),                    -- variables initial values
       xstp = vector(n),                    -- variables initial steps
       xslp = vector(n),                    -- variables slopes
-      xbst = vector(n),                    -- variables best values
       xmin = vector(n),                    -- variables minimum bounds
       xmax = vector(n),                    -- variables maximum bounds
-      xwgt = vector(n),                    -- variables weights
       xtol = vector(n),                    -- variables tolerances
-      xtmp = grdf and vector(n) or nil,    -- variables temporary
-      dtmp = grdf and vector(n) or nil,    -- variables steps temporary
       xrtol= variables.rtol or eps,        -- variables relative tolerance
       xtolf= false,                        -- variables tolerance flag
 
-      p    = p,                            -- number of equalities
+      c    = vector(m),                    -- constraints values
+      cwgt = vector(m),                    -- constraints weights
+      ctol = vector(m),                    -- constraints tolerances
+      cjac = matrix(m,n),                  -- constraints jacobian
+      ccnt = 0,                            -- constraints violated count
+      cval = inf,                          -- constraints penalty function value
+      crej = {n=0},                        -- constraints always rejected (index)
+
+      fun  = nil,                          -- objective function (see above)
       efun = nil,                          -- equalities function (see above)
-      eval = p>0 and vector(p) or nil,     -- equalities values
-      eprv = p>0 and vector(p) or nil,     -- equalities previous values
-      ewgt = p>0 and vector(p) or nil,     -- equalities weights
-      ebst = p>0 and vector(p) or nil,     -- equalities best values
-      etol = p>0 and vector(p) or nil,     -- equalities tolerances
-      ejac = p>0 and grdm and matrix(p,n) or nil, -- equalities jacobian
-      etmp = p>0 and grdf and vector(p)   or nil, -- equalities temporary
-
-      q    = q,                            -- number of inequalities
       lfun = nil,                          -- inequalities function (see above)
-      lval = q>0 and vector(q) or nil,     -- inequalities values
-      lprv = q>0 and vector(q) or nil,     -- inequalities previous values
-      lwgt = q>0 and vector(q) or nil,     -- inequalities weights
-      lbst = q>0 and vector(q) or nil,     -- inequalities best values
-      ltol = q>0 and vector(q) or nil,     -- inequalities tolerances
-      ljac = q>0 and grdm and matrix(q,n) or nil, -- inequalities jacobian
-      ltmp = q>0 and grdf and vector(q)   or nil, -- inequalities temporary
 
-      ccnt = 0,                            -- number of violated constraints
-      cval = 0,                            -- constraints value
-      crej = {n=0},                        -- constraints always rejected
-
-      fun  = nil,                          -- objective func (see above)
       funf = nil,                          -- objective func computed flag
       valf = valf,                         -- objective func value flag
       grdf = grdf,                         -- objective func gradient flag
       optf = nil,                          -- objective func optimiser flag (reduce)
       fval = inf,                          -- objective func value (dummy init)
-      fbst = inf,                          -- objective func best value
-      cbst = inf,                          -- objective func constraint best value
-      sbst = 0,                            -- objective func best value step
-      fstp = 0,                            -- objective func current step
-      fwgt = 0,                            -- objective func weights sum
       fgrd = grdm and vector(n) or nil,    -- objective func gradient
       fmin = objective.fmin or -inf,       -- objective func minimum (target)
       ftol = objective.tol  or 0,          -- objective func tolerance (target)
       frtol= objective.rtol or 0,          -- objective func relative tolerance (target)
+
+      prv  = { fval=inf, cval=inf },       -- state previous
+      bst  = { fval=inf, cval=inf },       -- state best
+      bak  = { fval=inf, cval=inf },       -- state backup (jacobian)
 
       method   = mopt,                     -- algorithm method (optalgo row)
       submthd  = sopt,                     -- algorithm submethod (optalgo row)
@@ -749,11 +709,11 @@ local function exec (self)
       maxtime  = objective.maxtime or 0,   -- algorithm time limit
       status   = _C.NLOPT_RUNNING,         -- algorithm status
       errmsg   = nil,                      -- algorithm error message
-      fjit     = false,                    -- JIT must be flushed (C API)
+      jitf     = false,                    -- JIT must be flushed (C API)
 
       -- services
-      backup   = backup_fun,               -- backup routine to rollback
-      chkstp   = check_stop,               -- stopping criteria routine
+      backup   = backup,                   -- backup routine to save/rollback
+      chkstp   = chkstp,                   -- stopping criteria check
       time0    = os.clock(),               -- start time
     },
   }
@@ -777,7 +737,6 @@ local function exec (self)
     var.xstp[i] = v.step   or variables.step  or 0
     var.xslp[i] = v.slope  or variables.slope or 0
     var.xtol[i] = v.tol    or variables.tol   or 0
-    var.xwgt[i] = v.weight or variables.wgt   or 1
     var.xmin[i] = v.min    or variables.min   or -inf
     var.xmax[i] = v.max    or variables.max   or  inf
 
@@ -799,21 +758,16 @@ local function exec (self)
   -- equality constraints
   for i=1,p do
     local e = equalities[i] or {}
-    var.ewgt[i] = abs(e.weight or weights[e.kind] or expr_weights[e.kind] or 1)
-    var.etol[i] = abs(e.tol or equalities.tol or mintol) * var.ewgt[i]
-    var.fwgt    = var.fwgt + var.ewgt[i]
+    var.cwgt[i] = abs(e.weight or weights[e.kind] or expr_weights[e.kind] or 1)
+    var.ctol[i] = abs(e.tol or equalities.tol or mintol) * var.cwgt[i]
   end
 
   -- inequality constraints
-  for i=1,q do
-    local e = inequalities[i] or {}
-    var.lwgt[i] = abs(e.weight or weights[e.kind] or expr_weights[e.kind] or 1)
-    var.ltol[i] = (e.tol or inequalities.tol or eps) * var.lwgt[i]
-    var.fwgt    = var.fwgt + var.lwgt[i]
+  for i=p+1,m do
+    local e = inequalities[i-p] or {}
+    var.cwgt[i] = abs(e.weight or weights[e.kind] or expr_weights[e.kind] or 1)
+    var.ctol[i] = (e.tol or inequalities.tol or eps) * var.cwgt[i]
   end
-
-  -- adjust weights (e.g. p+q=0)
-  if var.fwgt == 0 then var.fwgt = 1 end
 
   -- build optimizer functions
   var.fun, var.efun, var.lfun = nlopt_functions(env)
@@ -837,11 +791,8 @@ local function exec (self)
     warn("error '%s' occured during matching", errmsg or '?')
   else
     -- restore best case (constraints)
-    if var.cbst < var.cval then
-      var.fval, var.cval, var.fstp = var.fbst, var.cbst, var.sbst
-      var.xbst:copy(var.x)
-      if var.eval then var.ebst:copy(var.eval) end
-      if var.lval then var.lbst:copy(var.lval) end
+    if var.bst.cval < var.cval then
+      backup(var.bst, var, 'fun')
       if reset ~= true then update_vars(env) end
     end
     -- display final summary
