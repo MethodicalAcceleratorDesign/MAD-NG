@@ -98,6 +98,7 @@ extern const num_t mad_cst_ERADIUS ;  // [m]
 
 // --- physics constants ------------------------------------------------------o
 
+// https://physics.nist.gov/cuu/pdf/wall_2014.pdf
 #ifndef P_CLIGHT                           // Source: CODATA 2014
 #define P_CLIGHT    299792458.0            // [m/s]   Speed of light in vacuum
 #define P_CLIGHT2   (P_CLIGHT*P_CLIGHT)    //         c^2
@@ -112,6 +113,23 @@ extern const num_t mad_cst_ERADIUS ;  // [m]
 #define P_MUMASS    0.1056583745           // [GeV]   Muon mass
 #define P_DEUMASS   1.875612928            // [GeV]   Deuteron mass
 #define P_ERADIUS   2.8179403227e-15       // [m]     Classical electron radius
+#endif
+
+// https://physics.nist.gov/cuu/pdf/wall_2018.pdf
+#ifndef P_CLIGHT                           // Source: CODATA 2018
+#define P_CLIGHT    299792458.0            // [m/s]   Speed of light in vacuum
+#define P_CLIGHT2   (P_CLIGHT*P_CLIGHT)    //         c^2
+#define P_MU0       (4e-7*M_PI)            // [T.m/A] Permeability of vacuum
+#define P_EPSILON0  (1/(P_MU0*P_CLIGHT2))  // [F/m]   Permittivity of vacuum
+#define P_QELECT    1.602176634e-19        // [C]     Elementary electric charge
+#define P_HBAR      (6.582119569e-16*1e-9) // [GeV.s] Reduced Plack's constant
+#define P_AMASS     (931.49410242   *1e-3) // [GeV]   Unified atomic mass
+#define P_EMASS     (0.51099895000  *1e-3) // [GeV]   Electron mass
+#define P_PMASS     (938.27208816   *1e-3) // [GeV]   Proton mass
+#define P_NMASS     (939.56542052   *1e-3) // [GeV]   Neutron mass
+#define P_MUMASS    (105.6583755    *1e-3) // [GeV]   Muon mass
+#define P_DEUMASS   (1875.61294257  *1e-3) // [GeV]   Deuteron mass
+#define P_ERADIUS   2.8179403262e-15       // [m]     Classical electron radius
 #endif
 
 // ----------------------------------------------------------------------------o
