@@ -225,7 +225,7 @@ end
 
 local function ld_lmdif (env)
   local var, objective = env.__var, env.objective
-  local n, p, q, x, dx, fgrd, eval, ejac, lval, ljac, jacf, backup in var
+  local x, dx, fgrd, c, cjac, jacf, backup in var
   local jitr, jtau, bisec in objective
 
   -- default setup
@@ -247,16 +247,15 @@ local function ld_lmdif (env)
     -- compute jacobian
     eval_jac(env)
 
-    -- build Ax=G
-    local J, B = matrix(p+q,n), vector(p+q)
-    if p > 0 then ejac:copy(J,1    ) ; eval:copy(B,1  ) end
-    if q > 0 then ljac:copy(J,1+p*n) ; lval:copy(B,1+p) end
-    if J:is_const() then -- Jacobian is full of zeros
+    -- debug info
+    if env.debug >= 2 then dspmat(cjac, "J") ; dspmat(c, "B") end
+
+    if cjac:is_const() then -- Jacobian is full of zeros
       var.status = _C.NLOPT_ROUNDOFF_LIMITED ; return
     end
 
-    -- debug info
-    if env.debug >= 2 then dspmat(J, "J") ; dspmat(B, "B") end
+    -- build Ax=G
+    local J, B = cjac:copy(), c:copy()
 
     -- reject constraints with insufficient row norm in Jacobian (jtol)
     reject_cons(env, J, B)
@@ -291,7 +290,7 @@ local function ld_lmdif (env)
       if env.debug >= 1 then
         io.write("nlopt: Gauss-Newton step using SVD, \z
                   rank=", rk, ", rcond=", objective.rcond or 'eps', '\n')
-        if env.debug >= 2 then dspmat(sv, "JACOBIAN-SV") end
+        if env.debug >= 2 then dspmat(sv, "LMDIF-SV") end
       end
 
       -- reject variables with wrong slope (see also jstra)
@@ -318,9 +317,7 @@ local function ld_lmdif (env)
     end
 
     -- check LM-step quality (vs linear model)
-    local dF, dL = 0, dx:dot(mu*dx+G)
-    if eval then dF = dF + bak.eval:sumsqr() - var.eval:sumsqr() end
-    if lval then dF = dF + bak.lval:sumsqr() - var.lval:sumsqr() end
+    local dF, dL = bak.c:sumsqr()-var.c:sumsqr(), dx:dot(mu*dx+G)
     local rho = dF/dL
 
     -- debug info
@@ -345,7 +342,7 @@ end
 
 local function ld_jacobian (env)
   local var, objective = env.__var, env.objective
-  local n, p, q, x, dx, fgrd, eval, ejac, lval, ljac, jacf in var
+  local x, dx, fgrd, c, cjac, jacf in var
   local jitr, bisec in objective
 
   -- default setup
@@ -364,16 +361,15 @@ local function ld_jacobian (env)
     -- compute jacobian
     eval_jac(env)
 
-    -- build Jx=B
-    local J, B = matrix(p+q,n), vector(p+q)
-    if p > 0 then ejac:copy(J,1    ) ; eval:copy(B,1  ) end
-    if q > 0 then ljac:copy(J,1+p*n) ; lval:copy(B,1+p) end
-    if J:is_const() then -- Jacobian is full of zeros
+    -- debug info
+    if env.debug >= 2 then dspmat(cjac, "J") ; dspmat(c, "B") end
+
+    if cjac:is_const() then -- Jacobian is full of zeros
       var.status = _C.NLOPT_ROUNDOFF_LIMITED ; return
     end
 
-    -- debug info
-    if env.debug >= 2 then dspmat(J, "J") ; dspmat(B, "B") end
+    -- build Jx=B
+    local J, B = cjac:copy(), c:copy()
 
     -- reject constraints with insufficient row norm in Jacobian (jtol)
     reject_cons(env, J, B)
