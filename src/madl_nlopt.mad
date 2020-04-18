@@ -166,7 +166,6 @@ struct nlopt_args {
   const num_t *xstp;
   const num_t *xmin;
   const num_t *xmax;
-  const num_t *xwgt;
   const num_t *xtol;
         num_t  xrtol;
 
@@ -210,7 +209,7 @@ end
 
 local function nlopt_fwrap (env)
   local var = env.__var
-  local n, p, q, x, dx, fun, fgrd, efun, eval, ejac, lfun, lval, ljac in var
+  local n, p, q, x, dx, fun, fgrd, efun, lfun, c, cjac in var
 
   local funw = fun and -- objective function
   function (n_, x_, df_)
@@ -232,8 +231,8 @@ local function nlopt_fwrap (env)
     assert(r_ ~= nil, "missing vector of equalities (unexpected)")
 
     efun()
-    for i=1,p do r_[i-1] = eval[i] end
-    if jac_ ~= nil then for i=1,n*p do jac_[i-1] = ejac[i] end end
+    for i=1,p do r_[i-1] = c[i] end
+    if jac_ ~= nil then for i=1,n*p do jac_[i-1] = cjac[i] end end
   end or nil
 
   local lfunw = lfun and -- inequalities
@@ -244,8 +243,8 @@ local function nlopt_fwrap (env)
     assert(r_ ~= nil, "missing vector of inequalities (unexpected)")
 
     lfun()
-    for i=1,q do r_[i-1] = lval[i] end
-    if jac_ ~= nil then for i=1,n*q do jac_[i-1] = ljac[i] end end
+    for i=1,q do r_[i-1] = c[p+i] end
+    if jac_ ~= nil then for i=1,n*q do jac_[i-1] = cjac[n*p+i] end end
   end or nil
 
   return funw, efunw, lfunw -- objective, equalities and inequalities functions
@@ -264,6 +263,7 @@ local function nloptrun (env)
 
   -- nlopt use x to keep the best solution found so far, make a copy.
   local x = var.x:copy()
+  local n, p, q in var
 
   arg[0].algo    = var.method.id
   arg[0].subalgo = var.submthd and var.submthd.id or -1
@@ -274,23 +274,22 @@ local function nloptrun (env)
   arg[0].ftol    = var.ftol
   arg[0].frtol   = var.frtol
 
-  arg[0].n       = var.n
+  arg[0].n       = n
   arg[0].x       = x.data
   arg[0].xstp    = var.xstp.data
   arg[0].xmin    = var.xmin.data
   arg[0].xmax    = var.xmax.data
-  arg[0].xwgt    = var.xwgt.data
   arg[0].xtol    = var.xtol.data
   arg[0].xrtol   = var.xrtol
 
   arg[0].p       = var.p
   arg[0].efun    = efun_cb
-  arg[0].etol    = var.p>0 and var.etol.data or nil
+  arg[0].etol    = p>0 and var.ctol.data or nil
   arg[0].edat    = nil
 
   arg[0].q       = var.q
   arg[0].lfun    = lfun_cb
-  arg[0].ltol    = var.q>0 and var.ltol.data or nil
+  arg[0].ltol    = q>0 and var.ctol.data+p or nil
   arg[0].ldat    = nil
 
   arg[0].maxcall = var.maxcall
@@ -300,7 +299,7 @@ local function nloptrun (env)
   arg[0].status  = var.status
 
   -- nlopt uses _C API, i.e. JIT must be flushed after updating local/upvalues.
-  var.fjit = true
+  var.jitf = true
 
   -- attach arg to var
   var.__arg = arg
