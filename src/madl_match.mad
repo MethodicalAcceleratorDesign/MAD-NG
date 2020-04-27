@@ -391,39 +391,15 @@ local function chkstp (env)
   return false
 end
 
--- backup state ---------------------------------------------------------------o
+-- helpers --------------------------------------------------------------------o
 
-local function backup (src, dst, typ)
-  if is_string(dst) and is_nil(typ) then typ, dst = dst end -- right shift
-  dst = dst or {}
-
-  dst.fval, dst.fstp, dst.cval, dst.ccnt, dst.dh =
-  src.fval, src.fstp, src.cval, src.ccnt, src.dh
-
-  dst.x  = src.x :copy(dst.x )
-  dst.dx = src.dx:copy(dst.dx)
-
-  if typ ~= 'var' then                -- only variables, skip
-    dst.c = src.c:copy(dst.c)
-
-    if typ ~= 'fun' and src.fgrd then -- only variables and functions, skip
-      dst.fgrd = src.fgrd:copy(dst.fgrd)
-      dst.cjac = src.cjac:copy(dst.cjac)
-    end
-  end
-
-  return dst
-end
-
--- optimizer functions --------------------------------------------------------o
-
--- invalid variable domain (helper)
+-- invalid variable domain
 local function invalid_dom (env)
   local var = env.__var
   var.fval, var.fstp, var.cval, var.ccnt = nan, nan, nan, nan
 end
 
--- update variables (helper)
+-- update variables
 local function update_vars (env)
   local variables in env
   local var = env.__var
@@ -437,6 +413,24 @@ local function update_vars (env)
     if var.flush then jit.flush() end -- TODO: avoid jit flush
   end
 end
+
+local function backup (src, dst, xtr_)
+  dst.fval, dst.fstp, dst.cval, dst.ccnt, dst.dh =
+  src.fval, src.fstp, src.cval, src.ccnt, src.dh
+
+  dst.x  = src.x :copy(dst.x )
+  dst.dx = src.dx:copy(dst.dx)
+  dst.c  = src.c :copy(dst.c )
+
+  if xtr_ then -- save gradient and jacobian
+    dst.fgrd = src.fgrd:copy(dst.fgrd)
+    dst.cjac = src.cjac:copy(dst.cjac)
+  end
+
+  return dst
+end
+
+-- optimizer functions --------------------------------------------------------o
 
 -- compute objective function(s)
 local function compute_fval (env)
@@ -487,9 +481,12 @@ local function compute_fval (env)
 
   var.ccnt, var.cval = cn, sqrt(cv)/var.fwgt
   if var.valf then fval = fval + var.cval end -- to review
-  var.fval, var.fstp = fval, fval-var.fval    -- var.prv.fval
+  var.fval, var.fstp = fval, fval-var.fval    -- prv.fval better?
 
-  if var.cval < var.bst.cval then backup(var, var.bst, 'fun') end
+  -- backup best result
+  if var.ccnt <= var.bst.ccnt and var.cval < var.bst.cval then
+    backup(var, var.bst)
+  end
 
   -- var: fval, fstp, cval, ccnt, eval, lval, [fgrd, ejac, ljac]
   return fval
@@ -498,11 +495,11 @@ end
 -- compute gradient and (in)equalities jacobians
 local function compute_fgrd (env)
   local var = env.__var
-  local bro = env.objective.broyden and env.ncall > 1
-  local n, p, q, x, dx, fval, fgrd, c, cjac, bak in var
+  local n, p, q, x, dx, fval, fgrd, c, cjac, prv, bak in var
+  local bro = env.objective.broyden and prv.c
 
   -- backup states
-  backup(var, bak, 'fun')
+  backup(var, bak)
 
   -- estimate dh from last step or current point
   local dxn = dx:norm()
@@ -515,12 +512,12 @@ local function compute_fgrd (env)
   end
 
   local Bc
-  if bro then error("NYI") Bc = cjac + (c - prv.c - cjac*dx)*dx:t()/dxn end
+  if bro then Bc = cjac + (c - prv.c - cjac*dx)*dx:t()/dxn end
 
   -- compute jacobian
   for iv=1,n do
     if bro and dx[iv] > 0.8*dxn then            -- Broyden's rank one update
-      error("NYI") ; cjac:setcol(iv, Bc:getcol(iv))
+      cjac:setcol(iv, Bc:getcol(iv))
       if env.debug >= 1 then
         printf("nlopt: Broyden's update for variable %d\n", iv)
       end
@@ -537,9 +534,12 @@ local function compute_fgrd (env)
     end
   end
 
-  -- restore states (keep fgrd and cjac unchanged)
-  backup(bak, var, 'fun')
+  -- restore states
+  backup(bak, var)
   update_vars(env)
+
+  -- save current state for next call
+  backup(var, prv)
 
   -- var: fgrd, cjac
   return fval
@@ -548,7 +548,6 @@ end
 -- functions factory
 local function nlopt_functions (env)
   local var = env.__var
-  local x, p, q, fgrd, cjac, method in var
 
   -- objective function
   local fun = function ()
@@ -561,11 +560,12 @@ local function nlopt_functions (env)
     if env.debug >= 2 then
       if not var.funf then
         printf("fval=%-.16e\n", fval or nan)
-        dspmat(x, "X")
+        dspmat(var.x, "X")
+        dspmat(var.c, "C")
       end
       if var.grdf and fval then
-        dspmat(fgrd, "F-GRD")
-        dspmat(cjac, "C-JAC")
+        dspmat(var.fgrd, "F-GRD")
+        dspmat(var.cjac, "C-JAC")
       end
     end
 
@@ -580,8 +580,8 @@ local function nlopt_functions (env)
   end
 
   -- (in)equality functions (nothing to do)
-  local efun = method.eq == 'y' and p>0 and \ () or nil
-  local lfun = method.le == 'y' and q>0 and \ () or nil
+  local efun = var.method.eq == 'y' and var.p>0 and \ () or nil
+  local lfun = var.method.le == 'y' and var.q>0 and \ () or nil
 
   return fun, efun, lfun -- objective, equalities and inequalities functions
 end
@@ -698,9 +698,9 @@ local function exec (self)
       ftol = objective.tol  or 0,          -- objective func tolerance (target)
       frtol= objective.rtol or 0,          -- objective func relative tolerance (target)
 
-      bst  = { fval=inf, cval=inf },       -- state best
-      prv  = { fval=inf, cval=inf },       -- state previous
-      bak  = { fval=inf, cval=inf },       -- state backup (jacobian)
+      bst  = { fval=inf, cval=inf, ccnt=inf }, -- state best
+      prv  = { fval=inf, cval=inf, ccnt=inf }, -- state previous
+      bak  = { fval=inf, cval=inf, ccnt=inf }, -- state backup (e.g. jacobian, bisec)
 
       method   = mopt,                     -- algorithm method (optalgo row)
       submthd  = sopt,                     -- algorithm submethod (optalgo row)
@@ -796,7 +796,7 @@ local function exec (self)
   else
     -- restore best case (constraints)
     if var.bst.cval < var.cval then
-      backup(var.bst, var, 'fun')
+      backup(var.bst, var)
       if reset ~= true then update_vars(env) end
     end
     -- display final summary
