@@ -1,0 +1,185 @@
+-- time ../../mad -jp=vl testmatch.mad > matchmad_lmd.out 2>&1
+-- time ../../mad -jp=vl testmatch.mad > matchmad_jac.out 2>&1
+
+local doplot = false
+local dopdf  = true
+
+if doplot and not dopdf then MAD.utility.atexit(MAD.utility.pause, true) end
+
+local function plottw (mtbl, x1y2_)
+  if not doplot then return end
+  MAD.plot { table=mtbl, sequence=mtbl.sequ, name=mtbl.title,
+             x1y1 = { s={'beta11','beta22'} },
+             x1y2 = { s= x1y2_ or {'mu1','mu2'} },
+             styles = 'lines',
+             output = dopdf and 'madplot.pdf' or nil,
+           }
+end
+
+local function LHC_load ()
+  local is_sequence in MAD.typeid
+
+  if not is_sequence(MADX:var_raw'lhcb1') then -- avoid MAD-X warning
+    MADX:load('lhc_as-built.seq', 'lhc_as-built.mad') -- convert on need
+    MADX:load('opt_400_10000_400_3000.madx', 'opt_400_10000_400_3000.mad')
+    MADX:load('lhc_unset.mad') -- handmade, must be updated if conversions occur
+
+    local lhcb1, lhcb2, nrj in MADX
+
+    -- sanity checks
+    assert(#lhcb1 == 6677, "invalid number of elements in LHCB1 (6677 expected)")
+    assert(#lhcb2 == 6676, "invalid number of elements in LHCB2 (6676 expected)")
+
+    -- attach beam
+    local beam in MAD
+    lhcb1.beam = beam { particle='proton', energy=nrj }
+    lhcb2.beam = beam { particle='proton', energy=nrj }
+
+    -- set sequence direction
+    lhcb2.dir = -1
+  end
+end
+
+local function LHC_twiss (X0, chrom, filename)
+  local twiss, match in MAD
+  local lhcb1 in MADX
+
+  local mt, mf = twiss { sequence=lhcb1, method=4, cofind=true,
+                         X0=X0, chrom=chrom, save=doplot and 'atbody' or nil,
+                         implicit=doplot, nslice=doplot and 1 or 1}
+
+  mt:write(filename)
+
+  plottw(mt,{'mu1','mu2'})
+  plottw(mt,{'dmu1','dmu2'})
+  plottw(mt,{'dx','dy'})
+  plottw(mt,{'ddx','ddy'})
+  plottw(mt,{'ddpx','ddpy'})
+  plottw(mt,{'wx','wy'})
+  plottw(mt,{'phix','phiy'})
+  return mt, mf
+end
+
+local function LHC_match (X0, chrom, mth)
+  local twiss, match in MAD
+  local lhcb1 in MADX
+
+  -- match tunes
+
+  print("values before matching tunes:")
+  print("MADX.kqtf_b1=", MADX.kqtf_b1)
+  print("MADX.kqtd_b1=", MADX.kqtd_b1)
+
+  local status, fmin, ncall = match {
+    command := twiss { sequence=lhcb1, method=4, cofind=true,
+                       X0=X0, chrom=false, observe=1 },
+    variables = { rtol=1e-6, -- ppm
+      { var = 'MADX.kqtf_b1' },
+      { var = 'MADX.kqtd_b1' }, !step=1e-7,
+    },
+    equalities = {
+      { expr = \t -> t.q1-64.295, name='q1' },
+      { expr = \t -> t.q2-59.301, name='q2' },
+    },
+    objective = {
+      method=mth, fmin=1e-10, maxcall=100, broyden=true, !summary=2, !debug=2
+    },
+  }
+
+  print("status=", status, "fmin=", fmin, "ncall=", ncall) -- ncall == 14
+  print("values after matching tunes:")
+  print("MADX.kqtf_b1=", MADX.kqtf_b1)
+  print("MADX.kqtd_b1=", MADX.kqtd_b1)
+
+  if not chrom then return end
+
+  -- match chromaticities
+
+  print("values before matching chromas:")
+  print("MADX.ksf_b1=" , MADX.ksf_b1 )
+  print("MADX.ksd_b1=" , MADX.ksd_b1 )
+
+  local status, fmin, ncall = match {
+    command := twiss { sequence=lhcb1, method=4, cofind=true,
+                       X0=X0, chrom=true, observe=1 },
+    variables = { rtol=1e-6, -- ppm
+      { var = 'MADX.ksf_b1' },
+      { var = 'MADX.ksd_b1' }, !step=1e-7,
+    },
+    equalities = { tol=1e-5,
+      { expr = \t -> t.dq1-15, name='dq1' },
+      { expr = \t -> t.dq2-15, name='dq2' },
+    },
+    objective = {
+      method=mth, fmin=1e-8, maxcall=100, broyden=true, !summary=2, !debug=2
+    },
+  }
+
+  print("status=", status, "fmin=", fmin, "ncall=", ncall) -- ncall == 21
+  print("values after matching chroma:")
+  print("MADX.ksf_b1=" , MADX.ksf_b1 )
+  print("MADX.ksd_b1=" , MADX.ksd_b1 )
+end
+
+LHC_load()
+local mt, mf = LHC_twiss(0,true,'lhcb1_twiss.txt')
+local X0 = mf[1]:get0()
+LHC_match(X0,true,'LD_JACOBIAN') ! 'LD_LMDIF')
+
+os.exit()
+
+--[[
+MAD-NG results: LMDIF  (bisec=3,broyden=true)
+status= FMIN_REACHED  fmin= 9.0955167732782e-11 ncall=  9
+kqtf_b1= -7.0636473510594e-05
+kqtd_b1=  7.8067259143302e-05
+status= XTOL_REACHED  fmin= 3.5500086822494e-06 ncall=  13
+ksf_b1=   0.13095503357492
+ksd_b1=  -0.21690305285296
+real  0m52.492s
+
+MAD-NG results: JACOBIAN  (bisec=3,broyden=true)
+status= FMIN_REACHED  fmin= 6.5514482489549e-11 ncall=  9
+kqtf_b1= -7.0636473468037e-05
+kqtd_b1=  7.8067258874017e-05
+status= XTOL_REACHED  fmin= 5.0377994502461e-06 ncall=  11
+ksf_b1=   0.13095503818844
+ksd_b1=  -0.21690304492692
+real  0m47.177s
+
+MADX results: LMDIF
+ncall1             =  8.0000000000000000e+00 ;
+kqtf.b1            = -7.0604422285532785e-05 ;
+kqtd.b1            =  7.8038884481505303e-05 ;
+ncall2             =  1.1000000000000000e+01 ;
+ksf.b1             =  1.3096499820771104e-01 ;
+ksd.b1             = -2.1692283846966087e-01 ;
+real  0m23.538s
+
+MADX results: JACOBIAN (bisec=3)
+ncall1             =  1.0000000000000000e+01 ;
+kqtf.b1            = -7.0604422291941409e-05 ;
+kqtd.b1            =  7.8038884502073798e-05 ;
+ncall2             =  3.0000000000000000e+01 ;
+ksf.b1             =  1.3096499791854452e-01 ;
+ksd.b1             = -2.1692283798121578e-01 ;
+real  0m54.454s
+
+PTC results: LMDIF
+ncall1             =  1.1000000000000000e+01 ;
+kqtf.b1            = -7.1087562926718266e-05 ;
+kqtd.b1            =  7.8487956058648450e-05 ;
+ncall2             =  1.1000000000000000e+01 ;
+ksf.b1             =  1.3095064228638545e-01 ;
+ksd.b1             = -2.1684709191589108e-01 ;
+real  3m12.306s
+
+PTC results: JACOBIAN (bisec=3)
+ncall1             =  1.8000000000000000e+01 ;
+kqtf.b1            = -7.1087562882725733e-05 ;
+kqtd.b1            =  7.8487956131257226e-05 ;
+ncall2             =  2.5000000000000000e+01 ;
+ksf.b1             =  1.3095064227009706e-01 ;
+ksd.b1             = -2.1684709186459150e-01 ;
+real  6m19.545s
+--]]
