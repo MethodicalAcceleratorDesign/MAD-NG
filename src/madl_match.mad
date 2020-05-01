@@ -301,17 +301,19 @@ end
 local function disp_summ (env)
   local variables, equalities, inequalities, weights in env
   local var = env.__var
-  local m, n, p, c, cwgt, crej in var
-  local s1, s2, s3, v1, v2, v3
+  local m, n, p, c, cwgt in var
+  local s1, s2, s3, v1, v2, v3, xr, cr
 
   env.dtime = os.clock()-var.time0 -- update timer before display
 
   if var.status == _C.NLOPT_RUNNING then
     s1, s2, s3 = 'Curr. Value', 'Curr. Step ', 'cval=%-.5e [%d]'
     v1, v2, v3 =  var.x       ,  var.dx      ,  var.cval
+    xr, cr     =  var.xrej.cur,  var.crej.cur
   else
     s1, s2, s3 = 'Final Value', 'Init. Value', 'status=%s'
     v1, v2, v3 =  var.x       ,  var.x0      ,  retstr[var.status]
+    xr, cr     =  var.xrej    ,  var.crej
   end
 
   if m > 0 then
@@ -320,27 +322,28 @@ local function disp_summ (env)
 
     for i=1,p do
       local e, v = equalities[i] or {}, c[i]/cwgt[i]
-      printf("%2d: % -23s % -11s % -10s % -10.5g % -.5e%s\n",
+      printf("%2d % -24s % -11s % -10s % -10.5g % -.5e%s\n",
                 i, e.name or '', 'equality', e.kind or ' .', cwgt[i],
-                abs(v), crej[i] == crej.n and ' *' or '')
+                abs(v), cr[i] == cr.n and ' *' or '')
     end
 
     for i=p+1,m do
       local e, v = inequalities[i-p] or {}, c[i]/cwgt[i]
-      printf("%2d: % -23s % -11s % -10s % -10.5g % -.5e%s\n",
+      printf("%2d % -24s % -11s % -10s % -10.5g % -.5e%s\n",
                 i, e.name or '', 'inequality', e.kind or ' .', cwgt[i],
-                v < 0 and 0 or v, crej[i] == crej.n and ' *' or '')
+                v < 0 and 0 or v, cr[i] == cr.n and ' *' or '')
     end
   end
 
   printf("\n Variables                  %s  %s  Lower Limit  Upper Limit\n", s1, s2)
-  io.write"-------------------------------------------------------------------------------\n"
+  io.write"--------------------------------------------------------------------------------\n"
 
   for i=1,n do
     local xmin = var.xmin[i] > -1e100 and strfmt("% -.5e",var.xmin[i]) or '  .'
     local xmax = var.xmax[i] <  1e100 and strfmt("% -.5e",var.xmax[i]) or '  .'
-    printf(" % -25s % -.5e % -.5e % -12s % -12s\n",
-           variables[i].var, v1[i], v2[i], xmin, xmax)
+    local e = variables[i] or {}
+    printf("%2d % -23s % -.5e % -.5e % -12s % -12s%s\n", i, e.name or e.var or '',
+           v1[i], v2[i], xmin, xmax, xr[i] == xr.n and ' *' or '')
   end
 
   local fmt = "\n ncall=%d [%ds], fbst=%-.7e, fstp=%-.5e, "..s3.."\n\n"
@@ -355,7 +358,7 @@ local function chkstp (env)
   env.dtime = os.clock()-var.time0 -- update timer
 
   if env.stop then
-    if env.debug >= 1 then io.write("nlopt: forced to stop.\n") end
+    if env.info >= 3 then io.write("nlopt: forced to stop.\n") end
     var.status = _C.NLOPT_FORCED_STOP        ; return true
 
   elseif var.maxcall > 0 and env.ncall >= var.maxcall then
@@ -507,8 +510,8 @@ local function compute_fgrd (env)
   if dh == 0 then dh = 1e-8*x:norm() end
   if dh == 0 then dh = 1e-10 end
 
-  if env.debug >= 1 then
-    printf("nlopt: computing gradient and jacobian(s) with dh=%-.16e\n", dh)
+  if env.info >= 3 then
+    printf("nlopt: computing derivatives with dh=%-.16e\n", dh)
   end
 
   local Bc
@@ -518,7 +521,7 @@ local function compute_fgrd (env)
   for iv=1,n do
     if bro and dx[iv] > 0.8*dxn then            -- Broyden's rank one update
       cjac:setcol(iv, Bc:getcol(iv))
-      if env.debug >= 1 then
+      if env.info >= 3 then
         printf("nlopt: Broyden's update for variable %d\n", iv)
       end
     else                                        -- finite difference required
@@ -573,7 +576,7 @@ local function nlopt_functions (env)
     if fval == nil then invalid_dom(env) end
 
     -- display intermediate summary
-    if var.sumdisp > 0 and not var.funf then disp_summ(env) end
+    if env.info >= 2 and not var.funf then disp_summ(env) end
 
     -- return objective function value
     return var.fval
@@ -618,13 +621,10 @@ local function exec (self)
     sopt = assertf(optalgo[smthd], "unknown optimisation submethod '%s'", smthd)
   end
 
-  -- check summary level
-  local summ = objective.summary or false
-  local ndsp = assertf(log2num(summ), "invalid summary '%s'", tostring(summ))
-
-  -- check debug level
-  local dbug = objective.debug or false
-  local ndbg = assertf(log2num(dbug), "invalid debug '%s'", tostring(dbug))
+  -- check info and debug level
+  local info, debug in self
+  local ninf = assertf(log2num(info  or 0), "invalid info '%s'" , tostring(info ))
+  local ndbg = assertf(log2num(debug or 0), "invalid debug '%s'", tostring(debug))
 
   -- objective function computation (explicitly) needed
   local valf = objective.exec == nil and mopt.lg == 'n' or mopt.pn == 'y'
@@ -644,10 +644,11 @@ local function exec (self)
 
   -- matching environment
   local env = {
-    stop         = false,       -- forced stop
-    dtime        = 0,           -- current elapsed time
     ncall        = 0,           -- current number of call
+    dtime        = 0,           -- current elapsed time
+    info         = ninf,        -- info  level, can be changed during iterations
     debug        = ndbg,        -- debug level, can be changed during iterations
+    stop         = false,       -- forced stop
     command      = command,
     objective    = objective,
     variables    = variables,
@@ -673,6 +674,7 @@ local function exec (self)
       xtol = vector(n),                    -- variables tolerances
       xrtol= variables.rtol or eps,        -- variables relative tolerance
       xtolf= false,                        -- variables tolerance flag
+      xrej = {n=0, cur={n=0}},             -- variables rejected (index)
 
       c    = vector(m),                    -- constraints values
       cwgt = vector(m),                    -- constraints weights
@@ -680,7 +682,7 @@ local function exec (self)
       cjac = matrix(m,n),                  -- constraints jacobian
       ccnt = 0,                            -- constraints violated count
       cval = inf,                          -- constraints penalty function value
-      crej = {n=0},                        -- constraints always rejected (index)
+      crej = {n=0, cur={n=0}},             -- constraints rejected (index)
 
       fun  = nil,                          -- objective function (see above)
       efun = nil,                          -- equalities function (see above)
@@ -705,7 +707,6 @@ local function exec (self)
       method   = mopt,                     -- algorithm method (optalgo row)
       submthd  = sopt,                     -- algorithm submethod (optalgo row)
       grdmthd  = grdm,                     -- algorithm gradient flag
-      sumdisp  = ndsp,                     -- algorithm summary level
       maxcall  = objective.maxcall or 0,   -- algorithm call limit
       maxtime  = objective.maxtime or 0,   -- algorithm time limit
       status   = _C.NLOPT_RUNNING,         -- algorithm status
@@ -800,7 +801,7 @@ local function exec (self)
       if reset ~= true then update_vars(env) end
     end
     -- display final summary
-    if var.sumdisp > 0 then disp_summ(env) end
+    if env.info >= 1 then disp_summ(env) end
   end
 
   -- reset variables to initial values
@@ -817,29 +818,32 @@ local match = command 'match' {
   command = nil,
   -- state variables
   variables = {
-  ! { var=nil, step=nil, min=nil, max=nil, sign=nil, slope=nil, tol=nil, get=nil, set=nil },
+  ! { var=nil, step=nil, min=nil, max=nil, sign=nil, slope=nil, tol=nil, get=nil, set=nil, name=nil },
      nvar=nil, step=nil, min=nil, max=nil, sign=nil, slope=nil, tol=nil, rtol=nil,
      init=nil, update=nil,
   },
-  -- equalities constraints (i.e. equ = expr(res, env))
+  -- equalities constraints (i.e. val = expr(res, env))
   equalities = {
   ! {expr=nil, name=nil, kind=nil, weight=nil, tol=nil},
      nequ=nil, exec=nil,                       tol=nil,
   },
-  -- inequalities constraints (i.e. inequ = expr(res, env))
+  -- inequalities constraints (i.e. val = expr(res, env))
   inequalities = {
   ! {expr=nil, name=nil, kind=nil, weight=nil, tol=nil},
      nequ=nil, exec=nil,                       tol=nil,
   },
-  -- constraints weights (i.e. weights[kind])
+  -- constraints weights by kinds (i.e. weights[kind])
   weights = {},
   -- objective to minimize or maximize
   objective = {
-    exec=nil, method=nil, submethod=nil, fmin=nil, tol=nil, rtol=nil, reset=nil,
-    grad=nil, broyden=nil, maxtime=nil, maxcall=nil, summary=nil, debug=nil,
-    -- jacobian only
+    exec=nil, method=nil, submethod=nil, fmin=nil, tol=nil, rtol=nil,
+    maxtime=nil, maxcall=nil, grad=nil, reset=nil, broyden=nil,
+    -- jacobian and lmdif only
     bisec=nil, rcond=nil, jtol=nil, jitr=nil, jstra=nil, jrand=nil
   },
+
+  info=nil,             -- information level (output on terminal)
+  debug=nil,            -- debug information level (output on terminal)
 
   usrdef=nil,           -- user defined data attached to matching environment
 
