@@ -302,18 +302,18 @@ local function disp_summ (env)
   local variables, equalities, inequalities, weights in env
   local var = env.__var
   local m, n, p, c, cwgt in var
-  local s1, s2, s3, v1, v2, v3, xr, cr
+  local s1, s2, s3, v1, v2, v3, xa, xr, cr
 
   env.dtime = os.clock()-var.time0 -- update timer before display
 
   if var.status == _C.NLOPT_RUNNING then
     s1, s2, s3 = 'Curr. Value', 'Curr. Step ', 'cval=%-.5e [%d]'
     v1, v2, v3 =  var.x       ,  var.dx      ,  var.cval
-    xr, cr     =  var.xrej.cur,  var.crej.cur
+    xa, xr, cr =  var.xadj.cur,  var.xrej.cur,  var.crej.cur
   else
     s1, s2, s3 = 'Final Value', 'Init. Value', 'status=%s'
     v1, v2, v3 =  var.x       ,  var.x0      ,  retstr[var.status]
-    xr, cr     =  var.xrej    ,  var.crej
+    xa, xr, cr =  var.xadj    ,  var.xrej    ,  var.crej
   end
 
   if m > 0 then
@@ -343,7 +343,8 @@ local function disp_summ (env)
     local xmax = var.xmax[i] <  1e100 and strfmt("% -.5e",var.xmax[i]) or '  .'
     local e = variables[i] or {}
     printf("%2d % -23s % -.5e % -.5e % -12s % -12s%s\n", i, e.name or e.var or '',
-           v1[i], v2[i], xmin, xmax, xr[i] == xr.n and ' *' or '')
+           v1[i], v2[i], xmin, xmax,
+           xr[i] == xr.n and ' *' or xa[i] == xa.n and ' #' or '')
   end
 
   local fmt = "\n ncall=%d [%ds], fbst=%-.7e, fstp=%-.5e, "..s3.."\n\n"
@@ -418,8 +419,8 @@ local function update_vars (env)
 end
 
 local function backup (src, dst, xtr_)
-  dst.fval, dst.fstp, dst.cval, dst.ccnt, dst.dh =
-  src.fval, src.fstp, src.cval, src.ccnt, src.dh
+  dst.fval, dst.fstp, dst.cval, dst.ccnt =
+  src.fval, src.fstp, src.cval, src.ccnt
 
   dst.x  = src.x :copy(dst.x )
   dst.dx = src.dx:copy(dst.dx)
@@ -497,8 +498,8 @@ end
 
 -- compute gradient and (in)equalities jacobians
 local function compute_fgrd (env)
-  local var = env.__var
-  local n, p, q, x, dx, fval, fgrd, c, cjac, prv, bak in var
+  local var, trc = env.__var, env.info >= 3
+  local n, x, dx, xstp, xslp, xmin, xmax, fval, fgrd, c, cjac, prv, bak in var
   local bro = env.objective.broyden and prv.c
 
   -- backup states
@@ -510,9 +511,7 @@ local function compute_fgrd (env)
   if dh == 0 then dh = 1e-8*x:norm() end
   if dh == 0 then dh = 1e-10 end
 
-  if env.info >= 3 then
-    printf("nlopt: computing derivatives with dh=%-.16e\n", dh)
-  end
+  if trc then printf("nlopt: computing derivatives with dh=%-.8e\n", dh) end
 
   local Bc
   if bro then Bc = cjac + (c - prv.c - cjac*dx)*dx:t()/dxn end
@@ -521,11 +520,13 @@ local function compute_fgrd (env)
   for iv=1,n do
     if bro and dx[iv] > 0.8*dxn then            -- Broyden's rank one update
       cjac:setcol(iv, Bc:getcol(iv))
-      if env.info >= 3 then
-        printf("nlopt: Broyden's update for variable %d\n", iv)
-      end
+      if trc then printf("nlopt: Broyden's update for variable %d\n", iv) end
     else                                        -- finite difference required
+      if xstp[iv] ~= 0 then dh = xstp[iv] end
       x[iv] = x[iv]+dh ; var.fval = fval
+      if dh*xslp[iv] < 0 or x[iv] < xmin[iv] or x[iv] > xmax[iv] then
+        x[iv], dh = x[iv]-dh-dh, -dh
+      end
 
       local dfval = compute_fval(env)
       if dfval == nil then fval = nil ; break end
@@ -665,7 +666,6 @@ local function exec (self)
 
       x    = vector(n),                    -- variables values
       dx   = vector(n),                    -- variables steps
-      dh   = 0,                            -- variables gradient step
       x0   = vector(n),                    -- variables initial values
       xstp = vector(n),                    -- variables initial steps
       xslp = vector(n),                    -- variables slopes
@@ -674,6 +674,7 @@ local function exec (self)
       xtol = vector(n),                    -- variables tolerances
       xrtol= variables.rtol or eps,        -- variables relative tolerance
       xtolf= false,                        -- variables tolerance flag
+      xadj = {n=0, cur={n=0}},             -- variables adjusted (index)
       xrej = {n=0, cur={n=0}},             -- variables rejected (index)
 
       c    = vector(m),                    -- constraints values
