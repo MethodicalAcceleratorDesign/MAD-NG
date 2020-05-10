@@ -157,47 +157,48 @@ local function reject_cons (env, A, B, ir_)
 end
 
 local function reject_vars (env, A, rx, rdx, ic_)
+  if A.ncol <= A.nrow or (env.objective.jstra or 0) == 0 then return {} end
+
   local var, trc = env.__var, env.info >= 3
   local n, xslp, xmin, xmax in var
   local xrej, xcur = var.xrej, var.xrej.cur
   local iic, ic, mc = {}, ic_ or {}, A.ncol-A.nrow
-  local jstra = env.objective.jstra or 0
 
-  -- reject by slope
+  -- reject by slope (1st)
   local j, k = 1, 0
   for i=1,n do
     if i == ic[j] then j, k = j+1, k+1 ; goto continue end -- already rejected
 
     local ii = i-k
     local xi = rx[ii]-rdx[ii]
-    if rdx[ii]*xslp[i] < 0 then             -- bad slope
+    if #iic >= mc then                    -- too many variables removed
+      if trc then printf("nlopt: limit of %d variables rejected\n", #ic) end
+      break
+    elseif rdx[ii]*xslp[i] < 0 then       -- bad slope
       table.insert(ic,j,i) ; iic[#iic+1], j = ii, j+1
       if trc then printf("nlopt: rejecting variable (slope) no %d\n", i) end
     end
-
     ::continue::
   end
 
-  -- reject by bounding box
-  if jstra >= 1 then
-    local j, k = 1, 0
-    for i=1,n do
-      if i == ic[j] then j, k = j+1, k+1 ; goto continue end -- already rejected
+  -- reject by bounding box (2nd)
+  local j, k = 1, 0
+  for i=1,n do
+    if i == ic[j] then j, k = j+1, k+1 ; goto continue end -- already rejected
 
-      local ii = i-k
-      local xi = rx[ii]-rdx[ii]
-      if #iic == mc then                    -- too many variables removed
-        if trc then printf("nlopt: limit of %d variables rejected\n", #ic) end
-        break
-      elseif xi < xmin[i] then              -- outside bounding box
-        table.insert(ic,j,i) ; iic[#iic+1], j = ii, j+1
-        if trc then printf("nlopt: rejecting variable (< min) no %d\n", i) end
-      elseif xi > xmax[i] then              -- outside bounding box
-        table.insert(ic,j,i) ; iic[#iic+1], j = ii, j+1
-        if trc then printf("nlopt: rejecting variable (> max) no %d\n", i) end
-      end
-      ::continue::
+    local ii = i-k
+    local xi = rx[ii]-rdx[ii]
+    if #iic >= mc then                    -- too many variables removed
+      if trc then printf("nlopt: limit of %d variables rejected\n", #ic) end
+      break
+    elseif xi < xmin[i] then              -- outside bounding box
+      table.insert(ic,j,i) ; iic[#iic+1], j = ii, j+1
+      if trc then printf("nlopt: rejecting variable (< min) no %d\n", i) end
+    elseif xi > xmax[i] then              -- outside bounding box
+      table.insert(ic,j,i) ; iic[#iic+1], j = ii, j+1
+      if trc then printf("nlopt: rejecting variable (> max) no %d\n", i) end
     end
+    ::continue::
   end
 
   if iic[1] then
@@ -313,9 +314,7 @@ local function ld_lmdif (env)
       if env.debug >= 2 then dspmat(sv, "LMDIF-SV") end
 
       -- reject variables with wrong slope (see also jstra)
-      if A.ncol <= A.nrow or #reject_vars(env, A, rx, rdx, ic) == 0 then
-        break
-      end
+      if #reject_vars(env, A, rx, rdx, ic) == 0 then break end
     end
 
     -- update variables, rejected variables don't move
@@ -408,9 +407,7 @@ local function ld_jacobian (env)
       if env.debug >= 2 then dspmat(sv, "JACOBIAN-SV") end
 
       -- reject variables with wrong slope (and bbox, see also jstra)
-      if J.ncol <= J.nrow or #reject_vars(env, J, rx, rdx, ic) == 0 then
-        break
-      end
+      if #reject_vars(env, J, rx, rdx, ic) == 0 then break end
     end
 
     -- update variables, rejected variables don't move
