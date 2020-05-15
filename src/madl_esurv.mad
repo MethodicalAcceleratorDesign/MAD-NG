@@ -1,0 +1,184 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Survey element module
+ |
+ | Methodical Accelerator Design - Copyright (c) 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - TODO
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+--[=[
+Notes about directions and quantities:
+  element direction   edir: affects curvatures (edir = seq.dir).
+  track direction (s) sdir: affects lengths    (sdir = cmd.dir).
+  time direction  (t) tdir: affects angles     (tdir = edir x sdir).
+  beam direction      bdir: affects strengths  (bdir = edir x sdir x chg).
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local element                in MAD
+local is_number              in MAD.typeid
+local fnil, functor, bind3rd in MAD.gfunc
+local errorf, printf         in MAD.utility
+local minlen, minang         in MAD.constant
+
+local abs in math
+
+local is_implicit = element.drift.is_implicit
+
+-- integrator schemes ---------------------------------------------------------o
+
+local thinonly, thickonly, driftonly                             in MAD.symint
+
+-- geometric maps -------------------------------------------------------------o
+
+local strex_thick, curex_thick, curex_thin                       in MAD.geomap
+
+local xrotation, yrotation, srotation, translate,
+      changeref, changedir, changenrj, misalign                  in MAD.geomap
+
+-- debug ----------------------------------------------------------------------o
+
+local shtfmt = "% -.6e % -.6e % -.6e "
+local lngfmt = "% -.16e % -.16e % -.16e "
+local mapfmt = shtfmt -- lngfmt
+
+local nodump = {marker=true}
+
+local function mdump (mflw, elm, str_)
+  if str_ and mflw.ndump <= 1 then return end
+
+  if is_number(elm) then
+    printf("@@ %-15s %-15s % -.16e\n", 'number', str_, elm) return
+  end
+  if nodump[elm.kind] then return end
+
+  printf("@@ %-15s %-15s ", elm.name, str_ or 'exit')
+
+  local V, W in mflw
+
+  printf(mapfmt, V[1], V[2], V[3])
+
+  for i=1,W.nrow do
+    printf(mapfmt, W:get(i,1), W:get(i,2), W:get(i,3))
+  end
+  io.write('\n')
+end
+
+-- element tracking -----------------------------------------------------------o
+
+local function trackone (elm, m, track, thick, thin)
+  local sdir, atentry, atexit in m
+
+  atentry(elm, m,  sdir, -1)
+  track  (elm, m,    1 , thick, thin)
+  atexit (elm, m, -sdir, -2)
+end
+
+local function trackelm (elm, m, track, thick, thin)
+  local sdir, atentry, atexit, tlt in m
+  local mis = m.misalign and misalign or fnil
+  local rot = abs(tlt) >= minang and srotation or fnil
+
+  atentry(elm, m,  sdir, -1)
+  mis    (elm, m,  sdir)
+  rot    (tlt, m,  sdir)
+  track  (elm, m,    1 , thick, thin)
+  rot    (tlt, m, -sdir)
+  mis    (elm, m, -sdir)
+  atexit (elm, m, -sdir, -2)
+end
+
+-- kinds ----------------------------------------------------------------------o
+
+local function track_marker (elm, m)
+  m.el, m.ang, m.tlt = 0, 0, 0
+  trackone(elm, m, thinonly, nil, fnil)
+end
+
+local function track_thin (elm, m)
+  local tdir in m
+  local angle, tilt in elm
+  m.el, m.ang, m.tlt = 0, angle*tdir, tilt*tdir
+
+  local thin = abs(angle) >= minang and curex_thin or fnil
+  trackelm(elm, m, thinonly, nil, thin)
+end
+
+local function track_thick (elm, m)
+  local ds, tdir in m
+  local angle, tilt in elm
+  local no_ang = abs(angle) < minang
+  m.el, m.ang, m.tlt = ds, angle*tdir, tilt*tdir
+
+  local track, thick
+  if abs(ds) >= minlen then -- trick: driftonly+thick <=> thinonly+thin
+    track, thick = thickonly, no_ang and strex_thick or curex_thick
+  else
+    track, thick = driftonly, no_ang and fnil        or curex_thin
+  end
+
+  trackelm(elm, m, track, thick)
+end
+
+local function track_drift (elm, m)
+  local ds, tdir in m
+  m.el, m.ang, m.tlt = ds, 0, 0
+
+  if is_implicit(elm) then
+    local track = m.implicit and thickonly or driftonly
+    trackone(elm, m, track, strex_thick)
+  else
+    m.tlt = elm.tilt*tdir
+    local thick = abs(ds) >= minlen and thickonly or driftonly
+    trackelm(elm, m, thick, strex_thick)
+  end
+end
+
+-- load maps into elements ----------------------------------------------------o
+
+local invalid = \e ->
+  errorf("invalid survey element %s of kind %s with length %s",
+         e.name, e.kind, e.l)
+
+local E = element
+
+-- warning: class protection set by alt. 'nolookup' object model can be BYPASSED
+--          because classes are modified before any use of 'survey' attribute
+--          by any children at the time of module loading...
+
+-- kind maps
+
+E. thin_element:setvar({ survey = functor( track_thin   ) }, 'init')
+E.drift_element:setvar({ survey = functor( track_drift  ) }, 'init')
+E.thick_element:setvar({ survey = functor( track_thick  ) }, 'init')
+E.specl_element:setvar({ survey = functor( track_marker ) }, 'init')
+E.patch_element:setvar({ survey = functor( invalid      ) }, 'init') -- avoid missing definition
+E.extra_element:setvar({ survey = functor( invalid      ) }, 'init') -- forbidden in track
+
+-- patches
+
+E.xrotation:setvar({ survey = bind3rd( trackone, xrotation ) }, 'init')
+E.yrotation:setvar({ survey = bind3rd( trackone, yrotation ) }, 'init')
+E.srotation:setvar({ survey = bind3rd( trackone, srotation ) }, 'init')
+E.translate:setvar({ survey = bind3rd( trackone, translate ) }, 'init')
+E.changeref:setvar({ survey = bind3rd( trackone, changeref ) }, 'init')
+E.changedir:setvar({ survey = bind3rd( trackone, changedir ) }, 'init')
+E.changenrj:setvar({ survey = bind3rd( trackone, changenrj ) }, 'init')
+
+-- end ------------------------------------------------------------------------o
