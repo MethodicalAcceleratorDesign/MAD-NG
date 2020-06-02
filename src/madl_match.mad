@@ -166,13 +166,19 @@ end
 -- expression default weights by kind -----------------------------------------o
 
 local expr_weights = { -- default weight = 1
-  x   = 10, px  = 100, y    = 10, py  = 100, t = 10, pt = 100,
-  dx  = 10, dpx = 100, dy   = 10, dpy = 100,
-  mux = 10, muy = 10 , alfx = 10, alfy = 10, -- MAD-X compatiblity
+  -- MAD-X compatible
+  x = 10, px = 100, dx = 10, ddx = 10, dpx = 100, ddpx = 100, wx = 1, phix = 1,
+  y = 10, py = 100, dy = 10, ddy = 10, dpy = 100, ddpy = 100, wy = 1, phiy = 1,
+  t = 10, pt = 100, dt = 10, ddt = 10, dpt = 100, ddpt = 100, wz = 1, phiz = 1,
 
-  q1  = 10, q2  = 10, q3  = 10,
-  mu1 = 10, mu2 = 10, mu3 = 10,
-  alfa11 = 10, alfa22 = 10, alfa33 = 10,
+  betx = 1, alfx = 10, mux = 10, q1 = 10, dq1 = 1,
+  bety = 1, alfy = 10, muy = 10, q2 = 10, dq2 = 1,
+  betz = 1, alfz = 10, muz = 10, q3 = 10, dq3 = 1,
+
+  -- MAD-NG extensions
+  beta =  1, beta1 =  1, beta2 =  1, beta3 =  1,
+  alfa = 10, alfa1 = 10, alfa2 = 10, alfa3 = 10,
+    mu = 10,   mu1 = 10,   mu2 = 10,   mu3 = 10,
 }
 
 -- getters/setters ------------------------------------------------------------o
@@ -216,7 +222,7 @@ local function mkupvacc (env, fun, vnam, vidx)
 end
 
 local wmsg =
-  "write access to %s is very slow; use set, update or indirect (table) access"
+  "write access to %s is very slow; use set or indirect (table) access"
 
 local function accessors (env)
   local loc, upv, ctx = {}, {}, getfenv(3)
@@ -242,7 +248,7 @@ local function accessors (env)
 
   -- build variables getter/setter
   local variables in env
-  local wrn = not (variables.nowarn or variables.update)
+  local wrn = not (variables.nowarn or variables.set)
   local n in env.__var
 
   for i=1,n do
@@ -358,7 +364,7 @@ local function chkstp (env)
 
   env.dtime = os.clock()-var.time0 -- update timer
 
-  if env.stop then
+  if env.stop == true then
     if env.info >= 3 then io.write("nlopt: forced to stop.\n") end
     var.status = _C.NLOPT_FORCED_STOP        ; return true
 
@@ -409,8 +415,8 @@ local function update_vars (env)
   local var = env.__var
   local x in var
 
-  if variables.update ~= nil then
-    variables.update(x, env)
+  if variables.set ~= nil then
+    variables.set(x, env)
   else
     var.flush = nil
     for i=1,x.nrow do variables[i].set(x[i], env) end
@@ -709,11 +715,12 @@ local function exec (self)
       submthd  = sopt,                     -- algorithm submethod (optalgo row)
       jacstra  = objective.jstra or 0,     -- algorithm strategy (lsopt)
       jactol   = objective.jtol  or eps,   -- algorithm tolerance (lsopt)
-      maxcall  = objective.maxcall or 0,   -- algorithm call limit
-      maxtime  = objective.maxtime or 0,   -- algorithm time limit
       status   = _C.NLOPT_RUNNING,         -- algorithm status
       errmsg   = nil,                      -- algorithm error message
       jitf     = false,                    -- JIT must be flushed (C API)
+
+      maxcall  = env.maxcall or 0,         -- call limit
+      maxtime  = env.maxtime or 0,         -- time limit
 
       -- services
       backup   = backup,                   -- backup routine to save/rollback
@@ -725,18 +732,18 @@ local function exec (self)
   local var = env.__var
 
   -- create variables getter/setters (if needed)
-  if is_nil(variables.init) and is_nil(variables.update) then
+  if is_nil(variables.get) and is_nil(variables.set) then
     accessors(env)
   else
-    assert(is_callable(variables.init) and is_callable(variables.update),
-           "invalid variables init and/or update (callables expected)")
-    variables.init(var.x0)
+    assert(is_callable(variables.get) and is_callable(variables.set),
+           "invalid variables get and/or set (callables expected)")
+    variables.get(var.x0, env)
   end
 
   -- state variables
   for i=1,n do
     local v = variables[i] or {}
-    if v.get then var.x0[i] = v.get() end
+    if v.get then var.x0[i] = v.get(env) end
     var.x   [i] = var.x0[i]
     var.xstp[i] = v.step   or variables.step  or 0
     var.xslp[i] = v.slope  or variables.slope or 0
@@ -820,9 +827,9 @@ local match = command 'match' {
   command = nil,
   -- state variables
   variables = {
-  ! { var=nil, step=nil, min=nil, max=nil, sign=nil, slope=nil, tol=nil, get=nil, set=nil, name=nil },
-     nvar=nil, step=nil, min=nil, max=nil, sign=nil, slope=nil, tol=nil, rtol=nil,
-     init=nil, update=nil,
+  ! { var=nil, step=nil, min=nil, max=nil, sign=nil, slope=nil, tol=nil, name=nil, get=nil, set=nil },
+     nvar=nil, step=nil, min=nil, max=nil, sign=nil, slope=nil, tol=nil, rtol=nil, get=nil, set=nil,
+     nowarn=nil,
   },
   -- equalities constraints (i.e. val = expr(res, env))
   equalities = {
@@ -838,11 +845,14 @@ local match = command 'match' {
   weights = {},
   -- objective to minimize or maximize
   objective = {
-    exec=nil, method=nil, submethod=nil, fmin=nil, tol=nil, rtol=nil,
-    maxtime=nil, maxcall=nil, grad=nil, reset=nil, broyden=nil,
+    method=nil, submethod=nil, fmin=nil, tol=nil, rtol=nil, broyden=nil,
+    exec=nil, grad=nil, reset=nil,
     -- jacobian and lmdif only
     bisec=nil, rcond=nil, jtol=nil, jitr=nil, jstra=nil, jrand=nil
   },
+
+  maxcall=nil,          -- call limit
+  maxtime=nil,          -- time limit
 
   info=nil,             -- information level (output on terminal)
   debug=nil,            -- debug information level (output on terminal)
