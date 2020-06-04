@@ -38,7 +38,7 @@ local max in math
   0: no variable reduction (constraints reduction still active)
   1: reduce system variables for bad slope and bbox at every step
   2: idem 1, but bad slopes reinit at x0 instead of cancelling the move
-  3: idem 2, but strategy switches to 0 if jitr is reached (MAD-X compat.)
+  3: idem 2, but strategy switches to 0 if jiter is reached (MAD-X compat.)
 
   Notes about info:
   -----------------
@@ -119,8 +119,8 @@ end
 
 local function adjust_vars (env)
   local var, trc = env.__var, env.info >= 4
-  local n, x, x0, dx, xslp, xmin, xmax, jacstra in var
-  local iv, x0f = {n=0}, jacstra >= 2
+  local n, x, x0, dx, xslp, xmin, xmax, jstra in var
+  local iv, x0f = {n=0}, jstra >= 2
 
   -- adjust slope and bounding box
   for i=1,n do
@@ -166,9 +166,9 @@ end
 -- Remove useless (or invalid) constraints and variables ----------------------o
 
 local function reject_cons (env, A, B)
-  local var, trc = env.__var, env.info >= 2
-  local i, ic, tol2 = 1, {n=0}, var.jactol^2
-  local fn = \t,x => if x <= tol2 then t.n=t.n+1 t[t.n]=i end i=i+1 return t end
+  local var, obj, trc = env.__var, env.objective, env.info >= 2
+  local i, ic, tol = 1, {n=0}, (obj.jtol or eps)^2
+  local fn = \t,x => if x <= tol then t.n=t.n+1 t[t.n]=i end i=i+1 return t end
 
   -- compute row norm, collect index of constraints to remove
   A:sumsqr'row' :foldl(fn, ic)
@@ -259,10 +259,10 @@ end
 local function ld_lmdif (env)
   local var, trc, objective = env.__var, env.info >= 2, env.objective
   local x, dx, c, cjac, xadj, xrej, crej, backup in var
-  local jitr, jtau, bisec in objective
+  local jiter, jtau, bisec in objective
 
   -- default setup
-  jitr, jtau, bisec = max(1, jitr or 10), max(eps, jtau or 1e-3), bisec or 0
+  jiter, jtau, bisec = max(1, jiter or 10), max(eps, jtau or 1e-3), bisec or 0
 
   -- adjust variables (i.e. adjust x to fit bbox if any)
   disp_adjrej(env, save_adjrej(xadj, adjust_vars(env)), "adjusting variables")
@@ -310,7 +310,7 @@ local function ld_lmdif (env)
     -- solve (and reduce) damped system
     local A = A:copy() -- extra copy for damping loop (if any)
     local itr, iv, rx, rdx, rk, sv = 1, {n=0}, x:copy()
-    while itr <= jitr do
+    while itr <= jiter do
       do -- solve A + mu*I
         local A = A:mapij \x,i,j -> i==j and x+mu or x
         -- one Gauss-Newton step using SVD to find min_x ||G - Ax||
@@ -326,7 +326,7 @@ local function ld_lmdif (env)
       if env.debug >= 2 then dspmat(sv, "LMDIF-SV") end
 
       -- no variable reduction
-      if var.jacstra == 0 then break end
+      if var.jstra == 0 then break end
 
       -- reject variables with wrong slope and bbox (see jstra)
       local _iv = reject_vars(env, A, rx, rdx, iv)
@@ -339,12 +339,12 @@ local function ld_lmdif (env)
     -- update variables, rejected variables don't move
     rdx:copy(dx):insvec(iv,0) ; x:sub(dx,x)
 
-    -- change strategy if jitr reached (madx-like)
-    if itr > jitr and var.jacstra >= 3 then
+    -- change strategy if jiter reached (madx-like)
+    if itr > jiter and var.jstra >= 3 then
       if trc then
         printf("nlopt: max %d reduction attempted, strategy=0\n", itr)
       end
-      var.jacstra = 0
+      var.jstra = 0
     end
 
     -- check variables (and adjust if needed)
@@ -391,10 +391,10 @@ end
 local function ld_jacobian (env)
   local var, trc, objective = env.__var, env.info >= 2, env.objective
   local x, dx, c, cjac, xadj, xrej, crej in var
-  local jitr, bisec in objective
+  local jiter, bisec in objective
 
   -- default setup
-  jitr, bisec = max(1, jitr or 10), bisec or 3
+  jiter, bisec = max(1, jiter or 10), bisec or 3
 
   -- adjust variables (i.e. adjust x to fit bbox if any)
   disp_adjrej(env, save_adjrej(xadj, adjust_vars(env)), "adjusting variables")
@@ -421,7 +421,7 @@ local function ld_jacobian (env)
 
     -- solve (and reduce) system
     local itr, iv, rx, rdx, rk, sv = 1, {n=0}, x:copy()
-    while itr <= jitr do
+    while itr <= jiter do
       -- one Newton-Raphson step using SVD to find min_x ||B - Jx||
       rdx, rk, sv = J:ssolve(B, objective.rcond)
 
@@ -434,7 +434,7 @@ local function ld_jacobian (env)
       if env.debug >= 2 then dspmat(sv, "JACOBIAN-SV") end
 
       -- no variable reduction
-      if var.jacstra == 0 then break end
+      if var.jstra == 0 then break end
 
       -- reject variables with wrong slope and bbox (see jstra)
       local _iv = reject_vars(env, J, rx, rdx, iv)
@@ -447,12 +447,12 @@ local function ld_jacobian (env)
     -- update variables, rejected variables don't move
     rdx:copy(dx):insvec(iv,0) ; x:sub(dx,x)
 
-    -- change strategy if jitr reached (madx-like)
-    if itr > jitr and var.jacstra >= 3 then
+    -- change strategy if jiter reached (madx-like)
+    if itr > jiter and var.jstra >= 3 then
       if trc then
         printf("nlopt: max %d reduction attempted, strategy=0\n", itr)
       end
-      var.jacstra = 0
+      var.jstra = 0
     end
 
     -- check variables (and adjust if needed)
