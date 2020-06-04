@@ -91,7 +91,6 @@ Algorithm names:
            (i.e. they are sensitive to the units of x)
 --]]
 
-local optalgo_default = 'LD_JACOBIAN'
 local optalgo = {
   -- MAD NLOpt algorithms
   -- global optimisers without derivatives
@@ -166,19 +165,26 @@ end
 -- expression default weights by kind -----------------------------------------o
 
 local expr_weights = { -- default weight = 1
-  -- MAD-X compatible
-  x = 10, px = 100, dx = 10, ddx = 10, dpx = 100, ddpx = 100, wx = 1, phix = 1,
-  y = 10, py = 100, dy = 10, ddy = 10, dpy = 100, ddpy = 100, wy = 1, phiy = 1,
-  t = 10, pt = 100, dt = 10, ddt = 10, dpt = 100, ddpt = 100, wz = 1, phiz = 1,
-
-  betx = 1, alfx = 10, mux = 10, q1 = 10, dq1 = 1,
-  bety = 1, alfy = 10, muy = 10, q2 = 10, dq2 = 1,
-  betz = 1, alfz = 10, muz = 10, q3 = 10, dq3 = 1,
-
-  -- MAD-NG extensions
-  beta =  1, beta1 =  1, beta2 =  1, beta3 =  1,
-  alfa = 10, alfa1 = 10, alfa2 = 10, alfa3 = 10,
-    mu = 10,   mu1 = 10,   mu2 = 10,   mu3 = 10,
+  x     =  10,  y     =  10,  t     =  10,
+  px    = 100,  py    = 100,  pt    = 100, -- generics
+  dx    =  10,  dy    =  10,  dt    =  10,  d    =  10,
+  dpx   = 100,  dpy   = 100,  dpt   = 100,  dp   = 100,
+  ddx   =  10,  ddy   =  10,  ddt   =  10,  dd   =  10,
+  ddpx  = 100,  ddpy  = 100,  ddpt  = 100,  ddp  = 100,
+  --
+  wx    =   1,  wy    =   1,  wz    =   1,  w    =   1,
+  phix  =   1,  phiy  =   1,  phiz  =   1,  phi  =   1,
+  --
+  betx  =   1,  bety  =   1,  betz  =   1,  beta =   1,
+  alfx  =  10,  alfy  =  10,  alfz  =  10,  alfa =   1,
+  mux   =  10,  muy   =  10,  muz   =  10,  mu   =  10,
+  --
+  beta1 =   1,  beta2 =   1,  beta3 =   1,  beta =   1,
+  alfa1 =  10,  alfa2 =  10,  alfa3 =  10,  alfa =  10,
+    mu1 =  10,    mu2 =  10,    mu3 =  10,    mu =  10,
+  --
+  q1    =  10,  q2    =  10,  q3    =  10,  q    =  10,
+  dq1   =   1,  dq2   =   1,  dq3   =   1,  dq   =   1,
 }
 
 -- getters/setters ------------------------------------------------------------o
@@ -618,13 +624,12 @@ local function exec (self)
   assert(is_callable(inqexec)     , "invalid inequality function (callable expected)")
 
   -- check selected method (and submethod)
-  local mthd = objective.method or optalgo_default
+  local mthd = objective.method or 'LD_JACOBIAN'
   local mopt = assertf(optalgo[mthd], "unknown optimisation method '%s'", mthd)
   local sopt = nil
 
   if mopt.lo == 'y' then
-    local smthd = objective.submethod
-    assertf(smthd, "optimisation method '%s' requires a submethod", mthd)
+    local smthd = objective.submethod or 'LN_COBYLA'
     sopt = assertf(optalgo[smthd], "unknown optimisation submethod '%s'", smthd)
   end
 
@@ -664,68 +669,66 @@ local function exec (self)
     weights      = weights,
     usrdef       = self.usrdef,
 
-    __var  = { -- hidden variables
-      m    = m,                            -- number of constraints
-      n    = n,                            -- number of variables
-      p    = p,                            -- number of equalities
-      q    = q,                            -- number of inequalities
+    __var = { -- hidden variables
+      m     = m,                         -- number of constraints
+      n     = n,                         -- number of variables
+      p     = p,                         -- number of equalities
+      q     = q,                         -- number of inequalities
 
-      x    = vector(n),                    -- variables values
-      dx   = vector(n),                    -- variables steps
-      x0   = vector(n),                    -- variables initial values
-      xstp = vector(n),                    -- variables initial steps
-      xslp = vector(n),                    -- variables slopes
-      xmin = vector(n),                    -- variables minimum bounds
-      xmax = vector(n),                    -- variables maximum bounds
-      xtol = vector(n),                    -- variables tolerances
-      xrtol= variables.rtol or eps,        -- variables relative tolerance
-      xtolf= false,                        -- variables tolerance flag
-      xadj = {n=0, cur={n=0}},             -- variables adjusted (index)
-      xrej = {n=0, cur={n=0}},             -- variables rejected (index)
+      x     = vector(n),                 -- variables values
+      dx    = vector(n),                 -- variables steps
+      x0    = vector(n),                 -- variables initial values
+      xstp  = vector(n),                 -- variables initial steps
+      xslp  = vector(n),                 -- variables slopes
+      xmin  = vector(n),                 -- variables minimum bounds
+      xmax  = vector(n),                 -- variables maximum bounds
+      xtol  = vector(n),                 -- variables tolerances
+      xrtol = variables.rtol or eps,     -- variables relative tolerance
+      xtolf = false,                     -- variables tolerance flag
+      xadj  = {n=0, cur={n=0}},          -- variables adjusted (index)
+      xrej  = {n=0, cur={n=0}},          -- variables rejected (index)
 
-      c    = vector(m),                    -- constraints values
-      cwgt = vector(m),                    -- constraints weights
-      ctol = vector(m),                    -- constraints tolerances
-      cjac = matrix(m,n),                  -- constraints jacobian
-      ccnt = 0,                            -- constraints violated count
-      cval = inf,                          -- constraints penalty function value
-      crej = {n=0, cur={n=0}},             -- constraints rejected (index)
+      c     = vector(m),                 -- constraints values
+      cwgt  = vector(m),                 -- constraints weights
+      ctol  = vector(m),                 -- constraints tolerances
+      cjac  = matrix(m,n),               -- constraints jacobian
+      ccnt  = 0,                         -- constraints violated count
+      cval  = inf,                       -- constraints penalty function value
+      crej  = {n=0, cur={n=0}},          -- constraints rejected (index)
 
-      fun  = nil,                          -- objective function (see above)
-      efun = nil,                          -- equalities function (see above)
-      lfun = nil,                          -- inequalities function (see above)
+      fun   = nil,                       -- objective function (see above)
+      efun  = nil,                       -- equalities function (see above)
+      lfun  = nil,                       -- inequalities function (see above)
 
-      funf = nil,                          -- objective func computed flag
-      valf = valf,                         -- objective func value flag
-      grdf = grdf,                         -- objective func gradient flag
-      optf = nil,                          -- objective func optimiser flag (reduce)
-      fval = inf,                          -- objective func value (dummy init)
-      fstp = 0,                            -- objective func current step
-      fwgt = 0,                            -- objective func weights sum
-      fgrd = grdm and vector(n) or nil,    -- objective func gradient
-      fmin = objective.fmin or -inf,       -- objective func minimum (target)
-      ftol = objective.tol  or 0,          -- objective func tolerance (target)
-      frtol= objective.rtol or 0,          -- objective func relative tolerance (target)
+      funf  = nil,                       -- objective func computed flag
+      valf  = valf,                      -- objective func value flag
+      grdf  = grdf,                      -- objective func gradient flag
+      optf  = nil,                       -- objective func optimiser flag (reduce)
+      fval  = inf,                       -- objective func value (dummy init)
+      fstp  = 0,                         -- objective func current step
+      fwgt  = 0,                         -- objective func weights sum
+      fgrd  = grdm and vector(n) or nil, -- objective func gradient
+      fmin  = objective.fmin or -inf,    -- objective func minimum (target)
+      ftol  = objective.tol  or 0,       -- objective func tolerance (target)
+      frtol = objective.rtol or 0,       -- objective func relative tolerance (target)
 
-      bst  = { fval=inf, cval=inf, ccnt=inf }, -- state best
-      prv  = { fval=inf, cval=inf, ccnt=inf }, -- state previous
-      bak  = { fval=inf, cval=inf, ccnt=inf }, -- state backup (e.g. jacobian, bisec)
+      bst   = { fval=inf, cval=inf, ccnt=inf }, -- state best
+      prv   = { fval=inf, cval=inf, ccnt=inf }, -- state previous
+      bak   = { fval=inf, cval=inf, ccnt=inf }, -- state backup (e.g. jacobian, bisec)
 
-      method   = mopt,                     -- algorithm method (optalgo row)
-      submthd  = sopt,                     -- algorithm submethod (optalgo row)
-      jacstra  = objective.jstra or 0,     -- algorithm strategy (lsopt)
-      jactol   = objective.jtol  or eps,   -- algorithm tolerance (lsopt)
-      status   = _C.NLOPT_RUNNING,         -- algorithm status
-      errmsg   = nil,                      -- algorithm error message
-      jitf     = false,                    -- JIT must be flushed (C API)
+      method  = mopt,                    -- algorithm method (optalgo row)
+      submthd = sopt,                    -- algorithm submethod (optalgo row)
+      jstra   = objective.jstra or 0,    -- algorithm strategy (lsopt)
+      status  = _C.NLOPT_RUNNING,        -- algorithm status
+      errmsg  = nil,                     -- algorithm error message
+      jitf    = false,                   -- JIT must be flushed (C API)
 
-      maxcall  = env.maxcall or 0,         -- call limit
-      maxtime  = env.maxtime or 0,         -- time limit
+      maxcall = self.maxcall or 0,       -- call limit
+      maxtime = self.maxtime or 0,       -- time limit
 
-      -- services
-      backup   = backup,                   -- backup routine to save/rollback
-      chkstp   = chkstp,                   -- stopping criteria check
-      time0    = os.clock(),               -- start time
+      backup  = backup,                  -- backup routine to save/rollback
+      chkstp  = chkstp,                  -- stopping criteria check
+      time0   = os.clock(),              -- start time
     },
   }
 
@@ -834,12 +837,12 @@ local match = command 'match' {
   -- equalities constraints (i.e. val = expr(res, env))
   equalities = {
   ! {expr=nil, name=nil, kind=nil, weight=nil, tol=nil},
-     nequ=nil, exec=nil,                       tol=nil,
+     exec=nil, nequ=nil,                       tol=nil,
   },
   -- inequalities constraints (i.e. val = expr(res, env))
   inequalities = {
   ! {expr=nil, name=nil, kind=nil, weight=nil, tol=nil},
-     nequ=nil, exec=nil,                       tol=nil,
+     exec=nil, nequ=nil,                       tol=nil,
   },
   -- constraints weights by kinds (i.e. weights[kind])
   weights = {},
@@ -848,7 +851,7 @@ local match = command 'match' {
     method=nil, submethod=nil, fmin=nil, tol=nil, rtol=nil, broyden=nil,
     exec=nil, grad=nil, reset=nil,
     -- jacobian and lmdif only
-    bisec=nil, rcond=nil, jtol=nil, jitr=nil, jstra=nil, jrand=nil
+    bisec=nil, rcond=nil, jtol=nil, jiter=nil, jstra=nil, jrand=nil
   },
 
   maxcall=nil,          -- call limit
