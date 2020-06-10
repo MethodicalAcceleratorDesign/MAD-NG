@@ -76,7 +76,7 @@ local retstr = {
 --[[
 Algorithm specs:
   id = C enum
-  bd = support bounds constraints (f = require finite bounds)
+  bd = support bounds constraints (r = requires finite bounds)
   eq = support equality constraints (result == 0)
   le = support inequality constraints (result <= 0)
   gr = require explicit computation of gradient
@@ -94,24 +94,24 @@ Algorithm names:
 local optalgo = {
   -- MAD NLOpt algorithms
   -- global optimisers without derivatives
-  GN_CRS2_LM                 = { bd='f', eq='n', le='n', gr='n', lo='n', lg='n' },
-  GN_DIRECT                  = { bd='f', eq='n', le='n', gr='n', lo='n', lg='n' },
-  GN_DIRECT_L                = { bd='f', eq='n', le='n', gr='n', lo='n', lg='n' },
-  GN_DIRECT_L_NOSCAL         = { bd='f', eq='n', le='n', gr='n', lo='n', lg='n' },
-  GN_DIRECT_L_RAND           = { bd='f', eq='n', le='n', gr='n', lo='n', lg='n' },
-  GN_DIRECT_L_RAND_NOSCAL    = { bd='f', eq='n', le='n', gr='n', lo='n', lg='n' },
-  GN_DIRECT_NOSCAL           = { bd='f', eq='n', le='n', gr='n', lo='n', lg='n' },
-  GN_ESCH                    = { bd='f', eq='n', le='n', gr='n', lo='n', lg='n' },
-  GN_ISRES                   = { bd='f', eq='y', le='y', gr='n', lo='n', lg='n' },
-  GN_MLSL                    = { bd='f', eq='n', le='n', gr='n', lo='n', lg='n' },
-  GN_MLSL_LDS                = { bd='f', eq='n', le='n', gr='n', lo='n', lg='n' },
-  GN_ORIG_DIRECT             = { bd='f', eq='y', le='y', gr='n', lo='n', lg='n' },
-  GN_ORIG_DIRECT_L           = { bd='f', eq='y', le='y', gr='n', lo='n', lg='n' },
+  GN_CRS2_LM                 = { bd='r', eq='n', le='n', gr='n', lo='n', lg='n' },
+  GN_DIRECT                  = { bd='r', eq='n', le='n', gr='n', lo='n', lg='n' },
+  GN_DIRECT_L                = { bd='r', eq='n', le='n', gr='n', lo='n', lg='n' },
+  GN_DIRECT_L_NOSCAL         = { bd='r', eq='n', le='n', gr='n', lo='n', lg='n' },
+  GN_DIRECT_L_RAND           = { bd='r', eq='n', le='n', gr='n', lo='n', lg='n' },
+  GN_DIRECT_L_RAND_NOSCAL    = { bd='r', eq='n', le='n', gr='n', lo='n', lg='n' },
+  GN_DIRECT_NOSCAL           = { bd='r', eq='n', le='n', gr='n', lo='n', lg='n' },
+  GN_ESCH                    = { bd='r', eq='n', le='n', gr='n', lo='n', lg='n' },
+  GN_ISRES                   = { bd='r', eq='y', le='y', gr='n', lo='n', lg='n' },
+  GN_MLSL                    = { bd='r', eq='n', le='n', gr='n', lo='n', lg='n' },
+  GN_MLSL_LDS                = { bd='r', eq='n', le='n', gr='n', lo='n', lg='n' },
+  GN_ORIG_DIRECT             = { bd='r', eq='y', le='y', gr='n', lo='n', lg='n' },
+  GN_ORIG_DIRECT_L           = { bd='r', eq='y', le='y', gr='n', lo='n', lg='n' },
   -- global optimisers with derivatives
-  GD_MLSL                    = { bd='f', eq='n', le='n', gr='y', lo='n', lg='n' },
-  GD_MLSL_LDS                = { bd='f', eq='n', le='n', gr='y', lo='n', lg='n' },
-  GD_STOGO                   = { bd='f', eq='n', le='n', gr='y', lo='n', lg='n' },
-  GD_STOGO_RAND              = { bd='f', eq='n', le='n', gr='y', lo='n', lg='n' },
+  GD_MLSL                    = { bd='r', eq='n', le='n', gr='y', lo='n', lg='n' },
+  GD_MLSL_LDS                = { bd='r', eq='n', le='n', gr='y', lo='n', lg='n' },
+  GD_STOGO                   = { bd='r', eq='n', le='n', gr='y', lo='n', lg='n' },
+  GD_STOGO_RAND              = { bd='r', eq='n', le='n', gr='y', lo='n', lg='n' },
   -- local optimisers without derivatives
   LN_AUGLAG                  = { bd='y', eq='y', le='y', gr='n', lo='n', lg='y' },
   LN_AUGLAG_EQ               = { bd='y', eq='y', le='y', gr='n', lo='n', lg='y' },
@@ -373,12 +373,6 @@ local function chkstp (env)
   if env.stop == true then
     if env.info >= 3 then io.write("nlopt: forced to stop.\n") end
     var.status = _C.NLOPT_FORCED_STOP        ; return true
-
-  elseif var.maxcall > 0 and env.ncall >= var.maxcall then
-    var.status = _C.NLOPT_MAXEVAL_REACHED    ; return true
-
-  elseif var.maxtime > 0 and env.dtime >= var.maxtime then
-    var.status = _C.NLOPT_MAXTIME_REACHED    ; return true
   end
 
   if var.ccnt == 0 then -- feasible point
@@ -402,6 +396,13 @@ local function chkstp (env)
     elseif xrtol < eps and (adx-eps*(ax+eps)):max() <= 0 then
       var.status = _C.NLOPT_ROUNDOFF_LIMITED ; return true
     end
+  end
+
+  if var.maxcall > 0 and env.ncall >= var.maxcall then
+    var.status = _C.NLOPT_MAXEVAL_REACHED    ; return true
+
+  elseif var.maxtime > 0 and env.dtime >= var.maxtime then
+    var.status = _C.NLOPT_MAXTIME_REACHED    ; return true
   end
 
   return false
@@ -492,7 +493,7 @@ local function compute_fval (env)
   then for i=p+1,m do -- nlopt algorithms prefer to have full jacobian
     if c[i] > ctol[i] then cn = cn+1 end cv = cv+c[i]^2 end
   else for i=p+1,m do -- mad algorithms prefer to have reduced jacobian
-    if c[i] > ctol[i] then cn, cv = cn+1, cv+c[i]^2 else c[i]=0 end end
+    if c[i] > ctol[i] then cn = cn+1 else c[i]=0 end cv = cv+c[i]^2 end
   end
 
   var.ccnt, var.cval = cn, sqrt(cv)/var.fwgt
