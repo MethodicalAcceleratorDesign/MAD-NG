@@ -2,7 +2,7 @@
 gcc -std=c99 -Wall -W -pedantic -O3 testfuncs.c testopt.c -o nlopt_test \
     -I../../lib/nlopt/build/ -I../../lib/nlopt/src/util/ \
     -I../../lib/nlopt/src/api/ ../../bin/macosx/libnlopt.a
-./nlopt_test
+./nlopt_test [OPTIONS]
 */
 
 /* Copyright (c) 2007-2011 Massachusetts Institute of Technology
