@@ -28,7 +28,7 @@ myfunc(u32_t n, const num_t *x, num_t *grad, void *data)
 
   if (debug) {
     printf("objective (%s)\n", grad != NULL ? "D" : "N");
-    for (unsigned i=0; i<n; i++) printf("x[%d]=%.16e\n", i+1, x[i]);
+    for (u32_t i=0; i<n; i++) printf("x[%d]=%.16e\n", i+1, x[i]);
   }
 
   num_t prod = 1;
@@ -44,7 +44,7 @@ myconstraints(u32_t m, num_t *r, u32_t n, const num_t *x, num_t *grad, void *dat
 
   if (debug) {
     printf("constraint (%s)\n", grad != NULL ? "D" : "N");
-    for (unsigned i=0; i<n; i++) printf("x[%d]=%.16e\n", i+1, x[i]);
+    for (u32_t i=0; i<n; i++) printf("x[%d]=%.16e\n", i+1, x[i]);
   }
 
   num_t sumsq = 0;

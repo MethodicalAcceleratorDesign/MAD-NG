@@ -24,6 +24,12 @@ myfunc(u32_t n, const num_t *x, num_t *grad, void *data)
 {
   assert(n == 2); assert(!data);
   ++count;
+
+  if (debug) {
+    printf("objective (%s)\n", grad != NULL ? "D" : "N");
+    for (u32_t i=0; i<n; i++) printf("x[%d]=%.16e\n", i+1, x[i]);
+  }
+
   if (grad) {
     grad[0] = 0.0;
     grad[1] = 0.5 / sqrt(x[1]);
@@ -36,6 +42,11 @@ myconstraints(u32_t m, num_t *r, u32_t n, const num_t *x, num_t *grad, void *dat
 {
   assert(m == 2 && n == 2); assert(x && data);
   my_constraint_data *d = (my_constraint_data*) data;
+
+  if (debug) {
+    printf("constraint (%s)\n", grad != NULL ? "D" : "N");
+    for (u32_t i=0; i<n; i++) printf("x[%d]=%.16e\n", i+1, x[i]);
+  }
 
   { num_t a = d[0].a, b = d[0].b;
     if (grad) {
@@ -71,7 +82,7 @@ int main(int argc, const char *argv[])
   nlopt_args_t arg = { 0 };
 
   // algorithm
-  arg.algo   = algo
+  arg.algo   = algo;
   // objective
   arg.fun    = myfunc;
   arg.fmin   = -INFINITY;

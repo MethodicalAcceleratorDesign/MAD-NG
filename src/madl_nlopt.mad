@@ -209,15 +209,24 @@ end
 
 local function nlopt_fwrap (env)
   local var = env.__var
-  local n, p, q, x, dx, fun, fgrd, efun, lfun, c, cjac in var
+  local printf in MAD.utility
+  local n, p, q, x, dx, fun, fgrd, efun, lfun, c, cjac, grdf in var
 
   local funw = fun and -- objective function
   function (n_, x_, df_)
     assert(n_ == n  , "invalid number of variables (unexpected)")
     assert(x_ ~= nil, "missing vector of variables (unexpected)")
 
+    if env.debug >= 2 then
+      printf("objective (%s)\n", df_ ~= nil and 'D' or 'N')
+      for i=1,n do printf("x[%d]=%.16e\n", i, x_[i-1]) end
+    end
+
     for i=1,n do x[i], dx[i] = x_[i-1], x_[i-1]-x[i] end
+
+    var.grdf = df_ ~= nil
     local fval = fun()
+    var.grdf = grdf
     if df_ ~= nil then for i=1,n do df_[i-1] = fgrd[i] end end
     if env.stop then nlopt_final(env) end
     return fval
@@ -230,7 +239,13 @@ local function nlopt_fwrap (env)
     assert(x_ ~= nil, "missing vector of variables (unexpected)")
     assert(r_ ~= nil, "missing vector of equalities (unexpected)")
 
+    if env.debug >= 2 then
+      printf("equalities (%s)\n", jac_ ~= nil and 'D' or 'N')
+      for i=1,n do printf("x[%d]=%.16e\n", i, x_[i-1]) end
+    end
+
     efun()
+
     for i=1,p do r_[i-1] = c[i] end
     if jac_ ~= nil then for i=1,n*p do jac_[i-1] = cjac[i] end end
   end or nil
@@ -242,7 +257,13 @@ local function nlopt_fwrap (env)
     assert(x_ ~= nil, "missing vector of variables (unexpected)")
     assert(r_ ~= nil, "missing vector of inequalities (unexpected)")
 
+    if env.debug >= 2 then
+      printf("inequalities (%s)\n", jac_ ~= nil and 'D' or 'N')
+      for i=1,n do printf("x[%d]=%.16e\n", i, x_[i-1]) end
+    end
+
     lfun()
+
     for i=1,q do r_[i-1] = c[p+i] end
     if jac_ ~= nil then for i=1,n*q do jac_[i-1] = cjac[n*p+i] end end
   end or nil

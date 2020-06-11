@@ -319,8 +319,8 @@ local function disp_summ (env)
   env.dtime = os.clock()-var.time0 -- update timer before display
 
   if var.status == _C.NLOPT_RUNNING then
-    s1, s2, s3 = 'Curr. Value', 'Curr. Step ', 'cval=%-.5e [%d]'
-    v1, v2, v3 =  var.x       ,  var.dx      ,  var.cval
+    s1, s2, s3 = 'Curr. Value', 'Curr. Step ', 'fval=%-.5e [%d]'
+    v1, v2, v3 =  var.x       ,  var.dx      ,  var.fval
     xa, xr, cr =  var.xadj.cur,  var.xrej.cur,  var.crej.cur
   else
     s1, s2, s3 = 'Final Value', 'Init. Value', 'status=%s'
@@ -413,7 +413,7 @@ end
 -- invalid variable domain
 local function invalid_dom (env)
   local var = env.__var
-  var.fval, var.fstp, var.cval, var.ccnt = nan, nan, nan, nan
+  var.fval, var.fstp, var.ccnt = nan, nan, nan
 end
 
 -- update variables
@@ -432,8 +432,8 @@ local function update_vars (env)
 end
 
 local function backup (src, dst, xtr_)
-  dst.fval, dst.fstp, dst.cval, dst.ccnt =
-  src.fval, src.fstp, src.cval, src.ccnt
+  dst.fval, dst.fstp, dst.ccnt =
+  src.fval, src.fstp, src.ccnt
 
   dst.x  = src.x :copy(dst.x )
   dst.dx = src.dx:copy(dst.dx)
@@ -484,7 +484,7 @@ local function compute_fval (env)
 
   c:emul(var.cwgt, c)                         -- apply weights
 
-  -- compute penalty function
+  -- compute penalty function, count invalid constraints
   local cn, cv = 0, 0
   for i=1,p do
     if abs(c[i]) > ctol[i] then cn = cn+1 end cv = cv+c[i]^2
@@ -496,16 +496,15 @@ local function compute_fval (env)
     if c[i] > ctol[i] then cn = cn+1 else c[i]=0 end cv = cv+c[i]^2 end
   end
 
-  var.ccnt, var.cval = cn, sqrt(cv)/var.fwgt
-  if var.valf then fval = fval + var.cval end -- to review
-  var.fval, var.fstp = fval, fval-var.fval    -- prv.fval better?
+  if var.valf then fval = sqrt(cv)/var.fwgt end  -- explicit value needed
+  var.fval, var.fstp, var.ccnt = fval, fval-var.fval, cn     -- prv.fval better?
 
   -- backup best result
-  if var.ccnt <= var.bst.ccnt and var.cval < var.bst.cval then
+  if var.ccnt <= var.bst.ccnt and var.fval < var.bst.fval then
     backup(var, var.bst)
   end
 
-  -- var: fval, fstp, cval, ccnt, eval, lval, [fgrd, ejac, ljac]
+  -- var: fval, fstp, ccnt, eval, lval, [fgrd, ejac, ljac]
   return fval
 end
 
@@ -694,7 +693,6 @@ local function exec (self)
       ctol  = vector(m),                 -- constraints tolerances
       cjac  = matrix(m,n),               -- constraints jacobian
       ccnt  = 0,                         -- constraints violated count
-      cval  = inf,                       -- constraints penalty function value
       crej  = {n=0, cur={n=0}},          -- constraints rejected (index)
 
       fun   = nil,                       -- objective function (see above)
@@ -702,7 +700,7 @@ local function exec (self)
       lfun  = nil,                       -- inequalities function (see above)
 
       funf  = nil,                       -- objective func computed flag
-      valf  = valf,                      -- objective func value flag
+      valf  = valf,                      -- objective func explicit value flag
       grdf  = grdf,                      -- objective func gradient flag
       optf  = nil,                       -- objective func optimiser flag (reduce)
       fval  = inf,                       -- objective func value (dummy init)
@@ -713,9 +711,9 @@ local function exec (self)
       ftol  = objective.tol  or 0,       -- objective func tolerance (target)
       frtol = objective.rtol or 0,       -- objective func relative tolerance (target)
 
-      bst   = { fval=inf, cval=inf, ccnt=inf }, -- state best
-      prv   = { fval=inf, cval=inf, ccnt=inf }, -- state previous
-      bak   = { fval=inf, cval=inf, ccnt=inf }, -- state backup (e.g. jacobian, bisec)
+      bst   = { fval=inf, ccnt=inf },    -- state best
+      prv   = { fval=inf, ccnt=inf },    -- state previous
+      bak   = { fval=inf, ccnt=inf },    -- state backup (e.g. jacobian, bisec)
 
       method  = mopt,                    -- algorithm method (optalgo row)
       submthd = sopt,                    -- algorithm submethod (optalgo row)
@@ -808,8 +806,8 @@ local function exec (self)
     reset = true
     warn("error '%s' occured during matching", errmsg or '?')
   else
-    -- restore best case (constraints)
-    if var.bst.cval < var.cval then
+    -- restore best case (need to check vs current for nlopt)
+    if var.bst.ccnt <= var.ccnt and var.bst.fval < var.fval then
       backup(var.bst, var)
       if reset ~= true then update_vars(env) end
     end
