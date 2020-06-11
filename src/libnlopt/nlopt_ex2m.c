@@ -1,8 +1,13 @@
-/*
+/* NLOPT from MAD C interface
 compile & run:
-gcc -std=c99 -Wall -W -pedantic -O3 nlopt_ex2.c mad_log.c ../mad_nlopt.c \
-    -o nlopt_ex2 -I.. -I../../lib/nlopt/src/api/ ../../bin/macosx/libnlopt.a
-./nlopt_ex2 [algorithm]
+gcc -std=c99 -Wall -W -pedantic -O3 nlopt_ex2m.c mad_log.c ../mad_nlopt.c \
+    -o nlopt_ex2m -I.. -I../../lib/nlopt/src/api/ ../../bin/macosx/libnlopt.a
+./nlopt_ex2m [algorithm]
+
+output:
+NLOPT_LN_COBYLA:
+found minimum after 13 evaluations
+found minimum at f(-1.85006,1.61757,1.52261,-0.801924,-0.811983) = -0.5534111746
 */
 
 #include <math.h>
