@@ -496,11 +496,15 @@ local function compute_fval (env)
     if c[i] > ctol[i] then cn = cn+1 else c[i]=0 end cv = cv+c[i]^2 end
   end
 
-  if var.valf then fval = sqrt(cv)/var.fwgt end  -- explicit value needed
+  if var.valf then fval = sqrt(cv)/var.fwgt end  -- the objective is the penalty
   var.fval, var.fstp, var.ccnt = fval, fval-var.fval, cn     -- prv.fval better?
 
   -- backup best result
-  if var.ccnt <= var.bst.ccnt and var.fval < var.bst.fval then
+  if var.ccnt <  var.bst.ccnt or
+     var.ccnt == var.bst.ccnt and var.fval < var.bst.fval then
+    if env.debug >= 2 then
+      printf("best updt: ccnt=%d, fval=%.16e\n", var.ccnt, var.fval)
+    end
     backup(var, var.bst)
   end
 
@@ -576,6 +580,7 @@ local function nlopt_functions (env)
     if env.debug >= 2 then
       if not var.funf then
         printf("fval=%-.16e\n", fval or nan)
+        printf("ccnt=%d\n", var.ccnt or -1)
         dspmat(var.x, "X")
         dspmat(var.c, "C")
       end
@@ -806,13 +811,12 @@ local function exec (self)
     reset = true
     warn("error '%s' occured during matching", errmsg or '?')
   else
-    -- restore best case (need to check vs current for nlopt)
-    if var.bst.ccnt <= var.ccnt and var.bst.fval < var.fval then
-      backup(var.bst, var)
-      if reset ~= true then update_vars(env) end
-    end
+    -- restore best case
+    backup(var.bst, var)
     -- display final summary
     if env.info >= 1 then disp_summ(env) end
+    -- update variables
+    if reset ~= true then update_vars(env) end
   end
 
   -- reset variables to initial values
