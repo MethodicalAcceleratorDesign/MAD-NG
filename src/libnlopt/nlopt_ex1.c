@@ -13,8 +13,6 @@ gcc -std=c99 -Wall -W -pedantic -O3 nlopt_ex1.c \
 static int debug = 1;
 static int count = 0;
 
-static inline double sqr(double x) { return x*x; }
-
 typedef struct {
   double a, b;
 } my_constraint_data;
@@ -23,18 +21,20 @@ static double
 myfunc(unsigned n, const double *x, double *grad, void *data)
 {
   assert(n == 2); assert(!data);
+  double fval = sqrt(x[1]);
   ++count;
 
   if (debug) {
     printf("objective (%s)\n", grad != NULL ? "D" : "N");
     for (unsigned i=0; i<n; i++) printf("x[%d]=%.16e\n", i+1, x[i]);
+    printf("fval=%.16e\n", fval);
   }
 
   if (grad) {
     grad[0] = 0.0;
-    grad[1] = 0.5 / sqrt(x[1]);
+    grad[1] = 0.5 / fval;
   }
-  return sqrt(x[1]);
+  return fval;
 }
 
 static void
@@ -48,19 +48,13 @@ myconstraints(unsigned m, double *r, unsigned n, const double *x, double *grad, 
     for (unsigned i=0; i<n; i++) printf("x[%d]=%.16e\n", i+1, x[i]);
   }
 
-  { double a = d[0].a, b = d[0].b;
+  for (int i=0; i<=1; i++) {
+    double a = d[i].a, b = d[i].b;
     if (grad) {
-      grad[0] = 3*a*sqr(a*x[0]+b);
-      grad[1] = -1.0;
+      grad[2*i+0] = 3*a*(a*x[0]+b)*(a*x[0]+b);
+      grad[2*i+1] = -1.0;
     }
-    r[0] = sqr(a*x[0]+b)*(a*x[0]+b) - x[1];
-  }
-  { double a = d[1].a, b = d[1].b;
-    if (grad) {
-      grad[2] = 3*a*sqr(a*x[0]+b);
-      grad[3] = -1.0;
-    }
-    r[1] = sqr(a*x[0]+b)*(a*x[0]+b) - x[1];
+    r[i] = (a*x[0]+b)*(a*x[0]+b)*(a*x[0]+b) - x[1];
   }
 }
 
@@ -91,13 +85,16 @@ int main(int argc, const char *argv[])
 
   printf("method: %s\n", nlopt_algorithm_name(algo));
   if (status < 0) {
-    printf("nlopt failed! reason: %d, count: %d\n", status, count);
+    printf("nlopt failed! reason: %s, count: %d\n",
+           nlopt_result_to_string(status), count);
   }
   else {
-      printf("found minimum after %d evaluations, reason: %d\n", count, status);
-      printf("found minimum at f(%.6e,%.6e) = %.8e [%.8e]\n", x[0], x[1], fval, fmin);
-      printf("relative errors: x0=%.6e, x1=%.6e, f(x0,x1)=%.6e\n",
-             (x[0]-r[0])/x[0], (x[1]-r[1])/x[1], (fval-fmin)/fval);
+    printf("found minimum after %d evaluations, reason: %s\n",
+           count, nlopt_result_to_string(status));
+    printf("found minimum at f(%.6e,%.6e) = %.8e [%.8e]\n",
+           x[0], x[1], fval, fmin);
+    printf("relative errors: x0=%.6e, x1=%.6e, f(x0,x1)=%.6e\n",
+           (x[0]-r[0])/x[0], (x[1]-r[1])/x[1], (fval-fmin)/fval);
   }
 
   nlopt_destroy(opt);

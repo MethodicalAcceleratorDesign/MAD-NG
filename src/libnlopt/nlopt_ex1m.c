@@ -24,17 +24,19 @@ myfunc(u32_t n, const num_t *x, num_t *grad, void *data)
 {
   assert(n == 2); assert(!data);
   ++count;
+  num_t fval = sqrt(x[1]);
 
   if (debug) {
     printf("objective (%s)\n", grad != NULL ? "D" : "N");
     for (u32_t i=0; i<n; i++) printf("x[%d]=%.16e\n", i+1, x[i]);
+    printf("fval=%.16e\n", fval);
   }
 
   if (grad) {
     grad[0] = 0.0;
     grad[1] = 0.5 / sqrt(x[1]);
   }
-  return sqrt(x[1]);
+  return fval;
 }
 
 static void
@@ -103,13 +105,15 @@ int main(int argc, const char *argv[])
   num_t fval = arg.fval;
   printf("method: %s\n", nlopt_algorithm_name(algo));
   if (arg.status < 0) {
-    printf("nlopt failed! reason: %d, count: %d\n", arg.status, count);
+    printf("nlopt failed! reason: %s, count: %d\n",
+           nlopt_result_to_string(arg.status), count);
   }
   else {
-      printf("found minimum after %d evaluations, reason: %d\n", count, arg.status);
-      printf("found minimum at f(%.6e,%.6e) = %.10e (%.10e)\n", x[0], x[1], fval, fmin);
-      printf("relative errors: x0=%.6e, x1=%.6e, f(x0,x1)=%.6e\n",
-             (x[0]-r[0])/x[0], (x[1]-r[1])/x[1], (fval-fmin)/fval);
-
+    printf("found minimum after %d evaluations, reason: %s\n",
+           count, nlopt_result_to_string(arg.status));
+    printf("found minimum at f(%.6e,%.6e) = %.8e [%.8e]\n",
+           x[0], x[1], fval, fmin);
+    printf("relative errors: x0=%.6e, x1=%.6e, f(x0,x1)=%.6e\n",
+           (x[0]-r[0])/x[0], (x[1]-r[1])/x[1], (fval-fmin)/fval);
   }
 }
