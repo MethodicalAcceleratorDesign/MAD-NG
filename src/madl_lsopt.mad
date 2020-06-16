@@ -110,9 +110,9 @@ end
 -- Check/adjust variables to domain -------------------------------------------o
 
 local function adjust_vars (env)
-  local var, trc = env.__var, env.info >= 4
-  local n, x, x0, dx, xslp, xmin, xmax, jstra in var
-  local iv, x0f = {n=0}, jstra >= 2
+  local var, obj, trc = env.__var, env.objective, env.info >= 4
+  local n, x, x0, dx, xslp, xmin, xmax in var
+  local iv, x0f = {n=0}, (obj.jstra or 1) >= 2
 
   -- adjust slope and bounding box
   for i=1,n do
@@ -251,10 +251,11 @@ end
 local function ld_lmdif (env)
   local var, trc, objective = env.__var, env.info >= 2, env.objective
   local x, dx, c, cjac, xadj, xrej, crej, backup in var
-  local jiter, jtau, bisec in objective
+  local jstra, jiter, jtau, bisec in objective
 
   -- default setup
-  jiter, jtau, bisec = max(1, jiter or 10), max(eps, jtau or 1e-3), bisec or 0
+  jstra, jiter, jtau, bisec = jstra or 1, max(1, jiter or 10),
+                              max(eps, jtau or 1e-3), bisec or 0
 
   -- adjust variables (i.e. adjust x to fit bbox if any)
   disp_adjrej(env, save_adjrej(xadj, adjust_vars(env)), "adjusting variables")
@@ -318,7 +319,7 @@ local function ld_lmdif (env)
       if env.debug >= 2 then dspmat(sv, "LMDIF-SV") end
 
       -- no variable reduction
-      if var.jstra == 0 then break end
+      if jstra == 0 then break end
 
       -- reject variables with wrong slope and bbox (see jstra)
       local _iv = reject_vars(env, A, rx, rdx, iv)
@@ -332,11 +333,11 @@ local function ld_lmdif (env)
     rdx:copy(dx):insvec(iv,0) ; x:sub(dx,x)
 
     -- change strategy if jiter reached (madx-like)
-    if itr > jiter and var.jstra >= 3 then
+    if itr > jiter and jstra >= 3 then
       if trc then
         printf("nlopt: max %d reduction attempted, strategy=0\n", itr)
       end
-      var.jstra = 0
+      jstra = 0
     end
 
     -- check variables (and adjust if needed)
@@ -383,10 +384,10 @@ end
 local function ld_jacobian (env)
   local var, trc, objective = env.__var, env.info >= 2, env.objective
   local x, dx, c, cjac, xadj, xrej, crej in var
-  local jiter, bisec in objective
+  local jstra, jiter, bisec in objective
 
   -- default setup
-  jiter, bisec = max(1, jiter or 10), bisec or 3
+  jstra, jiter, bisec = jstra or 1, max(1, jiter or 10), bisec or 3
 
   -- adjust variables (i.e. adjust x to fit bbox if any)
   disp_adjrej(env, save_adjrej(xadj, adjust_vars(env)), "adjusting variables")
@@ -426,7 +427,7 @@ local function ld_jacobian (env)
       if env.debug >= 2 then dspmat(sv, "JACOBIAN-SV") end
 
       -- no variable reduction
-      if var.jstra == 0 then break end
+      if jstra == 0 then break end
 
       -- reject variables with wrong slope and bbox (see jstra)
       local _iv = reject_vars(env, J, rx, rdx, iv)
@@ -440,11 +441,11 @@ local function ld_jacobian (env)
     rdx:copy(dx):insvec(iv,0) ; x:sub(dx,x)
 
     -- change strategy if jiter reached (madx-like)
-    if itr > jiter and var.jstra >= 3 then
+    if itr > jiter and jstra >= 3 then
       if trc then
         printf("nlopt: max %d reduction attempted, strategy=0\n", itr)
       end
-      var.jstra = 0
+      jstra = 0
     end
 
     -- check variables (and adjust if needed)
