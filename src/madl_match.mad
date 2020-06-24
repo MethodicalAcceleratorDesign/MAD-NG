@@ -313,7 +313,7 @@ end
 local function disp_summ (env)
   local variables, equalities, inequalities, weights in env
   local var = env.__var
-  local m, n, p, c, cwgt in var
+  local m, n, p, c, cn, cwgt in var
   local s1, s2, s3, v1, v2, v3, xa, xr, cr
 
   env.dtime = os.clock()-var.time0 -- update timer before display
@@ -336,14 +336,14 @@ local function disp_summ (env)
       local e, v = equalities[i] or {}, c[i]/cwgt[i]
       printf("%2d % -24s % -11s % -10s % -10.5g % -.5e%s\n",
                 i, e.name or '', 'equality', e.kind or ' .', cwgt[i],
-                abs(v), cr[i] == cr.n and ' *' or '')
+                abs(v), cr[i] == cr.n and ' *' or cn[i] > 0 and ' >' or '')
     end
 
     for i=p+1,m do
       local e, v = inequalities[i-p] or {}, c[i]/cwgt[i]
       printf("%2d % -24s % -11s % -10s % -10.5g % -.5e%s\n",
                 i, e.name or '', 'inequality', e.kind or ' .', cwgt[i],
-                v < 0 and 0 or v, cr[i] == cr.n and ' *' or '')
+                v < 0 and 0 or v, cr[i] == cr.n and ' *' or cn[i] > 0 and ' >' or '')
     end
   end
 
@@ -438,6 +438,7 @@ local function backup (src, dst, xtr_)
   dst.x  = src.x :copy(dst.x )
   dst.dx = src.dx:copy(dst.dx)
   dst.c  = src.c :copy(dst.c )
+  dst.cn = src.cn:copy(dst.cn)
 
   if xtr_ then -- save gradient and jacobian
     dst.fgrd = src.fgrd:copy(dst.fgrd)
@@ -453,7 +454,7 @@ end
 local function compute_fval (env)
   local command, objective, equalities, inequalities in env
   local var = env.__var
-  local m, n, p, q, x, c, cjac, ctol, bst in var
+  local m, n, p, q, x, c, cn, cjac, ctol, bst in var
   local fval, res = 0, nil
 
   env.ncall = env.ncall + 1
@@ -483,24 +484,25 @@ local function compute_fval (env)
   end
 
   c:emul(var.cwgt, c)                         -- apply weights
+  cn:zeros()
 
   -- compute penalty function, count invalid constraints
-  local cn, cv = 0, 0
+  local cv = 0
   for i=1,p do
-    if abs(c[i]) > ctol[i] then cn = cn+1 end cv = cv+c[i]^2
+    if abs(c[i]) > ctol[i] then cn[i] = 1 end cv = cv+c[i]^2
   end
   if var.optf
   then for i=p+1,m do -- nlopt algorithms prefer to have full jacobian
-    if c[i] > ctol[i] then cn = cn+1 end cv = cv+c[i]^2 end
+    if c[i] > ctol[i] then cn[i] = 1 end cv = cv+c[i]^2 end
   else for i=p+1,m do -- mad algorithms prefer to have reduced jacobian
-    if c[i] > ctol[i] then cn = cn+1 else c[i]=0 end cv = cv+c[i]^2 end
+    if c[i] > ctol[i] then cn[i] = 1 else c[i] = 0 end cv = cv+c[i]^2 end
   end
 
   if var.valf then fval = sqrt(cv)/var.fwgt end  -- the objective is the penalty
-  var.fval, var.fstp, var.ccnt = fval, fval-var.fval, cn     -- prv.fval better?
+  var.fval, var.fstp, var.ccnt = fval, fval-var.fval, cn:sum() -- prv.fval better?
 
   -- backup best result
-  if cn < bst.ccnt or cn == bst.ccnt and fval < bst.fval then
+  if var.ccnt < bst.ccnt or var.ccnt == bst.ccnt and fval < bst.fval then
     if env.debug >= 2 then io.write("best updated\n") end
     backup(var, bst)
   end
@@ -692,6 +694,7 @@ local function exec (self)
       xrej  = {n=0, cur={n=0}},          -- variables rejected (index)
 
       c     = vector(m),                 -- constraints values
+      cn    = vector(m),                 -- constraints validity (failed: ~=0)
       cwgt  = vector(m),                 -- constraints weights
       ctol  = vector(m),                 -- constraints tolerances
       cjac  = matrix(m,n),               -- constraints jacobian
