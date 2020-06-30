@@ -101,27 +101,26 @@ void  mad_cnum_dawson_r(num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
 
 // --- RNG --------------------------------------------------------------------o
 
-typedef struct rng_state rng_state_t;
+typedef struct rng_state_ rng_state_t;
 
 num_t mad_num_rand     (rng_state_t*);             // [0.,1.)
 u64_t mad_num_randi    (rng_state_t*);             // [0,ULLONG_MAX]
+void  mad_num_randjump (rng_state_t*);
 void  mad_num_randseed (rng_state_t*, num_t seed);
-void  mad_num_randjump (rng_state_t*, const rng_state_t* ref);
 
 // --- private
-struct rng_state {
-  u64_t s[16];
-  int p;
+struct rng_state_ {
+  u64_t s[4];
 };
 
 // MADX random number generator
-typedef struct xrng_state xrng_state_t;
+typedef struct xrng_state_ xrng_state_t;
 
 num_t mad_num_xrand     (xrng_state_t*);           // [0.,1.)
 void  mad_num_xrandseed (xrng_state_t*, int seed);
 
 // --- private
-struct xrng_state {
+struct xrng_state_ {
   int s[55];
   idx_t n;
 };

@@ -175,84 +175,73 @@ void mad_cnum_dawson_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
 void mad_cnum_erfw_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
 { CHKR; *r = Faddeeva_w (CNUM(x), relerr); }
 
-// -- RNG XorShift1024* -------------------------------------------------------o
+// -- RNG XoShiRo256** --------------------------------------------------------o
 
-enum {
-  N = 16,
-  rand_state_expected_size = N * sizeof(u64_t),
-  rand_state_actual_size   = offsetof(rng_state_t,p),
-  invalid_rand_state_size  = 1/(rand_state_actual_size == rand_state_expected_size)
-};
+#define N 4
 
-union numbit {
-  u64_t u;
-  num_t d;
-};
+union numbit { u64_t u; num_t d; };
+
+static inline u64_t rotl(const u64_t x, int k) {
+  return (x << k) | (x >> (64 - k));
+}
 
 u64_t mad_num_randi (rng_state_t *restrict st)
 {
-  int p = st->p;
   u64_t *s = st->s;
-  const u64_t s0 = s[p];
-  u64_t s1 = s[p = (p + 1) & (N - 1)];
-  s1 ^= s1 << 31; // A
-  s[p] = s1 ^ s0 ^ (s1 >> 11) ^ (s0 >> 30); // B, C
-  st->p = p;
-  return s[p] * 1181783497276652981ULL; // number within [0,ULLONG_MAX]
+  const u64_t r = rotl(s[1] * 5, 7) * 9;
+  const u64_t t = s[1] << 17;
+
+  s[2] ^= s[0];
+  s[3] ^= s[1];
+  s[1] ^= s[2];
+  s[0] ^= s[3];
+  s[2] ^= t;
+  s[3] = rotl(s[3], 45);
+
+  return r; // number within [0,ULLONG_MAX]
 }
 
 num_t mad_num_rand (rng_state_t *restrict st)
 {
-  u64_t r = mad_num_randi(st);
-  r = (r & 0x000fffffffffffffULL) | 0x3ff0000000000000ULL;
-  const union numbit n = { .u = r }; // number within [1.,2.)
-  return n.d - 1.0;                  // number within [0.,1.)
+  u64_t x = mad_num_randi(st);
+  const union numbit n = { .u = 0x3ffULL << 52 | x >> 12 }; // number in [1.,2.)
+  return n.d - 1.0;                                         // number in [0.,1.)
 }
+
+#include <stdio.h>
 
 void mad_num_randseed (rng_state_t *restrict st, num_t seed)
 {
   u64_t *s = st->s;
   const union numbit n = { .d = seed ? seed : M_PI }; // avoid zero
   s[0] = n.u * 33;
-  for (int i = 1; i < N; i++)
-    s[i] = s[i-1] * 33;
-  for (int i = 0; i < N; i++)
-    mad_num_randi(st);
-
-  mad_num_randjump(st,0);
+  for (int i=1; i < N; i++) s[i] = s[i-1] * 33;
 }
 
-void mad_num_randjump (      rng_state_t *restrict st,
-                       const rng_state_t *restrict ref)
+void mad_num_randjump (rng_state_t *restrict st)
 {
   static const u64_t jump[N] = {
-    0x84242f96eca9c41dULL, 0xa3c65b8776f96855ULL, 0x5b34a39f070b5837ULL,
-    0x4489affce4f31a1eULL, 0x2ffeeb0a48316f40ULL, 0xdc2d9891fe68c022ULL,
-    0x3659132bb12fea70ULL, 0xaac17d8efa43cab8ULL, 0xc4cb815590989b13ULL,
-    0x5ee975283d71c93bULL, 0x691548c86c1bd540ULL, 0x7910c41d10a1e6a5ULL,
-    0x0b5fc64563b3e2a8ULL, 0x047f7684e9fc949dULL, 0xb99181f2d8f685caULL,
-    0x284600e3f30e38c3ULL
+    0x180ec6d33cfd0abaULL, 0xd5a61266f0c9392cULL,
+    0xa9582618e03fc9aaULL, 0x39abdc4529b1661cULL
   };
 
-  if (ref)
-    for (int i = 0; i < N; i++) {
-      st->s[i] = ref->s[i];
-      st->p    = ref->p;
-    }
-
-  int p = st->p;
   u64_t *s = st->s;
-  u64_t t[N] = { 0 };
-
-  for(int i = 0; i < N; i++)
-    for(int b = 0; b < 64; b++) {
-      if (jump[i] & 1ULL << b)
-        for(int j = 0; j < N; j++)
-          t[j] ^= s[(j + p) & (N - 1)];
+  u64_t s0=0, s1=0, s2=0, s3=0;
+  for(int i=0; i < N; i++)
+    for(int b=0; b < 64; b++) {
+      if (jump[i] & 1llu << b) {
+        s0 ^= s[0];
+        s1 ^= s[1];
+        s2 ^= s[2];
+        s3 ^= s[3];
+      }
       mad_num_randi(st);
     }
-  for(int j = 0; j < N; j++)
-    s[(j + p) & (N - 1)] = t[j];
+
+  s[0] = s0;
+  s[1] = s1;
+  s[2] = s2;
+  s[3] = s3;
 }
 
 #undef N
