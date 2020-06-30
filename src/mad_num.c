@@ -179,7 +179,12 @@ void mad_cnum_erfw_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
 
 #define N 4
 
-union numbit { u64_t u; num_t d; };
+static inline u64_t splitmix64 (u64_t x) {
+  u64_t z = x         + 0x9e3779b97f4a7c15ULL;
+  z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
+  z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+  return z ^ (z >> 31);
+}
 
 static inline u64_t rotl(const u64_t x, int k) {
   return (x << k) | (x >> (64 - k));
@@ -203,19 +208,18 @@ u64_t mad_num_randi (rng_state_t *restrict st)
 
 num_t mad_num_rand (rng_state_t *restrict st)
 {
+  union numbit { u64_t u; num_t d; };
   u64_t x = mad_num_randi(st);
   const union numbit n = { .u = 0x3ffULL << 52 | x >> 12 }; // number in [1.,2.)
   return n.d - 1.0;                                         // number in [0.,1.)
 }
 
-#include <stdio.h>
-
 void mad_num_randseed (rng_state_t *restrict st, num_t seed)
 {
-  u64_t *s = st->s;
-  const union numbit n = { .d = seed ? seed : M_PI }; // avoid zero
-  s[0] = n.u * 33;
-  for (int i=1; i < N; i++) s[i] = s[i-1] * 33;
+  union numbit { u64_t u; num_t d; };
+  const union numbit n = { .d = seed };
+  st->s[0] = splitmix64(n.u);
+  for (int i=1; i < N; i++) st->s[i] = splitmix64(st->s[i-1]);
 }
 
 void mad_num_randjump (rng_state_t *restrict st)
