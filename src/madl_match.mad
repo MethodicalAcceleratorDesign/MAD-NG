@@ -58,17 +58,17 @@ local retstr = {
   [_C.NLOPT_FAILURE         ] = 'FAILURE',
   [_C.NLOPT_INVALID_ARGS    ] = 'INVALID_ARGS',
   [_C.NLOPT_OUT_OF_MEMORY   ] = 'OUT_OF_MEMORY',
-  [_C.NLOPT_ROUNDOFF_LIMITED] = 'ROUNDOFF_LIMITED',
-  [_C.NLOPT_FORCED_STOP     ] = 'FORCED_STOP',
   -- generic success code
   [_C.NLOPT_SUCCESS         ] = 'SUCCESS',
-  [_C.NLOPT_STOPVAL_REACHED ] = 'FMIN_REACHED',    -- MODIFIED
-  [_C.NLOPT_FTOL_REACHED    ] = 'FTOL_REACHED',
-  [_C.NLOPT_XTOL_REACHED    ] = 'XTOL_REACHED',
-  [_C.NLOPT_MAXEVAL_REACHED ] = 'MAXCALL_REACHED', -- MODIFIED
-  [_C.NLOPT_MAXTIME_REACHED ] = 'MAXTIME_REACHED',
+  [_C.NLOPT_STOPVAL_REACHED ] = 'FMIN',     -- MODIFIED
+  [_C.NLOPT_FTOL_REACHED    ] = 'FTOL',     -- MODIFIED
+  [_C.NLOPT_XTOL_REACHED    ] = 'XTOL',     -- MODIFIED
+  [_C.NLOPT_MAXEVAL_REACHED ] = 'MAXCALL',  -- MODIFIED
+  [_C.NLOPT_MAXTIME_REACHED ] = 'MAXTIME',  -- MODIFIED
+  [_C.NLOPT_ROUNDOFF_LIMITED] = 'ROUNDOFF', -- MODIFIED
+  [_C.NLOPT_FORCED_STOP     ] = 'STOPPED',  -- MODIFIED
   -- extra codes (check value with enum of nlopt return code!)
-  [_C.NLOPT_RUNNING         ] = 'RUNNING',         -- ADDED
+  [_C.NLOPT_RUNNING         ] = 'RUNNING',  -- ADDED
 }
 
 -- Optimiser supported algorithms (see madl_nlopt and madl_lsopt) -------------o
@@ -319,12 +319,12 @@ local function disp_summ (env)
   env.dtime = os.clock()-var.time0 -- update timer before display
 
   if var.status == _C.NLOPT_RUNNING then
-    s1, s2, s3 = 'Curr. Value', 'Curr. Step ', 'fval=%-.5e [%d]'
-    v1, v2, v3 =  var.x       ,  var.dx      ,  var.fval
+    s1, s2     = 'Curr. Value', 'Curr. Step '
+    v1, v2     =  var.x       ,  var.dx
     xa, xr, cr =  var.xadj.cur,  var.xrej.cur,  var.crej.cur
   else
-    s1, s2, s3 = 'Final Value', 'Init. Value', 'status=%s'
-    v1, v2, v3 =  var.x       ,  var.x0      ,  retstr[var.status]
+    s1, s2     = 'Final Value', 'Init. Value'
+    v1, v2     =  var.x       ,  var.x0
     xa, xr, cr =  var.xadj    ,  var.xrej    ,  var.crej
   end
 
@@ -359,8 +359,14 @@ local function disp_summ (env)
            xr[i] == xr.n and ' *' or xa[i] == xa.n and ' #' or '')
   end
 
-  local fmt = "\n ncall=%d [%.1fs], fbst=%-.7e, fstp=%-.5e, "..s3.."\n\n"
-  printf(fmt, env.ncall, env.dtime, var.fval, var.fstp, v3, var.ccnt)
+  if var.status == _C.NLOPT_RUNNING then
+    printf("\nncall=%d [%.1gs], fval=%-.5e, fstp=%-.5e, ccnt=%d.\n\n",
+            env.ncall, env.dtime, var.fval, var.fstp, var.ccnt)
+  else
+    printf("\nncall=%d [%.1gs], fbst[%d]=%-.5e, fstp=%-.5e, status=%s.\n\n",
+            env.ncall, env.dtime, var.bst.ncall, var.bst.fval, var.bst.fstp,
+            retstr[var.status])
+  end
 end
 
 -- stopping criteria ----------------------------------------------------------o
@@ -504,7 +510,7 @@ local function compute_fval (env)
   -- backup best result
   if var.ccnt < bst.ccnt or var.ccnt == bst.ccnt and fval < bst.fval then
     if env.debug >= 2 then io.write("best updated\n") end
-    backup(var, bst)
+    backup(var, bst) ; bst.ncall = env.ncall
   end
 
   -- var: fval, fstp, ccnt, eval, lval, [fgrd, ejac, ljac]
@@ -575,26 +581,25 @@ local function nlopt_functions (env)
     local fval = var.funf and var.fval or compute_fval(env)
     -- compute function gradient and (in)equalities jacobian
     if fval and var.grdf then fval = compute_fgrd(env) end
+    -- check returned value
+    if fval == nil then invalid_dom(env) end
 
     -- some debug display
-    if env.debug >= 2 then
+    if env.debug >= 2 and fval then
       if not var.funf then
-        printf("fval=%-.16e\n", fval or nan)
-        printf("ccnt=%d\n", var.ccnt or -1)
+        printf("fval=%-.16e\n", fval)
+        printf("ccnt=%d\n", var.ccnt)
         dspmat(var.x, "X")
         dspmat(var.c, "C")
       end
-      if var.grdf and fval then
+      if var.grdf then
         dspmat(var.fgrd, "F-GRD")
         dspmat(var.cjac, "C-JAC")
       end
     end
 
-    -- check returned value (and backup)
-    if fval == nil then invalid_dom(env) end
-
     -- display intermediate summary (no if jacobian only)
-    if env.info >= 2 and not var.funf then disp_summ(env) end
+    if env.info >= 2 and fval and not var.funf then disp_summ(env) end
 
     -- return objective function value
     return var.fval
@@ -717,9 +722,9 @@ local function exec (self)
       ftol  = objective.tol  or 0,       -- objective func tolerance (target)
       frtol = objective.rtol or 0,       -- objective func relative tolerance (target)
 
-      bst   = { fval=inf, ccnt=inf },    -- state best
-      prv   = { fval=inf, ccnt=inf },    -- state previous
-      bak   = { fval=inf, ccnt=inf },    -- state backup (e.g. jacobian, bisec)
+      bst = {fval=inf,ccnt=inf,ncall=0}, -- state best
+      prv = {fval=inf,ccnt=inf},         -- state previous
+      bak = {fval=inf,ccnt=inf},         -- state backup (e.g. jacobian, bisec)
 
       method  = mopt,                    -- algorithm method (optalgo row)
       submthd = sopt,                    -- algorithm submethod (optalgo row)
@@ -812,7 +817,7 @@ local function exec (self)
     warn("error '%s' occured during matching", errmsg or '?')
   else
     -- restore best case
-    backup(var.bst, var)
+    backup(var.bst, var) ; var.ncall = var.bst.ncall
     -- display final summary
     if env.info >= 1 then disp_summ(env) end
     -- update variables
