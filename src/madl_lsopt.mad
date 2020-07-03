@@ -157,7 +157,7 @@ end
 
 -- Remove useless (or invalid) constraints and variables ----------------------o
 
-local function reject_cons (env, A, B)
+local function reject_cons (env, A, b)
   local var, obj, trc = env.__var, env.objective, env.info >= 3
   local i, ic, tol = 1, {n=0}, (obj.jtol or eps)^2
   local fn = \t,x => if x <= tol then t.n=t.n+1 t[t.n]=i end i=i+1 return t end
@@ -170,7 +170,7 @@ local function reject_cons (env, A, B)
     ic.n = -1
   elseif ic.n > 0 then               -- remove selected constraints
     if trc then printf("nlopt: total %d constraints are rejected\n", ic.n) end
-    A:remrow(ic) ; B:remrow(ic)
+    A:remrow(ic) ; b:remrow(ic)
   end
 
   return ic
@@ -273,21 +273,21 @@ local function ld_lmdif (env)
     -- compute jacobian
     eval_jac(env)
 
-    -- build Jx=B from copies for reduction
-    local J, B = cjac:copy(), c:copy()
+    -- build system Jh = -b from copies for reduction
+    local J, b = cjac:copy(), c:copy()
 
     -- reject constraints with insufficient row norm in Jacobian (see jtol)
-    local ic = disp_adjrej(env, save_adjrej(crej, reject_cons(env, J, B)),
+    local ic = disp_adjrej(env, save_adjrej(crej, reject_cons(env, J, b)),
                                                         "rejecting constraints")
     if ic.n < 0 then -- Jacobian is empty (vs jtol)
       var.status = _C.NLOPT_ROUNDOFF_LIMITED ; return
     end
 
-    -- build system Ax-G=0
-    local A, G = J:tmul(J), J:tmul(B)
+    -- build system (A + mu.diag(A))h = -g
+    local A, g = J:tmul(J), J:tmul(b)
 
     -- debug info
-    if env.debug >= 2 then dspmat(A, "A") ; dspmat(G, "G") ; end
+    if env.debug >= 2 then dspmat(A, "A") ; dspmat(g, "g") ; end
 
     -- initialise damping term
     if mu == nil then mu = jtau*A:max('diag') end
@@ -304,11 +304,11 @@ local function ld_lmdif (env)
     local A = A:copy() -- extra copy for damping loop (if any)
     local itr, iv, rx, rdx, rk, sv = 1, {n=0}, x:copy()
     while itr <= jiter do
-      do -- solve A + mu*diag(A)
-        local A = A:mapij \x,i,j -> i==j and x*(1+mu) or x
-        -- one Gauss-Newton step using SVD to find min_x ||G - Ax||
-        rdx, rk, sv = A:ssolve(G, obj.rcond)
-        -- turn solution to min_x ||Ax - G||
+      do -- solve (A + mu.diag(A))h = -b
+        local Amu = A:mapij \x,i,j -> i==j and x*(1+mu) or x
+        -- one Gauss-Newton step using SVD to find min_h ||g - Ah||
+        rdx, rk, sv = Amu:ssolve(g, obj.rcond)
+        -- turn the solution into min_h ||Ah + g||
         rdx:unm(rdx)
       end
 
@@ -359,7 +359,7 @@ local function ld_lmdif (env)
     end
 
     -- check LM-step quality (vs linear model)
-    local dF, dL = bak.fval^2 - var.fval^2, dx:dot(mu*dx+G)
+    local dF, dL = bak.c:sumsqr() - var.c:sumsqr(), dx:dot(mu*dx-g)
     local rho = dF/dL
 
     -- debug info
@@ -404,11 +404,11 @@ local function ld_jacobian (env)
     -- compute jacobian
     eval_jac(env)
 
-    -- build system Jx-B=0 from copies for reduction
-    local J, B = cjac:copy(), c:copy()
+    -- build system J*h = -b from copies for reduction
+    local J, b = cjac:copy(), c:copy()
 
     -- reject constraints with insufficient row norm in Jacobian (see jtol)
-    local ic = disp_adjrej(env, save_adjrej(crej, reject_cons(env, J, B)),
+    local ic = disp_adjrej(env, save_adjrej(crej, reject_cons(env, J, b)),
                                                         "rejecting constraints")
     if ic.n < 0 then -- Jacobian is empty (vs jtol)
       var.status = _C.NLOPT_ROUNDOFF_LIMITED ; return
@@ -417,9 +417,9 @@ local function ld_jacobian (env)
     -- solve (and reduce) system
     local itr, iv, rx, rdx, rk, sv = 1, {n=0}, x:copy()
     while itr <= jiter do
-      -- one Newton-Raphson step using SVD to find min_x ||B - Jx||
-      rdx, rk, sv = J:ssolve(B, obj.rcond)
-      -- turn solution to min_x ||Jx - B||
+      -- one Newton-Raphson step using SVD to find min_h ||b - Jh||
+      rdx, rk, sv = J:ssolve(b, obj.rcond)
+      -- turn the solution into min_h ||Jh + b||
       rdx:unm(rdx)
 
       -- debug info
