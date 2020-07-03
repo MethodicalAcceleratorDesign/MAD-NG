@@ -21,15 +21,18 @@ myfunc(unsigned n, const double *x, double *grad, void *data)
   assert(n == 5); assert(x && !grad && !data);
   ++count;
 
+  double prod = 1;
+  for (unsigned i=0; i<5; i++) prod *= x[i];
+
+  double fval = exp(prod) - 0.5*sqr(x[0]*x[0]*x[0] + x[1]*x[1]*x[1] + 1);
+
   if (debug) {
     printf("objective (%s)\n", grad != NULL ? "D" : "N");
     for (unsigned i=0; i<n; i++) printf("x[%d]=%.16e\n", i+1, x[i]);
+    printf("fval=%.16e\n", fval);
   }
 
-  double prod = 1;
-  for (unsigned i=0; i<n; i++) prod *= x[i];
-
-  return exp(prod) - 0.5*sqr(x[0]*sqr(x[0]) + x[1]*sqr(x[1]) + 1);
+  return fval;
 }
 
 static void
@@ -39,15 +42,15 @@ myconstraints(unsigned m, double *r, unsigned n, const double *x, double *grad, 
 
   if (debug) {
     printf("constraint (%s)\n", grad != NULL ? "D" : "N");
-    for (unsigned i=0; i<n; i++) printf("x[%d]=%.16e\n", i+1, x[i]);
+    for (unsigned i=0; i<5; i++) printf("x[%d]=%.16e\n", i+1, x[i]);
   }
 
   double sumsq = 0;
-  for (unsigned i=0; i<n; i++) sumsq += sqr(x[i]);
+  for (unsigned i=0; i<5; i++) sumsq += sqr(x[i]);
 
   r[0] = sumsq - 10;
   r[1] = x[1]*x[2] - 5*x[3]*x[4];
-  r[2] = x[0]*sqr(x[0]) + x[1]*sqr(x[1]) + 1;
+  r[2] = x[0]*x[0]*x[0] + x[1]*x[1]*x[1] + 1;
 }
 
 int main(int argc, const char *argv[])
@@ -72,12 +75,14 @@ int main(int argc, const char *argv[])
 
   printf("method: %s\n", nlopt_algorithm_name(algo));
   if (status < 0) {
-    printf("nlopt failed! reason: %d, count: %d\n", status, count);
+    printf("nlopt failed! reason: %s, count: %d\n",
+           nlopt_result_to_string(status), count);
   }
   else {
-    printf("found minimum after %d evaluations, reason: %d\n", count, status);
-    printf("found minimum at f(%g,%g,%g,%g,%g) = %0.10g\n",
-           x[0], x[1], x[2], x[3], x[4], fval);
+    printf("found minimum after %d evaluations, reason: %s\n",
+           count, nlopt_result_to_string(status));
+    printf("found minimum at f(%.6e,%.6e,%.6e,%.6e,%.6e) = %.8e [%.8e]\n",
+           x[0], x[1], x[2], x[3], x[4], fval, fmin);
     printf("relative errors: x0=%.6e, x1=%.6e, x2=%.6e, x3=%.6e,\n"
            "                 x4=%.6e, f(x0,x1)=%.6e\n",
        (x[0]-r[0])/x[0], (x[1]-r[1])/x[1], (x[2]-r[2])/x[2], (x[3]-r[3])/x[3],
