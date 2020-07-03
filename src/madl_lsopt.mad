@@ -111,20 +111,20 @@ end
 
 local function adjust_vars (env)
   local var, obj, trc = env.__var, env.objective, env.info >= 4
-  local n, x, x0, dx, xslp, xmin, xmax in var
+  local n, x, x0, h, xslp, xmin, xmax in var
   local iv, x0f = {n=0}, (obj.jstra or 1) >= 2
 
   -- adjust slope and bounding box
   for i=1,n do
-    if dx[i]*xslp[i] < 0 then
+    if h[i]*xslp[i] < 0 then
       if trc then printf("nlopt: adjusting variable (slope) no %d\n", i) end
-      iv.n=iv.n+1 x[i], dx[i], iv[iv.n] = x0f and x0[i] or x[i]-dx[i], 0, i
+      iv.n=iv.n+1 x[i], h[i], iv[iv.n] = x0f and x0[i] or x[i]-h[i], 0, i
     elseif x[i] < xmin[i] then
       if trc then printf("nlopt: adjusting variable (< min) no %d\n", i) end
-      iv.n=iv.n+1 x[i], dx[i], iv[iv.n] = xmin[i], xmin[i]-(x[i]-dx[i]), i
+      iv.n=iv.n+1 x[i], h[i], iv[iv.n] = xmin[i], xmin[i]-(x[i]-h[i]), i
     elseif x[i] > xmax[i] then
       if trc then printf("nlopt: adjusting variable (> max) no %d\n", i) end
-      iv.n=iv.n+1 x[i], dx[i], iv[iv.n] = xmax[i], xmax[i]-(x[i]-dx[i]), i
+      iv.n=iv.n+1 x[i], h[i], iv[iv.n] = xmax[i], xmax[i]-(x[i]-h[i]), i
     end
   end
 
@@ -133,23 +133,23 @@ end
 
 local function check_vars (env)
   local var, trc = env.__var, env.info >= 3
-  local n, x, dx, xslp, xmin, xmax in var
+  local n, x, h, xslp, xmin, xmax in var
   local scl = 1
 
-  -- compute scale factor to adjust dx
+  -- compute scale factor to adjust h
   for i=1,n do
-    if dx[i] ~= 0 and dx[i]*xslp[i] >= 0 then
+    if h[i] ~= 0 and h[i]*xslp[i] >= 0 then
       local s = 1
-          if x[i] < xmin[i] then s = 1 + (xmin[i]-x[i])/dx[i]
-      elseif x[i] > xmax[i] then s = 1 + (xmax[i]-x[i])/dx[i] end
+          if x[i] < xmin[i] then s = 1 + (xmin[i]-x[i])/h[i]
+      elseif x[i] > xmax[i] then s = 1 + (xmax[i]-x[i])/h[i] end
       if s < scl then scl = s end
     end
   end
 
   -- adjust length if scale is within one order of magnitude
   if scl > 0.1 and scl < 1 then
-    if trc then printf("nlopt: variables step dx scaled by %-.6e.\n", scl) end
-    x:sub(dx,x) ; dx:mul(scl,dx) ; x:add(dx,x)
+    if trc then printf("nlopt: variables step h scaled by %-.6e.\n", scl) end
+    x:sub(h,x) ; h:mul(scl,h) ; x:add(h,x)
   end
 
   return adjust_vars(env) -- final validation
@@ -222,18 +222,18 @@ end
 
 local function bisection (env, bisec)
   local var, trc = env.__var, env.info >= 3
-  local x, dx, fval, bak, backup in var
+  local x, h, fval, bak, backup in var
   local nbi, ret = 0
 
   backup(var, bak)
 
   for i=1,bisec do
     if trc then printf("nlopt: trying Bisection %d.\n", i) end
-    dx:div(2,dx) ; x:sub(dx,x) ; var.fval = fval        -- for proper var.fstp
-    ret = eval_fun(env)                                 -- call user cmd/fun
-    if ret and var.fval < fval then                     -- better minimum found
-      nbi, fval = i, var.fval ; backup(var, bak)        -- update backup
-    elseif nbi > 0 then break end                       -- getting worst, stop
+    h:div(2,h) ; x:sub(h,x) ; var.fval = fval         -- for proper var.fstp
+    ret = eval_fun(env)                               -- call user cmd/fun
+    if ret and var.fval < fval then                   -- better minimum found
+      nbi, fval = i, var.fval ; backup(var, bak)      -- update backup
+    elseif nbi > 0 then break end                     -- getting worst, stop
   end
 
   backup(bak, var)                                    -- restore best/init case
@@ -250,7 +250,7 @@ end
 
 local function ld_lmdif (env)
   local var, obj = env.__var, env.objective
-  local x, dx, c, cjac, xadj, xrej, crej, backup in var
+  local x, h, c, cjac, xadj, xrej, crej, backup in var
   local jstra, jiter, jtau, bisec in obj
 
   -- default setup
@@ -332,7 +332,7 @@ local function ld_lmdif (env)
     disp_adjrej(env, save_adjrej(xrej, iv), "rejecting variables")
 
     -- update variables, rejected variables don't move
-    rdx:copy(dx):insvec(iv,0) ; x:add(dx,x)
+    rdx:copy(h):insvec(iv,0) ; x:add(h,x)
 
     -- change strategy if jiter reached (madx-like)
     if itr > jiter and jstra >= 3 then
@@ -359,7 +359,7 @@ local function ld_lmdif (env)
     end
 
     -- check LM-step quality (vs linear model)
-    local dF, dL = bak.c:sumsqr() - var.c:sumsqr(), dx:dot(mu*dx-g)
+    local dF, dL = bak.c:sumsqr() - var.c:sumsqr(), h:dot(mu*h-g)
     local rho = dF/dL
 
     -- debug info
@@ -385,7 +385,7 @@ end
 
 local function ld_jacobian (env)
   local var, obj = env.__var, env.objective
-  local x, dx, c, cjac, xadj, xrej, crej in var
+  local x, h, c, cjac, xadj, xrej, crej in var
   local jstra, jiter, bisec in obj
 
   -- default setup
@@ -442,7 +442,7 @@ local function ld_jacobian (env)
     disp_adjrej(env, save_adjrej(xrej, iv), "rejecting variables")
 
     -- update variables, rejected variables don't move
-    rdx:copy(dx):insvec(iv,0) ; x:add(dx,x)
+    rdx:copy(h):insvec(iv,0) ; x:add(h,x)
 
     -- change strategy if jiter reached (madx-like)
     if itr > jiter and jstra >= 3 then
@@ -468,11 +468,11 @@ local function ld_jacobian (env)
   end
 end
 
---    -- add some randomness to dx
+--    -- add some randomness to h
 --    jrand = jrand == true and rand or jrand
 --    if jrand then
 --      rdx:print('rdx')
---      rdx:map(\dx -> 0.5*(1+jrand())*dx, 'in')
+--      rdx:map(\h -> 0.5*(1+jrand())*h, 'in')
 --      rdx:print('rdx rand')
 --    end
 

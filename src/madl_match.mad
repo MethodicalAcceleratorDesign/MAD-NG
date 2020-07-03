@@ -320,7 +320,7 @@ local function disp_summ (env)
 
   if var.status == _C.NLOPT_RUNNING then
     s1, s2     = 'Curr. Value', 'Curr. Step '
-    v1, v2     =  var.x       ,  var.dx
+    v1, v2     =  var.x       ,  var.h
     xa, xr, cr =  var.xadj.cur,  var.xrej.cur,  var.crej.cur
   else
     s1, s2     = 'Final Value', 'Init. Value'
@@ -393,8 +393,8 @@ local function chkstp (env)
   end
 
   if env.ncall > 1 then
-    local x, dx, xtol, xrtol, xtolf in var
-    local ax, adx = var.x:abs(), var.dx:abs()
+    local x, h, xtol, xrtol, xtolf in var
+    local ax, adx = var.x:abs(), var.h:abs()
 
     if xtolf and ((adx-xtol):max() <= 0 or (adx-xrtol*(ax+eps)):max() <= 0) then
       var.status = _C.NLOPT_XTOL_REACHED     ; return true
@@ -442,7 +442,7 @@ local function backup (src, dst, xtr_)
   src.fval, src.fstp, src.ccnt
 
   dst.x  = src.x :copy(dst.x )
-  dst.dx = src.dx:copy(dst.dx)
+  dst.h  = src.h :copy(dst.h )
   dst.c  = src.c :copy(dst.c )
   dst.cn = src.cn:copy(dst.cn)
 
@@ -520,7 +520,7 @@ end
 -- compute gradient and (in)equalities jacobians
 local function compute_fgrd (env)
   local var, trc = env.__var, env.info >= 3
-  local n, x, dx, xstp, xslp, xmin, xmax, fval, fgrd, c, cjac, prv, bak in var
+  local n, x, h, xstp, xslp, xmin, xmax, fval, fgrd, c, cjac, prv, bak in var
   local bro = env.objective.broyden and prv.c
 
   -- backup states
@@ -528,19 +528,19 @@ local function compute_fgrd (env)
 
   -- estimate dh from last step or current point
 
-  local dxn = dx:norm()
-  local dh  = 1e-4*dxn
+  local hn = h:norm()
+  local dh = 1e-4*hn
   if dh == 0 then dh = 1e-8*x:norm() end
   if dh == 0 then dh = 1e-10 end
 
   if trc then printf("nlopt: computing derivatives with dh=%-.8e\n", dh) end
 
   local Bc
-  if bro then Bc = cjac + (c - prv.c - cjac*dx)*dx:t()/dxn^2 end -- /dxn better?
+  if bro then Bc = cjac + (c - prv.c - cjac*h)*h:t()/hn^2 end -- /hn better?
 
   -- compute jacobian
   for iv=1,n do
-    if bro and dx[iv] >= 0.8*dxn then           -- Broyden's rank one update
+    if bro and h[iv] >= 0.8*hn then             -- Broyden's rank one update
       cjac:setcol(iv, Bc:getcol(iv))
       if trc then printf("nlopt: Broyden's update for variable %d\n", iv) end
     else                                        -- finite difference required
@@ -686,7 +686,7 @@ local function exec (self)
       q     = q,                         -- number of inequalities
 
       x     = vector(n),                 -- variables values
-      dx    = vector(n),                 -- variables steps
+      h     = vector(n),                 -- variables steps
       x0    = vector(n),                 -- variables initial values
       xstp  = vector(n),                 -- variables initial steps
       xslp  = vector(n),                 -- variables slopes
