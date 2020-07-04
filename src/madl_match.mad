@@ -311,9 +311,9 @@ end
 -- summary --------------------------------------------------------------------o
 
 local function disp_summ (env)
-  local variables, equalities, inequalities, weights in env
+  local variables, equalities, inequalities, objective, weights in env
   local var = env.__var
-  local m, n, p, c, cn, cwgt in var
+  local m, n, p, q, c, cn, cwgt, edsp in var
   local s1, s2, s3, v1, v2, v3, xa, xr, cr
 
   env.dtime = os.clock()-var.time0 -- update timer before display
@@ -328,17 +328,18 @@ local function disp_summ (env)
     xa, xr, cr =  var.xadj    ,  var.xrej    ,  var.crej
   end
 
-  if m > 0 then
+  if m > 0 and (edsp or q > 0) then
     io.write"\n Constraints                Type        Kind        Weight     Penalty Value\n"
     io.write"-----------------------------------------------------------------------------\n"
 
-    for i=1,p do
-      local e, v = equalities[i] or {}, c[i]/cwgt[i]
-      printf("%2d % -24s % -11s % -10s % -10.5g % -.5e%s\n",
-                i, e.name or '', 'equality', e.kind or ' .', cwgt[i],
-                abs(v), cr[i] == cr.n and ' *' or cn[i] > 0 and ' >' or '')
+    if edsp then
+      for i=1,p do
+        local e, v = equalities[i] or {}, c[i]/cwgt[i]
+        printf("%2d % -24s % -11s % -10s % -10.5g % -.5e%s\n",
+                  i, e.name or '', 'equality', e.kind or ' .', cwgt[i],
+                  abs(v), cr[i] == cr.n and ' *' or cn[i] > 0 and ' >' or '')
+      end
     end
-
     for i=p+1,m do
       local e, v = inequalities[i-p] or {}, c[i]/cwgt[i]
       printf("%2d % -24s % -11s % -10s % -10.5g % -.5e%s\n",
@@ -504,7 +505,7 @@ local function compute_fval (env)
     if c[i] > ctol[i] then cn[i] = 1 else c[i] = 0 end cv = cv+c[i]^2 end
   end
 
-  if var.valf then fval = sqrt(cv)/var.fwgt end  -- the objective is the penalty
+  if var.penf then fval = sqrt(cv)/var.fwgt end  -- the objective is the penalty
   var.fval, var.fstp, var.ccnt = fval, fval-var.fval, cn:sum() -- prv.fval better?
 
   -- backup best result
@@ -578,7 +579,7 @@ local function nlopt_functions (env)
   -- objective function
   local fun = function ()
     -- compute objective function and (in)equalities constraints
-    local fval = var.funf and var.fval or compute_fval(env)
+    local fval = not var.funf and var.fval or compute_fval(env)
     -- compute function gradient and (in)equalities jacobian
     if fval and var.grdf then fval = compute_fgrd(env) end
     -- check returned value
@@ -586,12 +587,10 @@ local function nlopt_functions (env)
 
     -- some debug display
     if env.debug >= 2 and fval then
-      if not var.funf then
-        printf("fval=%-.16e\n", fval)
-        printf("ccnt=%d\n", var.ccnt)
-        dspmat(var.x, "X")
-        dspmat(var.c, "C")
-      end
+      printf("fval=%-.16e\n", fval)
+      printf("ccnt=%d\n", var.ccnt)
+      dspmat(var.x   , "X"    )
+      dspmat(var.c   , "C"    )
       if var.grdf then
         dspmat(var.fgrd, "F-GRD")
         dspmat(var.cjac, "C-JAC")
@@ -599,7 +598,7 @@ local function nlopt_functions (env)
     end
 
     -- display intermediate summary (no if jacobian only)
-    if env.info >= 2 and fval and not var.funf then disp_summ(env) end
+    if env.info >= 2 and fval and var.funf then disp_summ(env) end
 
     -- return objective function value
     return var.fval
@@ -649,11 +648,15 @@ local function exec (self)
   local ndbg = assertf(log2num(debug or 0), "invalid debug '%s'", tostring(debug))
 
   -- objective function is replaced by the penalty function
-  local valf = mopt.pn == 'y' or objective.exec == nil
+  local penf = mopt.pn == 'y' or objective.exec == nil
 
   -- gradient (and jacobians) computation (explicitly) needed
   local grdm = mopt.gr == 'y' or mopt.gr == '?' and sopt.gr == 'y'
-  local grdf = grdm and not (objective.exec and objective.grad ~= false)
+  local exef = equalities.exec or inequalities.exec or objective.exec
+  local grdf = false
+  if grdm then
+    if objective.grad == nil then grdf = not exef else grdf = objective.grad end
+  end
 
   -- local sizes
   local n =    variables.nvar or #variables
@@ -702,17 +705,18 @@ local function exec (self)
       cn    = vector(m),                 -- constraints validity (failed: ~=0)
       cwgt  = vector(m),                 -- constraints weights
       ctol  = vector(m),                 -- constraints tolerances
-      cjac  = matrix(m,n),               -- constraints jacobian
+      cjac  = grdm and matrix(m,n) or nil,-- constraints jacobian
       ccnt  = 0,                         -- constraints violated count
       crej  = {n=0, cur={n=0}},          -- constraints rejected (index)
+      edsp  = equalities.disp ~= false,  -- constraints display (e.g. data fit)
 
       fun   = nil,                       -- objective function (see above)
       efun  = nil,                       -- equalities function (see above)
       lfun  = nil,                       -- inequalities function (see above)
 
-      funf  = nil,                       -- objective func computed flag
-      valf  = valf,                      -- objective func explicit value flag
-      grdf  = grdf,                      -- objective func gradient flag
+      funf  = true,                      -- objective func compute func flag
+      grdf  = grdf,                      -- objective func compute grad flag
+      penf  = penf,                      -- objective func penalty func flag
       optf  = nil,                       -- objective func optimiser flag (reduce)
       fval  = inf,                       -- objective func value (dummy init)
       fstp  = 0,                         -- objective func current step
@@ -845,7 +849,7 @@ local match = command 'match' {
   -- equalities constraints (i.e. val = expr(res, env))
   equalities = {
   ! {expr=nil, name=nil, kind=nil, weight=nil, tol=nil},
-     exec=nil, nequ=nil,                       tol=nil,
+     exec=nil, nequ=nil, disp=nil,             tol=nil,
   },
   -- inequalities constraints (i.e. val = expr(res, env))
   inequalities = {

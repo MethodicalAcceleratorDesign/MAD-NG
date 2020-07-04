@@ -444,6 +444,72 @@ function TestMatch:testMatchFitLMDNoise ()
   assertAlmostEquals(p.f2  , 7.00007, 1e-5)
 end
 
+local function fitdat2 (mthd)
+  local x = vector{0.038, 0.194, 0.425, 0.626 , 1.253 , 2.500 , 3.740 }
+  local y = vector{0.050, 0.127, 0.094, 0.2122, 0.2729, 0.2665, 0.3317}
+  local p = { v=0.9, k=0.2 }
+  local n = #x
+
+  local function eqfun (_, r, jac)
+    assert(jac, "unexpected missing Jacobian")
+    local v, k in p
+    for i=1,n do
+      r  [  i  ] = y[i] - v*x[i]/(k+x[i])
+      jac[2*i-1] =         -x[i]/(k+x[i])
+      jac[2*i  ] =        v*x[i]/(k+x[i])^2
+    end
+  end
+
+  local status, fmin, ncall = match {
+    variables = { tol=1e-3,
+      { var = 'p.v', min=0.1, max=2 },
+      { var = 'p.k', min=0.1, max=2 },
+    },
+    equalities = { nequ=n, exec=eqfun, disp=false },
+    objective  = { method=mthd },
+    maxcall=20, !info=3, !debug=2
+  }
+
+  if true then
+    local mth = { LD_JACOBIAN='jac', LD_LMDIF='lmd' }
+    local m = x:map\x -> p.v*x/(p.k+x)
+    plot {
+      data={x=x,y=y,m=m}, x1y1={x={'y','m'}},
+      title='Fitting y(x) = v*x/(k+x) via v, k',
+      legend={y='data',m='model'},
+      xlabel='x', ylabel='y(x), m(x)',
+      xrange={0,4}, yrange={0,0.35},
+      datastyles = {
+        y = {style="points", color="royalblue", pointsize=1, pointtype=13     },
+        m = {style="lines" , color="red"      , linewidth=2, smooth="csplines"}
+      },
+      output='match-fit2'..mth[mthd]..'.pdf'
+    }
+  end
+
+  return status, fmin, ncall, p
+end
+
+function TestMatch:testMatchFit2JAC ()
+  local status, fmin, ncall, p = fitdat2('LD_JACOBIAN')
+--  printf("ncall=%d, fmin=%.16e, v=%.16e, k=%.16e\n", ncall, fmin, p.v, p.k)
+  assertEquals      (status, 'XTOL')                                  -- SUCCESS
+  assertEquals      (ncall , 7     )
+  assertAlmostEquals(fmin  , 3.3475e-2, 1e-6)
+  assertAlmostEquals(p.v   , 0.362    , 1e-3)
+  assertAlmostEquals(p.k   , 0.556    , 1e-3)
+end
+
+function TestMatch:testMatchFit2LMD ()
+  local status, fmin, ncall, p = fitdat2('LD_LMDIF')
+--  printf("ncall=%d, fmin=%.16e, v=%.16e, k=%.16e\n", ncall, fmin, p.v, p.k)
+  assertEquals      (status, 'XTOL')                                  -- SUCCESS
+  assertEquals      (ncall , 7     )
+  assertAlmostEquals(fmin  , 3.3475e-2, 1e-6)
+  assertAlmostEquals(p.v   , 0.362    , 1e-3)
+  assertAlmostEquals(p.k   , 0.556    , 1e-3)
+end
+
 -- Function matching ----------------------------------------------------------o
 
 -- Example from NLOpt tutorial
