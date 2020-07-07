@@ -400,7 +400,8 @@ end
 
 function TestMatch:testMatchFitJAC ()
   local status, fmin, ncall, p = fitdat('LD_JACOBIAN')
-!printf("ncall=%d, fmin=%.16e, a=%.16e, f1=%.16e, f2=%.16e\n", ncall, fmin, p.a, p.f1, p.f2)
+  local fmt = "ncall=%d, fmin=%.16e, a=%.16e, f1=%.16e, f2=%.16e\n"
+  !printf(fmt, ncall, fmin, p.a, p.f1, p.f2)
   assertEquals      (status, 'FMIN')                                  -- SUCCESS
   assertEquals      (ncall , 2574  )
   assertAlmostEquals(fmin  , 0, 1e-9)
@@ -411,7 +412,8 @@ end
 
 function TestMatch:testMatchFitLMD ()
   local status, fmin, ncall, p = fitdat('LD_LMDIF')
-!printf("ncall=%d, fmin=%.16e, a=%.16e, f1=%.16e, f2=%.16e\n", ncall, fmin, p.a, p.f1, p.f2)
+  local fmt = "ncall=%d, fmin=%.16e, a=%.16e, f1=%.16e, f2=%.16e\n"
+  !printf(fmt, ncall, fmin, p.a, p.f1, p.f2)
   assertEquals      (status, 'FMIN')                                  -- SUCCESS
   assertEquals      (ncall , 2539  )
   assertAlmostEquals(fmin  , 0, 1e-10)
@@ -423,7 +425,8 @@ end
 function TestMatch:testMatchFitJACNoise ()
   local rng=randseed(12345678) -- reset seed
   local status, fmin, ncall, p = fitdat('LD_JACOBIAN', 2)
-!printf("ncall=%d, fmin=%.16e, a=%.16e, f1=%.16e, f2=%.16e\n", ncall, fmin, p.a, p.f1, p.f2)
+  local fmt = "ncall=%d, fmin=%.16e, a=%.16e, f1=%.16e, f2=%.16e\n"
+  !printf(fmt, ncall, fmin, p.a, p.f1, p.f2)
   assertEquals      (status, 'XTOL')                                  -- SUCCESS
   assertEquals      (ncall , 704)
   assertAlmostEquals(fmin  , 26.9086, 1e-4)
@@ -435,7 +438,8 @@ end
 function TestMatch:testMatchFitLMDNoise ()
   local rng=randseed(12345678) -- reset seed
   local status, fmin, ncall, p = fitdat('LD_LMDIF', 2)
-!printf("ncall=%d, fmin=%.16e, a=%.16e, f1=%.16e, f2=%.16e\n", ncall, fmin, p.a, p.f1, p.f2)
+  local fmt = "ncall=%d, fmin=%.16e, a=%.16e, f1=%.16e, f2=%.16e\n"
+  !printf(fmt, ncall, fmin, p.a, p.f1, p.f2)
   assertEquals      (status, 'XTOL')                                  -- SUCCESS
   assertEquals      (ncall , 404)
   assertAlmostEquals(fmin  , 26.9003, 1e-4)
@@ -492,7 +496,7 @@ end
 
 function TestMatch:testMatchFit2JAC ()
   local status, fmin, ncall, p = fitdat2('LD_JACOBIAN')
---  printf("ncall=%d, fmin=%.16e, v=%.16e, k=%.16e\n", ncall, fmin, p.v, p.k)
+  !printf("ncall=%d, fmin=%.16e, v=%.16e, k=%.16e\n", ncall, fmin, p.v, p.k)
   assertEquals      (status, 'XTOL')                                  -- SUCCESS
   assertEquals      (ncall , 6     )
   assertAlmostEquals(fmin  , 3.3475e-2, 1e-6)
@@ -502,7 +506,7 @@ end
 
 function TestMatch:testMatchFit2LMD ()
   local status, fmin, ncall, p = fitdat2('LD_LMDIF')
---  printf("ncall=%d, fmin=%.16e, v=%.16e, k=%.16e\n", ncall, fmin, p.v, p.k)
+  !printf("ncall=%d, fmin=%.16e, v=%.16e, k=%.16e\n", ncall, fmin, p.v, p.k)
   assertEquals      (status, 'XTOL')                                  -- SUCCESS
   assertEquals      (ncall , 6     )
   assertAlmostEquals(fmin  , 3.3475e-2, 1e-6)
@@ -522,6 +526,10 @@ local function testFuncFn (x, grd)
   return sqrt(x[2])
 end
 
+local function testFuncEq (x, r, jac)
+  r[1] = testFuncFn(x, jac)
+end
+
 local function testFuncLe (x, r, jac)
   local a, b = 2, 0
   if jac then
@@ -538,20 +546,35 @@ local function testFuncLe (x, r, jac)
   r[2] = (a*x[1]+b)^3 - x[2]
 end
 
-local function testMatchFunc1 (x, mth, fmin)
-  local fun = testFuncFn
-  local exe = fmin == nil and fun or \ -> fun(x)-fmin
-
+local function testMatchFunc1 (x, mth, fref)
   return match {
-    variables = { rtol=1e-4,
+    variables = { rtol=1e-5,
       { var = 'x[1]', min = -inf },
       { var = 'x[2]', min =  0   },
     },
+    equalities   = { exec=testFuncEq, nequ=1, tol=fref+1e-8, weight=100 },
     inequalities = { exec=testFuncLe, nequ=2, tol=1e-8 },
-    objective    = { exec=exe, method=mth },
-    maxcall=100, !info=2, debug=2
+    objective    = { exec=testFuncFn, method=mth, fmin=fref, tol=1e-4 },
+    maxcall=100, info=3, !debug=2
   }
 end
+
+-- local function testMatchFunc1 (x, mth, fmin)
+--   local tol  = 1e-8
+--   local fequ = fmin ~= nil and { expr := testFuncFn(x)-fmin, tol=tol } or nil
+--   local exec = fmin == nil and testFuncFn or nil
+--
+--   return match {
+--     variables = {
+--       { var = 'x[1]', min = -inf },
+--       { var = 'x[2]', min =  0   },
+--     },
+--     equalities   = { fequ },
+--     inequalities = { exec=testFuncLe, nequ=2, tol=tol },
+--     objective    = { exec=testFuncFn, method=mth },
+--     maxcall=100, !info=2, debug=2
+--   }
+-- end
 
 local function testMatchFunc2 (x, mth, fmin)
   local fun = testFuncFn
@@ -866,14 +889,15 @@ end
 -- Jacobian -------------------------------------------------------------------o
 
 function TestMatch:testMatchFuncJAC1 ()
+  local fref = sqrt(8/27)
   local x = vector {1.234, 5.678}
-  local status, fmin, ncall = testMatchFunc1(x, 'LD_JACOBIAN')
--- print(status, fmin, ncall, fmin) ; x:print('x')
-  assertEquals      (status, 'XTOL')                                  -- SUCCESS
-  assertEquals      (ncall , 8     )
-  assertAlmostEquals(fmin  , sqrt(8/27), 1e-8)
-  assertAlmostEquals(x[1]  ,      1/3  , 1e-8)
-  assertAlmostEquals(x[2]  ,      8/27 , 1e-8)
+  local status, fmin, ncall = testMatchFunc1(x, 'LD_JACOBIAN', fref)
+  print(status, fmin, ncall) ; x:print('x')
+  assertEquals(status, 'FTOL')                                        -- SUCCESS
+  assertEquals(ncall , 7     )
+  assertAlmostEquals(fmin, fref, 1e-8)
+  assertAlmostEquals(x[1], 1/3 , 1e-8)
+  assertAlmostEquals(x[2], 8/27, 1e-8)
 end
 
 function TestMatch:testMatchFuncJAC2 ()
@@ -881,7 +905,7 @@ function TestMatch:testMatchFuncJAC2 ()
   local status, fmin, ncall = testMatchFunc2(x, 'LD_JACOBIAN')
 -- print(status, fmin, ncall, fmin) ; x:print('x')
   assertEquals      (status, 'FMIN')                                  -- SUCCESS
-  assertEquals      (ncall , 8     )
+  assertEquals      (ncall , 6     )
   assertAlmostEquals(fmin  , sqrt(8/27), 1e-3)
   assertAlmostEquals(x[1]  ,      1/3  , 1e-3)
   assertAlmostEquals(x[2]  ,      8/27 , 1e-3) -- err=0.00016 > 0.0001
