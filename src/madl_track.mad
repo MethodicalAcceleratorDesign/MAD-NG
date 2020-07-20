@@ -31,21 +31,21 @@ Notes about directions and quantities:
 
 -- locals ---------------------------------------------------------------------o
 
-local command, element, mtable, damap, option                   in MAD
+local command, element, mtable, damap, symint, option, show    in MAD
 
 local is_nil, is_beam, is_sequence, is_boolean, is_number,
       is_integer, is_true, is_callable, is_iterable, is_damap,
       is_mappable, is_beta0                                     in MAD.typeid
 local fnil, ffalse, chain, achain                               in MAD.gfunc
 local dp2pt, bet2map                                            in MAD.gphys
-local DKD, atbegin, atins, atins1, action, actionat             in MAD.symint
 local errorf, assertf, printf                                   in MAD.utility
 local tobit, band, bor                                          in MAD.operator
 local apercheck                                                 in MAD.aperture
 local is_implicit                                               in element.drift
+local atbegin, atins, atins1, action, actionat                  in symint
 
-local table, type, setmetatable, assert =
-      table, type, setmetatable, assert
+local io, type, setmetatable, assert =
+      io, type, setmetatable, assert
 
 -- load track methods into elements -------------------------------------------o
 
@@ -54,7 +54,6 @@ require 'madl_etrck'
 -- helper ---------------------------------------------------------------------o
 
 local function mshow (mflw)
-  local show in MAD
   show(mflw)
   for i=1,#mflw do
     local m = mflw[i]
@@ -62,9 +61,67 @@ local function mshow (mflw)
     show(m)
     if is_damap(m) then
       m:get0():print(nil,'line')
-      if option.debug > 2 then m:get1():print(nil,'line') end
+      if mflw.debug >= 3 then m:get1():print(nil,'line') end
      end
   end
+end
+
+-- debug ----------------------------------------------------------------------o
+
+--[[ Unix command to retrieve debug=4 values in a matrix
+./mad script_dump.mad | \
+  awk 'BEGIN{printf("MAD.matrix{")} END{printf("}")}
+  /@@/{printf("{");for(i=4;i<=NF;i++)printf("%s, ",$i);printf("},\n")}'
+--]]
+
+local shtfmt1 = "% -.6e "
+local lngfmt1 = "% -.16e "
+local shtfmt  = "% -.6e  % -.6e  % -.6e  % -.6e  % -.6e  % -.6e "
+local lngfmt  = "% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e "
+local nodump  = {marker=true}
+
+local function mdump (mflw, elm, str_)
+  if str_ and mflw.debug <= 2 then return end
+
+  if is_number(elm) then
+    printf("@@ %-15s %-15s ", '  "', str_ or '')
+  else
+    if nodump[elm.kind] then return end
+    printf("@@ %-15s %-15s ", elm.name, str_ or 'exit')
+  end
+
+  if mflw.npar == 0 then io.write("no particle found\n") return end
+
+  local n, X, R = 0, mflw[1]
+  local fmt = mflw.debug >= 4 and lngfmt or shtfmt
+
+  if is_damap(X) then
+    X, R = X:get0(), X:get1() ; n = R.nrow
+    printf(fmt, X[1], X[2], X[3], X[4], X[5], X[6])
+  else
+    printf(fmt, X.x, X.px, X.y, X.py, X.t, X.pt)
+  end
+
+  for i=1,n do
+    io.write(' ')
+    printf(fmt,R:get(i,1),R:get(i,2),R:get(i,3),R:get(i,4),R:get(i,5),R:get(i,6))
+  end
+  io.write('\n')
+end
+
+local function xdump (mflw, elm, str, X)
+  printf("@@ %-15s %-15s ", elm.name, str)
+
+  local fmt  = mflw.debug >= 4 and lngfmt  or shtfmt
+  local fmt1 = mflw.debug >= 4 and lngfmt1 or shtfmt1
+
+  if is_number(X) then
+    printf(fmt1, X)
+  elseif is_tpsa(X) then
+    printf(fmt1, X:get(1))
+    printf(fmt , X:get(2), X:get(3), X:get(4), X:get(5), X:get(6), X:get(7))
+  end
+  io.write('\n')
 end
 
 -- track mtable ---------------------------------------------------------------o
@@ -75,7 +132,7 @@ local function fill_row (elm, mflw, lw, islc)
   end
 
   local name, kind in elm
-  local ds, eidx, clw, sdir, tdir, spos, turn, mtbl, mapsave in mflw
+  local ds, eidx, clw, sdir, tdir, spos, turn, mtbl, savemap in mflw
 
   local lw = islc<0 and -1-islc or clw
   local dsw = ds*lw
@@ -89,7 +146,7 @@ local function fill_row (elm, mflw, lw, islc)
     local id, x, px, y, py, t, pt in m
     if is_damap(m) then
       x,px,y,py,t,pt = x:get0(),px:get0(),y:get0(),py:get0(),t:get0(),pt:get0()
-      M = mapsave and (mapsave == 1 and m:get1() or m:copy())
+      M = savemap and (savemap == 1 and m:get1() or m:copy())
     end
 
     -- keep order!
@@ -113,7 +170,7 @@ local header = {
 }
 
 local function make_mtable (self, range, nosav, obs, ndp)
-  local title, nturn, dir, implicit, misalign, deltap, mapsave in self
+  local title, nturn, dir, implicit, misalign, deltap, savemap in self
   local sequ, nrow = self.sequence
 
   if nosav then
@@ -132,7 +189,7 @@ local function make_mtable (self, range, nosav, obs, ndp)
     {'name'}, 'kind', 's', 'l', 'id', 'x', 'px', 'y', 'py', 't', 'pt',
     'slc', 'turn', 'tdir',      -- t-direction of the tracking: sdir * seq.dir
     'eidx',                     -- index of element in the sequence
-    mapsave and '__map' or nil, -- optional column to save the (da)map
+    savemap and '__map' or nil, -- optional column to save the (da)map
   })
 end
 
@@ -273,20 +330,20 @@ local function make_mflow (self)
   -- model, method
   local method, model, ptcmodel in self
   if is_nil(ptcmodel) then ptcmodel = option.ptcmodel end
-  assertf(DKD[method], "invalid integration method '%s'", method)
   assertf(modint[model],
                     "invalid integration model %s (DKD or TKT expected)", model)
+  assertf(symint[model][method], "invalid integration method '%s'", method)
   assert(is_boolean(ptcmodel), "invalid ptcmodel (boolean expected)")
 
   -- retrieve initial conditions
-  local s0, X0, mapdef, mapsave in self
+  local s0, X0, mapdef, savemap in self
   if X0 == 0 then X0 = {0,0,0,0,0,0} end
   assert(is_number  (s0)    , "invalid s0 (number expected)")
   assert(is_mappable(X0)    , "invalid X0 (mappable expected)")
   assert(is_boolean(mapdef) or is_mappable(mapdef)
                             , "invalid mapdef (boolean or mappable expected)")
-  assert(is_boolean(mapsave) or mapsave == 1 -- 1 means to save only the matrix
-                            , "invalid mapsave (boolean or 1 expected)")
+  assert(is_boolean(savemap) or savemap == 1 -- 1 means to save only the matrix
+                            , "invalid savemap (boolean or 1 expected)")
   if not is_mappable(X0[1]) or is_beta0(X0) then X0 = {X0} end
 
   -- create mflw
@@ -382,8 +439,10 @@ local function make_mflow (self)
 
   mflw.mapknd=mknd           -- kind of maps, particle:1, damap:2, mixed:3
   mflw.mapdef=mapdef         -- save damap definitions (for info)
-  mflw.mapsave=mapsave       -- save damaps
+  mflw.savemap=savemap       -- save damaps
 
+  mflw.info=self.info or 0   -- information level
+  mflw.debug=self.debug or 0 -- debugging information level
   mflw.usrdef=self.usrdef    -- user defined data
 
   -- for debugging
@@ -399,28 +458,33 @@ local function make_mflow (self)
 
   -- for processing elements (pre-alloc to avoid rehash)
   mflw.__edat = setmetatable({
-    el=0, eh=0,               -- current element length and curvature
-    ks=0,                     -- solenoid strength
-    volt=0, freq=0, lag=0,    -- rfcavity parameters
-    nsl=0,                    -- current element number of slices
-    clw=0,                    -- current element cumulated length weights
-    nmul=0,                   -- current element number of multipoles
-    knl={[0]=0},              -- current element multipoles
-    ksl={[0]=0},              -- current element multipoles skew
-    npha=0,                   -- current element number of multiplole phases
-    pnl={[0]=0},              -- current element multipoles phases
-    psl={[0]=0},              -- current element multipoles shew phases
+    el=0, eh=0,              -- current element length and curvature
+    tlt=0,                   -- current element tilt angle
+    clw=0,                   -- current element cumulated length weights
+    nsl=0,                   -- current element number of slices
+    ks=0,                    -- solenoid strength
+    volt=0, freq=0, lag=0,   -- rfcavity parameters
+
+    nmul=0,                  -- current element number of multipoles
+    knl={[0]=0},             -- current element multipoles
+    ksl={[0]=0},             -- current element multipoles skew
+    npha=0,                  -- current element number of multiplole phases
+    pnl={[0]=0},             -- current element multipoles phases
+    psl={[0]=0},             -- current element multipoles shew phases
   }, {__index=mflw})
 
   -- for processing (thin) subelements (pre-alloc to avoid rehash)
   mflw.__sdat = setmetatable({
-    clw=0,                    -- current subelement cumulated length weights
-    nmul=0,                   -- current subelement number of multipoles
-    knl={[0]=0},              -- current subelement multipoles
-    ksl={[0]=0},              -- current subelement multipoles skew
-    npha=0,                   -- current subelement number of multiplole phases
-    pnl={[0]=0},              -- current subelement multipoles phases
-    psl={[0]=0},              -- current subelement multipoles shew phases
+    el=0, eh=0,              -- current subelement length and curvature
+    tlt=0,                   -- current element tilt angle
+    clw=0,                   -- current subelement cumulated length weights
+
+    nmul=0,                  -- current subelement number of multipoles
+    knl={[0]=0},             -- current subelement multipoles
+    ksl={[0]=0},             -- current subelement multipoles skew
+    npha=0,                  -- current subelement number of multiplole phases
+    pnl={[0]=0},             -- current subelement multipoles phases
+    psl={[0]=0},             -- current subelement multipoles shew phases
   }, {__index=mflw})
 
   return mflw
@@ -450,17 +514,13 @@ local function exec (self)
   local mtbl = mflw.mtbl
 
   -- check number of elements to track
-  local nstep in self
+  local nstep, debug in self
   if nstep == 0 then return mtbl, mflw end
-  mflw.nstep = nstep
 
-  -- debug maps
-  local mapdump in self
-  if mapdump then
-    mflw.ndump = mapdump == true and 1 or mapdump
-    mflw.mdump = mflw.ndump > 0 and mdump or fnil
-    mflw.xdump = mflw.ndump > 1 and xdump or fnil
-  end
+  -- update fields
+  mflw.nstep, mflw.debug = nstep or mflw.nstep, debug or mflw.debug
+  mflw.mdump = mflw.debug >= 2 and mdump or fnil
+  mflw.xdump = mflw.debug >= 3 and xdump or fnil
 
   -- retrieve information
   local s0, eidx, sequ, __sitr, __edat in mflw
@@ -491,17 +551,14 @@ local track = command 'track' {
   range=nil,        -- range of tracking (or sequence.range)              (iter)
   dir=1,            -- s-direction of tracking (1 or -1)                  (mflw)
 
-  s0=0,             -- initial position offset s                          (mflw)
+  s0=0,             -- initial position offset s [m]                      (mflw)
   X0=0,             -- initial X coordinates (or damap, or beta0)         (mflw)
   deltap=nil,       -- initial deltap(s)                                  (mflw)
-
-  mapdef=false,     -- setup for damap (or list of, true => {})           (mflw)
-  mapsave=false,    -- save damap in the mtable                           (mflw)
-  mapdump=false,    -- dump X and R after each element                    (mflw)
 
   nturn=1,          -- number of turns to track                           (iter)
   nstep=-1,         -- number of elements to track                        (iter)
   nslice=1,         -- number of slices (or weights) for each element     (mflw)
+  mapdef=false,     -- setup for damap (or list of, true => {})           (mflw)
   method=2,         -- method or order for integration (1 to 8)           (mflw)
   model='TKT',      -- model for integration ('DKD' or 'TKT')             (mflw)
   ptcmodel=nil,     -- use strict PTC thick model (override option)       (mflw)
@@ -515,6 +572,7 @@ local track = command 'track' {
   title=nil,        -- title of mtable (default seq.name)                 (mtbl)
   observe=1,        -- save only in observed elements (every n turns)     (mtbl)
   savesel=fnil,     -- save selector (predicate)                          (mtbl)
+  savemap=false,    -- save damap in the mtable                           (mflw)
 
   atentry=fnil,     -- action called when entering an element             (mflw)
   atslice=fnil,     -- action called after each element slices (ataper)   (mflw)
@@ -522,17 +580,19 @@ local track = command 'track' {
   ataper=fnil,      -- action called when checking for aperture           (mflw)
   atsave=fnil,      -- action called when saving in mtable                (mflw)
 
+  info=nil,         -- information level (output on terminal)             (mflw)
+  debug=nil,        -- debugging information level (output on terminal)   (mflw)
   usrdef=nil,       -- user defined data attached to the mflow            (mflw)
 
   mflow=nil,        -- mflow, exclusive with other attributes except nstep
   exec=exec,        -- command to execute upon children creation
 
   __attr = {        -- list of all setup attributes
-    'beam', 'sequence', 'range', 'dir', 's0', 'X0', 'deltap', 'mapdef',
-    'mapsave', 'mapdump', 'nturn', 'method', 'model', 'ptcmodel', 'implicit',
-    'fringe', 'radiate', 'misalign', 'totalpath', 'save', 'title', 'observe',
-    'usrdef',
-    noeval = {'atentry', 'atslice', 'atexit', 'ataper', 'atsave', 'nslice',
+    'beam', 'sequence', 'range', 'dir', 's0', 'X0', 'deltap',
+    'nturn', 'mapdef', 'method', 'model', 'ptcmodel',
+    'implicit', 'misalign', 'fringe', 'radiate', 'totalpath',
+    'save', 'title', 'observe', 'savemap', 'info', 'debug', 'usrdef',
+    noeval = {'nslice', 'atentry', 'atslice', 'atexit', 'ataper', 'atsave',
               'savesel'},
   }
 } :set_readonly()   -- reference track command is readonly

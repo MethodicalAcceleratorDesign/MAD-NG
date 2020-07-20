@@ -31,18 +31,19 @@ Notes about directions and quantities:
 
 -- locals ---------------------------------------------------------------------o
 
-local vector, matrix, mtable, command, element                  in MAD
+local vector, matrix, mtable, command, element, show            in MAD
 
 local is_sequence, is_boolean, is_number, is_integer,
       is_callable, is_mappable, is_matrix                       in MAD.typeid
 local fnil, ffalse, chain, achain, swapv                        in MAD.gfunc
 local rangle                                                    in MAD.gmath
 local atins, atins1, action, actionat                           in MAD.symint
+local printf                                                    in MAD.utility
 local tobit, band                                               in MAD.operator
 local is_implicit                                               in element.drift
 
-local type, assert =
-      type, assert
+local io, type, assert =
+      io, type, assert
 
 -- load survey methods into elements ------------------------------------------o
 
@@ -51,9 +52,41 @@ require 'madl_esurv'
 -- helper ---------------------------------------------------------------------o
 
 local function mshow (mflw)
-  local show, option in MAD
   show(mflw)
-  if option.debug > 2 then mflw.W:print(nil,'line') end
+  if mflw.debug >= 3 then mflw.W:print(nil,'line') end
+end
+
+-- debug ----------------------------------------------------------------------o
+
+--[[ Unix command to retrieve debug=4 values in a matrix
+./mad script_dump.mad | \
+  awk 'BEGIN{printf("MAD.matrix{")} END{printf("}")}
+  /@@/{printf("{");for(i=4;i<=NF;i++)printf("%s, ",$i);printf("},\n")}'
+--]]
+
+local shtfmt = "% -.6e % -.6e % -.6e "
+local lngfmt = "% -.16e % -.16e % -.16e "
+local nodump = {marker=true}
+
+local function mdump (mflw, elm, str_)
+  if str_ and mflw.debug <= 2 then return end
+
+  if is_number(elm) then
+    printf("@@ %-15s %-15s % -.16e\n", 'number', str_, elm) return
+  end
+  if nodump[elm.kind] then return end
+
+  printf("@@ %-15s %-15s ", elm.name, str_ or 'exit')
+
+  local V, W in mflw
+  local fmt = mflw.debug >= 4 and lngfmt or shtfmt
+
+  printf(fmt, V[1], V[2], V[3])
+
+  for i=1,W.nrow do
+    printf(fmt, W:get(i,1), W:get(i,2), W:get(i,3))
+  end
+  io.write('\n')
 end
 
 -- survey mtable --------------------------------------------------------------o
@@ -65,7 +98,7 @@ local function save_dat (elm, mflw, lw, islc)
 
   local name, kind in elm
   local A, V, W, ds, ang, eidx, clw, tlt, sdir, tdir, spos, turn,
-        mtbl, mapsave in mflw
+        mtbl, savemap in mflw
 
   local lw = islc<0 and -1-islc or clw
   local dsw = ds*lw
@@ -75,7 +108,7 @@ local function save_dat (elm, mflw, lw, islc)
   the, psi = rangle(the, A[1]), rangle(psi, A[3])
   A[1], A[2], A[3] = the, phi, psi
 
-  W = mapsave and W:copy()
+  W = savemap and W:copy()
   eidx = is_implicit(elm) and eidx+0.5*sdir or eidx
 
   -- keep order!
@@ -96,7 +129,7 @@ local header = {
 }
 
 local function make_mtable (self, range, nosav, obs)
-  local title, nturn, dir, implicit, misalign, mapsave in self
+  local title, nturn, dir, implicit, misalign, savemap in self
   local sequ, nrow = self.sequence
 
   if nosav then
@@ -116,7 +149,7 @@ local function make_mtable (self, range, nosav, obs)
     'x', 'y', 'z', 'theta', 'phi', 'psi',
     'slc', 'turn','tdir',       -- t-direction of the tracking: sdir * seq.dir
     'eidx',                     -- index of element in the sequence
-    mapsave and '__mat' or nil, -- optional column to save the orientation matrix
+    savemap and '__map' or nil, -- optional column to save the orientation matrix
   })
 end
 
@@ -221,7 +254,7 @@ local function make_mflow (self)
   end
 
   -- retrieve initial conditions
-  local s0, X0, A0, mapsave in self
+  local s0, X0, A0, savemap in self
   if rawequal(X0,0) then X0 = {0,0,0} end
   if rawequal(A0,0) then A0 = {0,0,0}
   elseif is_matrix(A0) and A0:size() == 9 then
@@ -230,7 +263,7 @@ local function make_mflow (self)
   assert(is_number  (s0)    , "invalid s0 (number expected)")
   assert(is_mappable(X0)    , "invalid X0 (mappable expected)")
   assert(is_mappable(A0)    , "invalid A0 (mappable expected)")
-  assert(is_boolean(mapsave), "invalid mapsave (boolean expected)")
+  assert(is_boolean(savemap), "invalid savemap (boolean expected)")
 
   -- create mflw
   local mflw = table.new(0,50)
@@ -265,18 +298,18 @@ local function make_mflow (self)
   mflw.save=save             -- save data
   mflw.observe=observe       -- save observed elements every n turns
   mflw.savesel=savesel       -- save selector
+  mflw.savemap=savemap       -- save orientation matrix
 
   mflw.atentry=atentry       -- action when entering an element
   mflw.atslice=atslice       -- action after each element slices
   mflw.atexit=atexit         -- action when exiting an element
   mflw.atsave=atsave         -- action after saving in mtable
 
-  mflw.mapsave=mapsave       -- save orientation matrix
-
+  mflw.info=self.info or 0   -- information level
+  mflw.debug=self.debug or 0 -- debugging information level
   mflw.usrdef=self.usrdef    -- user defined data
 
   -- for debugging
-  mflw.ndump=0               -- dump level of matrix
   mflw.mdump=fnil            -- dump W matrix
   mflw.show=mshow            -- show the mflow
 
@@ -290,13 +323,21 @@ local function make_mflow (self)
                s0=s0, range=range, nturn=nturn} -- sequence iterator reset
   mflw.sireset=sireset
 
-  -- for processing elements local frame
+  -- for processing elements local frame (pre-alloc to avoid rehash)
   mflw.__edat = setmetatable({
-    el=0,                    -- current element length
-    clw=0,                   -- current element cumulated length weights
-    ang=0,                   -- current element angle
+    el=0,                    -- current element length and curvature
     tlt=0,                   -- current element tilt angle
+    ang=0,                   -- current element angle
+    clw=0,                   -- current element cumulated length weights
     nsl=0,                   -- current element number of slices
+  }, {__index=mflw})
+
+  -- for processing (thin) subelements (pre-alloc to avoid rehash)
+  mflw.__sdat = setmetatable({
+    el=0,                    -- current subelement length
+    tlt=0,                   -- current subelement tilt angle
+    ang=0,                   -- current subelement angle
+    clw=0,                   -- current subelement cumulated length weights
   }, {__index=mflw})
 
   return mflw
@@ -326,16 +367,12 @@ local function exec (self)
   local mtbl = mflw.mtbl
 
   -- check number of elements to track
-  local nstep in self
+  local nstep, debug in self
   if nstep == 0 then return mtbl, mflw end
-  mflw.nstep = nstep
 
-  -- debug maps
-  local mapdump in self
-  if mapdump then
-    mflw.ndump = mapdump == true and 1 or mapdump
-    mflw.mdump = mflw.ndump > 0 and mdump or fnil
-  end
+  -- update fields
+  mflw.nstep, mflw.debug = nstep or mflw.nstep, debug or mflw.debug
+  mflw.mdump = mflw.debug >= 2 and mdump or fnil
 
   -- retrieve information
   local s0, eidx, sequ, __sitr, __edat in mflw
@@ -362,12 +399,9 @@ local survey = command 'survey' {
   range=nil,        -- range of tracking (or sequence.range)              (iter)
   dir=1,            -- s-direction of tracking (1 or -1)                  (mflw)
 
-  s0=0,             -- initial position offset s                          (mflw)
-  X0=0,             -- initial coordinates x, y, z                        (mflw)
-  A0=0,             -- initial angles theta, phi, psi or W0 matrix        (mflw)
-
-  mapsave=false,    -- save the orientation matrix W (rotations)          (mflw)
-  mapdump=false,    -- dump V and W after each element (maps debugging)   (mflw)
+  s0=0,             -- initial position offset s [m]                      (mflw)
+  X0=0,             -- initial coordinates x, y, z [m]                    (mflw)
+  A0=0,             -- initial angles theta, phi, psi [rad] or matrix W0  (mflw)
 
   nturn=1,          -- number of turns to track                           (iter)
   nstep=-1,         -- number of elements to track                        (iter)
@@ -379,22 +413,25 @@ local survey = command 'survey' {
   title=nil,        -- title of mtable (default seq.name)                 (mtbl)
   observe=0,        -- save only in observed elements (every n turns)     (mtbl)
   savesel=fnil,     -- save selector (predicate)                          (mtbl)
+  savemap=false,    -- save the orientation matrix W (rotations)          (mflw)
 
   atentry=fnil,     -- action called when entering an element             (mflw)
   atslice=fnil,     -- action called after each element slices (atsave)   (mflw)
   atexit=fnil,      -- action called when exiting an element   (atsave)   (mflw)
   atsave=fnil,      -- action called when saving in mtable                (mflw)
 
+  info=nil,         -- information level (output on terminal)             (mflw)
+  debug=nil,        -- debugging information level (output on terminal)   (mflw)
   usrdef=nil,       -- user defined data attached to the mflow            (mflw)
 
   mflow=nil,        -- mflow, exclusive with other attributes except nstep
   exec=exec,        -- command to execute upon children creation
 
   __attr = {        -- list of all setup attributes
-    'sequence', 'range', 'dir', 's0', 'X0', 'A0', 'W0', 'mapsave', 'mapdump',
-    'nturn', 'nstep', 'implicit', 'misalign', 'save', 'title', 'observe',
-    'usrdef',
-    noeval = {'atentry', 'atslice', 'atexit', 'atsave', 'nslice', 'savesel'},
+    'sequence', 'range', 'dir', 's0', 'X0', 'A0', 'W0',
+    'nturn', 'implicit', 'misalign',
+    'save', 'title', 'observe', 'savemap', 'info', 'debug', 'usrdef',
+    noeval = {'nslice', 'atentry', 'atslice', 'atexit', 'atsave', 'savesel'},
   }
 } :set_readonly()   -- reference survey command is readonly
 

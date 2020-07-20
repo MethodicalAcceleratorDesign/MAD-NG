@@ -32,13 +32,12 @@ Notes about directions and quantities:
 -- locals ---------------------------------------------------------------------o
 
 local element                in MAD
-local is_number              in MAD.typeid
 local fnil, functor, bind3rd in MAD.gfunc
-local errorf, printf         in MAD.utility
+local errorf                 in MAD.utility
 local minlen, minang         in MAD.constant
 local is_implicit            in element.drift
 
-local abs in math
+local abs                    in math
 
 -- integrator schemes ---------------------------------------------------------o
 
@@ -51,34 +50,6 @@ local strex_thick, curex_thick, curex_thin                       in MAD.geomap
 local xrotation, yrotation, srotation, translate,
       changeref, changedir, changenrj, misalign                  in MAD.geomap
 
--- debug ----------------------------------------------------------------------o
-
-local shtfmt = "% -.6e % -.6e % -.6e "
-local lngfmt = "% -.16e % -.16e % -.16e "
-local mapfmt = shtfmt -- lngfmt
-
-local nodump = {marker=true}
-
-local function mdump (mflw, elm, str_)
-  if str_ and mflw.ndump <= 1 then return end
-
-  if is_number(elm) then
-    printf("@@ %-15s %-15s % -.16e\n", 'number', str_, elm) return
-  end
-  if nodump[elm.kind] then return end
-
-  printf("@@ %-15s %-15s ", elm.name, str_ or 'exit')
-
-  local V, W in mflw
-
-  printf(mapfmt, V[1], V[2], V[3])
-
-  for i=1,W.nrow do
-    printf(mapfmt, W:get(i,1), W:get(i,2), W:get(i,3))
-  end
-  io.write('\n')
-end
-
 -- element tracking -----------------------------------------------------------o
 
 local function trackone (elm, m, track, thick, thin)
@@ -90,9 +61,11 @@ local function trackone (elm, m, track, thick, thin)
 end
 
 local function trackelm (elm, m, track, thick, thin)
-  local sdir, atentry, atexit, tlt in m
+  local sdir, atentry, atexit in m
+  local tlt = elm.tilt*m.tdir
   local mis = m.misalign and misalign or fnil
   local rot = abs(tlt) >= minang and srotation or fnil
+  m.tlt = tlt
 
   atentry(elm, m,  sdir, -1)
   mis    (elm, m,  sdir)
@@ -103,50 +76,97 @@ local function trackelm (elm, m, track, thick, thin)
   atexit (elm, m, -sdir, -2)
 end
 
+local function tracksub (elm, m, track, thick, thin)
+  local sdir, atentry, atexit, __sdat in m
+  local tlt = elm.tilt*m.tdir
+  local mis = m.misalign and misalign or fnil
+  local rot = abs(tlt) >= minang and srotation or fnil
+  m.tlt = tlt
+
+  atentry(elm, m, sdir, -1)
+  mis    (elm, m, sdir)
+  rot    (tlt, m, sdir)
+
+  if sdir > 0 then
+    local at, lw = 0
+    for i=1,#elm do
+      at, lw = elm[i].at, elm[i].at - at
+      if abs(lw) >= minlen then -- body step
+        track(elm, m, lw, thick, thin)
+      end
+      __sdat.clw = at
+      elm[i]:track(__sdat)
+    end
+    lw = 1 - at
+    if abs(lw) >= minlen then  -- last body step
+      track(elm, m, lw, thick, thin)
+    end
+
+  else -- backtrack
+    local at, lw = 1
+    for i=#elm,1,-1 do
+      at, lw = elm[i].at, at - elm[i].at
+      if abs(lw) >= minlen then -- body step
+        track(elm, m, lw, thick, thin)
+      end
+      __sdat.clw = at
+      elm[i]:track(__sdat)
+    end
+    lw = at
+    if abs(lw) >= minlen then -- first body step
+      track(elm, m, lw, thick, thin)
+    end
+  end
+
+  rot   (tlt, m, -sdir)
+  mis   (elm, m, -sdir)
+  atexit(elm, m, -sdir, -2)
+end
+
 -- kinds ----------------------------------------------------------------------o
 
 local function track_marker (elm, m)
-  m.el, m.ang, m.tlt = 0, 0, 0
+  m.el, m.ang = 0, 0
   trackone(elm, m, thinonly, nil, fnil)
 end
 
-local function track_thin (elm, m)
-  local tdir in m
-  local angle, tilt in elm
-  m.el, m.ang, m.tlt = 0, angle*tdir, tilt*tdir
+local function track_drift (elm, m)
+  local ds in m
+  m.el, m.ang = ds, 0
 
-  local thin = abs(angle) >= minang and curex_thin or fnil
-  trackelm(elm, m, thinonly, nil, thin)
+  if is_implicit(elm) then
+    local inter = m.implicit and thickonly or driftonly
+    trackone(elm, m, inter, strex_thick, nil)
+  else
+    local track = #elm == 0 and trackelm or tracksub
+    local inter = abs(ds) >= minlen and thickonly or driftonly
+    track(elm, m, inter, strex_thick, nil)
+  end
+end
+
+local function track_thin (elm, m)
+  local angle in elm
+  m.el, m.ang = 0, angle*m.tdir
+
+  local kick = abs(angle) >= minang and curex_thin or fnil
+  trackelm(elm, m, thinonly, nil, kick)
 end
 
 local function track_thick (elm, m)
-  local ds, tdir in m
-  local angle, tilt in elm
+  local ds in m
+  local angle in elm
   local no_ang = abs(angle) < minang
-  m.el, m.ang, m.tlt = ds, angle*tdir, tilt*tdir
+  m.el, m.ang = ds, angle*m.tdir
 
-  local track, thick
+  local inter, track, thick
   if abs(ds) >= minlen then -- trick: driftonly+thick <=> thinonly+thin
-    track, thick = thickonly, no_ang and strex_thick or curex_thick
+    inter, thick = thickonly, no_ang and strex_thick or curex_thick
   else
-    track, thick = driftonly, no_ang and fnil        or curex_thin
+    inter, thick = driftonly, no_ang and fnil        or curex_thin
   end
 
-  trackelm(elm, m, track, thick)
-end
-
-local function track_drift (elm, m)
-  local ds, tdir in m
-  m.el, m.ang, m.tlt = ds, 0, 0
-
-  if is_implicit(elm) then
-    local track = m.implicit and thickonly or driftonly
-    trackone(elm, m, track, strex_thick)
-  else
-    m.tlt = elm.tilt*tdir
-    local thick = abs(ds) >= minlen and thickonly or driftonly
-    trackelm(elm, m, thick, strex_thick)
-  end
+  local track = #elm == 0 and trackelm or tracksub
+  track(elm, m, inter, thick, nil)
 end
 
 -- load maps into elements ----------------------------------------------------o
@@ -159,7 +179,7 @@ local E = element
 
 -- warning: class protection set by alt. 'nolookup' object model can be BYPASSED
 --          because classes are modified before any use of 'survey' attribute
---          by any children at the time of module loading...
+--          by any children at the time of loading the module...
 
 -- kind maps
 
