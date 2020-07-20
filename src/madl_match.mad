@@ -373,7 +373,7 @@ end
 -- stopping criteria ----------------------------------------------------------o
 
 local function chkstp (env)
-  local var = env.__var
+  local var, obj = env.__var, env.objective
 
   env.dtime = os.clock()-var.time0 -- update timer
 
@@ -382,7 +382,7 @@ local function chkstp (env)
     var.status = _C.NLOPT_FORCED_STOP        ; return true
   end
 
-  if var.ccnt == 0 then -- feasible point
+  if var.ccnt == 0 or obj.bstra == 0 then -- feasible point
     local fval, fstp, fmin, ftol, frtol in var
 
     if fval <= fmin then
@@ -459,8 +459,8 @@ end
 
 -- compute objective function(s)
 local function compute_fval (env)
-  local command, objective, equalities, inequalities in env
-  local var = env.__var
+  local command, equalities, inequalities in env
+  local var, obj = env.__var, env.objective
   local m, n, p, q, x, c, cn, cjac, ctol, bst in var
   local fval, res = 0, nil
 
@@ -474,8 +474,8 @@ local function compute_fval (env)
     if is_nil(res) then return end            -- invalid domain, return nil
   end
 
-  if objective.exec ~= nil then
-    fval = objective.exec(x, var.fgrd)        -- call user defined function
+  if obj.exec ~= nil then
+    fval = obj.exec(x, var.fgrd)              -- call user defined function
     if fval == nil then return end            -- invalid domain, return nil
   end
 
@@ -502,22 +502,23 @@ local function compute_fval (env)
   end
   if var.optf
   then for i=p+1,m do -- nlopt algorithms prefer to have full jacobian
-    if c[i] > ctol[i] then cn[i] = 1 end cv = cv+c[i]^2 end
+    if c[i] > ctol[i] then cn[i] = 1               end cv = cv+c[i]^2 end
   else for i=p+1,m do -- mad algorithms prefer to have reduced jacobian
     if c[i] > ctol[i] then cn[i] = 1 else c[i] = 0 end cv = cv+c[i]^2 end
   end
 
   -- the objective is the penalty function
-  if objective.exec == nil then
-    fval = sqrt(cv)/var.fwgt
-  end
+  if obj.exec == nil then fval = sqrt(cv)/var.fwgt end
 
   -- save current values
   var.fval, var.fstp, var.ccnt = fval, fval-var.fval, cn:sum() -- prv.fval better?
 
-  -- backup best result
-  if var.ccnt < bst.ccnt or var.ccnt == bst.ccnt and fval < bst.fval then
-    if env.debug >= 2 then io.write("best updated\n") end
+  -- backup best result according to selected strategy (bstra)
+  local bakbst
+  if (obj.bstra == 0 and var.fval < bst.fval) or
+     (obj.bstra == 1 and var.ccnt <= bst.ccnt and var.fval < bst.fval) or
+     (var.ccnt < bst.ccnt or var.ccnt == bst.ccnt and var.fval < bst.fval) then
+    if env.debug >= 2 then io.write("best case updated\n") end
     backup(var, bst) ; bst.ncall = env.ncall
   end
 
@@ -580,7 +581,7 @@ local function compute_fgrd (env)
 end
 
 -- functions factory
-local function nlopt_functions (env)
+local function opt_fun (env)
   local var = env.__var
 
   -- objective function
@@ -794,21 +795,21 @@ local function exec (self)
   for i=p+1,m do
     local e = inequalities[i-p] or {}
     var.cwgt[i] = abs(e.weight or weights[e.kind] or expr_weights[e.kind] or 1)
-    var.ctol[i] = (e.tol or inequalities.tol or eps) * var.cwgt[i]
+    var.ctol[i] = (e.tol or inequalities.tol or mintol) * var.cwgt[i]
   end
 
   -- constraint weights
   var.fwgt = var.cwgt:norm()
 
   -- build optimizer functions
-  var.fun, var.efun, var.lfun = nlopt_functions(env)
+  var.fun, var.efun, var.lfun = opt_fun(env)
 
   -- set flags about algorithms used
-  var.optf = var.method.id < _C.NLOPT_NUM_ALGORITHMS
+  var.optf = var.method.id < _C.NLOPT_NUM_ALGORITHMS or inequalities.exec
 
   -- call optimiser
   local status, errmsg
-  if var.optf
+  if var.method.id < _C.NLOPT_NUM_ALGORITHMS
   then status, errmsg = nloptrun(env)
   else status, errmsg = lsoptrun(env)
   end
@@ -861,8 +862,8 @@ local match = command 'match' {
   weights = {},
   -- objective to minimize or maximize
   objective = {
-    method=nil, submethod=nil, fmin=nil, tol=nil, rtol=nil, broyden=nil,
-    exec=nil, grad=nil, reset=nil,
+    method=nil, submethod=nil, fmin=nil, tol=nil, rtol=nil,
+    exec=nil, grad=nil, reset=nil, bstra=nil, broyden=nil,
     -- jacobian and lmdif only
     bisec=nil, rcond=nil, jtol=nil, jiter=nil, jstra=nil, jrand=nil
   },
