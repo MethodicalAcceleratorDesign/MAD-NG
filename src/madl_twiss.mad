@@ -52,9 +52,7 @@ local function mdump (mflw, msg_, str_)
   for i=1,mflw.npar or #mflw do
     printf("%s%d: ", msg, i)
     mflw[i]:get0():print(str,1e-12,'line')
-    if option.debug >= 3 then
-      mflw[i]:get1():print(' "     ')
-    end
+    if mflw.debug >= 3 then mflw[i]:get1():print(' "     ') end
   end
   option.numfmt = fmt
 end
@@ -349,7 +347,7 @@ local function twiss_nform (self, mflw)
     local of = map2bet(m, rnk, coupling)
 
     -- check normal form
-    if option.debug > 1 then check_normal(m, of) end
+    if mflw.debug >= 2 then check_normal(m, of) end
 
     -- save beta0 block
     ofun[m.id] = of ; of.id = m.id
@@ -442,23 +440,23 @@ local function make_mflow (self)
   -- prepare tracking template
   local _, mflw = track { exec=false } :copy_variables(self) { nstep=0 }
   if mflw.npar == 0 then return mflw end -- no more particles...
-  if option.debug > 2 then mdump(mflw,'da.') end
+  if mflw.debug >= 3 then mdump(mflw,'da.') end
 
   -- search for closed orbits (update mflw, keep order)
   if self.cofind ~= false then
     twiss_cofind(self, mflw)
     if mflw.npar == 0 then return mflw end -- no more particles...
-    if option.debug > 2 then mdump(mflw,'co.') end
+    if mflw.debug >= 3 then mdump(mflw,'co.') end
   end
 
   -- track one-turn-map (update mflw, keep order)
   twiss_track(self, mflw)
   if mflw.npar == 0 then return mflw end -- no more particles...
-  if option.debug > 2 then mdump(mflw,'tk.') end
+  if mflw.debug >= 3 then mdump(mflw,'tk.') end
 
   -- compute normal forms (update mflw, keep order)
   twiss_nform(self, mflw)
-  if option.debug > 2 then mdump(mflw,'nf.') end
+  if mflw.debug >= 3 then mdump(mflw,'nf.') end
 
   -- return extended mflw and mtbl (if save)
   return twiss_init(self, mflw)
@@ -484,9 +482,12 @@ local function exec (self)
     end
   end
 
+  -- update fields
+  local nstep, debug in self
+  mflw.nstep, mflw.debug = nstep or mflw.nstep, debug or mflw.debug
+
   -- track the normal form(s)
-  local nstep, mapdump in self
-  local mtbl, mflw, ei = track { mflow=mflw, nstep=nstep, mapdump=mapdump }
+  local mtbl, mflw, ei = track { mflow=mflw, nstep=nstep, debug=debug }
 
   -- finalise twiss calculation (tunes, chromas, etc)
   if not ei and mtbl then fill_sum(mflw) end
@@ -497,25 +498,21 @@ end
 -- attributes set to nil will use the default from track by inheritance
 
 local twiss = command 'twiss' {
-  beam=nil,          -- beam (required or sequence.beam)                  (trck)
   sequence=nil,      -- sequence (required)                               (trck)
+  beam=nil,          -- beam (required or sequence.beam)                  (trck)
   range=nil,         -- range of tracking (or sequence.range)             (trck)
   dir=nil,           -- s-direction of tracking (1 or -1)                 (trck)
 
   s0=nil,            -- initial position offset s                         (trck)
   X0=nil,            -- initial X coordinates (or damap, or beta0)        (trck)
   deltap=nil,        -- initial deltap(s)                                 (trck)
-
   chrom=false,       -- compute chromatic functions by finite difference  (twss)
-  coupling=false,    -- compute optical functions for non-diagonal modes  (twss)
-
-  mapdef=true,       -- always use damap formalism (true => {xy=1})       (twss)
-  mapsave=nil,       -- save damap in the mtable                          (twss)
-  mapdump=nil,       -- dump X and R after each element                   (twss)
+  coupling=false,    -- compute optical functions for coupling modes      (twss)
 
   nturn=nil,         -- number of turns                                   (trck)
   nstep=nil,         -- number of elements to track for last phase        (trck)
   nslice=nil,        -- number of slices (or weights) for each element    (trck)
+  mapdef=true,       -- always use damap formalism (true => {xy=1})       (twss)
   method=nil,        -- method or order for integration (1 to 8)          (trck)
   model=nil,         -- model for integration ('DKD' or 'TKT')            (trck)
   ptcmodel=nil,      -- use strict PTC thick model (override option)      (trck)
@@ -529,6 +526,7 @@ local twiss = command 'twiss' {
   title=nil,         -- title of mtable (default seq.name)                (mtbl)
   observe=0,         -- save after all elements                           (mtbl)
   savesel=nil,       -- save selector (predicate)                         (mtbl)
+  savemap=nil,       -- save damap in the mtable                          (twss)
 
   atentry=nil,       -- action called when entering an element  (ataper)  (trck)
   atslice=nil,       -- action called after each element slices (atsave)  (trck)
@@ -543,6 +541,8 @@ local twiss = command 'twiss' {
   comethod=nil,      -- default algorithm                                 (cofn)
   X1=nil,            -- optional final coordinates translation            (cofn)
 
+  info=nil,          -- information level (output on terminal)            (cofn)
+  debug=nil,         -- debugging information level (output on terminal)  (cofn)
   usrdef=nil,        -- user defined data attached to the mflow           (trck)
 
   mflow=nil,         -- mflow, exclusive with other attributes except nstep
