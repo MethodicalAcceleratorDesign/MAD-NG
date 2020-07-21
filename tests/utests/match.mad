@@ -182,9 +182,6 @@ function TestMatch:testMatchFODO ()
     plot { table=mtbl, sequence=seq, fontsize=18, styles='lines',
            x1y1 = { s={'beta11','beta22'} },
            x1y2 = { s={'mu1'   ,'mu2'   } } }
-    plot { table=mtbl, sequence=seq, fontsize=18, !styles='lines',
-           x1y1 = { s={'beta11','beta22'} },
-           x1y2 = { s={'mu1'   ,'mu2'   } } }
   end
 end
 
@@ -307,7 +304,7 @@ end
 
 -- FODO matching --------------------------------------------------------------o
 
-local function testMatchFODO (var, mth, bisec)
+local function testMatchFODO (var, mth)
   -- classes
   local mb = sbend { l=2, angle=2*pi/50 }
   local mq = quadrupole { l=1 }
@@ -332,7 +329,7 @@ local function testMatchFODO (var, mth, bisec)
       { expr = \t -> assert(t).mu1[#t]-0.25 },
       { expr = \t -> assert(t).mu2[#t]-0.25 },
     },
-    objective = { method=mth, fmin=1e-8, bisec=bisec },
+    objective = { method=mth, fmin=1e-8 },
     maxcall=100, !info=5, debug=2
   }
 end
@@ -340,7 +337,7 @@ end
 function TestMatch:testMatchFODOJAC ()
   local var = { k1f=0.28, k1d=-0.28 }
   local status, fmin, ncall = testMatchFODO(var, 'LD_JACOBIAN')
--- print(status, fmin, ncall)
+  !print(status, fmin, ncall)
   assertEquals      (status ,  'FMIN')
   assertEquals      (ncall  ,  10    ) -- 4 iterations
   assertAlmostEquals(fmin   ,  3.3094182479e-13, 1e-16)
@@ -350,8 +347,8 @@ end
 
 function TestMatch:testMatchFODOLMD ()
   local var = { k1f=0.28, k1d=-0.28 }
-  local status, fmin, ncall = testMatchFODO(var, 'LD_LMDIF', 0)
--- print(status, fmin, ncall)
+  local status, fmin, ncall = testMatchFODO(var, 'LD_LMDIF')
+  !print(status, fmin, ncall)
   assertEquals      (status ,  'FMIN')
   assertEquals      (ncall  ,  10    ) -- 4 iterations
   assertAlmostEquals(fmin   ,  2.3459915619e-10, 1e-16)
@@ -518,121 +515,74 @@ end
 
 -- Example from NLOpt tutorial
 
-local function testFuncFn (x, grd)
-  if grd then
-    grd[1] = 0.0
-    grd[2] = 0.5 / sqrt(x[2])
-  end
+local function testFuncFn (x, fgrd)
+  if fgrd then fgrd:fill{0; 0.5/sqrt(x[2])} end
   return sqrt(x[2])
 end
 
-local function testFuncEq (x, r, jac)
-  r[1] = testFuncFn(x, jac)
+local function testFuncLe (x, c, cjac)
+  c:fill{8*x[1]^3-x[2]; (1-x[1])^3-x[2]}
+  if cjac then
+    cjac:fill{24*x[1]^2, -1; -3*(1-x[1])^2, -1}
+  end
 end
 
-local function testFuncLe (x, r, jac)
-  local a, b = 2, 0
-  if jac then
-    jac[1] = 3*a*(a*x[1]+b)^2
-    jac[2] = -1
-  end
-  r[1] = (a*x[1]+b)^3 - x[2]
-
-  local a, b = -1, 1
-  if jac then
-    jac[3] = 3*a*(a*x[1]+b)^2
-    jac[4] = -1
-  end
-  r[2] = (a*x[1]+b)^3 - x[2]
-end
-
-local function testMatchFunc1 (x, mth, fref)
+local function testMatchFunc1 (x, mth) --, fref)
   return match {
-    variables = { rtol=1e-5,
+    variables = { rtol=1e-4,
       { var = 'x[1]', min = -inf },
       { var = 'x[2]', min =  0   },
     },
-    equalities   = { exec=testFuncEq, nequ=1, tol=fref+1e-8, weight=100 },
-    inequalities = { exec=testFuncLe, nequ=2, tol=1e-8 },
-    objective    = { exec=testFuncFn, method=mth, fmin=fref, tol=1e-4 },
-    maxcall=100, info=3, !debug=2
+    inequalities = { exec=testFuncLe, nequ=2 },
+    objective    = { exec=testFuncFn, method=mth },
+    maxcall=100, !info=4, debug=2
   }
 end
 
--- local function testMatchFunc1 (x, mth, fmin)
---   local tol  = 1e-8
---   local fequ = fmin ~= nil and { expr := testFuncFn(x)-fmin, tol=tol } or nil
---   local exec = fmin == nil and testFuncFn or nil
---
---   return match {
---     variables = {
---       { var = 'x[1]', min = -inf },
---       { var = 'x[2]', min =  0   },
---     },
---     equalities   = { fequ },
---     inequalities = { exec=testFuncLe, nequ=2, tol=tol },
---     objective    = { exec=testFuncFn, method=mth },
---     maxcall=100, !info=2, debug=2
---   }
--- end
-
 local function testMatchFunc2 (x, mth, fmin)
-  local fun = testFuncFn
-  local equ = fmin and { expr := fun(x)-fmin }
-  local exe = fmin == nil and fun or nil
-
   return match {
     variables = {
       { var = 'x[1]', min = -inf },
       { var = 'x[2]', min =  0   },
     },
-    equalities   = { equ },
-    inequalities = { exec=testFuncLe, nequ=2, tol=1e-8 },
-    objective    = { exec=exe, method=mth, fmin=sqrt(8/27)+1e-3 },
-    maxcall=100, !info=2, debug=2
+    inequalities = { exec=testFuncLe, nequ=2 },
+    objective    = { exec=testFuncFn, method=mth, fmin=sqrt(8/27), tol=1e-3 },
+    maxcall=100, !info=4, debug=2
   }
 end
 
 -- Example from Octave tutorial
 -- Note: Octave succeeds to find a solution but reports roundoff error...
 
-local function testMatchFunc3 (x, mth, fmin)
-  local fun = \ -> exp(x:prod()) - 0.5*(x[1]^3+x[2]^3+1)^2
-  local equ = fmin and { expr := fun(x)-fmin, tol=1e-8 }
-  local exe = fmin == nil and fun or nil
-
+local function testMatchFunc3 (x, mth)
   return match {
-    command := print(x:sumsqr(), exp(x:prod())),
-    variables = {
-      { var = 'x[1]', min=-2, max=2 },
-      { var = 'x[2]', min=-2, max=2 },
-      { var = 'x[3]', min=-2, max=2 },
-      { var = 'x[4]', min=-2, max=2 },
-      { var = 'x[5]', min=-2, max=2 },
+    variables = { min=-2, max=2,
+      { var = 'x[1]' },
+      { var = 'x[2]' },
+      { var = 'x[3]' },
+      { var = 'x[4]' },
+      { var = 'x[5]' },
     },
     equalities = {
       { expr := x:sumsqr() - 10         },
       { expr := x[2]*x[3] - 5*x[4]*x[5] },
       { expr := x[1]^3+x[2]^3+1         },
-      equ
     },
     objective = {
-      exec=exe, method=mth, tol=1e-8, grad=true
+      exec := exp(x:prod()) - 0.5*(x[1]^3+x[2]^3+1)^2,
+      method=mth, tol=1e-8, grad=true
     },
-    maxcall=5, info=5, debug=2
+    maxcall=1000, !info=5, debug=2
   }
 end
 
 -- Example #71 from Hock-Schittkowsky test suite (all algos fail)
 
-local function testMatchFunc4 (x, mth, fmin)
-  local tol = 1e-8
-  local fun = \ -> x[1]*x[4] * (x[1]+x[2]+x[3]) + x[3]
-  local equ = fmin and { expr := fun()-fmin, tol=tol }
-  local exe = fmin == nil and fun or nil
-
-  return match {
-    variables = { min=0, max=6,
+local function testMatchFunc4 (x, mth)
+  local xres = vector {1, 4.7429994, 3.8211503, 1.3794082}
+  local fref = 17.0140173
+  local status, fmin, ncall = match {
+    variables = { min=1, max=5,
       { var = 'x[1]' },
       { var = 'x[2]' },
       { var = 'x[3]' },
@@ -640,11 +590,10 @@ local function testMatchFunc4 (x, mth, fmin)
     },
     equalities = { tol=5e-7,
       { expr := x[1]^2+x[2]^2+x[3]^2+x[4]^2 - 40 },
-      equ
     },
     inequalities = { tol=5e-7,
       { expr := 25 - x[1]*x[2]*x[3]*x[4] },
-      { expr := 1 - x[1] },
+!     { expr := 1 - x[1] },
 !     { expr := 1 - x[2] },  -- useless constraints
 !     { expr := 1 - x[3] },  -- useless constraints
 !     { expr := 1 - x[4] },  -- useless constraints
@@ -654,29 +603,32 @@ local function testMatchFunc4 (x, mth, fmin)
 !     { expr := x[4] - 2 },  -- useless constraints
     },
     objective = {
-      exec=exe, method=mth, tol=tol, grad=true
+      exec := x[1]*x[4] * (x[1]+x[2]+x[3]) + x[3],
+      method=mth, tol=1e-8, grad=true
     },
     maxcall=500, !info=2, !debug=2
   }
+  return status, fmin, ncall, fref, xres
 end
 
 -- Trivial MAD-X example from IPAC 2006 paper
 
-local function testMatchFunc5 (x, mth, two)
-  local equ = two and { expr := (x[1]-3.5)*(x[1]-1.4)*(x[1]+3.5) }
-
-  return match {
+local function testMatchFunc5 (x, mth)
+  local xres = vector {1, 4.7429994, 3.8211503, 1.3794082}
+  local fref = 17.0140173
+  local status, fmin, ncall = match {
     variables = {
       { var = 'x[1]' },
     },
     -- Some algorithms do not accept more constraints than variables...
     equalities = {
       { expr := (x[1]-3.5)*(x[1]+2)*(x[1]-4) },
-      equ
+      { expr := (x[1]-3.5)*(x[1]-1.4)*(x[1]+3.5) },
     },
     objective = { method=mth, fmin=1e-12, },
     !info=2, debug=2,
   }
+  return status, fmin, ncall, fref, xres
 end
 
 -- Constrained Optimization BY Linear Approximations (Simplex) ----------------o
@@ -700,11 +652,11 @@ function TestMatch:testMatchFuncCOB2 ()
   local x = vector {1.234, 5.678}
   local status, fmin, ncall = testMatchFunc2(x, 'LN_COBYLA')
 -- print(status, fmin, ncall, fref) ; x:print('x')
-  assertEquals(status, 'FMIN')                                        -- SUCCESS
-  assertEquals(ncall , 25    )
+  assertEquals(status, 'FTOL')                                        -- SUCCESS
+  assertEquals(ncall , 28    )
   assertAlmostEquals(fmin, fref, 2e-7)
-  assertAlmostEquals(x[1], r[1], 4e-4)
-  assertAlmostEquals(x[2], r[2], 7e-4) -- err=0.00016 > 0.0001
+  assertAlmostEquals(x[1], r[1], 2e-7)
+  assertAlmostEquals(x[2], r[2], 2e-7)
 end
 
 function TestMatch:testMatchFuncCOB3 ()
@@ -889,15 +841,14 @@ end
 -- Jacobian -------------------------------------------------------------------o
 
 function TestMatch:testMatchFuncJAC1 ()
-  local fref = sqrt(8/27)
   local x = vector {1.234, 5.678}
-  local status, fmin, ncall = testMatchFunc1(x, 'LD_JACOBIAN', fref)
+  local status, fmin, ncall = testMatchFunc1(x, 'LD_JACOBIAN')
   print(status, fmin, ncall) ; x:print('x')
-  assertEquals(status, 'FTOL')                                        -- SUCCESS
-  assertEquals(ncall , 7     )
-  assertAlmostEquals(fmin, fref, 1e-8)
-  assertAlmostEquals(x[1], 1/3 , 1e-8)
-  assertAlmostEquals(x[2], 8/27, 1e-8)
+  assertEquals(status, 'XTOL')                                        -- SUCCESS
+  assertEquals(ncall , 8     )
+  assertAlmostEquals(fmin, sqrt(8/27), 1e-16)
+  assertAlmostEquals(x[1], 1/3       , 1e-16)
+  assertAlmostEquals(x[2], 8/27      , 1e-16)
 end
 
 function TestMatch:testMatchFuncJAC2 ()
@@ -961,11 +912,11 @@ function TestMatch:testMatchFuncLMD1 ()
   local x = vector {1.234, 5.678}
   local status, fmin, ncall = testMatchFunc1(x, 'LD_LMDIF')
 -- print(status, fmin, ncall, fmin) ; x:print('x')
-  assertEquals      (status, 'XTOL')                                  -- SUCCESS
-  assertEquals      (ncall , 8     )
-  assertAlmostEquals(fmin  , sqrt(8/27), 2e-8)
-  assertAlmostEquals(x[1]  ,      1/3  , 1e-8)
-  assertAlmostEquals(x[2]  ,      8/27 , 7e-8)
+  assertEquals(status, 'XTOL')                                  -- SUCCESS
+  assertEquals(ncall , 10     )
+  assertAlmostEquals(fmin, sqrt(8/27), 1e-11)
+  assertAlmostEquals(x[1],      1/3  , 1e-11)
+  assertAlmostEquals(x[2],      8/27 , 1e-11)
 end
 
 function TestMatch:testMatchFuncLMD2 ()
