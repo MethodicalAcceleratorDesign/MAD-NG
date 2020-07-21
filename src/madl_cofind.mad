@@ -40,12 +40,12 @@ local vn = vname[6]
 
 -- helpers --------------------------------------------------------------------o
 
-local function mdump (X0, dX, X, R, id, itr, typ)
+local function mdump (X0, dx, X, R, id, itr, typ)
   local fmt = option.numfmt
   option.numfmt = "% 10.5f"
   printf("cofind: (id=%d,itr=%d,typ=%s)\n", id, itr, typ)
   X0:print('X0', eps, 'line')
-  dX:print('dX', eps, 'line')
+  dx:print('dx', eps, 'line')
   if option.debug >= 3 then
     X:print('X', eps, 'line')
     R:print('R', eps)
@@ -64,9 +64,9 @@ end
 local function par2vec (X, V_)
   local V = V_ or vector(6)
   if is_number(X) then return V:fill(X) end
-  V[1], V[2] = X.x, X.px
-  V[3], V[4] = X.y, X.py
-  V[5], V[6] = X.t, X.pt
+  V[1], V[2] = X[1] or X.x or 0, X[2] or X.px or 0
+  V[3], V[4] = X[3] or X.y or 0, X[4] or X.py or 0
+  V[5], V[6] = X[5] or X.t or 0, X[6] or X.pt or 0
   return V
 end
 
@@ -89,37 +89,39 @@ local R4 = matrix(4)
 local r4 = 1..4
 
 function method.newton (X0, X, R, T, tol)
-  local dX, rnk
+  local dx, rnk
 
   if not T and has_dpt(R) then
     -- 6D case
-    dX, rnk = (R-I):solve(X-X0)
+    dx, rnk = (R-I):solve(X-X0)
+    dx:unm(dx)
 
     if rnk < 6 then
-      return rnk, dX, "singular"
-    elseif dX:maxabs() <= tol then
-      return rnk, dX, "stable"
+      return rnk, dx, "singular"
+    elseif dx:maxabs() <= tol then
+      return rnk, dx, "stable"
     end
 
     -- adjust X0 orbit
-    X0:sub(dX,X0)
+    X0:add(dx,X0)
 
   else
     -- 4D case
     X0:getrow(r4, X4) ; R:getsub(r4,r4, R4)
-    dX, rnk = (R4-I4):solve(X:getrow(r4)-X4)
+    dx, rnk = (R4-I4):solve(X:getrow(r4)-X4)
+    dx:unm(dx)
 
     if rnk < 4 then
-      return rnk, dX, "singular"
-    elseif dX:maxabs() <= tol then
-      return rnk, dX, "stable"
+      return rnk, dx, "singular"
+    elseif dx:maxabs() <= tol then
+      return rnk, dx, "stable"
     end
 
     -- adjust X0 orbit
-    (X4-dX):copy(X0)
+    (X4+dx):copy(X0)
   end
 
-  return rnk, dX
+  return rnk, dx
 end
 
 -- cofind using jacobian ------------------------------------------------------o
@@ -218,11 +220,11 @@ local function cofind_jacob (self, mflw)
         R:set(j,k, (mflw[i+k][vn[j]] - X[j])/dH[k])
       end end
 
-      -- update X0 = X0-dX if |dX| > cotol, where dX solves (R-I)dX = (X-X1)-X0
-      local rnk, dX, typ = costep(X0, X-X1, R, totalpath, cotol)
+      -- update X0 = X0-dx if |dx| > cotol, where dx solves (R-I)dx = (X-X1)-X0
+      local rnk, dx, typ = costep(X0, X-X1, R, totalpath, cotol)
 
       if option.debug >= 2 then
-        mdump(X0, dX, X, R, m.coid, itr, typ or m.status)
+        mdump(X0, dx, X, R, m.coid, itr, typ or m.status)
       end
 
       if typ then -- "stable/singular"
@@ -271,7 +273,10 @@ local function cofind_jacob (self, mflw)
   assert(7*j == mflw.tpar, "unexpected corrupted set of particle blocks")
   mflw.tpar = j
 
-  -- 7. particles are ordered by stable/unstable/singular/lost then by id
+  -- 7. update mtbl particle status
+  -- TODO
+
+  -- 8. particles are ordered by stable/unstable/singular/lost then by id
   return mflw.mtbl, msort(mflw)
 end
 
@@ -314,11 +319,11 @@ local function cofind_map (self, mflw)
       local X0 = X0[m.id]
       m:get0(X) ; m:get1(R)
 
-      -- update X0 = X0-dX if |dX| > cotol, where dX solves (R-I)dX = (X-X1)-X0
-      local rnk, dX, typ = costep(X0, X-X1, R, totalpath, cotol)
+      -- update X0 = X0-dx if |dx| > cotol, where dx solves (R-I)dx = (X-X1)-X0
+      local rnk, dx, typ = costep(X0, X-X1, R, totalpath, cotol)
 
       if option.debug > 2 then
-        mdump(X0, dX, X, R, m.id0 or m.id, itr, typ or m.status)
+        mdump(X0, dx, X, R, m.id0 or m.id, itr, typ or m.status)
       end
 
       if typ then -- "stable/singular"
@@ -355,6 +360,9 @@ local function cofind_map (self, mflw)
     end
   end
 
+  -- 6. update mtbl particle status
+  -- TODO
+
   -- 7. damaps are ordered by stable/unstable/singular/lost then by id
   return mflw.mtbl, msort(mflw)
 end
@@ -387,47 +395,47 @@ end
 -- attributes set to nil will use the default from track by inheritance
 
 local cofind = command 'cofind' {
-  beam=nil,          -- beam (required or sequence.beam)                  (trck)
   sequence=nil,      -- sequence (required)                               (trck)
+  beam=nil,          -- beam (required or sequence.beam)                  (trck)
   range=nil,         -- range of tracking (or sequence.range)             (trck)
   dir=nil,           -- s-direction of tracking (1 or -1)                 (trck)
 
-  s0=nil,            -- initial position offset s                         (trck)
-  X0=nil,            -- initial X coordinates (or damap, or beta0)        (trck)
+  s0=nil,            -- initial s-position offset [m]                     (trck)
+  X0=nil,            -- initial X coordinates (or damap, or beta block)   (trck)
   deltap=nil,        -- initial deltap(s)                                 (trck)
 
-  mapdef=true,       -- setup for damap (or list of, true => {xy=1})      (trck)
-  mapsave=nil,       -- save damap in the mtable                          (trck)
-  mapdump=nil,       -- dump X and R after each element                   (trck)
-
-  nturn=nil,         -- number of turns                                   (trck)
+  nturn=nil,         -- number of turns to track                          (trck)
   nslice=nil,        -- number of slices (or weights) for each element    (trck)
+  mapdef=true,       -- setup for damap (or list of, true => {})          (trck)
   method=nil,        -- method or order for integration (1 to 8)          (trck)
   model=nil,         -- model for integration ('DKD' or 'TKT')            (trck)
   ptcmodel=nil,      -- use strict PTC thick model (override option)      (trck)
   implicit=nil,      -- slice implicit elements too (e.g. plots)          (trck)
   misalign=nil,      -- consider misalignment                             (trck)
-  fringe=nil,        -- activate fringe fields (0..7)                     (trck)
+  fringe=nil,        -- enable fringe fields (see element.flags.fringe)   (trck)
   radiate=nil,       -- radiate at slices (NYI)                           (trck)
-  totalpath=nil,     -- 't' is the totalpath                              (trck)
+  totalpath=nil,     -- variable 't' is the totalpath                     (trck)
 
   save=false,        -- create mtable and save results                    (mtbl)
   title=nil,         -- title of mtable (default seq.name)                (mtbl)
   observe=nil,       -- save only in observed elements (every n turns)    (mtbl)
   savesel=nil,       -- save selector (predicate)                         (mtbl)
+  savemap=nil,       -- save damap in the column __map                    (trck)
 
-  atentry=nil,       -- action called when entering an element  (ataper)  (trck)
-  atslice=nil,       -- action called after each element slices (atsave)  (trck)
+  atentry=nil,       -- action called when entering an element            (trck)
+  atslice=nil,       -- action called after each element slices (ataper)  (trck)
   atexit=nil,        -- action called when exiting an element   (atsave)  (trck)
   ataper=nil,        -- action called when checking for aperture          (trck)
   atsave=nil,        -- action called when saving in mtable               (trck)
 
-  cotol=1e-8,        -- closed orbit tolerance (i.e. |dX|)                (cofn)
+  cotol=1e-8,        -- closed orbit tolerance (i.e. |dx|)                (cofn)
   coiter=20,         -- maximum number of iterations                      (cofn)
   codiff=1e-10,      -- finite differences step for jacobian              (cofn)
   comethod='newton', -- default algorithm                                 (cofn)
   X1=0,              -- optional final coordinates translation            (cofn)
 
+  info=nil,          -- information level (output on terminal)            (cofn)
+  debug=nil,         -- debugging information level (output on terminal)  (cofn)
   usrdef=nil,        -- user defined data attached to the mflow           (trck)
 
   mflow=nil,         -- mflow, exclusive with other attributes
