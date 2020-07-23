@@ -149,11 +149,6 @@ void   mad_ivec_modn  (const  idx_t x[],        idx_t y        ,  idx_t  r[], ss
 // global fft cleanup
 void   mad_fft_cleanup (void);
 
-// 2D polygons ----------------------------------------------------------------o
-
-// polygon check for containing a point (winding number algo)
-log_t  mad_pol_inside (num_t px, num_t py, const num_t *vx, const num_t *vy, ssz_t n);
-
 // vector functions -----------------------------------------------------------o
 
 struct  matrix;

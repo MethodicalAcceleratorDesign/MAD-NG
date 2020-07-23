@@ -18,11 +18,10 @@
 
 #include <assert.h>
 
-#include "mad_vec.h"
+#include "mad_poly.h"
 
 // Check if a point p is inside a polygon v (vector of points)
 //   based on the winding number test for a point in a polygon
-//   code from http://geomalgorithms.com/a03-_inclusion.html
 // Input:   px,py = a point,
 //          vx,vy = vector of points of a polygon v[n] with v[n-1]=v[0]
 // Return:  wn = the winding number (=0 only when p is outside)
