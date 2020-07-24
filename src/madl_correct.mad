@@ -52,9 +52,11 @@ local plans = {
 
 local tgt0 = { x=rep(0), y=rep(0) }
 
-local function mak_work (sequ, range, model, orbit, target, plan)
+local function set_work (wrk, sequ, range, model, orbit, target, plan)
   local pln = plans[plan]
-  local wrk = { nseq=#sequ, pln=pln, ncor=0, nmon=0 }
+
+  wrk.nseq, wrk.pln  = #sequ, pln
+  wrk.ncor, wrk.nmon = 0, 0
 
   for k=1,wrk.nseq do
     local tgt = target[k] or tgt0
@@ -124,8 +126,8 @@ end
 local function rem_corcnd (wrk, corcnd, corcut, cortol)
   local A in wrk
   local jc, sv
-      if corcnd == 'pcacnd' then jc, sv = A:pcacnd(0, corcut)
-  elseif corcnd == 'svdcnd' then jc, sv = A:svdcnd(0, corcut, cortol)
+  if corcnd == true or corcnd == 'svdcnd' then jc, sv = A:svdcnd(0, corcut, cortol)
+  elseif               corcnd == 'pcacnd' then jc, sv = A:pcacnd(0, corcut)
   else error("invalid corcnd ('pcacnd' or 'svdcnd' expected)") end
 
   if not jc then return end -- nothing to remove
@@ -142,7 +144,7 @@ local function rem_corcnd (wrk, corcnd, corcut, cortol)
       if rc[jc[cor[j]]] then
         local jj = table.remove(cor, j)
         n, shr[jj], idx[jj], jc[jj] = n+1
-        if option.debug > 0 then
+        if wrk.info >= 2 then
           printf("correct: corrector %s is dropped by corcnd\n", seq[jj].name)
         end
       end
@@ -154,7 +156,8 @@ end
 -- remove monitors disabled by monon ------------------------------------------o
 
 local function rem_monoff (wrk, monon)
-  assert(is_positive(monon) and monon < 1, "invalid monon (positive number <1 expected)")
+  assert(is_positive(monon) and monon <= 1, "invalid monon (positive number <=1 expected)")
+  if monon == 1 then return end
 
   for _,w in ipairs(wrk) do
     local seq, mon in w
@@ -163,7 +166,7 @@ local function rem_monoff (wrk, monon)
       if rand() > monon then
         local ii = table.remove(mon, i)
         n, idx[ii], im[ii] = n+1
-        if option.debug > 0 then
+        if wrk.info >= 2 then
           printf("correct: monitor %s is dropped by monon\n", seq[ii].name)
         end
       end
@@ -192,7 +195,7 @@ local function rem_moncut (wrk, moncut)
       if abs(v[i]-avg) > moncut*var then
         local ii = table.remove(mon, i)
         n, idx[ii], im[ii] = n+1
-        if option.debug > 0 then
+        if wrk.info >= 2 then
           printf("correct: monitor %s is dropped by moncut\n", seq[ii].name)
         end
       end
@@ -301,8 +304,8 @@ local function mak_system (wrk, kind, units)
     -- orbit vector
     for _,ii in ipairs(mon) do
       local mi, im = idx[ii], im[ii]
-      Bx[im] = (orb.x[mi] - tgt.x[mi])*units
-      By[im] = (orb.y[mi] - tgt.y[mi])*units
+      Bx[im] = (orb.x[mi] - tgt.x[mi])/units
+      By[im] = (orb.y[mi] - tgt.y[mi])/units
     end
 
     ai = ai + mon.n
@@ -319,12 +322,11 @@ end
 -- compute correctors strengths -----------------------------------------------o
 
 local mmth = { micado='nsolve', svd   ='ssolve', lsq  ='solve',
-               MICADO='nsolve', SVD   ='ssolve', LSQ  ='solve',
                nsolve='nsolve', ssolve='ssolve', solve='solve' }
 
 local function get_correct (wrk, method, ncor, tol)
   local A, B in wrk
-  local mth = mmth[method]
+  local mth = mmth[string.lower(tostring(method))]
 
   assertf(mth, "invalid method '%s'", tostring(method))
 
@@ -335,7 +337,7 @@ local function get_correct (wrk, method, ncor, tol)
   elseif mth == 'ssolve' then X, rnk, S = A:ssolve(B, tol)
   end
 
-  if option.debug >= 1 then
+  if wrk.info >= 1 then
       if mth ==  'solve' then printf("correct: LSQ selected %d correctors\n", rnk)
   elseif mth == 'nsolve' then printf("correct: MICADO selected %d correctors\n", rnk)
   elseif mth == 'ssolve' then printf("correct: SVD selected %d singular values\n", rnk)
@@ -435,7 +437,7 @@ local planes = { x = {'x'}, y = {'y'}, xy = {'x', 'y'} }
 
 local function exec (self)
   local sequ = self.sequence
-  local range, model, orbit, target,
+  local range, model, orbit, target, info, debug,
         kind, plane, method, ncor, tol, units,
         corcnd, corcut, cortol, corset, monon, moncut, monerr in self
 
@@ -452,7 +454,10 @@ local function exec (self)
   local lst = {}
 
   for pln in ipairs(plan) do
-    local wrk = mak_work(sequ, range, model, orbit, target, pln)
+    local wrk = {info=info or 0, debug=debug or 0}
+
+    -- prepare wrk with information required
+    set_work(wrk, sequ, range, model, orbit, target, pln)
 
     -- collect monitors and correctors
     get_moncor(wrk)
@@ -513,6 +518,9 @@ local correct = command 'correct' {
   moncut=false,      -- cut monitors above moncut sigmas                  (corr)
   monerr=false,      -- 1: use mrex and mrey alignment errors of monitors (corr)
                      -- 2: use msex and msey scaling errors of monitors   (corr)
+
+  info=nil,          -- information level (output on terminal)            (corr)
+  debug=nil,         -- debugging information level (output on terminal)  (corr)
 
   exec=exec,         -- command to execute upon children creation
 
