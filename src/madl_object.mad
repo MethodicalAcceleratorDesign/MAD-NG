@@ -50,11 +50,12 @@ local _id = {} -- unique identifier
 
 -- object flags (protected)
 local oflg = {
-  readonly = fbit(30),
   class    = fbit(31),
+  final    = fbit(30),
+  readonly = fbit(29),
 
-  rocls    = fset(fbit(30),fbit(31)),
-  protect  = fnot(fset(fbit(30),fbit(31))),
+  rocls    = fset(fbit(29),fbit(31)),
+  protect  = fnot(fset(fbit(29),fbit(30),fbit(31))),
 }
 
 -- instance and metatable of 'incomplete objects' proxy
@@ -88,8 +89,8 @@ local function name (a)
   return par and a.__id == par.__id and ('? <: '..a.__id) or a.__id
 end
 
-local function final (self)
-  error("invalid object creation ('"..name(self).."' is final)", 2)
+local function ffinal (a)
+  return ftst(a.__flg, oflg.final)
 end
 
 local function fclass (a)
@@ -108,22 +109,6 @@ end
 local function is_object (a) -- exported
   local mt = getmetatable(a)
   return mt ~= nil and mt.__obj == _id
-end
-
-local function is_class (a) -- exported
-  return is_object(a) and fclass(a)
-end
-
-local function is_final (a) -- exported
-  return is_object(a) and getmetatable(a).__call == final
-end
-
-local function is_instanceOf (a, b) -- exported
-  if is_object(a) and is_class(b) then
-    repeat a = parent(a) until not a or rawequal(a,b)
-    return not not a
-  end
-  return false
 end
 
 local function copy_methods (a, m)
@@ -291,10 +276,6 @@ end
 
 local MF = {}
 
-MF.is_final      = is_final
-MF.is_class      = is_class
-MF.is_instanceOf = is_instanceOf
-
 function MF:raw_len ()
   return rawlen(self.__var)           -- no inheritance
 end
@@ -332,9 +313,28 @@ function MF:var_get (k)             -- named __index, can return multiple values
   else return v end
 end
 
+function MF:is_class ()
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  return fclass(self)
+end
+
+function MF:is_final ()
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  return ffinal(self)
+end
+
 function MF:is_readonly ()
   assert(is_object(self), "invalid argument #1 (object expected)")
   return freadonly(self)
+end
+
+function MF:is_instanceOf (c)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  if is_object(c) and fclass(c) then
+    repeat self = parent(self) until not self or rawequal(self,c)
+    return not not self
+  end
+  return false
 end
 
 function MF:set_readonly (set_)
@@ -342,6 +342,24 @@ function MF:set_readonly (set_)
   if set_ ~= false
   then self.__flg = fset(self.__flg, oflg.readonly)
   else self.__flg = fclr(self.__flg, oflg.readonly)
+  end
+  return self
+end
+
+local function efinal (self)
+  error("invalid object creation ('"..name(self).."' is final)", 2)
+end
+
+function MF:set_final (set_)
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  if set_ ~= false then
+    if fclass(self) then
+      errorf("cannot set final to '%s' (unexpected class)", name(self))
+    end
+    self:set_metamethods({__call=efinal}, true)
+    self.__flg = fset(self.__flg, oflg.final)
+  else
+    self.__flg = fclr(self.__flg, oflg.final)
   end
   return self
 end
@@ -482,13 +500,6 @@ function MF:set_parent (newp, override_)
   self.__index = newp.__var
   set_class(newp)
   return self
-end
-
-function MF:set_final ()
-  if fclass(self) then
-    errorf("cannot set final to '%s' (unexpected class)", name(self))
-  end
-  return set_metamethods(self, {__call=final}, true)
 end
 
 function MF:get_varkeys (class_)
@@ -788,10 +799,7 @@ MF.getvar = MF.get_variables
 
 -- env ------------------------------------------------------------------------o
 
-MAD.typeid.is_final      = is_final
-MAD.typeid.is_class      = is_class
-MAD.typeid.is_object     = is_object
-MAD.typeid.is_instanceOf = is_instanceOf
+MAD.typeid.is_object = is_object
 
 -- object ---------------------------------------------------------------------o
 
