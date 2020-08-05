@@ -32,7 +32,8 @@ local abs, min, max, sin, cos in math
 
 local _C, vector           in MAD
 local is_damap, is_matrix  in MAD.typeid
-local errorf               in MAD.utility
+local ftrue                in MAD.gfunc
+local errorf, printf       in MAD.utility
 local minang               in MAD.constant
 local is_implicit          in MAD.element.drift
 
@@ -41,9 +42,11 @@ local getmetatable =
 
 -- aperture models ------------------------------------------------------------o
 
-local apmodel
+local apmodel = {
+  bbox       = \x,px,y,py,t,pt,ap -> x < ap[1] and px < ap[2] and
+                                     y < ap[3] and py < ap[4] and
+                                     t < ap[5] and pt < ap[6],
 
-apmodel = {
   square     = \x,y,ap -> x < ap[1] and y < ap[1],
   rectangle  = \x,y,ap -> x < ap[1] and y < ap[2],
 
@@ -59,78 +62,140 @@ apmodel = {
   octagon    = \x,y,ap -> x < ap[1] and y < ap[2] and
                           y < (x-(ap[1]-ap[3]))*ap[4]/ap[3] + ap[2],
 
-  polygon    = \x,y,ap,vx,vy -> ap.bbox and apmodel[ap.bbox.kind](x,y,ap.bbox)
-                                or _C.mad_pol_inside(x,y, vx.data, vy.data, #vx),
+  polygon    = \x,y,vx,vy -> _C.mad_pol_inside(x,y, vx.data, vy.data, #vx),
 }
 
 -- aperture check -------------------------------------------------------------o
 
-local function lostpar (i, mflw, _, islc)
-  local npar, clw, spos, ds, turn in mflw
+local function lostpar (elm, mflw, islc, i, x, y, t, px, py, pt)
+  local npar, clw, spos, ds, turn, info, debug in mflw
   local lw = islc<0 and -1-islc or clw
+  local s = spos+ds*lw
   local m = mflw[i]
 
+  if info >= 1 then
+    local name in elm
+    printf("lost: particle #%d in %s at %.3f m for turn #%d\n", i,name,s,turn)
+    if t then
+      printf("x=% -.1e, px=% -.1e, y=% -.1e, py=% -.1e, t=% -.1e, pt=% -.1e",
+              x,        px,        y,        py,        t,        pt)
+    else
+      printf("x=% -.1e, y=% -.1e", x, y)
+    end
+    if debug >= 1 then
+      printf(", T=%s, etot=%s", tostring(mflw.T), tostring(elm.totalpath))
+    end
+    io.write("\n")
+  end
+
   -- information saved in lost particle/damap
-  m.spos, m.turn, m.status = spos+ds*lw, turn, "lost"
+  m.spos, m.turn, m.status = s, turn, "lost"
   -- take care of mflw wrappers (e.g. __edat and __sdat in track)
   m = getmetatable(mflw).__index
   -- swap with last tracked particle/damap
   m[i], m[m.npar], m.npar = m[m.npar], m[i], m.npar-1
 end
 
-local function checkaper (chkap)
-  local is_poly = chkap == apmodel.polygon
+local function checkbbox (elm, mflw, lw, islc)
+  local ap = elm.aperture
 
-  return function (elm, mflw, lw, islc)
+  local i = 1
+  while i <= mflw.npar do
+    local x, px, y, py, t, pt in mflw[i]
+
+    if is_damap(mflw[i]) then
+      x, px, y, py, t, pt =
+      x:get0(), px:get0(), y:get0(), py:get0(), t:get0(), pt:get0()
+    end
+
+    t = 0 -- t*(1 - mflw.T) -- TODO: set t to zero if totalpath is enabled
+
+    if apmodel.bbox(abs(x),abs(px),abs(y),abs(py),abs(t),abs(pt),ap) then
+      i = i + 1
+    else
+      lostpar(elm, mflw, islc, i, x, y, t, px, py, pt)
+    end
+  end
+  return true
+end
+
+local function checkaper (chkap)
+  return function (elm, mflw, _, islc)
     local ap = elm.aperture
     local tdir in mflw
-    local offset in ap
+    local tilt, offset in ap
 
-    local ang, ca, sa = ((ap.tilt or 0) - elm.tilt)*tdir
+    local ang, dx, dy, ca, sa = ((tilt or 0) - elm.tilt)*tdir, 0, 0
 
-    if abs(ang) < minang then
-      ca, sa = 1, 0
-    else
-      ca, sa = cos(ang), sin(ang)
+    if abs(ang) < minang
+    then ca, sa = 1, 0
+    else ca, sa = cos(ang), sin(ang)
     end
 
-    local dx, dy = 0, 0
-    if offset then
-      dx, dy = offset[1]*tdir, offset[2]*tdir
-    end
-
-    local vx, vy
-    if is_poly then -- convert polygon to vectors if not vectors
-      if is_matrix(ap.vx) then vx = ap.vx else vx = vector(ap.vx) end
-      if is_matrix(ap.vy) then vy = ap.vy else vy = vector(ap.vy) end
-      local vn = #vx
-      assert(vn == #vy, "incompatible x vs y polygon size")
-      assert(vx[1] == vx[vn] and vy[1] == vy[vn], "polygon is not closed")
-    end
+    if offset then dx, dy = offset[1]*tdir, offset[2]*tdir end
 
     local i = 1
     while i <= mflw.npar do
       local x, y in mflw[i]
 
-      if is_damap(mflw[i]) then
-        x, y = x:get0(), y:get0()
-      end
+      if is_damap(mflw[i]) then x, y = x:get0(), y:get0() end
 
-      -- move to aperture frame
+      -- move to aperture frame top right sector
       local nx = abs(ca*x + sa*y - dx)
       local ny = abs(ca*y - sa*x - dy)
 
-      if chkap(nx,ny,ap, vx,vy) then
+      if chkap(nx,ny,ap) then
         i = i + 1
       else
-        lostpar(i, mflw, lw, islc)
+        lostpar(elm, mflw, islc, i, nx, ny)
       end
     end
     return true
   end
 end
 
+local function checkpoly (elm, mflw, _, islc)
+  local ap = elm.aperture
+  local tdir in mflw
+  local tilt, offset in ap
+  local aper = ap.aper and apmodel[ap.aper.kind] or ftrue
+
+  local ang, dx, dy, ca, sa, vx, vy = ((tilt or 0) - elm.tilt)*tdir, 0, 0
+
+  if abs(ang) < minang
+  then ca, sa = 1, 0
+  else ca, sa = cos(ang), sin(ang)
+  end
+
+  if offset then dx, dy = offset[1]*tdir, offset[2]*tdir end
+
+  vx = is_matrix(ap.vx) and ap.vx or vector(ap.vx)
+  vy = is_matrix(ap.vy) and ap.vy or vector(ap.vy)
+  local vn = #vx
+  assert(vn == #vy, "incompatible x vs y polygon size")
+  assert(vx[1] == vx[vn] and vy[1] == vy[vn], "polygon is not closed")
+
+  local i = 1
+  while i <= mflw.npar do
+    local x, y in mflw[i]
+
+    if is_damap(mflw[i]) then x, y = x:get0(), y:get0() end
+
+    -- move to aperture frame
+    local nx = ca*x + sa*y - dx
+    local ny = ca*y - sa*x - dy
+
+    if aper(abs(nx),abs(ny),ap.aper) and apmodel.polygon(nx,ny,vx,vy) then
+      i = i + 1
+    else
+      lostpar(elm, mflw, islc, i, nx, ny)
+    end
+  end
+  return true
+end
+
 local apcheck = setmetatable({
+  bbox        = checkbbox,
   square      = checkaper(apmodel.square     ),
   rectangle   = checkaper(apmodel.rectangle  ),
   circle      = checkaper(apmodel.circle     ),
@@ -139,7 +204,7 @@ local apcheck = setmetatable({
   rectellipse = checkaper(apmodel.rectellipse),
   racetrack   = checkaper(apmodel.racetrack  ),
   octagon     = checkaper(apmodel.octagon    ),
-  polygon     = checkaper(apmodel.polygon    ),
+  polygon     = checkpoly,
 }, { __index  = \_,k -> errorf("unknown kind of aperture '%s'", tostring(k))
 })
 
