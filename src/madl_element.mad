@@ -36,15 +36,16 @@ local _nyi
 
 M.element = object 'element' {
   l=0, lrad=0, angle=0, tilt=0, e1=0, e2=0,                  -- number required!
-  f1=0, f2=0, h1=0, h2=0, hgap=0, fint=0, fintx=false,       -- number required!
+  f1=0, f2=0, h1=0, h2=0, hgap=0, fint=0, fintx=nil,         -- number required!
   dx=0, dy=0, ds=0, dtheta=0, dphi=0, dpsi=0,                -- number required!
-  k0 =false, k1 =false, k2 =false, k3 =false, k4 =false, k5 =false,
-  k0s=false, k1s=false, k2s=false, k3s=false, k4s=false, k5s=false,
+  k0 =0, k1 =0, k2 =0, k3 =0, k4 =0, k5 =0,
+  k0s=0, k1s=0, k2s=0, k3s=0, k4s=0, k5s=0,
   knl={}, ksl={}, dknl={}, dksl={},
   pnl={}, psl={}, dpnl={}, dpsl={},
   fringe=0, fringemax=2, kill_ent_fringe=false, kill_exi_fringe=false,
-  aperture={kind='square', tilt=false, offset=false, tol=false, 1},
-  model=false, method=false,
+  model=nil, method=nil, nslice=nil,
+  aperture={kind='bbox', 1,1,1,1,1,1,-- 0.1, 0.01, 0.1, 0.01, 1, 0.1, -- 'square', 1,
+            tilt=nil, offset=nil, tol=nil, aper=nil},
 }
 
 -- identity -------------------------------------------------------------------o
@@ -86,14 +87,15 @@ M.flags = {
 
   -- fringe fields (elements fringe attribute)
   fringe = {
-    none   = tobit(0),
-    bend   =  fbit(0),
-    mult   =  fbit(1),
-    rfcav  =  fbit(0),
+    none  = tobit(0),
+    bend  =  fbit(0),               -- bending     fringe fields
+    mult  =  fbit(1),               -- multipolar  fringe fields
+    rfcav =  fbit(2),               -- rfcavity    fringe fields
+    qsad  =  fset(fbit(1),fbit(3)), -- quadrupolar fringe fields (complementary)
 
+    -- sbend+quadrupole
     comb   = fset(fbit(0),fbit(1)),
-    qsad   = fset(fbit(1),fbit(2)),
-    combqs = fset(fbit(0),fbit(1),fbit(2)),
+    combqs = fset(fbit(0),fbit(1),fbit(3)), -- with qsad
   }
 }
 
@@ -115,7 +117,9 @@ M.element :set_methods {
   -- concatenation
   __add = \a,b -> M.bline { a, b },
   -- repetition
-  __mul = \a,b => if is_number(b) then a,b = b,a end
+  __mul = \a,b => if is_number(b) then a,b = b,a
+                  else assert(is_number(a), "number expected")
+                  end
                   return M.bline { __rep=a, b } end,
   -- reflection
   __unm = \a -> M.bline { __rep=-1, a },
@@ -155,15 +159,15 @@ M.placeholder = M.drift_element 'placeholder'  { }
 
 -- thick elements
 
-M.sbend       = M.thick_element 'sbend'        { fringe=fringe.bend, }
-M.rbend       = M.thick_element 'rbend'        { fringe=fringe.bend, true_rbend=false }
+M.sbend       = M.thick_element 'sbend'        { k0=false, fringe=fringe.bend, }
+M.rbend       = M.thick_element 'rbend'        { k0=false, fringe=fringe.bend, true_rbend=false }
 M.quadrupole  = M.thick_element 'quadrupole'   { }
 M.sextupole   = M.thick_element 'sextupole'    { }
 M.octupole    = M.thick_element 'octupole'     { }
 M.decapole    = M.thick_element 'decapole'     { }
 M.dodecapole  = M.thick_element 'dodecapole'   { }
 M.solenoid    = M.thick_element 'solenoid'     { ks=0, ksi=0 }
-M.tkicker     = M.thick_element 'tkicker'      { hkick=0, vkick=0 }
+M.tkicker     = M.thick_element 'tkicker'      { hkick=0, vkick=0, } -- method=2 }
 M.wiggler     = M.thick_element 'wiggler'      { _nyi }
 M.elseparator = M.thick_element 'elseparator'  { ex=0, ey=0, exl=0, eyl=0 }
 M.rfcavity    = M.thick_element 'rfcavity'     { volt=0, freq=0, lag=0, harmon=0, n_bessel=0, totalpath=true }
@@ -214,12 +218,7 @@ end
 
 -- env ------------------------------------------------------------------------o
 
--- local is_implicit, is_observed, is_selected in element
-
 MAD.typeid.is_element = is_element
--- MAD.typeid.is_implicit = is_implicit
--- MAD.typeid.is_observed = is_observed
--- MAD.typeid.is_selected = is_selected
 
 -- end ------------------------------------------------------------------------o
 return { element = M }
