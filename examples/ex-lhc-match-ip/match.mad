@@ -1,0 +1,539 @@
+-- time ../../mad -jp=vl testmatch.mad > matchmad.out 2>&1
+
+local jstra  = 1
+local method = 'LD_JACOBIAN'
+local use_madx_ini = false
+
+--[[ Runs as a function of strategy
+JACOBIAN
+$ time ../../mad -jp=vl testmatch.mad > matchmad1_0b.out 2>&1
+real  0m15.699s
+user  0m15.535s
+sys 0m0.117s
+
+$ time ../../mad -jp=vl testmatch.mad > matchmad1_1b.out 2>&1
+real  0m10.015s
+user  0m9.885s
+sys 0m0.098s
+
+$ time ../../mad -jp=vl testmatch.mad > matchmad1_2b.out 2>&1
+real  0m9.694s
+user  0m9.561s
+sys 0m0.098s
+
+$ time ../../mad -jp=vl testmatch.mad > matchmad1_3b.out 2>&1
+real  0m21.824s
+user  0m21.630s
+sys 0m0.133s
+--]]
+
+----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
+--  PLOT Utility
+----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
+
+local doplot = false
+local dopdf  = false
+
+if doplot and not dopdf then MAD.utility.atexit(MAD.utility.pause, true) end
+
+local function plottw (mflw, x1y2_, dir_)
+  if not doplot then return end
+  local sequ, mtbl in mflw
+  local dir = not dir_
+  MAD.plot { table=mtbl,
+             title=mtbl.title,
+
+             sequence=dir and sequ or nil,
+             range   =dir and (sequ.range or {mtbl[1].name,mtbl[-1].name}) or nil,
+
+             x1y1 = { s={'beta11','beta22'} },
+             x1y2 = { s= x1y2_ or {'mu1','mu2'} },
+
+             styles = 'lines',
+             output = 'plot.pdf',
+             prolog = "set multiplot",
+           }
+end
+
+----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
+--  LOAD LHC
+----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
+
+local function LHC_load ()
+  local is_sequence in MAD.typeid
+
+  if not is_sequence(MADX:var_raw'lhcb1') then -- avoid MAD-X warning
+    MADX:load('input/V6.5.uvar.mad') -- must be updated after conversion
+    MADX:load('input/V6.5.seq'     , 'input/V6.5.mad'     ) -- convert on need
+    MADX:load('input/V6.5.coll.str', 'input/V6.5.coll.mad')
+
+    local lhcb1, lhcb2 in MADX
+
+    -- sanity checks
+    assert(#lhcb1 == 6641, "invalid number of elements in LHCB1 (6641 expected)")
+    assert(#lhcb2 == 6641, "invalid number of elements in LHCB2 (6641 expected)")
+
+    -- attach beam
+    local beam in MAD
+    lhcb1.beam = beam { particle='proton', energy=7000 }
+    lhcb2.beam = beam { particle='proton', energy=7000 }
+
+    -- set sequence direction
+    lhcb2.dir = -1
+  end
+end
+
+----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
+--  select.ir8.b1.madx
+----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
+
+local mybeta0 = {}
+
+local function select_ir8_b1 ()
+  local lhcb1 in MADX
+  local track, twiss, sequence                              in MAD
+  local map2bet                                             in MAD.gphys
+  local observed                                            in MAD.element.flags
+
+  local obspts = {"S.CELL.78.B1", "E.CELL.81.B1",
+                  "S.DS.L8.B1"  , "E.DS.L8.B1"  ,
+                  "E.DS.R8.B1"  , "IP8"}
+  for _,e in ipairs(obspts) do lhcb1[e]:select(observed) end
+
+  local mytwiss = twiss { sequence=lhcb1, cofind=true, method=4, mapsave=true,
+                          observe=doplot and 0 or 1, save=doplot and 'atbody' or nil,
+                          implicit=doplot, nslice=doplot and 5 or 1, exec=false }
+  --
+  print("TWISS1")
+  local mt, mf = mytwiss { range = "S.CELL.78.B1/E.CELL.78.B1", title='TWISS1' }
+  mt:write("output/twiss1.tfs") ; plottw(mf,{'mu1','mu2'}) ; plottw(mf,{'dx','dpx'})
+  mybeta0.bini1ir8 = map2bet(mt["S.CELL.78.B1"].__map)
+  print('**bini1ir8**') show(mybeta0.bini1ir8)
+  mybeta0.bini1ir8.mu1 = 0
+  mybeta0.bini1ir8.mu2 = 0
+  --
+  print("TWISS2")
+  local mt, mf = mytwiss { range = "S.CELL.81.B1/E.CELL.81.B1", title='TWISS2' }
+  mt:write("output/twiss2.tfs") ; plottw(mf,{'mu1','mu2'}) ; plottw(mf,{'dx','dpx'})
+  mybeta0.bini2ir8 = map2bet(mt["E.CELL.81.B1"].__map)
+  print('**bini2ir8**') show(mybeta0.bini2ir8)
+  --
+  print("TWISS3")
+  print('**bini1ir8**') show(mybeta0.bini1ir8)
+  local mt, mf = mytwiss { range = "S.CELL.78.B1/S.DS.L8.B1", X0=mybeta0.bini1ir8, title='TWISS3' }
+  mt:write("output/twiss3.tfs") ; plottw(mf,{'mu1','mu2'}) ; plottw(mf,{'dx','dpx'})
+  mybeta0.bir8b1 = map2bet(mt["S.DS.L8.B1"].__map)
+  print('**bir8b1**') show(mybeta0.bir8b1)
+  mybeta0.bir8b1.gama11 = nil
+  mybeta0.bir8b1.gama22 = nil
+  mybeta0.bir8b1.mu1    = 0
+  mybeta0.bir8b1.mu2    = 0
+  --
+! print("TWISS4B") -- try with backtracking
+! local mt, mf = mytwiss { range = "E.CELL.81.B1/E.DS.R8.B1", dir=-1, X0=mybeta0.bini2ir8, title='TWISS4B' }
+! mt:write("output/twiss4b.tfs") ; plottw(mf,{'mu1','mu2'},-1) ; plottw(mf,{'dx','dpx'},-1)
+! mybeta0.eir8b1 = map2bet(mt["E.DS.R8.B1"].__map)
+! print('**eir8b1**') show(mybeta0.eir8b1)
+! mybeta0.eir8b1.mu1 = 0
+! mybeta0.eir8b1.mu2 = 0
+  --
+  print("TWISS4R")
+  local lhcb1r = lhcb1:reflect() !:dumpseq()
+  lhcb1r.beam = lhcb1.beam
+
+  mybeta0.bini1ir8.beta11 =  mybeta0.bini2ir8.beta11
+  mybeta0.bini1ir8.beta22 =  mybeta0.bini2ir8.beta22
+  mybeta0.bini1ir8.alfa11 = -mybeta0.bini2ir8.alfa11
+  mybeta0.bini1ir8.alfa22 = -mybeta0.bini2ir8.alfa22
+  mybeta0.bini1ir8.gama11 =  nil
+  mybeta0.bini1ir8.gama22 =  nil
+  mybeta0.bini1ir8.dx     =  mybeta0.bini2ir8.dx
+  mybeta0.bini1ir8.dpx    = -mybeta0.bini2ir8.dpx
+  mybeta0.bini1ir8.mu1    = 0
+  mybeta0.bini1ir8.mu2    = 0
+  print('**bini1ir8**') show(mybeta0.bini1ir8)
+
+  local mt, mf = mytwiss { sequence=lhcb1r, range = "E.CELL.81.B1/E.DS.R8.B1", X0=mybeta0.bini1ir8, title='TWISS4R' }
+  mt:write("output/twiss4r.tfs") ; plottw(mf,{'mu1','mu2'}) ; plottw(mf,{'dx','dpx'})
+  mybeta0.eir8b1 = map2bet(mt["E.DS.R8.B1"].__map)
+  print('**eir8b1**') show(mybeta0.eir8b1)
+
+  mybeta0.eir8b1.alfa11 = -mybeta0.eir8b1.alfa11
+  mybeta0.eir8b1.alfa22 = -mybeta0.eir8b1.alfa22
+  mybeta0.eir8b1.gama11 =  nil
+  mybeta0.eir8b1.gama22 =  nil
+  mybeta0.eir8b1.dpx    = -mybeta0.eir8b1.dpx
+  mybeta0.eir8b1.dpy    = -mybeta0.eir8b1.dpy
+  mybeta0.eir8b1.mu1    = 0
+  mybeta0.eir8b1.mu2    = 0
+  print('**eir8b1**') show(mybeta0.eir8b1)
+  --
+  print("TWISS5")
+  lhcb1.range = "S.DS.L8.B1/E.DS.R8.B1"
+  local mt, mf = mytwiss { X0=mybeta0.bir8b1, title='TWISS5', observe=0 }
+  mt:write("output/twiss5.tfs") ; plottw(mf,{'mu1','mu2'}) ; plottw(mf,{'dx','dpx'})
+  mybeta0.bip8b1 = map2bet(mt.IP8.__map)
+  print('**bip8b1**') show(mybeta0.bip8b1)
+  -- for MAD-X comparison
+  local cols = {'name','s','beta11','beta22','alfa11','alfa22','dx','dpx','x','px','y','py','mu1','mu2'}
+  mt:write("output/twiss.ir8.b1.tfs", cols)
+end
+
+----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
+--  testmatch.madx
+----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
+
+local function match_ir8_b1 ()
+  local twiss, match, mtable in MAD
+  local lhcb1, beta_ip8 in MADX
+  local bir8b1, eir8b1 in mybeta0
+
+  local muxip8   = 3.204 ! Horizontal phase advance over IR8
+  local muyip8   = 2.804 ! Vertical   phase advance over IR8
+  local scale    = 23348.89927
+  local qtlimit1 = 1.0*220.0/scale
+  local qtlimit2 = 1.0*200.0/scale
+  local qtlimit3 = 1.0*130.0/scale
+  local qtlimit4 = 1.0*160.0/scale
+
+  print('**bir8b1**') show(bir8b1)
+  print('**eir8b1**') show(eir8b1)
+
+  local mytwiss = twiss { sequence=lhcb1, method=4, X0=bir8b1,
+                          observe=1, save='atbody', mapsave=true, exec=false }
+
+  local mytbl = mtable 'str.ip8.b1' {
+    'n','kq4_l8b1','kq5_l8b1','kq6_l8b1','kq7_l8b1','kq8_l8b1','kq9_l8b1',
+    'kq10_l8b1','kqtl11_l8b1','kqt12_l8b1','kqt13_l8b1','kq4_r8b1','kq5_r8b1',
+    'kq6_r8b1','kq7_r8b1','kq8_r8b1','kq9_r8b1','kq10_r8b1','kqtl11_r8b1',
+    'kqt12_r8b1','kqt13_r8b1','beta_ip8','tar'
+  }
+  local colnam, row = mytbl:colnames(), {}
+  MADX.n, MADX.tar = 0, 0
+  for i,v in ipairs(colnam) do row[i] = MADX[v] end
+  mytbl = mytbl + row
+
+  if use_madx_ini then -- MADX initial matching values
+    MADX.kq4_l8b1    = -4.18771e-03 ! -4.31524e-03
+    MADX.kq5_l8b1    =  5.13846e-03 !  5.28621e-03
+    MADX.kq6_l8b1    = -4.97770e-03 ! -5.10286e-03
+    MADX.kq7_l8b1    =  8.11522e-03 !  8.25168e-03
+    MADX.kq8_l8b1    = -5.79118e-03 ! -5.85528e-03
+    MADX.kq9_l8b1    =  7.25303e-03 !  7.07113e-03
+    MADX.kq10_l8b1   = -5.59176e-03 ! -6.39311e-03
+    MADX.kqtl11_l8b1 =  4.29513e-04 !  7.07398e-04
+    MADX.kqt12_l8b1  = -1.53914e-03 ! -3.08650e-03
+    MADX.kqt13_l8b1  =  5.56720e-03 !  3.78543e-03
+    MADX.kq4_r8b1    =  3.06157e-03 !  4.39728e-03
+    MADX.kq5_r8b1    = -2.76586e-03 ! -4.21383e-03
+    MADX.kq6_r8b1    =  4.28389e-03 !  4.05914e-03
+    MADX.kq7_r8b1    = -6.29405e-03 ! -6.65981e-03
+    MADX.kq8_r8b1    =  8.55625e-03 !  6.92571e-03
+    MADX.kq9_r8b1    = -8.08849e-03 ! -7.46154e-03
+    MADX.kq10_r8b1   =  7.63425e-03 !  7.55573e-03
+    MADX.kqtl11_r8b1 = -5.56633e-03 ! -4.78966e-03
+    MADX.kqt12_r8b1  = -6.74525e-04 ! -1.74210e-03
+    MADX.kqt13_r8b1  = -1.92490e-03 ! -3.61438e-03
+  end
+
+  local mchklost in MAD.gphys
+  local totcall = 0
+  for n=1,2 do
+    print("MATCH", n)
+    beta_ip8 = beta_ip8 * 0.6
+
+    local status, fmin, ncall = match {
+      command := mchklost( mytwiss { title='MATCH:'..n } ),
+      variables = { sign=true, rtol=1e-8, -- 20 variables
+        { var = 'MADX.kq4_l8b1'   , name = 'kq4.l8b1'   , min=-qtlimit2, max=qtlimit2 },
+        { var = 'MADX.kq5_l8b1'   , name = 'kq5.l8b1'   , min=-qtlimit2, max=qtlimit2 },
+        { var = 'MADX.kq6_l8b1'   , name = 'kq6.l8b1'   , min=-qtlimit2, max=qtlimit2 },
+        { var = 'MADX.kq7_l8b1'   , name = 'kq7.l8b1'   , min=-qtlimit2, max=qtlimit2 },
+        { var = 'MADX.kq8_l8b1'   , name = 'kq8.l8b1'   , min=-qtlimit2, max=qtlimit2 },
+        { var = 'MADX.kq9_l8b1'   , name = 'kq9.l8b1'   , min=-qtlimit2, max=qtlimit2 },
+        { var = 'MADX.kq10_l8b1'  , name = 'kq10.l8b1'  , min=-qtlimit2, max=qtlimit2 },
+        { var = 'MADX.kqtl11_l8b1', name = 'kqtl11.l8b1', min=-qtlimit3, max=qtlimit3 },
+        { var = 'MADX.kqt12_l8b1' , name = 'kqt12.l8b1' , min=-qtlimit3, max=qtlimit3 },
+        { var = 'MADX.kqt13_l8b1' , name = 'kqt13.l8b1' , min=-qtlimit3, max=qtlimit3 },
+        { var = 'MADX.kq4_r8b1'   , name = 'kq4.r8b1'   , min=-qtlimit2, max=qtlimit2 },
+        { var = 'MADX.kq5_r8b1'   , name = 'kq5.r8b1'   , min=-qtlimit2, max=qtlimit2 },
+        { var = 'MADX.kq6_r8b1'   , name = 'kq6.r8b1'   , min=-qtlimit2, max=qtlimit2 },
+        { var = 'MADX.kq7_r8b1'   , name = 'kq7.r8b1'   , min=-qtlimit2, max=qtlimit2 },
+        { var = 'MADX.kq8_r8b1'   , name = 'kq8.r8b1'   , min=-qtlimit2, max=qtlimit2 },
+        { var = 'MADX.kq9_r8b1'   , name = 'kq9.r8b1'   , min=-qtlimit2, max=qtlimit2 },
+        { var = 'MADX.kq10_r8b1'  , name = 'kq10.r8b1'  , min=-qtlimit2, max=qtlimit2 },
+        { var = 'MADX.kqtl11_r8b1', name = 'kqtl11.r8b1', min=-qtlimit3, max=qtlimit3 },
+        { var = 'MADX.kqt12_r8b1' , name = 'kqt12.r8b1' , min=-qtlimit3, max=qtlimit3 },
+        { var = 'MADX.kqt13_r8b1' , name = 'kqt13.r8b1' , min=-qtlimit3, max=qtlimit3 },
+      },
+      equalities = { -- 14 equalities
+        { expr = \t -> t.IP8.beta11 - beta_ip8               , kind='beta', name='IP8'        },
+        { expr = \t -> t.IP8.beta22 - beta_ip8               , kind='beta', name='IP8'        },
+        { expr = \t -> t.IP8.alfa11 - 0                      , kind='alfa', name='IP8'        },
+        { expr = \t -> t.IP8.alfa22 - 0                      , kind='alfa', name='IP8'        },
+        { expr = \t -> t.IP8.dx     - 0                      , kind='dx'  , name='IP8'        },
+        { expr = \t -> t.IP8.dpx    - 0                      , kind='dpx' , name='IP8'        },
+        { expr = \t -> t['E.DS.R8.B1'].beta11 - eir8b1.beta11, kind='beta', name='E.DS.R8.B1' },
+        { expr = \t -> t['E.DS.R8.B1'].beta22 - eir8b1.beta22, kind='beta', name='E.DS.R8.B1' },
+        { expr = \t -> t['E.DS.R8.B1'].alfa11 - eir8b1.alfa11, kind='alfa', name='E.DS.R8.B1' },
+        { expr = \t -> t['E.DS.R8.B1'].alfa22 - eir8b1.alfa22, kind='alfa', name='E.DS.R8.B1' },
+        { expr = \t -> t['E.DS.R8.B1'].dx     - eir8b1.dx    , kind='dx'  , name='E.DS.R8.B1' },
+        { expr = \t -> t['E.DS.R8.B1'].dpx    - eir8b1.dpx   , kind='dpx' , name='E.DS.R8.B1' },
+        { expr = \t -> t['E.DS.R8.B1'].mu1    - muxip8       , kind='mu1' , name='E.DS.R8.B1' },
+        { expr = \t -> t['E.DS.R8.B1'].mu2    - muyip8       , kind='mu2' , name='E.DS.R8.B1' },
+      },
+      objective = {
+        fmin=1e-10, method=method, broyden=true, jstra=jstra
+      },
+      maxcall=1000, info=4, ! debug=2,
+    }
+
+    totcall = totcall+ncall
+    MADX.n, MADX.tar = n, fmin
+    for i,v in ipairs(colnam) do row[i] = MADX[v] end
+    mytbl = mytbl + row
+  end
+  io.write("total calls: ", totcall, '\n')
+  mytbl:write("output/str.ip8.b1.tfs")
+end
+
+LHC_load()
+select_ir8_b1()
+match_ir8_b1()
+
+--[[
+MAD-NG Jacobian: real  0m16.070s (matchmad.out)
+ Constraints                Type        Kind        Weight     Penalty Value
+-----------------------------------------------------------------------------
+ 1: IP8                     equality    beta11      1          1.41220e-13
+ 2: IP8                     equality    beta22      1          1.64313e-14
+ 3: IP8                     equality    alfa11      10         1.74305e-14
+ 4: IP8                     equality    alfa22      10         0.00000e+00
+ 5: IP8                     equality    dx          10         5.46695e-13
+ 6: IP8                     equality    dpx         100        4.02839e-14
+ 7: E.DS.R8.B1              equality    beta11      1          2.91845e-10
+ 8: E.DS.R8.B1              equality    beta22      1          4.90957e-10
+ 9: E.DS.R8.B1              equality    alfa11      10         7.29683e-12
+10: E.DS.R8.B1              equality    alfa22      10         2.17000e-11
+11: E.DS.R8.B1              equality    dx          10         2.39575e-12
+12: E.DS.R8.B1              equality    dpx         100        1.83882e-13
+13: E.DS.R8.B1              equality    mu1         10         6.63025e-13
+14: E.DS.R8.B1              equality    mu2         10         1.27010e-12
+
+ Variables                  Final Value  Init. Value  Lower Limit  Upper Limit
+-------------------------------------------------------------------------------
+ MADX.kq4_l8b1             -3.97471e-03 -4.16054e-03 -8.56571e-03  0.00000e+00
+ MADX.kq5_l8b1              4.74295e-03  5.13257e-03  0.00000e+00  8.56571e-03
+ MADX.kq6_l8b1             -5.40792e-03 -4.96380e-03 -8.56571e-03  0.00000e+00
+ MADX.kq7_l8b1              8.35228e-03  8.10812e-03  0.00000e+00  8.56571e-03
+ MADX.kq8_l8b1             -5.67137e-03 -5.82641e-03 -8.56571e-03  0.00000e+00
+ MADX.kq9_l8b1              7.29896e-03  7.25293e-03  0.00000e+00  8.56571e-03
+ MADX.kq10_l8b1            -5.80198e-03 -5.59677e-03 -8.56571e-03  0.00000e+00
+ MADX.kqtl11_l8b1           4.35469e-04  4.28162e-04  0.00000e+00  5.56771e-03
+ MADX.kqt12_l8b1           -1.64531e-03 -1.60640e-03 -5.56771e-03  0.00000e+00
+ MADX.kqt13_l8b1            5.56444e-03  5.56771e-03  0.00000e+00  5.56771e-03
+ MADX.kq4_r8b1              3.13689e-03  3.06113e-03  0.00000e+00  8.56571e-03
+ MADX.kq5_r8b1             -2.78694e-03 -2.77059e-03 -8.56571e-03  0.00000e+00
+ MADX.kq6_r8b1              4.77164e-03  4.28642e-03  0.00000e+00  8.56571e-03
+ MADX.kq7_r8b1             -6.45198e-03 -6.29593e-03 -8.56571e-03  0.00000e+00
+ MADX.kq8_r8b1              8.26012e-03  8.56051e-03  0.00000e+00  8.56571e-03
+ MADX.kq9_r8b1             -7.83122e-03 -8.08505e-03 -8.56571e-03  0.00000e+00
+ MADX.kq10_r8b1             7.57485e-03  7.63384e-03  0.00000e+00  8.56571e-03
+ MADX.kqtl11_r8b1          -5.56388e-03 -5.56765e-03 -5.56771e-03  0.00000e+00
+ MADX.kqt12_r8b1           -5.74562e-04 -6.57787e-04 -5.56771e-03  0.00000e+00
+ MADX.kqt13_r8b1           -1.98563e-03 -1.97452e-03 -5.56771e-03  0.00000e+00
+
+ ncall=1091+130, fbst=2.1699643e-12, fstp=-2.95770e-10, status=FMIN
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+MAD-NG Jacobian with MAD-X initial values enforced: real  0m2.878s
+
+ Constraints                Type        Kind        Weight     Penalty Value
+-----------------------------------------------------------------------------
+ 1: IP8                     equality    beta11      1          2.39808e-14
+ 2: IP8                     equality    beta22      1          4.48530e-14
+ 3: IP8                     equality    alfa11      10         0.00000e+00
+ 4: IP8                     equality    alfa22      10         0.00000e+00
+ 5: IP8                     equality    dx          10         7.02426e-13
+ 6: IP8                     equality    dpx         100        9.37155e-14
+ 7: E.DS.R8.B1              equality    beta11      1          1.04992e-09
+ 8: E.DS.R8.B1              equality    beta22      1          1.20698e-09
+ 9: E.DS.R8.B1              equality    alfa11      10         8.69038e-12
+10: E.DS.R8.B1              equality    alfa22      10         1.34830e-11
+11: E.DS.R8.B1              equality    dx          10         1.35936e-11
+12: E.DS.R8.B1              equality    dpx         100        6.50461e-13
+13: E.DS.R8.B1              equality    mu1         10         3.15481e-12
+14: E.DS.R8.B1              equality    mu2         10         1.22657e-12
+
+ Variables                  Final Value  Init. Value  Lower Limit  Upper Limit
+-------------------------------------------------------------------------------
+ MADX.kq4_l8b1             -3.99417e-03 -4.18771e-03 -8.56571e-03  0.00000e+00
+ MADX.kq5_l8b1              4.74806e-03  5.13846e-03  0.00000e+00  8.56571e-03
+ MADX.kq6_l8b1             -5.41442e-03 -4.97770e-03 -8.56571e-03  0.00000e+00
+ MADX.kq7_l8b1              8.35865e-03  8.11522e-03  0.00000e+00  8.56571e-03
+ MADX.kq8_l8b1             -5.62913e-03 -5.79118e-03 -8.56571e-03  0.00000e+00
+ MADX.kq9_l8b1              7.30018e-03  7.25300e-03  0.00000e+00  8.56571e-03
+ MADX.kq10_l8b1            -5.80675e-03 -5.59175e-03 -8.56571e-03  0.00000e+00
+ MADX.kqtl11_l8b1           4.41994e-04  4.29447e-04  0.00000e+00  5.56771e-03
+ MADX.kqt12_l8b1           -1.57881e-03 -1.53913e-03 -5.56771e-03  0.00000e+00
+ MADX.kqt13_l8b1            5.56050e-03  5.56725e-03  0.00000e+00  5.56771e-03
+ MADX.kq4_r8b1              3.13748e-03  3.06154e-03  0.00000e+00  8.56571e-03
+ MADX.kq5_r8b1             -2.78433e-03 -2.76583e-03 -8.56571e-03  0.00000e+00
+ MADX.kq6_r8b1              4.76828e-03  4.28391e-03  0.00000e+00  8.56571e-03
+ MADX.kq7_r8b1             -6.45052e-03 -6.29405e-03 -8.56571e-03  0.00000e+00
+ MADX.kq8_r8b1              8.25538e-03  8.55630e-03  0.00000e+00  8.56571e-03
+ MADX.kq9_r8b1             -7.83327e-03 -8.08851e-03 -8.56571e-03  0.00000e+00
+ MADX.kq10_r8b1             7.57529e-03  7.63425e-03  0.00000e+00  8.56571e-03
+ MADX.kqtl11_r8b1          -5.56363e-03 -5.56633e-03 -5.56771e-03  0.00000e+00
+ MADX.kqt12_r8b1           -5.90445e-04 -6.74508e-04 -5.56771e-03  0.00000e+00
+ MADX.kqt13_r8b1           -1.93650e-03 -1.92489e-03 -5.56771e-03  0.00000e+00
+
+ ncall=43+130, fbst=5.6873270e-12, fstp=-5.28797e-10, status=FMIN_REACHED
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+MAD-NG LMDIF: real  1m10.007s
+ Constraints                Type        Kind        Weight     Penalty Value
+-----------------------------------------------------------------------------
+ 1: IP8                     equality    beta11      1          1.66908e-10
+ 2: IP8                     equality    beta22      1          1.40593e-10
+ 3: IP8                     equality    alfa11      10         1.51612e-11
+ 4: IP8                     equality    alfa22      10         2.01202e-11
+ 5: IP8                     equality    dx          10         5.40204e-11
+ 6: IP8                     equality    dpx         100        1.81851e-12
+ 7: E.DS.R8.B1              equality    beta11      1          3.46879e-09
+ 8: E.DS.R8.B1              equality    beta22      1          3.50838e-09
+ 9: E.DS.R8.B1              equality    alfa11      10         9.25982e-12
+10: E.DS.R8.B1              equality    alfa22      10         1.32130e-11
+11: E.DS.R8.B1              equality    dx          10         7.77202e-10
+12: E.DS.R8.B1              equality    dpx         100        2.19954e-11
+13: E.DS.R8.B1              equality    mu1         10         9.63407e-12
+14: E.DS.R8.B1              equality    mu2         10         4.05143e-12
+
+ Variables                  Final Value  Init. Value  Lower Limit  Upper Limit
+-------------------------------------------------------------------------------
+ MADX.kq4_l8b1             -4.18343e-03 -4.28949e-03 -8.56571e-03  0.00000e+00
+ MADX.kq5_l8b1              4.78213e-03  5.15477e-03  0.00000e+00  8.56571e-03
+ MADX.kq6_l8b1             -5.46885e-03 -5.03567e-03 -8.56571e-03  0.00000e+00
+ MADX.kq7_l8b1              8.43093e-03  8.14033e-03  0.00000e+00  8.56571e-03
+ MADX.kq8_l8b1             -5.18638e-03 -5.64151e-03 -8.56571e-03  0.00000e+00
+ MADX.kq9_l8b1              7.30996e-03  7.32316e-03  0.00000e+00  8.56571e-03
+ MADX.kq10_l8b1            -5.97197e-03 -5.72080e-03 -8.56571e-03  0.00000e+00
+ MADX.kqtl11_l8b1           6.14537e-04  6.32065e-04  0.00000e+00  5.56771e-03
+ MADX.kqt12_l8b1           -2.57171e-03 -2.73111e-03 -5.56771e-03  0.00000e+00
+ MADX.kqt13_l8b1            5.56771e-03  5.56771e-03  0.00000e+00  5.56771e-03
+ MADX.kq4_r8b1              3.15630e-03  3.75327e-03  0.00000e+00  8.56571e-03
+ MADX.kq5_r8b1             -2.98708e-03 -3.40807e-03 -8.56571e-03  0.00000e+00
+ MADX.kq6_r8b1              4.78643e-03  4.15391e-03  0.00000e+00  8.56571e-03
+ MADX.kq7_r8b1             -6.38696e-03 -6.20999e-03 -8.56571e-03  0.00000e+00
+ MADX.kq8_r8b1              8.26543e-03  7.21841e-03  0.00000e+00  8.56571e-03
+ MADX.kq9_r8b1             -7.56268e-03 -7.65165e-03 -8.56571e-03  0.00000e+00
+ MADX.kq10_r8b1             7.51272e-03  7.54642e-03  0.00000e+00  8.56571e-03
+ MADX.kqtl11_r8b1          -4.51231e-03 -4.70321e-03 -5.56771e-03  0.00000e+00
+ MADX.kqt12_r8b1           -7.40559e-04 -1.67572e-03 -5.56771e-03  0.00000e+00
+ MADX.kqt13_r8b1           -3.11312e-03 -3.34044e-03 -5.56771e-03  0.00000e+00
+
+ ncall=4747+705, fbst=3.3414797e-11, fstp=-2.45027e-10, status=FMIN_REACHED
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+MAD-NG LMDIF with MAD-X initial values enforced: real 0m18.036s
+
+ Constraints                Type        Kind        Weight     Penalty Value
+-----------------------------------------------------------------------------
+ 1: IP8                     equality    beta11      1          4.75960e-09
+ 2: IP8                     equality    beta22      1          2.72417e-10 *
+ 3: IP8                     equality    alfa11      10         5.04489e-10
+ 4: IP8                     equality    alfa22      10         1.53716e-10 *
+ 5: IP8                     equality    dx          10         1.28757e-09 *
+ 6: IP8                     equality    dpx         100        5.60137e-11 *
+ 7: E.DS.R8.B1              equality    beta11      1          3.26081e-09
+ 8: E.DS.R8.B1              equality    beta22      1          2.06080e-09 *
+ 9: E.DS.R8.B1              equality    alfa11      10         1.31143e-10
+10: E.DS.R8.B1              equality    alfa22      10         4.11604e-11 *
+11: E.DS.R8.B1              equality    dx          10         9.41289e-09 *
+12: E.DS.R8.B1              equality    dpx         100        2.58905e-10 *
+13: E.DS.R8.B1              equality    mu1         10         1.94400e-11
+14: E.DS.R8.B1              equality    mu2         10         2.50695e-10 *
+
+ Variables                  Final Value  Init. Value  Lower Limit  Upper Limit
+-------------------------------------------------------------------------------
+ MADX.kq4_l8b1             -3.96898e-03 -4.18771e-03 -8.56571e-03  0.00000e+00
+ MADX.kq5_l8b1              4.74264e-03  5.13846e-03  0.00000e+00  8.56571e-03
+ MADX.kq6_l8b1             -5.40513e-03 -4.97770e-03 -8.56571e-03  0.00000e+00
+ MADX.kq7_l8b1              8.34940e-03  8.11522e-03  0.00000e+00  8.56571e-03
+ MADX.kq8_l8b1             -5.68504e-03 -5.79118e-03 -8.56571e-03  0.00000e+00
+ MADX.kq9_l8b1              7.29908e-03  7.25301e-03  0.00000e+00  8.56571e-03
+ MADX.kq10_l8b1            -5.79295e-03 -5.59176e-03 -8.56571e-03  0.00000e+00
+ MADX.kqtl11_l8b1           4.27327e-04  4.29448e-04  0.00000e+00  5.56771e-03
+ MADX.kqt12_l8b1           -1.57593e-03 -1.53914e-03 -5.56771e-03  0.00000e+00
+ MADX.kqt13_l8b1            5.56771e-03  5.56724e-03  0.00000e+00  5.56771e-03
+ MADX.kq4_r8b1              3.14317e-03  3.06155e-03  0.00000e+00  8.56571e-03
+ MADX.kq5_r8b1             -2.80676e-03 -2.76584e-03 -8.56571e-03  0.00000e+00
+ MADX.kq6_r8b1              4.76983e-03  4.28391e-03  0.00000e+00  8.56571e-03
+ MADX.kq7_r8b1             -6.46726e-03 -6.29405e-03 -8.56571e-03  0.00000e+00
+ MADX.kq8_r8b1              8.25748e-03  8.55628e-03  0.00000e+00  8.56571e-03
+ MADX.kq9_r8b1             -7.81271e-03 -8.08850e-03 -8.56571e-03  0.00000e+00
+ MADX.kq10_r8b1             7.57355e-03  7.63424e-03  0.00000e+00  8.56571e-03
+ MADX.kqtl11_r8b1          -5.54218e-03 -5.56632e-03 -5.56771e-03  0.00000e+00
+ MADX.kqt12_r8b1           -5.82854e-04 -6.74507e-04 -5.56771e-03  0.00000e+00
+ MADX.kqt13_r8b1           -1.92668e-03 -1.92489e-03 -5.56771e-03  0.00000e+00
+
+ ncall=463+833, fbst=3.4859793e-10, fstp=-2.36464e-16, status=ROUNDOFF_LIMITED
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+MAD-X results: real 0m14.559s
+ncall              =                665 ;
+Final Penalty Function =   8.20532498e-25
+++++++++++ JACOBIAN ended: converged successfully
+
+Variable                 Final Value  Initial Value Lower Limit  Upper Limit
+--------------------------------------------------------------------------------
+kq4.l8b1                 -3.99544e-03 -4.18771e-03 -8.56571e-03  8.56571e-03
+kq5.l8b1                  4.73765e-03  5.13846e-03 -8.56571e-03  8.56571e-03
+kq6.l8b1                 -5.41888e-03 -4.97770e-03 -8.56571e-03  8.56571e-03
+kq7.l8b1                  8.37014e-03  8.11522e-03 -8.56571e-03  8.56571e-03
+kq8.l8b1                 -5.61910e-03 -5.79118e-03 -8.56571e-03  8.56571e-03
+kq9.l8b1                  7.27802e-03  7.25303e-03 -8.56571e-03  8.56571e-03
+kq10.l8b1                -5.80311e-03 -5.59176e-03 -8.56571e-03  8.56571e-03
+kqtl11.l8b1               4.31291e-04  4.29513e-04 -5.56771e-03  5.56771e-03
+kqt12.l8b1               -1.57163e-03 -1.53914e-03 -5.56771e-03  5.56771e-03
+kqt13.l8b1                5.39722e-03  5.56720e-03 -5.56771e-03  5.56771e-03
+kq4.r8b1                  3.12667e-03  3.06157e-03 -8.56571e-03  8.56571e-03
+kq5.r8b1                 -2.77858e-03 -2.76586e-03 -8.56571e-03  8.56571e-03
+kq6.r8b1                  4.79049e-03  4.28389e-03 -8.56571e-03  8.56571e-03
+kq7.r8b1                 -6.45440e-03 -6.29405e-03 -8.56571e-03  8.56571e-03
+kq8.r8b1                  8.29707e-03  8.55625e-03 -8.56571e-03  8.56571e-03
+kq9.r8b1                 -7.83835e-03 -8.08849e-03 -8.56571e-03  8.56571e-03
+kq10.r8b1                 7.57525e-03  7.63425e-03 -8.56571e-03  8.56571e-03
+kqtl11.r8b1              -5.55062e-03 -5.56633e-03 -5.56771e-03  5.56771e-03
+kqt12.r8b1               -5.44189e-04 -6.74525e-04 -5.56771e-03  5.56771e-03
+kqt13.r8b1               -1.92560e-03 -1.92490e-03 -5.56771e-03  5.56771e-03
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+MAD-X PTC results: real  0m43.754s
+ncall              =                347 ;
+Final Penalty Function =   1.91197323e+01
+ ++++++++++ JACOBIAN ended: minimum found
+
+Variable                 Final Value  Initial Value Lower Limit  Upper Limit
+--------------------------------------------------------------------------------
+kq4.l8b1                 -3.96216e-03 -4.13755e-03 -8.56571e-03  8.56571e-03
+kq5.l8b1                  4.71024e-03  4.98994e-03 -8.56571e-03  8.56571e-03
+kq6.l8b1                 -5.56054e-03 -5.32911e-03 -8.56571e-03  8.56571e-03
+kq7.l8b1                  8.42626e-03  8.28112e-03 -8.56571e-03  8.56571e-03
+kq8.l8b1                 -5.63937e-03 -5.73919e-03 -8.56571e-03  8.56571e-03
+kq9.l8b1                  7.46952e-03  7.25647e-03 -8.56571e-03  8.56571e-03
+kq10.l8b1                -6.23247e-03 -6.34449e-03 -8.56571e-03  8.56571e-03
+kqtl11.l8b1               6.00613e-04  6.55701e-04 -5.56771e-03  5.56771e-03
+kqt12.l8b1               -3.08883e-03 -3.08538e-03 -5.56771e-03  5.56771e-03
+kqt13.l8b1                3.81700e-03  3.79994e-03 -5.56771e-03  5.56771e-03
+kq4.r8b1                  4.03951e-03  4.23195e-03 -8.56571e-03  8.56571e-03
+kq5.r8b1                 -3.66356e-03 -3.92060e-03 -8.56571e-03  8.56571e-03
+kq6.r8b1                  4.29931e-03  4.16994e-03 -8.56571e-03  8.56571e-03
+kq7.r8b1                 -6.98133e-03 -6.81314e-03 -8.56571e-03  8.56571e-03
+kq8.r8b1                  6.64499e-03  6.77525e-03 -8.56571e-03  8.56571e-03
+kq9.r8b1                 -7.33852e-03 -7.48439e-03 -8.56571e-03  8.56571e-03
+kq10.r8b1                 7.92704e-03  7.75841e-03 -8.56571e-03  8.56571e-03
+kqtl11.r8b1              -4.73818e-03 -4.75306e-03 -5.56771e-03  5.56771e-03
+kqt12.r8b1               -1.76696e-03 -1.75630e-03 -5.56771e-03  5.56771e-03
+kqt13.r8b1               -3.63055e-03 -3.62384e-03 -5.56771e-03  5.56771e-03
+--]]
