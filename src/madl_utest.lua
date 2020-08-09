@@ -65,12 +65,12 @@ M.DISABLE_DEEP_ANALYSIS = false
 -- we need to keep a copy of the script args before it is overriden
 local cmdline_argv = rawget(_G, "arg")
 
-M.FAILURE_PREFIX = 'LuaUnit test FAILURE: ' -- prefix string for failed tests
-M.SUCCESS_PREFIX = 'LuaUnit test SUCCESS: ' -- prefix string for successful tests finished early
+M.FAILURE_PREFIX = 'Unit test FAILURE: ' -- prefix string for failed tests
+M.SUCCESS_PREFIX = 'Unit test SUCCESS: ' -- prefix string for successful tests finished early
 
 
 
-M.USAGE=[[Usage: lua <your_test_suite.lua> [options] [testname1 [testname2] ... ]
+M.USAGE=[[Usage: mad <your_test_suite.mad> [options] [testname1 [testname2] ... ]
 Options:
   -h, --help:             Print this help
   --version:              Print version information
