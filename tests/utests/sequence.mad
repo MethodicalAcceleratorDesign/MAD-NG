@@ -2870,28 +2870,17 @@ function TestSequence:testRemoveMarker()
 end
 
 function TestSequence:testFlags()
-  local clr, set = object.clear_flag, object.set_flag
+  local clr, flgs = object.clear_flag, {}
+  local fbit in MAD.operator
   local seq = getIdxSeq()
-  for i=1,#seq do clr(seq[i],-1);      set(seq[i], i*4 ) end; seq:save_flags()
-  for i=1,#seq do clr(seq[i],-1);      set(seq[i], i*8 ) end; seq:save_flags()
-  for i=1,#seq do clr(seq[i],-1);      set(seq[i], i*16) end; seq:save_flags()
-  for i=1,#seq do clr(seq[i],-1);      set(seq[i], i*32) end
-  for i=1,#seq do assertEquals(seq[i]:get_flag(), i*32) end; seq:restore_flags()
-  for i=1,#seq do assertEquals(seq[i]:get_flag(), i*16) end
-  seq:drop_flags(); seq:restore_flags()
-  for i=1,#seq do assertEquals(seq[i]:get_flag(), i*4 ) end
-end
-
-function TestSequence:testFlagsInvalid()
-  local seq = getIdxSeq()
-  local msg = {
-    "saved flags not found",
-  }
-  assertErrorMsgContains(msg[1], sequence.drop_flags   , seq)
-  assertErrorMsgContains(msg[1], sequence.restore_flags, seq)
-  seq:save_flags(); seq:drop_flags()
-  assertErrorMsgContains(msg[1], sequence.drop_flags   , seq)
-  assertErrorMsgContains(msg[1], sequence.restore_flags, seq)
+  for i=1,#seq do clr(seq[i],-1) seq[i]:set_flag(  fbit(2) ) end flgs[1] = seq:save_flags()
+  for i=1,#seq do clr(seq[i],-1) seq[i]:set_flag(  fbit(3) ) end flgs[2] = seq:save_flags()
+  for i=1,#seq do clr(seq[i],-1) seq[i]:set_flag(  fbit(4) ) end flgs[3] = seq:save_flags()
+  for i=1,#seq do clr(seq[i],-1) seq[i]:set_flag(  fbit(5) ) end
+  for i=1,#seq do assertEquals(  seq[i]:get_flag(),fbit(5) ) end seq:restore_flags(flgs[3])
+  for i=1,#seq do assertEquals(  seq[i]:get_flag(),fbit(4) ) end seq:restore_flags(flgs[2])
+  for i=1,#seq do assertEquals(  seq[i]:get_flag(),fbit(3) ) end seq:restore_flags(flgs[1])
+  for i=1,#seq do assertEquals(  seq[i]:get_flag(),fbit(2) ) end
 end
 
 function TestSequence:testInstallSingleEmpty()
@@ -3339,17 +3328,13 @@ function TestSequence:testShareDiffPosInvalid()
   assertErrorMsgContains(msg[1], sequence.share, seq1, seq2)
 end
 
-function TestSequence:testShareNonUniqueNameInvalid()
+function TestSequence:testShareNonUniqueNameNotShared()
   local seq1 = sequence "seq1" { drift "df" { l=1, at=2 } }
   local seq2 = sequence "seq2" {
     drift "df" { l=1, at=2 },
     drift "df" { l=1, at=3 },
   }
-  local msg  = {
-    "invalid shared element (must be unique)",
-  }
-  assertErrorMsgContains(msg[1], sequence.share, seq1, seq2)
-  assertErrorMsgContains(msg[1], sequence.share, seq2, seq1)
+  assertEquals(seq1:share(seq2), {})
 end
 
 function TestSequence:testDumpseqFileName()
@@ -3400,37 +3385,43 @@ end
 function TestSequence:testUniqueIdentity()
   local df1 = drift    "df1" { at = 1, from = "prev" }
   local df2 = drift    "df2" { at = 1, from = "prev" }
-  local seq = sequence "seq" { df1, df2, df1 }
+  local df3 = drift    "df1" { at = 1, from = "prev" }
+  local seq = sequence "seq" { df1, df2, df1, df3 }
   -- no param : unique identity
   seq:unique()
   assertTrue(seq[2]:is_instanceOf(df1)); assertNotIs(seq[2], df1)
   assertIs  (seq[3], df2)
   assertTrue(seq[4]:is_instanceOf(df1)); assertNotIs(seq[4], df1)
+  assertIs  (seq[5], df3)
 end
 
 function TestSequence:testUniqueName()
   local df11 = drift    "df1" { at = 1, from = "prev" }
   local df12 = drift    "df1" { at = 1, from = "prev" }
   local df2  = drift    "df2" { at = 1, from = "prev" }
-  local seq  = sequence "seq" { df11, df2, df12 }
+  local df3  = drift    "df1" { at = 1, from = "prev" }
+  local seq  = sequence "seq" { df11, df2, df12, df3 }
   -- no param : only unique identity (nothing is done here)
   seq:unique()
   assertIs(seq[2], df11)
   assertIs(seq[3], df2 )
   assertIs(seq[4], df12)
+  assertIs(seq[5], df3 )
 end
 
 function TestSequence:testUniqueString()
   local df11  = drift    "df1" { at = 1, from = "prev" }
   local df12  = drift    "df1" { at = 1, from = "prev" }
   local df2   = drift    "df2" { at = 1, from = "prev" }
-  local seq   = sequence "seq" { df11, df2, df11, df12 }
+  local df3   = drift    "df1" { at = 1, from = "prev" }
+  local seq   = sequence "seq" { df11, df2, df11, df12, df3 }
   local names = {
     "$start",
     "df1 cnt:1 idx:2",
     "df2",
     "df1 cnt:2 idx:4",
     "df1 cnt:3 idx:5",
+    "df1 cnt:4 idx:6",
     "$end",
   }
   seq:unique("%s cnt:%d idx:%d")
@@ -3438,6 +3429,7 @@ function TestSequence:testUniqueString()
   assertIs  (seq[3], df2 )
   assertTrue(seq[4]:is_instanceOf(df11)); assertNotIs(seq[4], df11)
   assertIs  (seq[5], df12)
+  assertIs  (seq[6], df3 )
   for i=1,#seq do assertEquals(seq[i].name, names[i]) end
 end
 
@@ -3445,13 +3437,15 @@ function TestSequence:testUniqueFunc()
   local df11  = drift    "df1" { at = 1, from = "prev" }
   local df12  = drift    "df1" { at = 1, from = "prev" }
   local df2   = drift    "df2" { at = 1, from = "prev" }
-  local seq   = sequence "seq" { df11, df2, df11, df12 }
+  local df3   = drift    "df1" { at = 1, from = "prev" }
+  local seq   = sequence "seq" { df11, df2, df11, df12, df3 }
   local names = {
     "$start",
     "df1 cnt:1 idx:2",
     "df2",
     "df1 cnt:2 idx:4",
     "df1 cnt:3 idx:5",
+    "df1 cnt:4 idx:6",
     "$end",
   }
   seq:unique(\name,cnt,idx -> name.." cnt:"..cnt.." idx:"..idx)
@@ -3459,13 +3453,15 @@ function TestSequence:testUniqueFunc()
   assertIs  (seq[3], df2 )
   assertTrue(seq[4]:is_instanceOf(df11)); assertNotIs(seq[4], df11)
   assertIs  (seq[5], df12)
+  assertIs  (seq[6], df3 )
   for i=1,#seq do assertEquals(seq[i].name, names[i]) end
 end
 
 function TestSequence:testUniqueInvalid()
   local df1 = drift    "df1" { at = 1, from = "prev" }
   local df2 = drift    "df2" { at = 1, from = "prev" }
-  local seq = sequence "seq" { df1, df2, df1 }
+  local df3 = drift    "df1" { at = 1, from = "prev" }
+  local seq = sequence "seq" { df1, df2, df1, df3 }
   local msg = {
     "cannot rename uniquely element 'df1' (already in use)",
     "cannot rename uniquely element 'df3' (already in use)",
@@ -3650,7 +3646,7 @@ function TestSequence:testSetUnsetReadOnly()
   assertEquals(seq.test, 42)
 end
 
-function TestSequence:testUpdateSimpleSeq()
+function TestSequence:testMoveSimpleSeq()
   local seq = sequence "seq" { refer = "entry",
     drift "df" { at = 1, l = 1 },
     drift "df" { at = 2, l = 1 },
@@ -3658,7 +3654,7 @@ function TestSequence:testUpdateSimpleSeq()
   }
   for i=2,4 do seq[i].l = 0.5 end
   for i=2,4 do assertEquals(seq:spos(i)+seq:ds(i), i)     end
-  seq:update({0.01,seq.l-0.01})
+  seq:move{0.01,seq.l-0.01}
   for i=2,4 do assertEquals(seq:spos(i)+seq:ds(i), i-0.5) end
 end
 
