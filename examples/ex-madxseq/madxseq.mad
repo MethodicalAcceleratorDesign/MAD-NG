@@ -1,0 +1,68 @@
+-- ./mad madxseq.mad
+-- assume mad_seq.seq in current directory for mode = 'madxload'
+-- example built from Rogelio's MAD-X example, see madxseq.madx
+
+local mode = 'madng' | 'madxenv' | 'madxload'
+
+local seq -- forward declaration
+local pfx
+
+if mode == 'madng' then                   -- Manual conversion
+  local sequence, multipole in MAD.element
+  local sin, pi in math
+
+  local circum=60
+  local lcell=20
+  local f=lcell/sin(pi/4)/4
+  local k=1/f
+  local qf  = multipole 'QF' { knl := {0,  k} }
+  local qd  = multipole 'QD' { knl := {0, -k} }
+  seq = sequence 'seq' { refer='centre', l=circum, -- assign to seq in scope!
+      qf { at = 0 },
+      qd { at = 0.5 * lcell },
+      qf { at = 1.0 * lcell },
+      qd { at = 1.5 * lcell },
+      qf { at = 2.0 * lcell },
+      qd { at = 2.5 * lcell },
+    }
+  pfx = 'm'
+
+elseif mode == 'madxenv' then             -- Manual conversion using MADX env
+  MADX:open_env()
+
+  circum=60
+  lcell=20
+  f=lcell/sin(pi/4)/4
+  k=1.0/f
+  qf = multipole 'QF' { knl := {0,  k} }
+  qd = multipole 'QD' { knl := {0, -k} }
+  seq = sequence 'seq' { refer=centre, l=circum, -- assign to seq in scope!
+    qf { at = 0 },
+    qd { at = 0.5 * lcell },
+    qf { at = 1.0 * lcell },
+    qd { at = 1.5 * lcell },
+    qf { at = 2.0 * lcell },
+    qd { at = 2.5 * lcell },
+  }
+
+  MADX:close_env()
+  pfx = 'e'
+
+elseif mode == 'madxload' then            -- Automatic conversion using MADX env
+  MADX:load("fodo.seq", "fodo.mad")       -- convert on need
+  seq = MADX.seq
+  pfx = 'x'
+
+else error "invalid mode, 'madng' | 'madxenv' | 'madxload' expected"
+end
+
+seq:dumpseq() -- dump element position on the terminal
+
+local beam, twiss in MAD
+seq.beam = beam
+
+local cols = {'name', 's', 'beta11', 'beta22', 'mu1', 'mu2', 'alfa11', 'alfa22'}
+local mtbl = twiss {sequence=seq, method=4, cofind=true, chrom=true}
+
+mtbl:write(pfx.."_twiss.tfs", cols)
+
