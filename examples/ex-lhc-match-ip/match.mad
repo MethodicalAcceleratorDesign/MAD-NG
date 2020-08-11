@@ -1,40 +1,14 @@
--- time ../../mad -jp=vl testmatch.mad > matchmad.out 2>&1
+-- time ../mad -jp=vl match.mad > match.out 2>&1             6.5 sec
 
-local jstra  = 1
-local method = 'LD_JACOBIAN'
-local use_madx_ini = false
-
---[[ Runs as a function of strategy
-JACOBIAN
-$ time ../../mad -jp=vl testmatch.mad > matchmad1_0b.out 2>&1
-real  0m15.699s
-user  0m15.535s
-sys 0m0.117s
-
-$ time ../../mad -jp=vl testmatch.mad > matchmad1_1b.out 2>&1
-real  0m10.015s
-user  0m9.885s
-sys 0m0.098s
-
-$ time ../../mad -jp=vl testmatch.mad > matchmad1_2b.out 2>&1
-real  0m9.694s
-user  0m9.561s
-sys 0m0.098s
-
-$ time ../../mad -jp=vl testmatch.mad > matchmad1_3b.out 2>&1
-real  0m21.824s
-user  0m21.630s
-sys 0m0.133s
---]]
+local doplot = false ! false | true | 'pdf'
 
 ----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
 --  PLOT Utility
 ----|----1----|----2----|----3----|----4----|----5----|----6----|----7----|---8;
 
-local doplot = false
-local dopdf  = false
-
-if doplot and not dopdf then MAD.utility.atexit(MAD.utility.pause, true) end
+local assertf, atexit, pause in  MAD.utility
+if doplot == true then atexit(pause, true) end
+local dopdf = doplot == 'pdf' ; doplot = not not doplot
 
 local function plottw (mflw, x1y2_, dir_)
   if not doplot then return end
@@ -50,7 +24,7 @@ local function plottw (mflw, x1y2_, dir_)
              x1y2 = { s= x1y2_ or {'mu1','mu2'} },
 
              styles = 'lines',
-             output = 'plot.pdf',
+             output = dopdf and 'madplot.pdf' or nil,
              prolog = "set multiplot",
            }
 end
@@ -63,22 +37,24 @@ local function LHC_load ()
   local is_sequence in MAD.typeid
 
   if not is_sequence(MADX:var_raw'lhcb1') then -- avoid MAD-X warning
-    MADX:load('input/V6.5.uvar.mad') -- must be updated after conversion
+    MADX:load('input/V6.5_unset_vars.mad') -- manual update after conversion
     MADX:load('input/V6.5.seq'     , 'input/V6.5.mad'     ) -- convert on need
-    MADX:load('input/V6.5.coll.str', 'input/V6.5.coll.mad')
+    MADX:load('input/V6.5.coll.str', 'input/V6.5.coll.mad') -- ditto
 
     local lhcb1, lhcb2 in MADX
 
     -- sanity checks
-    assert(#lhcb1 == 6641, "invalid number of elements in LHCB1 (6641 expected)")
-    assert(#lhcb2 == 6641, "invalid number of elements in LHCB2 (6641 expected)")
+    local n1, n2 = #lhcb1, #lhcb2
+    assertf(n1 == 6641, "invalid number of elements %d in LHCB1 (6641 expected)", n1)
+    assertf(n2 == 6641, "invalid number of elements %d in LHCB2 (6641 expected)", n2)
 
     -- attach beam
     local beam in MAD
     lhcb1.beam = beam { particle='proton', energy=7000 }
-    lhcb2.beam = beam { particle='proton', energy=7000 }
+    lhcb2.beam = lhcb1.beam
 
     -- set sequence direction
+    lhcb1.dir =  1
     lhcb2.dir = -1
   end
 end
@@ -90,17 +66,17 @@ end
 local mybeta0 = {}
 
 local function select_ir8_b1 ()
-  local lhcb1 in MADX
-  local track, twiss, sequence                              in MAD
-  local map2bet                                             in MAD.gphys
-  local observed                                            in MAD.element.flags
+  local lhcb1                    in MADX
+  local track, twiss, sequence   in MAD
+  local map2bet                  in MAD.gphys
+  local observed                 in MAD.element.flags
 
   local obspts = {"S.CELL.78.B1", "E.CELL.81.B1",
                   "S.DS.L8.B1"  , "E.DS.L8.B1"  ,
                   "E.DS.R8.B1"  , "IP8"}
   for _,e in ipairs(obspts) do lhcb1[e]:select(observed) end
 
-  local mytwiss = twiss { sequence=lhcb1, cofind=true, method=4, mapsave=true,
+  local mytwiss = twiss { sequence=lhcb1, cofind=true, method=4, savemap=true,
                           observe=doplot and 0 or 1, save=doplot and 'atbody' or nil,
                           implicit=doplot, nslice=doplot and 5 or 1, exec=false }
   --
@@ -200,7 +176,7 @@ local function match_ir8_b1 ()
   print('**eir8b1**') show(eir8b1)
 
   local mytwiss = twiss { sequence=lhcb1, method=4, X0=bir8b1,
-                          observe=1, save='atbody', mapsave=true, exec=false }
+                          observe=1, save='atbody', exec=false }
 
   local mytbl = mtable 'str.ip8.b1' {
     'n','kq4_l8b1','kq5_l8b1','kq6_l8b1','kq7_l8b1','kq8_l8b1','kq9_l8b1',
@@ -212,29 +188,6 @@ local function match_ir8_b1 ()
   MADX.n, MADX.tar = 0, 0
   for i,v in ipairs(colnam) do row[i] = MADX[v] end
   mytbl = mytbl + row
-
-  if use_madx_ini then -- MADX initial matching values
-    MADX.kq4_l8b1    = -4.18771e-03 ! -4.31524e-03
-    MADX.kq5_l8b1    =  5.13846e-03 !  5.28621e-03
-    MADX.kq6_l8b1    = -4.97770e-03 ! -5.10286e-03
-    MADX.kq7_l8b1    =  8.11522e-03 !  8.25168e-03
-    MADX.kq8_l8b1    = -5.79118e-03 ! -5.85528e-03
-    MADX.kq9_l8b1    =  7.25303e-03 !  7.07113e-03
-    MADX.kq10_l8b1   = -5.59176e-03 ! -6.39311e-03
-    MADX.kqtl11_l8b1 =  4.29513e-04 !  7.07398e-04
-    MADX.kqt12_l8b1  = -1.53914e-03 ! -3.08650e-03
-    MADX.kqt13_l8b1  =  5.56720e-03 !  3.78543e-03
-    MADX.kq4_r8b1    =  3.06157e-03 !  4.39728e-03
-    MADX.kq5_r8b1    = -2.76586e-03 ! -4.21383e-03
-    MADX.kq6_r8b1    =  4.28389e-03 !  4.05914e-03
-    MADX.kq7_r8b1    = -6.29405e-03 ! -6.65981e-03
-    MADX.kq8_r8b1    =  8.55625e-03 !  6.92571e-03
-    MADX.kq9_r8b1    = -8.08849e-03 ! -7.46154e-03
-    MADX.kq10_r8b1   =  7.63425e-03 !  7.55573e-03
-    MADX.kqtl11_r8b1 = -5.56633e-03 ! -4.78966e-03
-    MADX.kqt12_r8b1  = -6.74525e-04 ! -1.74210e-03
-    MADX.kqt13_r8b1  = -1.92490e-03 ! -3.61438e-03
-  end
 
   local mchklost in MAD.gphys
   local totcall = 0
@@ -283,9 +236,9 @@ local function match_ir8_b1 ()
         { expr = \t -> t['E.DS.R8.B1'].mu2    - muyip8       , kind='mu2' , name='E.DS.R8.B1' },
       },
       objective = {
-        fmin=1e-10, method=method, broyden=true, jstra=jstra
+        fmin=1e-10, broyden=true
       },
-      maxcall=1000, info=4, ! debug=2,
+      maxcall=1000, info=2, ! debug=2,
     }
 
     totcall = totcall+ncall
