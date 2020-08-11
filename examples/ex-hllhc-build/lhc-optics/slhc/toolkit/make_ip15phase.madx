@@ -1,0 +1,137 @@
+! Usage
+!  mux_ip15=31.5; !31.0996151227458
+!  muy_ip15=29.5; !29.9471198309731
+! call,file=make_ip15phase.madx;
+! exec,check_ip(b1);
+! mux_ip15=31.1; muy_ip15=29.9;
+! mux_ip15=31.2; muy_ip15=29.8;
+! mux_ip15=31.3; muy_ip15=29.7;
+! mux_ip15=31.0; muy_ip15=30.0;
+! mux_ip15=30.9; muy_ip15=30.1;
+! mux_ip15=30.8; muy_ip15=30.2;
+! mux_ip15=30.9; muy_ip15=30.2;
+! mux_ip15=31.2; muy_ip15=30.2;
+! mux_ip15=31.2; muy_ip15=29.7; relax_match15=0;
+
+
+
+weakdeltaphasearc(BIM): macro = {
+	exec,phasearc(2,3,23,BIM);
+	exec,phasearc(3,4,34,BIM);
+	exec,phasearc(6,7,67,BIM);
+	exec,phasearc(7,8,78,BIM);
+	dmux15=mux23BIM+mux34BIM;
+	dmuy15=muy23BIM+muy34BIM;
+	dmux51=mux67BIM+mux78BIM;
+	dmuy51=muy67BIM+muy78BIM;
+};
+
+mkdelta_ip15(BIM,tmux,tmuy): macro = {
+	exec,weakdeltaphasearc(BIM);
+	dmuxtotaux15=dmux15; dmuytotaux15=dmuy15;
+	dmuxtotaux51=dmux51; dmuytotaux51=dmuy51;
+	match,use_macro;
+	vary, name=kqf.a34;
+	vary, name=kqf.a78;
+	vary, name=kqd.a34;
+	vary, name=kqd.a78;
+	vary, name=kqf.a23;
+	vary, name=kqf.a67;
+	vary, name=kqd.a23;
+	vary, name=kqd.a67;
+	use_macro,name=weakdeltaphasearc(BIM);
+	constraint,expr=  dmux15=dmuxtotaux15+tmux;
+	constraint,expr=  dmuy15=dmuytotaux15+tmuy;
+	constraint,expr=  dmux51=dmuxtotaux51-tmux;
+	constraint,expr=  dmuy51=dmuytotaux51-tmuy;
+	jacobian,calls=10,tolerance=1.0e-19;
+	endmatch;
+	!kqf.a23=kqf.a23; kqf.a34=kqf.a34; kqf.a67=kqf.a67; kqf.a78=kqf.a78;
+	!kqd.a23=kqd.a23; kqd.a34=kqd.a34; kqd.a67=kqd.a67; kqd.a78=kqd.a78;
+};
+
+
+
+
+
+if (mylhcbeam==1){
+	exec,check_ip(b1);
+	dphix15=table(twiss,IP1,mux)-table(twiss,IP5,mux);
+	dphiy15=table(twiss,IP1,muy)-table(twiss,IP5,muy);
+	if (dphix15<0){ dphix15=dphix15+refqxb1;};
+	if (dphiy15<0){ dphiy15=dphiy15+refqyb1;};
+	value,dphix15,dphiy15;
+	dphix15= dphix15-mux_ip15;
+	dphiy15= dphiy15-muy_ip15;
+	value,dphix15,dphiy15;
+	exec,mkdelta_ip15(b1,dphix15,dphiy15);
+
+	! select all insertion
+	jac_calls=15;
+	jac_tol=1e-20;
+	exec,select(7,67,78,b1);
+	exec,select(3,23,34,b1);
+	scxir1=betx_IP1/betx0_IP1; scyir1=bety_IP1/bety0_IP1;
+	scxir5=betx_IP5/betx0_IP5; scyir5=bety_IP5/bety0_IP5;
+	value,scxir1,scyir1,scxir5,scyir5;
+	exec,selectIRAUX(7,8,1,2,3,b1,scxir1,scyir1,betx0_IP1,bety0_IP1);
+	exec,selectIRAUX(3,4,5,6,7,b1,scxir5,scyir5,betx0_IP5,bety0_IP5);
+
+
+	! rematch all insertion
+	relax_match15=0;
+	call,file="slhc/toolkit/rematch_ir234678_b1.madx";
+	value,tarir2b1,tarir3b1,tarir4b1,tarir6b1,tarir7b1,tarir8b1;
+	value,relax_match15;
+	while (tarir3b1+tarir7b1+tarir4b1+tarir6b1+tarir2b1+tarir8b1>1e-10){
+		if (relax_match15>=3){
+	    	print, text="Error in rematching phase change";
+	    	tarir2b1=0; tarir3b1=0; tarir4b1=0; tarir6b1=0; tarir7b1=0; tarir8b1=0;
+	    	exit;
+		};
+		if (relax_match15<3){
+	    	relax_match15=relax_match15+1;
+	    	call,file="slhc/toolkit/rematch_ir234678_b1.madx";
+	    };
+	};
+};
+if (mylhcbeam==2){
+	exec,check_ip(b2);
+	dphix15=table(twiss,IP1,mux)-table(twiss,IP5,mux);
+	dphiy15=table(twiss,IP1,muy)-table(twiss,IP5,muy);
+	if (dphix15<0){ dphix15=dphix15+refqxb2;};
+	if (dphiy15<0){ dphiy15=dphiy15+refqyb2;};
+	value,dphix15,dphiy15;
+	dphix15= dphix15-mux_ip15;
+	dphiy15= dphiy15-muy_ip15;
+	value,dphix15,dphiy15;
+	exec,mkdelta_ip15(b2,dphix15,dphiy15);
+
+	! select all insertion
+	jac_calls=15;
+	jac_tol=1e-20;
+	exec,select(7,67,78,b2);
+	exec,select(3,23,34,b2);
+	scxir1=betx_IP1/betx0_IP1; scyir1=bety_IP1/bety0_IP1;
+	scxir5=betx_IP5/betx0_IP5; scyir5=bety_IP5/bety0_IP5;
+	value,scxir1,scyir1,scxir5,scyir5;
+	exec,selectIRAUX(7,8,1,2,3,b2,scxir1,scyir1,betx0_IP1,bety0_IP1);
+	exec,selectIRAUX(3,4,5,6,7,b2,scxir5,scyir5,betx0_IP5,bety0_IP5);
+
+
+	! rematch all insertion
+	relax_match15=0;
+	call,file="slhc/toolkit/rematch_ir234678_b2.madx";
+	value,relax_match15;
+	while (tarir3b2+tarir7b2+tarir4b2+tarir6b2+tarir2b2+tarir8b2>1e-10){
+		if (relax_match15>=3){
+	    	print, text="Error in rematching phase change";
+	    	tarir2b2=0; tarir3b2=0; tarir4b2=0; tarir6b2=0; tarir7b2=0; tarir8b2=0;
+     		exit;
+	  	};
+		if (relax_match15<3){
+	    	relax_match15=relax_match15+1;
+	    	call,file="slhc/toolkit/rematch_ir234678_b2.madx";
+	    };
+	};
+};

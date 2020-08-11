@@ -1,0 +1,94 @@
+! Usage
+!  mux_ip15=31.5; !31.0996151227458
+!  muy_ip15=29.5; !29.9471198309731
+! call,file=make_ip15phase_b4.madx;
+! exec,check_ip(b2);
+! mux_ip15=31.1; muy_ip15=29.9;
+! mux_ip15=31.2; muy_ip15=29.8;
+! mux_ip15=31.3; muy_ip15=29.7;
+! mux_ip15=31.0; muy_ip15=30.0;
+! mux_ip15=30.9; muy_ip15=30.1;
+! mux_ip15=30.8; muy_ip15=30.2;
+! mux_ip15=30.9; muy_ip15=30.2;
+! mux_ip15=31.2; muy_ip15=30.2;
+! mux_ip15=31.2; muy_ip15=29.7; relax_match15=0;
+
+
+
+weakdeltaphasearc_b4: macro = {
+	exec,phasearc_b4(2,3,23);
+	exec,phasearc_b4(3,4,34);
+	exec,phasearc_b4(6,7,67);
+	exec,phasearc_b4(7,8,78);
+	dmux15=mux23b4+mux34b4;
+	dmuy15=muy23b4+muy34b4;
+	dmux51=mux67b4+mux78b4;
+	dmuy51=muy67b4+muy78b4;
+};
+
+mkdelta_ip15_b4(tmux,tmuy): macro = {
+	exec,weakdeltaphasearc_b4;
+	dmuxtotaux15=dmux15; dmuytotaux15=dmuy15;
+	dmuxtotaux51=dmux51; dmuytotaux51=dmuy51;
+	match,use_macro;
+	vary, name=kqf.a34;
+	vary, name=kqf.a78;
+	vary, name=kqd.a34;
+	vary, name=kqd.a78;
+	vary, name=kqf.a23;
+	vary, name=kqf.a67;
+	vary, name=kqd.a23;
+	vary, name=kqd.a67;
+	use_macro,name=weakdeltaphasearc_b4;
+	constraint,expr=  dmux15=dmuxtotaux15+tmux;
+	constraint,expr=  dmuy15=dmuytotaux15+tmuy;
+	constraint,expr=  dmux51=dmuxtotaux51-tmux;
+	constraint,expr=  dmuy51=dmuytotaux51-tmuy;
+	jacobian,calls=10,tolerance=1.0e-19;
+	endmatch;
+	!kqf.a23=kqf.a23; kqf.a34=kqf.a34; kqf.a67=kqf.a67; kqf.a78=kqf.a78;
+	!kqd.a23=kqd.a23; kqd.a34=kqd.a34; kqd.a67=kqd.a67; kqd.a78=kqd.a78;
+};
+
+
+
+
+
+exec,check_ip(b2);
+dphix15=table(twiss,IP5,mux)-table(twiss,IP1,mux);
+dphiy15=table(twiss,IP5,muy)-table(twiss,IP1,muy);
+if (dphix15<0){ dphix15=dphix15+refqxb2;};
+if (dphiy15<0){ dphiy15=dphiy15+refqyb2;};
+value,dphix15,dphiy15;
+dphix15= dphix15-mux_ip15;
+dphiy15= dphiy15-muy_ip15;
+value,dphix15,dphiy15;
+exec,mkdelta_ip15_b4(dphix15,dphiy15);
+
+! select all insertion
+jac_calls=15;
+jac_tol=1e-20;
+exec,select_b4(7,67,78);
+exec,select_b4(3,23,34);
+scxir1=betx_IP1/betx0_IP1; scyir1=bety_IP1/bety0_IP1;
+scxir5=betx_IP5/betx0_IP5; scyir5=bety_IP5/bety0_IP5;
+value,scxir1,scyir1,scxir5,scyir5;
+exec,selectIRAUX_b4(7,8,1,2,3,scxir1,scyir1,betx0_IP1,bety0_IP1);
+exec,selectIRAUX_b4(3,4,5,6,7,scxir5,scyir5,betx0_IP5,bety0_IP5);
+
+
+! rematch all insertion
+relax_match15=0;
+call,file="slhc/toolkit/rematch_ir234678_b4.madx";
+value,relax_match15;
+while (tarir3b4+tarir7b4+tarir4b4+tarir6b4+tarir2b4+tarir8b4>1e-10){
+	if (relax_match15>=3){
+    	print, text="Error in rematching phase change";
+    	tarir2b4=0; tarir3b4=0; tarir4b4=0; tarir6b4=0; tarir7b4=0; tarir8b4=0;
+    	exit;
+	};
+	if (relax_match15<3){
+    	relax_match15=relax_match15+1;
+    	call,file="slhc/toolkit/rematch_ir234678_b4.madx";
+    };
+};

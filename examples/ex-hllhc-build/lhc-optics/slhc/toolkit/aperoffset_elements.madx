@@ -1,0 +1,159 @@
+! Macro to set aperture offset based on mech_sep attribute
+
+
+set_refb(rref,bim): macro={
+ttt=table(survey,iprref,theta); ctt=cos(ttt);stt=sin(ttt);
+xvziprrefbim=-stt; xvxiprrefbim=ctt; ! x directions
+zvziprrefbim= ctt; zvxiprrefbim=stt; ! z directions
+zzziprrefbim=table(survey,iprref,z); ! x position
+xxxiprrefbim=table(survey,iprref,x); ! z position
+posiprref=table(survey,iprref,s);
+};
+
+set_ref(rref): macro={
+xvziprref=.5*(xvziprrefb1+xvziprrefb2);
+xvxiprref=.5*(xvxiprrefb1+xvxiprrefb2);
+zvxiprref=.5*(zvxiprrefb1+zvxiprrefb2);
+zvziprref=.5*(zvziprrefb1+zvziprrefb2);
+xxxiprref=.5*(xxxiprrefb1+xxxiprrefb2);
+zzziprref=.5*(zzziprrefb1+zzziprrefb2);
+};
+
+
+align_elem(rref,eelem): macro={
+!sss=table(survey,eelem,s);
+!value,sss;
+aper1=table(twiss,eelem,aper_1);
+if (aper1<1 && aper1>0){
+   !print,text="rref,eelem";
+   !value,xxxrref,zzzrref,table(survey,eelem,z),table(survey,eelem,x);
+!  ttt=table(survey,rref,theta); ctt=cos(ttt);stt=sin(ttt);
+!!  value,sss,ttt;
+!  xvz=-stt; xvx=ctt; ! x versor directions
+!  zvz=ctt; zvx=stt; ! s versor directions
+!  zzz=table(survey,eelem,z)-table(survey,rref,z);
+!  xxx=table(survey,eelem,x)-table(survey,rref,x);
+!  value,zzz,xxx;
+!  dx_eelem=zzz*xvz+xxx*xvx;
+!  sx_eelem=zzz*zvz+xxx*zvx;
+  zzz=table(survey,eelem,z)-zzzrref;
+  xxx=table(survey,eelem,x)-xxxrref;
+!  value,zzz,xxx;
+!  value,xvz,xvzrref,xvzrrefb1,xvzrrefb2;
+  dx_eelem=zzz*xvzrref+xxx*xvxrref;
+  sx_eelem=zzz*zvzrref+xxx*zvxrref;
+  uoffset=eelem->mech_sep/2;
+  ddx_eelem=uoffset - dx_eelem;
+  printf,text="eelem, u=%g, x=%g, dx=%g, ds=%g",
+         value=uoffset, dx_eelem,ddx_eelem,sx_eelem;
+  !value,uoffset,sx_eelem,dx_eelem,ddx_eelem;
+  !value,ddx_eelem;
+  eelem,aper_offset={ddx_eelem,0};
+}
+};
+
+align_elem_off(rref,eelem,ooff): macro={
+ttt=table(survey,rref,theta); ctt=cos(ttt);stt=sin(ttt);
+xvz=stt; xvx=-ctt; zvz=ctt; zvx=stt; ! x and s directions
+zzz=table(survey,eelem,z)-table(survey,rref,z);
+xxx=table(survey,eelem,x)-table(survey,rref,x);
+dx_eelem=zzz*xvz+xxx*xvx;
+sx_eelem=zzz*zvz+xxx*zvx;
+ddx_eelem=ooff - dx_eelem;
+  printf,text="eelem, u=%g, x=%g, dx=%g, ds=%g",
+         value=ooff, dx_eelem,ddx_eelem,sx_eelem;
+eelem,aper_offset={ddx_eelem,0};
+};
+
+do_elem_idx(ttt,ic,ipn,bim,aaa,bbb): macro = {
+  sss=abs(table(ttt,s,ic)-posipipn);
+  sss1=LHCLENGTH-sss;
+  if (sss1<sss){sss=sss1;};
+  if(sss >= aaa && sss<=bbb){
+    !value,ic,table(ttt,s,ic),sss), posipipn;
+    exec,align_elem(ipipn,tabstring(ttt,name,ic));
+  };
+};
+
+align_slice_off(RREF,EELEM,NSLICE,OOFF): macro={
+  stest=table(survey,EELEM..NSLICE,s);
+  if ( stest > 1e-9 ) {
+    exec,align_elem_off(RREF,EELEM..NSLICE,OOFF);
+  };
+};
+
+align_group_off(RREF,EELEM,OOFF): macro={
+  align_group_n=0;
+  stest=1;
+  exec,align_elem_off(RREF,EELEM,OOFF);
+  while(align_group_n<64 && stest>1e-9){
+    align_group_n=align_group_n+1;
+    exec,align_slice_off(RREF,EELEM,$align_group_n,OOFF);
+  };
+  exec,align_elem_off(RREF,EELEM_mkex,OOFF);
+  exec,align_elem_off(RREF,EELEM_mken,OOFF);
+};
+
+align_mbh(mbn,irn,bim): macro={
+  if (mbh_irirnqmbn >0){
+  exec, align_group_off(MBH.AmbnRirn.bim,MBH.AmbnRirn.bim,mbh_shift);
+  exec, align_group_off(MBH.AmbnLirn.bim,MBH.AmbnLirn.bim,mbh_shift);
+  exec, align_group_off(MBH.BmbnRirn.bim,MBH.BmbnRirn.bim,mbh_shift);
+  exec, align_group_off(MBH.BmbnLirn.bim,MBH.BmbnLirn.bim,mbh_shift);
+  };
+};
+
+
+! calculation of the reference points
+
+option,no_fatal_stop;
+seqedit, sequence=lhcb1;cycle,start=IP1; endedit;
+seqedit, sequence=lhcb2;cycle,start=IP1; endedit;
+
+! find IP reference (for separate IP, average between B1B3 is used)
+use,sequence=lhcb1; survey;
+ic=1;while(ic<=8){exec,set_refb($ic,b1);ic=ic+1;};
+use,sequence=lhcb2; survey;
+ic=1;while(ic<=8){exec,set_refb($ic,b2);ic=ic+1;};
+ic=1;while(ic<=8){exec,set_ref($ic);ic=ic+1;};
+
+
+! calculation of Beam 1 offsets
+
+
+use,sequence=lhcb1;twiss;survey,file="survey_lhcb1.tfs";
+delete,table="mysurveyb1";
+readmytable,table="mysurveyb1",file="survey_lhcb1.tfs";
+
+! Fix due to different signs of mech sep for common elements
+x2zdc.4r2,mech_sep=-0.154;!to be checked
+x2zdc.4l2,mech_sep= 0.154;!to be checked
+
+!TAXN.4R1, mech_sep=(sepTAXNA+sepTAXNB)/2;
+!TAXN.4R5, mech_sep=(sepTAXNA+sepTAXNB)/2;
+!TAXN.4L1, mech_sep=-(sepTAXNA+sepTAXNB)/2;
+!TAXN.4L5, mech_sep=-(sepTAXNA+sepTAXNB)/2;
+
+
+imax=table(mysurveyb1,tablelength);value,imax;
+ic=1;
+while(ic<=imax) {
+   exec, do_elem_idx(mysurveyb1,$ic,1,b1,75,153);
+   exec, do_elem_idx(mysurveyb1,$ic,2,b1,58,130);
+   exec, do_elem_idx(mysurveyb1,$ic,3,b1,155,192);
+   exec, do_elem_idx(mysurveyb1,$ic,4,b1,61,124);
+   exec, do_elem_idx(mysurveyb1,$ic,5,b1,75,153);
+   exec, do_elem_idx(mysurveyb1,$ic,6,b1,155,192);
+   exec, do_elem_idx(mysurveyb1,$ic,7,b1,155,192);
+   exec, do_elem_idx(mysurveyb1,$ic,8,b1,58,130);
+  ic=ic+1;
+};
+
+exec,align_mbh(8,7,b1);
+return;
+
+! to be checked
+exec,align_mbh(8,1,b1); exec,align_mbh(9,1,b1); exec,align_mbh(10,1,b1);
+exec,align_mbh(8,2,b1); exec,align_mbh(10,2,b1);
+exec,align_mbh(8,5,b1); exec,align_mbh(9,5,b1); exec,align_mbh(10,5,b1);
+exec,align_mbh(8,7,b1); exec,align_mbh(10,7,b1);
