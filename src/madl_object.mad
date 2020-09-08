@@ -48,6 +48,12 @@ local object
 -- object kind
 local _id = {} -- unique identifier
 
+-- metamethods
+local MT = {__obj=_id}
+
+-- methods
+local MF = {}
+
 -- object flags (protected)
 local oflg = {
   class    = fbit(31),
@@ -129,8 +135,6 @@ end
 
 -- metamethods ----------------------------------------------------------------o
 
-local MT = {__obj=_id}
-
 -- object model (and variants):
 -- objects are proxies controlling variables access and inheritance
 
@@ -190,45 +194,45 @@ else -- default              -- object model
   end
 end
 
--- object model variants try to optimize lookup of object attributes.
+-- object model (and variants):
+-- objects try to optimize lookup of attributes with precedence for methods.
 
-if cachemethod and cachelookup then -- object model with cached lookup and methods
-  function MT:__index (k)
-    local v = self.__mth[k]         -- methods have the precedence over variables
-    if type(v) == nil
-    then v = self.__var[k] ; self.__var[k] = v
-    else return v end
-    if type(v) == 'function' and type(k) == 'string'
-    then return v(self)
-    else return v end
+local var_get
+
+if cachemethod and cachelookup then -- object model with cached lookup and cached methods
+  function var_get (self, k)
+    local v = self.__mth[k]
+    if v then return v end
+    v = self.__var[k] ; self.__var[k] = v ; return v
   end
 
 elseif cachemethod then             -- object model with lookup and cached methods
-  function MT:__index (k)
-    local v = self.__mth[k]         -- methods have the precedence over variables
-    if type(v) == nil
-    then v = self.__var[k]
-    else return v end
-    if type(v) == 'function' and type(k) == 'string'
-    then return v(self)
-    else return v end
+  function var_get (self, k)
+    return self.__mth[k] or self.__var[k]
   end
 
 elseif cachelookup then             -- object model with cached lookup
-  function MT:__index (k)
-    local v = self.__var[k] ; self.__var[k] = v
-    if type(v) == 'function' and type(k) == 'string'
-    then return v(self)
-    else return v end
+  function var_get (self, k)
+    local v = self.__var[k] ; self.__var[k] = v ; return v
   end
 
 else -- default                     -- object model with lookup
-  function MT:__index (k)
-    local v = self.__var[k]
-    if type(v) == 'function' and type(k) == 'string'
-    then return v(self)
-    else return v end
+  function var_get (self, k)
+    return self.__var[k]
   end
+end
+
+local function var_val (self, k, v) -- evaluate string key with function as value
+  if type(v) == 'function' and type(k) == 'string'
+  then return v(self)
+  else return v end
+end
+
+MF.var_get = var_get
+MF.var_val = var_val
+
+function MT:__index (k)
+  return var_val(self, k, var_get(self, k))
 end
 
 function MT:__newindex (k, v)
@@ -274,43 +278,12 @@ end
 
 -- methods (member functions) -------------------------------------------------o
 
-local MF = {}
-
 function MF:raw_len ()
   return rawlen(self.__var)           -- no inheritance
 end
 
 function MF:raw_get (k)
   return rawget(self.__var,k)         -- no inheritance nor function evaluation
-end
-
-if cachemethod then
-  function MF:mth_raw (k)
-    return self.__mth[k]              -- no function evaluation with inheritance
-  end
-
-else
-  function MF:mth_raw (k)
-    local m = self.__var[k]           -- methods are variables, no separate lookup
-    return is_functor(m) and m or nil
-  end
-end
-
-function MF:var_raw (k)
-  return self.__var[k]                -- no function evaluation with inheritance
-end
-
-function MF:var_val (k, v)            -- string key with value function
-  if type(v) == 'function' and type(k) == 'string'
-  then return v(self)
-  else return v end
-end
-
-function MF:var_get (k)             -- named __index, can return multiple values
-  local v = self.__var[k]
-  if type(v) == 'function' and type(k) == 'string'
-  then return v(self)
-  else return v end
 end
 
 function MF:is_class ()
@@ -337,9 +310,9 @@ function MF:is_instanceOf (c)
   return false
 end
 
-function MF:set_readonly (set_)
+function MF:set_readonly (st_)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  if set_ ~= false
+  if st_ ~= false
   then self.__flg = fset(self.__flg, oflg.readonly)
   else self.__flg = fclr(self.__flg, oflg.readonly)
   end
@@ -350,9 +323,9 @@ local function efinal (self)
   error("invalid object creation ('"..name(self).."' is final)", 2)
 end
 
-function MF:set_final (set_)
+function MF:set_final (st_)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  if set_ ~= false then
+  if st_ ~= false then
     if fclass(self) then
       errorf("cannot set final to '%s' (unexpected class)", name(self))
     end
@@ -364,24 +337,43 @@ function MF:set_final (set_)
   return self
 end
 
-function MF:get_variables (lst, noeval_)
+function MF:get_varkeys (class_)
+  local cls = class_ or self
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_object(cls) , "invalid argument #2 (object expected)")
+  local lst, key = table.new(8,0), table.new(0,8)
+  repeat
+    for k,v in kpairs(self) do
+      if not (key[k] or is_functor(v)) and is_string(k) and string.sub(k,1,2) ~= '__'
+      then lst[#lst+1], key[k] = k, k end
+    end
+    if rawequal(self, cls) then return lst, key end
+    self = parent(self)
+  until is_nil(self)
+  error("invalid argument #2 (parent of argument #1 expected)")
+end
+
+function MF:get_variables (lst, set_, noeval_)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_iterable(lst), "invalid argument #2 (iterable expected)")
+  if is_boolean(set_) and is_nil(noeval_) then
+    noeval_, set_ = set_                   -- right shift
+  end
   local n   = #lst
-  local res = table.new(0,n)
-  local get = noeval_ == true and MF.var_raw or MT.__index
+  local res = set_ or table.new(0,n)
+  local get = noeval_ == true and MF.var_get or MT.__index
   for i=1,n do res[lst[i]] = get(self, lst[i]) end
   return res -- key -> val
 end
 
-function MF:set_variables (tbl, override_) -- default: override = true
+function MF:set_variables (set, override_) -- default: override = true
   assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
+  assert(is_mappable(set), "invalid argument #2 (mappable expected)")
   if freadonly(self) and override_ ~= 'init' then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
   local var = self.__var
-  for k,v in pairs(tbl) do
+  for k,v in pairs(set) do
     assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
             or is_nil(var[k]), "cannot override variable '%s'",k)
     var[k] = v
@@ -392,6 +384,9 @@ end
 function MF:copy_variables (src, lst_, override_) -- default: override = true
   assert(is_object (self), "invalid argument #1 (object expected)")
   assert(is_mappable(src), "invalid argument #2 (mappable expected)")
+  if (is_boolean(lst_) or is_string(lst_)) and is_nil(override_) then
+    override_, lst_ = lst_                   -- right shift
+  end
   if freadonly(self) and override_ ~= 'init' then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
@@ -412,17 +407,19 @@ function MF:copy_variables (src, lst_, override_) -- default: override = true
   return self
 end
 
-function MF:wrap_variables (tbl, override_)
+function MF:wrap_variables (set, override_)
   assert(is_object(self)    , "invalid argument #1 (object expected)")
-  assert(is_mappable(tbl)   , "invalid argument #2 (mappable expected)")
+  assert(is_mappable(set)   , "invalid argument #2 (mappable expected)")
   if freadonly(self) and override_ ~= 'init' then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
   local var = self.__var
-  for k,f in pairs(tbl) do
+  for k,f in pairs(set) do
     local v, newv = var[k]
     assert(not is_nil(v) , "invalid variable (nil value)")
     assert(is_callable(f), "invalid wrapper (callable expected)")
+    assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__'),
+            "cannot override variable '%s'",k)
     if is_callable(v) then newv = f(v) else newv = f(\ v) end -- simplify user's side.
     if is_functor(v) and not is_functor(newv) then
       newv = functor(newv)                   -- newv must maintain v's semantic.
@@ -432,54 +429,40 @@ function MF:wrap_variables (tbl, override_)
   return self
 end
 
-function MF:set_methods (tbl, override_) -- default: override = true
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
+function MF:clear_array ()
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  if fclass(self) and (override_ ~= 'init' or cachemethod) then
-    errorf("cannot set methods to '%s' (unexpected class)", name(self))
+  local var = self.__var
+  for i=1,rawlen(var) do var[i]=nil end
+  return self
+end
+
+function MF:clear_variables ()
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  if freadonly(self) then
+    errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  if cachemethod then -- object model with cached methods
-    local sm, pm = self.__mth, parent(self).__mth -- or MF
-    if sm == pm then sm = copy_methods(self, pm) end
-    for k,m in pairs(tbl) do
-      assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
-      assertf(is_callable(m), "invalid value for key '%s' (callable expected)", k)
-      assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
-              or is_nil(sm[k]), "cannot override method '%s'",k)
-      sm[k] = m
-    end
-  else -- default
-    local var = self.__var
-    for k,m in pairs(tbl) do
-      assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
-      assertf(is_callable(m), "invalid value for key '%s' (callable expected)", k)
-      assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
-              or is_nil(var[k]), "cannot override method '%s'",k)
-      var[k] = is_function(m) and functor(m) or m
+  local var = self.__var
+  for k in kpairs(self) do
+    if type(k) ~= 'string' or string.sub(k,1,2) ~= '__' then
+      var[k]=nil
     end
   end
   return self
 end
 
-function MF:set_metamethods (tbl, override_) -- default: override = false
-  assert(is_object(self) , "invalid argument #1 (object expected)")
-  assert(is_mappable(tbl), "invalid argument #2 (mappable expected)")
+function MF:clear_all ()
+  assert(is_object(self)    , "invalid argument #1 (object expected)")
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  if fclass(self) then
-    errorf("cannot set metamethods to '%s' (unexpected class)", name(self))
-  end
-  local sm, pm = getmetatable(self), getmetatable(parent(self)) -- or MT
-  if sm == pm then sm = copy_metamethods(self, pm) end
-  for k,m in pairs(tbl) do
-    assertf(type(k) == 'string' and string.sub(k,1,2) == '__',
-            "invalid key '%s' (string starting with __ expected)", tostring(k))
-    assertf(override_ == true or is_nil(sm[k]), "cannot override metamethod '%s'",k)
-    sm[k] = m
+  local var = self.__var
+  for k in pairs_iter(self) do -- table.clear destroys all keys
+    if type(k) ~= 'string' or string.sub(k,1,2) ~= '__' then
+      var[k]=nil
+    end
   end
   return self
 end
@@ -491,31 +474,66 @@ function MF:set_parent (newp, override_)
     error("forbidden write access to readonly object '" .. name(self) .. "'", 2)
   end
   local spar = self.parent
-  if getmetatable(newp) ~= getmetatable(spar) then
-    error("new and current parent do not share same metamethods")
-  end
   if newp.parent ~= spar.parent then
     error("new and current parent do not inherit from same direct parent")
+  elseif getmetatable(newp) ~= getmetatable(spar) then
+    error("new and current parent do not share same metamethods")
   end
   self.__index = newp.__var
   set_class(newp)
   return self
 end
 
-function MF:get_varkeys (class_)
-  local cls = class_ or self
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_object(cls) , "invalid argument #2 (object expected)")
-  local lst, key = table.new(8,0), table.new(0,8)
-  repeat
-    for k,v in kpairs(self) do
-      if not (key[k] or is_functor(v)) and is_string(k) and string.sub(k,1,2) ~= '__'
-      then lst[#lst+1], key[k] = k, k end
+function MF:set_methods (set, override_) -- default: override = true
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_mappable(set), "invalid argument #2 (mappable expected)")
+  if freadonly(self) then
+    errorf("forbidden write access to readonly object '%s'", name(self))
+  end
+  if fclass(self) and (override_ ~= 'init' or cachemethod) then
+    errorf("cannot set methods to '%s' (unexpected class)", name(self))
+  end
+  if cachemethod then -- object model with cached methods
+    local sm, pm = self.__mth, parent(self).__mth -- or MF
+    if sm == pm then sm = copy_methods(self, pm) end
+    for k,m in pairs(set) do
+      assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
+      assertf(is_callable(m), "invalid value for key '%s' (callable expected)", k)
+      assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
+              or is_nil(sm[k]), "cannot override method '%s'",k)
+      sm[k] = m
     end
-    if rawequal(self, cls) then return lst, key end
-    self = parent(self)
-  until is_nil(self)
-  error("invalid argument #2 (parent of argument #1 expected)")
+  else -- default
+    local var = self.__var
+    for k,m in pairs(set) do
+      assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
+      assertf(is_callable(m), "invalid value for key '%s' (callable expected)", k)
+      assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
+              or is_nil(var[k]), "cannot override method '%s'",k)
+      var[k] = is_function(m) and functor(m) or m
+    end
+  end
+  return self
+end
+
+function MF:set_metamethods (set, override_) -- default: override = false
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_mappable(set), "invalid argument #2 (mappable expected)")
+  if freadonly(self) then
+    errorf("forbidden write access to readonly object '%s'", name(self))
+  end
+  if fclass(self) then
+    errorf("cannot set metamethods to '%s' (unexpected class)", name(self))
+  end
+  local sm, pm = getmetatable(self), getmetatable(parent(self)) -- or MT
+  if sm == pm then sm = copy_metamethods(self, pm) end
+  for k,m in pairs(set) do
+    assertf(type(k) == 'string' and string.sub(k,1,2) == '__',
+            "invalid key '%s' (string starting with __ expected)", tostring(k))
+    assertf(override_ == true or is_nil(sm[k]), "cannot override metamethod '%s'",k)
+    sm[k] = m
+  end
+  return self
 end
 
 function MF:insert (idx_, val)
@@ -565,44 +583,6 @@ function MF:lsearch (val, equ_, low_, high_)
   return lsearch(self.__var, val, equ_, low_, high_)
 end
 
-function MF:clear_array ()
-  assert(is_object(self)    , "invalid argument #1 (object expected)")
-  if freadonly(self) then
-    errorf("forbidden write access to readonly object '%s'", name(self))
-  end
-  local var = self.__var
-  for i=1,rawlen(var) do var[i]=nil end
-  return self
-end
-
-function MF:clear_variables ()
-  assert(is_object(self)    , "invalid argument #1 (object expected)")
-  if freadonly(self) then
-    errorf("forbidden write access to readonly object '%s'", name(self))
-  end
-  local var = self.__var
-  for k in kpairs(self) do
-    if type(k) ~= 'string' or string.sub(k,1,2) ~= '__' then
-      var[k]=nil
-    end
-  end
-  return self
-end
-
-function MF:clear_all ()
-  assert(is_object(self)    , "invalid argument #1 (object expected)")
-  if freadonly(self) then
-    errorf("forbidden write access to readonly object '%s'", name(self))
-  end
-  local var = self.__var
-  for k in pairs_iter(self) do -- table.clear destroys all keys
-    if type(k) ~= 'string' or string.sub(k,1,2) ~= '__' then
-      var[k]=nil
-    end
-  end
-  return self
-end
-
 -- copy
 
 function MF:same (name_)
@@ -640,51 +620,52 @@ MT.__copy = MF.copy
 
 -- flags
 
-function MF:get_flag ()
+function MF:get_flags ()
   assert(is_object(self), "invalid argument #1 (object expected)")
   return fcut(self.__flg, oflg.protect)
 end
 
-function MF:test_flag (flgs)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_number(flgs), "invalid argument #2 (number expected)")
-  return ftst(self.__flg, fcut(flgs, oflg.protect))
-end
-
-function MF:set_flag (flgs)
+function MF:set_flags (flgs)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(is_number(flgs), "invalid argument #2 (number expected)")
   self.__flg = fset(self.__flg, fcut(flgs, oflg.protect))
   return self
 end
 
-function MF:clear_flag (flgs)
+function MF:clear_flags (flgs)
   assert(is_object(self), "invalid argument #1 (object expected)")
   assert(is_number(flgs), "invalid argument #2 (number expected)")
   self.__flg = fclr(self.__flg, fcut(flgs, oflg.protect))
   return self
 end
 
--- environments
-
-function MF:open_env (ctx_)
+function MF:test_flags (flgs)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_nil(ctx_) or is_function(ctx_) or is_number(ctx_) and ctx_ >= 1,
-                          "invalid argument #2 (not a function or < 1)")
-  ctx_ = is_function(ctx_) and ctx_ or is_number(ctx_) and ctx_+1 or 2
-  assert(is_nil(rawget(self,'__env')), "invalid environment (already open)")
-  rawset(self, '__env', { ctx=ctx_, env=getfenv(ctx_) })
-  rawset(self, self.__id, self) -- self reference
-  setfenv(ctx_, self)
-  return self
+  assert(is_number(flgs), "invalid argument #2 (number expected)")
+  return ftst(self.__flg, fcut(flgs, oflg.protect))
 end
+
+-- environments
 
 function MF:is_open_env ()
   assert(is_object(self), "invalid argument #1 (object expected)")
   return not is_nil(rawget(self,'__env'))
 end
 
-function MF:reset_env () -- if an error occurs while in the environment
+function MF:open_env (ctx_)
+  local ctx = ctx_ or 1
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_function(ctx) or is_number(ctx) and ctx >= 1,
+                   "invalid argument #2 (function or number >= 1 expected)")
+  if is_number(ctx) then ctx = ctx+1 end
+  assert(is_nil(rawget(self,'__env')), "invalid environment (already open)")
+  rawset(self, '__env', { ctx=ctx, env=getfenv(ctx) })
+  rawset(self, self.__id, self) -- self reference
+  setfenv(ctx, self)
+  return self
+end
+
+function MF:close_env () -- if an error occurs while in the environment
   assert(is_object(self), "invalid argument #1 (object expected)")
   local env = rawget(self,'__env')
   if env then
@@ -695,19 +676,13 @@ function MF:reset_env () -- if an error occurs while in the environment
   return self
 end
 
-function MF:close_env ()
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(not is_nil(rawget(self,'__env')), "invalid environment (not open)")
-  return MF.reset_env(self)
-end
-
 function MF:load_env (loader)
   assert(is_object(self), "invalid argument #1 (object expected)")
   if is_string(loader) then loader = assert(loadfile(loader)) end
   assert(is_callable(loader), "invalid argument #2 (filename or callable expected)")
   self:open_env(loader)
   local st, err = pcall(loader)
-  self:reset_env()
+  self:close_env()
   assert(st, err)
   return self
 end
@@ -738,14 +713,14 @@ function MF:dumpobj (filnam_, class_, pattern_)
     class_, pattern_ = nil, class_                   -- right shift
   end
 
-  class_, pattern_ = class_ or object, pattern_ or ''
-  assert(is_object(self)    , "invalid argument #1 (object expected)")
-  assert(is_object(class_)  , "invalid argument #3 (object expected)")
-  assert(is_string(pattern_), "invalid argument #4 (string expected)")
+  local cls, patt = class_ or self, pattern_ or ''
+  assert(is_object(self), "invalid argument #1 (object expected)")
+  assert(is_object(cls) , "invalid argument #3 (object expected)")
+  assert(is_string(patt), "invalid argument #4 (string expected)")
 
   local tostring in MAD
   local n, cnt, res, lst, spc, str = 0, {}, {}, {}, ""
-  while self and not rawequal(self, class_) do
+  repeat
     local var = self.__var
     -- header
     n, str = n+1, " '" .. self.__id .. "'"
@@ -755,7 +730,7 @@ function MF:dumpobj (filnam_, class_, pattern_)
     local nv = 0
     table.clear(lst)
     for k,v in kpairs(self) do  -- collect valid names
-      if is_string(k) and string.sub(k,1,2) ~= '__' and string.find(k,pattern_) then
+      if is_string(k) and string.sub(k,1,2) ~= '__' and string.find(k,patt) then
         lst[nv+1], nv = k, nv+1
       end
     end
@@ -777,9 +752,10 @@ function MF:dumpobj (filnam_, class_, pattern_)
       cnt[k], n = cnt[k]+1, n+1
       res[n] = str
     end
+    if rawequal(self, cls) then break end
     self = parent(self)
-  end
-  assert(rawequal(self, class_), "invalid argument #2 (parent of argument #1 expected)")
+  until is_nil(self)
+  assert(rawequal(self, cls), "invalid argument #2 (parent of argument #1 expected)")
 
   -- return result as a string
   if filnam_ == '-' then return table.concat(res, '\n') end
@@ -803,6 +779,7 @@ MV.parent = parent
 MV.name   = \s -> s.__id
 MF.setvar = MF.set_variables
 MF.getvar = MF.get_variables
+MF.cpyvar = MF.copy_variables
 
 -- env ------------------------------------------------------------------------o
 
