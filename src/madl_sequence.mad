@@ -52,7 +52,7 @@ local string, table, io =
 
 -- backup original methods and metamethods
 local sequence_mt = getmetatable(sequence)
-local var_raw, var_val, raw_get, mth_raw, is_instanceOf in sequence
+local var_get, var_val, raw_get, is_instanceOf in sequence
 local seq_cpy, var_set = sequence.copy, sequence_mt.__newindex
 local readonly = sequence.set_readonly
 
@@ -135,7 +135,7 @@ end
 
 -- check sequence spos and elements overlapp
 local function check_drift (seq, idx)
-  local data, ds = var_raw(seq,_data)
+  local data, ds = var_get(seq,_data)
   assert(idx > 1 and idx < data.ne, "unexpected corrupted element index")
 
   ds = data.spos[idx] - (data.spos[idx-1] + data.ds[idx-1])
@@ -147,7 +147,7 @@ end
 
 -- check shared element
 local function check_shared (seq, idx)
-  local elm = var_raw(seq,_data)[idx]
+  local elm = var_get(seq,_data)[idx]
   if is_nil(raw_get(elm, 'l') or raw_get(elm, 'refpos')) then
     return elm.parent
   end
@@ -156,7 +156,7 @@ end
 
 -- check sequence $start and $stop integrity
 local function check_mark (seq)
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   local n = data.ne
       if not is_instanceOf(data[1], mkstart) then
     error("invalid sequence first element ($start marker expected)", 2)
@@ -167,7 +167,7 @@ end
 
 -- check sequence spos and elements overlapp
 local function check_pos (seq)
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   for i=1,data.ne-1 do
     local ds = data.spos[i+1] - (data.spos[i] + data.ds[i])
     if ds < -minlen then
@@ -195,7 +195,7 @@ end
 
 -- check dictionnary of name -> idx
 local function check_index (seq)
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   local eidx = data.eidx
   local s, e, S, E = eidx['#s'], eidx['#e'], eidx['#S'], eidx['#E']
   assert(is_number(s) and is_number(e) and is_number(S) and is_number(E),
@@ -257,7 +257,7 @@ end
 
 -- canonize index (direct)
 local function index_of_idx (seq, idx)
-  local n = var_raw(seq,_data).ne
+  local n = var_get(seq,_data).ne
   idx = ireflect(idx, n)
   return idx >= 1 and idx <= n and idx or nil
 end
@@ -277,7 +277,7 @@ end
 
 -- get index from name [with absolute count] (direct)
 local function index_of_cnam (seq, nam, cnt)
-  local ei = var_raw(seq,_data).eidx[nam]
+  local ei = var_get(seq,_data).eidx[nam]
   if is_table(ei) then
     return ei[ ireflect(cnt, ei.n) ]
   elseif cnt == 1 or cnt == -1 then
@@ -287,7 +287,7 @@ end
 
 -- get index from name [with relative count] (linear)
 local function index_of_rnam (seq, nam, cnt, ref)
-  local ei = var_raw(seq,_data).eidx[nam]
+  local ei = var_get(seq,_data).eidx[nam]
   if is_nil(ei) then return nil end
   local idx = index_of_ref(seq, ref)
   if is_number(ei) then
@@ -307,7 +307,7 @@ end
 
 -- get index from s-position (binary)
 local function index_of_num (seq, num, ref_, dir_)
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   if ref_ then num = data.upos[index_of_ref(seq,ref_)] + num end
   if num < 0 or num > seq.l then return nil end
   local idx, dir = bsearch(data.spos, num), dir_ or 1 -- num <= spos[idx]
@@ -352,7 +352,7 @@ end
 
 -- get index from element (linear)
 local function index_of_elm (seq, elm, ref_, dir_)
-  local nam, data = elm.__id, var_raw(seq,_data)
+  local nam, data = elm.__id, var_get(seq,_data)
   local ei = data.eidx[nam]
   if is_nil(ei) then return nil end
   local idx = ref_ and index_of_ref(seq, ref_) or 1
@@ -374,7 +374,7 @@ end
 
 -- get [mangled] name from index (linear)
 local function name_of_idx (seq, idx, ref_)
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   idx = index_of_idx(seq, idx)
   if is_nil(idx) then return nil end
   local nam = data[idx].__id
@@ -411,7 +411,7 @@ local elem_pos
 
 -- return user-defined position of 'from'
 local function from_upos (seq, from, idx)
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   if data.last_from ~= from then                     -- memoized?
     local idx, bra = index_of_fnam(seq, from, idx)
     if is_nil(idx) then                              -- not found
@@ -478,7 +478,7 @@ end
 -- set s-positions at index or return element s-positions
 -- already declared for forward use, *must not be local*
 function elem_pos (seq, idx, elm_)
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   local spos = data.spos[idx]
   if is_nil(spos) then
     seq_error("invalid index or reference detected", seq, idx, elm_)
@@ -508,7 +508,7 @@ end
 local function sequ_pos (seq, sseq, idx, dir)
   check_mark(sseq)
   local pos = elem_pos(seq, idx, sseq)    -- shift by subsequence refpos
-  local data, sdata = var_raw(seq,_data), var_raw(sseq,_data)
+  local data, sdata = var_get(seq,_data), var_get(sseq,_data)
 
 !  if seq.dir ~= sseq.dir then -- changedir patch
 !    data.spos[idx] = sdata.spos[1] + pos
@@ -552,7 +552,7 @@ end
 
 -- compute elements positions
 local function build_pos (seq, sref)
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   local n, idx, pos = data.ne, 1, 0
   for i=1,n do
     if data[i].from == 'selected' then
@@ -580,7 +580,7 @@ local function build_pos (seq, sref)
       if pos-minlen > data.spos[idx] then
         seq_poserr('subsequence', seq, idx, pos)
       end
-      local sdata = var_raw(sseq,_data)
+      local sdata = var_get(sseq,_data)
       pos = data.spos[idx] - sdata.spos[1] + sseq.l
       idx = nidx
     end
@@ -600,7 +600,7 @@ end
 -- copy sub sequence
 local function copy_ssequ (seq, flat, sref, idx, dir)
   check_mark(seq)
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   local n = data.ne
 
   sref[idx], sref.sdir[idx] = seq, dir -- link subsequence
@@ -669,7 +669,7 @@ local function flatten_sequ (seq, flat, sref)
     end
   end
   flat[idx] = mkend {at= seq.l~=uninitialized and seq.l or nil}
-                    :set_flag(observed)
+                    :set_flags(observed)
   assert(n <= idx, "unexpected corrupted flat sequence")
 end
 
@@ -698,7 +698,7 @@ end
 -- remove subsequence markers (if any)
 local function clear_sub (seq, sref)
   if is_nil(next(sref.sdir)) then return end
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   local spos, upos, ds, n = data.spos, data.upos, data.ds, data.ne
   local j, nam = 2
   for i=2,n-1 do
@@ -719,7 +719,7 @@ end
 
 -- finalize sequence
 local function finish_sequ (seq)
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
 
   -- clear memoization
   data.last_from    = nil
@@ -784,26 +784,23 @@ local cnt_mt = set_concept({
 
 -- number of elements
 local function len_mm (seq)
-  return var_raw(seq,_data).ne
+  return var_get(seq,_data).ne
 end
 
 -- read access precedence: element index, variable key, element name.
 local function index_mm (seq, key)
   -- element index
   if type(key) == 'number' then                              -- see index_of_idx
-    local data = var_raw(seq,_data)
+    local data = var_get(seq,_data)
     return data[ ireflect(key, data.ne) ]
   end
-  -- method
-  local mth = mth_raw(seq, key)
-  if mth then return mth end
-  -- variable
-  local var = var_raw(seq, key)
+  -- variable (or method)
+  local var = var_get(seq, key)
   if type(var) ~= 'nil' then
     return var_val(seq, key, var)
   end
   -- element name
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   local idx = data.eidx[key]
   if type(idx) == 'number' then
     return data[idx]
@@ -814,7 +811,7 @@ end
 
 local function newindex_mm (seq, key, val)
   -- element index or name
-  if type(key) == 'number' or var_raw(seq,_data).eidx[key] then
+  if type(key) == 'number' or var_get(seq,_data).eidx[key] then
     error("invalid sequence write access (use replace method)")
   end
   -- variable
@@ -1020,7 +1017,7 @@ end
 
 local function move (seq, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   assert(not (data.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   -- collect indexes of elements to remove
@@ -1045,7 +1042,7 @@ end
 
 local function build_index (seq)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   build_idx (data)
   finish_sequ(seq)
   return seq
@@ -1053,7 +1050,7 @@ end
 
 local function remove (seq, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   assert(not (data.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   -- collect indexes of elements to remove
@@ -1085,7 +1082,7 @@ end
 
 local function replace (seq, elm, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   assert(not (data.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   if is_rawtable(elm) and is_nil(rng_) and is_nil(sel_) and elm.elements then
@@ -1135,7 +1132,7 @@ end
 
 local function install (seq, elm, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   assert(not (data.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   if is_rawtable(elm) and is_nil(rng_) and is_nil(sel_) and elm.elements then
@@ -1190,7 +1187,7 @@ local function install (seq, elm, rng_, sel_)
   for ie=1,i do
     local idx = bsearch(data.spos, spos[ie], 2, data.ne)
     if is_sequence(ins[ie]) and #ins[ie] > 2 then
-      local sdata = var_raw(ins[ie],_data)
+      local sdata = var_get(ins[ie],_data)
       table.move(data     , idx, data.ne, idx+sdata.ne-2)
       table.move(data.spos, idx, data.ne, idx+sdata.ne-2)
       table.move(data.upos, idx, data.ne, idx+sdata.ne-2)
@@ -1235,7 +1232,7 @@ local function copy (seq, name_, owner_)
   local cpy = seq_cpy(seq,name_)
   if is_view(seq) and not owner_ then return cpy end
 
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   local ne = data.ne
   local cdata = table.new(ne,5)  -- see sequ_init
   cdata.eidx  = table.new(0,ne)
@@ -1268,7 +1265,7 @@ local function publish (seq, env, keeporig_)
   if env == MADX or is_instanceOf(env, MADX) then
     wrn, env.option.warn = env.option.warn, false
   end
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   for idx,elm in ipairs(seq) do
     local nam = elm.__id
     if is_element(env[nam]) then data[idx] = env[nam] else env[nam] = elm end
@@ -1298,8 +1295,8 @@ local function share (seq1, seq2)
   assert(is_sequence(seq1), "invalid argument #1 (sequence expected)")
   assert(is_sequence(seq2), "invalid argument #2 (sequence expected)")
   check_mark(seq1) check_mark(seq2)
-  local data1 = var_raw(seq1,_data)
-  local data2 = var_raw(seq2,_data)
+  local data1 = var_get(seq1,_data)
+  local data2 = var_get(seq2,_data)
   assert(not (data1.ro or seq1:is_readonly()), "invalid write access to readonly sequence")
   assert(not (data2.ro or seq2:is_readonly()), "invalid write access to readonly sequence")
 
@@ -1331,7 +1328,7 @@ local function unique (seq, fmt_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   if is_string(fmt_) then fmt_ = bind1st(string.format, fmt_) end
   assert(is_nil(fmt_) or is_callable(fmt_), "invalid argument #2 (callable expected)")
-  local data, lst = var_raw(seq,_data), table.new(0,100)
+  local data, lst = var_get(seq,_data), table.new(0,100)
   assert(not (data.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   for en,ei in pairs(data.eidx) do
@@ -1484,7 +1481,7 @@ local function iter (seq, rng_, ntrn_, dir_)
 
   if #seq == 0 then return niliter end
 
-  local data, start, stop = var_raw(seq,_data)
+  local data, start, stop = var_get(seq,_data)
   if is_nil(rng_) then
     local idx1, idxn = 1, data.ne
     if dir < 0 then idx1, idxn = idxn, idx1 end
@@ -1512,7 +1509,7 @@ local function siter (seq, rng_, ntrn_, dir_)
   if iter == niliter then return iter end
   -- implicit drift (reused)
   state.dft = drift { l := state.elm_l, name := state.elm_s }
-                    :set_flag(implicit) :set_readonly()
+                    :set_flags(implicit) :set_readonly()
   if start == state.stop then state.turn = state.turn-1 end
   return dir_ and dir_ < 0 and bwdsiter or fwdsiter, state, start
 end
@@ -1521,17 +1518,17 @@ end
 
 local function save_flags (seq, flgs_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local data = var_raw(seq,_data)
+  local data = var_get(seq,_data)
   local flgs = flgs_ or table.new(data.ne,0)
-  for i=1,data.ne do flgs[i] = data[i]:get_flag() end
+  for i=1,data.ne do flgs[i] = data[i]:get_flags() end
   return flgs
 end
 
 local function restore_flags (seq, flgs)
   assert(is_sequence(seq ), "invalid argument #1 (sequence expected)")
   assert(is_iterable(flgs), "invalid argument #2 (iterable expected)")
-  local data = var_raw(seq,_data)
-  for i=1,data.ne do data[i]:clear_flag(-1):set_flag(flgs[i]) end
+  local data = var_get(seq,_data)
+  for i=1,data.ne do data[i]:clear_flags(-1):set_flags(flgs[i]) end
 end
 
 -- I/O ------------------------------------------------------------------------o
@@ -1569,10 +1566,10 @@ end
 
 sequence :set_methods {
   -- elem, spos, upos, ds, canonical index
-  elem          = \s,i -> var_raw(s, _data)     [i],
-  spos          = \s,i -> var_raw(s, _data).spos[i],
-  upos          = \s,i -> var_raw(s, _data).upos[i],
-  ds            = \s,i -> var_raw(s, _data).ds  [i],
+  elem          = \s,i -> var_get(s, _data)     [i],
+  spos          = \s,i -> var_get(s, _data).spos[i],
+  upos          = \s,i -> var_get(s, _data).upos[i],
+  ds            = \s,i -> var_get(s, _data).ds  [i],
   index         = index,
 
   -- elements manipulation
@@ -1639,7 +1636,7 @@ sequence :set_methods {
   __index       = index_mm,
   __newindex    = newindex_mm,
 -- __pairs      = pairs_mm , default from object
-  __ipairs      = \s -> ipairs(var_raw(s, _data)),
+  __ipairs      = \s -> ipairs(var_get(s, _data)),
   __copy        = copy,
   __init        = sequ_init,
 
