@@ -236,11 +236,13 @@ function MT:__index (k)
 end
 
 function MT:__newindex (k, v)
-  if freadonly(self) or type(k) == 'string' and string.sub(k,1,2) == '__' then
+  local var = self.__var
+  if freadonly(self) or type(k) == 'string' and string.sub(k,1,2) == '__' and
+                        type(var[k]) ~= 'nil' then
     error("forbidden write access to '" .. name(self) .. "." .. tostring(k)
           .. "' (readonly object, method or variable)", 2)
   end
-  self.__var[k] = v      -- note: must use [k] for var0
+  var[k] = v      -- note: must use [k] for var0
 end
 
 function MT:__len ()
@@ -284,6 +286,10 @@ end
 
 function MF:raw_get (k)
   return rawget(self.__var,k)         -- no inheritance nor function evaluation
+end
+
+function MF:raw_set (k, v)
+  rawset(self.__var,k,v)              -- no guards
 end
 
 function MF:is_class ()
@@ -381,21 +387,21 @@ function MF:set_variables (set, override_) -- default: override = true
   return self
 end
 
-function MF:copy_variables (src, lst_, override_) -- default: override = true
+function MF:copy_variables (set, lst_, override_) -- default: override = true
   assert(is_object (self), "invalid argument #1 (object expected)")
-  assert(is_mappable(src), "invalid argument #2 (mappable expected)")
+  assert(is_mappable(set), "invalid argument #2 (mappable expected)")
   if (is_boolean(lst_) or is_string(lst_)) and is_nil(override_) then
     override_, lst_ = lst_                   -- right shift
   end
   if freadonly(self) and override_ ~= 'init' then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  local var, svar, lst = self.__var, src.__var, lst_ or self.__attr
+  local var, svar, lst = self.__var, set.__var, lst_ or self.__attr
   assert(is_iterable(lst), "invalid list of attributes (iterable expected)")
   for _,k in ipairs(lst) do
     assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
             or is_nil(var[k]), "cannot override variable '%s'",k)
-    var[k] = src[k]
+    var[k] = set[k]
   end
   if svar and is_iterable(lst.noeval) then
     for _,k in ipairs(lst.noeval) do
@@ -687,7 +693,7 @@ function MF:load_env (loader)
   return self
 end
 
-function MF:dumpenv () -- for debug
+function MF:dump_env () -- for debug
   assert(is_object(self), "invalid argument #1 (object expected)")
   for k,v in pairs(self.__var) do
     if is_rawtable(v) then
