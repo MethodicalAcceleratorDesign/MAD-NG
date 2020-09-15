@@ -176,13 +176,26 @@ local misalignexi -- forward declaration
 -- Misalign (lw_>0: entry, lw_<0: exit)
 
 function M.misalign (elm, m, lw_)
-  if (lw_ or 1) < 0 then return misalignexi(elm, m) end
+  local mis, eal = m.algn, m.sequ:align(m.eidx)
+  if not (mis or eal) then return end
 
-  local dx, dy, ds, dtheta, dphi, dpsi in elm
-  local trn = abs(dx    )+abs(dy  )+abs(ds  ) >= minlen
-  local rot = abs(dtheta)+abs(dphi)+abs(dpsi) >= minang
+  local dx, dy, ds, dthe, dphi, dpsi = 0,0,0,0,0,0
+  if eal then
+    dx  , dy  , ds   = eal.dx    , eal.dy  , eal.ds
+    dthe, dphi, dpsi = eal.dtheta, eal.dphi, eal.dpsi
+  end
+  if mis then
+    dx  , dy  , ds   = dx  +(mis.dx     or 0), dy  +(mis.dy   or 0), ds  +(mis.ds   or 0)
+    dthe, dphi, dpsi = dthe+(mis.dtheta or 0), dphi+(mis.dphi or 0), dpsi+(mis.dpsi or 0)
+  end
 
+  local trn = abs(dx  )+abs(dy  )+abs(ds  ) >= minlen
+  local rot = abs(dthe)+abs(dphi)+abs(dpsi) >= minang
   if not (trn or rot) then return end
+
+  if (lw_ or 1) < 0 then
+    return misalignexi(elm, m, trn, rot, dx, dy, ds, dthe, dphi, dpsi)
+  end
 
   m:mdump(elm, 'misalign:0')
 
@@ -200,7 +213,7 @@ function M.misalign (elm, m, lw_)
 
   -- rotate
   if rot then
-    R:rotzxy(-dphi, dtheta, dpsi, sdir<0)
+    R:rotzxy(-dphi, dthe, dpsi, sdir<0)
     W:mul(R, W)            -- W = W*R or W*R:t()
   end
 
@@ -213,13 +226,7 @@ function M.misalign (elm, m, lw_)
   m:mdump(elm, 'misalign:1')
 end
 
-function misalignexi (elm, m)
-  local dx, dy, ds, dtheta, dphi, dpsi in elm
-  local trn = abs(dx    )+abs(dy  )+abs(ds  ) >= minlen
-  local rot = abs(dtheta)+abs(dphi)+abs(dpsi) >= minang
-
-  if not (trn or rot) then return end
-
+function misalignexi (elm, m, trn, rot, dx, dy, ds, dthe, dphi, dpsi)
   m:mdump(elm, 'misalignexi:0')
 
   local el, ang, tlt, sdir, V, W in m
@@ -228,7 +235,7 @@ function misalignexi (elm, m)
   if trn then T:fill{dx, dy, ds} else T:zeros() end
 
   -- rotation
-  if rot then R:rotzxy(-dphi, dtheta, dpsi) end
+  if rot then R:rotzxy(-dphi, dthe, dpsi) end
 
   -- compute Rbar, Tbar
   _C.mad_mat_rtbar(Rb.data, Tb.data, abs(el), ang, tlt, rot and R.data or nil, T.data)

@@ -74,7 +74,7 @@ local ongoing_init  = -2e9
 
 -- defined in elements
 sequence :setvar { dir=1, l=uninitialized,
-                   [_data]={eidx={}, spos={}, upos={}, ds={}, ne=0,}, }
+                   [_data]={eidx={}, spos={}, upos={}, ds={}, algn={}, ne=0,}, }
 
 local function is_sequence (a)
   return is_table(a) and a[_data] ~= nil
@@ -514,6 +514,7 @@ local function sequ_pos (seq, sseq, idx, dir)
 !    data.spos[idx] = sdata.spos[1] + pos
 !    data.upos[idx] = sdata.upos[1] + pos
 !    data.ds  [idx] = sdata.ds  [1]
+!    data.algn[idx] = sdata.algn[1]
 !    idx = idx + 1
 !  end
 
@@ -524,6 +525,7 @@ local function sequ_pos (seq, sseq, idx, dir)
       data.spos[ix] = sdata.spos[i] + pos
       data.upos[ix] = sdata.upos[i] + pos
       data.ds  [ix] = sdata.ds  [i]
+      data.algn[ix] = sdata.algn[i]
       assert(data[ix] == sdata[i], "unexpected corrupted flat sequence")
     end
   elseif dir < 0 then
@@ -534,6 +536,7 @@ local function sequ_pos (seq, sseq, idx, dir)
       data.spos[ix] = l - (sp + ds                      ) + pos
       data.upos[ix] = l - (sp + ds - sdata.upos[ii] + sp) + pos
       data.ds  [ix] = ds
+      data.algn[ix] = sdata.algn[ii]
       assert(data[ix] == sdata[ii], "unexpected corrupted flat sequence")
     end
   else
@@ -544,6 +547,7 @@ local function sequ_pos (seq, sseq, idx, dir)
 !    data.spos[idx+n] = sdata.spos[n] + pos
 !    data.upos[idx+n] = sdata.upos[n] + pos
 !    data.ds  [idx+n] = sdata.ds  [n]
+!    data.algn[idx+n] = sdata.algn[n]
 !    idx = idx + 1
 !  end
 
@@ -699,20 +703,20 @@ end
 local function clear_sub (seq, sref)
   if is_nil(next(sref.sdir)) then return end
   local data = var_get(seq,_data)
-  local spos, upos, ds, n = data.spos, data.upos, data.ds, data.ne
-  local j, nam = 2
+  local spos, upos, ds, algn, ne in data
+  local j, n, nam = 2, ne
   for i=2,n-1 do
     nam = data[i].__id
     if not (nam == '$start' and is_instanceOf(data[i], mkstart) or
             nam == '$end'   and is_instanceOf(data[i], mkend))  then
-      data[j], spos[j], upos[j], ds[j], j =
-      data[i], spos[i], upos[i], ds[i], j+1
+      data[j], spos[j], upos[j], ds[j], algn[j], j =
+      data[i], spos[i], upos[i], ds[i], algn[i], j+1
     end
   end
-  data[j], spos[j], upos[j], ds[j], data.ne =
-  data[n], spos[n], upos[n], ds[n], j
+  data[j], spos[j], upos[j], ds[j], algn[j], data.ne =
+  data[n], spos[n], upos[n], ds[n], algn[n], j
   for i=j+1,n do -- clear remaining slots
-    data[i], spos[i], upos[i], ds[i] = nil, nil, nil, nil
+    data[i], spos[i], upos[i], ds[i], algn[i] = nil, nil, nil, nil, nil
   end
   build_idx(data)
 end
@@ -755,6 +759,7 @@ local function sequ_init (seq)
   data.spos = table.new(ne,0)
   data.upos = table.new(ne,0)
   data.ds   = table.new(ne,0)
+  data.algn = table.new(ne,0)
   seq[_data], data.ne = data, ne
 
   build_idx(data)
@@ -1020,20 +1025,70 @@ local function move (seq, rng_, sel_)
   local data = var_get(seq,_data)
   assert(not (data.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
-  -- collect indexes of elements to remove
-  local idx_r, nr = filter(seq, rng_, sel_, true)
-  if nr == 0 then return end
+  -- collect indexes of elements to move
+  local idx_m, ne = filter(seq, rng_, sel_, true)
+  if ne == 0 then return end
 
-  assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
+  assert(idx_m[ne]-idx_m[1] >= ne-1, "invalid range, indexes must be increasing")
 
-  -- remove $start/$stop markers for convenience
-  if idx_r[nr] == #seq then table.remove(idx_r)    end
-  if idx_r[1 ] == 1    then table.remove(idx_r, 1) end
+  -- remove $start/$stop markers from the list of elements to move
+  if idx_m[ne] == #seq then table.remove(idx_m)    end
+  if idx_m[1 ] == 1    then table.remove(idx_m, 1) end
 
   -- update elements positions
-  for i=1,nr do data.spos[idx_r[i]] = uninitialized end
-  for i=1,nr do elem_pos(seq   , idx_r[i])          end
-  for i=1,nr do check_drift(seq, idx_r[i])          end
+  for i=1,ne do data.spos[idx_m[i]] = uninitialized end
+  for i=1,ne do elem_pos(seq   , idx_m[i])          end
+  for i=1,ne do check_drift(seq, idx_m[i])          end
+
+  return seq
+end
+
+local function misalign (seq, mis, rng_, sel_)
+  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  local data = var_get(seq,_data)
+  assert(not (data.ro or seq:is_readonly()), "invalid write access to readonly sequence")
+
+  -- collect indexes of elements to misalign
+  local idx_m, ne = filter(seq, rng_, sel_, true)
+  if ne == 0 then return end
+
+  assert(idx_m[ne]-idx_m[1] >= ne-1, "invalid range, indexes must be increasing")
+
+  -- remove $start/$stop markers from the list of elements to misalign
+  if idx_m[ne] == #seq then table.remove(idx_m)    end
+  if idx_m[1 ] == 1    then table.remove(idx_m, 1) end
+
+  -- set/update elements misalignment
+  if is_iterable(mis) then
+    if #mis == 0 then            -- same (random) misalignment for all
+      for i=1,ne do
+        data.algn[idx_m[i]] = {
+          dx    =mis.dx     or 0, dy  =mis.dy   or 0, ds  =mis.ds   or 0,
+          dtheta=mis.dtheta or 0, dphi=mis.dphi or 0, dpsi=mis.dpsi or 0
+        }
+      end
+    else                         -- specific (random) misalignment for all
+      for i=1,ne do              -- index of element or index in selection?
+        local algn = mis[i]
+        if algn then
+          data.algn[idx_m[i]] = {
+            dx    =algn.dx     or 0, dy  =algn.dy   or 0, ds  =algn.ds   or 0,
+            dtheta=algn.dtheta or 0, dphi=algn.dphi or 0, dpsi=algn.dpsi or 0
+          }
+        end
+      end
+    end
+  elseif is_callable(mis) then   -- specific (functional) misalignment for all
+    for i=1,ne do                -- index of element or index in selection?
+      local algn = mis(i, idx_m[i])
+      if algn then
+        data.algn[idx_m[i]] = {
+          dx    =algn.dx     or 0, dy  =algn.dy   or 0, ds  =algn.ds   or 0,
+          dtheta=algn.dtheta or 0, dphi=algn.dphi or 0, dpsi=algn.dpsi or 0
+        }
+      end
+    end
+  else error("invalid argument #2 (iterable or callable expected)") end
 
   return seq
 end
@@ -1074,6 +1129,7 @@ local function remove (seq, rng_, sel_)
     table.remove(data.spos, ii)
     table.remove(data.upos, ii)
     table.remove(data.ds  , ii)
+    table.remove(data.algn, ii)
   end
   data.ne = data.ne - nr
   build_index(seq)
@@ -1192,6 +1248,7 @@ local function install (seq, elm, rng_, sel_)
       table.move(data.spos, idx, data.ne, idx+sdata.ne-2)
       table.move(data.upos, idx, data.ne, idx+sdata.ne-2)
       table.move(data.ds  , idx, data.ne, idx+sdata.ne-2)
+      table.move(data.algn, idx, data.ne, idx+sdata.ne-2)
       for j=2,sdata.ne-1 do -- see sequ_pos
         if dbg then
           io.write("seq: installing element '", sdata[j].__id, "'\n")
@@ -1200,6 +1257,7 @@ local function install (seq, elm, rng_, sel_)
         data.spos[idx+j-2] = sdata.spos[j]+spos[ie]
         data.upos[idx+j-2] = sdata.upos[j]+spos[ie]
         data.ds  [idx+j-2] = sdata.ds  [j]
+        data.algn[idx+j-2] = sdata.algn[j]
       end
       data.ne = data.ne + sdata.ne - 2
       check_drift(seq, idx+sdata.ne - 3) -- check surrounding drifts of lst data
@@ -1211,6 +1269,7 @@ local function install (seq, elm, rng_, sel_)
       table.insert(data.spos, idx, spos[ie])
       table.insert(data.upos, idx, upos[ie])
       table.insert(data.ds  , idx, ins [ie].l)
+      table.insert(data.algn, idx, nil)
       data.ne = data.ne + 1
       if data[idx].shared == true then   -- shared element
         data[idx] = check_shared(seq, idx)
@@ -1239,12 +1298,13 @@ local function copy (seq, name_, owner_)
   cdata.spos  = table.new(ne,0)
   cdata.upos  = table.new(ne,0)
   cdata.ds    = table.new(ne,0)
+  cdata.algn  = table.new(ne,0)
   cpy[_data], cdata.ne = cdata, ne
 
   for i=1,ne do
     cdata[i] = data[i]:copy()
-    cdata.spos[i], cdata.upos[i], cdata.ds[i] =
-     data.spos[i],  data.upos[i],  data.ds[i]
+    cdata.spos[i], cdata.upos[i], cdata.ds[i], cdata.algn[i] =
+     data.spos[i],  data.upos[i],  data.ds[i],  data.algn[i]
   end
 
   build_index(cpy)
@@ -1570,6 +1630,7 @@ sequence :set_methods {
   spos          = \s,i -> var_get(s, _data).spos[i],
   upos          = \s,i -> var_get(s, _data).upos[i],
   ds            = \s,i -> var_get(s, _data).ds  [i],
+  align         = \s,i -> var_get(s, _data).algn[i],
   index         = index,
 
   -- elements manipulation
@@ -1594,6 +1655,7 @@ sequence :set_methods {
   remove        = remove,
   replace       = replace,
   move          = move,
+  misalign      = misalign,
 
   reflect       = reflect,
   cycle         = cycle,
