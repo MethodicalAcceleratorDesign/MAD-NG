@@ -240,9 +240,10 @@ M.translate = translate
 
 function M.changeref (elm, m, lw_)                                           -- unchecked
   local lw = lw_ or 1
-  local dx, dy, ds, dtheta, dphi, dpsi in elm
-  local trn = abs(dx    )+abs(dy  )+abs(ds  ) >= minlen
-  local rot = abs(dtheta)+abs(dphi)+abs(dpsi) >= minang
+  local dx, dy, ds, dphi, dpsi in elm
+  local dthe = elm.dtheta
+  local trn = abs(dx  )+abs(dy  )+abs(ds  ) >= minlen
+  local rot = abs(dthe)+abs(dphi)+abs(dpsi) >= minang
 
   if not (trn or rot) then return end
 
@@ -251,20 +252,23 @@ function M.changeref (elm, m, lw_)                                           -- 
   -- forward : x1' = R*x1+T
   -- backward: x1  = R^-1*(x1'-T)
 
-  if lw > 0 then
-      translate({dx=dx,dy=dy,ds=ds}, m, 1)
-    if rot then
-      yrotation({angle= dtheta}, m, 1)
-      xrotation({angle=-dphi  }, m, 1)
-      srotation({angle= dpsi  }, m, 1)
-    end
-  else
-    if rot then
-      srotation({angle= dpsi  }, m, -1)
-      xrotation({angle=-dphi  }, m, -1)
-      yrotation({angle= dtheta}, m, -1)
-    end
-      translate({dx=dx,dy=dy,ds=ds}, m, -1)
+  -- rotate
+  if rot and lw > 0 then
+    yrotation( dthe, m, 1)
+    xrotation(-dphi, m, 1)
+    srotation( dpsi, m, 1)
+  end
+
+  -- translate
+  if trn then
+    translate({dx=dx, dy=dy, ds=ds}, m, lw)
+  end
+
+  -- rotate
+  if rot and lw < 0 then
+    srotation( dpsi, m, -1)
+    xrotation(-dphi, m, -1)
+    yrotation( dthe, m, -1)
   end
 
   m:mdump(elm, 'changeref:1')
@@ -346,24 +350,24 @@ function M.misalign (elm, m, lw_)                                            -- 
   -- backward: x1  = R^-1*(x1'-T)
 
   -- reuse patches without directions (i.e. cancel tdir)
-  if sdir > 0 then
-    if trn then
-      translate({dx=dx*tdir,dy=dy*tdir,ds= ds}, m,  1)
-    end
-    if rot then
-      yrotation( dthe, m,  1)
-      xrotation(-dphi, m,  1)
-      srotation( dpsi, m,  1)
-    end
-  else
-    if rot then
-      srotation( dpsi, m, -1)
-      xrotation(-dphi, m, -1)
-      yrotation( dthe, m, -1)
-    end
-    if trn then
-      translate({dx=dx*tdir,dy=dy*tdir,ds=-ds}, m, -1)
-    end
+
+  -- rotate
+  if rot and sdir > 0 then
+    yrotation( dthe, m,  1)
+    xrotation(-dphi, m,  1)
+    srotation( dpsi, m,  1)
+  end
+
+  -- translate
+  if trn then
+    translate({dx=dx*tdir, dy=dy*tdir, ds=ds*sdir}, m, sdir)
+  end
+
+  -- rotate
+  if rot and sdir < 0 then
+    srotation( dpsi, m, -1)
+    xrotation(-dphi, m, -1)
+    yrotation( dthe, m, -1)
   end
 
   m:mdump(elm, 'misalign:1')
@@ -373,7 +377,7 @@ function misalignexi (elm, m, trn, rot, dx, dy, ds, dthe, dphi, dpsi)           
   m:mdump(elm, 'misalignexi:0')
 
   local el, eh, tlt, sdir, tdir in m
-  local ang = elm.angle*tdir
+  local ang = (elm.angle or 0)*tdir
 
   -- translation
   if trn then T:fill{dx, dy, ds} else T:zeros() end
@@ -389,26 +393,26 @@ function misalignexi (elm, m, trn, rot, dx, dy, ds, dthe, dphi, dpsi)           
   -- backward: x2' = Rb*x2+Tb
 
   -- reuse patches without directions (i.e. cancel tdir)
-  if sdir > 0 then
-    if rot then
-      local ax, ay, az = Rb:torotzxy()
-      srotation(az, m, -1)
-      xrotation(ax, m, -1)
-      yrotation(ay, m, -1)
-    end
-    if trn then
-      translate({dx=Tb[1]*tdir,dy=Tb[2]*tdir,ds= Tb[3]}, m, -1)
-    end
-  else
-    if trn then
-      translate({dx=Tb[1]*tdir,dy=Tb[2]*tdir,ds=-Tb[3]}, m,  1)
-    end
-    if rot then
-      local ax, ay, az = Rb:torotzxy()
-      yrotation(ay, m,  1)
-      xrotation(ax, m,  1)
-      srotation(az, m,  1)
-    end
+
+  -- rotate
+  if rot and sdir > 0 then
+    local ax, ay, az = Rb:torotzxy()
+    srotation(az, m, -1)
+    xrotation(ax, m, -1)
+    yrotation(ay, m, -1)
+  end
+
+  -- translate
+  if trn then
+    translate({dx=Tb[1]*tdir, dy=Tb[2]*tdir, ds=Tb[3]*sdir}, m, -sdir)
+  end
+
+  -- rotate
+  if rot and sdir < 0 then
+    local ax, ay, az = Rb:torotzxy()
+    yrotation(ay, m, 1)
+    xrotation(ax, m, 1)
+    srotation(az, m, 1)
   end
 
   m:mdump(elm, 'misalignexi:1')
