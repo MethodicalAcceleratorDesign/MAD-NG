@@ -84,7 +84,6 @@ end
 -- start and end markers
 local mkstart = marker '$start' {} : set_readonly()
 local mkend   = marker '$end'   {} : set_readonly()
-local mkcycle = marker '$cycle' {} : set_readonly()
 
 -- sanity checks --------------------------------------------------------------o
 
@@ -727,9 +726,11 @@ local function finish_sequ (seq)
   ei['#s'], ei['#S'] =  1,  1
   ei['#e'], ei['#E'] = ne, ne
 
-  check_mark(seq)
+  -- clear cycle (if any)
+  seq:raw_set('__cycle', nil)
 
   -- sanity checks
+  check_mark(seq)
   if option.debug >= 2 then check_sequ(seq) end
 
   -- publish sequence in MADX environment
@@ -832,6 +833,7 @@ local function index_mm (seq, key)
   elseif is_table(idx) then
     return setmetatable({__idx=idx, __dat=data}, cnt_mt)
   end
+  return nil
 end
 
 local function newindex_mm (seq, key, val)
@@ -1335,11 +1337,7 @@ end
 
 local function cycle (seq, a)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local idx = index_of(seq, a)
-  assert(is_integer(idx), "invalid argument #2 (valid reference expected)")
-  local at = seq:spos(idx) - seq:upos(idx) - eps
-  if seq.__cycle then seq:remove('$cycle') end
-  seq:install(mkcycle {at=at, from=a})
+  assert(index_of(seq, a), "invalid argument #2 (valid reference expected)")
   seq:raw_set('__cycle', a)
   return seq
 end
@@ -1371,9 +1369,6 @@ local function share (seq1, seq2)
     end
   end
   finish_sequ(seq1) finish_sequ(seq2)
-  if seq1.__cycle and seq2.__cycle then -- $cycle markers are shared too
-    seq2:raw_set('__cycle', seq1.__cycle)
-  end
   return elm_r, idx_r
 end
 
