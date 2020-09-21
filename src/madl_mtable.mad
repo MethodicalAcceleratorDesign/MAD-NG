@@ -77,16 +77,17 @@ local var_get, var_val, raw_get in mtable
 local tbl_cpy, var_set = mtable.copy, mtable_mt.__newindex
 local readonly = mtable.set_readonly
 
-local function is_mtable (a)
-  return is_object(a) and var_get(a, _data) ~= nil
-end
+-- identity -------------------------------------------------------------------o
 
-local function is_owner (a)
-  return is_object(a) and raw_get(a, _data) ~= nil
+local _id = {} -- identity
+
+local function is_mtable (a)
+  local mt = getmetatable(a)
+  return mt ~= nil and mt.__mtbl == _id
 end
 
 local function is_view (a)
-  return is_mtable(a) and raw_get(a, _data) == nil
+  return raw_get(a, _data) == nil
 end
 
 -- sanity checks --------------------------------------------------------------o
@@ -378,7 +379,7 @@ local function finish_mtbl (tbl)
 end
 
 -- mtable initialization
-local function mtbl_init (tbl)
+local function init_mm (tbl)
   local nc, owner = tbl:raw_len(), raw_get(tbl, 'owner')
   if nc == 0 and not owner then return tbl end -- empty, pure inheritance
   tbl.owner = nil
@@ -455,7 +456,7 @@ end
 
 -- copy mtable ----------------------------------------------------------------o
 
-local function copy (tbl, name_, owner_)
+local function copy_mm (tbl, name_, owner_)
   if is_nil(owner_) and is_boolean(name_) then
     owner_, name_ = name_
   end
@@ -466,7 +467,7 @@ local function copy (tbl, name_, owner_)
 
   local data = var_get(tbl,_data)
   local nr, nc = data.nr, data.nc
-  local cdat = table.new(nc, 9)      -- see mtbl_init
+  local cdat = table.new(nc, 9)      -- see init_mm
   cdat.ridx  = table.new(0 ,nr)      -- name -> idx
   cdat.cidx  = table.new(nc,nc+2)    -- name -> idx and idx -> name
   cdat.hook  = {}                    -- columns of hooked vector const views
@@ -1330,8 +1331,9 @@ end
 
 local function cycle (tbl, a)
   assert(is_mtable(tbl)  , "invalid argument #1 (mtable expected)")
-  assert(index_of(tbl, a), "invalid argument #2 (reference expected)")
-  tbl.start_at = a
+  local idx = index_of(tbl, a)
+  assert(is_integer(idx), "invalid argument #2 (valid reference expected)")
+  tbl:raw_set('__cycle', a)
   return tbl
 end
 
@@ -1373,10 +1375,10 @@ local function iter (tbl, rng_, ntrn_, dir_)
   if is_nil(rng_) then
     local idx1, idxn = 1, data.nr
     if dir < 0 then idx1, idxn = idxn, idx1 end
-    if is_nil(tbl.start_at) then
+    if is_nil(tbl.__cycle) then
       start, stop = idx1, idxn
     else
-      start = assert(index_of(tbl, tbl.start_at), "invalid cycle reference")
+      start = assert(index_of(tbl, tbl.__cycle), "invalid cycle reference")
       stop  = start == idx1 and idxn or start-dir
     end
   else
@@ -1688,7 +1690,7 @@ mtable :set_methods {
   deselect     = deselect,
   filter       = filter,
 
-  copy         = copy,
+  copy         = copy_mm,
   sort         = sort,
   insert       = insert,
   remove       = remove,
@@ -1702,12 +1704,11 @@ mtable :set_methods {
   write        = write,
   print        = print_,
 
+  -- ownership
+  is_view      = is_view,
+
   -- readonly
   set_readonly = set_readonly,
-
-  -- ownership
-  is_owner     = is_owner,
-  is_view      = is_view,
 
   -- index dict
   build_index  = build_index,
@@ -1717,15 +1718,15 @@ mtable :set_methods {
   is_selected := error("invalid mtable operation", 2),
 
 } :set_metamethods ({
+  __mtbl       = _id,
+  __init       = init_mm,
+  __copy       = copy_mm,
   __add        = add_row,
   __len        = len_mm,
   __index      = index_mm,
   __newindex   = newindex_mm,
 -- __pairs     = pairs_mm , default from object
 -- __ipairs    = ipairs_mm, default from object
-  __copy       = copy,
-  __init       = mtbl_init,
-
 }, true) :set_readonly()
 
 -- env ------------------------------------------------------------------------o
