@@ -123,7 +123,7 @@ local function seq_lenchg (typ, seq, idx, len)
   seq_error(msg, seq, idx, seq[idx])
 end
 
--- check sequence spos and elements overlapp
+-- check sequence spos and elements overlapp, clear 'at' and 'from'
 local function check_drift (seq, idx)
   local data, ds = seq.__dat
   assert(idx > 1 and idx < data.ne, "unexpected corrupted element index")
@@ -133,6 +133,8 @@ local function check_drift (seq, idx)
 
   ds = data.spos[idx+1] - (data.spos[idx] + data.ds[idx])
   if ds < -minlen then seq_poserr("element", seq, idx, data.spos[idx]-ds) end
+
+  data[idx].at, data[idx].from = nil, nil
 end
 
 -- check shared element
@@ -415,7 +417,7 @@ end
 
 -- return user-defined position of 'refpos'
 local function refpos_upos (elm, refpos, idx)
-  if #elm == 0 then
+  if #elm == 0 or not is_sequence(elm) then
     -- if not is_element(elm[rpos]) then
     seq_error("invalid refpos to subelement '" .. refpos .. "'", elm, idx)
   end
@@ -587,6 +589,9 @@ local function build_pos (seq, sref)
   elseif seq.l < len then
     error("invalid sequence length "..seq.l.."m for "..seq.__id)
   end
+
+  -- clear 'at' and 'from' of elements
+  for i=1,n do data[i].at, data[i].from = nil, nil end
 end
 
 -- flatten sequence -----------------------------------------------------------o
@@ -885,11 +890,11 @@ end
 
 local function range_of (seq, rng_, ref_, dir_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local start, stop, step, istart, istop, doidx
+  local start, stop, step, istart, istop, dir, doidx
   if is_nil(rng_) then
-    local dir = dir_ or 1
-        if dir ==  1 then return 1, #seq
-    elseif dir == -1 then return #seq, 1
+    dir = dir_ or 1
+        if dir ==  1 then return 1, #seq,  1
+    elseif dir == -1 then return #seq, 1, -1
     else error("invalid range direction (1 or -1 expected)")
     end
   elseif is_number(rng_) then
@@ -915,10 +920,10 @@ local function range_of (seq, rng_, ref_, dir_)
     errorf("invalid argument #2 (number, string, table or range expected, got %s)",
            tostring(rng_))
   end
+  dir = dir_ or 1
+  assert(dir == 1 or dir == -1, "invalid range direction (1 or -1 expected)")
   local sstart, sstop
   if doidx then
-    local dir = dir_ or 1
-    assert(dir == 1 or dir == -1, "invalid range direction (1 or -1 expected)")
     istart, sstart = index_of(seq, start, ref_,  dir)
     istop , sstop  = index_of(seq, stop , ref_, -dir)
   end
@@ -927,14 +932,13 @@ local function range_of (seq, rng_, ref_, dir_)
   if sstart and sstop and (istart-istop)*(sstart-sstop) < 0 then
     return nil -- empty range
   end
-  return istart, istop
+  return istart, istop, dir
 end
 
 local function length_of (seq, rng_, ntrn_, dir_) -- see iter
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local start, stop = range_of(seq, rng_, nil, dir_)
+  local start, stop, dir = range_of(seq, rng_, nil, dir_)
   if is_nil(start) then return 0 end
-  local dir = dir_ or 1
   local siz, trn = (stop-start)*dir, ntrn_ or 1
   return 1 + siz + #seq * (trn-1 + (siz < 0 and 1 or 0))
 end
@@ -1522,16 +1526,16 @@ end
 ---
 
 local function iter (seq, rng_, ntrn_, dir_)
-  local nturn, dir = ntrn_ or 1, dir_ or 1
+  local nturn, dir = ntrn_ or 1
   assert(is_sequence(seq)                ,"invalid argument #1 (sequence expected)")
   assert(is_integer(nturn) and nturn > 0 ,"invalid argument #3 (integer >1 expected)")
-  assert(dir == 1 or dir == -1           ,"invalid argument #4 (1 or -1 expected)")
 
   if #seq == 0 then return niliter end
 
   local data, start, stop = seq.__dat
   if is_nil(rng_) then
     local idx1, idxn = 1, data.ne
+    dir = dir_ or 1
     if dir < 0 then idx1, idxn = idxn, idx1 end
     if is_nil(seq.__cycle) then
       start, stop = idx1, idxn
@@ -1540,14 +1544,16 @@ local function iter (seq, rng_, ntrn_, dir_)
       stop  = start == idx1 and idxn or start-dir
     end
   else
-    start, stop = range_of(seq, rng_, nil, dir_)
+    start, stop, dir = range_of(seq, rng_, nil, dir_)
     if is_nil(start) then return niliter end
   end
   if start == stop+dir then nturn = nturn+1 end
 
+  assert(dir == 1 or dir == -1, "invalid argument #4 (1 or -1 expected)")
+
   local soff = dir > 0 and -data.spos[start] or data.spos[start]+data.ds[start]
   return dir > 0 and fwditer or bwditer, {
-    data=data, spos=data.spos, ds=data.ds, ne=data.ne, soff=soff,
+    data=data, spos=data.spos, ds=data.ds, ne=data.ne, soff=soff, dir=dir,
     seq=seq, seq_l=seq.l, elm_i=true, elm_l=0, elm_s='', stop=stop, turn=nturn-1,
     dft=0}, start-dir
 end
@@ -1559,7 +1565,8 @@ local function siter (seq, rng_, ntrn_, dir_)
   state.dft = drift { l := state.elm_l, name := state.elm_s }
                     :set_flags(implicit) :set_readonly()
   if start == state.stop then state.turn = state.turn-1 end
-  return dir_ and dir_ < 0 and bwdsiter or fwdsiter, state, start
+  local dir = dir_ or state.dir
+  return dir < 0 and bwdsiter or fwdsiter, state, start
 end
 
 -- flags ----------------------------------------------------------------------o
