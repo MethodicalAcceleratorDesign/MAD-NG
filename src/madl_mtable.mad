@@ -52,14 +52,9 @@ local string, table, io =
 
 --[[
 TODO:
-  + move _data to top level object as string __data (not inherited)
   + avoid destruction of column specs, e.g. should not be in object plain array.
-  + remove views, make code too complicated for little added value.
-  + remove constness of data, keep only constness via object
   + optimise speed of proxies (closures)
 --]]
-
-local _data = {} -- hidden key
 
 local origin = string.format("MAD %s %s %s", env.version, env.os, env.arch)
 
@@ -67,8 +62,8 @@ local mtable = object 'mtable' {
     name=nil, type='user', title='no-title', origin=origin,
     header={'name', 'type', 'title', 'origin', 'date', 'time', 'refcol'},-- default header
     column=nil, refcol=nil, novector=nil, owner=nil, reserve=8,
-    [_data]={ridx={}, cidx={}, nvec={}, hook={},
-             cref=nil, nr=0, nc=0, ng=0, rmax=0,},
+    __dat={ridx={}, cidx={}, nvec={}, hook={},
+           cref=nil, nr=0, nc=0, ng=0, rmax=0,},
   }
 
 -- backup original methods and metamethods
@@ -87,7 +82,7 @@ local function is_mtable (a)
 end
 
 local function is_view (a)
-  return raw_get(a, _data) == nil
+  return raw_get(a, '__dat') == nil
 end
 
 -- sanity checks --------------------------------------------------------------o
@@ -95,7 +90,7 @@ end
 -- check dictionnary of name -> idx
 local function check_index (tbl)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local data = var_get(tbl,_data)
+  local data = tbl.__dat
   if is_nil(data.cref) then return end
   local cref = data[data.cref]
 
@@ -141,7 +136,7 @@ end
 
 -- canonize index (direct)
 local function index_of_idx (tbl, idx)
-  local n = var_get(tbl,_data).nr
+  local n = tbl.__dat.nr
   idx = ireflect(idx, n)
   return idx >= 1 and idx <= n and idx or nil
 end
@@ -161,7 +156,7 @@ end
 
 -- get index from name [with absolute count] (direct)
 local function index_of_cnam (tbl, nam, cnt)
-  local ri = var_get(tbl,_data).ridx[nam]
+  local ri = tbl.__dat.ridx[nam]
   if is_table(ri) then
     return ri[ ireflect(cnt, ri.n) ]
   elseif cnt == 1 or cnt == -1 then
@@ -171,7 +166,7 @@ end
 
 -- get index from name [with relative count] (linear)
 local function index_of_rnam (tbl, nam, cnt, ref)
-  local ri = var_get(tbl,_data).ridx[nam]
+  local ri = tbl.__dat.ridx[nam]
   if is_nil(ri) then return nil end
   local idx = index_of_ref(tbl, ref)
   if is_number(ri) then
@@ -201,7 +196,7 @@ end
 local function index_of_str (tbl, str, ref_)
   local num = tonumber(str)
   if num then return index_of_row(tbl, num, ref_) end
-  assert(var_get(tbl,_data).cref, "no reference column found")
+  assert(tbl.__dat.cref, "no reference column found")
   local nam, cnt, _, bra = strbracket(str)
   cnt = is_nil(cnt) and 1 or tonumber(cnt)
   assert(is_integer(cnt) and cnt ~= 0, "invalid argument #2 (non-zero count expected)")
@@ -215,7 +210,7 @@ end
 -- get index from 'ref' [mangled] name (direct or linear)
 function index_of_fnam (tbl, nam, ref_) -- already declared local
   assert(is_string(nam), "invalid argument #2 (string expected)")
-  assert(var_get(tbl,_data).cref, "no reference column found")
+  assert(tbl.__dat.cref, "no reference column found")
   local nam, cnt, _, bra = strbracket(nam)
   cnt = is_nil(cnt) and 1 or tonumber(cnt)
   assert(is_integer(cnt) and cnt ~= 0, "invalid argument #2 (non-zero count expected)")
@@ -228,7 +223,7 @@ end
 
 -- get index from element (linear): TODO (from sequence)                      -- untested.
 local function index_of_elm (tbl, elm, ref_, dir_)
-  local seq, nam, data = tbl.__seq, elm.__id, var_get(tbl,_data)
+  local seq, nam, data = tbl.__seq, elm.__id, tbl.__dat
   assert(seq, "no sequence attached found")
   assert(data.cidx.eidx, "no element index column found")
   assert(data.cref , "no reference column found")
@@ -253,7 +248,7 @@ end
 
 -- get [mangled] name from index (linear)
 local function name_of_idx (tbl, idx, ref_)
-  local data = var_get(tbl,_data)
+  local data = tbl.__dat
   assert(data.cref, "no reference column found")
   idx = index_of_idx(tbl, idx)
   if is_nil(idx) then return nil end
@@ -372,19 +367,20 @@ end
 
 -- finalize mtable
 local function finish_mtbl (tbl)
+  -- clear cycle (if any)
+  tbl:raw_set('__cycle', nil)
+
   -- sanity checks
-  if option.debug > 2 then
-    check_index(tbl)
-  end
+  if option.debug > 2 then check_index(tbl) end
 end
 
 -- mtable initialization
 local function init_mm (tbl)
   local nc, owner = tbl:raw_len(), raw_get(tbl, 'owner')
-  if nc == 0 and not owner then return tbl end -- empty, pure inheritance
-  tbl.owner = nil
+  if nc == 0 and owner ~= true then return tbl end -- view
+  -- tbl.owner = nil
 
-  local pdat = var_get(tbl.parent, _data)
+  local pdat = tbl.parent.__dat
   nc = nc + pdat.nc
   local data = table.new(nc, 9)     -- columns (data)
   data.cidx  = table.new(nc,nc+2)   -- name -> idx and idx -> name
@@ -449,7 +445,7 @@ local function init_mm (tbl)
   end
 
   -- finalized
-  tbl[_data] = data
+  tbl.__dat = data
   finish_mtbl(tbl)
   return tbl
 end
@@ -463,9 +459,9 @@ local function copy_mm (tbl, name_, owner_)
   assert(is_mtable(tbl)           , "invalid argument #1 (mtable expected)")
   assert(not rawequal(tbl, mtable), "invalid argument #1 (cannot copy 'mtable')")
   local cpy = tbl_cpy(tbl,name_)
-  if is_view(tbl) and not owner_ then return cpy end
+  if is_view(tbl) and owner_ ~= true then return cpy end
 
-  local data = var_get(tbl,_data)
+  local data = tbl.__dat
   local nr, nc = data.nr, data.nc
   local cdat = table.new(nc, 9)      -- see init_mm
   cdat.ridx  = table.new(0 ,nr)      -- name -> idx
@@ -484,23 +480,21 @@ local function copy_mm (tbl, name_, owner_)
     cdat[i] = isa_matrix(col) and col:copy() or tblicpy(col, table.new(nr,0))
   end
 
-  cpy[_data] = cdat
+  cpy.__dat = cdat
   return cpy:build_index()
 end
 
 -- mtable metamethods ---------------------------------------------------------o
 
-local _slf, _idx, _col = {}, {}, {} -- hidden keys
-
 -- column generator (RO)
 local function gen_iter (s, i)
   i = i+1
-  if i <= s[_data].nr then return i, s[_col](i) end
+  if i <= s.__dat.nr then return i, s.__col(i) end
 end
 
 local gen_mt = set_concept({
-  __len      = \s   -> s[_data].nr,
-  __index    = \s,i -> i >= 1 and i <= s[_data].nr and s[_col](i) or nil,
+  __len      = \s   -> s.__dat.nr,
+  __index    = \s,i -> i >= 1 and i <= s.__dat.nr and s.__col(i) or nil,
   __ipairs   = \s   -> (gen_iter, s, 0),
   __tostring = \s   -> string.format("mtable column generator: %p", s),
 }, not_mappable + not_extendable + not_mutable)
@@ -508,29 +502,29 @@ local gen_mt = set_concept({
 -- readonly column proxy (RO)
 local function col_iter (s, i)
   i = i+1
-  if i <= s[_data].nr then return i, s[_col][i] end
+  if i <= s.__dat.nr then return i, s.__col[i] end
 end
 
 local col_mt = set_concept({
-  __len      = \s   -> s[_data].nr,
-  __index    = \s,i -> i >= 1 and i <= s[_data].nr and s[_col][i] or nil,
+  __len      = \s   -> s.__dat.nr,
+  __index    = \s,i -> i >= 1 and i <= s.__dat.nr and s.__col[i] or nil,
   __ipairs   = \s   -> (col_iter, s, 0),
   __tostring = \s   -> string.format("mtable readonly column: %p", s),
 }, not_mappable + not_extendable + not_mutable)
 
 -- reference column proxy (RW)
 local ref_mt = set_concept({
-  __len      = \s   -> s[_data].nr,
-  __index    = \s,i -> i >= 1 and i <= s[_data].nr and s[_col][i] or nil,
-  __newindex = \s,i,v => local data = s[_data]
-                       assert(not (data.ro or s[_slf]:is_readonly()),
+  __len      = \s   -> s.__dat.nr,
+  __index    = \s,i -> i >= 1 and i <= s.__dat.nr and s.__col[i] or nil,
+  __newindex = \s,i,v => local data = s.__dat
+                       assert(not (data.ro or s.__slf:is_readonly()),
                               "invalid write access to readonly mtable")
                        assert(i >= 1 and i <= data.nr, "row index out of bounds")
                        if not v then
                          error("invalid argument #3 (valid reference key expected)")
-                       elseif not rawequal(v, s[_col][i]) then
+                       elseif not rawequal(v, s.__col[i]) then
                          rem_idx(data, i)
-                         s[_col][i] = v
+                         s.__col[i] = v
                          ins_idx(data, i)
                        end
                      end,
@@ -541,22 +535,22 @@ local ref_mt = set_concept({
 -- row proxy (RW)
 local function row_iter (s, i)
   i = i+1
-  local col = s[_data][i]
-  if col then return i, col[s[_idx]] end
+  local col = s.__dat[i]
+  if col then return i, col[s.__idx] end
 end
 
 local row_mt = set_concept({
-  __len      = \s   -> s[_data].nc,
-  __index    = \s,i => local data = s[_data]
+  __len      = \s   -> s.__dat.nc,
+  __index    = \s,i => local data = s.__dat
                        local ci = is_integer(i) and ireflect(i, data.nc) or data.cidx[i]
-                       if data[ci] then return data[ci][s[_idx]] end
+                       if data[ci] then return data[ci][s.__idx] end
                      end,
-  __newindex = \s,i,v => local data = s[_data]
-                       assert(not (data.ro or s[_slf]:is_readonly()),
+  __newindex = \s,i,v => local data = s.__dat
+                       assert(not (data.ro or s.__slf:is_readonly()),
                               "invalid write access to readonly mtable")
                        local ci = is_integer(i) and ireflect(i, data.nc) or data.cidx[i]
                        assert(data[ci], "invalid column in row write access")
-                       local ri = s[_idx]
+                       local ri = s.__idx
                        if ci ~= data.cref then
                          data[ci][ri] = v
                        elseif not v then
@@ -574,14 +568,14 @@ local row_mt = set_concept({
 -- count proxy
 local function cnt_iter (s, i)
   i = i+1
-  local ri = s[_idx][i]
-  if ri then s[_data][_idx] = ri return i, s[_data] end
+  local ri = s.__idx[i]
+  if ri then s.__dat.__idx = ri return i, s.__dat end
 end
 
 local cnt_mt = set_concept({
-  __len      = \s   -> s[_idx].n,
-  __index    = \s,i => local ri = s[_idx][ ireflect(i, s[_idx].n) ]
-                       if ri then s[_data][_idx] = ri return s[_data] end
+  __len      = \s   -> s.__idx.n,
+  __index    = \s,i => local ri = s.__idx[ ireflect(i, s.__idx.n) ]
+                       if ri then s.__dat.__idx = ri return s.__dat end
                        end,
   __ipairs   = \s   -> (cnt_iter, s, 0),
   __tostring = \s   -> string.format("mtable count: %p", s),
@@ -589,17 +583,17 @@ local cnt_mt = set_concept({
 
 -- number of rows
 local function len_mm (tbl)
-  return var_get(tbl,_data).nr
+  return tbl.__dat.nr
 end
 
 -- read access precedence: row index, variable key, column key, row key.
 local function index_mm (tbl, key)
   -- row index
   if type(key) == 'number' then                              -- see index_of_idx
-    local data = var_get(tbl,_data)
+    local data = tbl.__dat
     key = ireflect(key, data.nr)
     if key < 1 or key > data.nr then return nil end
-    return setmetatable({[_idx]=key, [_data]=data, [_slf]=tbl}, row_mt)
+    return setmetatable({__idx=key, __dat=data, __slf=tbl}, row_mt)
   end
   -- variable (or method)
   local var = var_get(tbl, key)
@@ -607,24 +601,24 @@ local function index_mm (tbl, key)
     return var_val(tbl, key, var)
   end
   -- column name
-  local data = var_get(tbl,_data)
+  local data = tbl.__dat
   local ci = data.cidx[key]
   if ci then -- full column
     return (ci ~= data.cref or data.ro) and data[ci] or -- index proxy
-           setmetatable({[_col]=data[ci], [_data]=data, [_slf]=tbl}, ref_mt)
+           setmetatable({__col=data[ci], __dat=data, __slf=tbl}, ref_mt)
   end
   -- row name
   local ri = data.ridx[key]
   if is_number(ri) then
-    return setmetatable({[_idx]=ri, [_data]=data, [_slf]=tbl}, row_mt)
+    return setmetatable({__idx=ri, __dat=data, __slf=tbl}, row_mt)
   elseif is_table(ri) then
-    return setmetatable({[_idx]=ri, [_data]= -- count proxy
-           setmetatable({[_idx]=0 , [_data]=data, [_slf]=tbl}, row_mt)}, cnt_mt)
+    return setmetatable({__idx=ri, __dat= -- count proxy
+           setmetatable({__idx=0 , __dat=data, __slf=tbl}, row_mt)}, cnt_mt)
   end
 end
 
 local function newindex_mm (tbl, key, val)
-  local data = var_get(tbl,_data)
+  local data = tbl.__dat
   -- row index or col/row name
   if is_number(key) or data.cidx[key] or data.ridx[key] then
     error("invalid mtable write access (use 'set' methods)")
@@ -637,19 +631,19 @@ end
 
 local function set_readonly (tbl, set_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local data = raw_get(tbl,_data)
+  local data = raw_get(tbl,'__dat')
   if data then
     set_ = set_ ~= false and true or false
     if set_ ~= tbl:is_readonly() then
       for i=1,data.nc-data.ng do -- is_selected is never RO
         if set_ then -- protect
           if is_table(data[i])
-          then data[i] = setmetatable({[_col]=data[i], [_data]=data}, col_mt)
+          then data[i] = setmetatable({__col=data[i], __dat=data}, col_mt)
           else data[i], data.hook[i] = data[i]:constview(), data[i]
           end
         else         -- unprotect
           if is_table(data[i])
-          then data[i] = data[i][_col]
+          then data[i] = data[i].__col
           else data[i], data.hook[i] = data.hook[i], nil
           end
         end
@@ -664,7 +658,7 @@ end
 
 local function build_index (tbl, key_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local data = var_get(tbl,_data)
+  local data = tbl.__dat
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
 
   if key_ == 'none' then -- 'none' disable index
@@ -784,7 +778,7 @@ end
 
 local function get (tbl, row, col, cnt_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local data, ri, ci = var_get(tbl,_data)
+  local data, ri, ci = tbl.__dat
 
   if is_integer(col)
   then ci = ireflect(col, data.nc)
@@ -807,7 +801,7 @@ end
 
 local function set (tbl, row, col, val, cnt_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local data = var_get(tbl,_data)
+  local data = tbl.__dat
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
 
   local ci, ri
@@ -845,7 +839,7 @@ end
 
 local function clr_dat (tbl)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local data = var_get(tbl,_data)
+  local data = tbl.__dat
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
   for i=1,data.nc-data.ng do data[i] = {} end
   data.nr, data.rmax = 0, 1
@@ -857,15 +851,15 @@ end
 
 local function get_col (tbl, key)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local data = var_get(tbl,_data)
+  local data = tbl.__dat
   local ci = is_integer(key) and ireflect(key, data.nc) or data.cidx[key]
   if not ci or ci < 0 or ci > data.nc then return nil end
   return (ci ~= data.cref or data.ro) and data[ci] or -- index proxy
-          setmetatable({[_col]=data[ci], [_data]=data, [_slf]=tbl}, ref_mt)
+          setmetatable({__col=data[ci], __dat=data, __slf=tbl}, ref_mt)
 end
 
 local function set_col (tbl, key, val)
-  local data = var_get(tbl,_data)
+  local data = tbl.__dat
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
   local ci = is_integer(key) and ireflect(key, data.nc) or data.cidx[key]
@@ -873,7 +867,7 @@ local function set_col (tbl, key, val)
   if rawequal(data[ci],val) then return tbl end
   if ci > data.nc-data.ng then -- generator to use
     assert(is_callable(val), "invalid argument #2 (callable expected)")
-    data[ci][_col] = val
+    data[ci].__col = val
   elseif is_callable(val) then  -- generator to call
     for ri=1,data.nr do data[ci][ri] = val(ri) end
   elseif is_iterable(val) then  -- iterable to copy
@@ -888,7 +882,7 @@ local function ins_col (tbl, key_, kval, val, nvec_)
   if is_nil(val) then
     kval, val, key_ = key_, kval -- right shift
   end
-  local data = var_get(tbl,_data)
+  local data = tbl.__dat
   assert(is_mtable(tbl) , "invalid argument #1 (mtable expected)")
   assert(is_string(kval), "invalid argument #2 (string expected)")
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
@@ -900,7 +894,7 @@ local function ins_col (tbl, key_, kval, val, nvec_)
   local cg = data.nc-data.ng+1
   if is_callable(val) then     -- generator
     if ci < cg then ci = cg end
-    table.insert(data, ci, setmetatable({[_col]=val, [_data]=data}, gen_mt) )
+    table.insert(data, ci, setmetatable({__col=val, __dat=data}, gen_mt) )
     data.ng = data.ng+1
   elseif is_iterable(val) then -- iterable  TODO: if nr == 0 specialize again...
     local nr = data.nr
@@ -931,7 +925,7 @@ local function add_col (tbl, kval, val, nvec_)
 end
 
 local function rem_col (tbl, key)
-  local data = var_get(tbl,_data)
+  local data = tbl.__dat
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
   local ci = is_integer(key) and ireflect(key, data.nc) or data.cidx[key]
@@ -969,11 +963,11 @@ local function get_row (tbl, key, ref_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local ri = index_of(tbl, key, ref_)
   if is_nil(ri) then return nil end
-  return (setmetatable({[_idx]=ri, [_data]=var_get(tbl,_data), [_slf]=tbl}, row_mt))
+  return (setmetatable({__idx=ri, __dat=tbl.__dat, __slf=tbl}, row_mt))
 end
 
 local function clr_row (tbl, key, ref_)
-  local data = var_get(tbl, _data)
+  local data = tbl.__dat
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
   local ri = assert(index_of(tbl, key, ref_), "invalid argument #2 (valid row expected)")
@@ -984,7 +978,7 @@ local function clr_row (tbl, key, ref_)
 end
 
 local function set_row (tbl, key, val, ref_)
-  local data = var_get(tbl, _data)
+  local data = tbl.__dat
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
   local ri = assert(index_of(tbl, key, ref_), "invalid argument #2 (valid row expected)")
@@ -1001,7 +995,7 @@ local function set_row (tbl, key, val, ref_)
 end
 
 local function add_row (tbl, val)
-  local data = var_get(tbl, _data)
+  local data = tbl.__dat
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
   assert(is_iterable(val), "invalid argument #2 (iterable expected)")
@@ -1023,7 +1017,7 @@ local function add_row (tbl, val)
 end
 
 local function ins_row (tbl, key, val, ref_)
-  local data = var_get(tbl, _data)
+  local data = tbl.__dat
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   if key == #tbl+1 then return add_row(tbl, val) end
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
@@ -1048,7 +1042,7 @@ local function ins_row (tbl, key, val, ref_)
 end
 
 local function rem_row (tbl, key, ref_)
-  local data = var_get(tbl, _data)
+  local data = tbl.__dat
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
   local ri = assert(index_of(tbl, key, ref_), "invalid argument #2 (valid row expected)")
@@ -1065,7 +1059,7 @@ local function rem_row (tbl, key, ref_)
 end
 
 local function swp_row (tbl, key1, key2, ref1_, ref2_)
-  local data = var_get(tbl, _data)
+  local data = tbl.__dat
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
   local ri1 = assert(index_of(tbl, key1, ref1_)         , "invalid argument #2 (valid row expected)")
@@ -1090,7 +1084,7 @@ local ptrue  = \p,_ ,   r,i -> p(r,i) and true
 local pfalse = \p,_ ,   r,i -> p(r,i) or false
 
 local function foreach (tbl, act, rng_, sel_, not_) -- action, range, selection, default
-  local data = var_get(tbl, _data)
+  local data = tbl.__dat
   local f, p
 
   -- foreach(sel) -> foreach(sel.action, sel)
@@ -1150,14 +1144,14 @@ end
 local do_select = \sel,_,i => sel[i] = nil end
 
 local function select (tbl, rng_, sel_, not_)
-  local f = bind1st(do_select, var_get(tbl,_data)[0])
+  local f = bind1st(do_select, tbl.__dat[0])
   return tbl:foreach(f, rng_, sel_, not_)
 end
 
 local do_deselect = \sel,_,i => sel[i] = true end
 
 local function deselect (tbl, rng_, sel_, not_)
-  local f = bind1st(do_deselect, var_get(tbl,_data)[0])
+  local f = bind1st(do_deselect, tbl.__dat[0])
   return tbl:foreach(f, rng_, sel_, not_)
 end
 
@@ -1176,7 +1170,7 @@ end
 
 local function remove (tbl, rng_, sel_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local data = var_get(tbl,_data)
+  local data = tbl.__dat
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
 
   -- collect indexes of elements to remove
@@ -1216,7 +1210,7 @@ end
 
 local function insert (tbl, rows, rng_, sel_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local data = var_get(tbl,_data)
+  local data = tbl.__dat
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
 
   -- collect indexes of elements to select
@@ -1284,7 +1278,7 @@ local function sort (tbl, cmp, rng_, sel_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   assert(is_string(cmp) or is_callable(cmp),
                          "invalid argument #2 (string or callable expected)")
-  local data = var_get(tbl,_data)
+  local data = tbl.__dat
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
 
   -- collect indexes of elements to sort
@@ -1293,11 +1287,11 @@ local function sort (tbl, cmp, rng_, sel_)
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
 
   -- sort indexes (indirectly)
-  local row1  = setmetatable({[_idx]=0, [_data]=data, [_slf]=tbl}, row_mt)
-  local row2  = setmetatable({[_idx]=0, [_data]=data, [_slf]=tbl}, row_mt)
+  local row1  = setmetatable({__idx=0, __dat=data, __slf=tbl}, row_mt)
+  local row2  = setmetatable({__idx=0, __dat=data, __slf=tbl}, row_mt)
   local idx_s = tblicpy(idx_r, table.new(nr,0))
   if is_string(cmp) then cmp = str2cmp(cmp) end
-  table.sort(idx_s, \i1,i2 => row1[_idx], row2[_idx] = i1, i2
+  table.sort(idx_s, \i1,i2 => row1.__idx, row2.__idx = i1, i2
                               return cmp(row1,row2) end)
 
   -- build lookup table
@@ -1331,8 +1325,8 @@ end
 
 local function cycle (tbl, a)
   assert(is_mtable(tbl)  , "invalid argument #1 (mtable expected)")
-  local idx = index_of(tbl, a)
-  assert(is_integer(idx), "invalid argument #2 (valid reference expected)")
+  assert(index_of(tbl, a), "invalid argument #2 (valid reference expected)")
+  assert(not tbl:is_readonly(), "invalid write access to readonly mtable")
   tbl:raw_set('__cycle', a)
   return tbl
 end
@@ -1349,7 +1343,7 @@ local function fwditer (state, i)
     state.turn = state.turn-1
   end
   i = i < state.nr and i+1 or 1
-  state.row[_idx] = i
+  state.row.__idx = i
   return i, state.row
 end
 
@@ -1359,7 +1353,7 @@ local function bwditer (state, i)
     state.turn = state.turn-1
   end
   i = i > 1 and i-1 or state.nr
-  state.row[_idx] = i
+  state.row.__idx = i
   return i, state.row
 end
 
@@ -1371,7 +1365,7 @@ local function iter (tbl, rng_, ntrn_, dir_)
 
   if #tbl == 0 then return niliter end
 
-  local data, start, stop = var_get(tbl,_data)
+  local data, start, stop = tbl.__dat
   if is_nil(rng_) then
     local idx1, idxn = 1, data.nr
     if dir < 0 then idx1, idxn = idxn, idx1 end
@@ -1386,7 +1380,7 @@ local function iter (tbl, rng_, ntrn_, dir_)
   end
   if start == stop+dir then nturn = nturn+1 end
 
-  local row = setmetatable({[_idx]=0, [_data]=data, [_slf]=tbl}, row_mt)
+  local row = setmetatable({__idx=0, __dat=data, __slf=tbl}, row_mt)
   return dir > 0 and fwditer or bwditer,
          { row=row, nr=data.nr, stop=stop, turn=nturn-1 }, start-dir
 end
@@ -1451,7 +1445,7 @@ local function write (tbl, filnam_, colnam_, hdrnam_, rowsel_)
     end
   end
 
-  local data = var_get(tbl,_data)
+  local data = tbl.__dat
   local cnam = colnam_ or tbl.column or data.cidx
   local hnam = hdrnam_ or tbl.header
   local nrow = data.nr
@@ -1463,7 +1457,9 @@ local function write (tbl, filnam_, colnam_, hdrnam_, rowsel_)
   local j = 1
   for i=1,ncol do
     local ci = is_number(cnam[i]) and ireflect(cnam[i], ncol) or data.cidx[cnam[i]]
-    if not data[ci] then error("invalid column name or index "..cnam[i]) end
+    if not data[ci] then
+      errorf("invalid column name (or index) '%s'", tostring(cnam[i]))
+    end
     local v = data[ci][1] -- discard cdata except complex and range
     if not (is_table(v) or is_cdata(v)) or is_complex(v) or is_range(v) then
       cols[j], clst[j], j = data[ci], data.cidx[ci], j+1
@@ -1649,11 +1645,11 @@ end
 mtable :set_methods {
   -- nrow, ncol, ngen, nalloc, colnam, colidx, colnames, index
   nrow         = len_mm,
-  ncol         = \s   -> var_get(s, _data).nc,
-  ngen         = \s   -> var_get(s, _data).ng,
-  nalloc       = \s   -> var_get(s, _data).rmax,
-  colnam       = \s,n -> var_get(s, _data).cidx[n],
-  colnames     = \s   -> tblicpy(var_get(s, _data).cidx),
+  ncol         = \s   -> s.__dat.nc,
+  ngen         = \s   -> s.__dat.ng,
+  nalloc       = \s   -> s.__dat.rmax,
+  colnam       = \s,n -> s.__dat.cidx[n],
+  colnames     = \s   -> tblicpy(s.__dat.cidx),
   index        = index,
 
   -- cells manipulation
