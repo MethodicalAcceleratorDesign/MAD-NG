@@ -26,6 +26,7 @@
 
 local object, vector, cvector, toboolean, tocomplex, torange, option, env in MAD
 
+local round                                                       in MAD.gmath
 local bind1st, bind2nd, bind2st                                   in MAD.gfunc
 local sub, ltrue, lfalse                                          in MAD.operator
 local strtrim, strsplit, strbracket, strquote, strsplitall,
@@ -37,7 +38,7 @@ local is_nil, is_boolean, is_number, is_integer, is_complex,
       is_cdata, is_vector, is_cvector, set_concept, concept       in MAD.typeid
 local not_mappable, not_extendable, not_mutable                   in concept
 
-local abs, min, max, ceil in math
+local abs, min, max, ceil, floor in math
 
 local type, getmetatable, setmetatable, assert, error, rawequal =
       type, getmetatable, setmetatable, assert, error, rawequal
@@ -185,17 +186,25 @@ local function index_of_rnam (tbl, nam, cnt, ref)
 end
 
 -- get index from row position (direct)
-local function index_of_row (tbl, idx, ref_)
-  assert(is_integer(idx), "invalid index (integer expected)")
-  if ref_ then return idx + index_of_ref(tbl, ref_) end
-  idx = index_of_idx(tbl, idx)
-  if idx and idx >= 1 and idx <= #tbl then return idx end
+local function index_of_num (tbl, num, ref_, dir_)
+  if ref_ then return num + index_of_ref(tbl, ref_) end
+  local num = index_of_idx(tbl, num)
+  if not num then return nil end
+  local idx, dir = num, dir_ or 0
+  if not is_integer(idx) then
+        if dir ==  0 then idx = round(idx)
+    elseif dir ==  1 then idx = ceil (idx)
+    elseif dir == -1 then idx = floor(idx)
+    else error("invalid direction (0, 1 or -1 expected)")
+    end
+  end
+  return idx, num
 end
 
 -- get index from [mangled] name or s-position (direct or linear)
-local function index_of_str (tbl, str, ref_)
+local function index_of_str (tbl, str, ref_, dir_)
   local num = tonumber(str)
-  if num then return index_of_row(tbl, num, ref_) end
+  if num then return index_of_num(tbl, num, ref_, dir_) end
   assert(tbl.__dat.cref, "no reference column found")
   local nam, cnt, _, bra = strbracket(str)
   cnt = is_nil(cnt) and 1 or tonumber(cnt)
@@ -223,7 +232,7 @@ end
 
 -- get index from element (linear): TODO (from sequence)                      -- untested.
 local function index_of_elm (tbl, elm, ref_, dir_)
-  local seq, nam, data = tbl.__seq, elm.__id, tbl.__dat
+  local nam, data, seq = elm.__id, tbl.__dat, tbl.__seq
   assert(seq, "no sequence attached found")
   assert(data.cidx.eidx, "no element index column found")
   assert(data.cref , "no reference column found")
@@ -690,7 +699,7 @@ end
 
 local function index_of (tbl, a, ref_, dir_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-      if is_integer(a) then return index_of_row(tbl, a, ref_, dir_)
+      if is_number (a) then return index_of_num(tbl, a, ref_, dir_)
   elseif is_string (a) then return index_of_str(tbl, a, ref_, dir_)
   elseif is_element(a) then return index_of_elm(tbl, a, ref_, dir_) -- To Review
   end
@@ -700,42 +709,46 @@ end
 
 local function range_of (tbl, rng_, ref_, dir_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  local start, stop, istart, istop
+  local start, stop, step, istart, istop, sstart, sstop, dir, doidx
   if is_nil(rng_) then
-    local dir = dir_ or 1
-        if dir ==  1 then return 1, #tbl
-    elseif dir == -1 then return #tbl, 1
-    else error("invalid range direction (1 or -1 expected)")
-    end
-  elseif is_integer(rng_) then
-    start, istart = rng_, index_of_row(tbl, rng_, ref_)
+    dir = dir_ or 1
+        if dir ==  1 then return 1, #tbl,  1
+    elseif dir == -1 then return #tbl, 1, -1 end
+  elseif is_number(rng_) then
+    start, istart = rng_, index_of_num(tbl, rng_, ref_, dir_)
     stop , istop  = start, istart
   elseif is_string(rng_) then
     local s1, i2 = strsplit(rng_, "/" )
     local s2 = i2 == 0 and s1 or strtrim(rng_, i2+1)
-    start, stop = s1, s2
+    doidx, start, stop = true, s1, s2
   elseif is_range(rng_) then
-    start, stop = rng_:ranges()
+    doidx, start, stop, step = true, rng_:ranges()
+    dir_ = dir_ or step
   elseif is_rawtable(rng_) then
-    start, stop, ref_ = rng_[1], rng_[2] or rng_[1], ref_ or rng_[3]
+    doidx, start, stop, ref_, dir_ = true, rng_[1], rng_[2] or rng_[1],
+                                     ref_ or rng_[3],  dir_ or rng_[4]
   else
-    errorf("invalid argument #2 (integer, string, table or range expected, got %s)",
+    errorf("invalid argument #2 (number, string, table or range expected, got %s)",
            tostring(rng_))
   end
-  if not is_number(rng_) then
-    istart = index_of(tbl, start, ref_)
-    istop  = index_of(tbl, stop , ref_)
+  dir = dir_ or 1
+  assert(dir == 1 or dir == -1, "invalid range direction (1 or -1 expected)")
+  if doidx then
+    istart, sstart = index_of(tbl, start, ref_,  dir)
+    istop , sstop  = index_of(tbl, stop , ref_, -dir)
   end
   if not istart then errorf("invalid range start '%s'", tostring(start)) end
   if not istop  then errorf("invalid range stop '%s'" , tostring(stop )) end
-  return istart, istop
+  if sstart and sstop and (istart-istop)*(sstart-sstop) < 0 then
+    return nil -- empty range
+  end
+  return istart, istop, dir
 end
 
 local function length_of (tbl, rng_, ntrn_, dir_) -- see iter
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-    local start, stop = range_of(tbl, rng_, nil, dir_)
+  local start, stop, dir = range_of(tbl, rng_, nil, dir_)
   if is_nil(start) then return 0 end
-  local dir = dir_ or 1
   local siz, trn = (stop-start)*dir, ntrn_ or 1
   return 1 + siz + #tbl * (trn-1 + (siz < 0 and 1 or 0))
 end
@@ -1358,16 +1371,16 @@ local function bwditer (state, i)
 end
 
 local function iter (tbl, rng_, ntrn_, dir_)
-  local nturn, dir = ntrn_ or 1, dir_ or 1
+  local nturn, dir = ntrn_ or 1
   assert(is_mtable(tbl)                  ,"invalid argument #1 (mtable expected)")
   assert(is_integer(nturn) and nturn > 0 ,"invalid argument #3 (integer >1 expected)")
-  assert(dir == 1 or dir == -1           ,"invalid argument #4 (1 or -1 expected)")
 
   if #tbl == 0 then return niliter end
 
   local data, start, stop = tbl.__dat
   if is_nil(rng_) then
     local idx1, idxn = 1, data.nr
+    dir = dir_ or 1
     if dir < 0 then idx1, idxn = idxn, idx1 end
     if is_nil(tbl.__cycle) then
       start, stop = idx1, idxn
@@ -1376,13 +1389,16 @@ local function iter (tbl, rng_, ntrn_, dir_)
       stop  = start == idx1 and idxn or start-dir
     end
   else
-    start, stop = range_of(tbl, rng_)
+    start, stop, dir = range_of(tbl, rng_, nil, dir_)
+    if is_nil(start) then return niliter end
   end
   if start == stop+dir then nturn = nturn+1 end
 
+  assert(dir == 1 or dir == -1,"invalid argument #4 (1 or -1 expected)")
+
   local row = setmetatable({__idx=0, __dat=data, __slf=tbl}, row_mt)
   return dir > 0 and fwditer or bwditer,
-         { row=row, nr=data.nr, stop=stop, turn=nturn-1 }, start-dir
+         { row=row, nr=data.nr, stop=stop, turn=nturn-1, dir=dir }, start-dir
 end
 
 -- I/O methods ----------------------------------------------------------------o
