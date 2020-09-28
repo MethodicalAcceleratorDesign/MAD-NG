@@ -90,8 +90,8 @@ local mkend   = marker '$end'   {} : set_readonly()
 local function seq_error (msg, seq, idx, elm)
   local fun = seq.debug and warn or error
   elm = elm or is_integer(idx) and is_sequence(seq) and seq[idx]
-  fun(msg .. (is_object(seq) and " in sequence '" .. seq.__id .. "'" or '')
-          .. (is_object(elm) and " for element '" .. elm.__id .. "'" or '')
+  fun(msg .. (is_object(seq) and " in sequence '" .. seq.name .. "'" or '')
+          .. (is_object(elm) and " for element '" .. elm.name .. "'" or '')
           .. (          idx  and " at index "     .. idx             or ''), 2)
 end
 
@@ -198,13 +198,13 @@ local function check_index (seq)
   -- check dict vs data: name -> index or table of indexes
   for en,ei in pairs(eidx) do
     if is_number(ei) then
-      assert(data[ei].__id == en     , "unexpected corrupted dictionnary")
+      assert(data[ei].name == en     , "unexpected corrupted dictionnary")
     elseif is_table(ei) then
-      assert(data[ei[1]].__id == en  , "unexpected corrupted dictionnary")
+      assert(data[ei[1]].name == en  , "unexpected corrupted dictionnary")
       assert(ei.n             >= 2   , "unexpected corrupted dictionnary")
       for i=2,ei.n do
         assert(ei[i-1] < ei[i]       , "unexpected corrupted dictionnary")
-        assert(data[ei[i]].__id == en, "unexpected corrupted dictionnary")
+        assert(data[ei[i]].name == en, "unexpected corrupted dictionnary")
       end
     else
       error("unexpected corrupted dictionnary")
@@ -213,7 +213,7 @@ local function check_index (seq)
 
   -- check data vs dict: name -> index or table of indexes
   for i=1,data.ne do
-    local ei = eidx[data[i].__id]
+    local ei = eidx[data[i].name]
     if is_number(ei) then
       assert(ei == i                 , "unexpected corrupted dictionnary")
     elseif is_table(ei) then
@@ -344,7 +344,7 @@ end
 
 -- get index from element (linear)
 local function index_of_elm (seq, elm, ref_, dir_)
-  local nam, data = elm.__id, seq.__dat
+  local nam, data = elm.name, seq.__dat
   local ei = data.eidx[nam]
   if is_nil(ei) then return nil end
   local idx = ref_ and index_of_ref(seq, ref_) or 1
@@ -369,11 +369,11 @@ local function name_of_idx (seq, idx, ref_)
   local data = seq.__dat
   idx = index_of_idx(seq, idx)
   if is_nil(idx) then return nil end
-  local nam = data[idx].__id
+  local nam = data[idx].name
   local ei = data.eidx[nam]
   if is_number(ei) then
     assert(ei == idx, "unexpected corrupted dictionnary")
-    return nam
+    return tostring(nam)
   end
 
   local cnt, b1, b2 = 0
@@ -390,7 +390,7 @@ local function name_of_idx (seq, idx, ref_)
   for i=1,ei.n do
     if ei[i] == idx then
       if cnt >= i then cnt = cnt+1 end
-      return string.format("%s%s%d%s", nam, b1, i-cnt, b2)
+      return string.format("%s%s%d%s", tostring(nam), b1, i-cnt, b2)
     end
   end
   error("unexpected corrupted dictionnary")
@@ -587,7 +587,7 @@ local function build_pos (seq, sref)
   if seq.l == uninitialized then
     seq.l = len
   elseif seq.l < len then
-    error("invalid sequence length "..seq.l.."m for "..seq.__id)
+    error("invalid sequence length "..seq.l.."m for "..seq.name)
   end
 
   -- clear 'at' and 'from' of elements
@@ -607,7 +607,7 @@ local function copy_ssequ (seq, flat, sref, idx, dir)
   sref[idx], sref.sdir[idx] = seq, dir -- link subsequence
 
 !  if sref.dir ~= seq.dir then -- insert changedir patch
-!    idx, flat[idx] = idx+1, changedir(seq.__id.."_chdir", {})
+!    idx, flat[idx] = idx+1, changedir(seq.name.."_chdir", {})
 !  end
 
       if dir ==  1 then
@@ -681,7 +681,7 @@ local function build_idx (data)     -- must be very fast
   local eidx = data.eidx
   table.clear(eidx)                 -- reuse main storage
   for idx,elm in ipairs(data) do
-    local nam = elm.__id
+    local nam = elm.name
     local val = eidx[nam]
     if is_nil(val) then             -- none: scalar
       eidx[nam] = idx
@@ -703,7 +703,7 @@ local function clear_sub (seq, sref)
   local spos, upos, ds, algn, ne in data
   local j, n, nam = 2, ne
   for i=2,n-1 do
-    nam = data[i].__id
+    nam = data[i].name
     if not (nam == '$start' and is_instanceOf(data[i], mkstart) or
             nam == '$end'   and is_instanceOf(data[i], mkend))  then
       data[j], spos[j], upos[j], ds[j], algn[j], j =
@@ -944,8 +944,8 @@ end
 
 local pcls   = is_instanceOf
 local psel   = marker.is_selected
-local ptbl   = \tbl, e,_ -> tbl[e.__id]
-local pnam   = \pat, e,_ -> string.match(e.__id, pat) ~= nil
+local ptbl   = \tbl, e,_ -> tbl[e.name]
+local pnam   = \pat, e,_ -> string.match(e.name, pat) ~= nil
 local pand   = \p,p2,e,i -> p(e,i) and p2(e,i)
 local ptrue  = \p,_ ,e,i -> p(e,i) and true
 local pfalse = \p,_ ,e,i -> p(e,i) or false
@@ -1147,7 +1147,7 @@ local function remove (seq, rng_, sel_)
   for i=nr,1,-1 do
     local ii = idx_r[i]
     if dbg then
-      io.write("seq: removing element '", data[ii].__id, "'\n")
+      io.write("seq: removing element '", data[ii].name, "'\n")
     end
     elm_r[i] = data[ii]    -- backup
     table.remove(data     , ii)
@@ -1179,11 +1179,11 @@ local function replace (seq, elm, rng_, sel_)
   for i=1,ne do
     if not is_element(elm[i]) then
       error("item is not an element '"..
-        (is_object(elm[i]) and (elm[i].__id or '?') or type(elm[i])).."'")
+        (is_object(elm[i]) and (elm[i].name or '?') or type(elm[i])).."'")
     elseif is_sequence(elm[i]) then
-      error("element is a sequence '"..(elm[i].__id or '?').."'")
+      error("element is a sequence '"..(elm[i].name or '?').."'")
     elseif elm[i].is_bline == true then
-      error("element is a beam line '"..(elm[i].__id or '?').."'")
+      error("element is a beam line '"..(elm[i].name or '?').."'")
     end
   end
 
@@ -1241,7 +1241,7 @@ local function install (seq, elm, rng_, sel_)
   for i=1,ne do
     if elm[i].from == 'selected' then
       if is_sequence(elm[i]) then
-        error("invalid from 'selected' for sequence "..(elm[i].__id or '?'))
+        error("invalid from 'selected' for sequence "..(elm[i].name or '?'))
       end
       ns = ns+1
     end
@@ -1276,7 +1276,7 @@ local function install (seq, elm, rng_, sel_)
       table.move(data.algn, idx, data.ne, idx+sdata.ne-2)
       for j=2,sdata.ne-1 do -- see sequ_pos
         if dbg then
-          io.write("seq: installing element '", sdata[j].__id, "'\n")
+          io.write("seq: installing element '", sdata[j].name, "'\n")
         end
         data     [idx+j-2] = sdata     [j]
         data.spos[idx+j-2] = sdata.spos[j]+spos[ie]
@@ -1288,7 +1288,7 @@ local function install (seq, elm, rng_, sel_)
       check_drift(seq, idx+sdata.ne - 3) -- check surrounding drifts of lst data
     else
       if dbg then
-        io.write("seq: installing element '", ins[ie].__id, "'\n")
+        io.write("seq: installing element '", ins[ie].name, "'\n")
       end
       table.insert(data     , idx, ins [ie])
       table.insert(data.spos, idx, spos[ie])
@@ -1323,7 +1323,7 @@ local function publish (seq, env, keeporig_)
   end
   local data = seq.__dat
   for idx,elm in ipairs(seq) do
-    local nam = elm.__id
+    local nam = elm.name
     if is_element(env[nam]) then data[idx] = env[nam] else env[nam] = elm end
   end
   if wrn ~= nil then env.option.warn = wrn end
@@ -1332,7 +1332,7 @@ end
 
 local function reflect (seq, nam_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local nam = nam_ or seq.__id..'_rev'
+  local nam = nam_ or seq.name..'_rev'
   return sequence(nam, { -seq })
 end
 
@@ -1355,12 +1355,12 @@ local function share (seq1, seq2)
 
   local elm_r, idx_r, nr = {}, {}, 1
   for i=2,data1.ne-1 do
-    local nam = data1[i].__id -- share by (unique) name
+    local nam = data1[i].name -- share by (unique) name
     local i1, i2 = data1.eidx[nam], data2.eidx[nam]
     if is_integer(i1) and is_integer(i2) then -- element name is unique in both sequences
       local e1, e2 = data1[i1], data2[i2]
       if e1 ~= e2 then
-        assert(e1.__id == nam and e2.__id == nam, "unexpected corrupted dictionnary")
+        assert(e1.name == nam and e2.name == nam, "unexpected corrupted dictionnary")
         local ds1 = data1.upos[i1]-data1.spos[i1]
         local ds2 = data2.upos[i2]-data2.spos[i2]
         assert(abs(e1.l-e2.l) < minlen, "incompatible shared elements (lengths differ)")
@@ -1393,7 +1393,7 @@ local function unique (seq, fmt_)
         local idx, nam = ei[i]
         local elm = data[idx]
         if fmt_ then
-          nam = fmt_(elm.__id, i, idx)
+          nam = fmt_(elm.name, i, idx)
           if data.eidx[nam] ~= nil then
             error("cannot rename uniquely element '"..nam.."' (already in use)")
           end
@@ -1402,7 +1402,7 @@ local function unique (seq, fmt_)
         if lst[elm] > 1 then
           data[idx] = elm(nam,{})    -- replaced by unique child
         elseif fmt_ then
-          elm.__id = nam             -- override with unique name
+          elm.name = nam             -- override with unique name
         end
       end
       if fmt_ then data.eidx[en] = nil end
@@ -1591,7 +1591,7 @@ local function dumpseq (seq, filnam_)
   local res = table.new(#seq,0)
 
   -- header
-  res[1] = 'sequence: ' .. seq.__id .. ', ' ..
+  res[1] = 'sequence: ' .. seq.name .. ', ' ..
            'l=' .. (seq.l == uninitialized and 'uninitialized' or seq.l)
   res[2] = 'idx  kind          name                    l          dl       \z
             spos       upos    uds'
@@ -1600,7 +1600,7 @@ local function dumpseq (seq, filnam_)
     local ds, uds = seq:ds(i), seq:upos(i)-seq:spos(i)
     local dl = ds-e.l
     res[#res+1] = string.format('%03d  %-14s%-20s%9.3f%8.3g%s%11.3f%11.3f%8.3f%s',
-                  i, e.kind, e.__id, e.l, dl, abs(dl) > eps and '*' or ' ',
+                  i, e.kind, e.name, e.l, dl, abs(dl) > eps and '*' or ' ',
                   seq:spos(i), seq:upos(i), uds, (uds<0 or uds>ds) and '*' or '')
     end
 
@@ -1702,33 +1702,3 @@ MAD.typeid.is_sequence = is_sequence
 
 -- end -------------------------------------------------------------------------
 return { sequence = sequence }
-
---[=[ TODO?
-SEQUENCE DISPLAY
-
-local function show_fields(t, lst)
-  local a, k, s
-  lst = lst or sequence_fields
-  for _,v in ipairs(lst) do
-    if is_list(v) then k, s = v[1], v[2] else k, s = v, v end
-    a = t[k]
-    if a then io.write(', ', s, '= ', tostring(a)) end
-  end
-end
-
-function M:show(disp)
-  io.write("sequence '", self.__id,"' { ")
-  show_list(self, disp)
-  io.write(' }\n')
-  for _,v in ipairs(self) do v:show(disp) end
-  io.write('endsequence\n')
-end
-
-function M:show_madx(disp)
-  io.write("'", self.__id, "': sequence, ")
-  show_list(self, disp)
-  io.write(';\n')
-  for _,v in ipairs(self) do v:show_madx(disp) end
-  io.write('endsequence;\n')
-end
---]=]
