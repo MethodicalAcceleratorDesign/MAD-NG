@@ -789,7 +789,7 @@ end
 
 -- methods (R/W, update dict) -------------------------------------------------o
 
-local function get (tbl, row, col, cnt_)
+local function get_cel (tbl, row, col, cnt_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local data, ri, ci = tbl.__dat
 
@@ -808,11 +808,10 @@ local function get (tbl, row, col, cnt_)
       ri = ri[ ireflect(cnt, ri.n) ]
     end
   end
-
   return data[ci][ri]
 end
 
-local function set (tbl, row, col, val, cnt_)
+local function set_cel (tbl, row, col, val, cnt_)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local data = tbl.__dat
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
@@ -846,6 +845,7 @@ local function set (tbl, row, col, val, cnt_)
     data[ci][ri] = val
     ins_idx(data, ri)
   end
+  return tbl
 end
 
 --- cleaning -------------------------------o
@@ -1030,15 +1030,17 @@ local function add_row (tbl, val)
 end
 
 local function ins_row (tbl, key, val, ref_)
-  local data = tbl.__dat
+  local data, ri = tbl.__dat, key
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
-  if key == #tbl+1 then return add_row(tbl, val) end
+  local nr = data.nr+1
+  if ri ~= nr then
+    ri = assert(index_of(tbl, ri, ref_), "invalid argument #2 (valid row expected)")
+  end
+  if ri == nr then return add_row(tbl, val) end
   assert(not (data.ro or tbl:is_readonly()), "invalid write access to readonly mtable")
-  local ri = assert(index_of(tbl, key, ref_), "invalid argument #2 (valid row expected)")
   assert(is_iterable(val), "invalid argument #3 (iterable expected)")
   assert(is_nil(data.cref) or val[data.cref] or val[data.cidx[data.cref]],
                                     "invalid argument #3 (nil reference value)")
-  local nr = data.nr+1
   if nr > data.rmax then expand(data, tbl, 1) end
   for ci=1,data.nc-data.ng do
     local v = val[ci]
@@ -1090,7 +1092,7 @@ end
 -- functional methods ---------------------------------------------------------o
 
 local pknd   = \knd,k,  r,i -> knd[i] == k
-local psel   = \sel,b,  r,i -> not not sel[i] == b
+local psel   = \sel,b,  r,i -> b == (sel[i] == true)
 local pnam   = \ref,pat,r,i -> string.match(ref[i], pat) ~= nil
 local pand   = \p,p2,   r,i -> p(r,i) and p2(r,i)
 local ptrue  = \p,_ ,   r,i -> p(r,i) and true
@@ -1116,21 +1118,21 @@ local function foreach (tbl, act, rng_, sel_, not_) -- action, range, selection,
       not_ = true
     end
     local op = not_ ~= true and ptrue or pfalse
-    if sel_.select then
+    if sel_.select ~= nil then
       assert(is_callable(sel_.select), "invalid select (callable expected)")
       op, p = pand, bind2st(op, sel_.select, p)
     end
-    if sel_.pattern then
-      assert(is_string(sel_.pattern), "invalid pattern (string expected)")
-      assert(data.cref, "unexpected pattern selection (no reference column)")
-      op, p = pand, bind2st(op, bind2st(pnam,data[data.cref], sel_.pattern), p)
-    end
-    if sel_.kind then
+    if sel_.kind ~= nil then
       assert(is_string(sel_.kind), "invalid kind (string expected)")
       assert(data.cidx.kind, "unexpected 'kind' selection (no 'kind' column)")
       op, p = pand, bind2st(op, bind2st(pknd,data[data.cidx.kind], sel_.kind),p)
     end
-    if sel_.selected then
+    if sel_.pattern ~= nil then
+      assert(is_string(sel_.pattern), "invalid pattern (string expected)")
+      assert(data.cref, "unexpected pattern selection (no reference column)")
+      op, p = pand, bind2st(op, bind2st(pnam,data[data.cref], sel_.pattern), p)
+    end
+    if sel_.selected ~= nil then
       assert(is_boolean(sel_.selected), "invalid selected (boolean expected)")
       op, p = pand, bind2st(op, bind2st(psel, data[0], sel_.selected), p)
     end
@@ -1154,14 +1156,14 @@ local function foreach (tbl, act, rng_, sel_, not_) -- action, range, selection,
   return tbl
 end
 
-local do_select = \sel,_,i => sel[i] = nil end
+local do_select = \sel,_,i => sel[i] = true end
 
 local function select (tbl, rng_, sel_, not_)
   local f = bind1st(do_select, tbl.__dat[0])
   return tbl:foreach(f, rng_, sel_, not_)
 end
 
-local do_deselect = \sel,_,i => sel[i] = true end
+local do_deselect = \sel,_,i => sel[i] = nil end
 
 local function deselect (tbl, rng_, sel_, not_)
   local f = bind1st(do_deselect, tbl.__dat[0])
@@ -1238,8 +1240,9 @@ local function insert (tbl, rows, rng_, sel_)
     end
 
     idx_r, nr = filter(tbl, rng_, sel_, true)
-    if is_rawtable(sel_) and sel_.where == 'after' then
-      for i=1,nr do idx_r[i] = idx_r[i]+1 end
+    if is_rawtable(sel_) then
+      if sel_.where == 'after' then for i=1,nr do idx_r[i] = idx_r[i]+1 end end
+      if sel_.rows then rows = sel_.rows end
     end
   end
   if nr == 0 then return tbl end
@@ -1401,6 +1404,25 @@ local function iter (tbl, rng_, ntrn_, dir_)
          { row=row, nr=data.nr, stop=stop, turn=nturn-1, dir=dir }, start-dir
 end
 
+-- flags ----------------------------------------------------------------------o
+
+local function save_sel (tbl, sel_)
+  assert(is_mtable(tbl),"invalid argument #1 (mtable expected)")
+  local data = tbl.__dat
+  local dat0 = data[0]
+  local sel  = sel_ or table.new(data.nr,0)
+  for i=1,data.nr do sel[i] = dat0[i] == true end
+  return sels
+end
+
+local function restore_sel (tbl, sel)
+  assert(is_mtable(tbl)  , "invalid argument #1 (mtable expected)")
+  assert(is_iterable(sel), "invalid argument #2 (iterable expected)")
+  local data = tbl.__dat
+  local dat0 = data[0]
+  for i=1,data.nr do dat0[i] = sel[i] == true or nil end
+end
+
 -- I/O methods ----------------------------------------------------------------o
 
 local tblext = {'.tfs', '.txt', '.dat'}
@@ -1540,7 +1562,7 @@ local function write (tbl, filnam_, colnam_, hdrnam_, rowsel_)
 
     -- dump rows
     for j=1,nrow do
-      if not rowsel_ or not data[0][j] then -- is_selected
+      if not rowsel_ or data[0][j] then -- is_selected
         file:write('  ')
         for i=1,ncol do
           v = cols[i][j]
@@ -1668,8 +1690,8 @@ mtable :set_methods {
   index        = index,
 
   -- cells manipulation
-  get          = get,
-  set          = set,
+  get          = get_cel,
+  set          = set_cel,
 
   -- columns manipulation
   getcol       = get_col,
@@ -1718,6 +1740,10 @@ mtable :set_methods {
   -- ownership
   is_view      = is_view,
 
+  -- selection
+  save_sel    = save_sel,
+  restore_sel = restore_sel,
+
   -- readonly
   set_readonly = set_readonly,
 
@@ -1736,8 +1762,8 @@ mtable :set_methods {
   __len        = len_mm,
   __index      = index_mm,
   __newindex   = newindex_mm,
--- __pairs     = pairs_mm , default from object
 -- __ipairs    = ipairs_mm, default from object
+-- __pairs     = pairs_mm , default from object
 }, true) :set_readonly()
 
 -- env ------------------------------------------------------------------------o
