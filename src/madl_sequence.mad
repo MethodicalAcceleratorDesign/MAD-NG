@@ -951,19 +951,16 @@ local ptrue  = \p,_ ,e,i -> p(e,i) and true
 local pfalse = \p,_ ,e,i -> p(e,i) or false
 
 local function foreach (seq, act, rng_, sel_, not_) -- action, range, selection, default
-  local f, p
-
   -- foreach(sel) -> foreach(sel.action, sel)
   if is_nil(rng_) and is_rawtable(act) then
-    f, rng_ = act.action, act     -- extract action + right shift
-  else
-    f = act
+    act, rng_ = act.action, act     -- extract action + right shift
   end
   -- foreach(act,sel) -> foreach(act, sel.range, sel)
   if is_nil(sel_) and is_rawtable(rng_) and is_nil(rng_[1]) then
     rng_, sel_ = rng_.range, rng_ -- extract range  + right shift
   end
 
+  local p
   if is_rawtable(sel_) then       -- logically and'ed selections
     if is_nil(not_) and (sel_.default == 'none' or sel_.default == true) then
       not_ = true
@@ -999,44 +996,40 @@ local function foreach (seq, act, rng_, sel_, not_) -- action, range, selection,
   if is_nil(p) then p = (not_ ~= true or rng_) and ltrue or lfalse end
 
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  assert(is_callable(f)  , "invalid argument #2 (callable expected)")
+  assert(is_callable(act), "invalid argument #2 (callable expected)")
   assert(is_callable(p)  , "invalid argument #4 (callable expected)")
 
   if p ~= lfalse then
-    for idx,elm in seq:iter(rng_) do
-      if p(elm,idx) then f(elm,idx) end
+    for ei,elm in seq:iter(rng_) do
+      if p(elm,ei) then act(elm,ei) end
     end
   end
   return seq
 end
 
-local do_select = marker.select
-
 local function select (seq, flg_, rng_, sel_, not_)
-  if is_rawtable(flg_) and is_nil(rng_) and is_nil(sel_) then
+  if is_rawtable(flg_) and is_nil(rng_) then
     rng_, flg_ = flg_ -- right shift
   end
-  local f = bind2nd(do_select, flg_)
-  return seq:foreach(f, rng_, sel_, not_)
+  local act = bind2nd(marker.select, flg_)
+  return seq:foreach(act, rng_, sel_, not_)
 end
 
-local do_deselect = marker.deselect
-
 local function deselect (seq, flg_, rng_, sel_, not_)
-  if is_rawtable(flg_) and is_nil(rng_) and is_nil(sel_) then
+  if is_rawtable(flg_) and is_nil(rng_) then
     rng_, flg_ = flg_ -- right shift
   end
-  local f = bind2nd(do_deselect, flg_)
-  return seq:foreach(f, rng_, sel_, not_)
+  local act = bind2nd(marker.deselect, flg_)
+  return seq:foreach(act, rng_, sel_, not_)
 end
 
 local do_filter = \ei,_,i => local n=ei.n+1 ; ei[n], ei.n = i, n end
 
 local function filter (seq, rng_, sel_, not_)
   local ei = table.new(8,1)
-  local f = bind1st(do_filter, ei)
+  local act = bind1st(do_filter, ei)
   ei.n = 0
-  seq:foreach(f, rng_, sel_, not_)
+  seq:foreach(act, rng_, sel_, not_)
   local n = ei.n ; ei.n = nil
   return ei, n
 end
