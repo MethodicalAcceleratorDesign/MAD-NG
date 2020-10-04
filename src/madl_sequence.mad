@@ -1064,8 +1064,8 @@ local function misalign (seq, mis, rng_, sel_)
   assert(not (data.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   -- collect indexes of elements to misalign
-  local idx_m, ne = filter(seq, rng_, sel_, true)
-  if ne == 0 then return end
+  local idx_m, ne = filter(seq, rng_, sel_)
+  if ne == 0 then return seq end
 
   -- basic check...
   assert(idx_m[ne]-idx_m[1] >= ne-1, "invalid range, indexes must be increasing")
@@ -1578,14 +1578,23 @@ end
 -- I/O ------------------------------------------------------------------------o
 
 -- dump seq positions
-local function dumpseq (seq, filnam_)
-  local res = table.new(#seq,0)
+local function dumpseq (seq, filnam_, info_)
+  if is_boolean(filnam_) and is_nil(info_) then
+    info_, filnam_ = filnam_ -- right shift
+  end
+  local res, eal0 = table.new(#seq,0)
 
   -- header
   res[1] = 'sequence: ' .. seq.name .. ', ' ..
            'l=' .. (seq.l == uninitialized and 'uninitialized' or seq.l)
   res[2] = 'idx  kind          name                    l          dl       \z
             spos       upos    uds'
+  if info_ then
+    eal0 = {dx=0, dy=0, ds=0, dtheta=0, dphi=0, dpsi=0}
+    res[2] = res[2] .. '       dx         dy         ds         \z
+                               dtheta     dphi       dpsi'
+  end
+
   -- elements
   seq:foreach \e,i =>
     local ds, uds = seq:ds(i), seq:upos(i)-seq:spos(i)
@@ -1593,7 +1602,13 @@ local function dumpseq (seq, filnam_)
     res[#res+1] = string.format('%03d  %-14s%-20s%9.3f%8.3g%s%11.3f%11.3f%8.3f%s',
                   i, e.kind, e.name, e.l, dl, abs(dl) > eps and '*' or ' ',
                   seq:spos(i), seq:upos(i), uds, (uds<0 or uds>ds) and '*' or '')
+    if info_ then
+      local eal = seq:align(i) or eal0
+      res[#res] = res[#res] ..
+                  string.format('%11.4f%11.4f%11.4f%11.4f%11.4f%11.4f',
+                    eal.dx, eal.dy, eal.ds, eal.dtheta, eal.dphi, eal.dpsi)
     end
+  end
 
   -- return result as a string
   if filnam_ == '-' then return table.concat(res, '\n') end
