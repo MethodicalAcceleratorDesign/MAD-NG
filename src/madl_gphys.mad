@@ -24,9 +24,10 @@
 -- locals ---------------------------------------------------------------------o
 
 local matrix, vector, cvector, trace, warn, option, typeid       in MAD
-local is_nil, is_positive, is_nonzero, is_odd, is_table,
-      is_matrix, is_cvector, is_mtable, wrestrict                in MAD.typeid
-local assertf, errorf, printf, num2str, tblcat                   in MAD.utility
+local is_nil, is_positive, is_integer, is_nonzero, is_odd,
+      is_matrix, is_vector, is_cvector, is_table, is_mtable,
+      is_sequence, is_mappable, wrestrict                        in MAD.typeid
+local assertf, errorf, printf, num2str, setkeys, tblcat          in MAD.utility
 local lbool                                                      in MAD.operator
 local twopi                                                      in MAD.constant
 local min, max, abs, sqrt, sin, cos, tan, atan2, real, rangle    in MAD.gmath
@@ -133,6 +134,44 @@ function gphys.vname_setki (vn)
 end
 
 -- mtable ---------------------------------------------------------------------o
+
+local kil = { ksl  =-1,
+              k0l  = 1, k1l  = 2, k2l  = 3, k3l = 4, k4l = 5, k5l = 6, k6l = 7,
+              k0sl = 1, k1sl = 2, k2sl = 3, k3sl= 4, k4sl= 5, k5sl= 6, k6sl= 7 }
+
+function gphys.melmcol (mtbl, cols)
+  assert(is_mtable  (mtbl), "invalid argument #1 (mtable expected)")
+  assert(is_mappable(cols), "invalid argument #2 (mappable expected)")
+  assert(is_sequence(mtbl.__seq), "no attached sequence found")
+  assert(not is_nil (mtbl.eidx ), "no elements index column 'eidx' found")
+  assert(is_table(mtbl.eidx ) or is_vector(mtbl.eidx),
+                "invalid index column 'eidx', (table or vector expected)")
+
+  for k, v in pairs(cols) do
+    if is_integer(k) then k = v end
+    if not kil[v] then -- standard attribute
+      mtbl:addcol(k, \ir =>
+        local idx = mtbl.eidx[ir]
+        return is_integer(idx) and mtbl.__seq[idx][v] or 0 end)
+
+    elseif kil[v] > 0 then -- add local and integrated strengths
+      local knol, kidx = string.sub(v,1,-2), kil[v]
+      local knsl = string.sub(knol, -1) ~= 's' and 'knl' or 'ksl'
+      mtbl:addcol(k, \ir =>
+        local idx = mtbl.eidx[ir]
+        if not is_integer(idx) then return 0 end -- implicit drift
+        local elm = mtbl.__seq[idx]
+        return (elm[knol] or 0) * elm.l + ((elm[knsl] or {})[kidx] or 0) end)
+    elseif kil[v] < 0 then -- add special strengths (e.g. solenoid)
+      mtbl:addcol(k, \ir =>
+        local idx = mtbl.eidx[ir]
+        if not is_integer(idx) then return 0 end -- implicit drift
+        local elm = mtbl.__seq[idx]
+        return (elm.ks or 0) * elm.l + (elm.ksi or 0) end)
+    else errorf("unkown element to column generator for '%s'", tostring(v))
+    end
+  end
+end
 
 function gphys.mchklost (mtbl)
   assert(is_mtable(mtbl), "invalid argument #1 (mtable expected)")
@@ -789,7 +828,7 @@ function gphys.map2bet (map, rnk_, cpl_)
   return fun
 end
 
-function gphys.cfn2bet (fun, fdp, dp)
+function gphys.chfn2bet (fun, fdp, dp)
   assert(is_beta0(fun), "invalid argument #1 (beta0 block expected)")
   assert(is_beta0(fdp), "invalid argument #2 (beta0 block expected)")
   assert(is_nonzero(dp), "invalid argument #3 (number ~= 0 expected expected)")
