@@ -89,7 +89,7 @@ end
 -- sanity checks --------------------------------------------------------------o
 
 -- check dictionnary of name -> idx
-local function check_index (tbl)
+local function check_mtbl (tbl)
   assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
   local data = tbl.__dat
   if is_nil(data.cref) then return end
@@ -380,7 +380,7 @@ local function finish_mtbl (tbl)
   tbl:raw_set('__cycle', nil)
 
   -- sanity checks
-  if option.debug > 2 then check_index(tbl) end
+  if option.debug > 2 then check_mtbl(tbl) end
 end
 
 -- mtable initialization
@@ -490,7 +490,7 @@ local function copy_mm (tbl, name_, owner_)
   end
 
   cpy.__dat = cdat
-  return cpy:build_index()
+  return cpy:make_dict()
 end
 
 -- mtable metamethods ---------------------------------------------------------o
@@ -498,12 +498,12 @@ end
 -- column generator (RO)
 local function gen_iter (s, i)
   i = i+1
-  if i <= s.__dat.nr then return i, s.__col(i) end
+  if i <= s.__dat.nr then return i, s.__col(i,s.__slf) end
 end
 
 local gen_mt = set_concept({
   __len      = \s   -> s.__dat.nr,
-  __index    = \s,i -> i >= 1 and i <= s.__dat.nr and s.__col(i) or nil,
+  __index    = \s,i -> i >= 1 and i <= s.__dat.nr and s.__col(i,s.__slf) or nil,
   __ipairs   = \s   -> (gen_iter, s, 0),
   __tostring = \s   -> string.format("mtable column generator: %p", s),
 }, not_mappable + not_extendable + not_mutable)
@@ -647,7 +647,7 @@ local function set_readonly (tbl, set_)
       for i=1,data.nc-data.ng do -- is_selected is never RO
         if set_ then -- protect
           if is_table(data[i])
-          then data[i] = setmetatable({__col=data[i], __dat=data}, col_mt)
+          then data[i] = setmetatable({__col=data[i], __dat=data, __slf=tbl}, col_mt)
           else data[i], data.hook[i] = data[i]:constview(), data[i]
           end
         else         -- unprotect
@@ -907,7 +907,7 @@ local function ins_col (tbl, key_, kval, val, nvec_)
   local cg = data.nc-data.ng+1
   if is_callable(val) then     -- generator
     if ci < cg then ci = cg end
-    table.insert(data, ci, setmetatable({__col=val, __dat=data}, gen_mt) )
+    table.insert(data, ci, setmetatable({__col=val, __dat=data, __slf=tbl}, gen_mt) )
     data.ng = data.ng+1
   elseif is_iterable(val) then -- iterable  TODO: if nr == 0 specialize again...
     local nr = data.nr
@@ -1216,7 +1216,7 @@ local function remove (tbl, rng_, sel_)
   end
   data.nr = ni
 
-  return tbl:build_index()
+  return build_index(tbl)
 end
 
 local function insert (tbl, rows, rng_, sel_)
@@ -1283,7 +1283,7 @@ local function insert (tbl, rows, rng_, sel_)
     i = i-1
   end
 
-  return tbl:build_index()
+  return build_index(tbl)
 end
 
 local function sort (tbl, cmp, rng_, sel_)
@@ -1330,7 +1330,7 @@ local function sort (tbl, cmp, rng_, sel_)
   end
   assert(is_nil(next(idx_l)), "unexpected corrupted lookup indexes (sort)")
 
-  return tbl:build_index()
+  return build_index(tbl)
 end
 
 -- special --------------------------------------------------------------------o
@@ -1668,7 +1668,7 @@ local function read (tbl, filnam_)
 
   -- build index with column 'name' (if any)
   local cref = raw_get(tbl, 'refcol')
-  if cref then tbl:build_index(cref) end
+  if cref then build_index(tbl, cref) end
 
   if is_string(filnam_) then file:close() end
   return tbl
@@ -1743,9 +1743,11 @@ mtable :set_methods {
   -- readonly
   set_readonly = set_readonly,
 
-  -- index dict
-  build_index  = build_index,
-  check_index  = check_index,
+  -- make dict
+  make_dict   = build_index,
+
+  -- for debugging
+  check_mtbl  = check_mtbl,
 
   -- disabled method
   is_selected := error("invalid mtable operation", 2),
