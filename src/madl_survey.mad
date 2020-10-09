@@ -68,7 +68,7 @@ local shtfmt = "% -.6e % -.6e % -.6e "
 local lngfmt = "% -.16e % -.16e % -.16e "
 local nodump = {marker=true}
 
-local function mdump (mflw, elm, str_)
+local function mdump (elm, mflw, lw_, str_)
   if str_ and mflw.debug <= 2 then return end
 
   if is_number(elm) then
@@ -213,11 +213,13 @@ local function make_mflow (self)
   local atslice = self:var_get 'atslice'
   local atexit  = self:var_get 'atexit'
   local atsave  = self:var_get 'atsave'
+  local atdebug = self:var_get 'atdebug'
 
   assert(is_callable(atentry), "invalid atentry (callable expected)")
   assert(is_callable(atslice), "invalid atslice (callable expected)")
   assert(is_callable(atexit ), "invalid atexit (callable expected)")
   assert(is_callable(atsave ), "invalid atsave (callable expected)")
+  assert(is_callable(atdebug), "invalid atdebug (callable expected)")
 
   local mtbl
   if save then
@@ -296,14 +298,15 @@ local function make_mflow (self)
   mflw.atslice=atslice       -- action after each element slices
   mflw.atexit=atexit         -- action when exiting an element
   mflw.atsave=atsave         -- action after saving in mtable
+  mflw.atdebug=atdebug       -- action called when debugging the maps
 
   mflw.info=self.info or 0   -- information level
   mflw.debug=self.debug or 0 -- debugging information level
   mflw.usrdef=self.usrdef    -- user defined data
 
   -- for debugging
-  mflw.mdump=fnil            -- dump W matrix
   mflw.show=mshow            -- show the mflow
+  mflw.mdump=mdump           -- dump W matrix
 
   -- global frame (exposed vars)
   mflw.V=vector(3):fill{x,y,z}          -- displacement vector
@@ -365,7 +368,11 @@ local function exec (self)
 
   -- update fields
   mflw.nstep, mflw.debug = nstep or mflw.nstep, debug or mflw.debug
-  mflw.mdump = mflw.debug >= 2 and mdump or fnil
+
+  -- activate maps debugging
+  if mflw.debug >= 2 and mflw.atdebug == fnil then
+    mflw.atdebug = mflw.mdump
+  end
 
   -- retrieve information
   local s0, eidx, sequ, __sitr, __edat in mflw
@@ -412,6 +419,7 @@ local survey = command 'survey' {
   atslice=fnil,     -- action called after each element slices (atsave)   (mflw)
   atexit=fnil,      -- action called when exiting an element   (atsave)   (mflw)
   atsave=fnil,      -- action called when saving in mtable                (mflw)
+  atdebug=fnil,     -- action called when debugging the element maps      (mflw)
 
   info=nil,         -- information level (output on terminal)             (mflw)
   debug=nil,        -- debugging information level (output on terminal)   (mflw)
@@ -424,7 +432,8 @@ local survey = command 'survey' {
     'sequence', 'range', 'dir', 's0', 'X0', 'A0', 'W0',
     'nturn', 'implicit', 'misalign',
     'save', 'title', 'observe', 'savemap', 'info', 'debug', 'usrdef',
-    noeval = {'nslice', 'atentry', 'atslice', 'atexit', 'atsave', 'savesel'},
+    noeval = {'nslice', 'atentry', 'atslice', 'atexit', 'atsave', 'atdebug',
+              'savesel'},
   }
 } :set_readonly()   -- reference survey command is readonly
 

@@ -80,7 +80,7 @@ local shtfmt  = "% -.6e  % -.6e  % -.6e  % -.6e  % -.6e  % -.6e "
 local lngfmt  = "% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e "
 local nodump  = {marker=true}
 
-local function mdump (mflw, elm, str_)
+local function mdump (elm, mflw, lw_, str_)
   if str_ and mflw.debug <= 2 then return end
 
   if is_number(elm) then
@@ -109,8 +109,8 @@ local function mdump (mflw, elm, str_)
   io.write('\n')
 end
 
-local function xdump (mflw, elm, str, X)
-  printf("@@ %-15s %-15s ", elm.name, str)
+local function xdump (elm, mflw, X, str_)
+  printf("@@ %-15s %-15s ", elm.name, str_ or '')
 
   local fmt  = mflw.debug >= 4 and lngfmt  or shtfmt
   local fmt1 = mflw.debug >= 4 and lngfmt1 or shtfmt1
@@ -275,12 +275,14 @@ local function make_mflow (self)
   local atexit  = self:var_get 'atexit'
   local ataper  = self:var_get 'ataper'
   local atsave  = self:var_get 'atsave'
+  local atdebug = self:var_get 'atdebug'
 
   assert(is_callable(atentry), "invalid atentry (callable expected)")
   assert(is_callable(atslice), "invalid atslice (callable expected)")
   assert(is_callable(atexit ), "invalid atexit (callable expected)")
   assert(is_callable(ataper ), "invalid ataper (callable expected)")
   assert(is_callable(atsave ), "invalid atsave (callable expected)")
+  assert(is_callable(atdebug), "invalid atdebug (callable expected)")
 
   local mtbl
   if save then
@@ -423,6 +425,7 @@ local function make_mflow (self)
   mflw.atexit=atexit         -- action called when exiting an element (atsave)
   mflw.ataper=ataper         -- action called when checking aperture
   mflw.atsave=atsave         -- action called when saving in mtable
+  mflw.atdebug=atdebug       -- action called when debugging the maps
 
   mflw.method=method         -- default integration method
   mflw.model=model           -- default integration model
@@ -439,10 +442,9 @@ local function make_mflow (self)
   mflw.usrdef=self.usrdef    -- user defined data
 
   -- for debugging
-  mflw.ndump=0               -- dump level of damaps
-  mflw.mdump=fnil            -- dump damaps after each integration step
-  mflw.xdump=fnil            -- dump damaps after each integration step
   mflw.show=mshow            -- show the mflow
+  mflw.mdump=mdump           -- dump damaps after each integration step
+  mflw.xdump=xdump           -- dump one coordinate or TPSA (user helper)
 
   -- for processing sequence elements by nstep
   mflw.__sitr={iter=iter, state=state,          -- sequence iterator state
@@ -513,8 +515,11 @@ local function exec (self)
 
   -- update fields
   mflw.nstep, mflw.debug = nstep or mflw.nstep, debug or mflw.debug
-  mflw.mdump = mflw.debug >= 2 and mdump or fnil
-  mflw.xdump = mflw.debug >= 3 and xdump or fnil
+
+  -- activate maps debugging
+  if mflw.debug >= 2 and mflw.atdebug == fnil then
+    mflw.atdebug = mflw.mdump
+  end
 
   -- retrieve information
   local s0, eidx, sequ, __sitr, __edat in mflw
@@ -573,6 +578,7 @@ local track = command 'track' {
   atexit=fnil,      -- action called when exiting an element   (atsave)   (mflw)
   ataper=fnil,      -- action called when checking for aperture           (mflw)
   atsave=fnil,      -- action called when saving in mtable                (mflw)
+  atdebug=fnil,     -- action called when debugging the maps              (mflw)
 
   info=nil,         -- information level (output on terminal)             (mflw)
   debug=nil,        -- debugging information level (output on terminal)   (mflw)
@@ -587,7 +593,7 @@ local track = command 'track' {
     'implicit', 'misalign', 'fringe', 'radiate', 'totalpath',
     'save', 'title', 'observe', 'savemap', 'info', 'debug', 'usrdef',
     noeval = {'nslice', 'atentry', 'atslice', 'atexit', 'ataper', 'atsave',
-              'savesel'},
+              'atdebug', 'savesel'},
   }
 } :set_readonly()   -- reference track command is readonly
 
