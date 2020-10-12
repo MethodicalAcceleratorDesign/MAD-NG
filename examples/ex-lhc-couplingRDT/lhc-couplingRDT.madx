@@ -1,0 +1,120 @@
+!#############################################################################
+!############################# Setting Up Lattice ############################
+!#############################################################################
+
+call, file="lhc_as-built.seq";
+slicefactor = 8;
+beam;
+
+!call, file="myslice.madx";
+!beam;
+!use, sequence=lhcb1; makethin, sequence=lhcb1, style=teapot, makedipedge=true;
+
+! Cycling w.r.t. to IP3 (mandatory to find closed orbit in collision in the presence of errors)
+seqedit, sequence=lhcb1; flatten; cycle, start=IP3; endedit;
+
+
+!#############################################################################
+!######## Sequence Editing and Adding 4 Skew Quadrupoles Around ARC12 ########
+!#############################################################################
+
+SQ1L: MULTIPOLE, KSL:={0, sk1l};
+SQ2L: MULTIPOLE, KSL:={0, sk2l};
+SQ3L: MULTIPOLE, KSL:={0, sk3l};
+SQ4L: MULTIPOLE, KSL:={0, sk4l};
+
+SQ1R: MULTIPOLE, KSL:={0, sk1r};
+SQ2R: MULTIPOLE, KSL:={0, sk2r};
+SQ3R: MULTIPOLE, KSL:={0, sk3r};
+SQ4R: MULTIPOLE, KSL:={0, sk4r};
+
+SEQEDIT, SEQUENCE= lhcb1;
+FLATTEN;
+INSTALL, ELEMENT=SQ1L, AT=1.551, FROM=MQ.13R1.B1;
+INSTALL, ELEMENT=SQ2L, AT=1.551, FROM=MQ.14R1.B1;
+INSTALL, ELEMENT=SQ3L, AT=1.551, FROM=MQ.15R1.B1;
+INSTALL, ELEMENT=SQ4L, AT=1.551, FROM=MQ.16R1.B1;
+INSTALL, ELEMENT=SQ4R, AT=1.551, FROM=MQ.17L2.B1;
+INSTALL, ELEMENT=SQ3R, AT=1.551, FROM=MQ.16L2.B1;
+INSTALL, ELEMENT=SQ2R, AT=1.551, FROM=MQ.15L2.B1;
+INSTALL, ELEMENT=SQ1R, AT=1.551, FROM=MQ.14L2.B1;
+FLATTEN;
+ENDEDIT;
+
+USE, SEQUENCE=lhcb1;
+
+! Call injections optics
+call, file="opticsfile.1";
+
+! Set up beam
+beam, sequence=lhcb1, bv=1, energy=NRJ, particle=proton, npart=1.0e10, kbunch=1, ex=7.29767146889e-09, ey=7.29767146889e-09;
+
+! Match Tunes and Chromaticity
+MATCH, chrom;
+  GLOBAL, Q1=62.31, Q2=60.32;
+  GLOBAL, DQ1=2., DQ2=2.;
+  VARY, NAME=dQx.b1_sq;
+  VARY, NAME=dQy.b1_sq;
+  VARY, NAME=dQpx.b1_sq;
+  VARY, NAME=dQpy.b1_sq;
+  LMDIF, CALLS=100, TOLERANCE=1.0E-21;
+ENDMATCH;
+
+! Save strength of MQSX IP coupling correctors
+KQSX3.R1_old = KQSX3.R1;
+KQSX3.L1_old = KQSX3.L1;
+
+! Power MQSX
+KQSX3.R2 = 10E-4;
+KQSX3.L2 = -10E-4;
+
+! Match Tunes and Chromaticity to compensate the second order contribution of coupling
+MATCH, chrom;
+  GLOBAL, Q1=62.31, Q2=60.32;
+  GLOBAL, DQ1=2., DQ2=2.;
+  VARY, NAME=dQx.b1_sq;
+  VARY, NAME=dQy.b1_sq;
+  VARY, NAME=dQpx.b1_sq;
+  VARY, NAME=dQpy.b1_sq;
+  LMDIF, CALLS=100, TOLERANCE=1.0E-21;
+ENDMATCH;
+
+! Set up skew quadrupoles around arc12
+sk1l = 0.5E-3;
+sk2l = sk1l/3;
+sk3l = sk1l/4;
+sk4l = sk1l/3;
+
+sk1r = -sk1l;
+sk2r = -sk2l;
+sk3r = -sk3l;
+sk4r = -sk4l;
+
+! Match strength to remaining 4 correctors to close bump
+MATCH, SEQUENCE = lhcb1, chrom;
+  VARY, NAME=sk1r, LOWER=-1E22, UPPER=1E22;
+  VARY, NAME=sk2r, LOWER=-1E22, UPPER=1E22;
+  VARY, NAME=sk3r, LOWER=-1E22, UPPER=1E22;
+  VARY, NAME=sk4r, LOWER=-1E22, UPPER=1E22;
+  CONSTRAINT, RANGE=S.DS.L2.B1, R11=0;
+  CONSTRAINT, RANGE=S.DS.L2.B1, R12=0;
+  CONSTRAINT, RANGE=S.DS.L2.B1, R21=0;
+  CONSTRAINT, RANGE=S.DS.L2.B1, R22=0;
+  CONSTRAINT, RANGE=E.DS.L2.B1, R11=0;
+  CONSTRAINT, RANGE=E.DS.L2.B1, R12=0;
+  CONSTRAINT, RANGE=E.DS.L2.B1, R21=0;
+  CONSTRAINT, RANGE=E.DS.L2.B1, R22=0;
+!  LMDIF, CALLS=5000, TOLERANCE=1E-22;
+  JACOBIAN, CALLS=100, TOLERANCE=1E-18;
+ENDMATCH;
+
+! Match Tunes to compensate second order contribution of coupling
+MATCH, CHROM;
+  GLOBAL, Q1=62.31, Q2=60.32;
+  VARY, NAME=dQx.b1_sq;
+  VARY, NAME=dQy.b1_sq;
+  LMDIF, CALLS=100, TOLERANCE=1.0E-21;
+ENDMATCH;
+
+! Twiss results to output file
+TWISS, FILE='twiss.tfs', CHROM, ripken=True;

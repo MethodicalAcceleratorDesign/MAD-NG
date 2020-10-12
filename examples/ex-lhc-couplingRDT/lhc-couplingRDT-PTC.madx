@@ -1,0 +1,173 @@
+! THIS IS AN ADAPTATION OF THE MAD-X SCRIPT TO MADX-PTC FOR BETTER COMPARISON
+! WITH MAD-NG, BUT THIS SCRIPT TAKES AGES!!! (> 40min)
+! AND THE MATCHING OF THE BETA/ALFA IS FAILING...
+
+!#############################################################################
+!############################# Setting Up Lattice ############################
+!#############################################################################
+
+option, -echo;
+call, file="lhc_as-built.seq";
+call, file="opticsfile.1";
+option, echo;
+
+! Cycling w.r.t. to IP3 (mandatory to find closed orbit in collision in the presence of errors)
+seqedit, sequence=lhcb1; flatten; cycle, start=IP3; endedit;
+
+!#############################################################################
+!######## Sequence Editing and Adding 4 Skew Quadrupoles Around ARC12 ########
+!#############################################################################
+
+SQ1L: MULTIPOLE, KSL:={0, sk1l};
+SQ2L: MULTIPOLE, KSL:={0, sk2l};
+SQ3L: MULTIPOLE, KSL:={0, sk3l};
+SQ4L: MULTIPOLE, KSL:={0, sk4l};
+
+SQ1R: MULTIPOLE, KSL:={0, sk1r};
+SQ2R: MULTIPOLE, KSL:={0, sk2r};
+SQ3R: MULTIPOLE, KSL:={0, sk3r};
+SQ4R: MULTIPOLE, KSL:={0, sk4r};
+
+SEQEDIT, SEQUENCE= lhcb1;
+FLATTEN;
+INSTALL, ELEMENT=SQ1L, AT=1.551, FROM=MQ.13R1.B1;
+INSTALL, ELEMENT=SQ2L, AT=1.551, FROM=MQ.14R1.B1;
+INSTALL, ELEMENT=SQ3L, AT=1.551, FROM=MQ.15R1.B1;
+INSTALL, ELEMENT=SQ4L, AT=1.551, FROM=MQ.16R1.B1;
+INSTALL, ELEMENT=SQ4R, AT=1.551, FROM=MQ.17L2.B1;
+INSTALL, ELEMENT=SQ3R, AT=1.551, FROM=MQ.16L2.B1;
+INSTALL, ELEMENT=SQ2R, AT=1.551, FROM=MQ.15L2.B1;
+INSTALL, ELEMENT=SQ1R, AT=1.551, FROM=MQ.14L2.B1;
+FLATTEN;
+ENDEDIT;
+
+! Set up beam
+beam, sequence=lhcb1, particle=proton, energy=NRJ;
+use, sequence=lhcb1;
+
+select, flag=ptc_twiss, clear;
+select, flag=ptc_twiss, column={name, s, beta12, alfa12, beta21, alfa21, mu1, mu2 };
+
+! Match Tunes and Chromaticity
+match, use_macro;
+  vary, name=dqx.b1_sq ;
+  vary, name=dqy.b1_sq ;
+  vary, name=dqpx.b1_sq;
+  vary, name=dqpy.b1_sq;
+  m1: macro = {
+    ptc_create_universe ;
+    ptc_create_layout, model=2, method=4, nst=1, time=true, exact=true ;
+    ptc_setswitch, exact_mis=true, fringe=true, time=true, totalpath=false ;
+    ptc_twiss, closed_orbit=true, no=2, icase=5, file="twiss_ptc_1.tfs" ;
+    ptc_end ;
+    value, table(ptc_twiss,lhcb1ip3_p_,mu1);
+    value, table(ptc_twiss,lhcb1ip3_p_,mu2);
+    value, table(ptc_twiss_summary,dq1);
+    value, table(ptc_twiss_summary,dq2);
+  }
+  constraint expr = table(ptc_twiss,lhcb1ip3_p_,mu1)=62.31 ;
+  constraint expr = table(ptc_twiss,lhcb1ip3_p_,mu2)=60.32 ;
+  constraint expr = table(ptc_twiss_summary,dq1)=2 ;
+  constraint expr = table(ptc_twiss_summary,dq2)=2 ;
+  lmdif, calls=100, tolerance=1e-21;
+endmatch;
+
+! Save strength of MQSX IP coupling correctors
+kqsx3.r1_old = kqsx3.r1;
+kqsx3.l1_old = kqsx3.l1;
+
+! Power MQSX
+kqsx3.r2 =  1e-3;
+kqsx3.l2 = -1e-3;
+
+! Match Tunes and Chromaticity to compensate the second order contribution of coupling
+match, use_macro;
+  vary, name=dqx.b1_sq ;
+  vary, name=dqy.b1_sq ;
+  vary, name=dqpx.b1_sq;
+  vary, name=dqpy.b1_sq;
+  m1: macro = {
+    ptc_create_universe ;
+    ptc_create_layout, model=2, method=4, nst=1, time=true, exact=true ;
+    ptc_setswitch, exact_mis=true, fringe=true, time=true, totalpath=false ;
+    ptc_twiss, closed_orbit=true, no=2, icase=5, file="twiss_ptc_2.tfs" ;
+    ptc_end ;
+    value, table(ptc_twiss,lhcb1ip3_p_,mu1);
+    value, table(ptc_twiss,lhcb1ip3_p_,mu2);
+    value, table(ptc_twiss_summary,dq1);
+    value, table(ptc_twiss_summary,dq2);
+  }
+  constraint expr = table(ptc_twiss,lhcb1ip3_p_,mu1)=62.31 ;
+  constraint expr = table(ptc_twiss,lhcb1ip3_p_,mu2)=60.32 ;
+  constraint expr = table(ptc_twiss_summary,dq1)=2 ;
+  constraint expr = table(ptc_twiss_summary,dq2)=2 ;
+  lmdif, calls=100, tolerance=1e-21;
+endmatch;
+
+! Set up skew quadrupoles around arc12
+sk1l = 0.5E-3;
+sk2l = sk1l/3;
+sk3l = sk1l/4;
+sk4l = sk1l/3;
+
+sk1r = -sk1l;
+sk2r = -sk2l;
+sk3r = -sk3l;
+sk4r = -sk4l;
+
+! Match strength to remaining 4 correctors to close bump
+match, use_macro;
+  vary, name=sk1r;
+  vary, name=sk2r;
+  vary, name=sk3r;
+  vary, name=sk4r;
+  m1: macro = {
+    ptc_create_universe ;
+    ptc_create_layout, model=2, method=4, nst=1, time=true, exact=true ;
+    ptc_setswitch, exact_mis=true, fringe=true, time=true, totalpath=false ;
+    ptc_twiss, closed_orbit=true, no=2, icase=5, file="twiss_ptc_3.tfs" ;
+    ptc_end ;
+    value, table(ptc_twiss,s.ds.l2.b1,beta12);
+    value, table(ptc_twiss,s.ds.l2.b1,alfa12);
+    value, table(ptc_twiss,s.ds.l2.b1,beta21);
+    value, table(ptc_twiss,s.ds.l2.b1,alfa21);
+    value, table(ptc_twiss,e.ds.l2.b1,beta12);
+    value, table(ptc_twiss,e.ds.l2.b1,alfa12);
+    value, table(ptc_twiss,e.ds.l2.b1,beta21);
+    value, table(ptc_twiss,e.ds.l2.b1,alfa21);
+  }
+  constraint expr = table(ptc_twiss,s.ds.l2.b1,beta12) = 0;
+  constraint expr = table(ptc_twiss,s.ds.l2.b1,alfa12) = 0;
+  constraint expr = table(ptc_twiss,s.ds.l2.b1,beta21) = 0;
+  constraint expr = table(ptc_twiss,s.ds.l2.b1,alfa21) = 0;
+  constraint expr = table(ptc_twiss,e.ds.l2.b1,beta12) = 0;
+  constraint expr = table(ptc_twiss,e.ds.l2.b1,alfa12) = 0;
+  constraint expr = table(ptc_twiss,e.ds.l2.b1,beta21) = 0;
+  constraint expr = table(ptc_twiss,e.ds.l2.b1,alfa21) = 0;
+  jacobian, calls=10, tolerance=1e-18;
+endmatch;
+
+
+! Match Tunes to compensate second order contribution of coupling
+match, use_macro;
+  vary, name=dqx.b1_sq;
+  vary, name=dqy.b1_sq;
+  m1: macro = {
+    ptc_create_universe ;
+    ptc_create_layout, model=2, method=4, nst=1, time=true, exact=true ;
+    ptc_setswitch, exact_mis=true, fringe=true, time=true, totalpath=false ;
+    ptc_twiss, closed_orbit=true, no=2, icase=5, file="twiss_ptc_4.tfs" ;
+    ptc_end ;
+    value, table(ptc_twiss,lhcb1ip3_p_,mu1);
+    value, table(ptc_twiss,lhcb1ip3_p_,mu2);
+  }
+  constraint expr = table(ptc_twiss,lhcb1ip3_p_,mu1)=62.31 ;
+  constraint expr = table(ptc_twiss,lhcb1ip3_p_,mu2)=60.32 ;
+  lmdif, calls=100, tolerance=1e-21;
+endmatch;
+
+ptc_create_universe ;
+ptc_create_layout, model=2, method=4, nst=1, time=true, exact=true ;
+ptc_setswitch, exact_mis=true, fringe=true, time=true, totalpath=false ;
+ptc_twiss, closed_orbit=true, no=2, icase=5, file="twiss_ptc_5.tfs" ;
+ptc_end ;
