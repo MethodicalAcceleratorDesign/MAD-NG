@@ -1,0 +1,120 @@
+-- ../mad -jp=vl ex-lhc-couplingLocal.mad > lhc-couplingLocal.out 2>&1
+
+!#############################################################################
+!############################# Setting Up Lattice ############################
+!#############################################################################
+
+local beam, track, twiss, match in MAD
+local observed                  in MAD.element.flags
+local assertf, printf           in MAD.utility
+local mchklost                  in MAD.gphys
+
+MADX:load('lhc_as-built.seq', 'lhc_as-built.mad' ) -- convert and save on need
+MADX:load('opticsfile.21'   , 'opticsfile.21.mad') -- ditto
+MADX:load('lhc_unset_vars.mad') -- handmade, cleaner than disabling warnings...
+
+local lhcb1, nrj in MADX
+
+-- sanity checks
+assertf(#lhcb1 == 6694, "invalid number of elements %d in LHCB1 (6694 expected)", #lhcb1)
+
+-- attach beam
+lhcb1.beam = beam { particle='proton', energy=nrj }
+
+local status, fmin, ncall
+
+!#############################################################################
+!######## Match Tunes                                                 ########
+!#############################################################################
+
+MADX:open_env()
+ktqx1_r2 = -ktqx1_l2 ! remove the link between these 2 vars
+kqsx3_l2 = -0.0015
+kqsx3_r2 = +0.0015
+MADX:close_env()
+
+print("Computing/saving twiss before tune correction.")
+local tbl = twiss { sequence=lhcb1, method=4, cofind=true, chrom=true }
+tbl:write"twiss_before_tune_correction"
+
+if false then -- enable/disable matching
+
+print("values before matching tunes:")
+print("dQx.b1=", MADX.dqx_b1)
+print("dQy.b1=", MADX.dqy_b1)
+
+status, fmin, ncall = match {
+  command := mchklost(twiss {sequence=lhcb1, method=4, cofind=true, observe=1}),
+  variables = { rtol=1e-6, -- 1 ppm
+    { var = 'MADX.dqx_b1', name='dQx.b1' },
+    { var = 'MADX.dqy_b1', name='dQy.b1' },
+  },
+  equalities = {
+    { expr = \t -> t.q1-62.30980, name='q1' },
+    { expr = \t -> t.q2-60.32154, name='q2' },
+  },
+  objective = { fmin=1e-6 },
+  maxcall=100, info=2, !debug=2
+}
+
+--[[
+MATCH, SEQUENCE=lhcb1;
+VARY, NAME=dQx.b1, STEP=1.0E-5;
+VARY, NAME=dQy.b1, STEP=1.0E-5;
+CONSTRAINT, SEQUENCE=lhcb1, RANGE=#e, MUX=62.3098, MUY=60.321539;
+LMDIF, CALLS=100, TOLERANCE=0.000001;
+ENDMATCH;
+--]]
+
+print("values after matching tunes:")
+print("dQx.b1=", MADX.dqx_b1)
+print("dQy.b1=", MADX.dqy_b1)
+
+else
+
+MADX.dqx_b1 = 6.65239e-04
+MADX.dqy_b1 = 3.31034e-03
+
+end
+
+print("Computing/saving twiss after tune correction.")
+local tbl = twiss { sequence=lhcb1, method=4, cofind=true, chrom=true }
+tbl:write"twiss_after_tune_correction"
+
+!#############################################################################
+!######## Track                                                       ########
+!#############################################################################
+
+local X0 = {}
+local sqrt, tgauss in MADX -- tgauss equiv. xrandtn in MAD.gmath
+
+print("lhcb1 nrj=", lhcb1.beam.energy)
+
+-- prepare initial particles coordinates
+for n=1,900 do
+  local Nsigmax  = tgauss(5)
+  local Nsigmay  = tgauss(5)
+  local Nsigmapx = tgauss(5)
+  local Nsigmapy = tgauss(5)
+  printf("%03d % -.5f % -.5f % -.5f % -.5f\n", n,Nsigmax,Nsigmay,Nsigmapx,Nsigmapy)
+
+  local enomphysy=4e-6/(6500/0.938)
+  local enomphysx=6e-6/(6500/0.938)
+
+  local betxip1=0.5
+  local betyip1=betxip1
+
+  X0[n] = {
+    x  = Nsigmax *sqrt(enomphysx)*sqrt(betxip1),
+    y  = Nsigmay *sqrt(enomphysy)*sqrt(betyip1),
+    px = Nsigmapx*sqrt(enomphysx)/sqrt(betxip1),
+    py = Nsigmapy*sqrt(enomphysy)/sqrt(betyip1),
+  }
+end
+
+-- select ip2 as observed point
+lhcb1['IP2' ]:  select(observed)
+lhcb1['$end']:deselect(observed)
+
+local tbl = track { sequence=lhcb1, X0=X0, nturn=10, method=4, cofind=true }
+tbl:write"track900_ng.tfs"
