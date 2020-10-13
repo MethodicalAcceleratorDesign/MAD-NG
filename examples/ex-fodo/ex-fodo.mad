@@ -83,6 +83,7 @@ local function mk_plot(seq, srv, tws, title)
   -- make the plot optical functions
   plot {
     sequence = seq,
+    range    = tws.direction > 0 and {1,-1, 'idx'} or {-1,1,'idx',-1},
     table    = tws,
     x1y1     = { s='beta11' },
     x1y2     = { s='dx' },
@@ -148,7 +149,7 @@ end
 -- create sequence -----
 local seq = mk_seq()
 
--- initial conditions
+-- initial conditions --
 local X0 = {-1e-3,1e-4, -1e-4,1e-3, 0,0}
 
 -- initial deltap
@@ -188,18 +189,46 @@ match_tunes_and_chroma (seq, X0)
 local tws, mfl = twiss { sequence=seq,
   X0=X0, deltap=deltap, cofind=true, chrom=true, method=4,
 }
-tws:write('twiss_seq_match')
+tws:write'twiss_seq_match'
 
 -- closed orbit after matching
 mfl[1]:get0():print "Matched closed obit " -- vector from damap
 printf("tunes: %.4f, %.4f, chroma: %.4f, %.4f\n",
              tws.q1, tws.q2,    tws.dq1, tws.dq2)
 
--- twiss, nslice ---------------
+-- twiss, nslice -------
 if doplot then
   local tws, mfl = twiss { sequence=seq,
     X0=X0, deltap=deltap, cofind=true, chrom=true, method=4,
     nslice=nslice, save=save, implicit=doplot
   }
   mk_plot(seq, srv, tws, "(matched, sextupoles on)")
+end
+
+-- backtracking --------
+
+-- survey --------------
+local rsrv = survey { sequence=seq, dir=-1 } :write('survey_seq_rev')
+
+-- twiss ---------------
+local rtws, rmfl = twiss { sequence=seq, dir=-1,
+  X0=X0, deltap=deltap, cofind=true, chrom=true, method=4,
+}
+rtws:write'twiss_seq_match_rev'
+
+-- closed orbit after matching
+rmfl[1]:get0():print "Matched closed obit (bactrack) " -- vector from damap
+printf("tunes: %.4f, %.4f, chroma: %.4f, %.4f\n",
+             rtws.q1, rtws.q2,    rtws.dq1, rtws.dq2)
+
+-- twiss, nslice -------
+if doplot then
+  rsrv = survey { sequence=seq, dir=-1,
+    nslice=nslice, save=save, savemap=true, implicit=doplot,
+  }
+  local rtws, rmfl = twiss { sequence=seq, dir=-1,
+    X0=X0, deltap=deltap, cofind=true, chrom=true, method=4,
+    nslice=nslice, save=save, implicit=doplot
+  }
+  mk_plot(seq, rsrv, rtws, "(matched, sextupoles on, backtrack)")
 end

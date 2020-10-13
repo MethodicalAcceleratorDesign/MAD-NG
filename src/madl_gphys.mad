@@ -694,18 +694,19 @@ end
 
 -- fill beta0 block (optical functions) from A (normalising form) and W (tunes)
 
-function gphys.map2bet (map, rnk_, cpl_)
+function gphys.map2bet (map, rnk_, cpl_, dir_)
   assert(typeid.is_damap(map), "invalid argument #1 (damap expected)")
 
   local fun, ini
   if is_table(rnk_) then -- rnk_ is fun
     ini = false
-    fun, rnk_, cpl_ = rnk_, rnk_.rank, rnk_.cplg
+    fun = rnk_
     assert(is_beta0(fun), "invalid beta0 block (not created from damap)")
   else
     ini = true
     fun = table.new(0, cpl_ and 50 or 30)
     fun.__obj = _id
+    fun.rank, fun.cplg, fun.sdir = rnk_, cpl_, dir_ or 1
   end
 
   fun.X = map:get0(fun.X)
@@ -714,9 +715,10 @@ function gphys.map2bet (map, rnk_, cpl_)
   assert(A.nrow >= 6 and A.ncol >= 6, "invalid damap size (6D+ expected)")
 
   local get = A.get
-  local rnk = rnk_ or gphys.has_dpt(A) and 6 or 4
+  local rnk = fun.rank or gphys.has_dpt(A) and 6 or 4
 
-  fun.rank, fun.cplg = rnk, cpl_
+  -- update rank
+  fun.rank = rnk
 
   -- orbits
 
@@ -800,23 +802,24 @@ function gphys.map2bet (map, rnk_, cpl_)
     fun.dmu2, fun.mu2, fun.mu2_ = 0, 0, 0
     fun.dmu3, fun.mu3, fun.mu3_ = 0, 0, 0
   else
+    local sdir in fun
+
     -- phase advances (local)
     local mu1_ =              oval( atan2(get(A,1,2), get(A,1,1)) / twopi )
     local mu2_ =              oval( atan2(get(A,3,4), get(A,3,3)) / twopi )
     local mu3_ = rnk >= 6 and oval( atan2(get(A,5,6), get(A,5,5)) / twopi ) or 0
 
-    if mu1_ < 0 then mu1_ = 1+mu1_ end
-    if mu2_ < 0 then mu2_ = 1+mu2_ end
-    if mu3_ < 0 then mu3_ =  -mu3_ end
+    if sdir*mu1_ < 0 then mu1_ = sdir+mu1_ end
+    if sdir*mu2_ < 0 then mu2_ = sdir+mu2_ end
+    if sdir*mu3_ < 0 then mu3_ =     -mu3_ end
 
     local dmu1_, dmu2_, dmu3_ = mu1_-fun.mu1_, mu2_-fun.mu2_, mu3_-fun.mu3_
 
-    if dmu1_ < 0 then dmu1_ = 1+dmu1_ end
-    if dmu2_ < 0 then dmu2_ = 1+dmu2_ end
-    if dmu3_ < 0 then dmu3_ =  -dmu3_ end
+    if sdir*dmu1_ < 0 then dmu1_ = sdir+dmu1_ end
+    if sdir*dmu2_ < 0 then dmu2_ = sdir+dmu2_ end
+    if sdir*dmu3_ < 0 then dmu3_ =     -dmu3_ end
 
     -- phase advances (cumulated, backup local)
-
     fun.mu1, fun.mu1_, fun.dmu1_  = fun.mu1 + dmu1_, mu1_, dmu1_
     fun.mu2, fun.mu2_, fun.dmu2_  = fun.mu2 + dmu2_, mu2_, dmu2_
     fun.mu3, fun.mu3_, fun.dmu3_  = fun.mu3 + dmu3_, mu3_, dmu3_
@@ -882,7 +885,7 @@ function gphys.chfn2bet (fun, fdp, dp)
   end
 end
 
-function gphys.syn2bet(fun, mflw, elm)
+function gphys.syn2bet(fun, mflw, elm) -- to review...
   assert(is_beta0(fun), "invalid argument #1 (beta0 block expected)")
   local el, eh, e1, e2, knl, beam in mflw
   local beta = beam.beta
@@ -948,6 +951,7 @@ function gphys.bet2map (fun, map, sav_)
 
   local rnk = fun.rank or 4
   local cpl = fun.cplg or nil
+  local dir = fun.sdir or 1
   local X   = (fun.X or vector(6)):zeros()
   local A   = (fun.A or matrix(6)):eye()
 
@@ -1020,7 +1024,7 @@ function gphys.bet2map (fun, map, sav_)
 
   -- backup rank and coupling
 
-  if sav_ then fun.rank, fun.cplg = rnk, cpl end
+  if sav_ then fun.rank, fun.cplg, fun.sdir = rnk, cpl, dir end
 
   -- sanity checks
 
