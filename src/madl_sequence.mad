@@ -25,9 +25,8 @@ local M = {}
 
 -- locals ---------------------------------------------------------------------o
 
-local option, warn, trace                                        in MAD
+local option, warn, trace, operator                              in MAD
 local ident, second, bind1st, bind2nd, bind2st                   in MAD.gfunc
-local sub, ltrue, lfalse, le, lt                                 in MAD.operator
 local sequence, marker, drift, changedir, flags                  in MAD.element
 local minlen, eps                                                in MAD.constant
 local strtrim, strsplit, strbracket, bsearch, assertf, errorf,
@@ -37,6 +36,7 @@ local is_nil, is_boolean, is_number, is_integer, is_decimal,
       is_callable, is_range, is_element, is_object,
       set_concept, concept                                       in MAD.typeid
 local not_mappable, not_extendable, not_mutable                  in concept
+local sub, ltrue, lfalse                                         in operator
 local implicit, observed                                         in flags
 
 local abs in math
@@ -123,7 +123,7 @@ local function seq_lenchg (typ, seq, idx, len)
   seq_error(msg, seq, idx, seq[idx])
 end
 
--- check sequence spos and elements overlapp, clear 'at' and 'from'
+-- check sequence spos and elements overlapp, [clear 'at' and 'from']
 local function check_drift (seq, idx)
   local data, ds = seq.__dat
   assert(idx > 1 and idx < data.ne, "unexpected corrupted element index")
@@ -133,8 +133,6 @@ local function check_drift (seq, idx)
 
   ds = data.spos[idx+1] - (data.spos[idx] + data.ds[idx])
   if ds < -minlen then seq_poserr("element", seq, idx, data.spos[idx]-ds) end
-
-  data[idx].at, data[idx].from = nil, nil
 end
 
 -- check shared element
@@ -587,9 +585,6 @@ local function build_pos (seq, sref)
   elseif seq.l < len then
     error("invalid sequence length "..seq.l.."m for "..seq.name)
   end
-
-  -- clear 'at' and 'from' of elements
-  for i=1,n do data[i].at, data[i].from = nil, nil end
 end
 
 -- flatten sequence -----------------------------------------------------------o
@@ -1003,14 +998,13 @@ local function foreach (seq, act, rng_, sel_, not_) -- action, range, selection,
   assert(is_callable(p)  , "invalid argument #4 (callable expected)")
 
   if p ~= lfalse then
-    if not subelm then
-      for ei,elm in seq:iter(rng_) do if p(elm,ei) then act(elm,ei) end end
-    else
-      for ei,elm in seq:iter(rng_) do if p(elm,ei) then act(elm,ei)
-        local nse = #elm
-        if nse > 0 then for si=1,nse do act(elm[si],si,ei) end end
-      end end
-    end
+    if not subelm
+    then for ei,elm in seq:iter(rng_) do if p(elm,ei) then act(elm,ei) end end
+    else for ei,elm in seq:iter(rng_) do if p(elm,ei) then act(elm,ei) end
+      if #elm > 0 then
+        for si=1,#elm do if p(elm[si],si,ei) then act(elm[si],si,ei) end end
+      end
+    end end
   end
   return seq
 end
@@ -1212,6 +1206,11 @@ local function replace (seq, elm, rng_, sel_)
   return elm_r, idx_r
 end
 
+local function inselem (seq, idx, spos)
+  local data = seq.__dat
+  return spos > data.spos[idx] and spos < data.spos[idx]+data.ds[idx]
+end
+
 local function install (seq, elm, rng_, sel_, cmp_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   local data = seq.__dat
@@ -1225,6 +1224,9 @@ local function install (seq, elm, rng_, sel_, cmp_)
   assert(is_rawtable(elm), "invalid argument #2 (elements list expected)")
   local ne = #elm
   if ne == 0 then return seq end
+
+  -- inject subelements
+  local subelm = elm.subelem
 
   -- collect indexes of reference where to insert
   local idx_r, nr = filter(seq, rng_, sel_, true)
@@ -1266,14 +1268,14 @@ local function install (seq, elm, rng_, sel_, cmp_)
 
   -- insert elements -- need to be optimized to avoid O(N^2) insertion
   -- WARNING: elements at exact same positions must be inserted in user-order.
-  local dbg = option.debug > 1
-  local cmp, shf = cmp_ or le, 0
+  local dbg, shf = option.debug > 1, 0
+  local cmp = is_string(cmp_) and operator[cmp_] or cmp_ or operator.le
   assert(is_callable(cmp), "invalid argument #5 (callable expected)")
   if not cmp(0,0) then shf = 1 end
 
   for ie=1,i do
     local idx = bsearch(data.spos, spos[ie], cmp, 1+shf, data.ne-1+shf)
-    if is_sequence(ins[ie]) and #ins[ie] > 2 then
+    if is_sequence(ins[ie]) and #ins[ie] > 2 then      -- insert sub-sequence
       local sdata = ins[ie].__dat
       table.move(data     , idx, data.ne, idx+sdata.ne-2)
       table.move(data.spos, idx, data.ne, idx+sdata.ne-2)
@@ -1291,8 +1293,21 @@ local function install (seq, elm, rng_, sel_, cmp_)
         data.algn[idx+j-2] = sdata.algn[j]
       end
       data.ne = data.ne + sdata.ne - 2
-      check_drift(seq, idx+sdata.ne - 3) -- check surrounding drifts of lst data
-    else
+      check_drift(seq, idx+sdata.ne - 3) -- check surrounding drifts of lst
+    elseif subelem and inselem(seq, idx, spos[ie]) then -- insert sub-element
+      if dbg then
+        io.write("seq: installing sub-element '", ins[ie].name, "' (set 'sat')\n")
+      end
+      assert(ins[ie].l == 0, "invalid sub-element, zero-length required")
+      local elm, sat = data[idx], 0
+      if data.ds[idx] > 0 then sat = (spos[ie]-data.spos[idx])/data.ds[idx] end
+      for si=1,#elm do -- search for insertion sub-index
+        local ssat = assert(elm[si].sat, "invalid sub-element, 'sat' required")
+        if not cmp(sat, ssat) then
+          elm:insert(si, ins[ie]) ; ins[ie].sat = sat
+        end
+      end
+    else                                                -- insert element
       if dbg then
         io.write("seq: installing element '", ins[ie].name, "'\n")
       end
