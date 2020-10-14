@@ -1051,31 +1051,6 @@ end
 
 -- methods (R/W), no dict change ----------------------------------------------o
 
-local function move (seq, rng_, sel_)
-  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local data = seq.__dat
-  assert(not (data.ro or seq:is_readonly()), "invalid write access to readonly sequence")
-
-  -- collect indexes of elements to move
-  local idx_m, ne = filter(seq, rng_, sel_, true)
-  ne = rmsubelm(idx_m, ne) -- sub-elements cannot be moved inside sequence
-  if ne == 0 then return end
-
-  -- basic check...
-  assert(idx_m[ne]-idx_m[1] >= ne-1, "invalid range, indexes must be increasing")
-
-  -- remove $start/$stop markers from the list of elements to move
-  if idx_m[ne] == #seq then table.remove(idx_m)    ; ne = ne-1 end
-  if idx_m[1 ] == 1    then table.remove(idx_m, 1) ; ne = ne-1 end
-
-  -- update elements positions
-  for i=1,ne do data.spos[idx_m[i]] = uninitialized end
-  for i=1,ne do elem_pos(seq   , idx_m[i])          end
-  for i=1,ne do check_drift(seq, idx_m[i])          end
-
-  return seq
-end
-
 local function misalign (seq, mis, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   local data = seq.__dat
@@ -1128,6 +1103,31 @@ local function misalign (seq, mis, rng_, sel_)
   return seq
 end
 
+local function move (seq, rng_, sel_)
+  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  local data = seq.__dat
+  assert(not (data.ro or seq:is_readonly()), "invalid write access to readonly sequence")
+
+  -- collect indexes of elements to move
+  local idx_m, ne = filter(seq, rng_, sel_, true)
+  ne = rmsubelm(idx_m, ne) -- sub-elements cannot be moved inside sequence
+  if ne == 0 then return end
+
+  -- basic check...
+  assert(idx_m[ne]-idx_m[1] >= ne-1, "invalid range, indexes must be increasing")
+
+  -- remove $start/$stop markers from the list of elements to move
+  if idx_m[ne] == #seq then table.remove(idx_m)    ; ne = ne-1 end
+  if idx_m[1 ] == 1    then table.remove(idx_m, 1) ; ne = ne-1 end
+
+  -- update elements positions
+  for i=1,ne do data.spos[idx_m[i]] = uninitialized end
+  for i=1,ne do elem_pos(seq   , idx_m[i])          end
+  for i=1,ne do check_drift(seq, idx_m[i])          end
+
+  return seq
+end
+
 -- methods (R/W, rebuild dict) ------------------------------------------------o
 
 local function build_index (seq)
@@ -1158,13 +1158,12 @@ local function remove (seq, rng_, sel_)
   local dbg, ne = option.debug > 1, 0
   local elm_r = table.new(nr,0)
   for i=nr,1,-1 do
-    local ii = idx_r[i]
-    if is_integer(ii) then
+    if is_integer(idx_r[i]) then
       local ii = idx_r[i]
       if dbg then
         io.write("seq: removing element '", data[ii].name, "'\n")
       end
-      elm_r[i], ne = data[ii], ne+1    -- backup
+      elm_r[i], ne = data[ii], ne+1
       table.remove(data     , ii)
       table.remove(data.spos, ii)
       table.remove(data.upos, ii)
@@ -1173,7 +1172,7 @@ local function remove (seq, rng_, sel_)
     else
       local ii, sat = modf(idx_r[i])
       if dbg then
-        io.write("seq: removing sub-element '", data[ii].name, "' at ', sat, '\n")
+        io.write("seq: removing sub-element in '", data[ii].name, "' at '", sat, "'\n")
       end
       elm_r[i] = data[ii]:remove_sat(sat)
     end
@@ -1211,18 +1210,30 @@ local function replace (seq, elm, rng_, sel_)
 
   -- collect indexes of elements to replace
   local idx_r, nr = filter(seq, rng_, sel_, true)
-  nr = rmsubelm(idx_r, nr) -- sub-elements cannot be replaced by sequence
   if nr == 0 then return end
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
   assert(idx_r[ 1] > 1             , "invalid range, $start marker selected")
   assert(idx_r[nr] < #seq          , "invalid range, $end marker selected")
 
+  local dbg = option.debug > 1
   local elm_r = table.new(nr,0)
   for i=1,nr do                                -- replace elements
-    local ii, ie = idx_r[i], (i-1)%ne+1        -- recycle list of elements
-    data[ii], elm_r[i] = elm[ie], data[ii]     -- backup
-    data.spos[ii] = uninitialized
+    local ie = (i-1)%ne+1                      -- recycle list of elements
+    if is_integer(idx_r[i]) then
+      local ii = idx_r[i]
+      if dbg then
+        io.write("seq: relacing element '", data[ii].name, "'\n")
+      end
+      elm_r[i], data[ii], data.spos[ii] = data[ii], elm[ie], uninitialized
+    else
+      local ii, sat = modf(idx_r[i])
+      if dbg then
+        io.write("seq: relacing sub-element in '", data[ii].name, "' at '", sat, "'\n")
+      end
+      elm[ie].sat = sat ; elm_r[i] = data[ii]:replace_at(elm[ie])
+    end
   end
+  nr = rmsubelm(idx_r, nr)                     -- remove the sub-elements
   for i=1,nr do elem_pos(seq, idx_r[i]) end    -- recompute the positions
   for i=1,nr do
     local idx = idx_r[i]
@@ -1332,7 +1343,7 @@ local function install (seq, elm, rng_, sel_, cmp_)
       local elm, sat = data[idx], 0
       if data.ds[idx] > 0 then sat = (spos[ie]-data.spos[idx])/data.ds[idx] end
       ins[ie].sat = sat ; elm:insert_sat(ins[ie])
-    else                                                -- insert element
+    else                                               -- insert element
       if dbg then
         io.write("seq: installing element '", ins[ie].name, "'\n")
       end
