@@ -39,7 +39,7 @@ local not_mappable, not_extendable, not_mutable                  in concept
 local sub, ltrue, lfalse                                         in operator
 local implicit, observed                                         in flags
 
-local abs in math
+local abs, modf in math
 
 local type, getmetatable, setmetatable, assert, error, rawequal =
       type, getmetatable, setmetatable, assert, error, rawequal
@@ -1025,8 +1025,11 @@ local function deselect (seq, flg_, rng_, sel_, not_)
   return seq:foreach(act, rng_, sel_, not_)
 end
 
-local do_filter = \ei,_,i => local n=ei.n+1 ; ei[n], ei.n = i, n end
+local do_filter = \ei,el,i,mi =>
+  local n=ei.n+1 ; ei[n], ei.n = mi and mi+el.sat or i, n end
 
+-- return the list of indexes of selected elements
+-- fractional part is the "sat" of sub-elements.
 local function filter (seq, rng_, sel_, not_)
   local ei = table.new(8,1)
   local act = bind1st(do_filter, ei)
@@ -1034,6 +1037,16 @@ local function filter (seq, rng_, sel_, not_)
   seq:foreach(act, rng_, sel_, not_)
   local n = ei.n ; ei.n = nil
   return ei, n
+end
+
+ -- local helper to remove sub-elements from ei returned by filter
+local function rmsubelm (ei, ne)
+  local n = 0
+  for i=1,ne do
+    if not is_integer(ei[i]) then table.remove(ei, i) ; n = n+1 end
+  end
+  if n > 0 then warn("sub-elements discarded") end
+  return ne-n
 end
 
 -- methods (R/W), no dict change ----------------------------------------------o
@@ -1045,6 +1058,7 @@ local function move (seq, rng_, sel_)
 
   -- collect indexes of elements to move
   local idx_m, ne = filter(seq, rng_, sel_, true)
+  ne = rmsubelm(idx_m, ne) -- sub-elements cannot be moved inside sequence
   if ne == 0 then return end
 
   -- basic check...
@@ -1069,6 +1083,7 @@ local function misalign (seq, mis, rng_, sel_)
 
   -- collect indexes of elements to misalign
   local idx_m, ne = filter(seq, rng_, sel_)
+  ne = rmsubelm(idx_m, ne) -- sub-elements cannot be misaligned vs sequence
   if ne == 0 then return seq end
 
   -- basic check...
@@ -1132,26 +1147,38 @@ local function remove (seq, rng_, sel_)
   local idx_r, nr = filter(seq, rng_, sel_, true)
   if nr == 0 then return end
 
+  -- basic check...
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
-  assert(idx_r[ 1] > 1             , "invalid range, $start marker selected")
-  assert(idx_r[nr] < data.ne       , "invalid range, $end marker selected")
+
+  -- remove $start/$stop markers from the list of elements to remove
+  if idx_r[nr] == #seq then table.remove(idx_r)     ; nr = nr-1 end
+  if idx_r[ 1] == 1    then table.remove(idx_r, 1 ) ; nr = nr-1 end
 
   -- remove elements by decreasing indexes -- to optimize to avoid O(N^2) removal
-  local dbg = option.debug > 1
+  local dbg, ne = option.debug > 1, 0
   local elm_r = table.new(nr,0)
   for i=nr,1,-1 do
     local ii = idx_r[i]
-    if dbg then
-      io.write("seq: removing element '", data[ii].name, "'\n")
+    if is_integer(ii) then
+      local ii = idx_r[i]
+      if dbg then
+        io.write("seq: removing element '", data[ii].name, "'\n")
+      end
+      elm_r[i], ne = data[ii], ne+1    -- backup
+      table.remove(data     , ii)
+      table.remove(data.spos, ii)
+      table.remove(data.upos, ii)
+      table.remove(data.ds  , ii)
+      table.remove(data.algn, ii)
+    else
+      local ii, sat = modf(idx_r[i])
+      if dbg then
+        io.write("seq: removing sub-element '", data[ii].name, "' at ', sat, '\n")
+      end
+      elm_r[i] = data[ii]:remove_sat(sat)
     end
-    elm_r[i] = data[ii]    -- backup
-    table.remove(data     , ii)
-    table.remove(data.spos, ii)
-    table.remove(data.upos, ii)
-    table.remove(data.ds  , ii)
-    table.remove(data.algn, ii)
   end
-  data.ne = data.ne - nr
+  data.ne = data.ne - ne
   build_index(seq)
   return elm_r, idx_r
 end
@@ -1184,8 +1211,11 @@ local function replace (seq, elm, rng_, sel_)
 
   -- collect indexes of elements to replace
   local idx_r, nr = filter(seq, rng_, sel_, true)
+  nr = rmsubelm(idx_r, nr) -- sub-elements cannot be replaced by sequence
   if nr == 0 then return end
   assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
+  assert(idx_r[ 1] > 1             , "invalid range, $start marker selected")
+  assert(idx_r[nr] < #seq          , "invalid range, $end marker selected")
 
   local elm_r = table.new(nr,0)
   for i=1,nr do                                -- replace elements
@@ -1206,7 +1236,7 @@ local function replace (seq, elm, rng_, sel_)
   return elm_r, idx_r
 end
 
-local function inselem (seq, idx, spos)
+local function in_elem (seq, idx, spos)
   local data = seq.__dat
   return spos > data.spos[idx] and spos < data.spos[idx]+data.ds[idx]
 end
@@ -1230,6 +1260,7 @@ local function install (seq, elm, rng_, sel_, cmp_)
 
   -- collect indexes of reference where to insert
   local idx_r, nr = filter(seq, rng_, sel_, true)
+  nr = rmsubelm(idx_r, nr) -- sub-elements cannot be selected
   if nr > 0 then
     assert(idx_r[nr]-idx_r[1] >= nr-1, "invalid range, indexes must be increasing")
   end
@@ -1294,19 +1325,13 @@ local function install (seq, elm, rng_, sel_, cmp_)
       end
       data.ne = data.ne + sdata.ne - 2
       check_drift(seq, idx+sdata.ne - 3) -- check surrounding drifts of lst
-    elseif subelem and inselem(seq, idx, spos[ie]) then -- insert sub-element
+    elseif subelm and in_elem(seq, idx, spos[ie]) then -- insert sub-element
       if dbg then
-        io.write("seq: installing sub-element '", ins[ie].name, "' (set 'sat')\n")
+        io.write("seq: installing sub-element '", ins[ie].name, "' at 'sat')\n")
       end
-      assert(ins[ie].l == 0, "invalid sub-element, zero-length required")
       local elm, sat = data[idx], 0
       if data.ds[idx] > 0 then sat = (spos[ie]-data.spos[idx])/data.ds[idx] end
-      for si=1,#elm do -- search for insertion sub-index
-        local ssat = assert(elm[si].sat, "invalid sub-element, 'sat' required")
-        if not cmp(sat, ssat) then
-          elm:insert(si, ins[ie]) ; ins[ie].sat = sat
-        end
-      end
+      ins[ie].sat = sat ; elm:insert_sat(ins[ie])
     else                                                -- insert element
       if dbg then
         io.write("seq: installing element '", ins[ie].name, "'\n")
