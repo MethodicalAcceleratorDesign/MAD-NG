@@ -145,17 +145,34 @@ local function make_mtable (self, range, nosave)
   })
 end
 
--- reset sequence iterator (e.g. survey again) --------------------------------o
+-- reset/chnage sequence iterator (e.g. track again) --------------------------o
 
-local function sireset (mflw)
-  local sequ, sdir, __sitr in mflw
-  local s0, range, nturn in __sitr
-  local iter, state, init = sequ:siter(range, nturn, sdir)
+local function reset_si (mflw)
+  local sequ, range, nturn, sdir, s0 in mflw.__sitr
+  local iter, state, eidx = sequ:siter(range, nturn, sdir)
+
+  mflw.sequ=sequ
+  mflw.range=range
 
   __sitr.iter=iter
   __sitr.state=state
 
-  mflw.s0, mflw.ds, mflw.spos, mflw.eidx, mflw.turn = s0, 0, 0, init, 1
+  mflw.s0, mflw.eidx, mflw.turn = s0, eidx, 1
+
+  return mflw
+end
+
+local function change_si (mflw, sequ, range_, nturn_, dir_)
+  local range = range_ or sequ.range
+  local iter, state, eidx = sequ:siter(range, nturn_, dir_)
+
+  mflw.sequ=sequ
+  mflw.range=range
+
+  __sitr.iter=iter
+  __sitr.state=state
+
+  mflw.s0, mflw.eidx = mflw.spos, eidx
 
   return mflw
 end
@@ -313,10 +330,14 @@ local function make_mflow (self)
   mflw.W=matrix(3):rotzxy(-phi,the,psi) -- orientation matrix (rotations)
   mflw.A=vector(3):fill{the,phi,psi}    -- oriented angles
 
+  -- methods to reset/change tracking
+  mflw.reset_si=reset_si      -- reset  sequence iterator
+  mflw.change_si=change_si    -- change sequence iterator
+
   -- for processing sequence elements by nstep
-  mflw.__sitr={iter=iter, state=state,          -- sequence iterator state
+  mflw.__sitr={sequ=sequ, sdir=dir,             -- sequence information
+               iter=iter, state=state,          -- sequence iterator state
                s0=s0, range=range, nturn=nturn} -- sequence iterator reset
-  mflw.sireset=sireset
 
   -- for processing elements local frame (pre-alloc to avoid rehash)
   mflw.__edat = setmetatable({
@@ -374,22 +395,24 @@ local function exec (self)
     mflw.atdebug = mflw.mdump
   end
 
-  -- retrieve information
-  local s0, eidx, sequ, __sitr, __edat in mflw
-  local iter, state in __sitr
-  local ne, ie = #sequ, nil
+  repeat
+    -- retrieve information
+    local s0, eidx, sequ, __sitr, __edat in mflw
+    local iter, state in __sitr
+    local ne, ie, ret = #sequ
 
-  -- geometric tracking
-  for ei,elm,spos,ds in iter, state, eidx do
-    mflw.eidx, mflw.spos, mflw.ds, __edat.clw = ei, s0+spos, ds, 0
-    elm:survey(__edat)
-    mflw.nstep = mflw.nstep-1
+    -- geometric tracking
+    for ei,elm,spos,ds in iter, state, eidx do
+      mflw.eidx, mflw.spos, mflw.ds, __edat.clw = ei, s0+spos, ds, 0
+      ret = elm:survey(__edat)
+      mflw.nstep = mflw.nstep-1
 
-    -- check remaining number of elements to track
-    if mflw.nstep == 0 then ie = ei break end
-    -- check for end of turn
-    if ei == ne then mflw.turn = mflw.turn+1 end
-  end
+      -- check remaining number of elements to track
+      if ret or mflw.nstep == 0 then ie = ei break end
+      -- check for end of turn
+      if ei == ne then mflw.turn = mflw.turn+1 end
+    end
+  until ret ~= "restart_si"
 
   return mtbl, mflw, ie
 end
