@@ -28,11 +28,11 @@
 
 // --- interface --------------------------------------------------------------o
 
-num_t mad_rad_nrjloss_quantum (num_t particle_nrj, num_t kick, num_t length);
-num_t mad_rad_nrjloss_average (num_t particle_nrj, num_t kick, num_t length);
-num_t mad_rad_freepath        (num_t particle_nrj, num_t kick, num_t length);
-num_t mad_rad_freepath_mean   (num_t particle_nrj, num_t kick, num_t length);
-num_t mad_rad_synrad_prob     (num_t particle_nrj, num_t kick);
+num_t mad_rad_nrjloss_quantum (num_t gamma, num_t kick, num_t length);
+num_t mad_rad_nrjloss_average (num_t gamma, num_t kick, num_t length);
+num_t mad_rad_freepath        (num_t gamma, num_t kick, num_t length);
+num_t mad_rad_freepath_mean   (num_t gamma, num_t kick, num_t length);
+num_t mad_rad_synrad_prob     (num_t gamma, num_t kick);
 
 // ----------------------------------------------------------------------------o
 

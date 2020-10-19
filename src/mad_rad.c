@@ -28,9 +28,8 @@
 #define SQR(a) ((a)*(a))
 #define CUB(a) ((a)*(a)*(a))
 
-// --- implementation ---------------------------------------------------------o
+// --- RNG for radiation ------------------------------------------------------o
 
-// RNG for radiation
 static num_t
 rnguni (void)
 {
@@ -264,7 +263,7 @@ syngen_init (struct syngen *sg, num_t xmin)
 static num_t
 syngen (num_t xmin)
 {
-  assert(xmin >= 0);
+  ensure(xmin >= 0, "invalid negative input value %.5g (>= expected)", xmin);
 
   static struct syngen sg = {.last_xmin = -1};
   num_t approx, exact, result;
