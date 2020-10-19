@@ -49,6 +49,8 @@ extern const num_t mad_cst_2_PI    ;  // 2/pi
 extern const num_t mad_cst_2_SQRTPI;  // 2/sqrt(pi)
 extern const num_t mad_cst_SQRT2   ;  // sqrt(2)
 extern const num_t mad_cst_SQRT1_2 ;  // 1/sqrt(2), sqrt(1/2)
+extern const num_t mad_cst_SQRT3   ;  // sqrt(3)
+extern const num_t mad_cst_SQRT1_3 ;  // 1/sqrt(3), sqrt(1/3)
 
 extern const num_t mad_cst_DEGRAD  ;  // degree to radian factor
 extern const num_t mad_cst_RADDEG  ;  // radian to degree factor
@@ -81,7 +83,6 @@ extern const num_t mad_cst_ERADIUS ;  // [m]
 #define M_LN2       0.693147180559945309417232121458176568  // log_e 2
 #define M_LN10      2.30258509299404568401799145468436421   // log_e 10
 #define M_PI        3.14159265358979323846264338327950288   // pi
-#define M_2PI       6.28318530717958647692528676655900577   // 2*pi
 #define M_PI_2      1.57079632679489661923132169163975144   // pi/2
 #define M_PI_4      0.785398163397448309615660845819875721  // pi/4
 #define M_1_PI      0.318309886183790671537767526745028724  // 1/pi
@@ -89,8 +90,15 @@ extern const num_t mad_cst_ERADIUS ;  // [m]
 #define M_2_SQRTPI  1.12837916709551257389615890312154517   // 2/sqrt(pi)
 #define M_SQRT2     1.41421356237309504880168872420969808   // sqrt(2)
 #define M_SQRT1_2   0.707106781186547524400844362104849039  // 1/sqrt(2)
-#else
+#endif
+
+#ifndef M_2PI
 #define M_2PI       6.28318530717958647692528676655900577   // 2*pi
+#endif
+
+#ifndef M_SQRT3
+#define M_SQRT3     1.73205080756887729352744634150587237   // sqrt(3)
+#define M_SQRT1_3   0.577350269189625764509148780501957456  // 1/sqrt(3)
 #endif
 
 #define M_RADDEG    57.2957795130823208767981548141051703   // 180/pi
@@ -100,11 +108,11 @@ extern const num_t mad_cst_ERADIUS ;  // [m]
 
 // https://physics.nist.gov/cuu/pdf/wall_2018.pdf
 #ifndef P_CLIGHT                           // Source: CODATA 2018
-#define P_CLIGHT    299792458.0            // [m/s]   Speed of light in vacuum
+#define P_CLIGHT     299792458.0           // [m/s]   Speed of light in vacuum
 #define P_CLIGHT2   (P_CLIGHT*P_CLIGHT)    //         c^2
 #define P_MU0       (4e-7*M_PI)            // [T.m/A] Permeability of vacuum
 #define P_EPSILON0  (1/(P_MU0*P_CLIGHT2))  // [F/m]   Permittivity of vacuum
-#define P_QELECT    1.602176634e-19        // [C]     Elementary electric charge
+#define P_QELECT     1.602176634e-19       // [C]     Elementary electric charge
 #define P_HBAR      (6.582119569e-16*1e-9) // [GeV.s] Reduced Plack's constant
 #define P_AMASS     (931.49410242   *1e-3) // [GeV]   Unified atomic mass
 #define P_EMASS     (0.51099895000  *1e-3) // [GeV]   Electron energy-mass
@@ -112,7 +120,8 @@ extern const num_t mad_cst_ERADIUS ;  // [m]
 #define P_NMASS     (939.56542052   *1e-3) // [GeV]   Neutron energy-mass
 #define P_MUMASS    (105.6583755    *1e-3) // [GeV]   Muon energy-mass
 #define P_DEUMASS   (1875.61294257  *1e-3) // [GeV]   Deuteron energy-mass
-#define P_ERADIUS   2.8179403262e-15       // [m]     Classical electron radius
+#define P_ERADIUS    2.8179403262e-15      // [m]     Classical electron radius
+#define P_ALPHAEM    7.2973525693e-3       //         Fine-structure constant
 #endif
 
 // https://physics.nist.gov/cuu/pdf/wall_2014.pdf
@@ -130,6 +139,7 @@ extern const num_t mad_cst_ERADIUS ;  // [m]
 #define P_MUMASS    0.1056583745           // [GeV]   Muon mass
 #define P_DEUMASS   1.875612928            // [GeV]   Deuteron mass
 #define P_ERADIUS   2.8179403227e-15       // [m]     Classical electron radius
+#define P_ALPHAEM   7.2973525693e-3        //         Fine-structure constant
 #endif
 
 // ----------------------------------------------------------------------------o
