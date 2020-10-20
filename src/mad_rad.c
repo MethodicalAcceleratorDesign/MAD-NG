@@ -68,8 +68,8 @@ Chebyshev (num_t a, num_t b, const num_t c[], int m, num_t x)
   return y*d - dd + 0.5*c[0];
 }
 
-static num_t
-InvSynFracInt (num_t x)
+num_t
+mad_rad_InvSynFracInt (num_t x)
 {
   // from 0 to 0.7
   static const num_t aa1=0  ,aa2=0.7;
