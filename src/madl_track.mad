@@ -356,10 +356,12 @@ local function make_mflow (self)
   assert(is_boolean(ptcmodel), "invalid ptcmodel (boolean expected)")
 
   -- retrieve initial conditions
-  local s0, X0, mapdef, savemap in self
+  local s0, X0, O0, mapdef, savemap in self
   if X0 == 0 then X0 = {0,0,0,0,0,0} end
+  if O0 == 0 then O0 = {0,0,0,0,0,0} end
   assert(is_number  (s0)    , "invalid s0 (number expected)")
   assert(is_mappable(X0)    , "invalid X0 (mappable expected)")
+  assert(is_mappable(O0)    , "invalid O0 (mappable expected)")
   assert(is_boolean(mapdef) or is_mappable(mapdef)
                             , "invalid mapdef (boolean or mappable expected)")
   assert(is_boolean(savemap) or savemap == 1 -- 1 means to save only the matrix
@@ -373,6 +375,11 @@ local function make_mflow (self)
   local mknd = 0
   local beta = beam.beta
 
+  -- reference orbit
+  local x0, px0 = O0.x or O0[1] or 0, O0.px or O0[2] or 0
+  local y0, py0 = O0.y or O0[3] or 0, O0.py or O0[4] or 0
+  local t0, pt0 = O0.t or O0[5] or 0, O0.pt or O0[6] or 0
+
   -- precedence of initial conditions
   for j,dp in ipairs(deltap) do
     local dpt = dp2pt(dp, beta)
@@ -384,27 +391,27 @@ local function make_mflow (self)
 
       if is_damap(X0i) then -- damap copy
         mflw[ii] = X0i:copy()
-        mflw[ii].pt:set0(X0i.pt:get0()+dpt) -- for MADX compatibility
+        mflw[ii]:set0({x0,px0,y0,py0,t0,pt0+dpt},1)
         mflw[ii].status = 'Mset'
         mknd = bor(mknd, mapkind.damap)
 --      if dpt ~= 0 then mflw[ii]:translate({0,0,0,0,0,dpt},'in') end
       elseif is_beta0(X0i) then -- damap created from beta0
         mflw[ii] = bet2map(X0i, damap(mdef[i] or mdef))
-        mflw[ii].pt:set0(mflw[ii].pt:get0()+dpt) -- for MADX compatibility
+        mflw[ii]:set0({x0,px0,y0,py0,t0,pt0+dpt},1)
         mflw[ii].status = 'Bset'
         mknd = bor(mknd, mapkind.damap)
 --      if dpt ~= 0 then mflw[ii]:translate({0,0,0,0,0,dpt},'in') end
       elseif is_mappable(X0i) then -- access by indexes first for vectors
-        local x, px = X0i[1] or X0i.x or 0, X0i[2] or X0i.px or 0
-        local y, py = X0i[3] or X0i.y or 0, X0i[4] or X0i.py or 0
-        local t, pt = X0i[5] or X0i.t or 0, X0i[6] or X0i.pt or 0
+        local x, px = x0+(X0i.x or X0i[1] or 0), px0+(X0i.px or X0i[2] or 0)
+        local y, py = y0+(X0i.y or X0i[3] or 0), py0+(X0i.py or X0i[4] or 0)
+        local t, pt = t0+(X0i.t or X0i[5] or 0), pt0+(X0i.pt or X0i[6] or 0)+dpt
         if mdef then -- damap created from coordinates (I as 1st order)
           mflw[ii] = damap(mdef[i] or mdef)
-          mflw[ii]:setvar{x,px,y,py,t,pt+dpt}
+          mflw[ii]:set0{x,px,y,py,t,pt}
           mflw[ii].status = 'Xset'
           mknd = bor(mknd, mapkind.damap)
         else -- copy: need a table for key access (e.g. vs. vector)
-          mflw[ii] = {x=x, px=px, y=y, py=py, t=t, pt=pt+dpt, status='Xset'}
+          mflw[ii] = {x=x, px=px, y=y, py=py, t=t, pt=pt, status='Xset'}
           mknd = bor(mknd, mapkind.part)
         end
       else
@@ -585,6 +592,7 @@ local track = command 'track' {
 
   s0=0,             -- initial s-position offset [m]                      (mflw)
   X0=0,             -- initial X coordinates (or damap, or beta block)    (mflw)
+  O0=0,             -- initial O coordinates for reference orbit          (mflw)
   deltap=nil,       -- initial deltap(s)                                  (mflw)
 
   nturn=1,          -- number of turns to track                           (iter)
@@ -621,7 +629,7 @@ local track = command 'track' {
   exec=exec,        -- command to execute upon children creation
 
   __attr = {        -- list of all setup attributes
-    'beam', 'sequence', 'range', 'dir', 's0', 'X0', 'deltap',
+    'beam', 'sequence', 'range', 'dir', 's0', 'X0', 'O0', 'deltap',
     'nturn', 'mapdef', 'method', 'model', 'ptcmodel',
     'implicit', 'misalign', 'fringe', 'radiate', 'totalpath',
     'save', 'title', 'observe', 'savemap', 'info', 'debug', 'usrdef',
