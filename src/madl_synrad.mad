@@ -1,0 +1,105 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Synchrotron Radiation module
+ |
+ | Methodical Accelerator Design - Copyright (c) 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide routines for synchrotron radiation.
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+local M = {}
+
+-- locals ---------------------------------------------------------------------o
+
+local hypot    in MAD.gmath
+local is_damap in MAD.typeid
+local printf   in MAD.utility
+
+local function backup_pxpy (m)
+  for i=1,m.npar do
+    local px, py in m[i]
+    if is_damap(m[i]) then px, py = px:get0(), py:get0() end
+    m[i].px0, m[i].py0 = px, py
+  end
+end
+
+function M.radiate_avrg (elm, mflw, lw, islc)
+  if islc == 0 then return backup_pxpy(mflw) end
+
+  local el, eh in m
+  local gamma = m.beam.gamma
+
+  for i=1,m.npar do
+    local px, py, pt, px0, py0, beam in m[i]
+    if is_damap(m[i]) then px, py = px:get0(), py:get0() end
+
+    local dpx = px-px0 + lw*el*eh
+    local dpy = py-py0
+    local kck = hypot(dpx, dpy)
+
+    local gamma = beam and beam.gamma or gamma
+    local nrj = _C.mad_rad_nrjloss_average(gamma, kck, lw*el)
+
+    if nrj > 0 and mflw.debug >= 3 then
+      printf("particle %d lost an average of %.5e GeV\n", m[i].id, nrj)
+    end
+
+    m[i].pt = pt - nrj          -- update pt
+    m[i].px0, m[i].py0 = px, py -- backup_pxpy
+
+    -- TODO: add photon to tracked particles
+  end
+end
+
+function M.radiate_quant (elm, mflw, lw, islc)
+  if islc == 0 then return backup_pxpy(mflw) end
+
+  local el, eh in m
+  local gamma = m.beam.gamma
+  local dbg = mflw.debug
+
+  for i=1,m.npar do
+    local px, py, pt, px0, py0, beam in m[i]
+    if is_damap(m[i]) then px, py = px:get0(), py:get0() end
+
+    local dpx = px-px0 + lw*el*eh
+    local dpy = py-py0
+    local kck = hypot(dpx, dpy)
+
+    local gamma = beam and beam.gamma or gamma
+    local fpath = _C.mad_rad_synrad_prob(gamma, kck)
+    local nphot, nrj = 0, 0
+
+    while fpath >= 0 do
+      nrj = nrj + _C.mad_rad_nrjloss_quantum(gamma, kck, lw*el)
+      fpath = fpath - _C.mad_rad_freepath(gamma, kck, lw*el)
+      nphot = nphot + 1
+    end
+
+    if nrj > 0 and mflw.debug >= 3 then
+      printf("particle %d lost %.5e GeV in %d photons\n", m[i].id, nrj, nphot)
+    end
+
+    m[i].pt = pt - nrj          -- update pt
+    m[i].px0, m[i].py0 = px, py -- backup_pxpy
+
+    -- TODO: add photon to tracked particles
+  end
+end
+
+-- end ------------------------------------------------------------------------o
+return { synrad = M }
