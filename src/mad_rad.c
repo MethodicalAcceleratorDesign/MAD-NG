@@ -136,7 +136,7 @@ mad_rad_InvSynFracInt (num_t x)
 //  (integral of modified 1/3 order Bessel function)
 //  Reference:
 //  - Chebyshev series see H.H.Umstaetter CERN/PS/SM/81-13 10-3-1981
-//  - H. Burkhardt LEP Note 632 of 12/1990
+//  - H. Burkhardt LEP Note 632 of 12-1990
 //  - H. Burkhardt CLIC-Note-709 of 08-06-2007
 
 static num_t
@@ -297,7 +297,7 @@ mad_rad_synrad_prob (num_t gamma, num_t kick)
   return c1*fabs(kick)*gamma;
 }
 
-num_t // was get_mean_free_path
+num_t
 mad_rad_freepath_mean (num_t gamma, num_t kick, num_t length)
 {
   // kick in radians, length in meters, gamma
@@ -305,14 +305,14 @@ mad_rad_freepath_mean (num_t gamma, num_t kick, num_t length)
   return length / mad_rad_synrad_prob(gamma, kick);
 }
 
-num_t // was get_free_path
+num_t
 mad_rad_freepath (num_t gamma, num_t kick, num_t length)
 {
   if (fabs(kick) < DBL_EPSILON) return INFINITY;
   return rngexp(mad_rad_freepath_mean(gamma, kick, length));
 }
 
-num_t // was get_energy_loss
+num_t
 mad_rad_nrjloss_quantum (num_t gamma, num_t kick, num_t length)
 {
   if (fabs(kick) < DBL_EPSILON) return 0;
@@ -322,7 +322,7 @@ mad_rad_nrjloss_quantum (num_t gamma, num_t kick, num_t length)
   return nrj_loss;
 }
 
-num_t // was get_average_energy_loss
+num_t
 mad_rad_nrjloss_average (num_t gamma, num_t kick, num_t length)
 {
   num_t EEangle = SQR(gamma) * fabs(kick);
