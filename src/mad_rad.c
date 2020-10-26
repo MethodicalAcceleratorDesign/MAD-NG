@@ -290,7 +290,7 @@ syngen (num_t xmin)
 // e*e/6/pi/epsilon0/m/((Gev/GeV)**4) GeV
 #define ENERGY_LOSS 9.5997636523126797e-19
 
-num_t // was synrad_probability
+num_t
 mad_rad_synrad_prob (num_t gamma, num_t kick)
 {
   const num_t c1 = 2.5/M_SQRT3*P_ALPHAEM;
