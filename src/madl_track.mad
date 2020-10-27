@@ -34,8 +34,8 @@ Notes about directions and quantities:
 local command, element, mtable, damap, symint, option, show    in MAD
 
 local is_nil, is_beam, is_sequence, is_boolean, is_number,
-      is_integer, is_true, is_callable, is_iterable, is_damap,
-      is_mappable, is_beta0                                     in MAD.typeid
+      is_integer, is_true, is_string, is_damap, is_callable,
+      is_iterable, is_mappable, is_beta0                        in MAD.typeid
 local fnil, ffalse, chain, achain                               in MAD.gfunc
 local dp2pt, bet2map                                            in MAD.gphys
 local errorf, assertf, printf                                   in MAD.utility
@@ -43,7 +43,7 @@ local tobit, band, bor                                          in MAD.operator
 local apercheck                                                 in MAD.aperture
 local srad_savp, srad_avrg, srad_quant                          in MAD.synrad
 local is_implicit                                               in element.drift
-local atbegin, atins, atins1, action, actionat                  in symint
+local atbegin, atbody, atend, atins, atins1, action, actionat   in symint
 
 local io, type, setmetatable, assert =
       io, type, setmetatable, assert
@@ -259,7 +259,7 @@ local function make_mflow (self)
   local save, implicit, observe, fringe, radiate in self
   local savebit = slicebit[save]
   if is_boolean(fringe ) then fringe  = fringe  and -1 or 0 end
-  if is_boolean(radiate) then radiate = radiate and "" or nil end
+  if is_boolean(radiate) then radiate = radiate and "average" or nil end
 
   assert(is_number(savebit)  ,
               "invalid save directive (boolean or valid atxxx string expected)")
@@ -336,30 +336,29 @@ local function make_mflow (self)
     end
   end
 
-  if ataper ~= ffalse then -- chain ataper to atslice for slice 0
-    local aperact = actionat('ataper', atbegin)
-    atslice = chain(aperact, atslice)
-    ataper = achain(apercheck, ataper)
-  end
-
   local trckphot
   if radiate then
     local radstr
-    atentry = chain(srad_savp, atentry)
+    atslice = chain(achain(atbegin, srad_savp), atslice)
     if string.find(radiate, "quantum", 1, true) then
-      atslice = chain(srad_quant, atslice)
-      atexit  = chain(srad_quant, atexit )
+      atslice = chain(achain(atbody, srad_quant), atslice)
       radstr  = "quantum"
       if string.find(radiate, "photon", 1, true) then
         trckphot = true
         radstr   = radstr.."+photon"
       end
     else -- average
-      atslice = chain(srad_avrg, atslice)
-      atexit  = chain(srad_avrg, atexit )
+      atslice = chain(achain(atbody, srad_avrg), atslice)
       radstr  = "average"
     end
-    mtbl.radiate = radstr
+    radiate = radstr
+    if save then mtbl.radiate = radiate end -- update mtbl
+  end
+
+  if ataper ~= ffalse then -- chain ataper to atslice for last slice
+    local aperact = actionat('ataper', trckphot and atbody or atend)
+    atslice = chain(aperact, atslice)
+    ataper = achain(apercheck, ataper)
   end
 
   -- totalpath
@@ -466,7 +465,7 @@ local function make_mflow (self)
   mflw.implicit=implicit     -- slice also implicit elements (e.g. plots)
   mflw.fringe=fringe         -- compute fringe fields
   mflw.misalign=misalign     -- misalign element
-  mflw.radiate=radstr        -- radiate at slices
+  mflw.radiate=radiate       -- radiate at slices
   mflw.tphot=trckphot        -- track photons
   mflw.nphot=0               -- number of tracked photons
 
