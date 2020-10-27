@@ -293,6 +293,7 @@ syngen (num_t xmin)
 num_t
 mad_rad_synrad_prob (num_t gamma, num_t kick)
 {
+  if (fabs(kick) < DBL_EPSILON) return 0;
   const num_t c1 = 2.5/M_SQRT3*P_ALPHAEM;
   return c1*fabs(kick)*gamma;
 }
@@ -300,8 +301,7 @@ mad_rad_synrad_prob (num_t gamma, num_t kick)
 num_t
 mad_rad_freepath_mean (num_t gamma, num_t kick, num_t length)
 {
-  // kick in radians, length in meters, gamma
-  if (kick == 0) return INFINITY;
+  if (fabs(kick) < DBL_EPSILON) return INFINITY;
   return length / mad_rad_synrad_prob(gamma, kick);
 }
 
@@ -325,6 +325,7 @@ mad_rad_nrjloss_quantum (num_t gamma, num_t kick, num_t length)
 num_t
 mad_rad_nrjloss_average (num_t gamma, num_t kick, num_t length)
 {
+  if (fabs(kick) < DBL_EPSILON) return 0;
   num_t EEangle = SQR(gamma) * fabs(kick);
   num_t nrj_loss = ENERGY_LOSS * SQR(EEangle) / length;
   return nrj_loss;
