@@ -41,6 +41,7 @@ local dp2pt, bet2map                                            in MAD.gphys
 local errorf, assertf, printf                                   in MAD.utility
 local tobit, band, bor                                          in MAD.operator
 local apercheck                                                 in MAD.aperture
+local srad_savp, srad_avrg, srad_quant, srad_damp               in MAD.synrad
 local is_implicit                                               in element.drift
 local atbegin, atins, atins1, action, actionat                  in symint
 
@@ -257,15 +258,14 @@ local function make_mflow (self)
   local save, implicit, observe, fringe, radiate in self
   local savebit = slicebit[save]
   if is_boolean(fringe ) then fringe  = fringe  and -1 or 0 end
-  if is_boolean(radiate) then radiate = radiate and  1 or 0 end
+  if is_boolean(radiate) then radiate = radiate and "" or nil end
 
   assert(is_number(savebit)  ,
               "invalid save directive (boolean or valid atxxx string expected)")
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
-  assert(is_integer(fringe)  and fringe  >= -1
+  assert(is_string(radiate) or radiate == nil, "invalid radiate (string expected)")
+  assert(is_integer(fringe) and fringe >= -1
                              , "invalid fringe (boolean or fringe flag expected)")
-  assert(is_integer(radiate) and radiate >= 0
-                             , "invalid radiate (positive integer expected)")
   assert(is_integer(observe) and observe >= 0
                              , "invalid observe (positive integer expected)")
 
@@ -316,30 +316,44 @@ local function make_mflow (self)
 
     if not nosave then
       local fill = observe > 0 and fill_obs or fill_row
-      atsave = atsave == fnil and fill or achain(fill, atsave)
+      atsave = achain(fill, atsave)
 
       if savebit > 0 then
         local saveact, ex = action 'atsave'
         if band(savebit, slicebit.atentry) ~= 0 then
-          atentry = atentry == fnil and saveact or chain(atentry, saveact)
+          atentry = chain(atentry, saveact)
         end
         if band(savebit, slicebit.atexit) ~= 0 then
-          atexit = atexit == fnil and saveact or chain(atexit, saveact)
+          atexit = chain(atexit, saveact)
           ex = true
         end
         if band(savebit, slicebit.atslice) ~= 0 then
           local saveact = actionat('atsave', ex and atins or atins1)
-          atslice = atslice == fnil and saveact or chain(atslice, saveact)
+          atslice = chain(atslice, saveact)
         end
       end
     end
   end
 
   if ataper ~= ffalse then -- chain ataper to atslice for slice 0
-    ataper = ataper == fnil and apercheck or achain(apercheck, ataper)
-
     local aperact = actionat('ataper', atbegin)
-    atslice = atslice == fnil and aperact or chain(aperact, atslice)
+    atslice = chain(aperact, atslice)
+    ataper = achain(apercheck, ataper)
+  end
+
+  if radiate then
+    atentry = chain(srad_savp, atentry)
+    if string.find(radiate, "damp", 1, true) then
+      atslice = chain(srad_damp, atslice)
+      atexit  = chain(srad_damp, atexit )
+    end
+    if string.find(radiate, "quantum", 1, true) then
+      atslice = chain(srad_quant, atslice)
+      atexit  = chain(srad_quant, atexit )
+    else -- average
+      atslice = chain(srad_avrg , atslice)
+      atexit  = chain(srad_avrg , atexit )
+    end
   end
 
   -- totalpath
@@ -445,7 +459,7 @@ local function make_mflow (self)
   mflw.deltap=deltap         -- delta p
   mflw.implicit=implicit     -- slice also implicit elements (e.g. plots)
   mflw.fringe=fringe         -- compute fringe fields
-  mflw.radiate=radiate       -- radiate at slices
+  mflw.radiate=radiate       -- radiate at slices (["average"],"quantum","damp")
   mflw.misalign=misalign     -- 0 none, 1 main, 2 +error
 
   mflw.save=save             -- save data
