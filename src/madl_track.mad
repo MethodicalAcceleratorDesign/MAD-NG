@@ -41,7 +41,7 @@ local dp2pt, bet2map                                            in MAD.gphys
 local errorf, assertf, printf                                   in MAD.utility
 local tobit, band, bor                                          in MAD.operator
 local apercheck                                                 in MAD.aperture
-local srad_savp, srad_avrg, srad_quant, srad_damp               in MAD.synrad
+local srad_savp, srad_avrg, srad_quant                          in MAD.synrad
 local is_implicit                                               in element.drift
 local atbegin, atins, atins1, action, actionat                  in symint
 
@@ -167,18 +167,19 @@ local function fill_obs (elm, mflw, lw, islc)
 end
 
 local header = {
-  'direction', 'observe', 'implicit', 'misalign', 'deltap', 'lost'
+  'direction', 'observe', 'implicit', 'misalign', 'radiate', 'deltap', 'lost'
 }
 
 local function make_mtable (self, range, nosave)
-  local title, dir, observe, implicit, misalign, deltap, savemap in self
+  local title, dir, observe, implicit, misalign, radiate, deltap, savemap in self
   local sequ, nrow = self.sequence, nosave and 0 or 16
 
   -- keep order!
   return mtable(sequ.name, {
     type='track', title=title, header=header,
     direction=dir, observe=observe, implicit=implicit, misalign=misalign,
-    deltap=deltap, lost=0, range=range, reserve=nrow, __seq=sequ,
+    radiate=radiate, deltap=deltap, lost=0, range=range, reserve=nrow,
+    __seq=sequ,
     {'name'}, 'kind', 's', 'l', 'id', 'x', 'px', 'y', 'py', 't', 'pt',
     'slc', 'turn', 'tdir',      -- t-direction of the tracking: sdir * seq.dir
     'eidx',                     -- index of element in the sequence
@@ -343,21 +344,22 @@ local function make_mflow (self)
 
   local trckphot
   if radiate then
+    local radstr
     atentry = chain(srad_savp, atentry)
-    if string.find(radiate, "damp", 1, true) then
-      atslice = chain(srad_damp, atslice)
-      atexit  = chain(srad_damp, atexit )
-    end
     if string.find(radiate, "quantum", 1, true) then
       atslice = chain(srad_quant, atslice)
       atexit  = chain(srad_quant, atexit )
+      radstr  = "quantum"
+      if string.find(radiate, "photon", 1, true) then
+        trckphot = true
+        radstr   = radstr.."+photon"
+      end
     else -- average
-      atslice = chain(srad_avrg , atslice)
-      atexit  = chain(srad_avrg , atexit )
+      atslice = chain(srad_avrg, atslice)
+      atexit  = chain(srad_avrg, atexit )
+      radstr  = "average"
     end
-    if string.find(radiate, "photon", 1, true) then
-      trckphot = true
-    end
+    mtbl.radiate = radstr
   end
 
   -- totalpath
@@ -464,7 +466,7 @@ local function make_mflow (self)
   mflw.implicit=implicit     -- slice also implicit elements (e.g. plots)
   mflw.fringe=fringe         -- compute fringe fields
   mflw.misalign=misalign     -- misalign element
-  mflw.radiate=radiate       -- radiate at slices
+  mflw.radiate=radstr        -- radiate at slices
   mflw.tphot=trckphot        -- track photons
   mflw.nphot=0               -- number of tracked photons
 
@@ -625,7 +627,7 @@ local track = command 'track' {
   implicit=false,   -- slice implicit elements too (e.g. plots)           (mflw)
   misalign=false,   -- consider misalignment                              (mflw)
   fringe=true,      -- enable fringe fields (see element.flags.fringe)    (mflw)
-  radiate=false,    -- radiate at slices "avrg","quantum","damp","photon" (mflw)
+  radiate=false,    -- radiate at slices "average" or "quantum[+photon]"  (mflw)
   totalpath=false,  -- variable 't' is the totalpath                      (mflw)
 
   save=true,        -- create mtable and save results                     (mtbl)
