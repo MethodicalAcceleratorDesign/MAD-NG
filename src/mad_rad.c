@@ -315,9 +315,9 @@ mad_rad_freepath (num_t gamma, num_t kick, num_t length)
 num_t
 mad_rad_nrjloss_quantum (num_t gamma, num_t kick, num_t length)
 {
-  if (fabs(kick) < DBL_EPSILON) return 0;
+  if (fabs(kick*length) < DBL_EPSILON) return 0;
   const num_t c1 = 1.5*P_HBAR*P_CLIGHT;
-  num_t nrj_crit = c1*CUB(gamma)*fabs(kick)/length;
+  num_t nrj_crit = c1*CUB(gamma)*fabs(kick) / length;
   num_t nrj_loss = nrj_crit*syngen(0);
   return nrj_loss;
 }
@@ -325,7 +325,7 @@ mad_rad_nrjloss_quantum (num_t gamma, num_t kick, num_t length)
 num_t
 mad_rad_nrjloss_average (num_t gamma, num_t kick, num_t length)
 {
-  if (fabs(kick) < DBL_EPSILON) return 0;
+  if (fabs(kick*length) < DBL_EPSILON) return 0;
   num_t EEangle = SQR(gamma) * fabs(kick);
   num_t nrj_loss = ENERGY_LOSS * SQR(EEangle) / length;
   return nrj_loss;
