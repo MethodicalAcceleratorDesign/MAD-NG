@@ -25,16 +25,20 @@ local M = {}
 
 -- locals ---------------------------------------------------------------------o
 
-local _C, beam   in MAD
-local hypot      in MAD.gmath
-local is_damap   in MAD.typeid
-local printf     in MAD.utility
-local eps        in MAD.constant
-local tobit, bor in MAD.operator
+local _C, beam    in MAD
+local abs, hypot  in MAD.gmath
+local is_damap    in MAD.typeid
+local printf      in MAD.utility
+local eps, minang in MAD.constant
+local tobit, bor  in MAD.operator
+
+local getmetatable = getmetatable
+
+-- tracking photons -----------------------------------------------------------o
 
 local mapkind = { part=tobit(1), damap=tobit(2) } -- from track...
 
-local function track_photon (m, i, nrj, px, py)   -- see track...
+local function track_photon (elm, mflw, i, nrj, px, py)   -- see track...
   -- take care of mflw wrappers (e.g. __edat and __sdat in track)
   m = assert(getmetatable(mflw).__index, "corrupted mflow wrapper (unexpected)")
 
@@ -42,79 +46,103 @@ local function track_photon (m, i, nrj, px, py)   -- see track...
   if is_damap(m[i]) then x, y = x:get0(), y:get0() end
 
   local phb = beam { particle="photon", energy=nrj }
-  local ph = {x=x, px=px, y=y, py=py, t=0, pt=0, beam=phb, id=#m, status='Xset'}
+  local ph = {x=x, px=px, y=y, py=py, t=0, pt=0, beam=phb, id=#m+1, status='Xset'}
 
-  table.insert(m, m.npar, ph)
+  if m.info >= 2 then
+    local clw, spos, ds, turn in mflw
+    local id, name, s = ph.id, elm.name, spos+ds*clw
+
+    printf("photon: emitting #%d in %s at %.3f m for turn #%d\n", id, name, s, turn)
+    printf("photon: x=% -.2e, px=% -.2e, y=% -.2e, py=% -.2e\n", x, px, y, py)
+  end
+
   m.npar, m.tpar, m.nphot = m.npar+1, m.tpar+1, m.nphot+1
-  m.mknd = bor(m.mknd, mapkind.part)
+  table.insert(m, m.npar, ph)
+  m.mapknd = bor(m.mapknd, mapkind.part)
 end
 
+-- synchrotron radiation ------------------------------------------------------o
+
 function M.srad_savp (elm, m, lw, islc)
+! print("srad_savp", elm.name, elm.l, lw, islc)
   for i=1,m.npar do
-    local px, py in m[i]
+    local px, py, beam in m[i]
+    if beam and beam.particle == "photon" then goto continue end
     if is_damap(m[i]) then px, py = px:get0(), py:get0() end
     m[i].px0, m[i].py0 = px, py
+    ::continue::
   end
 end
 
 function M.srad_avrg (elm, m, lw, islc)
-  local el, eh, debug in m
+! print("srad_avrg", elm.name, elm.l, lw, islc)
+  local el, eh, sdir, info in m
   local gamma = m.beam.gamma
+  local elw = el*lw
+  local aelw = abs(elw)
 
   for i=1,m.npar do
     local px, py, pt, px0, py0, beam in m[i]
+    if beam and beam.particle == "photon" then goto continue end
     if is_damap(m[i]) then px, py = px:get0(), py:get0() end
 
-    local dpx = px-px0 + lw*el*eh
+    local dpx = px-px0 + elw*eh
     local dpy = py-py0
     local kck = hypot(dpx, dpy)
+    local nrj = 0
 
-    if kck > eps then
+    if kck*aelw >= minang then
       local gamma = beam and beam.gamma or gamma
-      local nrj = _C.mad_rad_nrjloss_average(gamma, kck, lw*el)
-
-      if nrj > 0 and debug >= 3 then
-        printf("particle %d lost an average of %.5e GeV\n", m[i].id, nrj)
-      end
-
+      nrj = _C.mad_rad_nrjloss_average(gamma, kck, aelw)
       m[i].pt = pt - nrj
+
+      if nrj > 0 and info >= 2 then
+        printf("synrad: particle #%d lost an average of %.4e GeV in slice %d of %s\n",
+               m[i].id, nrj, islc, elm.name)
+      end
     end
     m[i].px0, m[i].py0 = px, py
+    ::continue::
   end
 end
 
 function M.srad_quant (elm, m, lw, islc)
-  local el, eh, tphot, debug in m
+!  print("srad_avrg", elm.name, elm.l, lw, islc)
+  local el, eh, sdir, tphot, info in m
   local gamma = m.beam.gamma
-  local elw = el*lw
+  local elw   = el*lw
+  local aelw  = abs(elw)
 
   for i=1,m.npar do
     local px, py, pt, px0, py0, beam in m[i]
+    if beam and beam.particle == "photon" then goto continue end
     if is_damap(m[i]) then px, py = px:get0(), py:get0() end
 
     local dpx = px-px0 + elw*eh
     local dpy = py-py0
     local kck = hypot(dpx, dpy)
 
-    if kck > eps then
+    if abs(kck*elw) >= minang then
       local gamma = beam and beam.gamma or gamma
-      local fpath = _C.mad_rad_synrad_prob(gamma, kck)
+      local fpath = _C.mad_rad_synrad_prob(gamma, kck) -- aelw?
       local nphot, nrj = 0, 0
 
-      while fpath >= 0 do
-        local dnrj = _C.mad_rad_nrjloss_quantum(gamma, kck, elw)
-        fpath = fpath - _C.mad_rad_freepath(gamma, kck, elw)
+      while nphot <= 20 do
+        fpath = fpath - _C.mad_rad_freepath(gamma, kck, aelw)
+        if fpath < 0 then break end
+        local dnrj = _C.mad_rad_nrjloss_quantum(gamma, kck, aelw)
+        if tphot then track_photon(elm, m, i, dnrj, px, py) end
         nrj, nphot = nrj+dnrj, nphot+1
-        if tphot then track_photon(m, i, dnrj, px, py) end
       end
+      m[i].pt = pt - nrj*sdir
 
-      if nrj > 0 and debug >= 3 then
-        printf("particle %d lost %.5e GeV in %d photons\n", m[i].id, nrj, nphot)
+      if nrj > 0 and info >= 2 then
+        printf("synrad: particle #%d lost %.4e GeV and %d photons in slice %d of %s\n",
+                m[i].id, nrj, nphot, islc, elm.name)
       end
-
-      m[i].pt = pt - nrj
     end
     m[i].px0, m[i].py0 = px, py
+    ::continue::
   end
 end
 
