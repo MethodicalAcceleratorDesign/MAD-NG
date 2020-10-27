@@ -25,11 +25,25 @@ local M = {}
 
 -- locals ---------------------------------------------------------------------o
 
-local _C       in MAD
-local hypot    in MAD.gmath
-local is_damap in MAD.typeid
-local printf   in MAD.utility
-local eps      in MAD.constant
+local _C, beam   in MAD
+local hypot      in MAD.gmath
+local is_damap   in MAD.typeid
+local printf     in MAD.utility
+local eps        in MAD.constant
+local tobit, bor in MAD.operator
+
+local mapkind = { part=tobit(1), damap=tobit(2) } -- from track...
+
+local function track_photon (m, i, nrj, px, py)   -- see track...
+  local x, y in m[i]
+  if is_damap(m[i]) then x, y = x:get0(), y:get0() end
+
+  local phb = beam { particle="photon", energy=nrj }
+  local ph = {x=x, px=px, y=y, py=py, t=0, pt=0, beam=phb, id=#m, status='Xset'}
+
+  table.insert(m, m.npar, ph)
+  m.npar, m.tpar, m.mknd = m.npar+1, m.tpar+1, bor(m.mknd, mapkind.part)
+end
 
 function M.srad_savp (elm, m, lw, islc)
   for i=1,m.npar do
@@ -62,13 +76,11 @@ function M.srad_avrg (elm, m, lw, islc)
       m[i].pt = pt - nrj
     end
     m[i].px0, m[i].py0 = px, py
-
-    -- TODO: add photon to tracked particles
   end
 end
 
 function M.srad_quant (elm, m, lw, islc)
-  local el, eh, debug in m
+  local el, eh, trckphot, debug in m
   local gamma = m.beam.gamma
   local elw = el*lw
 
@@ -86,9 +98,10 @@ function M.srad_quant (elm, m, lw, islc)
       local nphot, nrj = 0, 0
 
       while fpath >= 0 do
-        nrj = nrj + _C.mad_rad_nrjloss_quantum(gamma, kck, elw)
+        local dnrj = _C.mad_rad_nrjloss_quantum(gamma, kck, elw)
         fpath = fpath - _C.mad_rad_freepath(gamma, kck, elw)
-        nphot = nphot + 1
+        nrj, nphot = nrj+dnrj, nphot+1
+        if trckphot then track_photon(m, i, dnrj, px, py) end
       end
 
       if nrj > 0 and debug >= 3 then
@@ -98,8 +111,6 @@ function M.srad_quant (elm, m, lw, islc)
       m[i].pt = pt - nrj
     end
     m[i].px0, m[i].py0 = px, py
-
-    -- TODO: add photon to tracked particles
   end
 end
 
