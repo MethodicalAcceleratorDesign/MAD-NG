@@ -37,8 +37,7 @@ local errorf, printf       in MAD.utility
 local minang               in MAD.constant
 local is_implicit          in MAD.element.drift
 
-local getmetatable =
-      getmetatable
+local getmetatable = getmetatable
 
 -- aperture models ------------------------------------------------------------o
 
@@ -59,14 +58,13 @@ local apmodel = {
                           y < (x-(ap[1]-ap[3]))*ap[4]/ap[3] + ap[2],
 
   polygon    = \x,y,vx,vy -> _C.mad_pol_inside(x,y, vx.data, vy.data, #vx),
-  bbox       = \x,px,y,py,t,pt,ap -> x < ap[1] and px < ap[2] and
-                                     y < ap[3] and py < ap[4] and
-                                     t < ap[5] and pt < ap[6],
+  bbox       = \x,px,y,py,ap -> x < ap[1] and px < ap[2] and
+                                y < ap[3] and py < ap[4],
 }
 
 -- aperture check -------------------------------------------------------------o
 
-local function lostpar (elm, mflw, islc, i, x, y, t, px, py, pt)
+local function lostpar (elm, mflw, i, islc)
   local npar, clw, spos, ds, turn, info, debug in mflw
   local lw = islc<0 and -1-islc or clw
   local s = spos+ds*lw
@@ -74,13 +72,23 @@ local function lostpar (elm, mflw, islc, i, x, y, t, px, py, pt)
 
   if info >= 1 then
     local name in elm
-    printf("lost: particle #%d in %s at %.3f m for turn #%d\n", i,name,s,turn)
-    if t then
-      printf("x=% -.1e, px=% -.1e, y=% -.1e, py=% -.1e, t=% -.1e, pt=% -.1e",
-              x,        px,        y,        py,        t,        pt)
-    else
-      printf("x=% -.1e, y=% -.1e", x, y)
+    local x, px, y, py, t, pt, beam in m
+    local pnam = ''
+
+    if beam and beam.particle ~= mflw.beam.particle then
+      pnam = ' ('..beam.particle..')'
     end
+
+    if is_damap(m) then
+      x, px, y, py, t, pt =
+      x:get0(), px:get0(), y:get0(), py:get0(), t:get0(), pt:get0()
+    end
+
+    printf("lost: particle #%d%s in %s at %.3f m for turn #%d\n",
+                             i,pnam,name,   s,            turn)
+    printf("lost: x=% -.2e, px=% -.2e, y=% -.2e, py=% -.2e, t=% -.2e, pt=% -.2e",
+            x,        px,        y,        py,        t,        pt)
+
     if debug >= 1 then
       printf(", T=%s, etot=%s", tostring(mflw.T), tostring(elm.totalpath))
     end
@@ -114,12 +122,10 @@ local function checkbbox (elm, mflw, lw, islc)
       x:get0(), px:get0(), y:get0(), py:get0(), t:get0(), pt:get0()
     end
 
-    t = 0 -- t*(1 - mflw.T) -- TODO: set t to zero if totalpath is enabled
-
-    if apmodel.bbox(abs(x),abs(px),abs(y),abs(py),abs(t),abs(pt),ap) then
+    if apmodel.bbox(abs(x),abs(px),abs(y),abs(py),ap) then
       i = i + 1
     else
-      lostpar(elm, mflw, islc, i, x, y, t, px, py, pt)
+      lostpar(elm, mflw, i, islc)
     end
   end
   return true
@@ -148,7 +154,7 @@ local function checkaper (chkap)
       if chkap(nx,ny,ap) then
         i = i + 1
       else
-        lostpar(elm, mflw, islc, i, nx, ny)
+        lostpar(elm, mflw, i, islc)
       end
     end
     return true
@@ -184,7 +190,7 @@ local function checkpoly (elm, mflw, _, islc)
     if maper(abs(nx),abs(ny),ap.maper) and apmodel.polygon(nx,ny,vx,vy) then
       i = i + 1
     else
-      lostpar(elm, mflw, islc, i, nx, ny)
+      lostpar(elm, mflw, i, islc)
     end
   end
   return true
