@@ -291,6 +291,13 @@ syngen (num_t xmin)
 #define ENERGY_LOSS 9.5997636523126797e-19
 
 num_t
+mad_rad_randexp (num_t mu)
+{
+  ensure(mu > 0, "invalid argument #1 (positive number expected)");
+  return rngexp(mu);
+}
+
+num_t
 mad_rad_synrad_prob (num_t gamma, num_t kick)
 {
   if (fabs(kick) < DBL_EPSILON) return 0;
