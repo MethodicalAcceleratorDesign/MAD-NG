@@ -31,18 +31,21 @@
 
 // --- RNG for radiation ------------------------------------------------------o
 
+static __thread rng_state_t rng[1];
+static __thread num_t seed = 0;
+
+static void
+rngseed (num_t val)
+{
+  mad_num_randseed(rng, val);
+  mad_num_randjump(rng);
+  seed = val;
+}
+
 static num_t
 rnguni (void)
 {
-  static rng_state_t rng[1];
-  static int init = 0;
-
-  if (!init) {
-    mad_num_randseed(rng, 12345678.9*time(NULL));
-    mad_num_randjump(rng);
-    init = 1;
-  }
-
+  if (!seed) rngseed(12345678.9*time(NULL));
   return mad_num_rand(rng); // [0.,1.)
 }
 
@@ -290,6 +293,15 @@ syngen (num_t xmin)
 
 // e*e/6/pi/epsilon0/m/((Gev/GeV)**4) GeV
 #define ENERGY_LOSS 9.5997636523126797e-19
+
+num_t
+mad_rad_randexp_seed (num_t val)
+{
+  ensure(val > 0, "invalid argument #1 (positive number expected)");
+  num_t ret = seed;
+  rngseed(val);
+  return ret;
+}
 
 num_t
 mad_rad_randexp (num_t mu)
