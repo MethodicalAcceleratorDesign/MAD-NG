@@ -166,7 +166,7 @@ mad_mono_cat (ssz_t n, const ord_t a[n],
 
 // -- sorting
 
-__thread static const ord_t *ords;
+static __thread const ord_t *ords;
 
 static int
 cmp (const void *a, const void *b)
