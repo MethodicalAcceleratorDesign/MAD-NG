@@ -25,12 +25,14 @@ local M = {}
 
 -- locals ---------------------------------------------------------------------o
 
-local _C, beam    in MAD
-local abs, hypot  in MAD.gmath
-local is_damap    in MAD.typeid
-local printf      in MAD.utility
-local eps, minang in MAD.constant
-local tobit, bor  in MAD.operator
+local _C, warn, beam  in MAD
+local hypot           in MAD.gmath
+local is_damap        in MAD.typeid
+local printf          in MAD.utility
+local eps, minang     in MAD.constant
+local tobit, bor      in MAD.operator
+
+local abs, max in math
 
 local getmetatable = getmetatable
 
@@ -94,13 +96,14 @@ function M.srad_avrg (elm, m, lw, islc)
     if kck*aelw >= minang then
       local gamma = beam and beam.gamma or gamma
       nrj = _C.mad_rad_nrjloss_average(gamma, kck, aelw)
-      m[i].pt = pt - nrj
+      m[i].pt = pt - nrj*sdir
 
       if nrj > 0 and info >= 2 then
         printf("synrad: particle #%d lost an average of %.4e GeV in slice %d of %s\n",
                m[i].id, nrj, islc, elm.name)
       end
     end
+
     m[i].px0, m[i].py0 = px, py
     ::continue::
   end
@@ -108,8 +111,8 @@ end
 
 function M.srad_quant (elm, m, lw, islc)
 !  print("srad_avrg", elm.name, elm.l, lw, islc)
-  local el, eh, sdir, tphot, info in m
-  local gamma = m.beam.gamma
+  local el, eh, sdir, trkphot, info in m
+  local gamma, betgam = m.beam.gamma, m.beam.betgam
   local elw   = el*lw
   local aelw  = abs(elw)
 
@@ -122,25 +125,37 @@ function M.srad_quant (elm, m, lw, islc)
     local dpy = py-py0
     local kck = hypot(dpx, dpy)
 
-    if abs(kck*elw) >= minang then
-      local gamma = beam and beam.gamma or gamma
-      local fpath = _C.mad_rad_synrad_prob(gamma, kck) -- aelw?
+    if kck*aelw >= minang then
+      local gamma  = beam and beam.gamma  or gamma
+      local betgam = beam and beam.betgam or betgam
+      local fpath  = _C.mad_rad_synrad_prob(betgam, kck)*aelw
       local nphot, nrj = 0, 0
 
-      while nphot <= 20 do
-        fpath = fpath - _C.mad_rad_freepath(gamma, kck, aelw)
+      while true do
+        fpath = fpath - _C.mad_rad_freepath(betgam, kck, aelw)
         if fpath < 0 then break end
         local dnrj = _C.mad_rad_nrjloss_quantum(gamma, kck, aelw)
-        if tphot then track_photon(elm, m, i, dnrj, px, py) end
+        if trkphot and dnrj >= 1e-10 then
+          track_photon(elm, m, i, dnrj, px, py)
+        end
         nrj, nphot = nrj+dnrj, nphot+1
       end
       m[i].pt = pt - nrj*sdir
 
-      if nrj > 0 and info >= 2 then
-        printf("synrad: particle #%d lost %.4e GeV and %d photons in slice %d of %s\n",
+      if nphot > 2 or nrj > 0 and info >= 2 then
+        printf("synrad: particle #%d lost %.4e GeV [%d photons] in slice %d of %s\n",
                 m[i].id, nrj, nphot, islc, elm.name)
+        if nphot > 5 then
+          local x, y in m[i]
+          if is_damap(m[i]) then x, y = x:get0(), y:get0() end
+          warn(">5 photons emitted, synch. radiat. too high at x=%.2e, y=%.2e",
+                x, y)
+        elseif nphot > 2 then
+          warn(">2 photons emitted, thinner slicing strongly recommended")
+        end
       end
     end
+
     m[i].px0, m[i].py0 = px, py
     ::continue::
   end
