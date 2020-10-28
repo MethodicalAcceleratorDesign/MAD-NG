@@ -18,6 +18,7 @@
 
 #include <math.h>
 #include <float.h>
+#include <time.h>
 #include <assert.h>
 
 #include "mad_log.h"
@@ -37,7 +38,7 @@ rnguni (void)
   static int init = 0;
 
   if (!init) {
-    mad_num_randseed(rng, 12345678.9);
+    mad_num_randseed(rng, 12345678.9*time(NULL));
     mad_num_randjump(rng);
     init = 1;
   }
@@ -298,34 +299,32 @@ mad_rad_randexp (num_t mu)
 }
 
 num_t
-mad_rad_synrad_prob (num_t gamma, num_t kick, num_t length)
+mad_rad_synrad_prob (num_t betgam, num_t kick)
 {
-  ensure(gamma  >= 1, "invalid gamma %.5g (>=1 expected)" , gamma );
+  ensure(betgam >= 0, "invalid betgam %.5g (>=0 expected)", betgam);
   ensure(kick   >= 0, "invalid kick %.5g (>=0 expected)"  , kick  );
-  ensure(length >= 0, "invalid length %.5g (>=0 expected)", length);
-  if (kick*length < DBL_EPSILON) return 0;
   const num_t c1 = 2.5/M_SQRT3*P_ALPHAEM;
-  return c1*kick*length*gamma;
+  return c1*kick*betgam;
 }
 
 num_t
-mad_rad_freepath (num_t gamma, num_t kick, num_t length)
+mad_rad_freepath (num_t betgam, num_t kick, num_t length)
 {
-  ensure(gamma  >= 1, "invalid gamma %.5g (>=1 expected)" , gamma );
+  ensure(betgam >= 0, "invalid betgam %.5g (>=0 expected)", betgam);
   ensure(kick   >= 0, "invalid kick %.5g (>=0 expected)"  , kick  );
-  ensure(length >= 0, "invalid length %.5g (>=0 expected)", length);
-  if (kick*length < DBL_EPSILON) return INFINITY;
-  num_t mu = length / mad_rad_synrad_prob(gamma, kick, length);
+  ensure(length >  0, "invalid length %.5g (>0 expected)" , length);
+  if (kick < DBL_EPSILON) return INFINITY;
+  num_t mu = length / mad_rad_synrad_prob(betgam, kick);
   return rngexp(mu);
 }
 
 num_t
 mad_rad_nrjloss_quantum (num_t gamma, num_t kick, num_t length)
 {
-  ensure(gamma  >= 1, "invalid gamma %.5g (>=1 expected)" , gamma );
-  ensure(kick   >= 0, "invalid kick %.5g (>=0 expected)"  , kick  );
-  ensure(length >= 0, "invalid length %.5g (>=0 expected)", length);
-  if (kick*length < DBL_EPSILON) return 0;
+  ensure(gamma  >= 1, "invalid gamma %.5g (>=1 expected)", gamma );
+  ensure(kick   >= 0, "invalid kick %.5g (>=0 expected)" , kick  );
+  ensure(length >  0, "invalid length %.5g (>0 expected)", length);
+  if (kick < DBL_EPSILON) return 0;
   const num_t c1 = 1.5*P_HBAR*P_CLIGHT;
   num_t nrj_crit = c1*CUB(gamma)*kick / length;
   num_t nrj_loss = nrj_crit*syngen(0);
@@ -335,10 +334,10 @@ mad_rad_nrjloss_quantum (num_t gamma, num_t kick, num_t length)
 num_t
 mad_rad_nrjloss_average (num_t gamma, num_t kick, num_t length)
 {
-  ensure(gamma  >= 1, "invalid gamma %.5g (>=1 expected)" , gamma );
-  ensure(kick   >= 0, "invalid kick %.5g (>=0 expected)"  , kick  );
-  ensure(length >= 0, "invalid length %.5g (>=0 expected)", length);
-  if (kick*length < DBL_EPSILON) return 0;
+  ensure(gamma  >= 1, "invalid gamma %.5g (>=1 expected)", gamma );
+  ensure(kick   >= 0, "invalid kick %.5g (>=0 expected)" , kick  );
+  ensure(length >  0, "invalid length %.5g (>0 expected)", length);
+  if (kick < DBL_EPSILON) return 0;
   num_t EEangle = SQR(gamma) * kick;
   num_t nrj_loss = ENERGY_LOSS * SQR(EEangle) / length;
   return nrj_loss;

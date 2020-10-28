@@ -30,10 +30,10 @@
 
 // kick in radians, length in meters
 
-num_t mad_rad_nrjloss_average (num_t gamma, num_t kick, num_t length);
-num_t mad_rad_nrjloss_quantum (num_t gamma, num_t kick, num_t length);
-num_t mad_rad_synrad_prob     (num_t gamma, num_t kick, num_t length);
-num_t mad_rad_freepath        (num_t gamma, num_t kick, num_t length);
+num_t mad_rad_nrjloss_average (num_t gamma , num_t kick, num_t length);
+num_t mad_rad_nrjloss_quantum (num_t gamma , num_t kick, num_t length);
+num_t mad_rad_freepath        (num_t betgam, num_t kick, num_t length);
+num_t mad_rad_synrad_prob     (num_t betgam, num_t kick);
 num_t mad_rad_randexp         (num_t mu);
 
 num_t mad_rad_InvSynFracInt   (num_t x); // HBU 2007
