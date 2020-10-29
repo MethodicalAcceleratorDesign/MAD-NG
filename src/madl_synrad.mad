@@ -25,13 +25,13 @@ local M = {}
 
 -- locals ---------------------------------------------------------------------o
 
-local _C, warn, beam  in MAD
-local hypot           in MAD.gmath
-local is_damap        in MAD.typeid
-local printf          in MAD.utility
-local eps, minang     in MAD.constant
+local _C, warn, beam             in MAD
+local hypot, rand, randp         in MAD.gmath
+local is_damap                   in MAD.typeid
+local printf                     in MAD.utility
+local eps, minang, hbar, clight  in MAD.constant
 
-local abs, max in math
+local abs, sqrt in math
 
 local getmetatable = getmetatable
 
@@ -74,30 +74,38 @@ end
 
 function M.srad_avrg (elm, m, lw, islc)
 ! print("srad_avrg", elm.name, elm.l, lw, islc)
-  local el, eh, sdir, info in m
-  local gamma = m.beam.gamma
-  local elw = el*lw
+  local eh, sdir, info in m
+  local elw = lw*elm.lrad
   local aelw = abs(elw)
 
   for i=1,m.npar do
     local px, py, pt, px0, py0, beam in m[i]
     if beam and beam.particle == "photon" then goto continue end
-    if is_damap(m[i]) then px, py = px:get0(), py:get0() end
+    if is_damap(m[i]) then px, py, pt = px:get0(), py:get0(), pt:get0() end
 
-    local dpx = px-px0 + elw*eh
-    local dpy = py-py0
-    local kck = hypot(dpx, dpy)
-    local nrj = 0
+    local dpx  = px-px0 + elw*eh
+    local dpy  = py-py0
+    local kck2 = dpx^2+dpy^2
 
-    if kck*aelw >= minang then
-      local gamma = beam and beam.gamma or gamma
-      nrj = _C.mad_rad_nrjloss_average(gamma, kck, aelw)
-      m[i].pt = pt - nrj*sdir
+    if kck2 > 0 then
+      local  beam = beam or m.beam
+      local _bet0 = 1/beam.beta
+      local  dp_1 = sqrt(1 + (2*_bet0)*pt + pt^2)
+      local _beta = (_bet0+pt) / dp_1
+      local  rfac = 2/3 * beam.emrad * (dp_1*beam.betgam)^3 * kck2 / aelw
+      local  damp = sqrt(1 + rfac*(rfac-2)*_beta^2)
 
-      if nrj > 0 and info >= 2 then
-        printf("synrad: particle #%d lost an average of %.4e GeV in slice %d of %s\n",
-               m[i].id, nrj, islc, elm.name)
+      if sdir < 0 then damp, rfac = 1/damp, -rfac end
+
+      if info >= 2 and rfac ~= 0 then
+        printf("synrad: particle #%d lost an average of %.2e GeV in slice %d of %s\n",
+               m[i].id, rfac*beam.energy, islc, elm.name)
       end
+
+      px, py = px*damp, py*damp
+      m[i].px = m[i].px*damp
+      m[i].py = m[i].py*damp
+      m[i].pt = m[i].pt*(1-rfac)-rfac*_bet0
     end
 
     m[i].px0, m[i].py0 = px, py
@@ -105,42 +113,52 @@ function M.srad_avrg (elm, m, lw, islc)
   end
 end
 
+local kcrit = 1.5*hbar*clight
+
 function M.srad_quant (elm, m, lw, islc)
-!  print("srad_avrg", elm.name, elm.l, lw, islc)
-  local el, eh, sdir, trkphot, info in m
-  local gamma, betgam = m.beam.gamma, m.beam.betgam
-  local elw   = el*lw
-  local aelw  = abs(elw)
+! print("srad_avrg", elm.name, elm.l, lw, islc)
+  local eh, sdir, trkphot, info in m
+  local elw  = lw*elm.lrad
+  local aelw = abs(elw)
 
   for i=1,m.npar do
     local px, py, pt, px0, py0, beam in m[i]
     if beam and beam.particle == "photon" then goto continue end
-    if is_damap(m[i]) then px, py = px:get0(), py:get0() end
+    if is_damap(m[i]) then px, py, pt = px:get0(), py:get0(), pt:get0() end
 
     local dpx = px-px0 + elw*eh
     local dpy = py-py0
     local kck = hypot(dpx, dpy)
 
-    if kck*aelw >= minang then
-      local gamma  = beam and beam.gamma  or gamma
-      local betgam = beam and beam.betgam or betgam
-      local fpath  = _C.mad_rad_synrad_prob(betgam, kck)*aelw
-      local nphot, nrj = 0, 0
+    if kck > 0 then
+      local beam = beam or m.beam
+      local  bet0 = beam.beta
+      local _bet0 = 1/bet0
+      local  dp_1 = sqrt(1 + (2*_bet0)*pt + pt^2)
+      local _beta = (_bet0 + pt) / dp_1
+      local  gama = (bet0*pt + 1)*beam.gamma
+      local ucrit = kcrit * gama^2/beam.mass * kck / aelw
+      local aphot = beam.aphot * dp_1 * kck
+      local nphot = randp(aphot)
+      local  rfac = 0
 
-      while nphot < 100 do -- put a limit to avoid unphysical cases...
-        fpath = fpath - _C.mad_rad_freepath(betgam, kck, aelw)
-        if fpath < 0 then break end
-        local dnrj = _C.mad_rad_nrjloss_quantum(gamma, kck, aelw)
-        if trkphot and dnrj >= 1e-10 then
-          track_photon(elm, m, i, dnrj, px, py)
+      for i=1,nphot do
+        local val = _C.mad_rad_InvSynFracInt(rand())
+        local ifac = val*ucrit
+        rfac = rfac + ifac
+
+        if trkphot and dpt >= 1e-12 then
+          track_photon(elm, m, i, dpt, px, py) -- TODO: compute dpt
         end
-        nrj, nphot = nrj+dnrj, nphot+1
       end
-      m[i].pt = pt - nrj*sdir
 
-      if nphot > 2 or nrj > 0 and info >= 2 then
+      local damp = sqrt(1 + rfac*(rfac-2)*_beta^2)
+
+      if sdir < 0 then damp, rfac = 1/damp, -rfac end
+
+      if info >= 2 and rfac ~= 0 or nphot > 2 then
         printf("synrad: particle #%d lost %.4e GeV [%d photons] in slice %d of %s\n",
-                m[i].id, nrj, nphot, islc, elm.name)
+                m[i].id, rfac*beam.energy, nphot, islc, elm.name)
         if nphot > 5 then
           local x, y in m[i]
           if is_damap(m[i]) then x, y = x:get0(), y:get0() end
@@ -150,6 +168,11 @@ function M.srad_quant (elm, m, lw, islc)
           warn(">2 photons emitted, thinner slicing strongly recommended")
         end
       end
+
+      px, py = px*damp, py*damp
+      m[i].px = m[i].px*damp
+      m[i].py = m[i].py*damp
+      m[i].pt = m[i].pt*(1-rfac)-rfac*_bet0
     end
 
     m[i].px0, m[i].py0 = px, py
