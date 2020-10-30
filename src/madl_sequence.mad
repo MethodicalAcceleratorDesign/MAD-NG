@@ -732,7 +732,10 @@ local function finish_sequ (seq)
   if option.debug >= 2 then check_sequ(seq) end
 
   -- publish sequence in MADX environment
-  if option.madxenv then seq:publish(MADX, true) end
+  if option.madxenv then
+    seq.minlen = 1e-6 -- [m] for MAD-X compatibility
+    seq:publish(MADX, true)
+  end
 end
 
 -- sequence init (build)
@@ -1535,10 +1538,10 @@ local function fwdsiter (state, i)
   end
 
   local dl = (spos[i+1]-spos[i]) - ds[i]
-  if dl < minlen then      -- implicit drift is too small, discard
+  if dl < state.minlen then -- implicit drift is too small, discard
     i = i+1
     return i, data[i], spos[i]+soff, ds[i]
-  else                     -- update implicit drift
+  else                      -- update implicit drift
     state.elm_i = true
     state.elm_l = dl
     state.elm_s = 'drift__'..i
@@ -1567,7 +1570,7 @@ local function bwdsiter (state, i)
   end
 
   local dl = (spos[i]-spos[i-1]) - ds[i-1]
-  if dl < minlen then                  -- implicit drift is too small
+  if dl < state.minlen then            -- implicit drift is too small
     i = i-1
     return i, data[i], spos[i]+ds[i]-soff, -ds[i]
   else                                 -- update implicit drift
@@ -1617,8 +1620,9 @@ local function siter (seq, rng_, ntrn_, dir_)
   local iter, state, start = iter(seq, rng_, ntrn_, dir_)
   if iter == niliter then return iter end
   -- implicit drift (reused)
-  state.dft = drift { l := state.elm_l, name := state.elm_s }
-                    :set_flags(implicit) :set_readonly()
+  state.minlen = seq.minlen or minlen
+  state.dft    = drift { l := state.elm_l, name := state.elm_s }
+                           :set_flags(implicit) :set_readonly()
   if start == state.stop then state.turn = state.turn-1 end
   local dir = dir_ or state.dir
   return dir < 0 and bwdsiter or fwdsiter, state, start
