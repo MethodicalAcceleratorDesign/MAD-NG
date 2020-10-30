@@ -298,14 +298,14 @@ function M.changenrj (elm, m, lw_)                                           -- 
   if is_number(dnrj) then
     beam.energy = beam.energy + dnrj*tdir
     for i=1,m.npar do
-      beam = m[i].beam
+      local beam = m[i].beam
       if beam then beam.energy = beam.energy + dnrj*tdir end
     end
   elseif dnrj == 'pt' then
     for i=1,m.npar do
       if m[i].pt ~= 0 then
         local beam = m[i].beam or beam {} -- clone main beam
-        beam.energy = beam.energy + m[i].pt*tdir
+        beam.energy = beam.energy + m[i].pt*beam.pc*tdir
         m[i].beam, m[i].pt = beam, 0
       end
     end
@@ -316,11 +316,6 @@ function M.changenrj (elm, m, lw_)                                           -- 
 end
 
 -- misalignments --------------------------------------------------------------o
-
-local T  = vector(3) -- misalignment translation
-local R  = matrix(3) -- misalignment rotation
-local Tb = vector(3) -- misalignment translation at exit (Tbar)
-local Rb = matrix(3) -- misalignment rotation    at exit (Rbar)
 
 local misalignent, misalignexi -- forward declaration
 
@@ -390,6 +385,11 @@ function misalignent (elm, m, lw, trn, rot, dx, dy, ds, dthe, dphi, dpsi)       
   m.atdebug(elm, m, lw, 'misalign:1')
 end
 
+local _T  = vector(3) -- misalignment translation
+local _R  = matrix(3) -- misalignment rotation
+local _Tb = vector(3) -- misalignment translation at exit (Tbar)
+local _Rb = matrix(3) -- misalignment rotation    at exit (Rbar)
+
 function misalignexi (elm, m, lw, trn, rot, dx, dy, ds, dthe, dphi, dpsi)                                            -- unchecked
   if not (trn or rot) then return end
   m.atdebug(elm, m, lw, 'misalignexi:0')
@@ -398,13 +398,13 @@ function misalignexi (elm, m, lw, trn, rot, dx, dy, ds, dthe, dphi, dpsi)       
   local ang = elm.angle*tdir
 
   -- translation
-  if trn then T:fill{dx, dy, ds} else T:zeros() end
+  if trn then _T:fill{dx, dy, ds} else _T:zeros() end
 
   -- rotation
-  if rot then R:rotzxy(-dphi, dthe, dpsi) end
+  if rot then _R:rotzxy(-dphi, dthe, dpsi) end
 
   -- compute Rbar, Tbar
-  _C.mad_mat_rtbar(Rb.data, Tb.data, abs(el), ang, tlt, rot and R.data or nil, T.data)
+  _C.mad_mat_rtbar(_Rb.data, _Tb.data, abs(el), ang, tlt, rot and _R.data or nil, _T.data)
 
   -- misalignment at exit and local/global frames
   -- forward : x2  = Rb^-1*(x2'-Tb)
@@ -412,7 +412,7 @@ function misalignexi (elm, m, lw, trn, rot, dx, dy, ds, dthe, dphi, dpsi)       
 
   -- rotate
   if rot and sdir > 0 then
-    local ax, ay, az = Rb:torotzxy()
+    local ax, ay, az = _Rb:torotzxy()
     srotation(az, m, -1)
     xrotation(ax, m, -1)
     yrotation(ay, m, -1)
@@ -420,12 +420,12 @@ function misalignexi (elm, m, lw, trn, rot, dx, dy, ds, dthe, dphi, dpsi)       
 
   -- translate
   if trn then
-    translate({dx=Tb[1]*tdir, dy=Tb[2]*tdir, ds=Tb[3]*sdir}, m, -sdir)
+    translate({dx=_Tb[1]*tdir, dy=_Tb[2]*tdir, ds=_Tb[3]*sdir}, m, -sdir)
   end
 
   -- rotate
   if rot and sdir < 0 then
-    local ax, ay, az = Rb:torotzxy()
+    local ax, ay, az = _Rb:torotzxy()
     yrotation(ay, m, 1)
     xrotation(ax, m, 1)
     srotation(az, m, 1)
@@ -538,7 +538,7 @@ function M.curex_drift (elm, m, lw) -- [SPROT]                               -- 
 
   local el, eld, eh, T in m
   local ld, ang, rho = (eld or el)*lw, eh*el*lw, 1/eh -- R=rho, A=ang
-  local sa, ca, ta, sa2 = sin(ang), cos(ang), tan(ang), sin(ang/2)
+  local ca, sa, sa2 = cos(ang), sin(ang), sin(ang/2)
   local beta = m.beam.beta
 
   for i=1,m.npar do
@@ -584,6 +584,27 @@ end
 
 -- TKT [INTER_TEAPOT] ---------------------------------------------------------o
 
+local function curex_drift_ph (elm, m, lw, i, ld, ca, sa, sa2, rho)
+
+  m.atdebug(elm, m, lw, 'curex_drift_ph:0')
+
+  local x, px, y, py, t, pt, beam in m[i]
+  local beta = beam.beta
+  local   pz = sqrt(1 + (2/beta)*pt + pt^2 - px^2 - py^2)
+  local  _pz = 1/pz
+  local  pxt = px*_pz
+  local  ptt = ca - sa*pxt
+  local _ptt = 1/ptt
+  local  pst = (x+rho)*sa*_pz*_ptt
+
+  m[i].x  = (x + rho*(2*sa2^2 + sa*pxt))*_ptt
+  m[i].px = ca*px + sa*pz
+  m[i].y  = y + pst*py
+  m[i].t  = t - pst*(1/beta+pt) + (1-m.T)*(ld/beta)
+
+  m.atdebug(elm, m, lw, 'curex_drift_ph:1')
+end
+
 function M.sbend_thick (elm, m, lw) -- [SSEC]                                 -- checked
 
   m.atdebug(elm, m, lw, 'sbend_thick:0')
@@ -591,12 +612,18 @@ function M.sbend_thick (elm, m, lw) -- [SSEC]                                 --
   local el, eld, eh, tdir, knl, beam, T in m
   local ld, ang, rho, k0 = (eld or el)*lw, eh*el*lw, 1/eh, knl[1]/el*tdir
   local beta, k0q = beam.beta, k0*beam.charge
-  local sa, ca = sin(ang), cos(ang)
+  local ca, sa, sa2 = cos(ang), sin(ang), sin(ang/2)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
+
+    if beam and beam.particle == "photon" then
+      curex_drift_ph (elm, m, lw, i, ld, ca, sa, sa2, rho)
+      goto continue
+    end
+
     local beta = beam and beam.beta or beta
-    local  k0q = beam and k0*beam.charge or k0q  -- TODO: case k0q=0 !
+    local  k0q = beam and k0*beam.charge or k0q
     local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
     local   pz = sqrt(pw2 - px^2)                                      -- PZ
     local  pzx = pz - k0q*(rho+x)      -- could be numerically unstable
@@ -616,6 +643,8 @@ function M.sbend_thick (elm, m, lw) -- [SSEC]                                 --
     m[i].px = npx                                                       -- XN(2)
     m[i].y  = y + dxs*py                                                -- XN(3)
     m[i].t  = t - dxs*(1/beta+pt) + (1-T)*(ld/beta)                     -- XN(6)
+
+    ::continue::
   end
 
   m.atdebug(elm, m, lw, 'sbend_thick:1')
@@ -1411,6 +1440,9 @@ function bend_wedge (e, m, lw_) -- [WEDGE] see also [sr]bend_thick           -- 
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
+    -- Note: for now, ignore wedge for photons to avoid nan due to b1=0
+    if beam and beam.particle == "photon" then goto continue end
+
     local _beta = beam and 1/beam.beta or _beta
     local    b1 = beam and k0*beam.charge or b1
 
@@ -1426,6 +1458,8 @@ function bend_wedge (e, m, lw_) -- [WEDGE] see also [sr]bend_thick           -- 
     m[i].px = npx
     m[i].y  = y + dxs*py
     m[i].t  = t - dxs*(_beta+pt)
+
+    ::continue::
   end
 
   m.atdebug(e, m, lw_, 'bend_wedge:1')
