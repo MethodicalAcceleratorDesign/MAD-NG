@@ -19,7 +19,10 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - Routines for synchrotron radiation from Placet (courtesy to A. Latina)
+  - Routines for synchrotron radiation.
+
+  Reference:
+  - H. Burkhardt, CERN CLIC-Note-709 of 08-06-2007 for routine InvSynFracInt.
 
  o-----------------------------------------------------------------------------o
  */
@@ -28,16 +31,21 @@
 
 // --- interface --------------------------------------------------------------o
 
-// kick in radians, length in meters
+num_t mad_rad_InvSynFracInt (num_t x); // HBU 2007
+
+// ----------------------------------------------------------------------------o
+
+#if 0
+// Obsolete code not used, adapted from Placet (courtesy A. Latina)
 
 num_t mad_rad_nrjloss_average (num_t gamma , num_t kick, num_t length);
 num_t mad_rad_nrjloss_quantum (num_t gamma , num_t kick, num_t length);
 num_t mad_rad_freepath        (num_t betgam, num_t kick, num_t length);
 num_t mad_rad_synrad_prob     (num_t betgam, num_t kick);
+
 num_t mad_rad_randexp_seed    (num_t val);
 num_t mad_rad_randexp         (num_t mu);
-
-num_t mad_rad_InvSynFracInt   (num_t x); // HBU 2007
+#endif
 
 // ----------------------------------------------------------------------------o
 
