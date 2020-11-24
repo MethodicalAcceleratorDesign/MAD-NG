@@ -1,0 +1,208 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | LIBMADX module
+ |
+ | Methodical Accelerator Design - Copyright (c) 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Run the MAD-X application as a shares library from MAD-NG
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+local M, MX = {}, {}
+
+-- locals ---------------------------------------------------------------------o
+
+local ffi = require("ffi")
+local cdef in ffi
+
+local iref = ffi.new("int   [1]")
+local dref = ffi.new("double[1]")
+
+local lib, slen, sbuf = nil, 0, nil
+
+-- General API ----------------------------------------------------------------o
+
+cdef [[
+void madx_start  (void);
+void madx_finish (void);
+void pro_input_  (char*);
+]]
+
+local function sget (str)
+  if #str >= slen then
+    slen = #str+1
+    sbuf = ffi.new("char[?]", slen)
+  end
+  ffi.copy(sbuf, str)
+  return sbuf
+end
+
+local function start (path_)
+  if not lib then
+    lib = ffi.load((path_ or '').."libmadx")
+    lib.madx_start()
+  end
+end
+
+local function stop ()
+  if lib then
+    lib.madx_finish()
+    lib = nil
+  end
+end
+
+MX.start      = start
+MX.stop       = stop
+MX.is_running = \ -> lib ~= nil
+
+-- send command to MAD-X
+function M.send (cmd)
+  lib.pro_input_(sget(cmd))
+end
+
+local function index_mm (_, k)
+  start()
+  return M[k]
+end
+
+setmetatable(MX, {__index=index_mm})
+
+-- Variables & Expressions ----------------------------------------------------o
+
+cdef [[
+enum { NAME_L = 48 };
+
+struct mdx_name_list;
+
+struct mdx_expression {
+  char name[NAME_L];
+  char* string;                 /* expression in string form */
+  int status;                   /* status flag: 0 not evaluated
+                                                1 evaluated */
+  struct mdx_int_array* polish; /* pointer to Polish notation, or NULL */
+  double value;                 /* actual value */
+  int stamp;
+};
+
+struct mdx_variable {
+  char name[NAME_L];
+  int status;                   /* 0 value not evaluated, 1 evaluated */
+  int type;                     /* 0 constant, 1 direct, 2 deferred, 3 string */
+  int val_type;                 /* 0 int 1 double (0..2) */
+  char* string;                 /* pointer to string if 3 */
+  struct mdx_expression* expr;  /* pointer to defining expression (0..2) */
+  double value;                 /* (0..2) */
+  int stamp;
+};
+
+struct mdx_var_list      /* contains list of variable pointers sorted by name */
+{
+  int stamp;
+  char name[NAME_L];
+  int  max,                     /* max. pointer array size */
+       curr;                    /* current occupation */
+  struct madx_name_list* list;  /* index list of names */
+  struct mdx_variable** vars;   /* variable pointer list */
+};
+
+struct mdx_var_list* variable_list;
+struct mdx_variable* find_variable (const char* name, struct mdx_var_list*);
+
+// other functions
+void   set_variable     (const char* name, double* value);
+void   set_stringvar    (const char* name, char*  string);
+double expression_value (struct mdx_expression*, int flag);
+]]
+
+-- get number of variables (for loops)
+function M.vnum ()
+  return lib.variable_list.curr
+end
+
+-- get variable name from its index
+function M.vname (idx)
+  assert(type(idx) == "number", "invalid argument #1 (number expected)")
+  if idx < 1 or idx > lib.variable_list.curr then return nil end
+  return ffi.string(lib.variable_list.vars[idx-1].name)
+end
+
+-- get variable value from its index or name
+function M.vget (name)
+  local var
+  if type(name) == "number" then
+    local idx = name
+    if idx < 1 or idx > lib.variable_list.curr then return nil end
+    var = lib.variable_list.vars[idx-1]
+  elseif type(name) == "string" then
+    var = lib.find_variable(name, lib.variable_list)
+    if var == nil then return nil end -- NULL pointer, not found
+  else
+    error("invalid argument #1 (string or number expected)")
+  end
+
+  local vtyp = var.type
+  if vtyp == 0 or vtyp == 1 then
+    return var.value
+  elseif vtyp == 2 then
+    return lib.expression_value(var.expr, 2)
+  elseif vtyp == 3 then
+    return ffi.string(var.string)
+  else
+    error("invalid variable type '"..vtyp.."' (unexpected)")
+  end
+end
+
+-- get variable expression as string from its index or name
+function M.vexpr (name)
+  local var
+  if type(name) == "number" then
+    local idx = name
+    if idx < 1 or idx > lib.variable_list.curr then return nil end
+    var = lib.variable_list.vars[idx-1]
+  elseif type(name) == "string" then
+    var = lib.find_variable(name, lib.variable_list)
+    if var == nil then return nil end -- NULL pointer, not found
+  else
+    error("invalid argument #1 (string or number expected)")
+  end
+  if var.expr == nil then return nil end
+  return ffi.string(var.expr.string)
+end
+
+-- set variable value from its index or name and val
+function M.vset (name, val)
+  if type(name) == "number" then
+    local idx = name
+    if idx < 1 or idx > lib.variable_list.curr then
+      error("invalid variable index (out of bounds)")
+    end
+    name = ffi.string(lib.variable_list.vars[idx-1].name)
+  elseif type(name) ~= "string" then
+    error("invalid argument #1 (string or number expected)")
+  end
+
+  local styp = type(val)
+  if styp == "number" then
+    dref[0] = val ; lib.set_variable(name, dref)
+  elseif styp == "string" then
+    lib.set_stringvar(name, sget(val));
+  else
+    error("invalid variable type '"..styp.."' (not supported)")
+  end
+end
+
+-- end ------------------------------------------------------------------------o
+return { libmadx = MX }
