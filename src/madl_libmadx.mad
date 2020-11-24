@@ -28,10 +28,18 @@ local M, MX = {}, {}
 local ffi = require("ffi")
 local cdef in ffi
 
+local type = type
+
 local iref = ffi.new("int   [1]")
 local dref = ffi.new("double[1]")
 
 local lib, slen, sbuf = nil, 0, nil
+
+-- Constants ------------------------------------------------------------------o
+
+cdef [[
+enum { NAME_L = 48 };
+]]
 
 -- General API ----------------------------------------------------------------o
 
@@ -80,13 +88,9 @@ end
 
 setmetatable(MX, {__index=index_mm})
 
--- Variables & Expressions ----------------------------------------------------o
+-- Expressions ----------------------------------------------------------------o
 
-cdef [[
-enum { NAME_L = 48 };
-
-struct mdx_name_list;
-
+cdef[[
 struct mdx_expression {
   char name[NAME_L];
   char* string;                 /* expression in string form */
@@ -97,6 +101,12 @@ struct mdx_expression {
   int stamp;
 };
 
+double expression_value (struct mdx_expression*, int flag);
+]]
+
+-- Variables ------------------------------------------------------------------o
+
+cdef [[
 struct mdx_variable {
   char name[NAME_L];
   int status;                   /* 0 value not evaluated, 1 evaluated */
@@ -108,13 +118,12 @@ struct mdx_variable {
   int stamp;
 };
 
-struct mdx_var_list      /* contains list of variable pointers sorted by name */
-{
+struct mdx_var_list { /* contains list of variable pointers sorted by name */
   int stamp;
   char name[NAME_L];
   int  max,                     /* max. pointer array size */
        curr;                    /* current occupation */
-  struct madx_name_list* list;  /* index list of names */
+  struct mdx_name_list* list;   /* index list of names */
   struct mdx_variable** vars;   /* variable pointer list */
 };
 
@@ -122,9 +131,8 @@ struct mdx_var_list* variable_list;
 struct mdx_variable* find_variable (const char* name, struct mdx_var_list*);
 
 // other functions
-void   set_variable     (const char* name, double* value);
-void   set_stringvar    (const char* name, char*  string);
-double expression_value (struct mdx_expression*, int flag);
+void   set_variable  (const char* name, double* value);
+void   set_stringvar (const char* name, char*  string);
 ]]
 
 -- get number of variables (for loops)
@@ -203,6 +211,155 @@ function M.vset (name, val)
     error("invalid variable type '"..styp.."' (not supported)")
   end
 end
+
+-- Commands -------------------------------------------------------------------o
+
+cdef [[
+struct mdx_command_parameter {        /* holds one command parameter */
+  char name[NAME_L];
+  int type;                           /* 0 logical 1 integer 2 double
+                                         3 string 4 constraint */
+                                      /* 11 int array 12 double array
+                                         13 string array */
+  int c_type;                         /* for type 4:
+                                         1 min, 2 max, 3 both, 4 value */
+  double double_value;                /* type 0, 1, 2, 4 */
+  double c_min;                       /* type 4 */
+  double c_max;                       /* type 4 */
+  struct mdx_expression* expr;        /* type 1, 2, 4 */
+  struct mdx_expression* min_expr;    /* type 4 */
+  struct mdx_expression* max_expr;    /* type 4 */
+  char* string;                       /* type 3 */
+  int stamp;
+  struct mdx_double_array* double_array;  /* type 11, 12 */
+  struct mdx_expr_list* expr_list;        /* type 11, 12 */
+  struct mdx_char_p_array* m_string;      /* type 13 */
+  struct mdx_command_parameter* call_def; /* contains definitions for "bare"
+                                            parameter input, e.g. option,echo */
+};
+
+struct mdx_command_parameter_list { /* contains list of command parameter pointers */
+  int stamp;
+  char name[NAME_L];
+  int  max,                               /* max. pointer array size */
+       curr;                              /* current occupation */
+  struct mdx_command_parameter** parameters;/* command_parameter pointer list */
+};
+
+struct mdx_command {                   /* holds one command */
+  char name[NAME_L];
+  char module[NAME_L];                 /* name of module it belongs to */
+  char group[NAME_L];                  /* command group it belongs to */
+  int stamp;
+  int link_type;                       /* 0 none, 1 start, 2 end of group */
+  int mad8_type;                       /* 0 none, else mad-8 element code */
+  int beam_def;                        /* beam commands: 1 if defined */
+  struct mdx_name_list* par_names;        /* names + input flag of parameters */
+  struct mdx_command_parameter_list* par; /* parameter pointer list */
+};
+
+struct mdx_command_list { /* contains list of command pointers sorted by name */
+  char name[NAME_L];
+  int  max,                      /* max. pointer array size */
+       curr;                     /* current occupation */
+  struct mdx_name_list* list;    /* index list of names */
+  int stamp;
+  struct mdx_command** commands; /* command pointer list */
+};
+
+struct mdx_command_list* defined_commands;
+]]
+
+-- get number of commands (for loops)
+function M.cnum ()
+  return lib.element_list.curr
+end
+
+-- get commands name from its index
+function M.cname (idx)
+  assert(type(idx) == "number", "invalid argument #1 (number expected)")
+  if idx < 1 or idx > lib.element_list.curr then return nil end
+  return ffi.string(lib.element_list.elem[idx-1].name)
+end
+
+-- Elements -------------------------------------------------------------------o
+
+cdef [[
+struct mdx_element { /* each element is unique */
+  char name[NAME_L];
+  int def_type;                  /* 0 if defined separately,
+                                    1 if inside sequence */
+  int bv;                        /* bv: 0 false, 1 true (invert angle for
+                                    sequence bv = -1) */
+  double length;
+  struct mdx_command* def;       /* pointer to defining command */
+  struct mdx_element* parent;    /* pointer to parent of element */
+                                 /* this for base_type elements (rbend etc.) */
+  int stamp;
+  struct mdx_element* base_type; /* pointer to base_type of element */
+                                 /* this for base_type elements (rbend etc.) */
+
+  struct mdx_aperture* aper;
+  double *tt_attrib;
+  struct mdx_multipole* multip;
+};
+
+struct mdx_el_list { /* contains list of element pointers sorted by name */
+  int stamp;
+  char name[NAME_L];
+  int  max,                     /* max. pointer array size */
+       curr;                    /* current occupation */
+  struct mdx_name_list* list;   /* index list of names */
+  struct mdx_element**  elem;   /* element pointer list */
+};
+
+struct mdx_el_list* element_list;
+
+struct mdx_element* find_element(const char* name, struct mdx_el_list*);
+double  element_value(const struct mdx_node*, const char* par);
+int     element_vector(const struct mdx_element*, const char* par, double* vector);
+void    get_node_vector(const char* par, int* length, double* vector);
+int     el_par_vector(int* total, double* vect);
+double  el_par_value(const char* par, const struct mdx_element*);
+]]
+
+-- get number of elements (for loops)
+function M.enum ()
+  return lib.element_list.curr
+end
+
+-- get element name from its index
+function M.ename (idx)
+  assert(type(idx) == "number", "invalid argument #1 (number expected)")
+  if idx < 1 or idx > lib.element_list.curr then return nil end
+  return ffi.string(lib.element_list.elem[idx-1].name)
+end
+
+-- get element attribute value from its name
+function M.eget (name, attr)
+  local elm
+  if type(name) == "number" then
+    local idx = name
+    if idx < 1 or idx > lib.element_list.curr then return nil end
+    elm = lib.element_list.elem[idx-1]
+  elseif type(name) == "string" then
+    elm = lib.find_element(name, lib.element_list)
+    if elm == nil then return nil end -- NULL pointer, not found
+  else
+    error("invalid argument #1 (string or number expected)")
+  end
+  assert(type(attr) == "string", "invalid argument #2 (string expected)")
+
+  return lib.el_par_value(attr, elm)
+end
+
+-- Sequences ------------------------------------------------------------------o
+
+-- Tables ---------------------------------------------------------------------o
+
+cdef[[
+struct mdx_table_list* table_register;
+]]
 
 -- end ------------------------------------------------------------------------o
 return { libmadx = MX }
