@@ -34,8 +34,8 @@ Notes about directions and quantities:
 local command, element, mtable, damap, symint, option, show    in MAD
 
 local is_nil, is_beam, is_sequence, is_boolean, is_number,
-      is_integer, is_true, is_string, is_damap, is_callable,
-      is_iterable, is_mappable, is_beta0                        in MAD.typeid
+      is_integer, is_true, is_string, is_matrix, is_damap,
+      is_callable, is_iterable, is_mappable, is_beta0           in MAD.typeid
 local fnil, ffalse, chain, achain                               in MAD.gfunc
 local dp2pt, bet2map                                            in MAD.gphys
 local errorf, assertf, printf                                   in MAD.utility
@@ -231,6 +231,7 @@ end
 -- track mflow ----------------------------------------------------------------o
 
 local modint = {DKD=true, TKT=true}
+local val = \a -> is_number(a) and a or nil
 
 -- see (survey)
 local slicebit = { [false]=tobit(0), [true]=tobit(4),
@@ -394,10 +395,10 @@ local function make_mflow (self)
   local mknd = 0
   local beta = beam.beta
 
-  -- reference orbit
-  local x0, px0 = O0.x or O0[1] or 0, O0.px or O0[2] or 0
-  local y0, py0 = O0.y or O0[3] or 0, O0.py or O0[4] or 0
-  local t0, pt0 = O0.t or O0[5] or 0, O0.pt or O0[6] or 0
+  -- reference orbit (t is the vector transpose, a function!)
+  local x0, px0 = val(O0.x) or O0[1] or 0, val(O0.px) or O0[2] or 0
+  local y0, py0 = val(O0.y) or O0[3] or 0, val(O0.py) or O0[4] or 0
+  local t0, pt0 = val(O0.t) or O0[5] or 0, val(O0.pt) or O0[6] or 0
 
   -- precedence of initial conditions
   for j,dp in ipairs(deltap) do
@@ -420,19 +421,19 @@ local function make_mflow (self)
         mflw[ii].status = 'Bset'
         mknd = bor(mknd, mapkind.damap)
 --      if dpt ~= 0 then mflw[ii]:translate({0,0,0,0,0,dpt},'in') end
-      elseif is_mappable(X0i) then -- access by indexes first for vectors
-        local x, px = x0+(X0i.x or X0i[1] or 0), px0+(X0i.px or X0i[2] or 0)
-        local y, py = y0+(X0i.y or X0i[3] or 0), py0+(X0i.py or X0i[4] or 0)
-        local t, pt = t0+(X0i.t or X0i[5] or 0), pt0+(X0i.pt or X0i[6] or 0)+dpt
+      elseif is_mappable(X0i) then -- access by indexes first for table row proxy
+        local x, px = val(X0i.x) or X0i[1] or 0, val(X0i.px) or X0i[2] or 0
+        local y, py = val(X0i.y) or X0i[3] or 0, val(X0i.py) or X0i[4] or 0
+        local t, pt = val(X0i.t) or X0i[5] or 0, val(X0i.pt) or X0i[6] or 0
         if mdef then -- damap created from coordinates (I as 1st order)
           mflw[ii] = damap(mdef[i] or mdef)
-          mflw[ii]:set0{x,px,y,py,t,pt}
-          mflw[ii].status = 'Xset'
+          mflw[ii]:set0{x0+x, px0+px, y0+y, py0+py, t0+t, pt0+pt+dpt}
           mknd = bor(mknd, mapkind.damap)
         else -- copy: need a table for key access (e.g. vs. vector)
-          mflw[ii] = {x=x, px=px, y=y, py=py, t=t, pt=pt, status='Xset'}
+          mflw[ii] = {x=x0+x, px=px0+px, y=y0+y, py=py0+py, t=t0+t, pt=pt0+pt+dpt}
           mknd = bor(mknd, mapkind.part)
         end
+        mflw[ii].status = 'Xset'
       else
         errorf("invalid type of item at id=%d (particle or damap expected)", i)
       end
