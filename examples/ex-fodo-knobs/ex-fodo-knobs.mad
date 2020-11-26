@@ -1,0 +1,259 @@
+-- ./mad ex-fodo.mad
+
+local doplot = 'pdf' -- false | true | 'pdf'
+local deltap = 1e-3  -- to play with deltap
+local charge = 1     -- to play with particle charge 1 or -1.
+
+--------------------------------------------------------------------------------
+
+local beam, sequence, survey, twiss, match in MAD
+local sbend, quadrupole, sextupole in MAD.element
+local printf in MAD.utility
+local lbool in MAD.operator
+local dp2pt in MAD.gphys
+local pi in math
+
+-- prepare config w/o plots
+local dopdf  = doplot == 'pdf' ; doplot = lbool(doplot) -- make doplot a boolean
+local nslice = doplot and 5 or 1           -- increase #slices for smooth plots,
+local save   = doplot and 'atbody' or nil  -- and save them...
+
+---------------------------------------
+
+local function mk_seq ()
+  -- classes
+  local mb = sbend      { l=2 }
+  local mq = quadrupole { l=1 }
+  local ms = sextupole  { l=0.5 }
+
+  -- prepare beam depending on the user's charge sign...
+  local sb = beam { particle = charge<0 and 'electron' or nil, energy=2 }
+
+  printf("particle: '%s', charge = %d, energy = %g\n",
+             sb.particle,   sb.charge,   sb.energy)
+
+  -- parametric fodo cell (for fun, could use deferred expressions)
+  local cell = \ang, chg -> sequence 'cell' {
+      l=10, refer='entry',
+      mq 'qf' { at=0, k1=chg*0.3 },
+      ms 'sf' {       k2=0       },
+      mb 'b1' { at=2, k0=chg*ang/mb.l, angle=ang },
+
+      mq 'qd' { at=5, k1=chg*-0.3 },
+      ms 'sd' {       k2=0        },
+      mb 'b2' { at=7, k0=chg*ang/mb.l, angle=ang },
+    }
+
+  -- build full ring, attach beam
+  return sequence 'seq' { beam=sb, 10*cell(2*pi/20, sb.charge) }
+end
+
+---------------------------------------
+
+local function match_tunes_and_chroma (seq, X0)
+  io.write("-------------------------------\n")
+  io.write("  MATCHING TUNES : 2.34, 2.29  \n")
+  io.write("  MATCHING CHROMA: 5.00, 5.00  \n")
+  io.write("-------------------------------\n")
+
+  return match {
+    command := twiss { sequence=seq, method=4, observe=1,
+                       X0=X0, deltap=deltap, cofind=true, chrom=true },
+    variables = { rtol=1e-6,    -- 1 ppm, Power Converter usual resolution...
+      { var = 'seq.qf[1].k1' }, -- elements are shared by all cells,
+      { var = 'seq.qd[1].k1' }, -- varying one cell varies them all
+      { var = 'seq.sf[1].k2' },
+      { var = 'seq.sd[1].k2' },
+    },
+    equalities = {
+      { expr = \t -> t.q1-2.34, name='q1' , tol=1e-8 },
+      { expr = \t -> t.q2-2.29, name='q2' , tol=1e-8 },
+      { expr = \t -> t.dq1-5.0, name='dq1', tol=1e-4 },
+      { expr = \t -> t.dq2-5.0, name='dq2', tol=1e-4 },
+    },
+    maxcall=100, info=2, !debug=2
+  }
+end
+
+---------------------------------------
+
+local function mk_plot(seq, srv, tws, title)
+  local vector, plot in MAD
+
+  -- make the plot optical functions
+  plot {
+    sequence = seq,
+    range    = tws.direction > 0 and {1,-1, 'idx'} or {-1,1,'idx',-1},
+    table    = tws,
+    x1y1     = { s='beta11' },
+    x1y2     = { s='dx' },
+    xlabel   = "s [m]",
+    ylabel   = "\u{03b2}_x [m]", yrange  = {0, 16},
+    y2label  = "D_x [m]"       , y2range = {0, 5 },
+
+    epilog   = "unset y2tics\nunset y2label\n", -- unset y2 axis
+
+    title    = "Layout in plot with \u{03b2}_x and D_x "..(title or ""),
+    legend   = { beta11='\u{03b2}_x', dx='D_x' },
+    fontsize = 12, legendsize = 10, titlesize = 14, styles = 'lines',
+    output   = dopdf and 'madplot.pdf' or nil,
+  }
+
+  -- move the optical functions in the frame of the layout (XZ plane)
+  local round in MAD.gmath
+  local W = srv.__map                              -- get orientation matrices
+  local beta11, dx in tws                          -- get vectors from twiss
+  local bscl  = beta11:max()/10                    -- betx scale for clean plot
+  local dscl  = dx    :max()/10                    -- dspx scale for clean plot
+  local betx  = beta11/bscl                        -- scale and shift beta11
+  local dspx  = -2+dx /dscl                        -- scale and shift dx
+
+  -- project betx and dx from local xs-plane to global XZ plane
+  local bet1 = { x=vector(#srv), z=vector(#srv) }  -- create betx XZ 2D coord.
+  local dsp1 = { x=vector(#srv), z=vector(#srv) }  -- create dspx XZ 2D coord.
+  for i=1,#srv do                                  -- loop over mtable rows
+    local vb = vector{betx[i], 0, 0}               -- make 3D vector from betx
+    local vd = vector{dspx[i], 0, 0}               -- make 3D vector from dspx
+    vb, vd = W[i]*vb, W[i]*vd                      -- orient betx and dspx
+    bet1.x[i], bet1.z[i] = vb[1], vb[3]            -- save XZ 2D coord.
+    dsp1.x[i], dsp1.z[i] = vd[1], vd[3]            -- save XZ 2D coord.
+  end
+  bet1.x, bet1.z = bet1.x+srv.x, bet1.z+srv.z      -- translate XZ 2D coord.
+  dsp1.x, dsp1.z = dsp1.x+srv.x, dsp1.z+srv.z      -- translate XZ 2D coord.
+
+  -- make the plot optical functions in the frame of the layout
+  plot {
+    sequence = seq,
+    laypos   = "in",
+    layonly  = false,
+
+    data     = { bx=bet1.x, bz=bet1.z, dx=dsp1.x, dz=dsp1.z },
+    x1y1     = { bx='bz', dx='dz' },
+    prolog   = "set size ratio -1\nset size square\n",  -- set   square plot
+    epilog   = "set size noratio\nset size nosquare\n", -- reset square plot
+
+    xlabel   = "x [m]", xrange = {-42, 10},
+    ylabel   = "z [m]", yrange = {-26, 26},
+    title    = "Layout in plot with \u{03b2}_x and D_x "..(title or ""),
+    legend   = { bz='\u{03b2}_x/'..round(bscl*10)/10,
+                 dz='D_x/'       ..round(dscl*10)/10 },
+    fontsize = 12, legendsize = 10, titlesize = 14, styles = 'lines',
+    output   = dopdf and 'madplot.pdf' or nil,
+  }
+end
+
+--------------------------------------------------------------------------------
+-- program starts here
+--------------------------------------------------------------------------------
+
+-- create sequence -----
+local seq = mk_seq()
+
+-- initial conditions --
+local X0 = {-1e-3,1e-4, -1e-4,1e-3, 0,0}
+
+-- initial deltap
+printf("deltap to pt= %.16g\n", dp2pt(deltap, seq.beam.beta))
+
+-- survey --------------
+local srv = survey { sequence=seq } :write('survey_seq')
+
+-- twiss ---------------
+local tws, mfl = twiss { sequence=seq,
+  X0=X0, deltap=deltap, cofind=true, chrom=true, method=4
+}
+tws:write('twiss_seq')
+
+-- closed orbit before matching (override initial orbit)
+local X0 = mfl[1]:get0():print "Unmatched closed obit " -- vector from damap
+X0[5], X0[6] = 0, 0 -- reset t,pt because we use deltap!
+printf("tunes: %.4f, %.4f, chroma: %.4f, %.4f\n",
+             tws.q1, tws.q2,    tws.dq1, tws.dq2)
+
+-- plot ----------------
+if doplot then
+  srv = survey { sequence=seq,
+    nslice=nslice, save=save, savemap=true, implicit=doplot,
+  }
+  local tws = twiss { sequence=seq,
+    X0=X0, deltap=deltap, cofind=true, chrom=true, method=4,
+    nslice=nslice, save=save, implicit=doplot
+  }
+  mk_plot(seq, srv, tws, "(unmatched, sextupoles off)")
+end
+
+-- match ---------------
+match_tunes_and_chroma (seq, X0)
+
+-- twiss ---------------
+local tws, mfl = twiss { sequence=seq,
+  X0=X0, deltap=deltap, cofind=true, chrom=true, method=4,
+}
+tws:write'twiss_seq_match'
+
+-- closed orbit after matching
+mfl[1]:get0():print "Matched closed obit " -- vector from damap
+printf("tunes: %.4f, %.4f, chroma: %.4f, %.4f\n",
+             tws.q1, tws.q2,    tws.dq1, tws.dq2)
+
+-- twiss, nslice -------
+if doplot then
+  local tws, mfl = twiss { sequence=seq,
+    X0=X0, deltap=deltap, cofind=true, chrom=true, method=4,
+    nslice=nslice, save=save, implicit=doplot
+  }
+  mk_plot(seq, srv, tws, "(matched, sextupoles on)")
+end
+
+-- backtracking --------
+
+-- survey --------------
+local rsrv = survey { sequence=seq, dir=-1 } :write('survey_seq_rev')
+
+-- twiss ---------------
+local rtws, rmfl = twiss { sequence=seq, dir=-1,
+  X0=X0, deltap=deltap, cofind=true, chrom=true, method=4,
+}
+rtws:write'twiss_seq_match_rev'
+
+-- closed orbit after matching
+rmfl[1]:get0():print "Matched closed obit (bactrack) " -- vector from damap
+printf("tunes: %.4f, %.4f, chroma: %.4f, %.4f\n",
+             rtws.q1, rtws.q2,    rtws.dq1, rtws.dq2)
+
+-- twiss, nslice -------
+if doplot then
+  rsrv = survey { sequence=seq, dir=-1,
+    nslice=nslice, save=save, savemap=true, implicit=doplot,
+  }
+  local rtws, rmfl = twiss { sequence=seq, dir=-1,
+    X0=X0, deltap=deltap, cofind=true, chrom=true, method=4,
+    nslice=nslice, save=save, implicit=doplot
+  }
+  mk_plot(seq, rsrv, rtws, "(matched, sextupoles on, backtrack)")
+end
+
+-- knobs --------
+
+local damap, track, option in MAD
+local X0 = damap {nv=8, mo=2, nk=2, ko=1,
+                  vn={'x','px','y','py','t','pt','k1f','k1d'}}
+
+print("k1=", seq.qf[1].k1)
+seq.qf[1].k1 = seq.qf[1].k1 + X0.k1f
+seq.qd[1].k1 = seq.qd[1].k1 + X0.k1d
+print(seq.qf[1].k1)
+print(seq.qd[1].k1)
+seq.qf[1].k1:print()
+seq.qd[1].k1:print()
+
+local trk, mflw = track { sequence=seq, X0=X0, method=4 }
+local fmt = option.numfmt ; option.numfmt = "% -.5e"
+print("\nORBIT and JACOBIAN")
+mflw[1]:get0():print"X"
+mflw[1]:get1():print"R"
+print("\nFULL MAP")
+mflw[1]:print()
+option.numfmt = fmt
+trk:write'track_seq_knobs'
+
