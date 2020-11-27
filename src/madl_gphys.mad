@@ -23,10 +23,11 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local matrix, vector, cvector, trace, warn, option, typeid       in MAD
+local matrix, vector, cvector, trace, warn, option, typeid,
+      beta0                                                      in MAD
 local is_nil, is_positive, is_integer, is_nonzero, is_odd,
-      is_matrix, is_vector, is_cvector, is_table, is_mtable,
-      is_sequence, is_mappable, wrestrict                        in MAD.typeid
+      is_matrix, is_vector, is_cvector, is_beta0, is_table,
+       is_mtable, is_sequence, is_mappable, wrestrict            in MAD.typeid
 local assertf, errorf, printf, num2str, setkeys, tblcat          in MAD.utility
 local lbool                                                      in MAD.operator
 local twopi                                                      in MAD.constant
@@ -63,7 +64,6 @@ end
 -- implementation -------------------------------------------------------------o
 
 local gphys = {
-
   -- tolerances
   tol = {
     dpt_tol  = 1e-12,
@@ -73,16 +73,6 @@ local gphys = {
     cplg_tol = 1e-14,
     ofun_tol = 1e-14,
     stab_tol = 1e-16, -- below eps!
-  },
-
-  -- default variable names (and indexes)
-  vname = {
-    {'x'                            , x=1                            , __n=1},
-    {'x', 'y'                       , x=1,       y=2                 , __n=2},
-    {'x', 'y' , 'z'                 , x=1,       y=2,       z=3      , __n=3},
-    {'x', 'px', 'y', 'py'           , x=1, px=2, y=3, py=4           , __n=4},
-    {'x', 'px', 'y', 'py', 'pt'     , x=1, px=2, y=3, py=4,      pt=5, __n=5},
-    {'x', 'px', 'y', 'py', 't', 'pt', x=1, px=2, y=3, py=4, t=5, pt=6, __n=6},
   },
 
   -- optical functions names (index -> name)
@@ -113,7 +103,7 @@ local gphys = {
     'alfa31', 'beta31', 'gama31', 'alfa32', 'beta32', 'gama32', 'alfa33', 'beta33', 'gama33', 'mu3', 'dmu3',
   },
 
-  -- optical functions names converter (e.g. from MAD-X)
+  -- optical functions names converter (e.g. from MAD-X), see also beta0
   ofcvtname = {
     -- MAD-X names
     alfx='alfa11', betx='beta11', mux='mu1', dmux='dmu1',
@@ -133,23 +123,6 @@ local gphys = {
 }
 
 local phystol = gphys.tol
-
--- variables ------------------------------------------------------------------o
-
-function gphys.vname_dup (vn)
-  local n = #vn
-  local cvn = table.new(n, n+1)
-  for i=1,n do cvn[i], cvn[vn[i]] = vn[i], i end
-  cvn.__n = n
-  return cvn
-end
-
-function gphys.vname_setki (vn)
-  local n = #vn
-  for i=1,n do vn[vn[i]] = i end
-  vn.__n = n
-  return vn
-end
 
 -- mtable ---------------------------------------------------------------------o
 
@@ -689,25 +662,105 @@ function gphys.normal1 (R, rnk_, nocheck_)
   return A, W, info
 end
 
--- beta0 block ----------------------------------------------------------------o
-
-local _id = {} -- identity
-
-local function is_beta0 (bet)
-  return type(bet) == "table" and bet.__obj == _id
-end
+-- beta0 block conversion -----------------------------------------------------o
 
 local function oval (x)
   return abs(x) < phystol.ofun_tol and 0 or x
 end
 
--- create beta0 block
+-- convert beta0 block (optical functions) to A (normalising form)
 
-function gphys.beta0 (tbl_)
-  local bet = tbl_ or {}
-  assert(is_table(bet), "invalid argument #1 (table expected)")
-  bet.__obj = _id
-  return bet
+function gphys.bet2map (bb0, map, sav_)
+  assert(is_beta0(bb0), "invalid argument #1 (beta0 block expected)")
+  assert(typeid.is_damap(map), "invalid argument #2 (damap expected)")
+
+  local rnk = bb0.rank or 4
+  local cpl = bb0.cplg or nil
+  local dir = bb0.sdir or 1
+  local X   = (bb0.X or vector(6)):zeros()
+  local A   = (bb0.A or matrix(6)):eye()
+
+  -- normalization matrix A of the one-turn map R: N = A^-1 R A
+
+  local get, set = A.get, A.set
+
+  -- set orbit
+  if bb0.x  then set(X,1,1, bb0.x ) end
+  if bb0.px then set(X,2,1, bb0.px) end
+  if bb0.y  then set(X,3,1, bb0.y ) end
+  if bb0.py then set(X,4,1, bb0.py) end
+  if bb0.t  then set(X,5,1, bb0.t ) end
+  if bb0.pt then set(X,6,1, bb0.pt) end
+
+  -- x plane
+
+  local beta11 = bb0.beta11 or bb0.beta1 or bb0.betx or 1
+  local alfa11 = bb0.alfa11 or bb0.alfa1 or bb0.alfx or 0
+  local gama11 = bb0.gama11 or (1+alfa11^2)/beta11
+
+  assert(beta11 > 0, "invalid beta11 (>0 expected)")
+
+  local A11 = sqrt(beta11)
+  local A21 = -alfa11/A11
+  local A22 = sqrt(gama11 - A21^2) -- 1/A11
+
+  set(A,1,1, A11) ; set(A,1,2,  0 ) -- Courant-Snyder form
+  set(A,2,1, A21) ; set(A,2,2, A22)
+
+  -- y plane
+
+  local beta22 = bb0.beta22 or bb0.beta2 or bb0.bety or 1
+  local alfa22 = bb0.alfa22 or bb0.alfa2 or bb0.alfy or 0
+  local gama22 = bb0.gama22 or (1+alfa22^2)/beta22
+
+  assert(beta22 > 0, "invalid beta22 (>0 expected)")
+
+  local A33 = sqrt(beta22)
+  local A43 = -alfa22/A33
+  local A44 = sqrt(gama22 - A43^2) -- 1/A33
+
+  set(A,3,3, A33) ; set(A,3,4,  0 ) -- Courant-Snyder form
+  set(A,4,3, A43) ; set(A,4,4, A44)
+
+  -- t plane, z axis
+
+  local beta33 = bb0.beta33 or bb0.beta3 or bb0.betz or 1
+  local alfa33 = bb0.alfa33 or bb0.alfa3 or bb0.alfz or 0
+  local gama33 = bb0.gama33 or (1+alfa33^2)/beta33
+
+  assert(beta33 > 0, "invalid beta33 (>0 expected)")
+
+  local A55 = sqrt(beta33)
+  local A65 = -alfa33/A55
+  local A66 = sqrt(gama33 - A65^2) -- 1/A55
+
+  set(A,5,5, A55) ; set(A,5,6,  0 ) -- Courant-Snyder form
+  set(A,6,5, A65) ; set(A,6,6, A66)
+
+  if rnk == 4 and (bb0.beta33 or bb0.beta3 or bb0.betz) then rnk = 6 end
+
+  -- set dispersion
+
+  if bb0.dx  then set(A,1,6, bb0.dx ) end
+  if bb0.dpx then set(A,2,6, bb0.dpx) end
+  if bb0.dy  then set(A,3,6, bb0.dy ) end
+  if bb0.dpy then set(A,4,6, bb0.dpy) end
+
+  -- backup rank and coupling
+
+  if sav_ then bb0.rank, bb0.cplg, bb0.sdir = rnk, cpl, dir end
+
+  -- sanity checks
+
+  local serr = (rnk >= 6 and A or A:getsub(r4,r4)):symperr()
+  if serr > phystol.symp_tol then
+    warn("normalizing form A[%dx%d] built from beta0 block %d is not symplectic, \z
+          symperr=%.5e", rnk, rnk, bb0.id or 0, serr)
+  end
+
+  bb0.X, bb0.A = X, A
+
+  return map:setvar(X):set1(A)
 end
 
 -- fill beta0 block (optical functions) from A (normalising form) and W (tunes)
@@ -715,89 +768,87 @@ end
 function gphys.map2bet (map, rnk_, cpl_, dir_)
   assert(typeid.is_damap(map), "invalid argument #1 (damap expected)")
 
-  local fun, ini
-  if is_table(rnk_) then -- rnk_ is fun
+  local bb0, ini
+  if is_table(rnk_) then -- rnk_ is bb0
     ini = false
-    fun = rnk_
-    assert(is_beta0(fun), "invalid beta0 block (not created from damap)")
+    bb0 = rnk_
+    assert(is_beta0(bb0), "invalid beta0 block (not created from damap)")
   else
     ini = true
-    fun = table.new(0, cpl_ and 50 or 30)
-    fun.__obj = _id
-    fun.rank, fun.cplg, fun.sdir = rnk_, cpl_, dir_ or 1
+    bb0 = beta0 { rank = rnk_, cplg = cpl_, sdir = dir_ or 1}
   end
 
-  fun.X = map:get0(fun.X)
-  fun.A = map:get1(fun.A)
-  local X, A in fun
+  bb0.X = map:get0(bb0.X)
+  bb0.A = map:get1(bb0.A)
+  local X, A in bb0
   assert(A.nrow >= 6 and A.ncol >= 6, "invalid damap size (6D+ expected)")
 
   local get = A.get
-  local rnk = fun.rank or gphys.has_dpt(A) and 6 or 4
+  local rnk = bb0.rank or gphys.has_dpt(A) and 6 or 4
 
   -- update rank
-  fun.rank = rnk
+  bb0.rank = rnk
 
   -- orbits
 
-  fun.x  = get(X,1,1)
-  fun.px = get(X,2,1)
-  fun.y  = get(X,3,1)
-  fun.py = get(X,4,1)
-  fun.t  = get(X,5,1)
-  fun.pt = get(X,6,1)
+  bb0.x  = get(X,1,1)
+  bb0.px = get(X,2,1)
+  bb0.y  = get(X,3,1)
+  bb0.py = get(X,4,1)
+  bb0.t  = get(X,5,1)
+  bb0.pt = get(X,6,1)
 
   -- diagonal terms
 
-  fun.alfa11 = oval( -(get(A,1,1) * get(A,2,1) + get(A,1,2) * get(A,2,2)) )
-  fun.beta11 = oval(   get(A,1,1)^2            + get(A,1,2)^2             )
-  fun.gama11 = oval(   get(A,2,1)^2            + get(A,2,2)^2             )
+  bb0.alfa11 = oval( -(get(A,1,1) * get(A,2,1) + get(A,1,2) * get(A,2,2)) )
+  bb0.beta11 = oval(   get(A,1,1)^2            + get(A,1,2)^2             )
+  bb0.gama11 = oval(   get(A,2,1)^2            + get(A,2,2)^2             )
 
-  fun.alfa22 = oval( -(get(A,3,3) * get(A,4,3) + get(A,3,4) * get(A,4,4)) )
-  fun.beta22 = oval(   get(A,3,3)^2            + get(A,3,4)^2             )
-  fun.gama22 = oval(   get(A,4,3)^2            + get(A,4,4)^2             )
+  bb0.alfa22 = oval( -(get(A,3,3) * get(A,4,3) + get(A,3,4) * get(A,4,4)) )
+  bb0.beta22 = oval(   get(A,3,3)^2            + get(A,3,4)^2             )
+  bb0.gama22 = oval(   get(A,4,3)^2            + get(A,4,4)^2             )
 
 
   if rnk >= 6 then
-    fun.alfa33 = oval( -(get(A,5,5) * get(A,6,5) + get(A,5,6) * get(A,6,6)) )
-    fun.beta33 = oval(   get(A,5,5)^2            + get(A,5,6)^2             )
-    fun.gama33 = oval(   get(A,6,5)^2            + get(A,6,6)^2             )
+    bb0.alfa33 = oval( -(get(A,5,5) * get(A,6,5) + get(A,5,6) * get(A,6,6)) )
+    bb0.beta33 = oval(   get(A,5,5)^2            + get(A,5,6)^2             )
+    bb0.gama33 = oval(   get(A,6,5)^2            + get(A,6,6)^2             )
   else
-    fun.alfa33, fun.beta33, fun.gama33 = 0, 0, 0
+    bb0.alfa33, bb0.beta33, bb0.gama33 = 0, 0, 0
   end
 
   -- coupling terms
 
-  if fun.cplg then
-    fun.alfa12 = oval( -(get(A,1,3) * get(A,2,3) + get(A,1,4) * get(A,2,4)) )
-    fun.beta12 = oval(   get(A,1,3)^2            + get(A,1,4)^2             )
-    fun.gama12 = oval(   get(A,2,3)^2            + get(A,2,4)^2             )
+  if bb0.cplg then
+    bb0.alfa12 = oval( -(get(A,1,3) * get(A,2,3) + get(A,1,4) * get(A,2,4)) )
+    bb0.beta12 = oval(   get(A,1,3)^2            + get(A,1,4)^2             )
+    bb0.gama12 = oval(   get(A,2,3)^2            + get(A,2,4)^2             )
 
-    fun.alfa21 = oval( -(get(A,3,1) * get(A,4,1) + get(A,3,2) * get(A,4,2)) )
-    fun.beta21 = oval(   get(A,3,1)^2            + get(A,3,2)^2             )
-    fun.gama21 = oval(   get(A,4,1)^2            + get(A,4,2)^2             )
+    bb0.alfa21 = oval( -(get(A,3,1) * get(A,4,1) + get(A,3,2) * get(A,4,2)) )
+    bb0.beta21 = oval(   get(A,3,1)^2            + get(A,3,2)^2             )
+    bb0.gama21 = oval(   get(A,4,1)^2            + get(A,4,2)^2             )
 
     if rnk >= 6 then
-      fun.alfa13 = oval( -(get(A,1,5) * get(A,2,5) + get(A,1,6) * get(A,2,6)) )
-      fun.beta13 = oval(   get(A,1,5)^2            + get(A,1,6)^2             )
-      fun.gama13 = oval(   get(A,2,5)^2            + get(A,2,6)^2             )
+      bb0.alfa13 = oval( -(get(A,1,5) * get(A,2,5) + get(A,1,6) * get(A,2,6)) )
+      bb0.beta13 = oval(   get(A,1,5)^2            + get(A,1,6)^2             )
+      bb0.gama13 = oval(   get(A,2,5)^2            + get(A,2,6)^2             )
 
-      fun.alfa31 = oval( -(get(A,5,1) * get(A,6,1) + get(A,5,2) * get(A,6,2)) )
-      fun.beta31 = oval(   get(A,5,1)^2            + get(A,5,2)^2             )
-      fun.gama31 = oval(   get(A,6,1)^2            + get(A,6,2)^2             )
+      bb0.alfa31 = oval( -(get(A,5,1) * get(A,6,1) + get(A,5,2) * get(A,6,2)) )
+      bb0.beta31 = oval(   get(A,5,1)^2            + get(A,5,2)^2             )
+      bb0.gama31 = oval(   get(A,6,1)^2            + get(A,6,2)^2             )
 
-      fun.alfa23 = oval( -(get(A,3,5) * get(A,4,5) + get(A,3,6) * get(A,4,6)) )
-      fun.beta23 = oval(   get(A,3,5)^2            + get(A,3,6)^2             )
-      fun.gama23 = oval(   get(A,4,5)^2            + get(A,4,6)^2             )
+      bb0.alfa23 = oval( -(get(A,3,5) * get(A,4,5) + get(A,3,6) * get(A,4,6)) )
+      bb0.beta23 = oval(   get(A,3,5)^2            + get(A,3,6)^2             )
+      bb0.gama23 = oval(   get(A,4,5)^2            + get(A,4,6)^2             )
 
-      fun.alfa32 = oval( -(get(A,5,3) * get(A,6,3) + get(A,5,4) * get(A,6,4)) )
-      fun.beta32 = oval(   get(A,5,3)^2            + get(A,5,4)^2             )
-      fun.gama32 = oval(   get(A,6,3)^2            + get(A,6,4)^2             )
+      bb0.alfa32 = oval( -(get(A,5,3) * get(A,6,3) + get(A,5,4) * get(A,6,4)) )
+      bb0.beta32 = oval(   get(A,5,3)^2            + get(A,5,4)^2             )
+      bb0.gama32 = oval(   get(A,6,3)^2            + get(A,6,4)^2             )
     else
-      fun.alfa13, fun.beta13, fun.gama13 = 0, 0, 0
-      fun.alfa31, fun.beta31, fun.gama31 = 0, 0, 0
-      fun.alfa23, fun.beta23, fun.gama23 = 0, 0, 0
-      fun.alfa32, fun.beta32, fun.gama32 = 0, 0, 0
+      bb0.alfa13, bb0.beta13, bb0.gama13 = 0, 0, 0
+      bb0.alfa31, bb0.beta31, bb0.gama31 = 0, 0, 0
+      bb0.alfa23, bb0.beta23, bb0.gama23 = 0, 0, 0
+      bb0.alfa32, bb0.beta32, bb0.gama32 = 0, 0, 0
     end
   end
 
@@ -806,21 +857,21 @@ function gphys.map2bet (map, rnk_, cpl_, dir_)
   if rnk >= 6 then
 -- TODO: true 6D using Chao's method or Etienne's method
 --  warn("6D dispersion NYI")
-    fun.dx, fun.dpx = oval( get(A,1,6) ), oval( get(A,2,6) )
-    fun.dy, fun.dpy = oval( get(A,3,6) ), oval( get(A,4,6) )
+    bb0.dx, bb0.dpx = oval( get(A,1,6) ), oval( get(A,2,6) )
+    bb0.dy, bb0.dpy = oval( get(A,3,6) ), oval( get(A,4,6) )
   else
-    fun.dx, fun.dpx = oval( get(A,1,6) ), oval( get(A,2,6) )
-    fun.dy, fun.dpy = oval( get(A,3,6) ), oval( get(A,4,6) )
+    bb0.dx, bb0.dpx = oval( get(A,1,6) ), oval( get(A,2,6) )
+    bb0.dy, bb0.dpy = oval( get(A,3,6) ), oval( get(A,4,6) )
   end
 
   -- ongoing (cumulated calculation)
 
   if ini then
-    fun.dmu1, fun.mu1, fun.mu1_ = 0, 0, 0
-    fun.dmu2, fun.mu2, fun.mu2_ = 0, 0, 0
-    fun.dmu3, fun.mu3, fun.mu3_ = 0, 0, 0
+    bb0.dmu1, bb0.mu1, bb0.mu1_ = 0, 0, 0
+    bb0.dmu2, bb0.mu2, bb0.mu2_ = 0, 0, 0
+    bb0.dmu3, bb0.mu3, bb0.mu3_ = 0, 0, 0
   else
-    local sdir in fun
+    local sdir in bb0
 
     -- phase advances (local)
     local mu1_ =              oval( atan2(get(A,1,2), get(A,1,1)) / twopi )
@@ -831,88 +882,88 @@ function gphys.map2bet (map, rnk_, cpl_, dir_)
     if sdir*mu2_ < 0 then mu2_ = sdir+mu2_ end
     if sdir*mu3_ < 0 then mu3_ =     -mu3_ end
 
-    local dmu1_, dmu2_, dmu3_ = mu1_-fun.mu1_, mu2_-fun.mu2_, mu3_-fun.mu3_
+    local dmu1_, dmu2_, dmu3_ = mu1_-bb0.mu1_, mu2_-bb0.mu2_, mu3_-bb0.mu3_
 
     if sdir*dmu1_ < 0 then dmu1_ = sdir+dmu1_ end
     if sdir*dmu2_ < 0 then dmu2_ = sdir+dmu2_ end
     if sdir*dmu3_ < 0 then dmu3_ =     -dmu3_ end
 
     -- phase advances (cumulated, backup local)
-    fun.mu1, fun.mu1_, fun.dmu1_  = fun.mu1 + dmu1_, mu1_, dmu1_
-    fun.mu2, fun.mu2_, fun.dmu2_  = fun.mu2 + dmu2_, mu2_, dmu2_
-    fun.mu3, fun.mu3_, fun.dmu3_  = fun.mu3 + dmu3_, mu3_, dmu3_
+    bb0.mu1, bb0.mu1_, bb0.dmu1_  = bb0.mu1 + dmu1_, mu1_, dmu1_
+    bb0.mu2, bb0.mu2_, bb0.dmu2_  = bb0.mu2 + dmu2_, mu2_, dmu2_
+    bb0.mu3, bb0.mu3_, bb0.dmu3_  = bb0.mu3 + dmu3_, mu3_, dmu3_
   end
 
-  return fun
+  return bb0
 end
 
-function gphys.chfn2bet (fun, fdp, dp)
-  assert(is_beta0(fun), "invalid argument #1 (beta0 block expected)")
-  assert(is_beta0(fdp), "invalid argument #2 (beta0 block expected)")
+function gphys.chfn2bet (bb0, fdp, dp)
+  assert(is_beta0(bb0) , "invalid argument #1 (beta0 block expected)")
+  assert(is_beta0(fdp) , "invalid argument #2 (beta0 block expected)")
   assert(is_nonzero(dp), "invalid argument #3 (number ~= 0 expected expected)")
 
   -- phase advances vs dp
 
-  local dmu1_ = (fdp.dmu1_ - fun.dmu1_) / dp
-  local dmu2_ = (fdp.dmu2_ - fun.dmu2_) / dp
-  local dmu3_ = (fdp.dmu3_ - fun.dmu3_) / dp
+  local dmu1_ = (fdp.dmu1_ - bb0.dmu1_) / dp
+  local dmu2_ = (fdp.dmu2_ - bb0.dmu2_) / dp
+  local dmu3_ = (fdp.dmu3_ - bb0.dmu3_) / dp
 
-  fun.dmu1 = fun.dmu1 + dmu1_
-  fun.dmu2 = fun.dmu2 + dmu2_
-  fun.dmu3 = fun.dmu3 + dmu3_
+  bb0.dmu1 = bb0.dmu1 + dmu1_
+  bb0.dmu2 = bb0.dmu2 + dmu2_
+  bb0.dmu3 = bb0.dmu3 + dmu3_
 
   -- dispersions vs dp
 
-  fun.ddx  = 0.5*(fdp.dx  - fun.dx ) / dp
-  fun.ddy  = 0.5*(fdp.dy  - fun.dy ) / dp
-  fun.ddpx = 0.5*(fdp.dpx - fun.dpx) / dp
-  fun.ddpy = 0.5*(fdp.dpy - fun.dpy) / dp
+  bb0.ddx  = 0.5*(fdp.dx  - bb0.dx ) / dp
+  bb0.ddy  = 0.5*(fdp.dy  - bb0.dy ) / dp
+  bb0.ddpx = 0.5*(fdp.dpx - bb0.dpx) / dp
+  bb0.ddpy = 0.5*(fdp.dpy - bb0.dpy) / dp
 
   -- chromatic functions
 
-  if fun.beta11 then
-    assert(fun.beta11 > 0, "invalid beta11 (>0 expected)")
+  if bb0.beta11 then
+    assert(bb0.beta11 > 0, "invalid beta11 (>0 expected)")
 
-    local dbetx = (fdp.beta11 - fun.beta11) / dp
-    local dalfx = (fdp.alfa11 - fun.alfa11) / dp
-    local bx = dbetx / fun.beta11
-    local ax = dalfx - fun.alfa11*bx
+    local dbetx = (fdp.beta11 - bb0.beta11) / dp
+    local dalfx = (fdp.alfa11 - bb0.alfa11) / dp
+    local bx = dbetx / bb0.beta11
+    local ax = dalfx - bb0.alfa11*bx
 
-    fun.wx = sqrt(ax^2 + bx^2)
-    if fun.wx > 1e-12 then
+    bb0.wx = sqrt(ax^2 + bx^2)
+    if bb0.wx > 1e-12 then
       local phix = atan2(ax, bx)
-      fun.phix_  = rangle(phix, fun.phix_ or phix)
-      fun.phix   = fun.phix_ / twopi
+      bb0.phix_  = rangle(phix, bb0.phix_ or phix)
+      bb0.phix   = bb0.phix_ / twopi
     end
   end
 
-  if fun.beta22 then
-    assert(fun.beta22 > 0, "invalid beta22 (>0 expected)")
+  if bb0.beta22 then
+    assert(bb0.beta22 > 0, "invalid beta22 (>0 expected)")
 
-    local dbety = (fdp.beta22 - fun.beta22) / dp
-    local dalfy = (fdp.alfa22 - fun.alfa22) / dp
-    local by = dbety / fun.beta22
-    local ay = dalfy - fun.alfa22*by
+    local dbety = (fdp.beta22 - bb0.beta22) / dp
+    local dalfy = (fdp.alfa22 - bb0.alfa22) / dp
+    local by = dbety / bb0.beta22
+    local ay = dalfy - bb0.alfa22*by
 
-    fun.wy = sqrt(ay^2 + by^2)
-    if fun.wy > 1e-12 then
+    bb0.wy = sqrt(ay^2 + by^2)
+    if bb0.wy > 1e-12 then
       local phiy = atan2(ay, by)
-      fun.phiy_  = rangle(phiy, fun.phiy_ or phiy)
-      fun.phiy   = fun.phiy_ / twopi
+      bb0.phiy_  = rangle(phiy, bb0.phiy_ or phiy)
+      bb0.phiy   = bb0.phiy_ / twopi
     end
   end
 end
 
-function gphys.syn2bet(fun, mflw, elm) -- to review...
-  assert(is_beta0(fun), "invalid argument #1 (beta0 block expected)")
+function gphys.syn2bet(bb0, mflw, elm) -- to review...
+  assert(is_beta0(bb0), "invalid argument #1 (beta0 block expected)")
   local el, eh, e1, e2, knl, beam in mflw
   local beta = beam.beta
   local te1  = tan(e1)
 
-  local betx = fun.beta11
-  local dx   = fun.dx*beta
-  local alfx = fun.alfa11 - betx*eh*te1
-  local dpx  = fun.dpx*beta + dx*eh*te1
+  local betx = bb0.beta11
+  local dx   = bb0.dx*beta
+  local alfx = bb0.alfa11 - betx*eh*te1
+  local dpx  = bb0.dpx*beta + dx*eh*te1
   local gamx = (1 + alfx^2) / betx
 
   local blen = abs(el)
@@ -944,16 +995,16 @@ function gphys.syn2bet(fun, mflw, elm) -- to review...
   local synch_4 = dispavg*eh*(eh2 + 2*k1)*blen - eh2*(dx*te1 + dx2*tan(e2))
   local synch_5 = curlyavg*abs(eh3)*blen
 
-  fun.synch_1 = (fun.synch_1 or 0) + synch_1
-  fun.synch_2 = (fun.synch_2 or 0) + synch_2
-  fun.synch_3 = (fun.synch_3 or 0) + synch_3
-  fun.synch_4 = (fun.synch_4 or 0) + synch_4
-  fun.synch_5 = (fun.synch_5 or 0) + synch_5
+  bb0.synch_1 = (bb0.synch_1 or 0) + synch_1
+  bb0.synch_2 = (bb0.synch_2 or 0) + synch_2
+  bb0.synch_3 = (bb0.synch_3 or 0) + synch_3
+  bb0.synch_4 = (bb0.synch_4 or 0) + synch_4
+  bb0.synch_5 = (bb0.synch_5 or 0) + synch_5
 
   if option.debug > 1 then
     print('Synchrotron integrals at exit of element ', elm.name)
     print('Input:  eh = ', eh, 'k1 = ', k1, 'e1 =', e1, 'e2 = ', e2, 'blen = ', blen)
-    print('        betxi = ', fun.beta11, 'alfxi = ', fun.alfa11, 'dxi = ', fun.dx, 'dpxi = ', fun.dpx)
+    print('        betxi = ', bb0.beta11, 'alfxi = ', bb0.alfa11, 'dxi = ', bb0.dx, 'dpxi = ', bb0.dpx)
     print(' --> ')
     print('        k2 = ', k2, '  k = ', k, 'k*l = ', kl)
     print('        alfx = ', alfx, 'dpx = ', dpx, 'gamx = ', gamx, 'dx2 = ', dx2)
@@ -963,103 +1014,7 @@ function gphys.syn2bet(fun, mflw, elm) -- to review...
   end
 end
 
-function gphys.bet2map (fun, map, sav_)
-  assert(is_beta0(fun), "invalid argument #1 (beta0 block expected)")
-  assert(typeid.is_damap(map), "invalid argument #2 (damap expected)")
-
-  local rnk = fun.rank or 4
-  local cpl = fun.cplg or nil
-  local dir = fun.sdir or 1
-  local X   = (fun.X or vector(6)):zeros()
-  local A   = (fun.A or matrix(6)):eye()
-
-  -- normalization matrix A of the one-turn map R: N = A^-1 R A
-
-  local get, set = A.get, A.set
-
-  -- set orbit
-
-  if fun.x  then set(X,1,1, fun.x ) end
-  if fun.px then set(X,2,1, fun.px) end
-  if fun.y  then set(X,3,1, fun.y ) end
-  if fun.py then set(X,4,1, fun.py) end
-  if fun.t  then set(X,5,1, fun.t ) end
-  if fun.pt then set(X,6,1, fun.pt) end
-
-  -- x plane
-
-  local beta11 = fun.beta11 or fun.beta1 or fun.betx or 1
-  local alfa11 = fun.alfa11 or fun.alfa1 or fun.alfx or 0
-  local gama11 = fun.gama11 or (1+alfa11^2)/beta11
-
-  assert(beta11 > 0, "invalid beta11 (>0 expected)")
-
-  local A11 = sqrt(beta11)
-  local A21 = -alfa11/A11
-  local A22 = sqrt(gama11 - A21^2) -- 1/A11
-
-  set(A,1,1, A11) ; set(A,1,2,  0 ) -- Courant-Snyder form
-  set(A,2,1, A21) ; set(A,2,2, A22)
-
-  -- y plane
-
-  local beta22 = fun.beta22 or fun.beta2 or fun.bety or 1
-  local alfa22 = fun.alfa22 or fun.alfa2 or fun.alfy or 0
-  local gama22 = fun.gama22 or (1+alfa22^2)/beta22
-
-  assert(beta22 > 0, "invalid beta22 (>0 expected)")
-
-  local A33 = sqrt(beta22)
-  local A43 = -alfa22/A33
-  local A44 = sqrt(gama22 - A43^2) -- 1/A33
-
-  set(A,3,3, A33) ; set(A,3,4,  0 ) -- Courant-Snyder form
-  set(A,4,3, A43) ; set(A,4,4, A44)
-
-  -- t plane, z axis
-
-  local beta33 = fun.beta33 or fun.beta3 or fun.betz or 1
-  local alfa33 = fun.alfa33 or fun.alfa3 or fun.alfz or 0
-  local gama33 = fun.gama33 or (1+alfa33^2)/beta33
-
-  assert(beta33 > 0, "invalid beta33 (>0 expected)")
-
-  local A55 = sqrt(beta33)
-  local A65 = -alfa33/A55
-  local A66 = sqrt(gama33 - A65^2) -- 1/A55
-
-  set(A,5,5, A55) ; set(A,5,6,  0 ) -- Courant-Snyder form
-  set(A,6,5, A65) ; set(A,6,6, A66)
-
-  if rnk == 4 and (fun.beta33 or fun.beta3 or fun.betz) then rnk = 6 end
-
-  -- set dispersion
-
-  if fun.dx  then set(A,1,6, fun.dx ) end
-  if fun.dpx then set(A,2,6, fun.dpx) end
-  if fun.dy  then set(A,3,6, fun.dy ) end
-  if fun.dpy then set(A,4,6, fun.dpy) end
-
-  -- backup rank and coupling
-
-  if sav_ then fun.rank, fun.cplg, fun.sdir = rnk, cpl, dir end
-
-  -- sanity checks
-
-  local serr = (rnk >= 6 and A or A:getsub(r4,r4)):symperr()
-  if serr > phystol.symp_tol then
-    warn("normalizing form A[%dx%d] built from beta0 block %d is not symplectic, \z
-          symperr=%.5e", rnk, rnk, fun.id or 0, serr)
-  end
-
-  fun.X, fun.A = X, A
-
-  return map:setvar(X):set1(A)
-end
-
 -- env ------------------------------------------------------------------------o
-
-MAD.typeid.is_beta0 = is_beta0
 
 gphys = wrestrict(setmetatable(gphys, {__tostring := "MAD.gphys"}))
 
