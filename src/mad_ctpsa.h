@@ -73,6 +73,8 @@ void     mad_ctpsa_clear   (      ctpsa_t *t);
 // conversion
 void     mad_ctpsa_real    (const ctpsa_t *t, tpsa_t *r);
 void     mad_ctpsa_imag    (const ctpsa_t *t, tpsa_t *r);
+void     mad_ctpsa_abs     (const ctpsa_t *a, tpsa_t *r);
+void     mad_ctpsa_arg     (const ctpsa_t *a, tpsa_t *r);
 void     mad_ctpsa_complex (const  tpsa_t *re_, const tpsa_t *im_, ctpsa_t *r);
 
 // indexing / monomials (return idx_t = -1 if invalid)
@@ -137,8 +139,6 @@ void     mad_ctpsa_poisst  (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c, int 
 void     mad_ctpsa_tpoiss  (const  tpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int nv);
 
 // functions
-void     mad_ctpsa_abs     (const ctpsa_t *a, ctpsa_t *c);
-void     mad_ctpsa_arg     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_conj    (const ctpsa_t *a, ctpsa_t *c);
 cnum_t   mad_ctpsa_nrm1    (const ctpsa_t *a, const ctpsa_t *b_);
 cnum_t   mad_ctpsa_nrm2    (const ctpsa_t *a, const ctpsa_t *b_);

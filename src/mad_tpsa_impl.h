@@ -120,6 +120,12 @@ mad_tpsa_reltmp (tpsa_t *tmp, const str_t func)
   --d->ti[tid]; //, tmp->mo = d->mo; // ensure stack-like usage of temps
 }
 
+static inline tpsa_t*
+mad_tpsa_gettmpt (const ctpsa_t *t, const str_t func)
+{
+  return mad_tpsa_gettmp((const tpsa_t*)t, func);
+}
+
 // --- end --------------------------------------------------------------------o
 
 #endif // MAD_TPSA_PRIV_H

@@ -113,12 +113,6 @@ mad_ctpsa_gettmp (const ctpsa_t *t, const str_t func)
   return mad_ctpsa_reset0(tmp);
 }
 
-static inline ctpsa_t*
-mad_ctpsa_gettmpr (const tpsa_t *t, const str_t func)
-{
-  return mad_ctpsa_gettmp((const ctpsa_t*)t, func);
-}
-
 static inline void
 mad_ctpsa_reltmp (ctpsa_t *tmp, const str_t func)
 {
@@ -128,6 +122,12 @@ mad_ctpsa_reltmp (ctpsa_t *tmp, const str_t func)
                   tid, d->cti[tid]-1, (void*)tmp, func));
   assert(d->ct[ tid*DESC_MAX_TMP + d->cti[tid]-1 ] == tmp);
   --d->cti[tid]; //, tmp->mo = d->mo; // ensure stack-like usage of temps
+}
+
+static inline ctpsa_t*
+mad_ctpsa_gettmpt (const tpsa_t *t, const str_t func)
+{
+  return mad_ctpsa_gettmp((const ctpsa_t*)t, func);
 }
 
 // --- end --------------------------------------------------------------------o

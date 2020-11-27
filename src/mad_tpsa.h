@@ -142,6 +142,8 @@ void    mad_tpsa_acoth   (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_erf     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_erfc    (const tpsa_t *a, tpsa_t *c);
 
+void    mad_tpsa_atan2   (const tpsa_t *y, const tpsa_t *x, tpsa_t *r);
+
 // high level functions (aliasing OK)
 void    mad_tpsa_axpb       (num_t a, const tpsa_t *x,
                              num_t b, tpsa_t *r);

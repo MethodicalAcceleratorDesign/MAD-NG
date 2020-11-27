@@ -113,9 +113,10 @@ hpoly_idx (idx_t ib, idx_t ia, ssz_t ia_size)
 
 #define GET_TMPX(t)       FUN(gettmp)(t, __func__)
 #define REL_TMPX(t)       FUN(reltmp)(t, __func__)
-#define GET_TMPC(t) mad_ctpsa_gettmp (t, __func__)
+#define GET_TMPC(t) mad_ctpsa_gettmpt(t, __func__)
 #define REL_TMPC(t) mad_ctpsa_reltmp (t, __func__)
-#define GET_TMPR(t) mad_ctpsa_gettmpr(t, __func__)
+#define GET_TMPR(t)  mad_tpsa_gettmpt(t, __func__)
+#define REL_TMPR(t)  mad_tpsa_reltmp (t, __func__)
 
 // --- end --------------------------------------------------------------------o
 

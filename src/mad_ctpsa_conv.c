@@ -21,8 +21,8 @@
 #include "mad_mem.h"
 #include "mad_desc_impl.h"
 
-#define   MAD_TPSA_NOHELPER
 #include "mad_tpsa_impl.h"
+#define   MAD_TPSA_NOHELPER
 #include "mad_ctpsa_impl.h"
 #undef    MAD_TPSA_NOHELPER
 
@@ -38,7 +38,7 @@ mad_ctpsa_real (const ctpsa_t *t, tpsa_t *c)
 
   c->hi = MIN3(t->hi, c->mo, d->to);
   c->nz = mad_bit_hcut(t->nz,c->hi);
-  if (!c->nz) { mad_tpsa_reset0(c); DBGFUN(<-); return; }
+  if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
 
   c->lo = t->lo;
   c->coef[0] = 0;
@@ -47,7 +47,7 @@ mad_ctpsa_real (const ctpsa_t *t, tpsa_t *c)
   for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
     c->coef[i] = creal(t->coef[i]);
 
-  if (TPSA_STRICT_NZ) mad_tpsa_update0(c, c->lo, c->hi);
+  if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
 
   DBGFUN(<-);
 }
@@ -62,7 +62,7 @@ mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *c)
 
   c->hi = MIN3(t->hi, c->mo, d->to);
   c->nz = mad_bit_hcut(t->nz,c->hi);
-  if (!c->nz) { mad_tpsa_reset0(c); DBGFUN(<-); return; }
+  if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
 
   c->lo = t->lo;
   c->coef[0] = 0;
@@ -71,12 +71,12 @@ mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *c)
   for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
     c->coef[i] = cimag(t->coef[i]);
 
-  if (TPSA_STRICT_NZ) mad_tpsa_update0(c, c->lo, c->hi);
+  if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
 
   DBGFUN(<-);
 }
 
-void
+void // special unique case, should be in mad_tpsa_conv.c to use FUN
 mad_ctpsa_complex (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
 {
   assert((re_ || im_) && c); DBGFUN(->);
@@ -120,11 +120,36 @@ mad_ctpsa_complex (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
 
 // --- operators with internal conversion -------------------------------------o
 
+void mad_ctpsa_abs (const ctpsa_t *a, tpsa_t *r)
+{
+  assert(a && r); DBGFUN(->);
+  ensure(a->d == r->d, "incompatibles GTPSA (descriptors differ)");
+  tpsa_t *re = GET_TMPR(a), *im = GET_TMPR(a);
+  mad_ctpsa_real(a, re);
+  mad_ctpsa_imag(a, im);
+  mad_tpsa_axypbvwpc(1,re,re, 1,im,im, 0,r);
+  mad_tpsa_sqrt(r, r);
+  REL_TMPR(re); REL_TMPR(im);
+  DBGFUN(<-);
+}
+
+void mad_ctpsa_arg (const ctpsa_t *a, tpsa_t *r)
+{
+  assert(a && r); DBGFUN(->);
+  ensure(a->d == r->d, "incompatibles GTPSA (descriptors differ)");
+  tpsa_t *re = GET_TMPR(a), *im = GET_TMPR(a);
+  mad_ctpsa_real(a, re);
+  mad_ctpsa_imag(a, im);
+  mad_tpsa_atan2(im, re, r);
+  REL_TMPR(re); REL_TMPR(im);
+  DBGFUN(<-);
+}
+
 log_t mad_ctpsa_equt (const ctpsa_t *a, const tpsa_t *b, num_t tol)
 {
   assert(a && b); DBGFUN(->);
   ensure(a->d == b->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPR(b);
+  ctpsa_t *t = GET_TMPC(b);
   mad_ctpsa_complex(b, NULL, t);
   log_t res = mad_ctpsa_equ(a, t, tol);
   REL_TMPC(t);
@@ -135,7 +160,7 @@ void mad_ctpsa_addt (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPR(b);
+  ctpsa_t *t = GET_TMPC(b);
   mad_ctpsa_complex(b, NULL, t);
   mad_ctpsa_add(a, t, c);
   REL_TMPC(t);
@@ -146,7 +171,7 @@ void mad_ctpsa_subt (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPR(b);
+  ctpsa_t *t = GET_TMPC(b);
   mad_ctpsa_complex(b, NULL, t);
   mad_ctpsa_sub(a, t, c);
   REL_TMPC(t);
@@ -157,7 +182,7 @@ void mad_ctpsa_tsub (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPR(a);
+  ctpsa_t *t = GET_TMPC(a);
   mad_ctpsa_complex(a, NULL, t);
   mad_ctpsa_sub(t, b, c);
   REL_TMPC(t);
@@ -168,7 +193,7 @@ void mad_ctpsa_mult (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPR(b);
+  ctpsa_t *t = GET_TMPC(b);
   mad_ctpsa_complex(b, NULL, t);
   mad_ctpsa_mul(a, t, c);
   REL_TMPC(t);
@@ -179,7 +204,7 @@ void mad_ctpsa_divt (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPR(b);
+  ctpsa_t *t = GET_TMPC(b);
   mad_ctpsa_complex(b, NULL, t);
   mad_ctpsa_div(a, t, c);
   REL_TMPC(t);
@@ -190,7 +215,7 @@ void mad_ctpsa_tdiv (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPR(a);
+  ctpsa_t *t = GET_TMPC(a);
   mad_ctpsa_complex(a, NULL, t);
   mad_ctpsa_div(t, b, c);
   REL_TMPC(t);
@@ -201,7 +226,7 @@ void mad_ctpsa_powt (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPR(b);
+  ctpsa_t *t = GET_TMPC(b);
   mad_ctpsa_complex(b, NULL, t);
   mad_ctpsa_pow(a, t, c);
   REL_TMPC(t);
@@ -212,7 +237,7 @@ void mad_ctpsa_tpow (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPR(a);
+  ctpsa_t *t = GET_TMPC(a);
   mad_ctpsa_complex(a, NULL, t);
   mad_ctpsa_pow(t, b, c);
   REL_TMPC(t);
@@ -223,7 +248,7 @@ void mad_ctpsa_poisst(const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c, int nv)
 {
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPR(b);
+  ctpsa_t *t = GET_TMPC(b);
   mad_ctpsa_complex(b, NULL, t);
   mad_ctpsa_poisson(a, t, c, nv);
   REL_TMPC(t);
@@ -234,7 +259,7 @@ void mad_ctpsa_tpoiss(const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int nv)
 {
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  ctpsa_t *t = GET_TMPR(a);
+  ctpsa_t *t = GET_TMPC(a);
   mad_ctpsa_complex(a, NULL, t);
   mad_ctpsa_poisson(t, b, c, nv);
   REL_TMPC(t);

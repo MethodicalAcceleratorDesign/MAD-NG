@@ -567,50 +567,24 @@ FUN(equ) (const T *a, const T *b, num_t eps_)
 
 // --- function ---------------------------------------------------------------o
 
+#ifndef MAD_CTPSA_IMPL
+
 void
 FUN(abs) (const T *a, T *c)
 {
   assert(a && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(c);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  c->lo = a->lo;
-  c->hi = MIN3(a->hi, c->mo, c->d->to);
-  c->nz = mad_bit_hcut(a->nz,c->hi);
-
-  if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
-
-  const idx_t *o2i = c->d->ord2idx;
-  for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
-    c->coef[i] = fabs(a->coef[i]);
+  if (a->coef[0] < 0) FUN(scl)(a,-1,c);
+  else if (a != c)    FUN(scl)(a, 1,c);
 
   DBGTPSA(c); DBGFUN(<-);
 }
 
-#ifdef MAD_CTPSA_IMPL
+#else // MAD_CTPSA_IMPL
 
 void
-FUN(arg) (const T *a, T *c)
-{
-  assert(a && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(c);
-  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-
-  c->lo = a->lo;
-  c->hi = MIN3(a->hi, c->mo, c->d->to);
-  c->nz = mad_bit_hcut(a->nz,c->hi);
-
-  if (!c->nz) FUN(reset0)(c);
-
-  const idx_t *o2i = c->d->ord2idx;
-  for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
-    c->coef[i] = carg(a->coef[i]);
-
-  FUN(update0)(c, c->lo, c->hi); // required!
-
-  DBGTPSA(c); DBGFUN(<-);
-}
-
-void
-FUN(conj) (const T *a, T *c)
+FUN(conj) (const T *a, T *c) // c = a.re - a.im
 {
   assert(a && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(c);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
@@ -628,7 +602,7 @@ FUN(conj) (const T *a, T *c)
   DBGTPSA(c); DBGFUN(<-);
 }
 
-#endif
+#endif // MAD_CTPSA_IMPL
 
 NUM
 FUN(nrm1) (const T *a, const T *b_)

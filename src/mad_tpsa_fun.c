@@ -734,7 +734,7 @@ FUN(asin) (const T *a, T *c)                     // checked for real and complex
     mad_ctpsa_logaxpsqrtbpcx2(a, I, 1, -1, c);
     mad_ctpsa_scl(c, -I, c);
 #else
-    ctpsa_t *t = GET_TMPR(c);
+    ctpsa_t *t = GET_TMPC(c);
     mad_ctpsa_complex(a, NULL, t);
     mad_ctpsa_logaxpsqrtbpcx2(t, I, 1, -1, t);
     mad_ctpsa_scl(t, -I, t);
@@ -781,7 +781,7 @@ FUN(acos) (const T *a, T *c)                     // checked for real and complex
     mad_ctpsa_logaxpsqrtbpcx2(a, I, 1, -1, c);
     mad_ctpsa_axpb(I, c, M_PI_2, c);
 #else
-    ctpsa_t *t = GET_TMPR(c);
+    ctpsa_t *t = GET_TMPC(c);
     mad_ctpsa_complex(a, NULL, t);
     mad_ctpsa_logaxpsqrtbpcx2(t, I, 1, -1, t);
     mad_ctpsa_axpb(I, t, M_PI_2, t);
@@ -823,14 +823,14 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
   if (to > MANUAL_EXPANSION_ORD) {
     // atan(x) = i/2 ln((i+x) / (i-x))
 #ifdef MAD_CTPSA_IMPL
-    ctpsa_t *tn = GET_TMPC(c), *td = GET_TMPC(c);
+    ctpsa_t *tn = GET_TMPX(c), *td = GET_TMPX(c);
     mad_ctpsa_copy(a, tn);
     mad_ctpsa_axpb(-1, tn, I, td);
     mad_ctpsa_set0(tn, 1, I);
     mad_ctpsa_logxdy(tn, td, c);
     mad_ctpsa_scl(c, I/2, c);
 #else
-    ctpsa_t *tn = GET_TMPR(c), *td = GET_TMPR(c);
+    ctpsa_t *tn = GET_TMPC(c), *td = GET_TMPC(c);
     mad_ctpsa_complex(a, NULL, tn);
     mad_ctpsa_axpb(-1, tn, I, td);
     mad_ctpsa_set0(tn, 1, I);
@@ -859,6 +859,31 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
   DBGTPSA(c); DBGFUN(<-);
 }
 
+#ifndef MAD_CTPSA_IMPL // Only for real GTPSA
+
+void
+FUN(atan2) (const T *y, const T *x, T *r)                    // checked for real
+{
+  assert(x && y && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y);
+  ensure(x->d == y->d && x->d == r->d, "incompatible GTPSA (descriptors differ)");
+  NUM x0 = x->coef[0], y0 = y->coef[0];
+
+  if (x0 != 0) {
+    FUN(div)(y, x, r);
+    FUN(atan)(r, r);
+    if (x0 < 0) { // no copy ok
+      mad_tpsa_scl(r, -1, r);
+      if (y0 >= 0) FUN(set0)(r, 1,  M_PI_2);
+      else         FUN(set0)(r, 1, -M_PI_2);
+    }
+  } else
+    FUN(setvar)(r, atan2(y0,x0), 0,0); // Let C handle signs for ±pi/2
+
+  DBGTPSA(r); DBGFUN(<-);
+}
+
+#endif
+
 void
 FUN(acot) (const T *a, T *c)                     // checked for real and complex
 {
@@ -876,7 +901,7 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
   if (to > MANUAL_EXPANSION_ORD) {
     // acot(x) = i/2 ln((x-i) / (x+i))
 #ifdef MAD_CTPSA_IMPL
-    ctpsa_t *tn = GET_TMPC(c), *td = GET_TMPC(c);
+    ctpsa_t *tn = GET_TMPX(c), *td = GET_TMPX(c);
     mad_ctpsa_copy( a, tn);
     mad_ctpsa_copy(tn, td);
     mad_ctpsa_set0(tn, 1, -I);
@@ -884,7 +909,7 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
     mad_ctpsa_logxdy(tn, td, c);
     mad_ctpsa_scl(c, I/2, c);
 #else
-    ctpsa_t *tn = GET_TMPR(c), *td = GET_TMPR(c);
+    ctpsa_t *tn = GET_TMPC(c), *td = GET_TMPC(c);
     mad_ctpsa_complex(a, NULL, tn);
     mad_ctpsa_copy(tn, td);
     mad_ctpsa_set0(tn, 1, -I);
