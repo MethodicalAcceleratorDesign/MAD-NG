@@ -120,27 +120,26 @@ mad_ctpsa_complex (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
 
 // --- operators with internal conversion -------------------------------------o
 
-void mad_ctpsa_abs (const ctpsa_t *a, tpsa_t *r)
+void mad_ctpsa_abs (const ctpsa_t *a, tpsa_t *c)
 {
-  assert(a && r); DBGFUN(->);
-  ensure(a->d == r->d, "incompatibles GTPSA (descriptors differ)");
+  assert(a && c); DBGFUN(->);
+  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   tpsa_t *re = GET_TMPR(a), *im = GET_TMPR(a);
   mad_ctpsa_real(a, re);
   mad_ctpsa_imag(a, im);
-  mad_tpsa_axypbvwpc(1,re,re, 1,im,im, 0,r);
-  mad_tpsa_sqrt(r, r);
+  mad_tpsa_hypot(re, im, c);
   REL_TMPR(re); REL_TMPR(im);
   DBGFUN(<-);
 }
 
-void mad_ctpsa_arg (const ctpsa_t *a, tpsa_t *r)
+void mad_ctpsa_arg (const ctpsa_t *a, tpsa_t *c)
 {
-  assert(a && r); DBGFUN(->);
-  ensure(a->d == r->d, "incompatibles GTPSA (descriptors differ)");
+  assert(a && c); DBGFUN(->);
+  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   tpsa_t *re = GET_TMPR(a), *im = GET_TMPR(a);
   mad_ctpsa_real(a, re);
   mad_ctpsa_imag(a, im);
-  mad_tpsa_atan2(im, re, r);
+  mad_tpsa_atan2(im, re, c);
   REL_TMPR(re); REL_TMPR(im);
   DBGFUN(<-);
 }

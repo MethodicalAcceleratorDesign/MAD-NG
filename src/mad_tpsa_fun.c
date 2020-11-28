@@ -859,31 +859,6 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
   DBGTPSA(c); DBGFUN(<-);
 }
 
-#ifndef MAD_CTPSA_IMPL // Only for real GTPSA
-
-void
-FUN(atan2) (const T *y, const T *x, T *r)                    // checked for real
-{
-  assert(x && y && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y);
-  ensure(x->d == y->d && x->d == r->d, "incompatible GTPSA (descriptors differ)");
-  NUM x0 = x->coef[0], y0 = y->coef[0];
-
-  if (x0 != 0) {
-    FUN(div)(y, x, r);
-    FUN(atan)(r, r);
-    if (x0 < 0) { // no copy ok
-      mad_tpsa_scl(r, -1, r);
-      if (y0 >= 0) FUN(set0)(r, 1,  M_PI_2);
-      else         FUN(set0)(r, 1, -M_PI_2);
-    }
-  } else
-    FUN(setvar)(r, atan2(y0,x0), 0,0); // Let C handle signs for ±pi/2
-
-  DBGTPSA(r); DBGFUN(<-);
-}
-
-#endif
-
 void
 FUN(acot) (const T *a, T *c)                     // checked for real and complex
 {

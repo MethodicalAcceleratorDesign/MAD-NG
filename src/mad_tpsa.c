@@ -40,6 +40,9 @@ in [lo,hi]: nz[o] == 0 <=> all coef[[o]] == 0
             nz[o] == 1 <=> any coef[[o]] != 0 (or none: conservative)
             nz[0] == 0 <=>     coef[ 0 ] == 0 && lo >= 1
             nz[0] == 1 <=>     coef[ 0 ] != 0 && lo == 0
+
+Improvement: remove constraint t->lo > 0 => t->coef[0] == 0
+  t->coef[0] could be handled separately and let t->lo > 0 to start higher.
 */
 
 static inline log_t
@@ -297,14 +300,14 @@ void
 FUN(copy) (const T *t, T *r)
 {
   assert(t && r); DBGFUN(->); DBGTPSA(t); DBGTPSA(r);
-  const D *d = t->d;
-  ensure(d == r->d, "incompatible GTPSAs descriptors 0x%p vs 0x%p", d, r->d);
-
-  // copy lo, hi(mo,to), nz(hi)
-  FUN(copy0)(t, r);
-
-  // copy data
   if (t != r) {
+    const D *d = t->d;
+    ensure(d == r->d, "incompatible GTPSAs descriptors 0x%p vs 0x%p", d, r->d);
+
+    // copy lo, hi(mo,to), nz(hi)
+    FUN(copy0)(t, r);
+
+    // copy coefs
     const idx_t *o2i = d->ord2idx;
     for (idx_t i = o2i[r->lo]; i < o2i[r->hi+1]; ++i) r->coef[i] = t->coef[i];
   }
