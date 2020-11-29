@@ -1,0 +1,775 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Alternate object module (help)
+ |
+ | Methodical Accelerator Design - Copyright (c) 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+]=]
+
+local __help = {}
+
+-- help -----------------------------------------------------------------------o
+
+__help.object = [=[
+NAME
+  object -- manage object model
+
+SYNOPSIS
+  obj1 = object {}               -- create a new empty object
+  obj2 = object { ... }          -- create a new object with values
+  obj3 = object 'name' { ... }   -- create a new object with name and values
+  obj4 = obj3 'name' { ... }     -- create a new object from parent (class)
+
+DESCRIPTION
+  The object module implements the necessary machinery to support prototype-
+  based programming with value semantic for functions and further extensions:
+  - On read, the lookup of object members follows the inheritance down to
+    object. If the retrieved value is a function and the key is a string, it is
+    called with the object (i.e. self) passed as argument #1 (can be ignored)
+    and the result is returned (i.e. function with value semantic).
+  - On write, the value is simply stored in the current object (no lookup)
+    unless it is set as readonly (error).
+  - On build, the new instance is connected to its parent (inheritance). If the
+    new instance has a defined __init metamethod (inherited), it will be called
+    on the new instance, and the result(s) will be returned; otherwise the
+    new instance is directly returned.
+  - A class is an object used to create new instances (children) at least once.
+  - To set:
+    + a single variable use obj.key = var
+    + a list of variables, use set_variables.
+    + a list of functions (n-arity with call semantic), use set_methods.
+    + a list of metamethods (inherited), use set_metamethods.
+    + set is an alias for set_variables.
+  - To get:
+    + a variable use var = obj.key
+    + a list of variables (inherited), use get_variables.
+    + the list of all variables keys, including inherited ones, use get_varkeys.
+    + get is an aliases for get_variables.
+  - To change behaviors:
+    + to add new behaviors, use set_metamethods.
+    + to change default behaviors, use set_metamethods with override=true (use
+      with care).
+    + behaviors must be changed before object become a class.
+  - Root 'object' defines the following variables:
+    + 'name'   points to 'self' name unless overridden (alias to __id)
+    + 'parent' points to 'self' parent unless overridden
+    + '__id'  holds 'self' name (provided or inherited)
+    + '__par' holds 'self' parent
+
+RETURN VALUE
+  object, the root constructor of objects. This module also extends the typeid
+  with the helper functions is_object, is_class, is_instanceOf and is_readonly.
+
+ERRORS
+  Objects constructors trigger an error if the argument #1 is not a string
+  (name) or a raw table (variables). Using an object incompletely initialized
+  (e.g. with a name but no value) triggers also an error.
+
+EXAMPLES
+  Point = MAD.object {}          -- point is an instance of object
+  p1 = Point { x=2, y=2 }        -- p1 is an instance of Point
+  p2 = p1 { x=3 }                -- p2 is an instance of p1 and inherits p1.y
+  p1.x, p1.z = 1, 3              -- set p1.x, p1.z
+  print(p1.x, p1.y, p1.z)        -- print 1 2 3
+  print(p2.x, p2.y, p2.z)        -- print 3 1 3
+
+SEE ALSO
+  None.
+]=]
+__help.object = __help.object
+
+-- documentation --------------------------------------------------------------o
+
+__help['object: model scheme'] = [=[
+
+Schematic object-model representation:
+--------------------------------------
+
+  Object are linked to parent by __index for fast inheritance.
+  Metamethods are shared by children and cloned on write.
+
+  o0 = MAD.object
+  o1 = o0 'obj1' {*o1-var*}
+  o2 = o1 'obj2' {*o2-var*}
+  o3 = o1 'obj3' {*o3-var*}
+
++---------+            +---------+            +---------+
+|  *o2*   |            |  *o1*   |            |  *o0*   |
+|  [meta] |-->(**)     |  [meta] |-->(**)     |  [meta] |-->(**)
+| __index |---------+  | __index |---------+  | __index |-->(.)
+|   __flg |<-----+  |  |   __flg |<-----+  |  |   __flg |<-----+
+|   __var |--+   |  |  |   __var |--+   |  |  |   __var |--+   |
+|    __id |  |   |  |  |    __id |  |   |  |  |    __id |  |   |
++---------+  v   |  |  +---------+  v   |  |  +---------+  v   |
+    +----------+ |  |      +----------+ |  |      +----------+ |
+    | *o2-var* | |  +----->| *o1-var* | |  +----->| *o0-var* | |
+    |   [meta] |-+  |      |   [meta] |-+         |   [meta] |-+
+    |     vars |    |      |     vars |           |     vars |
+    +----------+    |      +----------+           +----------+
+                    |
++---------+         |
+|  *o3*   |         |                ! shared table !
+|  [meta] |-->(**)  |                +--------------+
+| __index |---------+         (**)-->|  *meta-tbl*  |
+|   __flg |<-----+                   |  metamethods |
+|   __var |--+   |                   +--------------+
+|    __id |  |   |
++---------+  v   |
+    +----------+ |
+    | *o3-var* | |
+    |   [meta] |-+
+    |     vars |
+    +----------+
+]=]
+
+__help['object: alternate model scheme'] = [=[
+
+Schematic alternate object-model representation: (not implemented)
+------------------------------------------------------------------
+
+  Object are not linked to parent, but deferred expressions should do the job.
+  Variables are not copied by default, but copy_variables should do the job.
+  Methods and metamethods are shared by children and cloned on write.
+
+  o0 = MAD.object
+  o1 = o0 'obj1' {*o1-var*}
+  o2 = o1 'obj2' {*o2-var*}
+  o3 = o1 'obj3' {*o3-var*}
+
++---------+         +---------+         +---------+         +---------+
+|  *o3*   |         |  *o2*   |         |  *o1*   |         |  *o0*   |
+|  [meta] |-->(**)  |  [meta] |-->(**)  |  [meta] |-->(**)  |  [meta] |-->(**)
+| __index |-->(*)   | __index |-->(*)   | __index |-->(*)   | __index |-->(*)
+|   __par |-------->|   __par |-------->|   __par |-------->|   __par |-->(.)
+|   __flg |<-----+  |   __flg |<-----+  |   __flg |<-----+  |   __flg |<-----+
+|   __var |--+   |  |   __var |--+   |  |   __var |--+   |  |   __var |--+   |
+|    __id |  |   |  |    __id |  |   |  |    __id |  |   |  |    __id |  |   |
++---------+  v   |  +---------+  v   |  +---------+  v   |  +---------+  v   |
+    +----------+ |      +----------+ |      +----------+ |      +----------+ |
+    | *o3-var* | |      | *o2-var* | |      | *o1-var* | |      | *o0-var* | |
+    |   [meta] |-+      |   [meta] |-+      |   [meta] |-+      |   [meta] |-+
+    |     vars |        |     vars |        |     vars |        |     vars |
+    +----------+        +----------+        +----------+        +----------+
+
+                  ! shared table !              ! shared table !
+                  +--------------+              +--------------+
+            (*)-->|  *meth-tbl*  |        (**)->|  *meta-tbl*  |
+                  |   methods    |              |  metamethods |
+                  +--------------+              +--------------+
+]=]
+
+-- examples -------------------------------------------------------------------o
+
+__help['object: model examples'] = [=[
+
+Catching creation:
+------------------
+  Example how to count the number of objects created
+
+  local count = 0
+  local set_counter = \s s:set_metamethods { __init =\=> count=count+1 end }
+  set_counter(MAD.object) -- count children creation
+
+Catching writes:
+----------------
+  Example how to set a notification-on-write with logging
+
+  local function set_notification (self)
+    local nwidx = getmetatable(self).__newindex
+    local mm = \s,k,v =>
+      trace(s,k,v) -- logging
+      nwidx(s,k,v) -- forward, mandatory!
+    end
+    self:set_metamethods({__newindex = mm}, true) -- override!
+  end
+  set_notification(MAD.object) -- notify writes to any children
+
+Forwarding to parent:
+---------------------
+  Example how to forbid status change through set_readonly
+
+  local ro_obj = object {} :set_readonly(true) -- set status
+  local parent = ro_obj.parent
+  ro_obj:set_methods {
+    set_readonly = \s,f =>                     -- block any changes for ro_obj
+      assert(s ~= ro_obj, "invalid argument #1 (forbidden access to 'ro_obj')")
+      return parent.set_readonly(s,f)          -- forward to parent for children
+    end
+  }
+
+Copying status to children:
+---------------------------
+  Example how to make children of ro_obj readonly by default (but modifiable)
+
+  ro_obj:set_metamethods {__init = \s -> s:set_readonly() }
+]=]
+
+__help['object: example of variables usage'] = [=[
+
+Running through variables:
+--------------------------
+  local keys = { 'foo', 'bar' }
+  for _,k in ipairs(keys) do dosomething(obj[k]) end
+
+  local keys = elem:get_varkeys(Element)
+  for _,k in ipairs(keys) do dosomething(elem[k]) end
+
+Semantic of variables access:
+-----------------------------
+  self.var          ->    inheritence +    function as value.
+  self:var_raw'var' ->    inheritence + NO function as value.
+  self:raw_get'var' -> NO inheritence + NO function as value.
+
+  obj1.var = obj2.var          -- copy values, i.e. keep functor as functor
+  obj1.var = obj2:var_raw'var' -- true copy,   i.e. keep function as function
+]=]
+
+-- object methods
+
+__help['typeid.is_object'] = [=[
+NAME
+  is_object, is_instanceOf,            -- identify object class
+  is_class, is_readonly.               -- check object status
+
+SYNOPSIS
+  is_object(obj)
+  obj:is_class()
+  obj:is_readonly()
+  obj:is_instanceOf(class)
+
+DESCRIPTION
+  The is_instanceOf method follows and check the objects hierarchy from obj down
+  to class or object if class is not in the hierarchy of obj. The is_object
+  function is equivalent to is_instanceOf(obj, object) but faster.
+  The functions is_class and is_readonly check the status of the object, where a
+  class is an object already used as a constructor.
+
+RETURN VALUES
+  is_object and is_instanceOf return true if obj inherits from object or class
+  respectively. is_readonly and is_class return true if obj is read only or was
+  already used as a constructor respectively.
+
+ERRORS
+  is_instanceOf triggers an error if the argument #2 (class) is not a valid
+  object.
+
+EXAMPLES
+  local is_object, is_instanceOf, is_readonly, object in MAD
+  print( is_object 'yes' )                    -- false
+  print( is_object(object) )                  -- true
+  print( is_object(object {}) )               -- true
+  print( object:is_class() )                  -- true
+  print( object {} :is_class() )              -- false
+  print( object:is_instanceOf(object) )       -- true
+  print( object {} :is_instanceOf(object) )   -- true
+  print( object:is_readonly() )               -- true
+
+SEE ALSO
+  None.
+]=]
+
+-- object methods
+
+__help['object:set_readonly' ] = [=[
+NAME
+  set_readonly, set_parent
+
+SYNOPSIS
+  obj:set_readonly(boolean or nil)
+  obj:set_parent(p)
+
+DESCRIPTION
+  The method set_readonly protects or unprotects against write access
+  (weak protection). The default value is true. set_parent change the parent of
+  the object.
+
+RETURN VALUES
+  they return the object itself.
+
+ERRORS
+  set_readonly triggers an error if the argument #1 is not a boolean or nil or
+  if obj is object itself. set_parent triggers an error if argument #1 is not an
+  object and if obj is readonly.
+
+EXAMPLES
+  object {} :set_readonly(true).a = 2         -- error
+  object {} :set_readonly().a = 2             -- error
+  object {} :set_readonly(false).a = 2        -- ok
+  obj1 = object {} :set_parent(object {a = 2})
+  print(obj1.a)                               -- 2
+
+SEE ALSO
+  None.
+]=]
+
+__help['object:set_flag' ] = [=[
+NAME
+  set_flag, clear_flag, test_flag
+  set_flags, get_flags, test_flags
+  first_free_flag
+
+SYNOPSIS
+  obj:set_flag     (n)
+  obj:clear_flag   (n)
+  obj:test_flag    (n)
+  obj:set_flags    (flags)
+  obj:get_flags    (flags)
+  obj:test_flags   (flags)
+
+  obj.first_free_flag
+
+DESCRIPTION
+  The methods set_flag, clear_flag and test_flag allow respectively to set,
+  clear and test a specific bit in a 32-bit pattern. Be aware that object
+  reserve a few of them (currently 2). set_flags, get_flags and test_flags act
+  on the entire pattern at once. first_free_flag is the first available index.
+
+RETURN VALUES
+  set_flag, clear_flag, set_flags return the object itself. get_flags returns
+  the 32-bit pattern. test_flag and test_flags return a boolean. first_free_flag
+  returns a number.
+
+ERRORS
+  None.
+
+EXAMPLES
+  local obj1 = object {}
+  print(obj1.first_free_flag)   -- 2
+  obj1:set_flag(2)
+  print(obj1:test_flag(2))      -- true
+  obj1:clear_flag(2)
+  print(obj1:test_flag(2))      -- false
+  obj1:set_flags(12)
+  print(obj1:get_flags())       -- 12
+
+SEE ALSO
+  None.
+]=]
+__help['object:clear_flag'     ] = __help['object:set_flag']
+__help['object:test_flag'      ] = __help['object:set_flag']
+__help['object:set_flags'      ] = __help['object:set_flag']
+__help['object:get_flags'      ] = __help['object:set_flag']
+__help['object:test_flags'     ] = __help['object:set_flag']
+__help['object.first_free_flag'] = __help['object:set_flag']
+
+__help['object.iterator'] = [=[
+NAME
+  #, pairs, ipairs    -- length operator and iterators
+
+SYNOPSIS
+  #obj
+  for k,v in  pairs(obj) do ... end
+  for i,v in ipairs(obj) do ... end
+
+DESCRIPTION
+  The length operator is equivalent to the table length operator applied to the
+  object variables but taking care of inheritance (i.e. returns first non-zero
+  length). The pairs and ipairs functions return iterators that run respectively
+  over all the keys (and indexes) and over all the indexes of the object
+  variables, but not over the inherited variables. The function value semantic
+  is _not_ preserved to ease object copy.
+
+RETURN VALUES
+  The length operator returns the number of items in the object or the first
+  parent with a non-empty array part. The pairs and ipairs operators return the
+  appropriate arguments for stateless iterators, that is the iterator function,
+  the object and the pre-initial key.
+
+EXAMPLES
+  local p0 = MAD.object 'p0' { 2, 3, 4, x=1, y=2, z=\s s.y*3 }
+  local p1 = p0 'p1' { 7, 8, x=-1, y={} }
+
+  for i=1,#p0           do print(i,    p0[i]) end
+    1     2
+    2     3
+    3     4
+
+  for i=1,#p1           do print(i,    p1[i]) end
+    1     7
+    2     8
+
+  for k,v in  pairs(p0) do print(k, v, p0[k]) end
+    1     2                     2
+    2     3                     3
+    3     4                     4
+    y     2                     2
+    x     1                     1
+    z     function: 0x07594a78  6
+    __id  p0                    p0
+
+  for k,v in  pairs(p1) do print(k, v, p1[k]) end
+    1     7                     7
+    2     8                     8
+    y     table: 0x07516540     table: 0x07516540
+    x     -1                    -1
+    __id  p1                    p1
+
+  for i,v in ipairs(p0) do print(i, v, p0[i]) end
+    1     2                     2
+    2     3                     3
+    3     4                     4
+
+  for i,v in ipairs(p1) do print(i, v, p1[i]) end
+    1     7                     7
+    2     8                     8
+SEE ALSO
+  None.
+]=]
+__help['object:#'     ] = __help['object.iterator']
+__help['object.pairs' ] = __help['object.iterator']
+__help['object.ipairs'] = __help['object.iterator']
+
+__help['object:get'] = [=[
+NAME
+  get_variables, get_varkeys, set_variables
+  get, set.
+
+SYNOPSIS
+  obj:get_variables  (lst [, noeval])
+  obj:get_varkeys    ([class])
+  obj:set_variables  (tbl [, override])
+
+DESCRIPTION
+  The get_variables method gets values from a list of strings used as keys,
+  following the value semantic of functions unless noeval is 'true'. The
+  get_varkeys method collects all the variables names of an object iterating
+  through inheritance up to class (excluded). The set_variables method sets or
+  updates values from a mappable. The methods get and set are aliases for
+  get_variables and set_variables respectively. The default values are 'true'
+  for override, 'false' for noeval and object for class.
+
+RETURN VALUES
+  A table containing the key-value pairs for the specified keys for the method
+  get_variables, a table containing all the variables names with inheritance up
+  to class for the method get_varkeys, and the object itself for the other
+  methods.
+
+ERRORS
+  Errors are triggered if lst is not iterable, tbl not mappable and class not an
+  object. get_varkeys triggers an error if class is not a parent of obj.
+  set_variables triggers an error if keys in tbl already exist and overriding is
+  not allowed by argument #2.
+
+EXAMPLES
+  Point = object {}                    -- point is an instance of object
+  p1 = Point { x=2, y=2 }              -- p1 is an instance of Point
+  p1:set { x=1, z=3 }                  -- update p1.x and set p1.z
+  p1:set { z2=\s 2*s.z }               -- set p1.z2 = 2*p1.z
+  p1.z3=\s 3*s.z                       -- set p1.z3 = 3*p1.z
+  print(p1.x, p1.y, p1.z, p1.z2, p1.z3)
+    1       2       3       6       9
+  t = p1:get(p1:get_varkeys(Point))    -- get variables values of all keys
+  print(t.x, t.y, t.z, t.z2, t.z3)
+    1       2       3       6       9
+
+SEE ALSO
+  None.
+]=]
+__help['object:set'            ] = __help['object:get']
+__help['object:get_varkeys'    ] = __help['object:get']
+__help['object:get_variables'  ] = __help['object:get']
+__help['object:set_variables'  ] = __help['object:get']
+
+__help['object:wrap_variables' ] = [=[
+NAME
+  wrap_variables
+
+SYNOPSIS
+  obj:wrap_variables (tbl)
+
+DESCRIPTION
+  wrap_variables encapsulate values from obj with functions from tbl matching
+  the same keys. It allows to compose the previous function with the one
+  given in argument, encapsulating the expression.
+
+RETURN VALUES
+  It returns the object itself.
+
+ERRORS
+  Errors are triggered if tbl is not a mappable, if values in tbl are not
+  callable and if no values in obj match a key of tbl. obj must not be readonly.
+
+EXAMPLES
+  -- concrete example: change angle
+  local rbend in MAD.element
+  local sinc in MAD.gmath
+  local ksb = 0.85
+  local r1 = rbend 'r1' { angle := ksb, h=3, length=\s 2*s.h }
+
+  r1:wrap_variables { length = \l\s l(s)/sinc(s.angle) }
+
+  -- Here the new expression of length will be of the from:
+  --           \s (2*s.h)/sinc(s.angle)
+
+SEE ALSO
+  None.
+]=]
+
+__help['object:set_methods'  ] = [=[
+NAME
+  set_methods
+
+SYNOPSIS
+  obj:set_methods  (tbl [, override [, strict]])
+
+DESCRIPTION
+  The set_methods method sets or updates functions from a mappable (tbl) in a
+  special way that bypasses the value semantic of functions in the object model
+  and enforces the call semantic. The default value for override and strict is
+  'true'.
+
+RETURN VALUES
+  It returns the object itself.
+
+ERRORS
+  set_methods triggers an error, if argument #1 is not a mappable, if tbl
+  contains an array part or if keys of tbl already exist in obj and overriding
+  is not allowed by argument #2. The values in tbl must be callable, unless
+  strict is 'false'. obj must not be readonly.
+
+EXAMPLES
+  obj1 = object {}
+  obj1:set_methods { x=\n n*2, y=\ 3 }
+  obj1.z =\ 3
+  print(obj1.x(4))
+    8
+  print(obj1.y())
+    3
+  print(obj1.y)                             -- call semantic enforced
+    <functor> 0x[...]
+  print(obj1.z)                             -- value semantic
+    3
+
+SEE ALSO
+  None.
+]=]
+
+__help['object:set_metamethods'] = [=[
+NAME
+  set_metamethods
+
+SYNOPSIS
+  obj:set_metamethods(tbl [, override [, strict]])
+
+DESCRIPTION
+  The set_metamethods method sets metamethods from a mappable (tbl). Those new
+  metamethods will be shared with children (see the object model scheme).
+  The default values are 'false' for override and 'true' for strict.
+
+RETURN VALUES
+  It returns the object itself.
+
+ERRORS
+  set_metamethods triggers an error, if argument #1 is not a mappable, if obj
+  already has children (is a class) or if keys of tbl already exist in the
+  metatable of obj and overriding is not allowed by argument #2. The metamethods
+  names must be one of the supported ones (i.e. is_metaname returns
+  true) unless strict is 'false'. obj must not be readonly.
+
+EXAMPLES
+  obj1 = object 'obj1' { e = 3 }
+  obj1:set_metamethods({ __pow = \s,p s.e^p })
+  print(obj1^3)
+    27
+  obj1:set_metamethods({ __tostring =\s s.name .. " has e = " .. s.e }, true)
+  print(obj1)
+    obj1 has e = 3
+
+SEE ALSO
+  None.
+]=]
+
+__help['object:insert'] = [=[
+NAME
+  insert, remove, move, sort, bsearch, lsearch,
+  clear_array, clear_variables, clear_all.
+
+SYNOPSIS
+  obj:insert          (pos, val)
+  obj:remove          (pos)
+  obj:move            (pos1, pos2, tpos [, obj2])
+  obj:sort            ([cmp_])
+  obj:bsearch         (val [, cmp_ [, low_ [, high_]]])
+  obj:lsearch         (val [, equ_ [, low_ [, high_]]])
+  obj:clear_array     ()
+  obj:clear_variables ()
+  obj:clear_all       ()
+
+DESCRIPTION
+  insert method inserts the value 'val' at the position 'pos' of obj. remove
+  method removes the value at the position 'pos' of obj. bsearch method does a
+  binary search of 'val' in the (supposedly sorted) array part of obj using a
+  default '<' or 'cmp_' if provided. sort method sorts the array part of obj
+  using a default '<' or 'cmp_' if provided. clear_array and clear_variables
+  methods remove all values from the array and dictionary parts respectively,
+  but it does not affect its parent variables nor its metamethods.
+
+RETURN VALUES
+  They all return the object itself except remove, move, bsearch and lsearch
+  which return respectively the value removed, the destination object,
+  and the index found.
+
+ERRORS
+  sort, bsearch and lsearch return an error if cmp_ is not callable.
+  insert, remove and move return an error if pos is not a number.
+  obj must not be readonly.
+
+SEE ALSO
+  None.
+]=]
+__help['object:remove'         ] = __help['object:insert']
+__help['object:move'           ] = __help['object:insert']
+__help['object:sort'           ] = __help['object:insert']
+__help['object:bsearch'        ] = __help['object:insert']
+__help['object:lsearch'        ] = __help['object:insert']
+__help['object:clear_array'    ] = __help['object:insert']
+__help['object:clear_variables'] = __help['object:insert']
+__help['object:clear_all'      ] = __help['object:insert']
+
+__help['object:raw_len'] = [=[
+NAME
+  raw_len, raw_get, raw_set.
+
+SYNOPSIS
+  obj:raw_len()
+  obj:raw_get(key)
+  obj:raw_set(key, value)
+
+DESCRIPTION
+  The special raw_len, raw_get and raw_set methods respectively get length, get
+  strict value and set value to the key bypassing inheritance, function
+  evaluation (raw_get) and readonly protection (raw_set).
+
+  These methods may be useful in some exceptional cases like retrieving
+  variables as-is, or bybassing (overridden) metamethods __len, __index and
+  __newindex. The raw_set method is unsafe and can corrupt the object model, use
+  with caution, for experts only!
+
+RETURN VALUE
+  Same as standard rawlen, rawget and rawset.
+
+ERROR
+  None.
+
+SEE ALSO
+  get_variables, set_variables.
+]=]
+__help['object:raw_get'] = __help['object:raw_len']
+__help['object:raw_set'] = __help['object:raw_len']
+
+
+__help['object:var_raw'] = [=[
+NAME
+  var_raw, var_val, var_get.
+
+SYNOPSIS
+  obj:var_raw (key)
+  obj:var_val (key, value)
+  obj:var_get (key)
+
+DESCRIPTION
+  var_raw allows to get the key's matching value with inheritance but without
+  evaluation (value semantic). var_val evaluate and return 'value' with obj has
+  argument if value is a function and 'key' is a string, otherwise it just
+  returns it. var_get implement the value semantic of functions (equivalent to
+  'obj.key'), meaning that if the value is a function, it is evaluated and it's
+  returned value is returned.
+
+RETURN VALUE
+  var_raw and var_get return the value matching the key in obj.
+  var_val returns 'value' or the evaluation of it, if it is a function.
+
+ERROR
+  None.
+
+SEE ALSO
+  None.
+]=]
+__help['object:var_val'] = __help['object:var_raw']
+__help['object:var_get'] = __help['object:var_raw']
+
+__help['object:open_env'] = [=[
+NAME
+  open_env, is_open_env, reset_env, close_env.
+
+SYNOPSIS
+  obj:open_env    ([ctx])
+  obj:is_open_env ()
+  obj:reset_env   ()
+  obj:close_env   ()
+
+DESCRIPTION
+  open_env and close_env create and close respectively an environment attached
+  to obj. is_open_env test if an open environment is attached to obj. reset_env
+  is to be used if we recover from an error (i.e pcall) inside an open
+  environment. It does some cleanup without recovering the context from before
+  open_env was called. ctx could be the function to change the context of or a
+  number giving the context level. Its default value is 2 (calling context).
+
+RETURN VALUE
+  They all return the object itself except is_open_env which returns a boolean.
+
+ERROR
+  open_env triggers an error if ctx is not a function or a number greater than
+  one. It also fails if an environment is already open. close_env triggers an
+  error if no environment is open.
+
+EXAMPLES
+  obj1 = object 'obj1' { }
+  obj1:open_env()
+    a = 3                                -- attached to obj1
+    b = "strings"
+  obj1:close_env()
+  c = 4
+  print(obj1.a, obj1.b, obj1.c)
+    3       "strings"       nil
+  print(a, b, c)
+    nil       nil       4
+
+SEE ALSO
+  None.
+]=]
+__help['object:is_open_env'] = __help['object:open_env']
+__help['object:reset_env']   = __help['object:open_env']
+__help['object:close_env']   = __help['object:open_env']
+-- members
+
+__help['object:name'] = [=[
+NAME
+  name, parent
+
+SYNOPSIS
+  obj.name
+  obj.parent
+
+DESCRIPTION
+  The name and parent variables are aliases inherited from object that return
+  respectively the name and the parent of the current object. In practice, these
+  variables are defined as functions with value semantic and can be overridden
+  and restored.
+
+RETURN VALUES
+  The name and the parent of the current object.
+
+EXAMPLES
+  local p0 = MAD.object 'p0' {}
+  local p1 = p0 'p1' {}
+  print(p1.name, p1.parent.name)  -- 'p1'   'p0'
+
+SEE ALSO
+  None.
+]=]
+__help['object:parent'] = __help['object:name']
+
+-- end ------------------------------------------------------------------------o
+return __help
