@@ -39,7 +39,9 @@ const num_t mad_cst_PI       = M_PI;
 const num_t mad_cst_2PI      = M_2PI;
 const num_t mad_cst_PI_2     = M_PI_2;
 const num_t mad_cst_PI_4     = M_PI_4;
+const num_t mad_cst_SQRTPI   = M_SQRTPI;
 const num_t mad_cst_1_PI     = M_1_PI;
+const num_t mad_cst_1_SQRTPI = M_1_SQRTPI;
 const num_t mad_cst_2_PI     = M_2_PI;
 const num_t mad_cst_2_SQRTPI = M_2_SQRTPI;
 const num_t mad_cst_SQRT2    = M_SQRT2;
@@ -53,7 +55,7 @@ const num_t mad_cst_RADDEG   = M_RADDEG;
 
 const num_t mad_cst_MINLEN   = 1e-10;
 const num_t mad_cst_MINANG   = 1e-10;
-const num_t mad_cst_MINSTR   = 1e-12;
+const num_t mad_cst_MINSTR   = 1e-10;
 
 const num_t mad_cst_CLIGHT   = P_CLIGHT;
 const num_t mad_cst_MU0      = P_MU0;

@@ -44,7 +44,9 @@ extern const num_t mad_cst_PI      ;  // pi
 extern const num_t mad_cst_2PI     ;  // 2*pi
 extern const num_t mad_cst_PI_2    ;  // pi/2
 extern const num_t mad_cst_PI_4    ;  // pi/4
+extern const num_t mad_cst_SQRTPI  ;  // sqrt(pi)
 extern const num_t mad_cst_1_PI    ;  // 1/pi
+extern const num_t mad_cst_1_SQRTPI;  // 1/sqrt(pi)
 extern const num_t mad_cst_2_PI    ;  // 2/pi
 extern const num_t mad_cst_2_SQRTPI;  // 2/sqrt(pi)
 extern const num_t mad_cst_SQRT2   ;  // sqrt(2)
@@ -76,7 +78,7 @@ extern const num_t mad_cst_ERADIUS ;  // [m]
 
 // --- math constants ---------------------------------------------------------o
 
-#ifndef M_E
+#ifndef M_E         // standard constants
 #define M_E         2.71828182845904523536028747135266250   // e
 #define M_LOG2E     1.44269504088896340735992468100189214   // log_2 e
 #define M_LOG10E    0.434294481903251827651128918916605082  // log_10 e
@@ -91,16 +93,14 @@ extern const num_t mad_cst_ERADIUS ;  // [m]
 #define M_SQRT2     1.41421356237309504880168872420969808   // sqrt(2)
 #define M_SQRT1_2   0.707106781186547524400844362104849039  // 1/sqrt(2)
 #endif
-
-#ifndef M_2PI
+                    // extra constants
 #define M_2PI       6.28318530717958647692528676655900577   // 2*pi
-#endif
-
-#ifndef M_SQRT3
+#define M_SQRTPI    1.77245385090551602729816748334114518   // sqrt(pi)
+#define M_1_SQRTPI  0.564189583547756286948079451560772586  // 1/sqrt(pi)
 #define M_SQRT3     1.73205080756887729352744634150587237   // sqrt(3)
 #define M_SQRT1_3   0.577350269189625764509148780501957456  // 1/sqrt(3)
-#endif
 
+                    // constants for conversion
 #define M_RADDEG    57.2957795130823208767981548141051703   // 180/pi
 #define M_DEGRAD    0.0174532925199432957692369076848861271 // pi/180
 
