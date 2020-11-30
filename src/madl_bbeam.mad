@@ -1,0 +1,121 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | BeamBeam module
+ |
+ | Methodical Accelerator Design - Copyright (c) 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide beam beam physics for beambeam element
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local inf, twopi, sqrtpi, epsilon0    in MAD.constant
+local abs, exp, sqrt, erfc            in MAD.gmath
+
+local twopi_eps0 = twopi*epsilon0
+
+-- implementation -------------------------------------------------------------o
+
+local function ExEy_gauss_round (x, y, sig)
+  local r2 = x^2 + y^2
+  local t
+
+  if r2 < 1e-20 then
+    t = sqrt(r2) / (twopi_eps0*sig)  -- linearised
+  else
+    t = (1 - exp(-0.5*r2 / sig^2)) / (twopi_eps0*r2)
+  end
+
+  return t*x, t*y -- Ex, Ey
+end
+
+local function ExEy_gauss_ellip (x, y, sigx, sigy)
+  -- guard for round beam
+  if sigx == sigy then
+    return ExEy_gauss_round(x, y, 0.5*(sigx+sigy))
+  end
+
+-- Always go to the first quadrant and then apply the signs a posteriori
+-- numerically more stable. Why not use complex numbers and GTPSA?
+-- (see http://inspirehep.net/record/316705/files/slac-pub-5582.pdf)
+  local abx, aby = abs(x), abs(y)
+  local S, zetaBE_re, zetaBE_im, etaBE_re, etaBE_im
+
+  if sigx > sigy then
+    S         = sqrt(2*(sigx^2 - sigy^2))
+    zetaBE_re = abx/S
+    zetaBE_im = aby/S
+     etaBE_re = sigy/sigx * zetaBE_re
+     etaBE_im = sigx/sigy * zetaBE_im
+  else
+    S         = sqrt(2*(sigy^2 - sigx^2))
+    zetaBE_re = aby/S
+    zetaBE_im = abx/S
+     etaBE_re = sigx/sigy * zetaBE_re
+     etaBE_im = sigy/sigx * zetaBE_im
+  end
+
+  local w_zetaBE_re, w_zetaBE_im = wfun(zetaBE_re, zetaBE_im)
+  local  w_etaBE_re,  w_etaBE_im = wfun( etaBE_re,  etaBE_im)
+
+  local factBE = 1/((twopi_eps0*sqrt_pi) * S)
+  local  expBE = exp(-0.5*((abx/sigx)^2 + (aby/sigy)^2))
+
+  local Ex = factBE*(w_zetaBE_im - w_etaBE_im*expBE)
+  local Ey = factBE*(w_zetaBE_re - w_etaBE_re*expBE)
+
+  if x < 0 then Ex = -Ex end
+  if y < 0 then Ey = -Ey end
+
+  return Ex, Ey
+end
+
+local function ExEy_GxGy_gauss (x, y, dx, dy, sigx, sigy, mindif, skip_Gs)
+  local Ex, Ey, Gx, Gy
+
+  if abs(sigx - sigy) < mindif then
+    local sig = 0.5*(sigx + sigy)
+
+    Ex, Ey = ExEy_gauss_round(x-dx, y-dy, sig)
+
+    if not skip_Gs then
+      if abs(x) + abs(y) < mindif then
+        Gx, Gy = 0, 0
+      else
+        local x2, y2 = x^2, y^2
+        local c0 = x2+y2
+        local c1 = 0.5/c0
+        local c2 = x*Ex - y*Ey
+        local c3 = 1/(twopi_eps0*sig^2) * exp(-0.5*c0/sig^2)
+        Gx = c1*(-c2 + x2*c3)
+        Gy = c1*( c2 + y2*c3)
+      end
+    end
+  else
+    Ex, Ey = ExEy_gauss_ellip(x-dx, y-dy, sigx, sigy)
+
+    if not skip_Gs then
+      local c1 = 0.5/(sigx^2 - sigy^2)
+      local c2 = x*Ex + y*Ey
+      local c3 = exp(-0.5*((x/sigx)^2 + (y/sigy)^2))
+      Gx = -c1*(c2 + 1/twopi_eps0 * (sigy/sigx * c3 - 1))
+      Gy =  c1*(c2 + 1/twopi_eps0 * (sigx/sigy * c3 - 1))
+    end
+  end
+
+  return Ex, Ey, Gx, Gy
+end
