@@ -741,12 +741,35 @@ FUN(poisson) (const T *a, const T *b, T *c, int nv)
 // --- high level functions ---------------------------------------------------o
 
 void
+FUN(unit) (const T *x, T *r)
+{
+  assert(x && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(r);
+  ensure(x->d == r->d, "incompatibles GTPSA (descriptors differ)");
+
+  FUN(scl)(x, 1/fabs(x->coef[0]), r);
+
+  DBGTPSA(r); DBGFUN(<-);
+}
+
+void
 FUN(hypot) (const T *x, const T *y, T *r)
 {
   assert(x && y && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(r);
   ensure(x->d == y->d && y->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   FUN(axypbvwpc)(1,x,x, 1,y,y, 0,r);
+  FUN(sqrt)(r, r);
+
+  DBGTPSA(r); DBGFUN(<-);
+}
+
+void
+FUN(hypot3) (const T *x, const T *y, const T *z, T *r)
+{
+  assert(x && y && z && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(z); DBGTPSA(r);
+  ensure(x->d == r->d && y->d == r->d && z->d == r->d, "incompatibles GTPSA (descriptors differ)");
+
+  FUN(ax2pby2pcz2)(1,x, 1,y, 1,z, r);
   FUN(sqrt)(r, r);
 
   DBGTPSA(r); DBGFUN(<-);
