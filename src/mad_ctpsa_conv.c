@@ -77,7 +77,7 @@ mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *c)
 }
 
 void // special unique case, should be in mad_tpsa_conv.c to use FUN
-mad_ctpsa_complex (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
+mad_ctpsa_cplx (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
 {
   assert((re_ || im_) && c); DBGFUN(->);
   const tpsa_t *re = re_ ? re_ : im_;
@@ -120,7 +120,7 @@ mad_ctpsa_complex (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
 
 // --- operators with internal conversion -------------------------------------o
 
-void mad_ctpsa_abs (const ctpsa_t *a, tpsa_t *c)
+void mad_ctpsa_cabs (const ctpsa_t *a, tpsa_t *c)
 {
   assert(a && c); DBGFUN(->);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
@@ -132,7 +132,7 @@ void mad_ctpsa_abs (const ctpsa_t *a, tpsa_t *c)
   DBGFUN(<-);
 }
 
-void mad_ctpsa_arg (const ctpsa_t *a, tpsa_t *c)
+void mad_ctpsa_carg (const ctpsa_t *a, tpsa_t *c)
 {
   assert(a && c); DBGFUN(->);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
@@ -144,12 +144,49 @@ void mad_ctpsa_arg (const ctpsa_t *a, tpsa_t *c)
   DBGFUN(<-);
 }
 
+void mad_ctpsa_rect (const ctpsa_t *a, ctpsa_t *c)
+{
+  assert(a && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(c);
+  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
+
+  tpsa_t *re = GET_TMPR(c), *im = GET_TMPR(c), *t = GET_TMPR(c);
+
+  mad_ctpsa_real (a , re); // rho
+  mad_ctpsa_imag (a , im); // arg
+  mad_tpsa_sincos(im, im, t );
+  mad_tpsa_mul   (re, t , re); // re = rho * cos(arg)
+  mad_tpsa_mul   (re, im, im); // im = rho * sin(arg)
+  mad_ctpsa_cplx (re, im, c );
+
+  REL_TMPR(re); REL_TMPR(im); REL_TMPR(t);
+
+  DBGTPSA(c); DBGFUN(<-);
+}
+
+void mad_ctpsa_polar (const ctpsa_t *a, ctpsa_t *c)
+{
+  assert(a && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(c);
+  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
+
+  tpsa_t *re = GET_TMPR(c), *im = GET_TMPR(c), *t = GET_TMPR(c);
+
+  mad_ctpsa_real(a , re);
+  mad_ctpsa_imag(a , im);
+  mad_tpsa_hypot(im, re, t ); // re = |z|
+  mad_tpsa_atan2(im, re, im); // im = arg(z)
+  mad_ctpsa_cplx(t , im, c );
+
+  REL_TMPR(re); REL_TMPR(im); REL_TMPR(t);
+
+  DBGTPSA(c); DBGFUN(<-);
+}
+
 log_t mad_ctpsa_equt (const ctpsa_t *a, const tpsa_t *b, num_t tol)
 {
   assert(a && b); DBGFUN(->);
   ensure(a->d == b->d, "incompatibles GTPSA (descriptors differ)");
   ctpsa_t *t = GET_TMPC(b);
-  mad_ctpsa_complex(b, NULL, t);
+  mad_ctpsa_cplx(b, NULL, t);
   log_t res = mad_ctpsa_equ(a, t, tol);
   REL_TMPC(t);
   DBGFUN(<-); return res;
@@ -160,8 +197,8 @@ void mad_ctpsa_addt (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ctpsa_t *t = GET_TMPC(b);
-  mad_ctpsa_complex(b, NULL, t);
-  mad_ctpsa_add(a, t, c);
+  mad_ctpsa_cplx(b, NULL, t);
+  mad_ctpsa_add (a, t, c);
   REL_TMPC(t);
   DBGFUN(<-);
 }
@@ -171,8 +208,8 @@ void mad_ctpsa_subt (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ctpsa_t *t = GET_TMPC(b);
-  mad_ctpsa_complex(b, NULL, t);
-  mad_ctpsa_sub(a, t, c);
+  mad_ctpsa_cplx(b, NULL, t);
+  mad_ctpsa_sub (a, t, c);
   REL_TMPC(t);
   DBGFUN(<-);
 }
@@ -182,8 +219,8 @@ void mad_ctpsa_tsub (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c)
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ctpsa_t *t = GET_TMPC(a);
-  mad_ctpsa_complex(a, NULL, t);
-  mad_ctpsa_sub(t, b, c);
+  mad_ctpsa_cplx(a, NULL, t);
+  mad_ctpsa_sub (t, b, c);
   REL_TMPC(t);
   DBGFUN(<-);
 }
@@ -193,8 +230,8 @@ void mad_ctpsa_mult (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ctpsa_t *t = GET_TMPC(b);
-  mad_ctpsa_complex(b, NULL, t);
-  mad_ctpsa_mul(a, t, c);
+  mad_ctpsa_cplx(b, NULL, t);
+  mad_ctpsa_mul (a, t, c);
   REL_TMPC(t);
   DBGFUN(<-);
 }
@@ -204,8 +241,8 @@ void mad_ctpsa_divt (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ctpsa_t *t = GET_TMPC(b);
-  mad_ctpsa_complex(b, NULL, t);
-  mad_ctpsa_div(a, t, c);
+  mad_ctpsa_cplx(b, NULL, t);
+  mad_ctpsa_div (a, t, c);
   REL_TMPC(t);
   DBGFUN(<-);
 }
@@ -215,8 +252,8 @@ void mad_ctpsa_tdiv (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c)
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ctpsa_t *t = GET_TMPC(a);
-  mad_ctpsa_complex(a, NULL, t);
-  mad_ctpsa_div(t, b, c);
+  mad_ctpsa_cplx(a, NULL, t);
+  mad_ctpsa_div (t, b, c);
   REL_TMPC(t);
   DBGFUN(<-);
 }
@@ -226,8 +263,8 @@ void mad_ctpsa_powt (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ctpsa_t *t = GET_TMPC(b);
-  mad_ctpsa_complex(b, NULL, t);
-  mad_ctpsa_pow(a, t, c);
+  mad_ctpsa_cplx(b, NULL, t);
+  mad_ctpsa_pow (a, t, c);
   REL_TMPC(t);
   DBGFUN(<-);
 }
@@ -237,8 +274,8 @@ void mad_ctpsa_tpow (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c)
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ctpsa_t *t = GET_TMPC(a);
-  mad_ctpsa_complex(a, NULL, t);
-  mad_ctpsa_pow(t, b, c);
+  mad_ctpsa_cplx(a, NULL, t);
+  mad_ctpsa_pow (t, b, c);
   REL_TMPC(t);
   DBGFUN(<-);
 }
@@ -248,7 +285,7 @@ void mad_ctpsa_poisst(const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c, int nv)
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ctpsa_t *t = GET_TMPC(b);
-  mad_ctpsa_complex(b, NULL, t);
+  mad_ctpsa_cplx   (b, NULL, t);
   mad_ctpsa_poisson(a, t, c, nv);
   REL_TMPC(t);
   DBGFUN(<-);
@@ -259,7 +296,7 @@ void mad_ctpsa_tpoiss(const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int nv)
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ctpsa_t *t = GET_TMPC(a);
-  mad_ctpsa_complex(a, NULL, t);
+  mad_ctpsa_cplx   (a, NULL, t);
   mad_ctpsa_poisson(t, b, c, nv);
   REL_TMPC(t);
   DBGFUN(<-);
