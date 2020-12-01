@@ -735,7 +735,7 @@ FUN(asin) (const T *a, T *c)                     // checked for real and complex
     mad_ctpsa_scl(c, -I, c);
 #else
     ctpsa_t *t = GET_TMPC(c);
-    mad_ctpsa_complex(a, NULL, t);
+    mad_ctpsa_cplx(a, NULL, t);
     mad_ctpsa_logaxpsqrtbpcx2(t, I, 1, -1, t);
     mad_ctpsa_scl(t, -I, t);
     mad_ctpsa_real(t, c);
@@ -782,7 +782,7 @@ FUN(acos) (const T *a, T *c)                     // checked for real and complex
     mad_ctpsa_axpb(I, c, M_PI_2, c);
 #else
     ctpsa_t *t = GET_TMPC(c);
-    mad_ctpsa_complex(a, NULL, t);
+    mad_ctpsa_cplx(a, NULL, t);
     mad_ctpsa_logaxpsqrtbpcx2(t, I, 1, -1, t);
     mad_ctpsa_axpb(I, t, M_PI_2, t);
     mad_ctpsa_real(t, c);
@@ -831,7 +831,7 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
     mad_ctpsa_scl(c, I/2, c);
 #else
     ctpsa_t *tn = GET_TMPC(c), *td = GET_TMPC(c);
-    mad_ctpsa_complex(a, NULL, tn);
+    mad_ctpsa_cplx(a, NULL, tn);
     mad_ctpsa_axpb(-1, tn, I, td);
     mad_ctpsa_set0(tn, 1, I);
     mad_ctpsa_logxdy(tn, td, tn);
@@ -885,7 +885,7 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
     mad_ctpsa_scl(c, I/2, c);
 #else
     ctpsa_t *tn = GET_TMPC(c), *td = GET_TMPC(c);
-    mad_ctpsa_complex(a, NULL, tn);
+    mad_ctpsa_cplx(a, NULL, tn);
     mad_ctpsa_copy(tn, td);
     mad_ctpsa_set0(tn, 1, -I);
     mad_ctpsa_set0(td, 1,  I);
