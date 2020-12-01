@@ -70,10 +70,15 @@ void     mad_ctpsa_setvar  (      ctpsa_t *t, cnum_t v, idx_t iv_, cnum_t scl_);
 void     mad_ctpsa_setvar_r(      ctpsa_t *t, num_t v_re, num_t v_im, idx_t iv_, num_t scl_re_, num_t scl_im_);
 void     mad_ctpsa_clear   (      ctpsa_t *t);
 
-// real, imaginary (see also abs and arg)
-void     mad_ctpsa_real    (const ctpsa_t *t, tpsa_t *r);
-void     mad_ctpsa_imag    (const ctpsa_t *t, tpsa_t *r);
-void     mad_ctpsa_complex (const  tpsa_t *re_, const tpsa_t *im_, ctpsa_t *r);
+// real, imaginary, norm, phase, conversion
+void     mad_ctpsa_cplx    (const  tpsa_t *re_, const tpsa_t *im_, ctpsa_t *r);
+void     mad_ctpsa_real    (const ctpsa_t *t,  tpsa_t *r);
+void     mad_ctpsa_imag    (const ctpsa_t *t,  tpsa_t *r);
+void     mad_ctpsa_cabs    (const ctpsa_t *t,  tpsa_t *r);
+void     mad_ctpsa_carg    (const ctpsa_t *t,  tpsa_t *r);
+void     mad_ctpsa_unit    (const ctpsa_t *t, ctpsa_t *r);
+void     mad_ctpsa_rect    (const ctpsa_t *t, ctpsa_t *r);
+void     mad_ctpsa_polar   (const ctpsa_t *t, ctpsa_t *r);
 
 // indexing / monomials (return idx_t = -1 if invalid)
 ord_t    mad_ctpsa_mono    (const ctpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i);
@@ -137,8 +142,6 @@ void     mad_ctpsa_poisst  (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c, int 
 void     mad_ctpsa_tpoiss  (const  tpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int nv);
 
 // functions
-void     mad_ctpsa_abs     (const ctpsa_t *a, tpsa_t  *c);
-void     mad_ctpsa_arg     (const ctpsa_t *a, tpsa_t  *c);
 void     mad_ctpsa_conj    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_sqrt    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_exp     (const ctpsa_t *a, ctpsa_t *c);
@@ -172,6 +175,7 @@ void     mad_ctpsa_inv     (const ctpsa_t *a, cnum_t v, ctpsa_t *c); // c  = v/a
 void     mad_ctpsa_invsqrt (const ctpsa_t *a, cnum_t v, ctpsa_t *c); // c  = v/sqrt(a)
 
 void     mad_ctpsa_hypot   (const ctpsa_t *x, const ctpsa_t *y, ctpsa_t *r);
+void     mad_ctpsa_hypot3  (const ctpsa_t *x, const ctpsa_t *y, const ctpsa_t *z, ctpsa_t *r);
 
 void     mad_ctpsa_deriv   (const ctpsa_t *a, ctpsa_t *c, int iv); // TODO: check functions that rely on it
 void     mad_ctpsa_derivm  (const ctpsa_t *a, ctpsa_t *c, ssz_t n, const ord_t m[n]);
