@@ -32,7 +32,7 @@ local abs, ceil, floor in math
 
 local _C                                                          in MAD
 local frac, trunc, round                                          in MAD.gmath
-local is_number, is_integer, is_string, has_method                in MAD.typeid
+local is_number, is_integer, is_string, get_metamethod            in MAD.typeid
 local strnum, num2str, strtrim                                    in MAD.utility
 
 -- FFI type constructors
@@ -43,6 +43,8 @@ local cres = ffi.new 'complex[1]'
 
 local type, assert, error, tostring, tonumber, string =
       type, assert, error, tostring, tonumber, string
+
+local gmm = get_metamethod
 
 -- implementation -------------------------------------------------------------o
 
@@ -56,7 +58,7 @@ M.frac  = \x -> complex(frac (x.re), frac (x.im))
 M.trunc = \x -> complex(trunc(x.re), trunc(x.im))
 M.round = \x -> complex(round(x.re), round(x.im))
 
-M.abs   = \x -> _C.mad_cnum_abs_r   (x.re, x.im)
+M.unit  = \x => _C.mad_cnum_unit_r  (x.re, x.im, cres) return   cres[0] end
 M.sqrt  = \x => _C.mad_cnum_sqrt_r  (x.re, x.im, cres) return   cres[0] end
 M.exp   = \x => _C.mad_cnum_exp_r   (x.re, x.im, cres) return   cres[0] end
 M.log   = \x => _C.mad_cnum_log_r   (x.re, x.im, cres) return   cres[0] end
@@ -70,7 +72,6 @@ M.sinh  = \x => _C.mad_cnum_sinh_r  (x.re, x.im, cres) return   cres[0] end
 M.cosh  = \x => _C.mad_cnum_cosh_r  (x.re, x.im, cres) return   cres[0] end
 M.tanh  = \x => _C.mad_cnum_tanh_r  (x.re, x.im, cres) return   cres[0] end
 M.coth  = \x => _C.mad_cnum_tanh_r  (x.re, x.im, cres) return 1/cres[0] end
-
 M.asin  = \x => _C.mad_cnum_asin_r  (x.re, x.im, cres) return   cres[0] end
 M.acos  = \x => _C.mad_cnum_acos_r  (x.re, x.im, cres) return   cres[0] end
 M.atan  = \x => _C.mad_cnum_atan_r  (x.re, x.im, cres) return   cres[0] end
@@ -85,32 +86,47 @@ M.acoth = \x => x = 1/x
 M.sinc  = \x => _C.mad_cnum_sinc_r  (x.re, x.im, cres) return   cres[0] end
 M.sinhc = \x => _C.mad_cnum_sinhc_r (x.re, x.im, cres) return   cres[0] end
 
-M.angle = \x,y -> _C.mad_cnum_arg_r(y.re, y.im) - _C.mad_cnum_arg_r(x.re, x.im)
+-- generic functions with 2+ arguments
+M.pow    = 'set below'
+M.hypot  = \x,y   -> M.sqrt(x^2+y^2)     -- for compatibility
+M.hypot3 = \x,y,z -> M.sqrt(x^2+y^2+z^2) -- for compatibility
 
+-- Faddeeva based functions
+M.wf    = \x,tol => _C.mad_cnum_wf_r   (x.re, x.im, tol or 0, cres) return cres[0] end
 M.erf   = \x,tol => _C.mad_cnum_erf_r  (x.re, x.im, tol or 0, cres) return cres[0] end
 M.erfc  = \x,tol => _C.mad_cnum_erfc_r (x.re, x.im, tol or 0, cres) return cres[0] end
 M.erfi  = \x,tol => _C.mad_cnum_erfi_r (x.re, x.im, tol or 0, cres) return cres[0] end
-M.erfw  = \x,tol => _C.mad_cnum_erfw_r (x.re, x.im, tol or 0, cres) return cres[0] end
 M.erfcx = \x,tol => _C.mad_cnum_erfcx_r(x.re, x.im, tol or 0, cres) return cres[0] end
 
-M.tgamma = \x,tol -> error('NYI')
-M.lgamma = \x,tol -> error('NYI')
-
 -- complex generic functions
-M.carg  = \x -> _C.mad_cnum_arg_r (x.re, x.im)
 M.real  = \x -> x.re
 M.imag  = \x -> x.im
+M.reim  = \x -> (x.re, x.im)
 M.conj  = \x -> complex(x.re, -x.im)
+M.cabs  = \x -> _C.mad_cnum_abs_r   (x.re, x.im)
+M.carg  = \x -> _C.mad_cnum_arg_r   (x.re, x.im)
 M.proj  = \x => _C.mad_cnum_proj_r  (x.re, x.im, cres) return cres[0] end
 M.rect  = \x => _C.mad_cnum_rect_r  (x.re, x.im, cres) return cres[0] end
 M.polar = \x => _C.mad_cnum_polar_r (x.re, x.im, cres) return cres[0] end
 
--- complex non-generic functions
-M.unit  = \x => _C.mad_cnum_unit_r  (x.re, x.im, cres) return cres[0] end
-
 -- complex operators
 function M.__unm (x)
   return complex(-x.re, -x.im)
+end
+
+function M.__eq (x, y, tol_)
+  tol_ = tol_ or 0
+  assert(is_number(tol_), "invalid argument #3 (number expected)")
+  if is_scalar(y) then                           -- cpx|num == cpx|num
+    x, y = complex(x), complex(y)
+    if tol_ == 0 then
+      return x.re == y.re and x.im == y.im
+    else
+      return abs(x.re - y.re) <= tol_ and abs(x.im - y.im) <= tol_
+    end
+  else                                           -- cpx == ?
+    return assert(gmm(y,'__eq'), "invalid 'cpx == ?' operation")(x, y, tol_)
+  end
 end
 
 function M.__add (x, y, r_)
@@ -120,10 +136,9 @@ function M.__add (x, y, r_)
     return complex(x.re + y, x.im)
   elseif is_complex(y) and is_complex(x) then    -- cpx + cpx
     return complex(x.re + y.re, x.im + y.im)
-  elseif has_method(y,'__radd_cpx') then         -- cpx + ?
-    return y:__radd_cpx(x, r_)
+  else                                           -- cpx + ?
+    return assert(gmm(y,'__add'), "invalid 'cpx + ?' operation")(x, y, r_)
   end
-  error("invalid arguments (unsupported complex operation '+')")
 end
 
 function M.__sub (x, y, r_)
@@ -133,10 +148,9 @@ function M.__sub (x, y, r_)
     return complex(x.re - y, x.im)
   elseif is_complex(y) and is_complex(x) then    -- cpx - cpx
     return complex(x.re - y.re, x.im - y.im)
-  elseif has_method(y,'__rsub_cpx') then         -- cpx - ?
-    return y:__rsub_cpx(x, r_)
+  else                                           -- cpx - ?
+    return assert(gmm(y,'__sub'), "invalid 'cpx - ?' operation")(x, y, r_)
   end
-  error("invalid arguments (unsupported complex operation '-')")
 end
 
 function M.__mul (x, y, r_)
@@ -146,17 +160,13 @@ function M.__mul (x, y, r_)
     return complex(x.re * y, x.im * y)
   elseif is_complex(y) and is_complex(x) then    -- cpx * cpx
     return complex(x.re*y.re - x.im*y.im, x.re*y.im + x.im*y.re)
-  elseif has_method(y,'__rmul_cpx') then         -- cpx * ?
-    return y:__rmul_cpx(x, r_)
+  else                                           -- cpx * ?
+    return assert(gmm(y,'__mul'), "invalid 'cpx * ?' operation")(x, y, r_)
   end
-  error("invalid arguments (unsupported complex operation '*')")
 end
 
 function M.__emul (x, y, r_)
-  if has_method(y,'__remul_cpx') then            -- cpx .* ?
-    return y:__remul_cpx(x, r_)
-  end
-  error("invalid arguments (unsupported complex operation '.*'')")
+  return assert(gmm(y,'__emul'), "invalid 'cpx .* ?' operation")(x, y, r_)
 end
 
 function M.inv (x)
@@ -170,34 +180,26 @@ function M.__div (x, y, r_, rcond_)
     return complex(x.re / y, x.im / y)
   elseif is_complex(y) and is_complex(x) then    -- cpx / cpx
     _C.mad_cnum_div_r(x.re, x.im, y.re, y.im, cres) return cres[0]
-  elseif has_method(y,'__rdiv_cpx') then         -- cpx / ?
-    return y:__rdiv_cpx(x, r_, rcond_)
+  else                                           -- cpx / ?
+    return assert(gmm(y,'__div'), "invalid 'cpx / ?' operation")(x, y, r_)
   end
-  error("invalid arguments (unsupported complex operation '/')")
 end
 
 function M.__ediv (x, y, r_)
-  if has_method(y,'__rediv_cpx') then            -- cpx ./ ?
-    return y:__rediv_cpx(x, r_)
-  end
-  error("invalid arguments (unsupported complex operation './')")
+  return assert(gmm(y,'__ediv'), "invalid 'cpx ./ ?' operation")(x, y, r_)
 end
 
 function M.__mod (x, y, r_)
   if is_scalar(y) then                           -- cpx|num % cpx|num
     x, y = complex(x), complex(y)
     _C.mad_cnum_mod_r(x.re, x.im, y.re, y.im, cres) return cres[0]
-  elseif has_method(y,'__rmod_cpx') then         -- cpx % ?
-    return y:__rmod_cpx(x, r_)
+  else                                           -- cpx % ?
+    return assert(gmm(y,'__mod'), "invalid 'cpx % ?' operation")(x, y, r_)
   end
-  error("invalid arguments (unsupported complex operation '%')")
 end
 
 function M.__emod (x, y, r_)
-  if has_method(y,'__remod_cpx') then            -- cpx .% ?
-    return y:__remod_cpx(x, r_)
-  end
-  error("invalid arguments (unsupported complex operation '.%'')")
+  return assert(gmm(y,'__emod'), "invalid 'cpx .% ?' operation")(x, y, r_)
 end
 
 function M.__pow (x, y, r_)
@@ -209,33 +211,13 @@ function M.__pow (x, y, r_)
   elseif is_scalar(y) then                       -- cpx|num ^ cpx|num
     x, y = complex(x), complex(y)
     _C.mad_cnum_pow_r(x.re, x.im, y.re, y.im, cres) return cres[0]
-  elseif has_method(y,'__rpow_cpx') then         -- cpx ^ ?
-    return y:__rpow_cpx(x, r_)
+  else                                           -- cpx ^ ?
+    return assert(gmm(y,'__pow'), "invalid 'cpx ^ ?' operation")(x, y, r_)
   end
-  error("invalid arguments (unsupported complex operation '^')")
 end
 
 function M.__epow (x, y, r_)
-  if has_method(y,'__repow_cpx') then            -- cpx .^ ?
-    return y:__repow_cpx(x, r_)
-  end
-  error("invalid arguments (unsupported complex operation '.^')")
-end
-
-function M.__eq (x, y, tol_)
-  tol_ = tol_ or 0
-  assert(is_number(tol_), "invalid argument #3 (number expected)")
-  if is_scalar(y) then                           -- cpx|num == cpx|num
-    x, y = complex(x), complex(y)
-    if tol_ == 0 then
-      return x.re == y.re and x.im == y.im
-    else
-      return abs(x.re - y.re) <= tol_ and abs(x.im - y.im) <= tol_
-    end
-  elseif has_method(y,'__req_cpx') then          -- cpx == ?
-    return y:__req_cpx(x, tol_)
-  end
-  error("invalid arguments (unsupported complex operation '==')")
+  return assert(gmm(y,'__epow'), "invalid 'cpx .^ ?' operation")(x, y, r_)
 end
 
 function M.__tostring (x)
