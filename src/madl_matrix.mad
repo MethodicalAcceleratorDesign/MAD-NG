@@ -34,7 +34,7 @@ local _C, tostring, complex, tocomplex, operator, constant in MAD
 
 local is_nil, is_boolean, is_number, is_integer, is_string,
       is_table, is_complex, is_scalar, is_callable, is_iterable,
-      has_method                                                 in MAD.typeid
+      get_metamethod                                             in MAD.typeid
 local ident, swap, compose, bind1st                              in MAD.gfunc
 local random, carg, real, imag, conj, norm, proj, rect, polar,
       ceil, floor, frac, trunc, round, abs, exp, log, log10, sqrt,
@@ -58,6 +58,8 @@ local cpx_sz = ffi.sizeof 'cnum_t'
 
 local type, assert, error, ipairs, tonumber, tostring, table, string, rawequal =
       type, assert, error, ipairs, tonumber, tostring, table, string, rawequal
+
+local gmm = get_metamethod
 
 -- types ----------------------------------------------------------------------o
 
@@ -780,33 +782,41 @@ function MR.cplx (re_, im_, r) -- (re,im) -> r
   return r
 end
 
-function MR.real (x, re_)
-  assert(is_nil(re_) or is_matrix(re_), "invalid argument #2 (matrix expected)")
-  re_ = chksiz(re_, x) or matrix_alloc(x:sizes())
-  _C.mad_vec_copy(x.data, re_.data, x:size(), 1)
-  return re_
-end
-
-function MC.real (x, re_, im_)
+function MC.reim (x, re_, im_) -- x -> (re,im)
   assert(is_nil(re_) or is_matrix(re_), "invalid argument #2 (matrix expected)")
   assert(is_nil(im_) or is_matrix(im_), "invalid argument #3 (matrix expected)")
-  re_ = chksiz(re_, x, im_) or matrix_alloc(x:sizes())
-  _C.mad_cvec_vec(x.data, re_.data, im_ and im_.data, x:size(), 1)
+  re_ = chksiz(re_,x) or matrix_alloc(x:sizes())
+  im_ = chksiz(im_,x) or matrix_alloc(x:sizes())
+  _C.mad_cvec_vec(x.data, re_.data, im_.data, x:size(), 1)
   return re_, im_
 end
 
-function MR.imag (x, im_)
-  assert(is_nil(im_) or is_matrix(im_), "invalid argument #2 (matrix expected)")
-  im_ = chksiz(im_, x) or matrix_alloc(x:sizes())
-  _C.mad_vec_zero(im_.data, x:size(), 1)
-  return im_
+function MR.real (x, r)
+  assert(is_nil(r) or is_matrix(r), "invalid argument #2 (matrix expected)")
+  r = chksiz(r,x) or matrix_alloc(x:sizes())
+  _C.mad_vec_copy(x.data, r.data, x:size(), 1)
+  return r
 end
 
-function MC.imag (x, im_)
-  assert(is_nil(im_) or is_matrix(im_), "invalid argument #2 (matrix expected)")
-  im_ = chksiz(im_, x) or matrix_alloc(x:sizes())
-  _C.mad_cvec_vec(x.data, nil, im_.data, x:size(), 1)
-  return im_
+function MC.real (x, r)
+  assert(is_nil(r) or is_matrix(r), "invalid argument #2 (matrix expected)")
+  r = chksiz(r,x) or matrix_alloc(x:sizes())
+  _C.mad_cvec_vec(x.data, r.data, nil, x:size(), 1)
+  return r
+end
+
+function MR.imag (x, r)
+  assert(is_nil(r) or is_matrix(r), "invalid argument #2 (matrix expected)")
+  r = chksiz(r,x) or matrix_alloc(x:sizes())
+  _C.mad_vec_zero(r.data, x:size(), 1)
+  return r
+end
+
+function MC.imag (x, r)
+  assert(is_nil(r) or is_matrix(r), "invalid argument #2 (matrix expected)")
+  r = chksiz(r,x) or matrix_alloc(x:sizes())
+  _C.mad_cvec_vec(x.data, nil, r.data, x:size(), 1)
+  return r
 end
 
 -- getx, setx, swpx -----------------------------------------------------------o
@@ -1340,13 +1350,13 @@ MI.filter = MR.filter
 
 -- special maps ---------------------------------------------------------------o
 
+MR.abs   = \x,r_ -> x:map(abs  , r_)
 MR.ceil  = \x,r_ -> x:map(ceil , r_)
 MR.floor = \x,r_ -> x:map(floor, r_)
 MR.frac  = \x,r_ -> x:map(frac , r_)
 MR.trunc = \x,r_ -> x:map(trunc, r_)
 MR.round = \x,r_ -> x:map(round, r_)
 
-MR.abs   = \x,r_ -> x:map(abs  , r_)
 MR.sqrt  = \x,r_ -> x:map(sqrt , r_)
 MR.exp   = \x,r_ -> x:map(exp  , r_)
 MR.log   = \x,r_ -> x:map(log  , r_)
@@ -1366,12 +1376,18 @@ MR.asinh = \x,r_ -> x:map(asinh, r_)
 MR.acosh = \x,r_ -> x:map(acosh, r_)
 MR.atanh = \x,r_ -> x:map(atanh, r_)
 
+MR.wf    = \x,r_ -> x:map(wf    , r_)
 MR.erf   = \x,r_ -> x:map(erf   , r_)
+MR.erfc  = \x,r_ -> x:map(erfc  , r_)
+MR.erfi  = \x,r_ -> x:map(erfi  , r_)
+MR.erfcx = \x,r_ -> x:map(erfcx , r_)
+
 MR.tgamma= \x,r_ -> x:map(tgamma, r_)
 MR.lgamma= \x,r_ -> x:map(lgamma, r_)
 
-MR.carg  = \x,r_ -> x:map(carg , r_)
 MR.conj  = \x,r_ -> x:map(conj , r_)
+MR.cabs  = \x,r_ -> x:map(cabs , r_)
+MR.carg  = \x,r_ -> x:map(carg , r_)
 MR.proj  = \x,r_ -> x:map(proj , r_)
 MR.rect  = \x,r_ -> x:map(rect , r_)
 MR.polar = \x,r_ -> x:map(polar, r_)
@@ -1831,23 +1847,15 @@ MR.__unm, MR.__mod, MR.__pow, MR.__emod, MR.__epow
 
 -- equal
 
-function MR.__req_cpx (y, x, tol_) -- cpx == mat
-  tol_ = tol_ or 0
-  assert(is_number(tol_), "invalid argument #3 (number expected)")
-  if abs(x.im) > tol_ then return false end
-  for i=1,y:size() do
-    if abs(geti(y,i) - x.re) > tol_ then return false end
-  end
-  return true
-end
-
 function MR.__eq (x, y, tol_)
   if is_nil(x) or is_nil(y) then return false end
   tol_ = tol_ or 0
   assert(is_number(tol_), "invalid argument #3 (number expected)")
-  if is_number(x) then                    -- num == mat
+  if is_scalar(x) then                        -- num or cpx == mat
+    x = complex(x)
+    if abs(x.im) > tol_ then return false end
     for i=1,y:size() do
-      if abs(geti(y,i) - x) > tol_ then return false end
+      if abs(geti(y,i) - x.re) > tol_ then return false end
     end
   elseif is_scalar(y) then                    -- mat == num or cpx
     y = complex(y)
@@ -1866,20 +1874,8 @@ function MR.__eq (x, y, tol_)
     for i=1,x:size() do
       if abs(geti(x,i) - geti(y,i)) > tol_ then return false end
     end
-  elseif has_method(y, '__req_mat') then      -- mat == ?
-    return y:__req_mat(x, tol_)
-  else
-    return false
-  end
-  return true
-end
-
-function MC.__req_cpx (y, x, tol_) -- cpx == cmat
-  tol_ = tol_ or 0
-  assert(is_number(tol_), "invalid argument #3 (number expected)")
-  for i=1,y:size() do
-    if abs(geti(y,i).re - x.re) > tol_ or
-       abs(geti(y,i).im - x.im) > tol_ then return false end
+  else                                        -- mat == ?
+    return assert(gmm(y,'__eq'), "invalid 'mat == ?' operation")(x, y, tol_)
   end
   return true
 end
@@ -1888,10 +1884,11 @@ function MC.__eq (x, y, tol_)
   if is_nil(x) or is_nil(y) then return false end
   tol_ = tol_ or 0
   assert(is_number(tol_), "invalid argument #3 (number expected)")
-  if is_number(x) then                        -- num == cmat
+  if is_scalar(x) then                        -- num or cpx == cmat
+    x = complex(x)
     for i=1,y:size() do
-      if abs(geti(y,i).re - x) > tol_ or
-         abs(geti(y,i).im    ) > tol_ then return false end
+      if abs(geti(y,i).re - x.re) > tol_ or
+         abs(geti(y,i).im - x.im) > tol_ then return false end
     end
   elseif is_scalar(y) then                    -- cmat == num or cpx
     y = complex(y)
@@ -1911,10 +1908,8 @@ function MC.__eq (x, y, tol_)
       if abs(geti(x,i).re - geti(y,i).re) > tol_ or
          abs(geti(x,i).im - geti(y,i).im) > tol_ then return false end
     end
-  elseif has_method(y, '__req_cmat') then     -- cmat == ?
-    return y:__req_mat(x, tol_)
-  else
-    return false
+  else                                        -- cmat == ?
+    return assert(gmm(y,'__eq'), "invalid 'cmat == ?' operation")(x, y, tol_)
   end
   return true
 end
@@ -1934,20 +1929,13 @@ function MI.__eq (x, y)
     for i=1,x:size() do
       if geti(x,i) ~= geti(y,i) then return false end
     end
-  elseif has_method(y, '__req_imat') then     -- imat == ?
-    return y:__req_imat(x)
-  else
-    return false
+  else                                        -- imat == ?
+    return assert(gmm(y,'__eq'), "invalid 'imat == ?' operation")(x, y)
   end
   return true
 end
 
 -- add (see also kadd)
-
-function MR.__radd_cpx (y, x, r)                 -- cpx + mat => cpx + vec
-  r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_vec_addc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
-end
 
 function MR.__add (x, y, r)
   if is_number(x) then                           -- num + mat => num + vec
@@ -1956,6 +1944,9 @@ function MR.__add (x, y, r)
   elseif is_number(y) then                       -- mat + num => vec + num
     r = chksiz(r,x) or matrix_alloc(x:sizes())
     _C.mad_vec_addn(x.data, y, r.data, r:size(), 1) return r
+  elseif is_complex(x) then                      -- cpx + mat => cpx + vec
+    r = chksiz(r,y) or cmatrix_alloc(y:sizes())
+    _C.mad_vec_addc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
   elseif is_complex(y) then                      -- mat + cpx => vec + cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
     _C.mad_vec_addc_r(x.data, y.re, y.im, r.data, r:size(), 1) return r
@@ -1965,15 +1956,9 @@ function MR.__add (x, y, r)
   elseif is_matrix(y) and is_matrix(x) then      -- mat + mat => vec + vec
     r = chksiz(r,x,y) or matrix_alloc(x:sizes())
     _C.mad_vec_add(x.data, y.data, r.data, r:size(), 1) return r
-  elseif has_method(y, '__radd_mat') then        -- mat + ?
-    return y:__radd_mat(x, r)
+  else                                           -- mat + ?
+    return assert(gmm(y,'__add'), "invalid 'mat + ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '+')")
-end
-
-function MC.__radd_cpx (y, x, r)                 -- cpx + cmat => cpx + cvec
-  r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_cvec_addc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
 end
 
 function MC.__add (x, y, r)
@@ -1983,6 +1968,9 @@ function MC.__add (x, y, r)
   elseif is_number(y) then                       -- cmat + num => cvec + num
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
     _C.mad_cvec_addn(x.data, y, r.data, r:size(), 1) return r
+  elseif is_complex(x) then                      -- cpx + cmat => cpx + cvec
+    r = chksiz(r,y) or cmatrix_alloc(y:sizes())
+    _C.mad_cvec_addc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
   elseif is_complex(y) then                      -- cmat + cpx => cvec + cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
     _C.mad_cvec_addc_r(x.data, y.re, y.im, r.data, r:size(), 1) return r
@@ -1992,10 +1980,9 @@ function MC.__add (x, y, r)
   elseif is_cmatrix(y) and is_cmatrix(x) then    -- cmat + cmat => cvec + cvec
     r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
     _C.mad_cvec_add(x.data, y.data, r.data, r:size(), 1) return r
-  elseif has_method(y, '__radd_cmat') then       -- cmat + ?
-    return y:__radd_cmat(x, r)
+  else                                           -- cmat + ?
+    return assert(gmm(y,'__add'), "invalid 'cmat + ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '+')")
 end
 
 function MI.__add (x, y, r)
@@ -2008,18 +1995,12 @@ function MI.__add (x, y, r)
   elseif is_matrix(y) and is_matrix(x) then      -- imat + imat => ivec + ivec
     r = chksiz(r,x,y) or imatrix_alloc(x:sizes())
     _C.mad_ivec_add(x.data, y.data, r.data, r:size(), 1) return r
-  elseif has_method(y, '__radd_imat') then       -- imat + ?
-    return y:__radd_imat(x, r)
+  else                                           -- imat + ?
+    return assert(gmm(y,'__add'), "invalid 'imat + ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '+')")
 end
 
 -- sub (see also kadd)
-
-function MR.__rsub_cpx (y, x, r)                 -- cpx - mat => cpx - vec
-  r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_vec_subc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
-end
 
 function MR.__sub (x, y, r)
   if is_number(x) then                           -- num - mat => num - vec
@@ -2028,6 +2009,9 @@ function MR.__sub (x, y, r)
   elseif is_number(y) then                       -- mat - num => vec + -num
     r = chksiz(r,x) or matrix_alloc(x:sizes())
     _C.mad_vec_addn(x.data, -y, r.data, r:size(), 1) return r
+  elseif is_complex(x) then                      -- cpx - mat => cpx - vec
+    r = chksiz(r,y) or cmatrix_alloc(y:sizes())
+    _C.mad_vec_subc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
   elseif is_complex(y) then                      -- mat - cpx => vec + -cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
     _C.mad_vec_addc_r(x.data, -y.re, -y.im, r.data, r:size(), 1) return r
@@ -2037,15 +2021,9 @@ function MR.__sub (x, y, r)
   elseif is_matrix(y) and is_matrix(x) then      -- mat - mat => vec - vec
     r = chksiz(r,x,y) or matrix_alloc(x:sizes())
     _C.mad_vec_sub(x.data, y.data, r.data, r:size(), 1) return r
-  elseif has_method(y, '__rsub_mat') then        -- mat - ?
-    return y:__rsub_mat(x, r)
+  else                                           -- mat - ?
+    return assert(gmm(y,'__sub'), "invalid 'mat - ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '-')")
-end
-
-function MC.__rsub_cpx (y, x, r)                 -- cpx - cmat => cpx - cvec
-  r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_cvec_subc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
 end
 
 function MC.__sub (x, y, r)
@@ -2055,6 +2033,9 @@ function MC.__sub (x, y, r)
   elseif is_number(y) then                       -- cmat - num => cvec + -num
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
     _C.mad_cvec_addn(x.data, -y, r.data, r:size(), 1) return r
+  elseif is_complex(x) then                      -- cpx - cmat => cpx - cvec
+    r = chksiz(r,y) or cmatrix_alloc(y:sizes())
+    _C.mad_cvec_subc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
   elseif is_complex(y) then                      -- cmat - cpx => cvec + -cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
     _C.mad_cvec_addc_r(x.data, -y.re, -y.im, r.data, r:size(), 1) return r
@@ -2064,10 +2045,9 @@ function MC.__sub (x, y, r)
   elseif is_cmatrix(y) and is_cmatrix(x) then    -- cmat - cmat => cvec - cvec
     r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
     _C.mad_cvec_sub(x.data, y.data, r.data, r:size(), 1) return r
-  elseif has_method(y, '__rsub_cmat') then       -- cmat - ?
-    return y:__rsub_cmat(x, r)
+  else                                           -- cmat - ?
+    return assert(gmm(y,'__sub'), "invalid 'cmat - ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '-')")
 end
 
 function MI.__sub (x, y, r)
@@ -2080,18 +2060,12 @@ function MI.__sub (x, y, r)
   elseif is_imatrix(y) and is_imatrix(x) then    -- imat - imat => ivec - ivec
     r = chksiz(r,x,y) or imatrix_alloc(x:sizes())
     _C.mad_ivec_sub(x.data, y.data, r.data, r:size(), 1) return r
-  elseif has_method(y, '__rsub_imat') then       -- imat - ?
-    return y:__rsub_imat(x, r)
+  else                                           -- imat - ?
+    return assert(gmm(y,'__sub'), "invalid 'imat - ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '-')")
 end
 
 -- mul
-
-function MR.__rmul_cpx (y, x, r)                 -- cpx * mat => cpx * vec
-  r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_vec_mulc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
-end
 
 function MR.__mul (x, y, r)
   if is_number(x) then                           -- num * mat => num * vec
@@ -2100,6 +2074,9 @@ function MR.__mul (x, y, r)
   elseif is_number(y) then                       -- mat * num => vec * num
     r = chksiz(r,x) or matrix_alloc(x:sizes())
     _C.mad_vec_muln(x.data, y, r.data, r:size(), 1) return r
+  elseif is_complex(x) then                      -- cpx * mat => cpx * vec
+    r = chksiz(r,y) or cmatrix_alloc(y:sizes())
+    _C.mad_vec_mulc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
   elseif is_complex(y) then                      -- mat * cpx => vec * cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
     _C.mad_vec_mulc_r(x.data, y.re, y.im, r.data, r:size(), 1) return r
@@ -2109,15 +2086,9 @@ function MR.__mul (x, y, r)
   elseif is_matrix(y) and is_matrix(x) then      -- mat * mat
     r = chksizm(r,x,y) or matrix_alloc(x.nrow, y.ncol)
     _C.mad_mat_mul(x.data, y.data, r.data, r.nrow, r.ncol, x.ncol) return r
-  elseif has_method(y, '__rmul_mat') then        -- mat * ?
-    return y:__rmul_mat(x, r)
+  else                                           -- mat * ?
+    return assert(gmm(y,'__mul'), "invalid 'mat * ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '*')")
-end
-
-function MC.__rmul_cpx (y, x, r)                 -- cpx * cmat => cpx * cvec
-  r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_cvec_mulc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
 end
 
 function MC.__mul (x, y, r)
@@ -2127,6 +2098,9 @@ function MC.__mul (x, y, r)
   elseif is_number(y) then                       -- cmat * num => cvec * num
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
     _C.mad_cvec_muln(x.data, y, r.data, r:size(), 1) return r
+  elseif is_complex(x) then                      -- cpx * cmat => cpx * cvec
+    r = chksiz(r,y) or cmatrix_alloc(y:sizes())
+    _C.mad_cvec_mulc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
   elseif is_complex(y) then                      -- cmat * cpx => cvec * cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
     _C.mad_cvec_mulc_r(x.data, y.re, y.im, r.data, r:size(), 1) return r
@@ -2136,10 +2110,9 @@ function MC.__mul (x, y, r)
   elseif is_cmatrix(y) and is_cmatrix(x) then    -- cmat * cmat
     r = chksizm(r,x,y) or cmatrix_alloc(x.nrow, y.ncol)
     _C.mad_cmat_mul(x.data, y.data, r.data, r.nrow, r.ncol, x.ncol) return r
-  elseif has_method(y, '__rmul_cmat') then       -- cmat * ?
-    return y:__rmul_cmat(x, r)
+  else                                           -- cmat * ?
+    return assert(gmm(y,'__mul'), "invalid 'cmat * ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '*')")
 end
 
 function MI.__mul (x, y, r)
@@ -2149,18 +2122,12 @@ function MI.__mul (x, y, r)
   elseif is_number(y) then                       -- imat * idx => ivec * idx
     r = chksiz(r,x) or imatrix_alloc(x:sizes())
     _C.mad_ivec_muln(x.data, y, r.data, r:size(), 1) return r
-  elseif has_method(y, '__rmul_imat') then       -- imat * ?
-    return y:__rmul_imat(x, r)
+  else                                           -- imat * ?
+    return assert(gmm(y,'__mul'), "invalid 'imat * ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '*')")
 end
 
 -- element wise mul (.*), also known as Hadamard product.
-
-function MR.__remul_cpx (y, x, r)                -- cpx .* mat => cpx * vec
-  r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_vec_mulc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
-end
 
 function MR.__emul (x, y, r)
   if is_number(x) then                           -- num .* mat => num * vec
@@ -2169,6 +2136,9 @@ function MR.__emul (x, y, r)
   elseif is_number(y) then                       -- mat .* num => vec * num
     r = chksiz(r,x) or matrix_alloc(x:sizes())
     _C.mad_vec_muln(x.data, y, r.data, r:size(), 1) return r
+  elseif is_complex(x) then                      -- cpx .* mat => cpx * vec
+    r = chksiz(r,y) or cmatrix_alloc(y:sizes())
+    _C.mad_vec_mulc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
   elseif is_complex(y) then                      -- mat .* cpx => vec * cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
     _C.mad_vec_mulc_r(x.data, y.re, y.im, r.data, r:size(), 1) return r
@@ -2178,15 +2148,9 @@ function MR.__emul (x, y, r)
   elseif is_matrix(y) and is_matrix(x) then      -- mat .* mat => vec * vec
     r = chksiz(r,x,y) or matrix_alloc(x:sizes())
     _C.mad_vec_mul(x.data, y.data, r.data, r:size(), 1) return r
-  elseif has_method(y, '__remul_mat') then       -- mat .* ?
-    return y:__remul_mat(x, r)
+  else                                           -- mat .* ?
+    return assert(gmm(y,'__emul'), "invalid 'mat .* ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '.*')")
-end
-
-function MC.__remul_cpx (y, x, r)                -- cpx .* cmat => cpx * cvec
-  r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_cvec_mulc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
 end
 
 function MC.__emul (x, y, r)
@@ -2196,6 +2160,9 @@ function MC.__emul (x, y, r)
   elseif is_number(y) then                       -- cmat .* num => cvec * num
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
     _C.mad_cvec_muln(x.data, y, r.data, r:size(), 1) return r
+  elseif is_complex(x) then                      -- cpx .* cmat => cpx * cvec
+    r = chksiz(r,y) or cmatrix_alloc(y:sizes())
+    _C.mad_cvec_mulc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
   elseif is_complex(y) then                      -- cmat .* cpx => cvec * cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
     _C.mad_cvec_mulc_r(x.data, y.re, y.im, r.data, r:size(), 1) return r
@@ -2205,10 +2172,9 @@ function MC.__emul (x, y, r)
   elseif is_cmatrix(y) and is_cmatrix(x) then    -- cmat .* cmat => cvec * cvec
     r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
     _C.mad_cvec_mul(x.data, y.data, r.data, r:size(), 1) return r
-  elseif has_method(y, '__remul_cmat') then      -- cmat .* ?
-    return y:__remul_cmat(x, r)
+  else                                           -- cmat .* ?
+    return assert(gmm(y,'__emul'), "invalid 'cmat .* ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '.*')")
 end
 
 MI.__emul = MI.__mul
@@ -2221,13 +2187,6 @@ function MR.inv (x, r, rcond_)
   return r, rank
 end
 
-function MR.__rdiv_cpx (y, x, r, rcond_)         -- cpx / mat
-  local rank
-  r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  rank = _C.mad_mat_invc_r(y.data, x.re, x.im, r.data, y.nrow, y.ncol, rcond_ or -1)
-  return r, rank
-end
-
 function MR.__div (x, y, r, rcond_)
   local rank
   if is_number(x) then                           -- num / mat
@@ -2237,6 +2196,10 @@ function MR.__div (x, y, r, rcond_)
   elseif is_number(y) then                       -- mat / num => vec / num
     r = chksiz(r,x) or matrix_alloc(x:sizes())
     _C.mad_vec_muln(x.data, 1/y, r.data, r:size(), 1) return r
+  elseif is_complex(x) then                      -- cpx / mat
+    r = chksiz(r,y) or cmatrix_alloc(y:sizes())
+    rank = _C.mad_mat_invc_r(y.data, x.re, x.im, r.data, y.nrow, y.ncol, rcond_ or -1)
+    return r, rank
   elseif is_complex(y) then                      -- mat / cpx => vec / cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes()) ; y = 1/y
     _C.mad_vec_mulc_r(x.data, y.re, y.im, r.data, r:size(), 1) return r
@@ -2248,22 +2211,14 @@ function MR.__div (x, y, r, rcond_)
     r = chksizd(r,x,y) or matrix_alloc(x.nrow, y.nrow)
     rank = _C.mad_mat_div(x.data, y.data, r.data, r.nrow, r.ncol, x.ncol, rcond_ or -1)
     return r, rank
-  elseif has_method(y, '__rdiv_mat') then        -- mat / ?
-    return y:__rdiv_mat(x, r)
+  else                                           -- mat / ?
+    return assert(gmm(y,'__div'), "invalid 'mat / ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '/')")
 end
 
 function MC.inv (x, r, rcond_)
   r = chksiz(r,x) or cmatrix_alloc(x:sizes())
   local rank = _C.mad_cmat_invn(x.data, 1, r.data, x.nrow, x.ncol, rcond_ or -1)
-  return r, rank
-end
-
-function MC.__rdiv_cpx (y, x, r, rcond_)         -- cpx / cmat
-  local rank
-  r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  rank = _C.mad_cmat_invc_r(y.data, x.re, x.im, r.data, y.nrow, y.ncol, rcond_ or -1)
   return r, rank
 end
 
@@ -2276,6 +2231,10 @@ function MC.__div (x, y, r, rcond_)
   elseif is_number(y) then                       -- cmat / num => cvec / num
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
     _C.mad_cvec_muln(x.data, 1/y, r.data, r:size(), 1) return r
+  elseif is_complex(x) then                      -- cpx / cmat
+    r = chksiz(r,y) or cmatrix_alloc(y:sizes())
+    rank = _C.mad_cmat_invc_r(y.data, x.re, x.im, r.data, y.nrow, y.ncol, rcond_ or -1)
+    return r, rank
   elseif is_complex(y) then                      -- cmat / cpx => cvec / cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes()) ; y = 1/y
     _C.mad_cvec_mulc_r(x.data, y.re, y.im, r.data, r:size(), 1) return r
@@ -2287,28 +2246,21 @@ function MC.__div (x, y, r, rcond_)
     r = chksizd(r,x,y) or cmatrix_alloc(x.nrow, y.nrow)
     rank = _C.mad_cmat_div(x.data, y.data, r.data, r.nrow, r.ncol, x.ncol, rcond_ or -1)
     return r, rank
-  elseif has_method(y, '__rdiv_cmat') then       -- cmat / ?
-    return y:__rdiv_cmat(x, r)
+  else                                           -- cmat / ?
+    return assert(gmm(y,'__div'), "invalid 'cmat / ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '/')")
 end
 
 function MI.__div (x, y, r)
   if is_number(y) then                           -- imat / idx => ivec / idx
     r = chksiz(r,x) or imatrix_alloc(x:sizes())
     _C.mad_ivec_divn(x.data, y, r.data, r:size(), 1) return r
-  elseif has_method(y, '__rdiv_imat') then       -- imat / ?
-    return y:__rdiv_imat(x, r)
+  else                                           -- imat / ?
+    return assert(gmm(y,'__div'), "invalid 'imat / ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '/')")
 end
 
 -- element wise div (./), also known as Hadamard division.
-
-function MR.__rediv_cpx (y, x, r)                -- cpx ./ mat => cpx / vec
-  r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_vec_divc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
-end
 
 function MR.__ediv (x, y, r)
   if is_number(x) then                           -- num ./ mat => num / vec
@@ -2317,6 +2269,9 @@ function MR.__ediv (x, y, r)
   elseif is_number(y) then                       -- mat ./ num => vec / num
     r = chksiz(r,x) or matrix_alloc(x:sizes())
     _C.mad_vec_muln(x.data, 1/y, r.data, r:size(), 1) return r
+  elseif is_complex(x) then                      -- cpx ./ mat => cpx / vec
+    r = chksiz(r,y) or cmatrix_alloc(y:sizes())
+    _C.mad_vec_divc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
   elseif is_complex(y) then                      -- mat ./ cpx => vec / cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes()) ; y = 1/y
     _C.mad_vec_mulc_r(x.data, y.re, y.im, r.data, r:size(), 1) return r
@@ -2326,15 +2281,9 @@ function MR.__ediv (x, y, r)
   elseif is_matrix(y) and is_matrix(x) then      -- mat ./ mat => vec / vec
     r = chksiz(r,x,y) or matrix_alloc(x:sizes())
     _C.mad_vec_div(x.data, y.data, r.data, r:size(), 1) return r
-  elseif has_method(y, '__rediv_mat') then       -- mat ./ ?
-    return y:__rediv_mat(x, r)
+  else                                           -- mat ./ ?
+    return assert(gmm(y,'__ediv'), "invalid 'mat ./ ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation './')")
-end
-
-function MC.__rediv_cpx (y, x, r)                -- cpx ./ cmat => cpx / cvec
-  r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_cvec_divc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
 end
 
 function MC.__ediv (x, y, r)
@@ -2344,6 +2293,9 @@ function MC.__ediv (x, y, r)
   elseif is_number(y) then                       -- cmat ./ num => cvec / num
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
     _C.mad_cvec_muln(x.data, 1/y, r.data, r:size(), 1) return r
+  elseif is_complex(x) then                      -- cpx ./ cmat => cpx / cvec
+    r = chksiz(r,y) or cmatrix_alloc(y:sizes())
+    _C.mad_cvec_divc_r(y.data, x.re, x.im, r.data, r:size(), 1) return r
   elseif is_complex(y) then                      -- cmat ./ cpx => cvec / cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes()) ; y = 1/y
     _C.mad_cvec_mulc_r(x.data, y.re, y.im, r.data, r:size(), 1) return r
@@ -2353,10 +2305,9 @@ function MC.__ediv (x, y, r)
   elseif is_cmatrix(y) and is_cmatrix(x) then    -- cmat ./ cmat => cvec / cvec
     r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
     _C.mad_cvec_div(x.data, y.data, r.data, r:size(), 1) return r
-  elseif has_method(y, '__rediv_cmat') then      -- cmat ./ ?
-    return y:__rediv_cmat(x, r)
+  else                                           -- cmat ./ ?
+    return assert(gmm(y,'__ediv'), "invalid 'cmat ./ ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation './')")
 end
 
 MI.__ediv = MI.__div
@@ -2416,10 +2367,9 @@ function MR.tmul (x, y, r)
   elseif is_matrix(y) and is_matrix(x) then     -- mat' * mat
     r = chksiztm(r,x,y) or matrix_alloc(x.ncol, y.ncol)
     _C.mad_mat_tmul(x.data, y.data, r.data, r.nrow, r.ncol, x.nrow) return r
-  elseif has_method(y, '__rtmul_mat') then      -- mat' * ?
-    return y:__rtmul_mat(x, r)
+  else                                          -- mat' * ?
+    return assert(gmm(y,'__tmul'), "invalid 'mat^t * ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '*')")
 end
 
 function MC.tmul (x, y, r)
@@ -2429,10 +2379,9 @@ function MC.tmul (x, y, r)
   elseif is_cmatrix(x) and is_cmatrix(y) then   -- cmat' * cmat
     r = chksiztm(r,x,y) or cmatrix_alloc(x.ncol, y.ncol)
     _C.mad_cmat_tmul(x.data, y.data, r.data, r.nrow, r.ncol, x.nrow) return r
-  elseif has_method(y, '__rtmul_cmat') then     -- cmat' * ?
-    return y:__rtmul_cmat(x, r)
+  else                                          -- cmat' * ?
+    return assert(gmm(y,'__tmul'), "invalid 'cmat^t * ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '*')")
 end
 
 -- mult
@@ -2444,10 +2393,9 @@ function MR.mult (x, y, r)
   elseif is_matrix(y) and is_matrix(x) then     -- mat * mat'
     r = chksizmt(r,x,y) or matrix_alloc(x.nrow, y.nrow)
     _C.mad_mat_mult(x.data, y.data, r.data, r.nrow, r.ncol, x.ncol) return r
-  elseif has_method(y, '__rmult_mat') then      -- mat * ?'
-    return y:__rmult_mat(x, r)
+  else                                          -- mat * ?
+    return assert(gmm(y,'__mult'), "invalid 'mat * ?^t' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '*')")
 end
 
 function MC.mult (x, y, r)
@@ -2457,10 +2405,9 @@ function MC.mult (x, y, r)
   elseif is_cmatrix(x) and is_cmatrix(y) then   -- cmat * cmat'
     r = chksizmt(r,x,y) or cmatrix_alloc(x.nrow, y.nrow)
     _C.mad_cmat_mult(x.data, y.data, r.data, r.nrow, r.ncol, x.ncol) return r
-  elseif has_method(y, '__rmult_cmat') then     -- cmat * ?'
-    return y:__rmult_cmat(x, r)
+  else                                          -- cmat * ?'
+    return assert(gmm(y,'__mult'), "invalid 'cmat * ?^t' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported matrix operation '*')")
 end
 
 -- least squares solvers ------------------------------------------------------o
