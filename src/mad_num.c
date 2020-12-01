@@ -143,19 +143,22 @@ void mad_cnum_pow_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
 
 #include "mad_erfw.h"
 
+num_t  mad_num_wf     (num_t x) { return Faddeeva_w_im     (x); }
 num_t  mad_num_erf    (num_t x) { return Faddeeva_erf_re   (x); }
 num_t  mad_num_erfc   (num_t x) { return Faddeeva_erfc_re  (x); }
 num_t  mad_num_erfi   (num_t x) { return Faddeeva_erfi_re  (x); }
 num_t  mad_num_erfcx  (num_t x) { return Faddeeva_erfcx_re (x); }
 num_t  mad_num_dawson (num_t x) { return Faddeeva_Dawson_re(x); }
-num_t  mad_num_erfw   (num_t x) { return Faddeeva_w_im     (x); }
 
+cnum_t mad_cnum_wf    (cnum_t x, num_t relerr) { return Faddeeva_w     (x, relerr); }
 cnum_t mad_cnum_erf   (cnum_t x, num_t relerr) { return Faddeeva_erf   (x, relerr); }
 cnum_t mad_cnum_erfc  (cnum_t x, num_t relerr) { return Faddeeva_erfc  (x, relerr); }
 cnum_t mad_cnum_erfi  (cnum_t x, num_t relerr) { return Faddeeva_erfi  (x, relerr); }
 cnum_t mad_cnum_erfcx (cnum_t x, num_t relerr) { return Faddeeva_erfcx (x, relerr); }
 cnum_t mad_cnum_dawson(cnum_t x, num_t relerr) { return Faddeeva_Dawson(x, relerr); }
-cnum_t mad_cnum_erfw  (cnum_t x, num_t relerr) { return Faddeeva_w     (x, relerr); }
+
+void mad_cnum_wf_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
+{ CHKR; *r = Faddeeva_w (CNUM(x), relerr); }
 
 void mad_cnum_erf_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
 { CHKR; *r = Faddeeva_erf (CNUM(x), relerr); }
@@ -171,9 +174,6 @@ void mad_cnum_erfcx_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
 
 void mad_cnum_dawson_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
 { CHKR; *r = Faddeeva_Dawson (CNUM(x), relerr); }
-
-void mad_cnum_erfw_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
-{ CHKR; *r = Faddeeva_w (CNUM(x), relerr); }
 
 // -- RNG XoShiRo256** --------------------------------------------------------o
 

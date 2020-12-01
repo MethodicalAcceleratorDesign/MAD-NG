@@ -78,24 +78,24 @@ void  mad_cnum_powi_r  (num_t x_re, num_t x_im, int   n,                cnum_t *
 
 // --- Faddeeva based functions -----------------------------------------------o
 
-num_t   mad_num_erf    (num_t x);
-num_t   mad_num_erfc   (num_t x);
-num_t   mad_num_erfi   (num_t x);
-num_t   mad_num_erfw   (num_t x);
-num_t   mad_num_erfcx  (num_t x);
-num_t   mad_num_dawson (num_t x);
+num_t  mad_num_wf      (num_t x);
+num_t  mad_num_erf     (num_t x);
+num_t  mad_num_erfc    (num_t x);
+num_t  mad_num_erfi    (num_t x);
+num_t  mad_num_erfcx   (num_t x);
+num_t  mad_num_dawson  (num_t x);
 
-cnum_t  mad_cnum_erf   (cnum_t x, num_t relerr);
-cnum_t  mad_cnum_erfc  (cnum_t x, num_t relerr);
-cnum_t  mad_cnum_erfi  (cnum_t x, num_t relerr);
-cnum_t  mad_cnum_erfw  (cnum_t x, num_t relerr);
-cnum_t  mad_cnum_erfcx (cnum_t x, num_t relerr);
-cnum_t  mad_cnum_dawson(cnum_t x, num_t relerr);
+cnum_t mad_cnum_wf     (cnum_t x, num_t relerr);
+cnum_t mad_cnum_erf    (cnum_t x, num_t relerr);
+cnum_t mad_cnum_erfc   (cnum_t x, num_t relerr);
+cnum_t mad_cnum_erfi   (cnum_t x, num_t relerr);
+cnum_t mad_cnum_erfcx  (cnum_t x, num_t relerr);
+cnum_t mad_cnum_dawson (cnum_t x, num_t relerr);
 
+void  mad_cnum_wf_r    (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
 void  mad_cnum_erf_r   (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
 void  mad_cnum_erfc_r  (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
 void  mad_cnum_erfi_r  (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
-void  mad_cnum_erfw_r  (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
 void  mad_cnum_erfcx_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
 void  mad_cnum_dawson_r(num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
 
