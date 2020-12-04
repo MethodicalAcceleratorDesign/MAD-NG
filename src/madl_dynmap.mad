@@ -62,12 +62,12 @@ Notes and questions:
 
 local _C, vector, matrix                                         in MAD
 local is_nil, is_number, is_damap                                in MAD.typeid
-local minlen, minang, minstr, clight, pi, twopi                  in MAD.constant
+local minlen, minang, minstr, clight, pi, twopi, pi_2            in MAD.constant
 local printf                                                     in MAD.utility
 local fcut, ftst                                                 in MAD.operator
 
-local abs, sqrt, exp, sin, cos, tan, asin, acos, atan, atan2,
-      sinh, cosh, sinc, sinhc                                    in MAD.gmath
+local abs, sqrt, exp, log, sin, cos, tan, asin, acos, atan,
+      atan2, sinh, cosh, sinc, sinhc                             in MAD.gmath
 
 local min, max in math
 local assert = assert
@@ -1156,6 +1156,104 @@ function M.rfcav_kickn (elm, m, lw) -- [KICKCAV, nmul ~= 0 or nbsl ~= 0]     -- 
   m.atdebug(elm, m, lw, 'rfcav_kickn:1')
 end
 
+-- DKD, TKT -------------------------------------------------------------------o
+
+local BB = require 'madl_bbeam' -- beambeam physics
+
+function M.bbeam_kick (elm, m, lw)                                            -- unchecked
+  m.atdebug(elm, m, lw, 'bbeam_kick:0')
+
+  local xma, yma, dpx, dpy, sigx, sigy, sigtol, bdir, bbeam in elm
+  local tdir, beam in m
+  local          p0c =  beam.p0c
+  local  beta,   chg =  beam.beta,  beam.charge*tdir
+  local bbeta, bbchg = bbeam.beta, bbeam.charge*bdir
+  local         bchg = chg*bbchg
+
+  for i=1,m.npar do
+    local x, px, y, py, beam in m[i]
+    local bchg = beam and beam.charge*tdir*bbchg or bchg
+    local p0c  = beam and beam.p0c or p0c
+
+    x = x - xma
+    y = y - yma
+
+    -- TODO: handle more shapes
+    local Ex, Ey = BB.ExEy_GxGy_gauss(x, y, sigx, sigy, sigtol, true)
+
+    -- To review with Riccardo
+    local kck = bchg*(1 + beta*bbeta)/(p0c * (beta+bbeta))
+
+    m[i].px = px-dpx + kck*Ex
+    m[i].py = py-dpy + kck*Ey
+  end
+
+  m.atdebug(elm, m, lw, 'bbeam_kick:1')
+end
+
+function M.bbeam_kick6D (elm, m, lw)                                          -- unchecked
+  m.atdebug(elm, m, lw, 'bbeam_kick6D:0')
+
+  error("NYI")
+
+  m.atdebug(elm, m, lw, 'bbeam_kick6D:1')
+end
+
+-- DKD, TKT -------------------------------------------------------------------o
+
+function M.nllens_kick (elm, m, lw)                                           -- unchecked
+  m.atdebug(elm, m, lw, 'nllens_kick:0')
+
+  local knll, cnll in elm
+  local tdir, beam in m
+  local chg = beam.charge*tdir
+
+  assert(cnll != 0, "invalid cnll (non-zero expected)")
+  knll = knll/cnll
+
+  for i=1,m.npar do
+    local x, px, y, py, beam in m[i]
+    local chg = beam and beam.charge*tdir or chg
+
+    x = x/cnll
+    y = y/cnll
+
+    local  xp1 = x+1
+    local  xm1 = x-1
+    local  xpy = 0.5*sqrt(xp1^2+y^2)
+    local  xmy = 0.5*sqrt(xm1^2+y^2)
+    local _xpy = 0.25/xpy
+    local _xmy = 0.25/xmy
+
+    local    u = xmy + xpy
+    local    v = xpy - xmy
+    local   u2 = u^2
+    local   v2 = v^2
+    local _uv2 = 1/(u2-v2)
+    local  um1 = sqrt(u2-1)
+    local  mv1 = sqrt(1-v2)
+    local  lum = log(u+um1)*um1
+    local  acv = (acos(v)-pi_2)*mv1
+    local  duv = 1 - 2*(u*lum+v*acv)*_uv2
+    local   dd = u == 1 and 0 or lum*(u/um1)^2
+
+    local  dUu = (lum+dd            + u*duv)*_uv2
+    local  dUv = (acv*(1-(v/mv1)^2) - v*duv)*_uv2
+
+    local  dux = xm1*_xmy + xp1*_xpy
+    local  duy =  y *_xmy +  y *_xpy
+    local  dvx = xp1*_xpy - xm1*_xmy
+    local  dvy =  y *_xpy -  y *_xmy
+
+    m[i].px = px + (chg*knll)*(dUu*dux + dUv*dvx)
+    m[i].py = py + (chg*knll)*(dUu*duy + dUv*dvy)
+  end
+
+  m.atdebug(elm, m, lw, 'nllens_kick:1')
+end
+
+-- DKD, TKT -------------------------------------------------------------------o
+
 local V6 = vector(6)
 
 function M.genm_thick (elm, m, lw)                                            -- unchecked
@@ -1705,17 +1803,17 @@ function M.dipeg_fringe (elm, m, lw_) -- [MADX dipedge]                       --
   local lw = lw_ or 1
   local el, edir, sdir, tdir, knl, beam in m
   local k0 = knl[1]/el*tdir
-  local corr, e = 0
+  local corr, e = 0, 0
 
   if lw == 1 then
     e = m.e1*tdir
     if not elm.kill_ent_fringe then
-      corr = k0^2*elm.hgap*elm.fint
+      corr = 2*k0*elm.hgap*elm.fint
     end
   else
     e = m.e2*tdir
     if not elm.kill_exi_fringe then
-      corr = k0^2*elm.hgap*(elm.fintx or elm.fint)
+      corr = 2*k0*elm.hgap*(elm.fintx or elm.fint)
     end
   end
 
