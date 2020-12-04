@@ -521,13 +521,54 @@ function M.strex_kickh (elm, m, lw) -- [KICKT]                               -- 
     m[i].py = py + wchg*(bx - ksl[1]*pz)
     m[i].t  = t  - wchg*(knl[1]*x - ksl[1]*y)*(_beta+pt)/pz
 
-    if el ~= 0 then
-      m[i].px = m[i].px - (knl[1]^2/el)*x
-      m[i].py = m[i].py - (ksl[1]^2/el)*y
+    -- curvature
+    if eh ~= 0 then
+      m[i].px = m[i].px - (knl[1]^2/eh)*x   -- eh was el
+      m[i].py = m[i].py - (ksl[1]^2/eh)*y   -- eh was el
     end
   end
 
   m.atdebug(elm, m, lw, 'strex_kickh:1')
+end
+
+function M.strex_kicks (elm, m, lw) -- [KICKT]                               -- unchecked
+  if m.nmul == 0 then return end
+
+  m.atdebug(elm, m, lw, 'strex_kicks:0')
+
+  local tdir, nmul, knl, ksl, ksi, lrad, beam in m
+  local  wchg = lw*lrad*tdir*beam.charge
+  local _beta = 1/beam.beta
+  local  bsol = 0.5*ksi
+
+  for i=1,m.npar do
+    local x, px, y, py, t, pt, beam in m[i]
+    local  wchg = beam and lw*lrad*tdir*beam.charge or wchg
+    local _beta = beam and 1/beam.beta or _beta
+
+    -- multipole
+    local bx,by = bxby(nmul, knl, ksl, x, y)
+
+    m[i].px = px - wchg*by
+    m[i].py = py + wchg*bx
+
+    -- solenoid
+    local _dpp = 1/sqrt(1 + (2*_beta)*pt + pt^2)
+    local  ang = bsol*_dpp
+    local ca, sa = cos(ang), sin(ang)
+
+    local nx  = ca* x + sa* y
+    local npx = ca*px + sa*py
+    local ny  = ca* y - sa* x
+    local npy = ca*py - sa*px
+    local nt  = t + ang*(_beta+pt)*(y*px - x*py)*_dp
+
+    m[i].px = npx - 0.25*wchg*nx*_dpp
+    m[i].py = npy - 0.25*wchg*ny*_dpp
+    m[i].t  = nt  + 0.125*(_beta+pt)*wchg*(nx^2+ny^2)*_dpp^3
+  end
+
+  m.atdebug(elm, m, lw, 'strex_kicks:1', no_k0l)
 end
 
 -- DKD [INTER_TEAPOT] ---------------------------------------------------------o
@@ -1319,7 +1360,7 @@ FRINGECAV[PERMFRINGE/=0,THIN/=T,NOCAVITY/=T,N_BESSEL/=-1]
 
  -- forward declarations
 local mad8_wedge, bend_wedge, bend_face
-local bend_fringe, mult_fringe, qsad_fringe, cav_fringe
+local bend_fringe, mult_fringe, qsad_fringe, sol_fringe, cav_fringe
 
 function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]                     -- checked
   if m.nmul == 0 then return end -- switched off
@@ -1412,6 +1453,21 @@ function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]                     -- 
   end
 
   m.atdebug(elm, m, lw_, 'curex_fringe:1')
+end
+
+function M.solen_fringe ()
+  m.atdebug(elm, m, lw_, 'solen_fringe:0')
+
+  if lw == 1 and elm.kill_ent_fringe or lw == -1 and elm.kill_exi_fringe
+  then m.frng = 0
+  else m.frng = fcut(m.fringe, elm.fringe)
+  end
+
+  if ftst(m.frng, fringe.solen) then
+    sol_fringe(elm, m, sdir*lw)
+  end
+
+  m.atdebug(elm, m, lw_, 'solen_fringe:1')
 end
 
 local function adjust_time (m)
@@ -1685,7 +1741,7 @@ function qsad_fringe (elm, m, lw) -- [FRINGE2QUAD]                           -- 
   m.atdebug(elm, m, lw, 'qsad_fringe:1')
 end
 
-function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                       -- checked
+function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                      -- checked
   m.atdebug(elm, m, lw, 'mult_fringe:0')
 
   local el, edir, sdir, tdir, nmul, knl, ksl, beam in m
@@ -1765,7 +1821,16 @@ function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                       --
   m.atdebug(elm, m, lw, 'mult_fringe:1')
 end
 
-function cav_fringe (elm, m, lw) -- [FRINGECAV]                               -- checked
+function sol_fringe (elm, m, lw)                                             -- unchecked
+  m.atdebug(elm, m, lw, 'sol_fringe:0')
+
+  error("NYI")
+
+  m.atdebug(elm, m, lw, 'sol_fringe:1')
+end
+
+
+function cav_fringe (elm, m, lw) -- [FRINGECAV]                              -- checked
   if abs(m.el) < minlen then return end
 
   m.atdebug(elm, m, lw, 'cav_fringe:0')
@@ -1795,7 +1860,7 @@ end
 
 -- extra fringe (not used) ----------------------------------------------------o
 
-function M.dipeg_fringe (elm, m, lw_) -- [MADX dipedge]                       -- unchecked
+function M.dipeg_fringe (elm, m, lw_) -- [MADX dipedge]                      -- unchecked
   if abs(m.knl[1]) < minstr then return end -- switched off
 
   m.atdebug(elm, m, lw_, 'dipeg_fringe:0')
