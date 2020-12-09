@@ -462,16 +462,17 @@ local function compute_fval (env)
   local command, equalities, inequalities in env
   local var, obj = env.__var, env.objective
   local m, n, p, q, x, c, cn, cjac, ctol, bst in var
-  local fval, res = 0, nil
+  local fval = 0
 
   env.ncall = env.ncall + 1
   env.dtime = os.clock()-var.time0
+  var.cres  = nil
 
   update_vars(env)                            -- update user variables
 
   if command ~= nil then
-    res = command(env)                        -- call user defined command
-    if is_nil(res) then return end            -- invalid domain, return nil
+    var.cres = command(env)                   -- call user defined command
+    if is_nil(var.cres) then return end       -- invalid domain, return nil
   end
 
   if obj.exec ~= nil then
@@ -484,13 +485,13 @@ local function compute_fval (env)
     c:copy(c,1+p)                             -- move data to the right place
     if cjac then cjac:copy(cjac,1+p*n) end
   else
-    for i=1,q do c[p+i] = inequalities[i].expr(res, env) end
+    for i=1,q do c[p+i] = inequalities[i].expr(var.cres, env) end
   end
 
   if equalities.exec ~= nil then
     equalities.exec(x, c, cjac)               -- call user function
   else
-    for i=1,p do c[i] = equalities[i].expr(res, env) end
+    for i=1,p do c[i] = equalities[i].expr(var.cres, env) end
   end
 
   c:emul(var.cwgt, c)                         -- apply weights
@@ -528,6 +529,12 @@ end
 
 -- compute gradient and (in)equalities jacobians
 local function compute_fgrd (env)
+  if env.jacobian then
+    local cres, fval, fgrd, cjac in env.__var
+    env.jacobian(cres, fgrd, cjac, env)
+    return fval
+  end
+
   local var, trc = env.__var, env.info >= 3
   local n, x, h, xstp, xslp, xmin, xmax, fval, fgrd, c, cjac, prv, bak in var
   local bro = env.objective.broyden and prv.c
@@ -536,7 +543,6 @@ local function compute_fgrd (env)
   backup(var, bak)
 
   -- estimate dh from last step or current point
-
   local hn = h:norm()
   local dh = 1e-4*hn
   if dh == 0 then dh = 1e-8*x:norm() end
@@ -576,7 +582,7 @@ local function compute_fgrd (env)
   -- save current state for next call
   backup(var, prv)
 
-  -- var: fgrd, cjac
+  -- return fval, fgrd, cjac
   return fval
 end
 
@@ -621,11 +627,13 @@ end
 
 local function exec (self)
   local variables, equalities, inequalities, weights, objective in self
-  local command = self:var_get 'command' -- prevent evaluation
-  local cmdexec = command           or fnil
-  local objexec = objective.exec    or fnil
-  local equexec = equalities.exec   or fnil
-  local inqexec = inequalities.exec or fnil
+  local command  = self:var_get 'command'  -- prevent evaluation
+  local jacobian = self:var_get 'jacobian' -- prevent evaluation
+  local cmdexec  = command           or fnil
+  local jacexec  = jacobian          or fnil
+  local objexec  = objective.exec    or fnil
+  local equexec  = equalities.exec   or fnil
+  local inqexec  = inequalities.exec or fnil
 
   -- check inputs
   assert(is_mappable(variables)   , "invalid match 'variables' (mappable expected)")
@@ -634,6 +642,7 @@ local function exec (self)
   assert(is_mappable(weights)     , "invalid match 'weights' (mappable expected)")
   assert(is_mappable(objective)   , "invalid match 'objective' (mappable expected)")
   assert(is_callable(cmdexec)     , "invalid match 'command' (callable expected)")
+  assert(is_callable(jacexec)     , "invalid match 'jacobian' (callable expected)")
   assert(is_callable(objexec)     , "invalid objective function (callable expected)")
   assert(is_callable(equexec)     , "invalid equality function (callable expected)")
   assert(is_callable(inqexec)     , "invalid inequality function (callable expected)")
@@ -678,6 +687,7 @@ local function exec (self)
     debug        = ndbg,        -- debug level, can be changed during iterations
     stop         = false,       -- forced stop
     command      = command,
+    jacobian     = jacobian,
     objective    = objective,
     variables    = variables,
     equalities   = equalities,
@@ -840,20 +850,22 @@ local function exec (self)
 end
 
 local match = command 'match' {
-  -- command to execute at each iteration (i.e. res = command(env))
+  -- command to execute at each iteration (i.e. cres = command(env))
   command = nil,
+  -- command to fill "explicitly" the jacobian (i.e. jac = jacobian(cres, env))
+  jacobian = nil,
   -- state variables
   variables = {
   ! { var=nil, step=nil, min=nil, max=nil, sign=nil, slope=nil, tol=nil, name=nil, get=nil, set=nil },
      nvar=nil, step=nil, min=nil, max=nil, sign=nil, slope=nil, tol=nil, rtol=nil, get=nil, set=nil,
      nowarn=nil,
   },
-  -- equalities constraints (i.e. val = expr(res, env))
+  -- equalities constraints (i.e. val = expr(cres, env))
   equalities = {
   ! {expr=nil, name=nil, kind=nil, weight=nil, tol=nil},
      exec=nil, nequ=nil, disp=nil,             tol=nil,
   },
-  -- inequalities constraints (i.e. val = expr(res, env))
+  -- inequalities constraints (i.e. val = expr(cres, env))
   inequalities = {
   ! {expr=nil, name=nil, kind=nil, weight=nil, tol=nil},
      exec=nil, nequ=nil,                       tol=nil,
