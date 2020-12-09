@@ -33,11 +33,13 @@ kqsx3_l2 = -0.0015
 kqsx3_r2 = +0.0015
 MADX:close_env()
 
+local t0 = os.clock()
+
 print("Computing/saving twiss before tune correction.")
 local tbl = twiss { sequence=lhcb1, method=4, cofind=true, chrom=true }
 tbl:write"twiss_before_tune_correction"
 
-if false then -- enable/disable matching
+if true then -- enable/disable matching
 
 print("values before matching tunes:")
 print("dQx.b1=", MADX.dqx_b1)
@@ -49,11 +51,11 @@ status, fmin, ncall = match {
     { var = 'MADX.dqx_b1', name='dQx.b1' },
     { var = 'MADX.dqy_b1', name='dQy.b1' },
   },
-  equalities = {
+  equalities = { tol = 1e-3,
     { expr = \t -> t.q1-62.30980, name='q1' },
     { expr = \t -> t.q2-60.32154, name='q2' },
   },
-  objective = { fmin=1e-6 },
+  objective = { fmin=1e-3 },
   maxcall=100, info=2, !debug=2
 }
 
@@ -81,6 +83,9 @@ print("Computing/saving twiss after tune correction.")
 local tbl = twiss { sequence=lhcb1, method=4, cofind=true, chrom=true }
 tbl:write"twiss_after_tune_correction"
 
+local t1 = os.clock()
+print("pre-tracking time: "..(t1-t0)..'s')
+
 !#############################################################################
 !######## Track                                                       ########
 !#############################################################################
@@ -91,7 +96,7 @@ local sqrt, tgauss in MADX -- tgauss equiv. xrandtn in MAD.gmath
 print("lhcb1 nrj=", lhcb1.beam.energy)
 
 -- prepare initial particles coordinates
-for n=1,100 do
+for n=1,900 do
   local Nsigmax  = tgauss(5)
   local Nsigmay  = tgauss(5)
   local Nsigmapx = tgauss(5)
@@ -113,16 +118,18 @@ for n=1,100 do
 end
 
 -- select ip2 as observed point
-!lhcb1['IP1' ]:  select(observed)
 lhcb1['IP2' ]:  select(observed)
 lhcb1['$end']:deselect(observed)
 
+local t0 = os.clock()
 tbl.IP1.t=0
 local tbl = track { sequence=lhcb1, X0=X0, O0=tbl.IP1, nturn=10, method=4 }
+print("tracking time: "..(os.clock()-t1)..'s')
 
 !tbl:sort"name,turn"
 tbl:write"track900_ng.tfs"
 
+--[[
 MAD.plot {
     table    = tbl,
     x1y1     = { y={'x'} },
@@ -137,3 +144,4 @@ MAD.plot {
   }
 
 MAD.utility.pause()
+--]]
