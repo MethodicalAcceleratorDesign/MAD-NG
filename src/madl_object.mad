@@ -59,8 +59,6 @@ local oflg = {
   class    = fbit(31),
   final    = fbit(30),
   readonly = fbit(29),
-
-  rocls    = fset(fbit(29),fbit(31)),
   protect  = fnot(fset(fbit(29),fbit(30),fbit(31))),
 }
 
@@ -75,8 +73,6 @@ local var0 = setmetatable({}, {
 
 local cachelookup = false -- MAD.option.omcachelookup
 local cachemethod = false -- MAD.option.omcachemethod
-
-local flg_cls = cachelookup and oflg.rocls or oflg.class
 
 -- helpers --------------------------------------------------------------------o
 
@@ -108,7 +104,7 @@ local function freadonly (a)
 end
 
 local function set_class (a)
-  a.__flg = fset(a.__flg, flg_cls)
+  a.__flg = fset(a.__flg, oflg.class)
   return a
 end
 
@@ -374,40 +370,42 @@ function MF:get_variables (lst, set_, noeval_)
   return res -- key -> val
 end
 
-function MF:set_variables (set, override_) -- default: override = true
+function MF:set_variables (set, ovrd_) -- dflt: ovrd_ ~= false
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(set), "invalid argument #2 (mappable expected)")
-  if freadonly(self) and override_ ~= 'init' then
+  if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  local var = self.__var
+  local ovrd = ovrd_ ~= false
+  local var  = self.__var
   for k,v in pairs(set) do
-    assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
+    assertf(ovrd and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
             or is_nil(var[k]), "cannot override variable '%s'",k)
     var[k] = v
   end
   return self
 end
 
-function MF:copy_variables (set, lst_, override_) -- default: override = true
+function MF:copy_variables (set, lst_, ovrd_) -- dflt: ovrd_ ~= false
   assert(is_object (self), "invalid argument #1 (object expected)")
   assert(is_mappable(set), "invalid argument #2 (mappable expected)")
-  if (is_boolean(lst_) or is_string(lst_)) and is_nil(override_) then
-    override_, lst_ = lst_                   -- right shift
+  if is_boolean(lst_) and is_nil(ovrd_) then
+    ovrd_, lst_ = lst_                        -- right shift
   end
-  if freadonly(self) and override_ ~= 'init' then
+  if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
+  local ovrd = ovrd_ ~= false
   local var, svar, lst = self.__var, set.__var, lst_ or self.__attr
   assert(is_iterable(lst), "invalid list of attributes (iterable expected)")
   for _,k in ipairs(lst) do
-    assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
+    assertf(ovrd and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
             or is_nil(var[k]), "cannot override variable '%s'",k)
     var[k] = set[k]
   end
   if svar and is_iterable(lst.noeval) then
     for _,k in ipairs(lst.noeval) do
-      assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
+      assertf(ovrd and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
               or is_nil(var[k]), "cannot override variable '%s'",k)
       var[k] = svar[k]
     end
@@ -415,18 +413,19 @@ function MF:copy_variables (set, lst_, override_) -- default: override = true
   return self
 end
 
-function MF:wrap_variables (set, override_)
+function MF:wrap_variables (set, ovrd_) -- dflt: ovrd_ ~= false
   assert(is_object(self)    , "invalid argument #1 (object expected)")
   assert(is_mappable(set)   , "invalid argument #2 (mappable expected)")
-  if freadonly(self) and override_ ~= 'init' then
+  if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  local var = self.__var
+  local ovrd = ovrd_ ~= false
+  local var  = self.__var
   for k,f in pairs(set) do
     local v, newv = var[k]
     assert(not is_nil(v) , "invalid variable (nil value)")
     assert(is_callable(f), "invalid wrapper (callable expected)")
-    assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__'),
+    assertf(ovrd and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__'),
             "cannot override variable '%s'",k)
     if is_callable(v) then newv = f(v) else newv = f(\ v) end -- simplify user's side.
     if is_functor(v) and not is_functor(newv) then
@@ -475,39 +474,22 @@ function MF:clear_all ()
   return self
 end
 
-function MF:set_parent (newp, override_)
-  assert(is_object(self), "invalid argument #1 (object expected)")
-  assert(is_object(newp), "invalid argument #2 (object expected)")
-  if freadonly(self) and override_ ~= 'init' then
-    error("forbidden write access to readonly object '" .. name(self) .. "'", 2)
-  end
-  local spar = self.parent
-  if newp.parent ~= spar.parent then
-    error("new and current parent do not inherit from same direct parent")
-  elseif getmetatable(newp) ~= getmetatable(spar) then
-    error("new and current parent do not share same metamethods")
-  end
-  self.__index = newp.__var
-  set_class(newp)
-  return self
-end
-
-function MF:set_methods (set, override_) -- default: override = true
+function MF:set_methods (set, ovrd_) -- dflt: ovrd_ ~= false
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(set), "invalid argument #2 (mappable expected)")
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  if fclass(self) and (override_ ~= 'init' or cachemethod) then
+  if fclass(self) and ovrd_ ~= true then
     errorf("cannot set methods to '%s' (unexpected class)", name(self))
   end
+  local ovrd = ovrd_ ~= false
   if cachemethod then -- object model with cached methods
     local sm, pm = self.__mth, parent(self).__mth -- or MF
     if sm == pm then sm = copy_methods(self, pm) end
     for k,m in pairs(set) do
       assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
-      assertf(is_callable(m), "invalid value for key '%s' (callable expected)", k)
-      assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
+      assertf(ovrd and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
               or is_nil(sm[k]), "cannot override method '%s'",k)
       sm[k] = m
     end
@@ -515,8 +497,7 @@ function MF:set_methods (set, override_) -- default: override = true
     local var = self.__var
     for k,m in pairs(set) do
       assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
-      assertf(is_callable(m), "invalid value for key '%s' (callable expected)", k)
-      assertf(override_ ~= false and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
+      assertf(ovrd and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
               or is_nil(var[k]), "cannot override method '%s'",k)
       var[k] = is_function(m) and functor(m) or m
     end
@@ -524,21 +505,22 @@ function MF:set_methods (set, override_) -- default: override = true
   return self
 end
 
-function MF:set_metamethods (set, override_) -- default: override = false
+function MF:set_metamethods (set, ovrd_) -- dflt: ovrd_ ~= false
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(set), "invalid argument #2 (mappable expected)")
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  if fclass(self) then
+  if fclass(self) and ovrd_ ~= true then
     errorf("cannot set metamethods to '%s' (unexpected class)", name(self))
   end
+  local ovrd = ovrd_ ~= false
   local sm, pm = getmetatable(self), getmetatable(parent(self)) -- or MT
   if sm == pm then sm = copy_metamethods(self, pm) end
   for k,m in pairs(set) do
     assertf(type(k) == 'string' and string.sub(k,1,2) == '__',
             "invalid key '%s' (string starting with __ expected)", tostring(k))
-    assertf(override_ == true or is_nil(sm[k]), "cannot override metamethod '%s'",k)
+    assertf(ovrd or is_nil(sm[k]), "cannot override metamethod '%s'",k)
     sm[k] = m
   end
   return self
@@ -788,7 +770,7 @@ function MF:rawdump()
   local par = parent(self) or {}
   print(self.__id.." variables:", self.__var, "par:", par.__var)
   for k,v in pairs(self.__var) do print('',k,v) end
-  if cachemethod then
+  if self.__mth then
     print(self.__id.." methods:", self.__mth, "par:", par.__mth)
     for k,v in pairs(self.__mth) do print('',k,v) end
   end
