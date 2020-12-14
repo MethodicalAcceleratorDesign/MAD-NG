@@ -1,0 +1,410 @@
+-- time ../mad -jp=vl ex-lhc-couplingRDT-knobs.mad > ex-lhc-couplingRDT-knobs.out 2>&1
+
+!#############################################################################
+!############################# Setting Up Lattice ############################
+!#############################################################################
+
+local beam, twiss, match, matrix in MAD
+local observed in MAD.element.flags
+local assertf  in MAD.utility
+local mchklost in MAD.gphys
+
+MADX:load('lhc_as-built.seq', 'lhc_as-built.mad') -- convert and save on need
+MADX:load('opticsfile.1'    , 'opticsfile.1.mad') -- ditto
+MADX:load('lhc_unset_vars.mad') -- handmade, cleaner than disabling warnings...
+
+local lhcb1, nrj in MADX
+
+-- sanity checks
+assertf(#lhcb1 == 6694, "invalid number of elements %d in LHCB1 (6694 expected)", #lhcb1)
+
+-- attach beam
+lhcb1.beam = beam { particle='proton', energy=nrj }
+
+-- cycle lhcb1
+lhcb1:cycle'IP3'
+
+!#############################################################################
+!######## Sequence Editing and Adding 4 Skew Quadrupoles Around ARC12 ########
+!#############################################################################
+
+MADX:open_env()
+
+lhcb1:install{
+  multipole 'SQ1L' { ksl:={0, sk1l}, at=1.551, from='MQ.13R1.B1' },
+  multipole 'SQ2L' { ksl:={0, sk2l}, at=1.551, from='MQ.14R1.B1' },
+  multipole 'SQ3L' { ksl:={0, sk3l}, at=1.551, from='MQ.15R1.B1' },
+  multipole 'SQ4L' { ksl:={0, sk4l}, at=1.551, from='MQ.16R1.B1' },
+  multipole 'SQ1R' { ksl:={0, sk1r}, at=1.551, from='MQ.17L2.B1' },
+  multipole 'SQ2R' { ksl:={0, sk2r}, at=1.551, from='MQ.16L2.B1' },
+  multipole 'SQ3R' { ksl:={0, sk3r}, at=1.551, from='MQ.15L2.B1' },
+  multipole 'SQ4R' { ksl:={0, sk4r}, at=1.551, from='MQ.14L2.B1' },
+}
+
+MADX:close_env()
+
+lhcb1:dumpseq"lhcb1_mqs"
+
+local status, fmin, ncall
+
+if false then
+
+!#############################################################################
+!######## Match Tunes and Chromaticity                                ########
+!#############################################################################
+
+print("values before matching tunes & chromas:")
+print("dQx.b1_sq="  , MADX.dqx_b1_sq  )
+print("dQy.b1_sq="  , MADX.dqy_b1_sq  )
+print("dQpx.b1_sq=" , MADX.dqpx_b1_sq )
+print("dQpy.b1_sq=" , MADX.dqpy_b1_sq )
+
+status, fmin, ncall = match {
+  command := mchklost(twiss { sequence=lhcb1, method=4, cofind=true,
+                              chrom=true, observe=1 }),
+  variables = { rtol=1e-6, -- 1 ppm
+    { var = 'MADX.dqx_b1_sq' , name='dQx.b1_sq'  },
+    { var = 'MADX.dqy_b1_sq' , name='dQy.b1_sq'  },
+    { var = 'MADX.dqpx_b1_sq', name='dQpx.b1_sq' },
+    { var = 'MADX.dqpy_b1_sq', name='dQpy.b1_sq' },
+  },
+  equalities = {
+    { expr = \t -> t.q1-62.31, name='q1' },
+    { expr = \t -> t.q2-60.32, name='q2' },
+    { expr = \t -> t.dq1-2   , name='dq1', tol=2.5e-3 },
+    { expr = \t -> t.dq2-2   , name='dq2', tol=2.5e-3 },
+  },
+  objective = { fmin=2e-3 },
+  maxcall=100, info=2, !debug=2
+}
+
+--[[
+MATCH;
+  GLOBAL, Q1=62.31, Q2=60.32;
+  GLOBAL, DQ1=2., DQ2=2.;
+  VARY, NAME=dQx.b1_sq;
+  VARY, NAME=dQy.b1_sq;
+  VARY, NAME=dQpx.b1_sq;
+  VARY, NAME=dQpy.b1_sq;
+  LMDIF, CALLS=100, TOLERANCE=1.0E-21;
+ENDMATCH;
+--]]
+
+print("status=", status, "fmin=", fmin, "ncall=", ncall)
+print("values after matching tunes & chromas:")
+print("dQx.b1_sq="  , MADX.dqx_b1_sq  )
+print("dQy.b1_sq="  , MADX.dqy_b1_sq  )
+print("dQpx.b1_sq=" , MADX.dqpx_b1_sq )
+print("dQpy.b1_sq=" , MADX.dqpy_b1_sq )
+
+--[[
+dQx.b1_sq =  9.194834390759e-10
+dQy.b1_sq = -1.3280728879701e-09
+dQpx.b1_sq=  8.3905537027966e-06
+dQpy.b1_sq= -3.3074803994088e-06
+
+Constraints                Type        Kind        Weight     Penalty Value
+-----------------------------------------------------------------------------
+ 1 q1                       equality     .          1          3.26850e-13
+ 2 q2                       equality     .          1          3.01270e-12
+ 3 dq1                      equality     .          1          2.32429e-03
+ 4 dq2                      equality     .          1          2.49982e-03
+
+ Variables                  Final Value  Init. Value  Lower Limit  Upper Limit
+--------------------------------------------------------------------------------
+ 1 dQx.b1_sq                9.19483e-10  0.00000e+00   .            .
+ 2 dQy.b1_sq               -1.32807e-09  0.00000e+00   .            .
+ 3 dQpx.b1_sq               8.39055e-06  0.00000e+00   .            .
+ 4 dQpy.b1_sq              -3.30748e-06  0.00000e+00   .            .
+
+ncall=6 [10.7s], fbst[6]=1.70671e-03, fstp=-1.63976e-05, status=FMIN.
+--]]
+
+--[[
+MAD-NG: long [174.1s]
+q1    8.52651e-14
+q2    3.55271e-14
+dq1   8.87166e-05
+dq2   5.72999e-05
+
+dQx.b1_sq =  9.19799961e-10
+dQy.b1_sq = -1.33102102e-09
+dQpx.b1_sq= -0.00241276
+dQpy.b1_sq= -0.00244969
+
+MAD-X:
+q1            6.23100000E+01   6.23100000E+01   5.04870979E-25
+q2            6.03200000E+01   6.03200000E+01   2.61725116E-23
+dq1           2.00000000E+00   2.00000000E+00   1.14544576E-26
+dq2           2.00000000E+00   2.00000000E+00   1.44169261E-25
+
+dqx.b1_sq     6.51730e-06      0.00000e+00
+dqy.b1_sq     4.62505e-05      0.00000e+00
+dqpx.b1_sq    6.22382e-02      0.00000e+00
+dqpy.b1_sq    4.12620e-02      0.00000e+00
+--]]
+
+!#############################################################################
+!######## Match Tunes and Chromaticity                                ########
+!######## to compensate the second order contribution of coupling     ########
+!#############################################################################
+
+! Save strength of MQSX IP coupling correctors
+MADX['KQSX3.R1_old'] = MADX['KQSX3.R1']
+MADX['KQSX3.L1_old'] = MADX['KQSX3.L1']
+
+! Power MQSX
+MADX['KQSX3.R2'] =  1e-3  ! was KQSX3.R2 =  10E-4;
+MADX['KQSX3.L2'] = -1e-3  ! was KQSX3.L2 = -10E-4;
+
+print("values before matching tunes & chromas:")
+print("dQx.b1_sq="  , MADX.dqx_b1_sq  )
+print("dQy.b1_sq="  , MADX.dqy_b1_sq  )
+print("dQpx.b1_sq=" , MADX.dqpx_b1_sq )
+print("dQpy.b1_sq=" , MADX.dqpy_b1_sq )
+
+status, fmin, ncall = match {
+  command := mchklost(twiss { sequence=lhcb1, method=4, cofind=true,
+                              chrom=true, observe=1 }),
+  variables = { rtol=1e-6, -- 1 ppm
+    { var = 'MADX.dqx_b1_sq' , name='dQx.b1_sq'  },
+    { var = 'MADX.dqy_b1_sq' , name='dQy.b1_sq'  },
+    { var = 'MADX.dqpx_b1_sq', name='dQpx.b1_sq' },
+    { var = 'MADX.dqpy_b1_sq', name='dQpy.b1_sq' },
+  },
+  equalities = {
+    { expr = \t -> t.q1-62.31, name='q1' },
+    { expr = \t -> t.q2-60.32, name='q2' },
+    { expr = \t -> t.dq1-2   , name='dq1', tol=2.5e-3 },
+    { expr = \t -> t.dq2-2   , name='dq2', tol=2.5e-3 },
+  },
+  objective = { fmin=2e-3 },
+  maxcall=100, info=2, !debug=2
+}
+
+--[[
+MATCH;
+  GLOBAL, Q1=62.31, Q2=60.32;
+  GLOBAL, DQ1=2., DQ2=2.;
+  VARY, NAME=dQx.b1_sq;
+  VARY, NAME=dQy.b1_sq;
+  VARY, NAME=dQpx.b1_sq;
+  VARY, NAME=dQpy.b1_sq;
+  LMDIF, CALLS=100, TOLERANCE=1.0E-21;
+ENDMATCH;
+--]]
+
+print("status=", status, "fmin=", fmin, "ncall=", ncall)
+print("values after matching tunes & chromas:")
+print("dQx.b1_sq="  , MADX.dqx_b1_sq  )
+print("dQy.b1_sq="  , MADX.dqy_b1_sq  )
+print("dQpx.b1_sq=" , MADX.dqpx_b1_sq )
+print("dQpy.b1_sq=" , MADX.dqpy_b1_sq )
+
+--[[
+dQx.b1_sq =  2.3360316297598e-05
+dQy.b1_sq =  2.3357927809802e-05
+dQpx.b1_sq= -0.0020672071793541
+dQpy.b1_sq= -0.0029584006203342
+
+ Constraints                Type        Kind        Weight     Penalty Value
+-----------------------------------------------------------------------------
+ 1 q1                       equality     .          1          1.06226e-11
+ 2 q2                       equality     .          1          1.36140e-11
+ 3 dq1                      equality     .          1          4.06418e-04
+ 4 dq2                      equality     .          1          1.10223e-05
+
+ Variables                  Final Value  Init. Value  Lower Limit  Upper Limit
+--------------------------------------------------------------------------------
+ 1 dQx.b1_sq                2.33603e-05  9.19483e-10   .            .
+ 2 dQy.b1_sq                2.33579e-05 -1.32807e-09   .            .
+ 3 dQpx.b1_sq              -2.06721e-03  8.39055e-06   .            .
+ 4 dQpy.b1_sq              -2.95840e-03 -3.30748e-06   .            .
+
+ncall=75 [128.8s], fbst[75]=2.03284e-04, fstp=-1.63609e-03, status=FMIN.
+--]]
+
+!#############################################################################
+!######## Match strength to remaining 4 correctors to close bump      ########
+!########                   version using knobs!                      ########
+!#############################################################################
+
+else
+  MADX['dQx.b1_sq '] =  2.3360316297598e-05
+  MADX['dQy.b1_sq '] =  2.3357927809802e-05
+  MADX['dQpx.b1_sq'] = -0.0020672071793541
+  MADX['dQpy.b1_sq'] = -0.0029584006203342
+  MADX['KQSX3.R2']   =  1e-3
+  MADX['KQSX3.L2']   = -1e-3
+end
+
+! Set up skew quadrupoles around arc12
+MADX:open_env()
+
+sk1l = 0.5e-3
+sk2l = sk1l/3
+sk3l = sk1l/4
+sk4l = sk1l/3
+
+sk1r = -sk1l
+sk2r = -sk2l
+sk3r = -sk3l
+sk4r = -sk4l
+
+MADX:close_env()
+
+! mark elements for observation
+lhcb1["S.DS.L2.B1"]:select(observed)
+lhcb1["E.DS.L2.B1"]:select(observed)
+
+--lhcb1:select(observed, {
+--             range="S.DS.L2.B1/E.DS.L2.B1",
+--             table={['S.DS.L2.B1']=true,['E.DS.L2.B1']=true} })
+
+print("values before matching correctors:")
+print("sk1r=" , MADX.sk1r )
+print("sk2r=" , MADX.sk2r )
+print("sk3r=" , MADX.sk3r )
+print("sk4r=" , MADX.sk4r )
+
+local damap, track, cofind, option in MAD
+local X0 = damap {nv=6+4, mo=2, nk=4, ko=1,
+                  vn={'x','px','y','py','t','pt','sk1r','sk2r','sk3r','sk4r'}}
+
+-- set knobs: scalar to tpsa
+MADX.sk1r = X0.sk1r
+MADX.sk2r = X0.sk2r
+MADX.sk3r = X0.sk3r
+MADX.sk4r = X0.sk4r
+
+local mjac = { ---> knobs
+  { var='x' , '0010001', '00100001', '001000001', '0010000001' }, --    |
+  { var='x' , '0001001', '00010001', '000100001', '0001000001' }, --    |
+  { var='px', '0010001', '00100001', '001000001', '0010000001' }, --    v
+  { var='px', '0001001', '00010001', '000100001', '0001000001' }, -- constraints
+  { var='y' , '1000001', '10000001', '100000001', '1000000001' }, --
+  { var='y' , '0100001', '01000001', '010000001', '0100000001' }, --
+  { var='py', '1000001', '10000001', '100000001', '1000000001' }, --
+  { var='py', '0100001', '01000001', '010000001', '0100000001' }, --
+}
+
+status, fmin, ncall = match {
+  command := mchklost( track {sequence=lhcb1, X0=X0, method=4, observe=1, savemap=true} ),
+
+  jacobian = \t,grd,jac => -- gradient not used, fill only jacobian
+    jac:setrow(1.. 8, t['S.DS.L2.B1'].__map:getm(mjac) )
+    jac:setrow(9..16, t['E.DS.L2.B1'].__map:getm(mjac) )
+  end,
+
+  variables = { rtol=1e-6, -- 1 ppm
+    { name='sk1r', get := MADX.sk1r:get0(), set = \x -> MADX.sk1r:set0(x) },
+    { name='sk2r', get := MADX.sk2r:get0(), set = \x -> MADX.sk2r:set0(x) },
+    { name='sk3r', get := MADX.sk3r:get0(), set = \x -> MADX.sk3r:set0(x) },
+    { name='sk4r', get := MADX.sk4r:get0(), set = \x -> MADX.sk4r:set0(x) },
+  },
+  equalities = {
+    { expr = \t -> t['S.DS.L2.B1'].__map.x :get'0010', name='S.R11.x' },
+    { expr = \t -> t['S.DS.L2.B1'].__map.x :get'0001', name='S.R12.x' },
+    { expr = \t -> t['S.DS.L2.B1'].__map.px:get'0010', name='S.R21.x' },
+    { expr = \t -> t['S.DS.L2.B1'].__map.px:get'0001', name='S.R22.x' },
+    -- redundant but does not cost much to check
+    { expr = \t -> t['S.DS.L2.B1'].__map.y :get'1000', name='S.R11.y' },
+    { expr = \t -> t['S.DS.L2.B1'].__map.y :get'0100', name='S.R12.y' },
+    { expr = \t -> t['S.DS.L2.B1'].__map.py:get'1000', name='S.R21.y' },
+    { expr = \t -> t['S.DS.L2.B1'].__map.py:get'0100', name='S.R22.y' },
+
+    { expr = \t -> t['E.DS.L2.B1'].__map.x :get'0010', name='E.R11.x' },
+    { expr = \t -> t['E.DS.L2.B1'].__map.x :get'0001', name='E.R12.x' },
+    { expr = \t -> t['E.DS.L2.B1'].__map.px:get'0010', name='E.R21.x' },
+    { expr = \t -> t['E.DS.L2.B1'].__map.px:get'0001', name='E.R22.x' },
+    -- redundant but does not cost much to check
+    { expr = \t -> t['E.DS.L2.B1'].__map.y :get'1000', name='E.R11.y' },
+    { expr = \t -> t['E.DS.L2.B1'].__map.y :get'0100', name='E.R12.y' },
+    { expr = \t -> t['E.DS.L2.B1'].__map.py:get'1000', name='E.R21.y' },
+    { expr = \t -> t['E.DS.L2.B1'].__map.py:get'0100', name='E.R22.y' },
+  },
+  objective = { fmin=1e-12 },
+  maxcall=100, info=2, debug=2
+}
+
+--[[
+MATCH, SEQUENCE = lhcb1;
+  VARY, NAME=sk1r, LOWER=-1E22, UPPER=1E22;
+  VARY, NAME=sk2r, LOWER=-1E22, UPPER=1E22;
+  VARY, NAME=sk3r, LOWER=-1E22, UPPER=1E22;
+  VARY, NAME=sk4r, LOWER=-1E22, UPPER=1E22;
+  CONSTRAINT, RANGE=S.DS.L2.B1, R11=0;
+  CONSTRAINT, RANGE=S.DS.L2.B1, R12=0;
+  CONSTRAINT, RANGE=S.DS.L2.B1, R21=0;
+  CONSTRAINT, RANGE=S.DS.L2.B1, R22=0;
+  CONSTRAINT, RANGE=E.DS.L2.B1, R11=0;
+  CONSTRAINT, RANGE=E.DS.L2.B1, R12=0;
+  CONSTRAINT, RANGE=E.DS.L2.B1, R21=0;
+  CONSTRAINT, RANGE=E.DS.L2.B1, R22=0;
+  LMDIF, CALLS=5000, TOLERANCE=1E-22;
+  JACOBIAN, CALLS=1000, TOLERANCE=1E-22;
+ENDMATCH;
+--]]
+
+-- clear knobs: tpsa to scalar
+MADX.sk1r = X0.sk1r:get0()
+MADX.sk2r = X0.sk2r:get0()
+MADX.sk3r = X0.sk3r:get0()
+MADX.sk4r = X0.sk4r:get0()
+
+print("status=", status, "fmin=", fmin, "ncall=", ncall)
+print("values after matching correctors:")
+print("sk1r=" , MADX.sk1r )
+print("sk2r=" , MADX.sk2r )
+print("sk3r=" , MADX.sk3r )
+print("sk4r=" , MADX.sk4r )
+
+!#############################################################################
+!######## Match Tunes to compensate second order contribution of coupling ####
+!#############################################################################
+
+print("values before matching tunes:")
+print("dQx.b1_sq="  , MADX.dqx_b1_sq  )
+print("dQy.b1_sq="  , MADX.dqy_b1_sq  )
+
+status, fmin, ncall = match {
+  command := mchklost(twiss { sequence=lhcb1, method=4, cofind=true, observe=1 }),
+  variables = { rtol=1e-6, -- 1 ppm
+    { var = 'MADX.dqx_b1_sq', name='dQx.b1_sq' },
+    { var = 'MADX.dqy_b1_sq', name='dQy.b1_sq' },
+  },
+  equalities = {
+    { expr = \t -> t.q1-62.31, name='q1' },
+    { expr = \t -> t.q2-60.32, name='q2' },
+  },
+  objective = { fmin=1e-10 },
+  maxcall=100, info=2, !debug=2
+}
+
+--[[
+MATCH;
+  GLOBAL, Q1=62.31, Q2=60.32;
+  VARY, NAME=dQx.b1_sq;
+  VARY, NAME=dQy.b1_sq;
+  LMDIF, CALLS=100, TOLERANCE=1.0E-21;
+ENDMATCH;
+--]]
+
+print("status=", status, "fmin=", fmin, "ncall=", ncall)
+print("values after matching tunes:")
+print("dQx.b1_sq="  , MADX.dqx_b1_sq  )
+print("dQy.b1_sq="  , MADX.dqy_b1_sq  )
+
+!#############################################################################
+!######## Twiss results to output file                                ########
+!#############################################################################
+
+local tbl = twiss { sequence=lhcb1, method=4, cofind=true,
+                    chrom=true, coupling=true }
+tbl:write"twiss"
+
+--[[
+TWISS, FILE='twiss.tfs', ripken=True;
+--]]
+
+--]=]
