@@ -41,14 +41,11 @@ local getmetatable = getmetatable
 
 -- tracking photons -----------------------------------------------------------o
 
-local function track_photon (elm, m, i, nrj, px, py)  -- see track...
+local function track_photon (elm, m, i, nrj, x, px, y, py)  -- see track...
   local clw, spos, ds in m
 
   -- take care of mflw wrappers (e.g. __edat and __sdat in track)
   m = assert(getmetatable(m).__index, "corrupted mflow wrapper (unexpected)")
-
-  local x, y in m[i]
-  if is_damap(m[i]) then x, y = x:get0(), y:get0() end
 
   local s = spos+ds*clw
   local phb = beam { particle="photon", energy=nrj }
@@ -68,16 +65,24 @@ end
 
 -- synchrotron radiation ------------------------------------------------------o
 
+-- backup initial x, px, y, py
+
 function M.srad_savp (elm, m, lw, islc)
 ! print("srad_savp", elm.name, elm.l, lw, islc)
   for i=1,m.npar do
-    local px, py, beam in m[i]
-    if beam and beam.particle == "photon" then goto continue end
-    if is_damap(m[i]) then px, py = px:get0(), py:get0() end
-    m[i].px0, m[i].py0 = px, py
+    local beam in m[i]
+    if beam and beam.charge == 0 then goto continue end
+    local x, px, y, py in m[i]
+    if is_damap(m[i]) then
+      x, px, y, py = x:get0(), px:get0(), y:get0(), py:get0()
+    end
+    -- backup
+    m[i].x0, m[i].px0, m[i].y0, m[i].py0 = x, px, y, py
     ::continue::
   end
 end
+
+-- average synchrotron radiation, backup x, px, y, py
 
 function M.srad_avrg (elm, m, lw, islc)
 ! print("srad_avrg", elm.name, elm.l, lw, islc)
@@ -86,9 +91,12 @@ function M.srad_avrg (elm, m, lw, islc)
   local aelw = abs(elw)
 
   for i=1,m.npar do
-    local px, py, pt, px0, py0, beam in m[i]
-    if beam and beam.particle == "photon" then goto continue end
-    if is_damap(m[i]) then px, py, pt = px:get0(), py:get0(), pt:get0() end
+    local beam in m[i]
+    if beam and beam.charge == 0 then goto continue end
+    local x, px, y, py, pt, px0, py0 in m[i]
+    if is_damap(m[i]) then
+      x, px, y, py, pt = x:get0(), px:get0(), y:get0(), py:get0(), pt:get0()
+    end
 
     local dpx  = px-px0 + elw*eh
     local dpy  = py-py0
@@ -97,9 +105,9 @@ function M.srad_avrg (elm, m, lw, islc)
     if kck2 > 0 then
       local  beam = beam or m.beam
       local _bet0 = 1/beam.beta
-      local  dp_1 = sqrt(1 + (2*_bet0)*pt + pt^2)
-      local _beta = (_bet0+pt) / dp_1
-      local  rfac = 2/3 * beam.emrad * (dp_1*beam.betgam)^3 * kck2 / aelw
+      local  dpp1 = sqrt(1 + (2*_bet0)*pt + pt^2)
+      local _beta = (_bet0+pt) / dpp1
+      local  rfac = 2/3 * beam.emrad * (dpp1*beam.betgam)^3 * kck2 / aelw
       local  damp = sqrt(1 + rfac*(rfac-2)*_beta^2)
 
       if sdir < 0 then damp, rfac = 1/damp, -rfac end
@@ -109,16 +117,23 @@ function M.srad_avrg (elm, m, lw, islc)
                m[i].id, rfac*beam.energy, islc, elm.name)
       end
 
+      local dampt = (1-rfac)-rfac*_bet0
+
+      -- scalar only
       px, py = px*damp, py*damp
+      -- scalar or tpsa
       m[i].px = m[i].px*damp
       m[i].py = m[i].py*damp
-      m[i].pt = m[i].pt*(1-rfac)-rfac*_bet0
+      m[i].pt = m[i].pt*dampt
     end
 
-    m[i].px0, m[i].py0 = px, py
+    -- backup
+    m[i].x0, m[i].px0, m[i].y0, m[i].py0 = x, px, y, py
     ::continue::
   end
 end
+
+-- quantum synchrotron radiation, backup x, px, y, py
 
 local kcrit = 1.5*hbar*clight
 
@@ -129,23 +144,26 @@ function M.srad_quant (elm, m, lw, islc)
   local aelw = abs(elw)
 
   for i=1,m.npar do
-    local px, py, pt, px0, py0, beam in m[i]
-    if beam and beam.particle == "photon" then goto continue end
-    if is_damap(m[i]) then px, py, pt = px:get0(), py:get0(), pt:get0() end
+    local beam in m[i]
+    if beam and beam.charge == 0 then goto continue end
+    local x, px, y, py, pt, x0, px0, y0, py0 in m[i]
+    if is_damap(m[i]) then
+      x, px, y, py, pt = x:get0(), px:get0(), y:get0(), py:get0(), pt:get0()
+    end
 
     local dpx = px-px0 + elw*eh
     local dpy = py-py0
     local kck = hypot(dpx, dpy)
 
     if kck > 0 then
-      local beam = beam or m.beam
+      local  beam = beam or m.beam
       local  bet0 = beam.beta
       local _bet0 = 1/bet0
-      local  dp_1 = sqrt(1 + (2*_bet0)*pt + pt^2)
-      local _beta = (_bet0 + pt) / dp_1
+      local  dpp1 = sqrt(1 + (2*_bet0)*pt + pt^2)
+      local _beta = (_bet0 + pt) / dpp1
       local  gama = (bet0*pt + 1)*beam.gamma
       local ucrit = kcrit * gama^2/beam.mass * kck / aelw
-      local aphot = beam.aphot * dp_1 * kck
+      local aphot = beam.aphot * dpp1 * kck
       local nphot = randp(aphot)
       local  rfac = 0
 
@@ -155,7 +173,11 @@ function M.srad_quant (elm, m, lw, islc)
         rfac = rfac + ph_fac
 
         if trkphot and abs(ph_fac) >= 1e-12 then
-          track_photon(elm, m, i, ph_fac*beam.energy, px, py)
+          local r = rand() -- random path length
+          local p_x, p_px = x+(x-x0)*r, px+(px-px0)*r
+          local p_y, p_py = y+(y-y0)*r, py+(py-py0)*r
+          local p_nrj = ph_fac*beam.energy
+          track_photon(elm, m, i, p_nrj, p_x, p_px, p_y, p_py)
         end
       end
 
@@ -167,22 +189,23 @@ function M.srad_quant (elm, m, lw, islc)
         printf("synrad: particle #%d lost %.4e GeV [%d photons] in slice %d of %s\n",
                 m[i].id, rfac*beam.energy, nphot, islc, elm.name)
         if nphot > 5 then
-          local x, y in m[i]
-          if is_damap(m[i]) then x, y = x:get0(), y:get0() end
-          warn(">5 photons emitted, synch. radiat. too high at x=%.2e, y=%.2e",
-                x, y)
+          warn(">5 photons emitted, synch. radiat. too high at x=%.2e, y=%.2e", x, y)
         elseif nphot > 2 then
           warn(">2 photons emitted, thinner slicing strongly recommended")
         end
       end
 
+      local dampt = (1-rfac)-rfac*_bet0
+
+      -- scalar only
       px, py = px*damp, py*damp
+      -- scalar or tpsa
       m[i].px = m[i].px*damp
       m[i].py = m[i].py*damp
-      m[i].pt = m[i].pt*(1-rfac)-rfac*_bet0
+      m[i].pt = m[i].pt*dampt
     end
 
-    m[i].px0, m[i].py0 = px, py
+    m[i].x0, m[i].px0, m[i].y0, m[i].py0 = x, px, y, py
     ::continue::
   end
 end
