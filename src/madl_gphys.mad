@@ -303,9 +303,9 @@ end
 
 -- helpers --------------------------------------------------------------------o
 
--- conversion between momentum and energy deviation
+-- conversion between energy deviation and momentum or beta
 -- dp = (P-P0)/P0, pt = (E-E0)/P0c
--- (1+dp)^2 = 1 + 2pt/beta + pt^2
+-- (1+dp)^2 = 1 + 2pt/beta0 + pt^2
 
 function gphys.dp2pt (dp, beta)
   local _beta = 1/beta
@@ -314,6 +314,11 @@ end
 
 function gphys.pt2dp (pt, beta)
   return pt ~= 0 and sqrt(1 + 2*pt/beta + pt^2) - 1 or 0
+end
+
+function gphys.pt2beta (pt, beta)
+  local _beta = 1/beta
+  return pt ~= 0 and (1 + (2*_beta)*pt + pt^2) / (_beta + pt) or 0
 end
 
 -- compute Poisson bracket from pairs of conjugate column vectors
@@ -954,11 +959,15 @@ function gphys.chfn2bet (bb0, fdp, dp)
   end
 end
 
+-- Method is implemented from SLAC-Pub-1193 where integration is
+-- done explicitly and includes effect of poleface rotations
+
 function gphys.syn2bet(bb0, mflw, elm) -- to review...
   assert(is_beta0(bb0), "invalid argument #1 (beta0 block expected)")
-  local el, eh, e1, e2, knl, beam in mflw
+  local el, eh, knl, beam in mflw
+  local e1, e2 in elm
   local beta = beam.beta
-  local te1  = tan(e1)
+  local te1, te2 = tan(e1), tan(e2)
 
   local betx = bb0.beta11
   local dx   = bb0.dx*beta
@@ -992,7 +1001,7 @@ function gphys.syn2bet(bb0, mflw, elm) -- to review...
   local synch_1 = dispavg*eh*blen
   local synch_2 = eh2*blen
   local synch_3 = abs(eh3)*blen
-  local synch_4 = dispavg*eh*(eh2 + 2*k1)*blen - eh2*(dx*te1 + dx2*tan(e2))
+  local synch_4 = dispavg*eh*(eh2 + 2*k1)*blen - eh2*(dx*te1 + dx2*te2)
   local synch_5 = curlyavg*abs(eh3)*blen
 
   bb0.synch_1 = (bb0.synch_1 or 0) + synch_1
@@ -1000,6 +1009,8 @@ function gphys.syn2bet(bb0, mflw, elm) -- to review...
   bb0.synch_3 = (bb0.synch_3 or 0) + synch_3
   bb0.synch_4 = (bb0.synch_4 or 0) + synch_4
   bb0.synch_5 = (bb0.synch_5 or 0) + synch_5
+  bb0.synch_6 = (bb0.synch_6 or 0) + synch_6
+  bb0.synch_8 = (bb0.synch_8 or 0) + synch_8
 
   if option.debug > 1 then
     print('Synchrotron integrals at exit of element ', elm.name)
