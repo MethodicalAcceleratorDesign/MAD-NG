@@ -87,7 +87,7 @@ static const char *progname = "mad";
 #include "mad_log.h"
 
 #ifndef MAD_VERSION
-#define MAD_VERSION "0.9.2"
+#include "mad_ver.h"
 #endif
 
 /* globals */
