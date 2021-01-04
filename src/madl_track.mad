@@ -41,7 +41,7 @@ local dp2pt, bet2map                                            in MAD.gphys
 local errorf, assertf, printf                                   in MAD.utility
 local tobit, band, bor                                          in MAD.operator
 local apercheck                                                 in MAD.aperture
-local srad_savp, srad_avrg, srad_quant                          in MAD.synrad
+local srad_save, srad_damp, srad_quant                          in MAD.synrad
 local is_implicit                                               in element.drift
 local atbegin, atbody, atend, atins, atins1, action, actionat   in symint
 
@@ -260,7 +260,7 @@ local function make_mflow (self)
   local save, implicit, observe, fringe, radiate in self
   local savebit = slicebit[save]
   if is_boolean(fringe ) then fringe  = fringe  and -1 or 0 end
-  if is_boolean(radiate) then radiate = radiate and "average" or nil end
+  if is_boolean(radiate) then radiate = radiate and "damp" or nil end
 
   assert(is_number(savebit)  ,
               "invalid save directive (boolean or valid atxxx string expected)")
@@ -337,27 +337,25 @@ local function make_mflow (self)
     end
   end
 
-  local trkphot
   if radiate then
-    local radstr
-    atslice = chain(achain(atbegin, srad_savp), atslice)
-    if string.find(radiate, "quantum", 1, true) then
+    atslice = chain(achain(atbegin, srad_save), atslice)
+    if string.find(radiate, "photon", 1, true) then
       atslice = chain(achain(atbody, srad_quant), atslice)
-      radstr  = "quantum"
-      if string.find(radiate, "photon", 1, true) then
-        trkphot = true
-        radstr  = radstr.."+photon"
-      end
-    else -- average
-      atslice = chain(achain(atbody, srad_avrg), atslice)
-      radstr  = "average"
+      radiate = "photon"
+    elseif string.find(radiate, "quantum", 1, true) then
+      atslice = chain(achain(atbody, srad_quant), atslice)
+      radiate = "quantum"
+    elseif string.find(radiate, "damp", 1, true) then
+      atslice = chain(achain(atbody, srad_damp), atslice)
+      radiate = "damp"
+    else
+      error("invalid radiate value '"..radiate.."'")
     end
-    radiate = radstr
     if save then mtbl.radiate = radiate end -- update mtbl
   end
 
   if ataper ~= ffalse then -- chain ataper to atslice for last slice
-    local aperact = actionat('ataper', trkphot and atbody or atend)
+    local aperact = actionat('ataper', atend)
     atslice = chain(aperact, atslice)
     ataper = achain(apercheck, ataper)
   end
@@ -390,7 +388,7 @@ local function make_mflow (self)
 
   -- create mflw
   local npar = #X0
-  local mflw = table.new(npar*ndp*(trkphot and 2 or 1),50)
+  local mflw = table.new(npar*ndp*(radiate == "photon" and 2 or 1), 50)
   local mdef = is_true(mapdef) and {xy=1} or mapdef
   local mknd = 0
   local beta = beam.beta
@@ -467,7 +465,6 @@ local function make_mflow (self)
   mflw.fringe=fringe         -- compute fringe fields
   mflw.misalign=misalign     -- misalign element
   mflw.radiate=radiate       -- radiate at slices
-  mflw.trkphot=trkphot       -- track photons
   mflw.nphot=0               -- number of tracked photons
 
   mflw.save=save             -- save data
@@ -628,7 +625,7 @@ local track = command 'track' {
   implicit=false,   -- slice implicit elements too (e.g. plots)           (mflw)
   misalign=false,   -- consider misalignment                              (mflw)
   fringe=true,      -- enable fringe fields (see element.flags.fringe)    (mflw)
-  radiate=false,    -- radiate at slices "average" or "quantum[+photon]"  (mflw)
+  radiate=false,    -- radiate at slices "damp", "quantum", "photon"      (mflw)
   totalpath=false,  -- variable 't' is the totalpath                      (mflw)
 
   save=true,        -- create mtable and save results                     (mtbl)
@@ -652,12 +649,12 @@ local track = command 'track' {
   exec=exec,        -- command to execute upon children creation
 
   __attr = {        -- list of all setup attributes
-    'beam', 'sequence', 'range', 'dir', 's0', 'X0', 'O0', 'deltap', 'cofind',
-    'nturn', 'mapdef', 'method', 'model', 'ptcmodel',
+    'sequence', 'beam', 'range', 'dir', 's0', 'X0', 'O0', 'deltap', 'cofind',
+    'nturn', 'nstep', 'mapdef', 'method', 'model', 'ptcmodel',
     'implicit', 'misalign', 'fringe', 'radiate', 'totalpath',
     'save', 'title', 'observe', 'savemap', 'info', 'debug', 'usrdef',
-    noeval = {'nslice', 'atentry', 'atslice', 'atexit', 'ataper', 'atsave',
-              'atdebug', 'savesel'},
+    noeval = {'nslice', 'savesel',
+              'atentry', 'atslice', 'atexit', 'ataper', 'atsave', 'atdebug'},
   }
 } :set_readonly()   -- reference track command is readonly
 
