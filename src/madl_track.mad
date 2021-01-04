@@ -252,6 +252,10 @@ local function make_mflow (self)
   -- get range (nil == "#s/#e")
   local range = self.range or sequ.range
 
+  -- get nstep
+  local nstep = self.nstep
+  assert(is_integer(nstep), "invalid number of steps (integer expected)")
+
   -- build iterator (track direction)
   local dir, nturn in self
   local iter, state, eidx = sequ:siter(range, nturn, dir)
@@ -393,7 +397,7 @@ local function make_mflow (self)
   local mknd = 0
   local beta = beam.beta
 
-  -- reference orbit (t is the vector transpose, a function!)
+  -- reference orbit (val: t is the vector transpose, a function!)
   local x0, px0 = val(O0.x) or O0[1] or 0, val(O0.px) or O0[2] or 0
   local y0, py0 = val(O0.y) or O0[3] or 0, val(O0.py) or O0[4] or 0
   local t0, pt0 = val(O0.t) or O0[5] or 0, val(O0.pt) or O0[6] or 0
@@ -409,13 +413,13 @@ local function make_mflow (self)
 
       if is_damap(X0i) then -- damap copy
         mflw[ii] = X0i:copy()
-        mflw[ii]:set0({x0,px0,y0,py0,t0,pt0+dpt},1)
+        mflw[ii]:set0({x0,px0,y0,py0,t0,pt0+dpt},1) -- added to X0i
         mflw[ii].status = 'Mset'
         mknd = bor(mknd, mapkind.damap)
 --      if dpt ~= 0 then mflw[ii]:translate({0,0,0,0,0,dpt},'in') end
       elseif is_beta0(X0i) then -- damap created from beta0
         mflw[ii] = bet2map(X0i, damap(mdef[i] or mdef))
-        mflw[ii]:set0({x0,px0,y0,py0,t0,pt0+dpt},1)
+        mflw[ii]:set0({x0,px0,y0,py0,t0,pt0+dpt},1) -- added to X0i
         mflw[ii].status = 'Bset'
         mknd = bor(mknd, mapkind.damap)
 --      if dpt ~= 0 then mflw[ii]:translate({0,0,0,0,0,dpt},'in') end
@@ -454,7 +458,7 @@ local function make_mflow (self)
   mflw.spos=0                -- current element s-position (signed)
   mflw.eidx=eidx             -- current element index
   mflw.turn=1                -- current turn index
-  mflw.nstep=-1              -- current number of remaining steps
+  mflw.nstep=nstep           -- current number of remaining steps
 
   mflw.npar=#mflw            -- number of tracked particles or damaps
   mflw.tpar=mflw.npar        -- total number of particles or damaps
@@ -555,7 +559,11 @@ local function exec (self)
   -- retrieve or build mflw (and mtbl)
   if self.mflow then
     assert(self.mflow.__trck == _id, "invalid mflow (track mflow expected)")
-    mflw = self.mflow
+    mflw       = self.mflow
+    mflw.nstep = self.nstep or mflw.nstep  -- update volatile fields
+    mflw.info  = self.info  or mflw.info
+    mflw.debug = self.debug or mflw.debug
+    assert(is_integer(mflw.nstep), "invalid number of steps (integer expected)")
   else
     mflw = make_mflow(self)
     mflw.__trck = _id
@@ -565,11 +573,7 @@ local function exec (self)
   local mtbl = mflw.mtbl
 
   -- check number of elements to track
-  local nstep, debug in self
-  if nstep == 0 then return mtbl, mflw end
-
-  -- update fields
-  mflw.nstep, mflw.debug = nstep or mflw.nstep, debug or mflw.debug
+  if mflw.nstep == 0 then return mtbl, mflw end
 
   -- activate maps debugging
   if mflw.debug >= 2 and mflw.atdebug == fnil then
@@ -613,7 +617,6 @@ local track = command 'track' {
   X0=0,             -- initial X coordinates (or damap, or beta block)    (mflw)
   O0=0,             -- initial O coordinates of reference orbit           (mflw)
   deltap=nil,       -- initial deltap(s)                                  (mflw)
-  cofind=nil,       -- search closed orbits or CO (relative) from O0      (mflw)
 
   nturn=1,          -- number of turns to track                           (iter)
   nstep=-1,         -- number of elements to track                        (iter)
@@ -649,7 +652,7 @@ local track = command 'track' {
   exec=exec,        -- command to execute upon children creation
 
   __attr = {        -- list of all setup attributes
-    'sequence', 'beam', 'range', 'dir', 's0', 'X0', 'O0', 'deltap', 'cofind',
+    'sequence', 'beam', 'range', 'dir', 's0', 'X0', 'O0', 'deltap',
     'nturn', 'nstep', 'mapdef', 'method', 'model', 'ptcmodel',
     'implicit', 'misalign', 'fringe', 'radiate', 'totalpath',
     'save', 'title', 'observe', 'savemap', 'info', 'debug', 'usrdef',
