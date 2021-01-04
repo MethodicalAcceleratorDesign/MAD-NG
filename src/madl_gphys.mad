@@ -31,7 +31,8 @@ local is_nil, is_positive, is_integer, is_nonzero, is_odd,
 local assertf, errorf, printf, num2str, setkeys, tblcat          in MAD.utility
 local lbool                                                      in MAD.operator
 local twopi                                                      in MAD.constant
-local min, max, abs, sqrt, sin, cos, tan, atan2, real, cplx, rangle in MAD.gmath
+local min, max, abs, sqrt, sin, cos, tan, atan2, real, cplx,
+      sinh, cosh, rangle                                         in MAD.gmath
 
 local assert, table, type =
       assert, table, type
@@ -902,7 +903,7 @@ function gphys.map2bet (map, rnk_, cpl_, dir_)
   return bb0
 end
 
-function gphys.chfn2bet (bb0, fdp, dp)
+function gphys.chr2bet (bb0, fdp, dp)
   assert(is_beta0(bb0) , "invalid argument #1 (beta0 block expected)")
   assert(is_beta0(fdp) , "invalid argument #2 (beta0 block expected)")
   assert(is_nonzero(dp), "invalid argument #3 (number ~= 0 expected expected)")
@@ -962,66 +963,129 @@ end
 -- Method is implemented from SLAC-Pub-1193 where integration is
 -- done explicitly and includes effect of poleface rotations
 
-function gphys.syn2bet(bb0, mflw, elm) -- to review...
+function gphys.syn2bet(bb0, mflw, elm)
   assert(is_beta0(bb0), "invalid argument #1 (beta0 block expected)")
-  local el, eh, knl, beam in mflw
-  local e1, e2 in elm
+  local el, eh, e1, e2, nmul, knl, beam in mflw
+
+  if el == 0 or (eh == 0 and (nmul < 2 or knl[2] == 0)) then return end
+
+  local debug in mflw
+  local synch_1, synch_2, synch_3, synch_4, synch_5, synch_6, synch_8 =
+              0,       0,       0,       0,       0,       0,       0
+
+  if bb0.synch_1 == nil then
+    bb0.synch_1, bb0.synch_2, bb0.synch_3, bb0.synch_4,
+    bb0.synch_5, bb0.synch_6, bb0.synch_8 = 0, 0, 0, 0, 0, 0, 0
+  end
+
+  local el   = abs(el) -- to remove for backtracking?
+  local k1   = knl[2]/el
+  local te1  = tan(e1 or 0)
   local beta = beam.beta
-  local te1, te2 = tan(e1), tan(e2)
 
-  local betx = bb0.beta11
-  local dx   = bb0.dx*beta
-  local alfx = bb0.alfa11 - betx*eh*te1
+--[[
+  if elm.name == 'BC2.1' then
+    print("forcing bb0 values")
+    bb0.beta11 = 199.70125780897720
+    bb0.alfa11 = -11.207512356414414
+    bb0.gama11 = (1+bb0.alfa11^2)/bb0.beta11
+    bb0.dx     = 5.9103260319629369E-002/beta
+    bb0.dpx    = 6.3203749401402626E-003/beta
+  elseif elm.name == 'QC6.1' then
+    print("forcing bb0 values")
+    bb0.beta11 = 224.48000485821939
+    bb0.alfa11 = -11.887715419912254
+    bb0.gama11 = (1+bb0.alfa11^2)/bb0.beta11
+    bb0.dx     = 6.5827938702608543E-002/beta
+    bb0.dpx    = 6.2381959003945681E-003/beta
+  elseif elm.name == 'QC7.1' then
+    print("forcing bb0 values")
+    bb0.beta11 = 9.9847045415699647
+    bb0.alfa11 = 0.38097776665526117
+    bb0.gama11 = (1+bb0.alfa11^2)/bb0.beta11
+    bb0.dx     = 0.16810693818515376/beta
+    bb0.dpx    = 3.2570664593918725E-003/beta
+  end
+--]]
+
+  local dx   = bb0.dx *beta
   local dpx  = bb0.dpx*beta + dx*eh*te1
-  local gamx = (1 + alfx^2) / betx
-
-  local blen = abs(el)
-  local k1   = knl[2]/blen
-  local eh2, eh3 = eh^2, eh^3
 
   -- global gradient combining weak focusing and dipole gradient
   -- k2 can be positive or negative and k can be real or imaginary
-  local k2 = eh2 + 2*k1
-  local k  = sqrt(k2+0i)
-  local kl = k*blen
 
-  local ckl, skl = cos(kl), sin(kl)
-  local kl2, kl3 = kl^2, kl^3
+  if debug > 0 then
+    print('Synchrotron integrals at exit of element ', elm.name, elm.kind)
+    print('Input:  eh = ', eh, 'k1 = ', k1, 'e1 =', e1, 'e2 = ', e2, 'blen = ', el)
+    print('        betxi = ', bb0.beta11, 'alfxi = ', bb0.alfa11, 'dxi = ', dx, 'dpxi = ', dpx)
+  end
 
   -- propagation of dispersion at exit
-  local dx2      = real(dx*ckl + dpx*skl/k + eh*(1-ckl)/k^2)
-  local dispavg  = real(dx*skl/kl + dpx*(1-ckl)/(k*kl) + eh*(kl-skl)/(k2*kl))
-  local curlyavg = real( gamx*dx^2 + 2*alfx*dx*dpx + betx*dpx^2
-         + 2*eh*blen*( -(gamx*dx + alfx*dpx)*(kl-skl)/(kl2*k)
-                       +(alfx*dx + betx*dpx)*(1 -ckl)/(kl2) )
-       + (eh*blen)^2*(   gamx*(3*kl - 4*skl + skl*ckl)/(2*k2*kl3)
-                       - alfx*(1 -ckl)^2  /(k*kl3)
-                       + betx*(kl-ckl*skl)/(2*kl3)) )
+  if eh ~= 0 then -- bend contribution
+    local betx = bb0.beta11
+    local alfx = bb0.alfa11 - betx*eh*te1
+    local gamx = (1 + alfx^2) / betx
 
-  local synch_1 = dispavg*eh*blen
-  local synch_2 = eh2*blen
-  local synch_3 = abs(eh3)*blen
-  local synch_4 = dispavg*eh*(eh2 + 2*k1)*blen - eh2*(dx*te1 + dx2*te2)
-  local synch_5 = curlyavg*abs(eh3)*blen
+    local k2 = eh^2 + 2*k1
+    local k  = sqrt(k2+0i)
+    local kl = k*el
+    local ckl, skl = cos(kl), sin(kl)
+    local eh2, eh3 = eh^2, eh^3
+    local kl2, kl3 = kl^2, kl^3
+    local dx2      = real(dx*ckl + dpx*skl/k + eh*(1-ckl)/k2)
+    local dispavg  = real(dx*skl/kl + dpx*(1-ckl)/(k*kl) + eh*(kl-skl)/(k2*kl))
+    local curlyavg = real( gamx*dx^2 + 2*alfx*dx*dpx + betx*dpx^2
+              + 2*eh*el*(-(gamx*dx + alfx*dpx)*(kl-skl)/(kl2*k)
+                         +(alfx*dx + betx*dpx)*(1 -ckl)/(kl2))
+            + (eh*el)^2*(  gamx*(3*kl - 4*skl + skl*ckl)/(2*k2*kl3)
+                         - alfx*(1 -ckl)^2  /(k*kl3)
+                         + betx*(kl-ckl*skl)/(2*kl3)) )
 
-  bb0.synch_1 = (bb0.synch_1 or 0) + synch_1
-  bb0.synch_2 = (bb0.synch_2 or 0) + synch_2
-  bb0.synch_3 = (bb0.synch_3 or 0) + synch_3
-  bb0.synch_4 = (bb0.synch_4 or 0) + synch_4
-  bb0.synch_5 = (bb0.synch_5 or 0) + synch_5
-  bb0.synch_6 = (bb0.synch_6 or 0) + synch_6
-  bb0.synch_8 = (bb0.synch_8 or 0) + synch_8
+    synch_1 = dispavg*eh*el
+    synch_2 = eh2*el
+    synch_3 = abs(eh3)*el
+    synch_4 = dispavg*eh*(eh2 + 2*k1)*el - eh2*(dx*te1 + dx2*tan(e2 or 0))
+    synch_5 = curlyavg*abs(eh3)*el
 
-  if option.debug > 1 then
-    print('Synchrotron integrals at exit of element ', elm.name)
-    print('Input:  eh = ', eh, 'k1 = ', k1, 'e1 =', e1, 'e2 = ', e2, 'blen = ', blen)
-    print('        betxi = ', bb0.beta11, 'alfxi = ', bb0.alfa11, 'dxi = ', bb0.dx, 'dpxi = ', bb0.dpx)
-    print(' --> ')
-    print('        k2 = ', k2, '  k = ', k, 'k*l = ', kl)
-    print('        alfx = ', alfx, 'dpx = ', dpx, 'gamx = ', gamx, 'dx2 = ', dx2)
-    print('        dispaverage = ', dispavg, 'curlyhaverage = ', curlyavg)
-    print('Contributions to Radiation Integrals:', synch_1, synch_2, synch_3, synch_4, synch_5)
-    print(' ')
+    bb0.synch_1 = bb0.synch_1 + synch_1
+    bb0.synch_2 = bb0.synch_2 + synch_2
+    bb0.synch_3 = bb0.synch_3 + synch_3
+    bb0.synch_4 = bb0.synch_4 + synch_4
+    bb0.synch_5 = bb0.synch_5 + synch_5
+
+    if debug > 1 then
+      print(' --> ')
+      print('        k2 = ', k2, '  k = ', k, 'k*l = ', kl)
+      print('        alfx = ', alfx, 'dpx = ', dpx, 'gamx = ', gamx, 'dx2 = ', dx2)
+      print('        dispaverage = ', dispavg, 'curlyhaverage = ', curlyavg)
+    end
+
+  elseif k1 ~= 0 then -- quad contribution (exclusive)
+    local sk1 = sqrt(k1+0i)
+    local u0x = real((1+sin(2*sk1*el)/(2*sk1*el))/ 2)
+    local u2x = real((1-sin(2*sk1*el)/(2*sk1*el))/(2*k1))
+    local u1x = real(sin(sk1*el)^2)/(k1*el)
+    local dx2 = real(cos(sk1*el)*dx + dpx/sk1*sin(sk1*el))
+    local dispavg = (dx+dx2)/2
+    local betxavg = bb0.beta11*u0x - bb0.alfa11*u1x + bb0.gama11*u2x
+
+    synch_6 =  k1^2*betxavg   *el
+    synch_8 = (k1  *dispavg)^2*el
+
+    bb0.synch_6 = bb0.synch_6 + synch_6
+    bb0.synch_8 = bb0.synch_8 + synch_8
+
+    if debug > 1 then
+      print(' --> ')
+      print('        u0x = ', u0x, 'u1x = ', u1x, 'u2x = ', u2x, 'dx2 = ', dx2)
+      print('        dispaverage = ', dispavg, 'betxavg = ', betxavg)
+    end
+  end
+
+  if debug > 0 then
+    print('Contributions to Radiation Integrals:',
+           synch_1, synch_2, synch_3, synch_4, synch_5, synch_6, synch_8)
+    print('')
   end
 end
 
