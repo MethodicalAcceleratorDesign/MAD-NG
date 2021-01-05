@@ -26,6 +26,7 @@
 local warn, option, vector, matrix, command, track, cvname       in MAD
 local has_dpt, msort                                             in MAD.gphys
 local tblcat, tblorder, errorf, assertf, printf                  in MAD.utility
+local lbool                                                      in MAD.operator
 local eps                                                        in MAD.constant
 local is_number, is_positive, is_true                            in MAD.typeid
 
@@ -76,9 +77,7 @@ local function vec2par (V, X_)
   return X
 end
 
--- cofind algorithms ----------------------------------------------------------o
-
-local method = {}
+-- Newton algorithm -----------------------------------------------------------o
 
 local I  = matrix(6):eye()
 local I4 = matrix(4):eye()
@@ -86,7 +85,7 @@ local X4 = vector(4)
 local R4 = matrix(4)
 local r4 = 1..4
 
-function method.newton (X0, X, R, T, tol)
+local function newton (X0, X, R, T, tol)
   local dx, rnk
 
   if not T and has_dpt(R) then
@@ -124,9 +123,8 @@ end
 
 -- cofind using jacobian ------------------------------------------------------o
 
-local function cofind_jacob (self, mflw)
-  local cotol, coiter, codiff, comethod, totalpath in self
-  local costep = method[comethod]
+local function cofind_jac (self, mflw)
+  local cotol, coiter, codiff, totalpath in self
 
   -- sanity check and adjustment
   if cotol < codiff*10 then
@@ -154,7 +152,7 @@ local function cofind_jacob (self, mflw)
   --       id   = primary and secondary particle id (i.e. in track)
 
   -- save finite differences, final translation, temporaries
-  local dH, X1, X, R = par2vec(codiff), par2vec(self.X1), vector(6), matrix(6)
+  local dH, O1, X, R = par2vec(codiff), par2vec(self.O1), vector(6), matrix(6)
 
 ! print("", "id", "id0", "coid")
 ! for i=1,n do print("i=0", mflw[i].id, mflw[i].id0, mflw[i].coid) end
@@ -218,8 +216,8 @@ local function cofind_jacob (self, mflw)
         R:set(j,k, (mflw[i+k][vn[j]] - X[j])/dH[k])
       end end
 
-      -- update X0 = X0-dx if |dx| > cotol, where dx solves (R-I)dx = (X-X1)-X0
-      local rnk, dx, typ = costep(X0, X-X1, R, totalpath, cotol)
+      -- update X0 = X0-dx if |dx| > cotol, where dx solves (R-I)dx = (X-O1)-X0
+      local rnk, dx, typ = newton(X0, X-O1, R, totalpath, cotol)
 
       if option.debug >= 2 then
         codump(X0, dx, X, R, m.coid, itr, typ or m.status)
@@ -281,20 +279,22 @@ end
 -- cofind using map -----------------------------------------------------------o
 
 local function cofind_map (self, mflw)
-  local cotol, coiter, comethod, totalpath in self
-  local costep = method[comethod]
+  local cotol, coiter, totalpath in self
 
-  -- save current orbits
-  local n, X0 = mflw.npar, table.new(mflw.npar,0)
-  for i=1,n do X0[i] = mflw[i]:get0() end
+  -- save current orbits and truncate computation at order 1
+  local X0, n  = table.new(mflw.npar,0), mflw.npar
+  local M0, O0 = table.new(mflw.npar,0), table.new(mflw.npar,0)
+  for i=1,n do
+    X0[i], M0[i], O0[i] = mflw[i]:get0(), mflw[i], mflw[i].x:gtrunc(1)
+  end
 
   -- save final translation, temporaries
-  local X1, X, R = par2vec(self.X1), vector(6), matrix(6)
+  local O1, X, R = par2vec(self.O1), vector(6), matrix(6)
 
   -- search for fix points
   for itr=1,coiter do
 
-    -- 1. set order 0 to orbit, order 1 to I, higher orders to 0
+    -- 1. set order 0 to orbit, order 1 to I, higher orders to 0 (if any)
     for i=1,n do mflw[i]:setvar(X0[mflw[i].id]) end
 
     -- 2. track damaps
@@ -317,8 +317,8 @@ local function cofind_map (self, mflw)
       local X0 = X0[m.id]
       m:get0(X) ; m:get1(R)
 
-      -- update X0 = X0-dx if |dx| > cotol, where dx solves (R-I)dx = (X-X1)-X0
-      local rnk, dx, typ = costep(X0, X-X1, R, totalpath, cotol)
+      -- update X0 = X0-dx if |dx| > cotol, where dx solves (R-I)dx = (X-O1)-X0
+      local rnk, dx, typ = newton(X0, X-O1, R, totalpath, cotol)
 
       if option.debug > 2 then
         codump(X0, dx, X, R, m.id0 or m.id, itr, typ or m.status)
@@ -358,10 +358,13 @@ local function cofind_map (self, mflw)
     end
   end
 
-  -- 6. update mtbl particle status
+  -- 6. restore damap orders
+  for i=1,#M0 do M0[i].x:gtrunc(O0[i]) end
+
+  -- 7. update mtbl particle status
   -- TODO
 
-  -- 7. damaps are ordered by stable/unstable/singular/lost then by id
+  -- 8. damaps are ordered by stable/unstable/singular/lost then by id
   return mflw.mtbl, msort(mflw)
 end
 
@@ -371,26 +374,19 @@ end
 -- output status: stable, unstable, singular, lost.
 
 local function exec (self)
-  local mapdef, radiate, cotol, coiter, codiff, comethod in self
+  local mapdef, radiate, cotol, coiter, codiff in self
   assertf(is_positive(cotol ), "invalid cotol %.15g (positive number expected)" , cotol )
   assertf(is_positive(coiter), "invalid coiter %d (positive number expected)"   , coiter)
   assertf(is_positive(codiff), "invalid codiff %.15g (positive number expected)", codiff)
-  assertf(   method[comethod], "invalid comethod '%s' (unsupported method)"     ,comethod)
 
-  -- setup map order
-  if is_true(mapdef) then self.mapdef = {xy=1} end
-
-  -- block quantum radiation and photon tracking
-  if radiate then radiate = "average" end
-
-  -- prepare template for tracking
+  -- prepare template for tracking, block quantum radiation and photon tracking
   local _, mflw = track { exec=false } :copy_variables(self)
-                        { nstep=0, radiate=radiate }
+                        { nstep=0, radiate=lbool(radiate) }
 
   -- search closed orbit
   if mapdef
-  then return cofind_map  (self, mflw) -- use damap
-  else return cofind_jacob(self, mflw) -- use jacobian
+  then return cofind_map(self, mflw) -- use damap
+  else return cofind_jac(self, mflw) -- use finite differences
   end
 end
 
@@ -432,11 +428,10 @@ local cofind = command 'cofind' {
   atsave=nil,        -- action called when saving in mtable               (trck)
   atdebug=nil,       -- action called when debugging the element maps     (trck)
 
-  cotol=1e-8,        -- closed orbit tolerance (i.e. |dx|)                (cofn)
+  cotol=1e-8,        -- closed orbit tolerance (i.e. min |dx|)            (cofn)
   coiter=20,         -- maximum number of iterations                      (cofn)
   codiff=1e-10,      -- finite differences step for jacobian              (cofn)
-  comethod='newton', -- default algorithm                                 (cofn)
-  X1=0,              -- optional final coordinates translation            (cofn)
+  O1=0,              -- optional final coordinates translation            (cofn)
 
   info=nil,          -- information level (output on terminal)            (cofn)
   debug=nil,         -- debugging information level (output on terminal)  (cofn)
@@ -447,7 +442,7 @@ local cofind = command 'cofind' {
 
   __attr = tblcat(   -- list of all setup attributes
     track.__attr,
-    {'cotol', 'coiter', 'codiff', 'comethod', 'X1'},
+    {'cotol', 'coiter', 'codiff', 'O1'},
     {noeval=track.__attr.noeval}
   )
 } :set_readonly()    -- reference cofind command is readonly
