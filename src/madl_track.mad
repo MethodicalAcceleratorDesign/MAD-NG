@@ -379,8 +379,9 @@ local function make_mflow (self)
 
   -- retrieve initial conditions
   local s0, X0, O0, mapdef, savemap in self
-  if X0 == 0 then X0 = {0,0,0,0,0,0} end
-  if O0 == 0 then O0 = {0,0,0,0,0,0} end
+  if X0 == 0    then X0 = {0,0,0,0,0,0} end
+  if O0 == 0    then O0 = {0,0,0,0,0,0} end
+  if O0 == true then O0 = {0,0,0,0,0,0, cofind=true} end
   assert(is_number  (s0)    , "invalid s0 (number expected)")
   assert(is_mappable(X0)    , "invalid X0 (mappable expected)")
   assert(is_mappable(O0)    , "invalid O0 (mappable expected)")
@@ -389,6 +390,17 @@ local function make_mflow (self)
   assert(is_boolean(savemap) or savemap == 1 -- 1 means to save only the matrix
                             , "invalid savemap (boolean or 1 expected)")
   if not is_mappable(X0[1]) or is_beta0(X0) then X0 = {X0} end
+
+  -- search for reference closed orbit
+  if O0.cofind then
+    local _, mflw = MAD.cofind { exec=false } :copy_variables(self)
+                    { X0=O0, deltap=0, save=false, nstep=-1, mapdef=mapdef }
+    if mflw.npar ~= mflw.tpar then
+      warn("%d/%d particles are unstable/singular/lost after closed orbit search",
+           mflw.tpar - mflw.npar, mflw.tpar)
+    end
+    O0 = mflw[1]
+  end
 
   -- create mflw
   local npar = #X0
@@ -411,8 +423,8 @@ local function make_mflow (self)
       local dpt = beam and dp2pt(dp, beam.beta) or dpt
       local ii = (j-1)*npar+i
 
-      if is_damap(X0i) then -- damap copy
-        mflw[ii] = X0i:copy()
+      if is_damap(X0i) then -- damap (copy)
+        mflw[ii] = X0i.nocopy and j==1 and X0i or X0i:copy()
         mflw[ii]:set0({x0,px0,y0,py0,t0,pt0+dpt},1) -- added to X0i
         mflw[ii].status = 'Mset'
         mknd = bor(mknd, mapkind.damap)
@@ -431,8 +443,11 @@ local function make_mflow (self)
           mflw[ii] = damap(mdef[i] or mdef)
           mflw[ii]:set0{x0+x, px0+px, y0+y, py0+py, t0+t, pt0+pt+dpt}
           mknd = bor(mknd, mapkind.damap)
-        else -- copy: need a table for key access (e.g. vs. vector)
-          mflw[ii] = {x=x0+x, px=px0+px, y=y0+y, py=py0+py, t=t0+t, pt=pt0+pt+dpt}
+        else -- particle (copy)
+          local p = X0i.nocopy and j==1 and X0i or {x=x,px=px,y=y,py=py,t=t,pt=pt}
+          p.x   , p.px    , p.y   , p.py    , p.t   , p.pt =
+          p.x+x0, p.px+px0, p.y+y0, p.py+py0, p.t+t0, p.pt+pt0+dpt
+          mflw[ii] = p
           mknd = bor(mknd, mapkind.part)
         end
         mflw[ii].status = 'Xset'
