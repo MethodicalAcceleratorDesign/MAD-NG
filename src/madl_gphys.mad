@@ -190,8 +190,8 @@ function gphys.msort (mflw, cmp_)
   table.sort(mflw, cmp_ or gphys.mcmp)
 
   mflw.npar = #mflw
-  for i=1,mflw.npar do
-    if mrnk[mflw[i].status] > mrnk.stable then mflw.npar=i-1 break end
+  for i=mflw.npar,1,-1 do
+    if mrnk[mflw[i].status] <= mrnk.stable then mflw.npar=i break end
   end
   return mflw
 end
@@ -377,16 +377,12 @@ function gphys.make_stable (R)
   -- check trace stability
   for i=1,n-1,2 do
     local tr = abs(get(R,i,i)+get(R,i+1,i+1))
-        if tr == 2 then
-      warn("Tr(R)=2 for plane %d, undefined solution!", i)
-    elseif tr >  2 then
-      warn("Tr(R)>2 for plane %d, unstable motion!", i)
-    end
+    if tr > 2 then warn("Tr(R)>2 for plane %d, unstable motion!", i) end
   end
 
-  -- stabilize the one-turn map to avoid unstable eigenvectors in case of
+  -- stabilize the one-turn-map to avoid unstable eigenvectors in case of
   -- perfectly equal transverse tunes and no coupling. stab_tol is lower than
-  -- eps, hence it will remove only numerical noise as the one-turn map is
+  -- eps, hence it will remove only numerical noise as the one-turn-map is
   -- supposed to be around the identity where eps represents both a relative
   -- and an absolute numerical error.
   for idx=1,blkidx_n,4 do
@@ -704,7 +700,7 @@ function gphys.bet2map (bb0, map, sav_)
   local alfa11 = bb0.alfa11 or bb0.alfa1 or bb0.alfx or 0
   local gama11 = bb0.gama11 or (1+alfa11^2)/beta11
 
-  assert(beta11 > 0, "invalid beta11 (>0 expected)")
+  assertf(beta11 > 0, "invalid beta11=%.3fm (>0 expected)", beta11)
 
   local A11 = sqrt(beta11)
   local A21 = -alfa11/A11
@@ -719,7 +715,7 @@ function gphys.bet2map (bb0, map, sav_)
   local alfa22 = bb0.alfa22 or bb0.alfa2 or bb0.alfy or 0
   local gama22 = bb0.gama22 or (1+alfa22^2)/beta22
 
-  assert(beta22 > 0, "invalid beta22 (>0 expected)")
+  assertf(beta22 > 0, "invalid beta22=%.3fm (>0 expected)", beta22)
 
   local A33 = sqrt(beta22)
   local A43 = -alfa22/A33
@@ -728,22 +724,25 @@ function gphys.bet2map (bb0, map, sav_)
   set(A,3,3, A33) ; set(A,3,4,  0 ) -- Courant-Snyder form
   set(A,4,3, A43) ; set(A,4,4, A44)
 
-  -- t plane, z axis
+  -- t plane
 
-  local beta33 = bb0.beta33 or bb0.beta3 or bb0.betz or 1
-  local alfa33 = bb0.alfa33 or bb0.alfa3 or bb0.alfz or 0
-  local gama33 = bb0.gama33 or (1+alfa33^2)/beta33
+  local beta33 = bb0.beta33 or bb0.beta3 or bb0.betz or 0
 
-  assert(beta33 > 0, "invalid beta33 (>0 expected)")
+  if beta33 ~= 0 then
+    local alfa33 = bb0.alfa33 or bb0.alfa3 or bb0.alfz or 0
+    local gama33 = bb0.gama33 or (1+alfa33^2)/beta33
 
-  local A55 = sqrt(beta33)
-  local A65 = -alfa33/A55
-  local A66 = sqrt(gama33 - A65^2) -- 1/A55
+    assertf(beta33 > 0, "invalid beta33=%.3fm (>0 expected)", beta33)
 
-  set(A,5,5, A55) ; set(A,5,6,  0 ) -- Courant-Snyder form
-  set(A,6,5, A65) ; set(A,6,6, A66)
+    local A55 = sqrt(beta33)
+    local A65 = -alfa33/A55
+    local A66 = sqrt(gama33 - A65^2) -- 1/A55
 
-  if rnk == 4 and (bb0.beta33 or bb0.beta3 or bb0.betz) then rnk = 6 end
+    set(A,5,5, A55) ; set(A,5,6,  0 ) -- Courant-Snyder form
+    set(A,6,5, A65) ; set(A,6,6, A66)
+
+    if rnk == 4 then rnk = 6 end
+  end
 
   -- set dispersion
 
@@ -758,10 +757,13 @@ function gphys.bet2map (bb0, map, sav_)
 
   -- sanity checks
 
-  local serr = (rnk >= 6 and A or A:getsub(r4,r4)):symperr()
+  local serr, merr = (rnk >= 6 and A or A:getsub(r4,r4)):symperr(matrix(rnk))
   if serr > phystol.symp_tol then
-    warn("normalizing form A[%dx%d] built from beta0 block %d is not symplectic, \z
+    io.flush()
+    warn("normalizing form A[%dx%d] built from beta0 block #%d is not symplectic, \z
           symperr=%.5e", rnk, rnk, bb0.id or 0, serr)
+    A:print('A') ; merr:print('A_symperr')
+    io.flush()
   end
 
   bb0.X, bb0.A = X, A
@@ -928,7 +930,7 @@ function gphys.chr2bet (bb0, fdp, dp)
   -- chromatic functions
 
   if bb0.beta11 then
-    assert(bb0.beta11 > 0, "invalid beta11 (>0 expected)")
+    assertf(bb0.beta11 > 0, "invalid beta11=%.3fm (>0 expected)", bb0.beta11)
 
     local dbetx = (fdp.beta11 - bb0.beta11) / dp
     local dalfx = (fdp.alfa11 - bb0.alfa11) / dp
@@ -944,7 +946,7 @@ function gphys.chr2bet (bb0, fdp, dp)
   end
 
   if bb0.beta22 then
-    assert(bb0.beta22 > 0, "invalid beta22 (>0 expected)")
+    assertf(bb0.beta22 > 0, "invalid beta22=%.3fm (>0 expected)", bb0.beta22)
 
     local dbety = (fdp.beta22 - bb0.beta22) / dp
     local dalfy = (fdp.alfa22 - bb0.alfa22) / dp
