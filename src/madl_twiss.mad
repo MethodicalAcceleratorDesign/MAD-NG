@@ -42,6 +42,7 @@ local assert, error, getmetatable, setmetatable, table =
 local r4 = 1..4
 local I4 = matrix(4):eye()
 local I6 = matrix(6):eye()
+local v6 = vector(6)
 
 -- helpers --------------------------------------------------------------------o
 
@@ -55,6 +56,15 @@ local function twdump (mflw, msg_, str_)
     if mflw.debug >= 3 then mflw[i]:get1():print(' "     ') end
   end
   option.numfmt = fmt
+end
+
+local function par2vec (X, V_)
+  local V = V_ or vector(6)
+  if is_number(X) then return V:fill(X) end
+  V[1], V[2] = X[1] or X.x or 0, X[2] or X.px or 0
+  V[3], V[4] = X[3] or X.y or 0, X[4] or X.py or 0
+  V[5], V[6] = X[5] or X.t or 0, X[6] or X.pt or 0
+  return V
 end
 
 -- twiss mtable ---------------------------------------------------------------o
@@ -173,23 +183,23 @@ local function twissact (elm, mflw, lw, islc)
   local ofun, chrm, npar in mflw.__twdat
 
   -- map to beta0 block
-  if atins(nil,mflw,nil,islc) then
+!  if atins(nil,mflw,nil,islc) then
     for i=1,mflw.npar do
       local m = mflw[i]
       map2bet(m, ofun[m.id])
     end
-  end
+!  end
 
   -- synchrotron integrals
   if islc == 0 then -- and chrm
     for i=1,mflw.npar do
-      local m = mflw[i]
-      syn2bet(ofun[m.id], mflw, elm)
+      local id in mflw[i]
+      if id <= npar then syn2bet(ofun[id], mflw, elm) end
     end
   end
 
   -- chromatic functions
-  if chrm and atins(nil,mflw,nil,islc) then
+  if chrm then !and atins(nil,mflw,nil,islc) then
 --    print(elm.name)
     local beam in mflw
     local dpt = dp2pt(chrm, beam.beta)
@@ -231,39 +241,55 @@ local function chrom_dps (self)
   end
 end
 
--- closed orbit ---------------------------------------------------------------o
+-- closed orbits --------------------------------------------------------------o
 
 local function twiss_cofind (self, mflw0)
-  local npar in mflw0
-  local X0, Xi = table.new(npar,0), table.new(npar,0)
+  local npar, info in mflw0
+  local X0, Xi = table.new(npar,0)
 
-  -- get initial guess(es)
+  -- setup cofind for jacobian or damaps
+  local codiff = self.codiff == true and cofind.codiff or self.codiff
+  local mapdef = not codiff and self.mapdef or nil
+
+  -- process 'Xset' damaps only (i.e. particles)
   local j = 1
-  for i=1,npar do
-    local m = mflw0[i]
-    if m.status == 'Xset' then
-      X0[j], Xi[j]  = m:get0():totable(), i
-      X0[j].beam, j = m.beam, j+1
+  if codiff then -- use particles
+    Xi = table.new(npar,0)
+    for i=1,npar do
+      local m = mflw0[i]
+      if m.status == 'Xset' then
+        X0[j], Xi[j] = m:get0():totable(), i
+        X0[j].id, X0[j].beam, X0[j].nosave, X0[j].nocopy, j =
+            m.id,     m.beam,     m.nosave,         true, j+1
+      end
+    end
+  else           -- (re)use damaps
+    for i=1,npar do
+      local m = mflw0[i]
+      if m.status == 'Xset' then X0[j], j = m, j+1 end
     end
   end
 
-  -- nothing to process (no particles)
+  -- nothing to process (no damaps)
   if j == 1 then return end
 
-  local mapdef = not self.codiff -- nil or false codiff use {xy=1}
-  local codiff = self.codiff == true and cofind.codiff or self.codiff
+  -- compute closed orbit(s)
+  if info >= 2 then
+    io.write("twiss: searching for closed orbit(s)...\n")
+  end
 
-  -- retrieve closed orbit(s) [TODO: disable knobs]
   local _, mflw = cofind { exec=false } :copy_variables(self)
                          { X0=X0, deltap=0, save=false, nstep=-1,
                            mapdef=mapdef, codiff=codiff }
 
   -- update damaps with their closed orbit (tw: i, co: j)
-  for j=1,mflw.tpar do
-    local m, m0 = mflw[j], mflw0[Xi[mflw[j].id]]
-    m0.status = m.status
-    m0:setvar(is_damap(m) and m:get0() or m)
-    m0.coR = m.coR -- backup one-turn-map from last cofind iteration
+  if codiff then
+    for j=1,mflw.tpar do
+      local m  = mflw [j]
+      local m0 = mflw0[Xi[m.id]]
+      m0.status = m.status
+      m0:setvar(par2vec(m,v6))
+    end
   end
 
   -- report
@@ -274,41 +300,33 @@ local function twiss_cofind (self, mflw0)
   end
 end
 
--- one-turn-map ---------------------------------------------------------------o
+-- one-turn-maps --------------------------------------------------------------o
 
 local function twiss_track (self, mflw0)
-  local npar in mflw0
-  local X0, Xi = table.new(npar,0), table.new(npar,0)
+  local npar, info in mflw0
+  local X0 = table.new(npar,0)
 
-  -- track 'Xset' and 'stable' damaps
+  -- process 'stable' damaps only (i.e. particles)
   local j = 1
   for i=1,npar do
     local m = mflw0[i]
-    if m.status == 'Xset' or m.status == 'stable' then
-      X0[j], Xi[j]  = m:get0():totable(), i
-      X0[j].beam, j = m.beam, j+1
-    end
+    if m.status == 'stable' then X0[j], j = m:clr0(), j+1 end
   end
 
   -- nothing to process (no damaps)
   if j == 1 then return end
 
-  -- get one-turn-maps to user-defined orders
-  local _, mflw = track { exec=false } :copy_variables(self)
-                        { X0=X0, deltap=0, save=false, radiate=false, nstep=-1 }
-
-  -- update damaps with their one-turn-map on the closed orbit (tw: i, tk: j)
-  for j=1,mflw.tpar do
-    local m, m0 = mflw[j], mflw0[Xi[mflw[j].id]]
-    if m.status == 'Xset'
-    then m:copy(m0)
-    else warn("unexpected damap (%d) status (%s) after tracking on closed orbit",
-              m.id, m.status) end
+  -- compute one-turn-map(s)
+  if info >= 2 then
+    io.write("twiss: computing one-turn-map(s)...\n")
   end
+
+  local _, mflw = track { exec=false } :copy_variables(self)
+                        { X0=X0, deltap=0, save=false, nstep=-1 }
 
   -- report
   if mflw.npar ~= mflw.tpar then
-    warn("%d/%d particles lost after during tracking on the closed orbit",
+    warn("%d/%d particles lost while computing the one-turn-maps",
          mflw.tpar - mflw.npar, mflw.tpar)
     msort(mflw0)
   end
@@ -320,20 +338,20 @@ local function check_normal (m, of)
   local fmt = option.numfmt
   option.numfmt = "% .5e"
   io.write("Checking normal form vs optical functions\n")
-  m:get1():print('A') ; show(of); bet2map(of, m:copy()):get1():print('A(beta0)')
+  m:get1():print('A') ; bet2map(of, m:copy()):get1():print('A(beta0)') ; show(of)
   option.numfmt = fmt
 end
 
-local function twiss_nform (self, mflw)
+local function twiss_nform (self, mflw0)
+  local npar, sdir, info, debug in mflw0
   local coupling in self
-  local npar, sdir in mflw
 
-  -- prepare mflw to twiss extensions
-  mflw.__twdat = {ofun={}}
-  local ofun in mflw.__twdat
+  -- prepare mflw0 to twiss extensions
+  mflw0.__twdat = {ofun={}}
+  local ofun in mflw0.__twdat
 
   for i=1,npar do
-    local m = mflw[i]
+    local m = mflw0[i]
     local rnk, W
 
     if m.status ~= 'Bset' and m.status ~= 'Mset' then
@@ -353,7 +371,7 @@ local function twiss_nform (self, mflw)
     local of = map2bet(m, rnk, coupling, sdir)
 
     -- check normal form
-    if mflw.debug >= 2 then check_normal(m, of) end
+    if debug >= 2 then check_normal(m, of) end
 
     -- save beta0 block
     ofun[m.id] = of ; of.id = m.id
@@ -394,7 +412,10 @@ local function twiss_init (self, mflw)
   __twdat.q2, __twdat.dq2 = table.new(n,0), table.new(n,0)
   __twdat.q3, __twdat.dq3 = table.new(n,0), table.new(n,0)
 
-  -- synch integ. 1, momentum compaction & phase slip factors, gamma transition
+  -- momentum compaction, phase slip factors, gamma transition, synch. integrals
+  __twdat.alfap   = table.new(n,0)
+  __twdat.etap    = table.new(n,0)
+  __twdat.gammatr = table.new(n,0)
   __twdat.synch_1 = table.new(n,0)
   __twdat.synch_2 = table.new(n,0)
   __twdat.synch_3 = table.new(n,0)
@@ -402,9 +423,6 @@ local function twiss_init (self, mflw)
   __twdat.synch_5 = table.new(n,0)
   __twdat.synch_6 = table.new(n,0)
   __twdat.synch_8 = table.new(n,0)
-  __twdat.alfap   = table.new(n,0)
-  __twdat.etap    = table.new(n,0)
-  __twdat.gammatr = table.new(n,0)
 
   if save then
     -- extend mtbl
@@ -442,26 +460,25 @@ local function make_mflow (self)
   -- double the deltaps of self
   if save and chrom then chrom_dps(self) end
 
-  -- enforce damaps orders (default is 1)
-  if not mapdef or is_true(mapdef) then self.mapdef = {xy=1} end
+  -- ensure damaps (default order is 1)
+  assert(mapdef ~= false, "invalid mapdef, true or definition required")
 
   -- prepare template for final tracking of normal form
-  local _, mflw = track { exec=false } :copy_variables(self)
-                        { nstep=0, radiate=false }
-  if mflw.npar == 0 then return mflw end -- no more particles...
+  local _, mflw = track { exec=false } :copy_variables(self) { nstep=0 }
+  for i=1,mflw.npar do mflw[i].nocopy = true end -- avoid further copy
   if mflw.debug >= 3 then twdump(mflw,'da.') end
 
-  -- search for closed orbits (update mflw, keep order)
   if self.cofind ~= false then
+    -- search for closed orbits (update mflw, keep order)
     twiss_cofind(self, mflw)
     if mflw.npar == 0 then return mflw end -- no more particles...
     if mflw.debug >= 3 then twdump(mflw,'co.') end
-  end
 
-  -- track one-turn-map (update mflw, keep order)
-  twiss_track(self, mflw)
-  if mflw.npar == 0 then return mflw end -- no more particles...
-  if mflw.debug >= 3 then twdump(mflw,'tk.') end
+    -- track one-turn-map (update mflw, keep order)
+    twiss_track(self, mflw)
+    if mflw.npar == 0 then return mflw end -- no more particles...
+    if mflw.debug >= 3 then twdump(mflw,'tk.') end
+  end
 
   -- compute normal forms (update mflw, keep order)
   twiss_nform(self, mflw)
@@ -482,6 +499,9 @@ local function exec (self)
   if self.mflow then
     assert(self.mflow.__twss == _id, "invalid mflow (twiss mflow expected)")
     mflw = self.mflow
+    mflw.nstep = self.nstep or mflw.nstep  -- update volatile fields
+    mflw.info  = self.info  or mflw.info
+    mflw.debug = self.debug or mflw.debug
   else
     mflw = make_mflow(self) -- the real work is done here!
     mflw.__twss = _id
@@ -491,12 +511,8 @@ local function exec (self)
     end
   end
 
-  -- update fields
-  local nstep, debug in self
-  mflw.nstep, mflw.debug = nstep or mflw.nstep, debug or mflw.debug
-
   -- track the normal form(s)
-  local mtbl, mflw, ei = track { mflow=mflw, nstep=nstep, debug=debug }
+  local mtbl, mflw, ei = track { mflow=mflw }
 
   -- finalise twiss calculation (tunes, chromas, etc)
   if not ei and mtbl then fill_sum(mflw) end
@@ -549,8 +565,7 @@ local twiss = command 'twiss' {
   cotol=nil,         -- closed orbit tolerance (i.e. |dX|)                (cofn)
   coiter=nil,        -- maximum number of iterations                      (cofn)
   codiff=nil,        -- finite differences step for jacobian (or true)    (cofn)
-  comethod=nil,      -- default algorithm                                 (cofn)
-  X1=nil,            -- optional final coordinates translation            (cofn)
+  O1=nil,            -- optional final coordinates translation            (cofn)
 
   info=nil,          -- information level (output on terminal)            (cofn)
   debug=nil,         -- debugging information level (output on terminal)  (cofn)
