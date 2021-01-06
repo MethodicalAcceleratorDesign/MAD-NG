@@ -81,8 +81,8 @@ local shtfmt  = "% -.6e  % -.6e  % -.6e  % -.6e  % -.6e  % -.6e "
 local lngfmt  = "% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e "
 local nodump  = {marker=true}
 
-local function mdump (elm, mflw, lw_, str_)
-  if str_ and mflw.debug <= 2 then return end
+local function mdump (elm, mflw, lw_, str_) -- require debug >= 4
+  if str_ and mflw.debug < 4 then return end
 
   if is_number(elm) then
     printf("@@ %-15s %-15s ", '  "', str_ or '')
@@ -94,7 +94,7 @@ local function mdump (elm, mflw, lw_, str_)
   if mflw.npar == 0 then io.write("no particle found\n") return end
 
   local n, X, R = 0, mflw[1]
-  local fmt = mflw.debug >= 4 and lngfmt or shtfmt
+  local fmt = mflw.debug >= 5 and lngfmt or shtfmt
 
   if is_damap(X) then
     X, R = X:get0(), X:get1() ; n = R.nrow
@@ -113,8 +113,8 @@ end
 local function xdump (elm, mflw, X, str_)
   printf("@@ %-15s %-15s ", elm.name, str_ or '')
 
-  local fmt  = mflw.debug >= 4 and lngfmt  or shtfmt
-  local fmt1 = mflw.debug >= 4 and lngfmt1 or shtfmt1
+  local fmt  = mflw.debug >= 5 and lngfmt  or shtfmt
+  local fmt1 = mflw.debug >= 5 and lngfmt1 or shtfmt1
 
   if is_number(X) then
     printf(fmt1, X)
@@ -170,9 +170,9 @@ local header = {
   'direction', 'observe', 'implicit', 'misalign', 'radiate', 'deltap', 'lost'
 }
 
-local function make_mtable (self, range, nosave)
+local function make_mtable (self, range)
   local title, dir, observe, implicit, misalign, radiate, deltap, savemap in self
-  local sequ, nrow = self.sequence, nosave and 0 or 16
+  local sequ, nrow = self.sequence, 8
 
   -- keep order!
   return mtable(sequ.name, {
@@ -317,10 +317,8 @@ local function make_mflow (self)
 
   local mtbl
   if save then
-    local nosave = atsave == ffalse
-    mtbl = make_mtable(self, range, nosave)
-
-    if not nosave then
+    mtbl = make_mtable(self, range)
+    if atsave ~= ffalse then
       local fill = observe > 0 and fill_obs or fill_row
       atsave = achain(fill, atsave)
 
@@ -341,6 +339,21 @@ local function make_mflow (self)
     end
   end
 
+  -- activate aperture checks
+  if ataper ~= ffalse then
+    local aperact = actionat('ataper', atend)
+    atslice = chain(aperact, atslice) -- chain ataper to atslice for last slice
+    ataper = achain(apercheck, ataper)
+  end
+
+  -- activate maps debugging
+  if atdebug ~= ffalse then
+    if (self.debug or 0) >= 4 then
+      atdebug = chain(atdebug, mdump)
+    end
+  end
+
+  -- activate radiation
   if radiate then
     atslice = chain(achain(atbegin, srad_save), atslice)
     if string.find(radiate, "photon", 1, true) then
@@ -356,12 +369,6 @@ local function make_mflow (self)
       error("invalid radiate value '"..radiate.."'")
     end
     if save then mtbl.radiate = radiate end -- update mtbl
-  end
-
-  if ataper ~= ffalse then -- chain ataper to atslice for last slice
-    local aperact = actionat('ataper', atend)
-    atslice = chain(aperact, atslice)
-    ataper = achain(apercheck, ataper)
   end
 
   -- totalpath
@@ -514,10 +521,10 @@ local function make_mflow (self)
   mflw.debug=self.debug or 0 -- debugging information level
   mflw.usrdef=self.usrdef    -- user defined data
 
-  -- for debugging
+  -- for debugging (user helper)
   mflw.show=mshow            -- show the mflow
-  mflw.mdump=mdump           -- dump damaps after each integration step
-  mflw.xdump=xdump           -- dump one coordinate or TPSA (user helper)
+  mflw.mdump=mdump           -- dump damaps
+  mflw.xdump=xdump           -- dump one coordinate or TPSA
 
   -- methods to reset/change tracking
   mflw.reset_si=reset_si     -- reset  sequence iterator
@@ -588,15 +595,10 @@ local function exec (self)
   end
 
   -- retrieve mtbl (if any)
-  local mtbl = mflw.mtbl
+  local mtbl in mflw
 
   -- check number of elements to track
   if mflw.nstep == 0 then return mtbl, mflw end
-
-  -- activate maps debugging
-  if mflw.debug >= 2 and mflw.atdebug == fnil then
-    mflw.atdebug = mflw.mdump
-  end
 
   local ie
   repeat
