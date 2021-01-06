@@ -24,7 +24,7 @@
 -- locals ---------------------------------------------------------------------o
 
 local warn, option, vector, matrix, command, track, cvname       in MAD
-local has_dpt, msort                                             in MAD.gphys
+local has_dpt, par2vec, vec2par, msort                           in MAD.gphys
 local tblcat, tblorder, errorf, assertf, printf                  in MAD.utility
 local lbool                                                      in MAD.operator
 local eps                                                        in MAD.constant
@@ -58,23 +58,6 @@ local function parcpy (X, Y_) -- see track init
   Y.y, Y.py = X.y, X.py
   Y.t, Y.pt = X.t, X.pt
   return Y
-end
-
-local function par2vec (X, V_)
-  local V = V_ or vector(6)
-  if is_number(X) then return V:fill(X) end
-  V[1], V[2] = X[1] or X.x or 0, X[2] or X.px or 0
-  V[3], V[4] = X[3] or X.y or 0, X[4] or X.py or 0
-  V[5], V[6] = X[5] or X.t or 0, X[6] or X.pt or 0
-  return V
-end
-
-local function vec2par (V, X_)
-  local X = X_ or table.new(0,10)
-  X.x, X.px = V[1], V[2]
-  X.y, X.py = V[3], V[4]
-  X.t, X.pt = V[5], V[6]
-  return X
 end
 
 -- Newton algorithm -----------------------------------------------------------o
@@ -132,14 +115,14 @@ local function cofind_jac (self, mflw)
     codiff = cotol/100
   end
 
-  -- save current orbits, extend n particles to n*(1+6) particles
+  -- save current orbits, extend mflw of n particles to n*(1+6) particles
   local n, X0 = mflw.npar, table.new(mflw.npar,0)
   for i=n,1,-1 do
     local m, ii = mflw[i], 7*(i-1)+1
-    local mt = {__index=m, -- unfortunately, Lua needs a function for newindex.
-                __newindex=\_,k,v => if k == 'status' then m[k] = v end end}
+    local mt = {__index=m, __newindex=
+                  \t,k,v => if k == 'status' then m[k]=v else t[k]=v end end}
     for j=6,1,-1 do
-      local mc = parcpy(m) -- no beam, no status, no id0, no coid
+      local mc = parcpy(m) -- no beam, no status, no coid (required!)
       mflw[ii+j], mc.id, mc.nosave = mc, ii+j, true
       setmetatable(mc,mt)  -- connect secondary particles to primary particle
     end
@@ -154,14 +137,11 @@ local function cofind_jac (self, mflw)
   -- save finite differences, final translation, temporaries
   local dH, O1, X, R = par2vec(codiff), par2vec(self.O1), vector(6), matrix(6)
 
-! print("", "id", "id0", "coid")
-! for i=1,n do print("i=0", mflw[i].id, mflw[i].id0, mflw[i].coid) end
-
   -- search for fix points
   for itr=1,coiter do
     -- sanity check
     assert(n%7 == 0, "unexpected corrupted set of particle blocks")
-!   for i=1,n do print("i="..i, mflw[i].id, mflw[i].id0, mflw[i].coid) end
+    -- for i=1,n do print("itr="..itr, mflw[i].coid, mflw[i]) end
 
     -- 1. set orbit and finite diff. for jacobian (from secondary particles)
     for i=1,n,7 do
@@ -321,14 +301,14 @@ local function cofind_map (self, mflw)
       local rnk, dx, typ = newton(X0, X-O1, R, totalpath, cotol)
 
       if option.debug > 2 then
-        codump(X0, dx, X, R, m.id0 or m.id, itr, typ or m.status)
+        codump(X0, dx, X, R, m.id, itr, typ or m.status)
       end
 
       if typ then -- "stable/singular"
         if typ == "stable"
         then m:set0(X0) -- update X0 only
         else warn("cofind: singular matrix (rnk=%d) at iteration %d \z
-                   for damap %d.", rnk, itr, m.id0 or m.id)
+                   for damap %d.", rnk, itr, m.id)
         end
         -- save information in stable/singular damap
         m.rank, m.status, m.coiter = rnk, typ, itr
