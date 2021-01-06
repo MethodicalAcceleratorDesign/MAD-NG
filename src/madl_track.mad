@@ -426,12 +426,13 @@ local function make_mflow (self)
     local dpt = dp2pt(dp, beta)
 
     for i=1,npar do
-      local X0i, beam = X0[i], X0[i].beam
-      local dpt = beam and dp2pt(dp, beam.beta) or dpt
+      local X0i = X0[i]
+      local dpt = X0i.beam and dp2pt(dp, X0i.beam.beta) or dpt
       local ii = (j-1)*npar+i
+      local nc = j == 1 and X0i.nocopy
 
       if is_damap(X0i) then -- damap (copy)
-        mflw[ii] = X0i.nocopy and j==1 and X0i or X0i:copy()
+        mflw[ii] = nc and X0i or X0i:copy()
         mflw[ii]:set0({x0,px0,y0,py0,t0,pt0+dpt},1) -- added to X0i
         mflw[ii].status = 'Mset'
         mknd = bor(mknd, mapkind.damap)
@@ -451,9 +452,9 @@ local function make_mflow (self)
           mflw[ii]:set0{x0+x, px0+px, y0+y, py0+py, t0+t, pt0+pt+dpt}
           mknd = bor(mknd, mapkind.damap)
         else -- particle (copy)
-          local p = X0i.nocopy and j==1 and X0i or {x=x,px=px,y=y,py=py,t=t,pt=pt}
-          p.x   , p.px    , p.y   , p.py    , p.t   , p.pt =
-          p.x+x0, p.px+px0, p.y+y0, p.py+py0, p.t+t0, p.pt+pt0+dpt
+          local p = nc and X0i or {x=0, px=0, y=0, py=0, t=0, pt=0}
+          p.x , p.px  , p.y , p.py  , p.t , p.pt =
+          x+x0, px+px0, y+y0, py+py0, t+t0, pt+pt0+dpt
           mflw[ii] = p
           mknd = bor(mknd, mapkind.part)
         end
@@ -462,18 +463,17 @@ local function make_mflow (self)
         errorf("invalid type of item at id=%d (particle or damap expected)", i)
       end
 
-      -- save extra information
-      if not (X0i.nocopy and j==1) then
-        mflw[ii].id, mflw[ii].id0, mflw[ii].beam, mflw[ii].nosave =
-                 ii, j ~= 1 and i or nil,   beam,      X0i.nosave
-      end
+      -- copy extra information
+      mflw[ii].id     = j == 1 and X0i.id or ii
+      mflw[ii].beam   = X0i.beam
+      mflw[ii].nosave = X0i.nosave
     end
   end
 
   -- complete mflow
-  mflw.beam=beam             -- current beam
   mflw.sequ=sequ             -- current sequence
-  mflw.mtbl=mtbl             -- current mtable (nil if no save)
+  mflw.beam=beam             -- current beam
+  mflw.mtbl=mtbl             -- current mtable (nil if not save)
   mflw.sdir=dir              -- s-direction of tracking
   mflw.tdir=tdir             -- t-direction of tracking
   mflw.edir=edir             -- current element direction
