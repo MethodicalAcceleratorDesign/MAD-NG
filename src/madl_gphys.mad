@@ -25,9 +25,9 @@
 
 local matrix, vector, cvector, trace, warn, option, typeid,
       beta0                                                      in MAD
-local is_nil, is_positive, is_integer, is_nonzero, is_odd,
-      is_matrix, is_vector, is_cvector, is_beta0, is_table,
-       is_mtable, is_sequence, is_mappable, wrestrict            in MAD.typeid
+local is_nil, is_number, is_positive, is_integer, is_nonzero,
+      is_odd, is_matrix, is_vector, is_cvector, is_beta0,
+      is_table, is_mtable, is_sequence, is_mappable, wrestrict   in MAD.typeid
 local assertf, errorf, printf, num2str, setkeys, tblcat          in MAD.utility
 local lbool                                                      in MAD.operator
 local twopi                                                      in MAD.constant
@@ -46,21 +46,6 @@ local S6 = matrix(6):symp() -- [6x6] symplectic matrix S
                 -- i,j,k,l, i,j,k,l, i,j,k,l, i,j,k,l,
 local blkidx   = { 3,1,1,3, 3,3,1,1 } --, 5,1,1,5, 5,3,3,5 } -- keep order!
 local blkidx_n = #blkidx
-
--- helpers --------------------------------------------------------------------o
-
-local function chkeigsiz (V, W)
-  assert(is_matrix(V), "invalid argument #1 (matrix expected)")
-
-  local nr, nc = V:sizes()
-  assert(nr == 6 and nc == 6 or
-         nr == 4 and nc == 4, "invalid sizes (4D/6D matrix expected)")
-
-  if W then
-    assert(is_cvector(W) , "invalid argument #2 (cvector expected)")
-    assert(W.nrow == nr, "invalid eigenvalues (4D/6D cvector expected)")
-  end
-end
 
 -- implementation -------------------------------------------------------------o
 
@@ -125,7 +110,33 @@ local gphys = {
 
 local phystol = gphys.tol
 
--- mtable ---------------------------------------------------------------------o
+-- particles ------------------------------------------------------------------o
+
+local val = \a -> is_number(a) and a or nil
+
+function gphys.par2vec (X, V_)
+  local V = V_ or vector(6)
+  if is_number(X) then return V:fill(X) end
+  V[1], V[2] = val(X.x) or X[1] or 0, val(X.px) or X[2] or 0
+  V[3], V[4] = val(X.y) or X[3] or 0, val(X.py) or X[4] or 0
+  V[5], V[6] = val(X.t) or X[5] or 0, val(X.pt) or X[6] or 0
+  return V
+end
+
+function gphys.vec2par (V, X_)
+  local X = X_ or table.new(0,8)
+  X.x, X.px = V[1], V[2]
+  X.y, X.py = V[3], V[4]
+  X.t, X.pt = V[5], V[6]
+  return X
+end
+
+-- mtables --------------------------------------------------------------------o
+
+function gphys.mchklost (mtbl)
+  assert(is_mtable(mtbl), "invalid argument #1 (mtable expected)")
+  return mtbl.lost == 0 and mtbl or nil
+end
 
 local kil = { ksl  =-1,
               k0l  = 1, k1l  = 2, k2l  = 3, k3l = 4, k4l = 5, k5l = 6, k6l = 7,
@@ -165,11 +176,6 @@ function gphys.melmcol (mtbl, cols)
   end
 end
 
-function gphys.mchklost (mtbl)
-  assert(is_mtable(mtbl), "invalid argument #1 (mtable expected)")
-  return mtbl.lost == 0 and mtbl or nil
-end
-
 -- mflows ---------------------------------------------------------------------o
 
 -- particles/damaps status rank: Xset/Bset/Mset/stable/unstable/singular/lost
@@ -185,7 +191,8 @@ end
 
 -- sort particles/damaps, adjust npar
 function gphys.msort (mflw, cmp_)
-  assert(typeid.is_dynmflow(mflw),"invalid argument #1 (dynamic mflow expected)")
+  local is_dynmflow in typeid
+  assert(is_dynmflow(mflw),"invalid argument #1 (dynamic mflow expected)")
 
   mflw.npar = #mflw
   if mflw.npar > 1 then table.sort(mflw, cmp_ or gphys.mcmp) end
@@ -198,6 +205,19 @@ function gphys.msort (mflw, cmp_)
 end
 
 -- checkers -------------------------------------------------------------------o
+
+local function chkeigsiz (V, W)
+  assert(is_matrix(V), "invalid argument #1 (matrix expected)")
+
+  local nr, nc = V:sizes()
+  assert(nr == 6 and nc == 6 or
+         nr == 4 and nc == 4, "invalid sizes (4D/6D matrix expected)")
+
+  if W then
+    assert(is_cvector(W) , "invalid argument #2 (cvector expected)")
+    assert(W.nrow == nr, "invalid eigenvalues (4D/6D cvector expected)")
+  end
+end
 
 -- check if system is eigen using eigtol tolerance
 -- check R*Vi = Wi*Vi
