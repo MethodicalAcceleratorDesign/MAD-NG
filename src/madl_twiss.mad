@@ -29,6 +29,7 @@ local normal1, map2bet, bet2map, chr2bet, syn2bet, dp2pt, has_dpt,
 local sign                                                        in MAD.gmath
 local chain, achain                                               in MAD.gfunc
 local tblcat, tblcpy, tblrep, assertf, errorf, printf             in MAD.utility
+local lbool                                                       in MAD.operator
 local is_nil, is_true, is_boolean, is_number, is_iterable,
       is_mappable, is_callable, is_vector, is_damap               in MAD.typeid
 local atins                                                       in MAD.symint
@@ -44,6 +45,16 @@ local I4 = matrix(4):eye()
 local I6 = matrix(6):eye()
 
 -- helpers --------------------------------------------------------------------o
+
+local function mdump (mflw, msg_)
+  io.write('\n', msg_, '\n')
+  for i=1,mflw.tpar do
+    io.write("mflw[", i, "]=\n")
+    if is_damap(mflw[i])
+    then for k,v in pairs(mflw[i]) do print(k,v) end mflw[i]:print()
+    else print(mflw[i]) end
+  end
+end
 
 local function twdump (mflw, msg_, str_)
   local fmt = option.numfmt
@@ -235,33 +246,24 @@ end
 
 local function twiss_cofind (self, mflw0)
   local npar, info in mflw0
-  local X0, Xi = table.new(npar,0)
 
   -- setup cofind for jacobian or damaps
   local codiff = self.codiff == true and cofind.codiff or self.codiff
   local mapdef = not codiff and self.mapdef or nil
 
   -- process 'Xset' damaps only (i.e. particles)
-  local j = 1
-  if codiff then -- use particles
-    Xi = table.new(npar,0)
-    for i=1,npar do
-      local m = mflw0[i]
-      if m.status == 'Xset' then
-        X0[j], Xi[j] = m:get0():totable(), i
-        X0[j].id, X0[j].beam, X0[j].nosave, X0[j].nocopy, j =
-            m.id,     m.beam,     m.nosave,            j, j+1
-      end
-    end
-  else           -- (re)use damaps
-    for i=1,npar do
-      local m = mflw0[i]
-      if m.status == 'Xset' then X0[j], j = m, j+1 end
+  local j, X0 = 1, table.new(npar,0)
+  for i=1,npar do -- use particles or (re)use damaps
+    local m = mflw0[i]
+    if m.status == 'Xset' then
+      X0[j] = codiff and m:get0():totable() or m
+      X0[j].id, X0[j].beam, X0[j].nosave, X0[j].nocopy, j =
+          m.id,     m.beam,     m.nosave,            i, j+1
     end
   end
 
   -- nothing to process (no damaps)
-  if j == 1 then return end
+  j = j-1 ; if j == 0 then return end
 
   -- compute closed orbit(s)
   if info >= 2 then
@@ -269,19 +271,25 @@ local function twiss_cofind (self, mflw0)
   end
 
   local _, mflw = cofind { exec=false } :copy_variables(self)
-                         { X0=X0, deltap=0, save=false, nstep=-1,
+                         { X0=X0, save=false, nstep=-1,
                            mapdef=mapdef, codiff=codiff }
 
-  -- update damaps with their closed orbit (tw: i, co: j)
+  -- sanity check
+  assert(j == mflw.tpar, "unexpected corrupted mflw")
+
+  -- update damaps with particles closed orbit
   if codiff then
     local v = vector(6)
-    for j=1,mflw.tpar do
-      local m  = mflw [j]
-      local m0 = mflw0[Xi[m.id]]
+    for i=1,j do
+      local m  = mflw[i]
+      local m0 = mflw0[m.nocopy]
       m0.status = m.status
       m0:setvar(par2vec(m,v))
     end
   end
+
+  -- clear nocopy
+  for i=1,j do X0[i].nocopy = nil end
 
   -- report
   if mflw.npar ~= mflw.tpar then
@@ -294,18 +302,21 @@ end
 -- one-turn-maps --------------------------------------------------------------o
 
 local function twiss_track (self, mflw0)
+  -- Note: cofind already computed R, which is enough for normal1
+  -- TODO: high order normal forms need to track the full one-turn-maps
   local npar, info in mflw0
-  local X0 = table.new(npar,0)
 
   -- process 'stable' damaps only (i.e. particles)
-  local j = 1
+  local j, X0 = 1, table.new(npar,0)
   for i=1,npar do
     local m = mflw0[i]
-    if m.status == 'stable' then X0[j], j = m:clr0(), j+1 end
+    if m.status == 'stable' then
+      X0[j], m.nocopy, j = m:clr0(), i, j+1
+    end
   end
 
   -- nothing to process (no damaps)
-  if j == 1 then return end
+  j = j-1 ; if j == 0 then return end
 
   -- compute one-turn-map(s)
   if info >= 2 then
@@ -313,7 +324,13 @@ local function twiss_track (self, mflw0)
   end
 
   local _, mflw = track { exec=false } :copy_variables(self)
-                        { X0=X0, deltap=0, save=false, nstep=-1 }
+                        { X0=X0, save=false, nstep=-1 }
+
+  -- sanity check
+  assert(j == mflw.tpar, "unexpected corrupted mflw")
+
+  -- clear nocopy
+  for i=1,j do X0[i].nocopy = nil end
 
   -- report
   if mflw.npar ~= mflw.tpar then
@@ -433,7 +450,7 @@ end
 -- twiss mflow ----------------------------------------------------------------o
 
 local function make_mflow (self)
-  local save, chrom, mapdef in self
+  local save, chrom, radiate, mapdef in self
 
   -- wrap actions (see track)
   if save then
@@ -451,13 +468,18 @@ local function make_mflow (self)
   -- double the deltaps of self
   if save and chrom then chrom_dps(self) end
 
+  -- block quantum radiation and photon tracking
+  if radiate then self.radiate = lbool(radiate) end
+
   -- ensure damaps (default order is 1)
   assert(mapdef ~= false, "invalid mapdef, true or definition required")
 
   -- prepare template for final tracking of normal form
   local _, mflw = track { exec=false } :copy_variables(self) { nstep=0 }
-  for i=1,mflw.npar do mflw[i].nocopy = true end -- avoid further copy
   if mflw.debug >= 3 then twdump(mflw,'da.') end
+
+  -- clear setup already included
+  self.O0, self.deltap = 0, 0
 
   if self.cofind ~= false then
     -- search for closed orbits (update mflw, keep order)
@@ -466,16 +488,18 @@ local function make_mflow (self)
     if mflw.debug >= 3 then twdump(mflw,'co.') end
 
     -- track one-turn-map (update mflw, keep order)
-    twiss_track(self, mflw)
-    if mflw.npar == 0 then return mflw end -- no more particles...
-    if mflw.debug >= 3 then twdump(mflw,'tk.') end
+    if self.codiff then -- see comment in twiss_track
+      twiss_track(self, mflw)
+      if mflw.npar == 0 then return mflw end -- no more particles...
+      if mflw.debug >= 3 then twdump(mflw,'tk.') end
+    end
   end
 
   -- compute normal forms (update mflw, keep order)
   twiss_nform(self, mflw)
   if mflw.debug >= 3 then twdump(mflw,'nf.') end
 
-  -- return extended mflw and mtbl (if save)
+  -- return extended mflw and mtbl (if any)
   return twiss_init(self, mflw)
 end
 
