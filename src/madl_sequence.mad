@@ -1518,9 +1518,9 @@ end
 ---
 
 local function fwdsiter (state, i)
-  local data, spos, ds, soff, elm_i in state
+  local data, spos, ds, soff, isdft in state
 
-  if i == state.stop and not elm_i then
+  if i == state.stop and not isdft then
     if state.turn == 0 then return nil end
     state.turn = state.turn-1
   end
@@ -1531,28 +1531,24 @@ local function fwdsiter (state, i)
     return i, data[i], spos[i]+soff, ds[i]
   end
 
-  if elm_i then -- last elm was an implicit drift => not current one
-    i = i+1
-    state.elm_i = false
-    return i, data[i], spos[i]+soff, ds[i]
-  end
+  local dl = isdft and 0 or (spos[i+1]-spos[i]) - ds[i]
 
-  local dl = (spos[i+1]-spos[i]) - ds[i]
-  if dl < state.minlen then -- implicit drift is too small, discard
+  if dl <= state.minlen then  -- not implicit drift or too small (discard)
     i = i+1
+    state.isdft = false
     return i, data[i], spos[i]+soff, ds[i]
-  else                      -- update implicit drift
-    state.elm_i = true
-    state.elm_l = dl
-    state.elm_s = 'drift__'..i
+  else                        -- update implicit drift
+    state.isdft = true
+    state.dft_l = dl
+    state.dft_s = 'drift__'..i
     return i, state.dft, (spos[i]+ds[i])+soff, dl
   end
 end
 
 local function bwdsiter (state, i)
-  local data, spos, ds, soff, elm_i in state
+  local data, spos, ds, soff, isdft in state
 
-  if i == state.stop and not elm_i then
+  if i == state.stop and not isdft then
     if state.turn == 0 then return nil end
     state.turn = state.turn-1
   end
@@ -1563,20 +1559,16 @@ local function bwdsiter (state, i)
     return i, data[i], spos[i]+ds[i]-soff, -ds[i]
   end
 
-  if elm_i then -- last elm was an implicit drift => not current one
-    i = i-1
-    state.elm_i = false
-    return i, data[i], spos[i]+ds[i]-soff, -ds[i]
-  end
+  local dl = isdft and 0 or (spos[i]-spos[i-1]) - ds[i-1]
 
-  local dl = (spos[i]-spos[i-1]) - ds[i-1]
-  if dl < state.minlen then            -- implicit drift is too small
+  if dl <= state.minlen then  -- not implicit drift or too small (discard)
     i = i-1
+    state.isdft = false
     return i, data[i], spos[i]+ds[i]-soff, -ds[i]
-  else                                 -- update implicit drift
-    state.elm_i = true
-    state.elm_l = dl
-    state.elm_s = 'drift__'..i
+  else                        -- update implicit drift
+    state.isdft = true
+    state.dft_l = dl
+    state.dft_s = 'drift__'..i
     return i, state.dft, spos[i]-soff, -dl
   end
 end
@@ -1612,8 +1604,7 @@ local function iter (seq, rng_, ntrn_, dir_)
   local soff = dir > 0 and -data.spos[start] or data.spos[start]+data.ds[start]
   return dir > 0 and fwditer or bwditer, {
     data=data, spos=data.spos, ds=data.ds, ne=data.ne, soff=soff, dir=dir,
-    seq=seq, seq_l=seq.l, elm_i=true, elm_l=0, elm_s='', stop=stop, turn=nturn-1,
-    dft=0}, start-dir
+    seq=seq, seq_l=seq.l, stop=stop, turn=nturn-1}, start-dir
 end
 
 local function siter (seq, rng_, ntrn_, dir_)
@@ -1621,8 +1612,9 @@ local function siter (seq, rng_, ntrn_, dir_)
   if iter == niliter then return iter end
   -- implicit drift (reused)
   state.minlen = seq.minlen or minlen
-  state.dft    = drift { l := state.elm_l, name := state.elm_s }
-                           :set_flags(implicit) :set_readonly()
+  state.isdft  = true ; state.dft_l = 0 ; state.dft_s = ''
+  state.dft    = drift { l := state.dft_l, name := state.dft_s }
+                       :set_flags(implicit) :set_readonly()
   if start == state.stop then state.turn = state.turn-1 end
   local dir = dir_ or state.dir
   return dir < 0 and bwdsiter or fwdsiter, state, start
