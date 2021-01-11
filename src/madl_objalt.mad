@@ -98,9 +98,8 @@ local function freadonly (a)
   return ftst(a.__flg, oflg.readonly)
 end
 
-local function set_class (a)
+local function set_fclass (a)
   a.__flg = fset(a.__flg, oflg.class)
-  return a
 end
 
 local function is_object (a) -- exported
@@ -145,20 +144,20 @@ function MT:__call (a, b)  -- object constructor (define the object-model)
     elseif is_rawtable(b) then
       local var = tblmrg(self.__var, b)
       local obj = {__id=a, __flg=0, __var=var, __par=self, __index=self.__index}
-      setmetatable(var, obj) ; set_class(self)          -- set method lookup
+      setmetatable(var, obj) ; set_fclass(self)         -- set method lookup
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
   elseif is_rawtable(a) then
     if self.__var == var0 then                          -- finalize named object
-      local par = self.__par
+      local par = parent(self)
       local var = tblmrg(par.__var, a)
       self.__var = setmetatable(var, self)              -- set method lookup
-      set_class(par)
+      set_fclass(par)
       return init(self)
     else                                                -- unnamed object
       local var = tblmrg(self.__var, a)
       local obj = {__id=self.__id, __flg=0, __var=var, __par=self, __index=self.__index}
-      setmetatable(var, obj) ; set_class(self)          -- set method lookup
+      setmetatable(var, obj) ; set_fclass(self)         -- set method lookup
       return init(setmetatable(obj, getmetatable(self)))-- complete object
     end
   end
@@ -279,7 +278,7 @@ function MF:set_final (st_)
     if fclass(self) then
       errorf("cannot set final to '%s' (unexpected class)", name(self))
     end
-    self:set_metamethods({__call=efinal}, true)
+    self:set_metamethods {__call=efinal}
     self.__flg = fset(self.__flg, oflg.final)
   else
     self.__flg = fclr(self.__flg, oflg.final)
@@ -313,23 +312,22 @@ function MF:get_variables (lst, set_, noeval_)
   return res -- key -> val
 end
 
-function MF:set_variables (set, ovrd_) -- dflt: ovrd_ ~= false
+function MF:set_variables (set, ovrd_)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(set), "invalid argument #2 (mappable expected)")
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  local ovrd = ovrd_ ~= false
-  local var  = self.__var
+  local var, ovrd = self.__var, ovrd_ == true
   for k,v in pairs(set) do
-    assertf(ovrd and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
-            or is_nil(var[k]), "cannot override variable '%s'",k)
+    assertf(ovrd or type(k) ~= 'string' or string.sub(k,1,2) ~= '__' or
+            is_nil(var[k]), "cannot override variable '%s'",k)
     var[k] = v
   end
   return self
 end
 
-function MF:copy_variables (set, lst_, ovrd_) -- dflt: ovrd_ ~= false
+function MF:copy_variables (set, lst_, ovrd_)
   assert(is_object (self), "invalid argument #1 (object expected)")
   assert(is_mappable(set), "invalid argument #2 (mappable expected)")
   if is_boolean(lst_) and is_nil(ovrd_) then
@@ -338,39 +336,38 @@ function MF:copy_variables (set, lst_, ovrd_) -- dflt: ovrd_ ~= false
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  local ovrd = ovrd_ ~= false
-  local var, svar, lst = self.__var, set.__var, lst_ or self.__attr
+  local var, ovrd = self.__var, ovrd_ == true
+  local svar, lst = set.__var, lst_ or self.__attr
   assert(is_iterable(lst), "invalid list of attributes (iterable expected)")
   for _,k in ipairs(lst) do
-    assertf(ovrd and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
-            or is_nil(var[k]), "cannot override variable '%s'",k)
+    assertf(ovrd or type(k) ~= 'string' or string.sub(k,1,2) ~= '__' or
+            is_nil(var[k]), "cannot override variable '%s'",k)
     var[k] = rawget(svar, k)
   end
   local nvl = lst.noeval -- to remove if noeval is suppressed...
   if nvl then
     assert(is_iterable(nvl), "invalid list of noeval attributes (iterable expected)")
     for _,k in ipairs(nvl) do
-      assertf(ovrd and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
-              or is_nil(var[k]), "cannot override variable '%s'",k)
+      assertf(ovrd or type(k) ~= 'string' or string.sub(k,1,2) ~= '__') or
+              is_nil(var[k]), "cannot override variable '%s'",k)
       var[k] = rawget(svar, k) -- idem first loop, for compatibilty with object
     end
   end
   return self
 end
 
-function MF:wrap_variables (set, ovrd_) -- dflt: ovrd_ ~= false
+function MF:wrap_variables (set, ovrd_)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(set), "invalid argument #2 (mappable expected)")
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  local ovrd = ovrd_ ~= false
-  local var  = self.__var
+  local var, ovrd = self.__var, ovrd_ == true
   for k,f in pairs(set) do
     local v, newv = rawget(var, k)
     assert(not is_nil(v) , "invalid variable (nil value)")
     assert(is_callable(f), "invalid wrapper (callable expected)")
-    assertf(ovrd and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__'),
+    assertf(ovrd or type(k) ~= 'string' or string.sub(k,1,2) ~= '__'),
             "cannot override variable '%s'",k)
     if is_callable(v) then newv = f(v) else newv = f(\ v) end -- simplify user's side.
     if is_functor(v) and not is_functor(newv) then
@@ -419,36 +416,38 @@ function MF:clear_all ()
   return self
 end
 
-function MF:set_methods (set, ovrd_) -- dflt: ovrd_ ~= false
+function MF:set_methods (set, ovrd_)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(set), "invalid argument #2 (mappable expected)")
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  if fclass(self) and ovrd_ ~= true then
-    errorf("cannot set methods to '%s' (unexpected class)", name(self))
+  if fclass(self) then
+    errorf("cannot set methods to class '%s' (already cloned)", name(self))
   end
-  local ovrd = ovrd_ ~= false
-  local sm, pm = self.__index, parent(self).__index
-  if sm == pm then sm = copy_methods(self, pm) end
+  local par, ovrd = parent(self), ovrd_ ~= false
+  if par and self.__index == par.__index then
+    self.__index = copy_methods(self, par.__index)
+  end
+  local mth = self.__index
   for k,m in pairs(set) do
     assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
     assertf(is_callable(m), "invalid value for key '%s' (callable expected)", k)
-    assertf(ovrd and (type(k) ~= 'string' or string.sub(k,1,2) ~= '__')
-            or is_nil(sm[k]), "cannot override method '%s'",k)
-    sm[k] = is_function(m) and functor(m) or m
+    assertf(ovrd or string.sub(k,1,2) ~= '__' or is_nil(sm[k]),
+            "cannot override method '%s'",k)
+    mth[k] = is_function(m) and functor(m) or m
   end
   return self
 end
 
-function MF:set_metamethods (set, ovrd_) -- dflt: ovrd_ ~= false
+function MF:set_metamethods (set, ovrd_)
   assert(is_object(self) , "invalid argument #1 (object expected)")
   assert(is_mappable(set), "invalid argument #2 (mappable expected)")
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
-  if fclass(self) and ovrd_ ~= true then
-    errorf("cannot set metamethods to '%s' (unexpected class)", name(self))
+  if fclass(self) then
+    errorf("cannot set metamethods to class '%s' (already cloned)", name(self))
   end
   local ovrd = ovrd_ ~= false
   local sm, pm = getmetatable(self), getmetatable(parent(self))
@@ -715,8 +714,8 @@ end
 local MV = {}
 
 -- aliases
-MV.parent = parent
 MV.name   = \s -> s.__id
+MV.parent = \s -> s.__par
 MF.setvar = MF.set_variables
 MF.getvar = MF.get_variables
 MF.cpyvar = MF.copy_variables
@@ -727,20 +726,16 @@ MAD.typeid.is_object = is_object
 
 -- object ---------------------------------------------------------------------o
 
--- add variables, methods and metamethods
-object = setmetatable({__id='object', __flg=0, __var=MV, __par=nil, __index=MF}, MT)
+-- add variables, methods and metamethods, set readonly
+object = MF.set_methods(
+  setmetatable({__id='object', __flg=0, __var=MV, __par=nil, __index={}}, MT),
+    MF) :set_readonly()
 
 -- activate methods lookup as part of variables lookup
 setmetatable(MV, object)
 
--- methods must be functors to avoid function evaluation (i.e. deferred expr.)
-for k,v in pairs(MF) do MF[k] = functor(v) end
-
 -- protect against changing metatable
 MT.__metatable = MT
-
--- set object as readonly
-object:set_readonly()
 
 -- end ------------------------------------------------------------------------o
 return { object = object }
