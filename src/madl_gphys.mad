@@ -26,7 +26,7 @@
 local matrix, vector, cvector, trace, warn, option, typeid,
       beta0                                                      in MAD
 local is_nil, is_number, is_positive, is_integer, is_nonzero,
-      is_odd, is_matrix, is_vector, is_cvector, is_beta0,
+      is_odd, is_matrix, is_vector, is_cvector, is_beta0, is_damap,
       is_table, is_mtable, is_sequence, is_mappable, wrestrict   in MAD.typeid
 local assertf, errorf, printf, num2str, setkeys, tblcat          in MAD.utility
 local lbool                                                      in MAD.operator
@@ -179,8 +179,8 @@ end
 
 -- mflows ---------------------------------------------------------------------o
 
--- particles/damaps status rank: Xset/Bset/Mset/stable/unstable/singular/lost
-local mrnk = {Xset=1, Bset=1, Mset=1, stable=1, unstable=2, singular=3, lost=4}
+-- particles/damaps status rank: Xset/Mset/Aset/stable/unstable/singular/lost
+local mrnk = {Xset=1, Mset=1, Aset=1, stable=1, unstable=2, singular=3, lost=4}
 gphys.mrnk = mrnk
 
 -- compare particles/damaps by rank then id
@@ -336,7 +336,7 @@ end
 
 -- conversion between energy deviation and momentum or beta
 -- dp = (P-P0)/P0, pt = (E-E0)/P0c
--- (1+dp)^2 = 1 + 2pt/beta0 + pt^2
+-- (1+dp)^2 = 1 + 2pt/beta + pt^2
 
 function gphys.dp2pt (dp, beta)
   local _beta = 1/beta
@@ -475,7 +475,7 @@ end
 function gphys.close_disp (A, R)
   chkeigsiz(A) ; chkeigsiz(R)
 
-  -- close dispersion as a function of pt (multiply by beta0 for function of dp)
+  -- close dispersion as a function of pt (multiply by beta for function of dp)
   local D4 = R:getsub(r4, 6)
   local R4 = R:getsub(r4,r4)
   local C4, rnk = (I4-R4):solve(D4)
@@ -627,14 +627,21 @@ function gphys.order_eigen_madx (V, W)
   end
 end
 
--- get linear normal form A of one-turn map R
+-- set normal form A from one-turn-map R in place.
 
-function gphys.normal1 (R, rnk_, nocheck_)
+function gphys.normal1 (m, nocheck_)
+  assert(is_damap(m), "invalid argument #1 (damap expected)")
+
+  -- already a normal form
+  if m.status == 'Aset' then return end
+
   local fmt
   if option.debug >= 2 then
     io.write("-> Normal form\n")
     fmt, option.numfmt = option.numfmt, "% .5e"
   end
+
+  local R = m:get1()
 
   -- one-turn map R
   chkeigsiz(R)
@@ -644,7 +651,7 @@ function gphys.normal1 (R, rnk_, nocheck_)
   end
 
   -- detect rank of the system
-  local rnk = rnk_ or gphys.has_dpt(R) and 6 or 4
+  local rnk = gphys.has_dpt(R) and 6 or 4
   local R6
 
   -- switch to 4D
@@ -695,7 +702,10 @@ function gphys.normal1 (R, rnk_, nocheck_)
     io.write("<- Normal form\n")
   end
 
-  return A, W, info
+  -- set and return damap
+  m.status = 'Aset'
+
+  return m:set1(A), A, W, info
 end
 
 -- beta0 block conversion -----------------------------------------------------o
@@ -710,7 +720,7 @@ end
 
 function gphys.bet2map (bb0, map, sav_)
   assert(is_beta0(bb0), "invalid argument #1 (beta0 block expected)")
-  assert(typeid.is_damap(map), "invalid argument #2 (damap expected)")
+  assert(is_damap(map), "invalid argument #2 (damap expected)")
 
   local rnk = bb0.rank or 4
   local cpl = bb0.cplg or nil
@@ -802,7 +812,7 @@ function gphys.bet2map (bb0, map, sav_)
     io.flush()
   end
 
-  bb0.X, bb0.A = X, A
+  bb0.X, bb0.A, map.status = X, A, 'Aset'
 
   return map:setvar(X):set1(A)
 end
@@ -812,7 +822,7 @@ end
 local pha_tol in phystol
 
 function gphys.map2bet (map, rnk_, cpl_, dir_)
-  assert(typeid.is_damap(map), "invalid argument #1 (damap expected)")
+  assert(is_damap(map), "invalid argument #1 (damap expected)")
 
   local bb0, ini
   if is_table(rnk_) then -- rnk_ is bb0
@@ -821,7 +831,7 @@ function gphys.map2bet (map, rnk_, cpl_, dir_)
     assert(is_beta0(bb0), "invalid beta0 block (not created from damap)")
   else
     ini = true
-    bb0 = beta0 { rank = rnk_, cplg = cpl_, sdir = dir_ or 1}
+    bb0 = beta0 {rank = rnk_, cplg = cpl_, sdir = dir_ or 1}
   end
 
   bb0.X = map:get0(bb0.X)
