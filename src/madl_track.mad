@@ -183,7 +183,7 @@ local function make_mtable (self, range)
     {'name'}, 'kind', 's', 'l', 'id', 'x', 'px', 'y', 'py', 't', 'pt',
     'slc', 'turn', 'tdir',      -- t-direction of the tracking: sdir * seq.dir
     'eidx',                     -- index of element in the sequence
-    'status',                   -- status: 'Xset', 'Bset', 'Mset'.
+    'status',                   -- status: 'Xset', 'Mset', 'Aset', 'stable', ...
     savemap and '__map' or nil, -- optional column to save the (da)map
   })
 end
@@ -412,7 +412,7 @@ local function make_mflow (self)
   local beta = beam.beta
   local x0   = par2vec(O0)
   local pt0  = x0[6]
-  local stat = ''
+  local stat
 
   -- precedence of initial conditions
   for j,dp in ipairs(deltap) do
@@ -427,12 +427,12 @@ local function make_mflow (self)
 
       x0[6] = pt0+dpt
 
-      if is_damap(X0i) then     -- damap (copy)
+      if is_beta0(X0i) then     -- damap created from beta0
+        mflw[ii] = bet2map(X0i, damap(mdef[i] or mdef)):set0(x0,1) -- x0 added
+        stat = 'Aset'
+      elseif is_damap(X0i) then -- damap (copy)
         mflw[ii] = (nc and X0i or X0i:copy()):set0(x0,1)           -- x0 added
         stat = 'Mset'
-      elseif is_beta0(X0i) then -- damap created from beta0
-        mflw[ii] = bet2map(X0i, damap(mdef[i] or mdef)):set0(x0,1) -- x0 added
-        stat = 'Bset'
       elseif is_mappable(X0i) then
         local x = x0 + par2vec(X0i)                                -- x0 added
         if mdef then            -- damap created from particle
@@ -444,12 +444,18 @@ local function make_mflow (self)
         end
         stat = 'Xset'
       else
-        errorf("invalid type of item at id=%d (particle or damap expected)", i)
+        errorf("invalid type of item at id=%d (particle, damap or beta0 expected)", i)
+      end
+
+      -- sanity check
+      if j1 and X0.id then
+        assertf(is_integer(X0i.id) and X0i.id > 0 and X0i.id <= npar,
+                "invalid X0.id=%d (0 < id <= %d expected)", X0i.id, npar)
       end
 
       -- set (copy) extra information
-      mflw[ii].id     = j1 and X0i.id     or ii
-      mflw[ii].status = j1 and X0i.status or stat
+      mflw[ii].id     = j1 and X0i.id or ii
+      mflw[ii].status = X0i.status or stat
       mflw[ii].beam   = X0i.beam
       mflw[ii].nosave = X0i.nosave
     end
