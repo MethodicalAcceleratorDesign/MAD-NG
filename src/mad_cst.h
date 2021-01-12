@@ -78,70 +78,31 @@ extern const num_t mad_cst_ERADIUS ;  // [m]
 
 // --- math constants ---------------------------------------------------------o
 
-                    // standard constants
-#ifndef M_E
+#ifndef M_E         // standard constants
 #define M_E         2.71828182845904523536028747135266250   // e
-#endif
-#ifndef M_LOG2E
 #define M_LOG2E     1.44269504088896340735992468100189214   // log_2 e
-#endif
-#ifndef M_LOG10E
 #define M_LOG10E    0.434294481903251827651128918916605082  // log_10 e
-#endif
-#ifndef M_LN2
 #define M_LN2       0.693147180559945309417232121458176568  // log_e 2
-#endif
-#ifndef M_LN10
 #define M_LN10      2.30258509299404568401799145468436421   // log_e 10
-#endif
-#ifndef M_PI
 #define M_PI        3.14159265358979323846264338327950288   // pi
-#endif
-#ifndef M_PI_2
 #define M_PI_2      1.57079632679489661923132169163975144   // pi/2
-#endif
-#ifndef M_PI_4
 #define M_PI_4      0.785398163397448309615660845819875721  // pi/4
-#endif
-#ifndef M_1_PI
 #define M_1_PI      0.318309886183790671537767526745028724  // 1/pi
-#endif
-#ifndef M_2_PI
 #define M_2_PI      0.636619772367581343075535053490057448  // 2/pi
-#endif
-#ifndef M_2_SQRTPI
 #define M_2_SQRTPI  1.12837916709551257389615890312154517   // 2/sqrt(pi)
-#endif
-#ifndef M_SQRT2
 #define M_SQRT2     1.41421356237309504880168872420969808   // sqrt(2)
-#endif
-#ifndef M_SQRT1_2
 #define M_SQRT1_2   0.707106781186547524400844362104849039  // 1/sqrt(2)
 #endif
                     // extra constants
-#ifndef M_2PI
 #define M_2PI       6.28318530717958647692528676655900577   // 2*pi
-#endif
-#ifndef M_SQRTPI
 #define M_SQRTPI    1.77245385090551602729816748334114518   // sqrt(pi)
-#endif
-#ifndef M_1_SQRTPI
 #define M_1_SQRTPI  0.564189583547756286948079451560772586  // 1/sqrt(pi)
-#endif
-#ifndef M_SQRT3
 #define M_SQRT3     1.73205080756887729352744634150587237   // sqrt(3)
-#endif
-#ifndef M_SQRT1_3
 #define M_SQRT1_3   0.577350269189625764509148780501957456  // 1/sqrt(3)
-#endif
 
                     // constants for conversion
-#ifndef M_RADDEG
 #define M_RADDEG    57.2957795130823208767981548141051703   // 180/pi
-#endif
-#ifndef M_DEGRAD
 #define M_DEGRAD    0.0174532925199432957692369076848861271 // pi/180
-#endif
 
 // --- physics constants ------------------------------------------------------o
 

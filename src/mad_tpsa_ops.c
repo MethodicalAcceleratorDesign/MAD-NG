@@ -21,6 +21,7 @@
 #include <assert.h>
 
 #include "mad_log.h"
+#include "mad_cst.h"
 #include "mad_desc_impl.h"
 
 #ifdef    MAD_CTPSA_IMPL
