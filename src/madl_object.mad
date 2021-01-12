@@ -71,7 +71,7 @@ local var0 = setmetatable({}, {
 
 -- object model variants ------------------------------------------------------o
 
-local cachelookup = false
+local cachelookup = false -- use with care!
 
 -- helpers --------------------------------------------------------------------o
 
@@ -111,12 +111,12 @@ local function is_object (a) -- exported
   return mt ~= nil and mt.__obj == _id
 end
 
-!local function copy_methods (a, m)
-!  local c = table.new(0,32)
-!  for k,v in pairs(m) do c[k] = v end
-!  a.__mth = c -- set new methods
-!  return c
-!end
+-- local function copy_methods (a, m)
+--   local c = table.new(0,32)
+--   for k,v in pairs(m) do c[k] = v end
+--   a.__mth = c -- set new methods
+--   return c
+-- end
 
 local function copy_metamethods (a, m)
   local c = table.new(0,8)
@@ -161,30 +161,32 @@ end
 -- object model (and variants):
 -- objects try to optimize lookup of attributes with precedence for variables.
 
-local var_get
-
 if cachelookup then                 -- object model with cached lookup
-  function var_get (self, k)
-    local v = self.__var[k] ; self.__var[k] = v ; return v
+  function MF:var_get (k)
+    local v = rawget(self.__var, k)
+    if rawequal(v, nil) then v = self.__var[k] ; self.__var[k] = v end
+    return v
+  end
+
+  function MT:__index (k)
+    local v = rawget(self.__var, k)
+    if rawequal(v, nil) then v = self.__var[k] ; self.__var[k] = v end
+    if type(v) == 'function' then return v(self) else return v end
   end
 
 else -- default                     -- object model with lookup
-  function var_get (self, k)
+  function MF:var_get (k)
     return self.__var[k]
+  end
+
+  function MT:__index (k)
+    local v = self.__var[k]
+    if type(v) == 'function' then return v(self) else return v end
   end
 end
 
-local function var_val (self, k, v) -- evaluate string key with function as value
-  if type(v) == 'function' and type(k) == 'string'
-  then return v(self)
-  else return v end
-end
-
-MF.var_get = var_get
-MF.var_val = var_val
-
-function MT:__index (k)
-  return var_val(self, k, var_get(self, k))
+function MF:var_val (k, v) -- evaluate string key with function as value
+  if type(v) == 'function' then return v(self) else return v end
 end
 
 function MT:__newindex (k, v)
