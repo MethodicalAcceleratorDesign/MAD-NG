@@ -1,0 +1,68 @@
+option, -info;
+
+deltap = 1e-3;
+cell.n = 10;
+cell.l = 10;
+
+beam, particle=positron, energy=2;
+
+mb: sbend,      l=2, angle=pi/cell.n;
+mq: quadrupole, l=1;
+ms: sextupole,  l=0.5;
+
+b1: mb, k0=mb->angle/mb->l;
+b2: mb, k0=mb->angle/mb->l;
+qf: mq, k1= 0.3;
+qd: mq, k1=-0.3;
+sf: ms, k2=0;
+sd: ms, k2=0;
+
+sequ: sequence, l=cell.n*cell.l, refer=entry;
+i = 0;
+while (i < cell.n) {
+  qf, at=0+i*cell.l ;
+  sf, at=1+i*cell.l ;
+  b1, at=2+i*cell.l ;
+
+  qd, at=5+i*cell.l ;
+  sd, at=6+i*cell.l ;
+  b2, at=7+i*cell.l ;
+  i = i+1;
+}
+endsequence;
+
+use, sequence=sequ;
+select, flag=twiss, column={name, s, x, px, y, py, t, pt, betx, bety, mux, muy, alfx, alfy, dx, dpx, dy, dpy};
+select, flag=ptc_twiss, column={name, s, x, px, y, py, t, pt, betx, bety, mu1, mu2, alfx, alfy, disp1, disp2, disp3, disp4};
+coguess, x=-1e-3, px=1e-4, y=-1e-4, py=1e-3;
+
+twiss, file="twiss0_x.tsf", deltap=deltap, betx=1, bety=1; ! no closed orbit
+twiss, file="twiss1_x.tsf", deltap=deltap, chrom;          ! do closed orbit
+
+match, chrom;
+vary, name = qf->k1;
+vary, name = qd->k1;
+vary, name = sf->k2;
+vary, name = sd->k2;
+global, q1  = 2.34;
+global, q2  = 2.29;
+global, dq1 = 5.0;
+global, dq2 = 5.0;
+lmdif, tolerance=1e-21;
+endmatch;
+
+twiss, file="twiss_match_x.tsf", deltap=deltap, chrom;
+
+ptc_create_universe ;
+ptc_create_layout, model=2, method=4, nst=1, time=true, exact=true ;
+!ptc_setswitch, debuglevel=0, mapdump=2, exact_mis=true, fringe=false, time=true, totalpath=false ;
+
+ptc_twiss, closed_orbit=false, no=1, icase=5, file="twiss0_p.tsf", deltap=deltap,
+           x=-1e-3, px=1e-4, y=-1e-4, py=1e-3, t=0, pt=0, betx=1, bety=1, betz=1 ;
+
+ptc_twiss, closed_orbit=true , no=1, icase=5, file="twiss1_p.tsf", deltap=deltap,
+           x=-1e-3, px=1e-4, y=-1e-4, py=1e-3, t=0, pt=0 ;
+ptc_end ;
+
+removefile, file="internal_mag_pot.txt";
+
