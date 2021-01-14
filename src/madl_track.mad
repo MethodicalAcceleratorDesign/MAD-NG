@@ -108,6 +108,19 @@ local function mdump (elm, mflw, lw_, str_) -- require debug >= 4
     printf(fmt,R:get(i,1),R:get(i,2),R:get(i,3),R:get(i,4),R:get(i,5),R:get(i,6))
   end
   io.write('\n')
+
+  if R and mflw.debug >= 6 then
+    local err = R:symperr(R)
+    io.write('@@                 symperr         ')
+    printf(lngfmt1, err)
+    io.write('                                                              ',
+             '                                                               ')
+    for i=1,n do
+      io.write(' ')
+      printf(lngfmt,R:get(i,1),R:get(i,2),R:get(i,3),R:get(i,4),R:get(i,5),R:get(i,6))
+    end
+    io.write('\n')
+  end
 end
 
 local function xdump (elm, mflw, X, str_)
@@ -383,18 +396,23 @@ local function make_mflow (self)
   assert(is_boolean(ptcmodel), "invalid ptcmodel (boolean expected)")
 
   -- retrieve initial conditions
-  local s0, X0, O0, mapdef, savemap in self
+  local s0, X0, O0 in self
   if X0 == 0    then X0 = {0,0,0,0,0,0} end
   if O0 == 0    then O0 = {0,0,0,0,0,0} end
   if O0 == true then O0 = {0,0,0,0,0,0, cofind=true} end
-  assert(is_number  (s0)    , "invalid s0 (number expected)")
-  assert(is_mappable(X0)    , "invalid X0 (mappable expected)")
-  assert(is_mappable(O0)    , "invalid O0 (mappable expected)")
-  assert(is_boolean(mapdef) or is_mappable(mapdef)
-                            , "invalid mapdef (boolean or mappable expected)")
-  assert(is_boolean(savemap) or savemap == 1 -- 1 means to save only the matrix
-                            , "invalid savemap (boolean or 1 expected)")
+  assert(is_number  (s0), "invalid s0 (number expected)")
+  assert(is_mappable(X0), "invalid X0 (mappable expected)")
+  assert(is_mappable(O0), "invalid O0 (mappable expected)")
   if not is_mappable(X0[1]) or is_beta0(X0) then X0 = {X0} end
+
+  -- damap defs and save
+  local mapdef, savemap in self
+      if mapdef == true                    then mapdef = {} -- defaut is xy=1
+  elseif is_integer(mapdef) and mapdef > 0 then mapdef = {xy=mapdef} end
+  assert(is_boolean(mapdef) or is_mappable(mapdef),
+                        "invalid mapdef (boolean, number or mappable expected)")
+  assert(is_boolean(savemap) or savemap == 1, -- 1 means to save only the matrix
+                        "invalid savemap (boolean or 1 expected)")
 
   -- search for reference closed orbit
   if O0.cofind then
@@ -408,7 +426,7 @@ local function make_mflow (self)
   -- create mflw
   local npar = #X0
   local mflw = table.new(npar*ndp, 50)
-  local mdef = is_true(mapdef) and {xy=1} or mapdef
+  local mdef = mapdef or {}
   local beta = beam.beta
   local x0   = par2vec(O0)
   local pt0  = x0[6]
@@ -435,7 +453,7 @@ local function make_mflow (self)
         stat = 'Mset'
       elseif is_mappable(X0i) then
         local x = x0 + par2vec(X0i)                                -- x0 added
-        if mdef then            -- damap created from particle
+        if mapdef then          -- damap created from particle
           mflw[ii] = damap(mdef[i] or mdef):set0(x)
         else                    -- particle (copy)
           local p = nc and X0i or {x=0, px=0, y=0, py=0, t=0, pt=0}
