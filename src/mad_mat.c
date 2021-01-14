@@ -804,8 +804,10 @@ mad_imat_roll (idx_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
 // -- Symplecticity error, compute M' J M - J ---------------------------------o
 
 num_t mad_mat_symperr (const num_t x[], num_t r[], ssz_t n)
-{ CHKX; assert(x != r && !(n & 1));
+{ CHKX; assert(!(n & 1));
   num_t s=0, s0, s1, s2, s3;
+  ssz_t nn = n*n;
+  mad_alloc_tmp(num_t, r_, nn);
   for (idx_t i = 0; i < n-1; i += 2) {
     // i == j
     s1 = -1, s2 = 1;
@@ -814,7 +816,7 @@ num_t mad_mat_symperr (const num_t x[], num_t r[], ssz_t n)
       s2 += b_(x,k,i) * c_(x,k,i) - a_(x,k,i) * d_(x,k,i);
     }
     s += s1*s1 + s2*s2;
-    if (r) b_(r,i,i) = s1, c_(r,i,i) = s2, a_(r,i,i) = d_(r,i,i) = 0;
+    b_(r_,i,i) = s1, c_(r_,i,i) = s2, a_(r_,i,i) = d_(r_,i,i) = 0;
     // i < j
     for (idx_t j = i+2; j < n-1; j += 2) {
       s0 = s1 = s2 = s3 = 0;
@@ -825,18 +827,20 @@ num_t mad_mat_symperr (const num_t x[], num_t r[], ssz_t n)
         s3 += b_(x,k,i) * d_(x,k,j) - b_(x,k,j) * d_(x,k,i);
       }
       s += 2*(s0*s0 + s1*s1 + s2*s2 + s3*s3);
-      if (r) {
-        a_(r,i,j) =  s0, b_(r,i,j) =  s1, c_(r,i,j) =  s2, d_(r,i,j) =  s3;
-        a_(r,j,i) = -s0, b_(r,j,i) = -s2, c_(r,j,i) = -s1, d_(r,j,i) = -s3;
-      }
+      a_(r_,i,j) =  s0, b_(r_,i,j) =  s1, c_(r_,i,j) =  s2, d_(r_,i,j) =  s3;
+      a_(r_,j,i) = -s0, b_(r_,j,i) = -s2, c_(r_,j,i) = -s1, d_(r_,j,i) = -s3;
     }
   }
+  if (r) mad_vec_copy(r_, r, nn, 1);
+  mad_free_tmp(r_);
   return sqrt(s);
 }
 
 num_t mad_cmat_symperr (const cnum_t x[], cnum_t r[], ssz_t n)
-{ CHKX; assert(x != r && !(n & 1));
+{ CHKX; assert(!(n & 1));
   cnum_t s=0, s0, s1, s2, s3;
+  ssz_t nn = n*n;
+  mad_alloc_tmp(cnum_t, r_, nn);
   for (idx_t i = 0; i < n-1; i += 2) {
     // i == j
     s1 = -1, s2 = 1;
@@ -845,7 +849,7 @@ num_t mad_cmat_symperr (const cnum_t x[], cnum_t r[], ssz_t n)
       s2 += conj(b_(x,k,i)) * c_(x,k,i) - a_(x,k,i) * conj(d_(x,k,i));
     }
     s += s1*s1 + s2*s2;
-    if (r) b_(r,i,i) = s1, c_(r,i,i) = s2, a_(r,i,i) = d_(r,i,i) = 0;
+    b_(r_,i,i) = s1, c_(r_,i,i) = s2, a_(r_,i,i) = d_(r_,i,i) = 0;
     // i < j
     for (idx_t j = i+2; j < n-1; j += 2) {
       s0 = s1 = s2 = s3 = 0;
@@ -856,12 +860,12 @@ num_t mad_cmat_symperr (const cnum_t x[], cnum_t r[], ssz_t n)
         s3 += conj(b_(x,k,i)) * d_(x,k,j) - b_(x,k,j) * conj(d_(x,k,i));
       }
       s += 2*(s0*s0 + s1*s1 + s2*s2 + s3*s3);
-      if (r) {
-        a_(r,i,j) =  s0, b_(r,i,j) =  s1, c_(r,i,j) =  s2, d_(r,i,j) =  s3;
-        a_(r,j,i) = -s0, b_(r,j,i) = -s2, c_(r,j,i) = -s1, d_(r,j,i) = -s3;
-      }
+      a_(r_,i,j) =  s0, b_(r_,i,j) =  s1, c_(r_,i,j) =  s2, d_(r_,i,j) =  s3;
+      a_(r_,j,i) = -s0, b_(r_,j,i) = -s2, c_(r_,j,i) = -s1, d_(r_,j,i) = -s3;
     }
   }
+  if (r) mad_cvec_copy(r_, r, nn, 1);
+  mad_free_tmp(r_);
   return sqrt(cabs(s));
 }
 
