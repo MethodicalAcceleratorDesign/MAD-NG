@@ -915,7 +915,9 @@ local function range_of (seq, rng_, ref_, dir_)
            tostring(rng_))
   end
   dir = dir_ or 1
-  assert(dir == 1 or dir == -1, "invalid range direction (1 or -1 expected)")
+  if dir ~= 1 and dir ~= -1 then
+    errorf("invalid range direction '%s' (1 or -1 expected)", tostring(dir))
+  end
   if doidx then
     istart, sstart = index_of(seq, start, ref_,  dir)
     istop , sstop  = index_of(seq, stop , ref_, -dir)
@@ -946,6 +948,12 @@ local pand   = \p,p2,e,i -> p(e,i) and p2(e,i)
 local ptrue  = \p,_ ,e,i -> p(e,i) and true
 local pfalse = \p,_ ,e,i -> p(e,i) or false
 
+local function l2t (l)
+  if is_nil(l[1]) then return l end -- empty list, e.g. already a table
+  local n = #l
+  local t = table.new(0,n) ; for i=1,n do t[l[i]] = true end ; return t
+end
+
 local function foreach (seq, act, rng_, sel_, not_) -- action, range, selection, default
   -- foreach(sel) -> foreach(sel.action, sel)
   if is_nil(rng_) and is_rawtable(act) then
@@ -953,7 +961,7 @@ local function foreach (seq, act, rng_, sel_, not_) -- action, range, selection,
   end
   -- foreach(act,sel) -> foreach(act, sel.range, sel)
   if is_nil(sel_) and is_rawtable(rng_) and is_nil(rng_[1]) then
-    rng_, sel_ = rng_.range, rng_ -- extract range  + right shift
+    rng_, sel_ = rng_.range, rng_ -- extract range + right shift
   end
 
   local p, subelm
@@ -965,6 +973,10 @@ local function foreach (seq, act, rng_, sel_, not_) -- action, range, selection,
     if sel_.select ~= nil then
       assert(is_callable(sel_.select), "invalid select (callable expected)")
       op, p = pand, bind2st(op, sel_.select, p)
+    end
+    if sel_.list ~= nil then
+      assert(is_iterable(sel_.list), "invalid list (iterable expected)")
+      op, p = pand, bind2st(op, bind1st(ptbl, l2t(sel_.list)), p)
     end
     if sel_.table ~= nil then
       assert(is_mappable(sel_.table), "invalid table (mappable expected)")
@@ -988,11 +1000,11 @@ local function foreach (seq, act, rng_, sel_, not_) -- action, range, selection,
     end
   elseif not is_nil(sel_) then    -- build the selection
     if  is_boolean (sel_) then subelm = sel_ else
-    p = is_number  (sel_) and bind2nd(psel, sel_) or
-        is_string  (sel_) and bind1st(pnam, sel_) or
-        is_element (sel_) and bind2nd(pcls, sel_) or
-        is_mappable(sel_) and bind1st(ptbl, sel_) or
-        is_callable(sel_) and sel_                or nil end
+    p = is_number  (sel_) and bind2nd(psel, sel_)      or
+        is_string  (sel_) and bind1st(pnam, sel_)      or
+        is_element (sel_) and bind2nd(pcls, sel_)      or
+        is_mappable(sel_) and bind1st(ptbl, l2t(sel_)) or
+        is_callable(sel_) and sel_                     or nil end
   end
   if is_nil(p) then p = (not_ ~= true or rng_) and ltrue or lfalse end
 
