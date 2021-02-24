@@ -31,11 +31,12 @@ local bind1st, bind2nd, bind2st                                   in MAD.gfunc
 local sub, ltrue, lfalse                                          in MAD.operator
 local strtrim, strsplit, strbracket, strquote, strsplitall,
       num2str, str2cmp, fprintf, errorf, assertf, openfile,
-      tblicpy, tblcpy, tblcat                                     in MAD.utility
+      tblicpy, tblcpy, tblcat, lst2tbl                            in MAD.utility
 local is_nil, is_boolean, is_number, is_integer, is_complex,
       is_string, is_table, is_rawtable, is_range, isa_matrix,
-      is_object, is_element, is_iterable, is_callable, is_file,
-      is_cdata, is_vector, is_cvector, set_concept, concept       in MAD.typeid
+      is_object, is_element, is_file, set_concept, concept,
+      is_iterable, is_mappable, is_callable,
+      is_cdata, is_vector, is_cvector                             in MAD.typeid
 local not_mappable, not_extendable, not_mutable                   in concept
 
 local abs, min, max, ceil, floor in math
@@ -732,7 +733,9 @@ local function range_of (tbl, rng_, ref_, dir_)
            tostring(rng_))
   end
   dir = dir_ or 1
-  assert(dir == 1 or dir == -1, "invalid range direction (1 or -1 expected)")
+  if dir ~= 1 and dir ~= -1 then
+    errorf("invalid range direction '%s' (1 or -1 expected)", tostring(dir))
+  end
   if doidx then
     istart, sstart = index_of(tbl, start, ref_,  dir)
     istop , sstop  = index_of(tbl, stop , ref_, -dir)
@@ -1104,12 +1107,14 @@ end
 
 -- functional methods ---------------------------------------------------------o
 
-local pknd   = \knd,k,  r,i -> knd[i] == k
-local psel   = \sel,b,  r,i -> b == (sel[i] == true)
-local pnam   = \ref,pat,r,i -> string.match(ref[i], pat) ~= nil
+local psel   = \sel,b,  _,i -> b == (sel[i] == true)
+local ptbl   = \col,tbl,_,i -> tbl[col[i]]
+local pnam   = \ref,pat,_,i -> string.match(ref[i], pat) ~= nil
 local pand   = \p,p2,   r,i -> p(r,i) and p2(r,i)
 local ptrue  = \p,_ ,   r,i -> p(r,i) and true
 local pfalse = \p,_ ,   r,i -> p(r,i) or false
+
+local l2t    = \l -> is_nil(l[1]) and l or lst2tbl(l)
 
 local function foreach (tbl, act, rng_, sel_, not_) -- action, range, selection, default
   -- foreach(sel) -> foreach(sel.action, sel)
@@ -1131,25 +1136,37 @@ local function foreach (tbl, act, rng_, sel_, not_) -- action, range, selection,
       assert(is_callable(sel_.select), "invalid select (callable expected)")
       op, p = pand, bind2st(op, sel_.select, p)
     end
+    if sel_.list ~= nil then
+      assert(is_iterable(sel_.list), "invalid list (iterable expected)")
+      assert(data.cidx.name, "unexpected 'list' selection (no 'name' column)")
+      op, p = pand, bind2st(op, bind2st(ptbl,data[data.cidx.name],l2t(sel_.list)), p)
+    end
+    if sel_.table ~= nil then
+      assert(is_mappable(sel_.table), "invalid table (mappable expected)")
+      assert(data.cidx.name, "unexpected 'table' selection (no 'name' column)")
+      op, p = pand, bind2st(op, bind2st(ptbl,data[data.cidx.name],sel_.table), p)
+    end
     if sel_.kind ~= nil then
       assert(is_string(sel_.kind), "invalid kind (string expected)")
       assert(data.cidx.kind, "unexpected 'kind' selection (no 'kind' column)")
-      op, p = pand, bind2st(op, bind2st(pknd,data[data.cidx.kind], sel_.kind),p)
+      op, p = pand, bind2st(op, bind2st(ptbl,data[data.cidx.kind],sel_.kind), p)
     end
     if sel_.pattern ~= nil then
       assert(is_string(sel_.pattern), "invalid pattern (string expected)")
       assert(data.cref, "unexpected pattern selection (no reference column)")
-      op, p = pand, bind2st(op, bind2st(pnam,data[data.cref], sel_.pattern), p)
+      op, p = pand, bind2st(op, bind2st(pnam,data[data.cref],sel_.pattern), p)
     end
     if sel_.selected ~= nil then
       assert(is_boolean(sel_.selected), "invalid selected (boolean expected)")
-      op, p = pand, bind2st(op, bind2st(psel, data[0], sel_.selected), p)
+      op, p = pand, bind2st(op, bind2st(psel,data[0],sel_.selected), p)
     end
   elseif not is_nil(sel_) then    -- build the selection
     p = is_boolean (sel_) and bind2st(psel, data[0], sel_)         or
         is_string  (sel_) and assert(data.cref, "unexpected pattern selection (no reference column)")
                           and bind2st(pnam, data[data.cref], sel_) or
-        is_callable(sel_) and sel_                                 or nil
+        is_callable(sel_) and sel_                                 or
+        is_mappable(sel_) and assert(data.cidx.name, "unexpected list or table selection (no 'name' column)")
+                          and bind2st(ptbl, data[data.cidx.name], l2t(sel_)) or nil
   end
   if is_nil(p) then p = (not_ ~= true or rng_) and ltrue or lfalse end
 
@@ -1158,9 +1175,7 @@ local function foreach (tbl, act, rng_, sel_, not_) -- action, range, selection,
   assert(is_callable(p)  , "invalid argument #4 (callable expected)")
 
   if p ~= lfalse then
-    for ri,row in tbl:iter(rng_) do
-      if p(row,ri) then act(row,ri) end
-    end
+    for ri,row in tbl:iter(rng_) do if p(row,ri) then act(row,ri) end end
   end
   return tbl
 end
