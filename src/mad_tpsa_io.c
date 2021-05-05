@@ -90,13 +90,13 @@ read_ords(int n, ord_t ords[n], FILE *stream)
 
 #ifdef MAD_CTPSA_IMPL
 
-extern const D* mad_tpsa_scan_hdr(int*, FILE*);
+extern const D* mad_tpsa_scan_hdr(int*, char[12], FILE*);
 
 const D*
-FUN(scan_hdr) (int *kind_, FILE *stream_)
+FUN(scan_hdr) (int *kind_, char name_[12], FILE *stream_)
 {
-  DBGFUN(->);
-  const D* ret = mad_tpsa_scan_hdr(kind_, stream_);
+  DBGFUN(->); // complex and real header are the same...
+  const D* ret = mad_tpsa_scan_hdr(kind_, name_, stream_);
   DBGFUN(<-);
   return ret;
 }
@@ -104,24 +104,31 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
 #else
 
 const D*
-FUN(scan_hdr) (int *kind_, FILE *stream_)
+FUN(scan_hdr) (int *kind_, char name_[12], FILE *stream_)
 {
   DBGFUN(->);
-  int nv=0, nk=0, cnt=0;
+  int nv=0, nk=0, cnt=0, nc=0;
   ord_t mo, ko;
-  char typ;
+  char c1, c2, name[12], typ;
 
   if (!stream_) stream_ = stdin;
 
-  // discard leading white space and the name (which is 10 chars and comma)
-  ensure(fscanf(stream_, " %*[^:]:") != 1, "unexpected input (not a GTPSA?)");
+  // check a leading \n, a space, the name (which is 10 chars), and the type
+  if (fscanf(stream_, "%c%c%10[^:]: %c%n", &c1, &c2, name, &typ, &nc) != 4
+      || c1 != '\n' || c2 != ' ' || nc < 4 || nc > 15 || !strchr(" RC", typ)
+      || (kind_ && ((*kind_==0 && typ!='R') || (*kind_==1 && typ!='C')))) {
+    fseek(stream_, -nc, SEEK_CUR);
+    return NULL;
+  }
+
   ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
 
-  // 1st line
-  cnt = fscanf(stream_, " %c, NV = %d, NO = %hhu, NK = %d, KO = %hhu",
-                        &typ,     &nv,       &mo,     &nk,        &ko);
-
   if (kind_) *kind_ = typ == 'C';
+  if (name_) strncpy(name_, name, 12), name_[12] = '\0';
+
+  // 1st line (cnt includes typ)
+  cnt = 1+fscanf(stream_, ", NV = %d, NO = %hhu, NK = %d, KO = %hhu",
+                            &nv,     &mo,       &nk,     &ko);
 
   if (cnt == 3) {
     // TPSA -- ignore rest of lines
@@ -156,8 +163,8 @@ FUN(scan_hdr) (int *kind_, FILE *stream_)
     return ret;
   }
 
-  if (cnt < 3) { error("could not read (NV,NO) from header"); }
-  if (cnt < 5) { error("could not read (NK,KO) from header"); }
+  if (cnt < 3) { warn("could not read (NV,NO) from header"); }
+  if (cnt < 5) { warn("could not read (NK,KO) from header"); }
   return NULL; // never reached
 }
 
@@ -181,25 +188,33 @@ FUN(scan_coef) (T *t, FILE *stream_)
   while ((cnt = fscanf(stream_, "%*d %lG%lGi %hhu", (num_t*)&c, (num_t*)&c+1, &o)) == 3) {
 #endif
 
-    #ifdef DEBUG
+    #if DEBUG > 2
       printf("c=" FMT ", o=%d\n", VAL(c), o);
     #endif
     read_ords(nv,ords,stream_); // sanity check
     ensure(mad_mono_ord(nv,ords) == o, "invalid input (bad order?)");
     // discard too high mononial
-    if (o <= t->mo) FUN(setm)(t,nv,ords, 0.0,c);
+    if (o <= t->mo) FUN(setm)(t,nv,ords,0,c);
   }
   FUN(update0)(t, t->lo, t->hi);
   DBGTPSA(t); DBGFUN(<-);
 }
 
 T*
-FUN(scan) (FILE *stream_)
+FUN(scan) (char name_[12], FILE *stream_)
 {
   DBGFUN(->);
-  const D *d = FUN(scan_hdr)(0, stream_);
-  T *t = FUN(newd)(d, mad_tpsa_default);
-  FUN(scan_coef)(t, stream_);
+#ifndef MAD_CTPSA_IMPL
+  int knd = 0;
+#else
+  int knd = 1;
+#endif
+  T *t = NULL;
+  const D *d = FUN(scan_hdr)(&knd, name_, stream_);
+  if (d) {
+    t = FUN(newd)(d, mad_tpsa_default);
+    FUN(scan_coef)(t, stream_);
+  }
   DBGFUN(<-);
   return t;
 }
@@ -257,10 +272,9 @@ coeffonly:
     }
   }
 
-  if (!idx)
-    fprintf(stream_, "\n          ALL COMPONENTS ZERO \n");
-  else
-    fprintf(stream_, "\n\n");
+  if (!idx) fprintf(stream_, "\n          ALL COMPONENTS ZERO");
+
+  fprintf(stream_, "\n\n");
 
   DBGTPSA(t); DBGFUN(<-);
 }

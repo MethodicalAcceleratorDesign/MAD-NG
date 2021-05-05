@@ -65,7 +65,7 @@ ord_t    mad_ctpsa_ordn    (ssz_t n, const ctpsa_t *t[n]); // max order of all
 void     mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *r);
 void     mad_ctpsa_getord  (const ctpsa_t *t, ctpsa_t *r, ord_t ord);
 void     mad_ctpsa_cutord  (const ctpsa_t *t, ctpsa_t *r, int   ord); // ord..mo = 0 or 0..-ord=0
-void     mad_ctpsa_convert (const ctpsa_t *t, ctpsa_t *r, ssz_t n, idx_t t2r_[n]);
+void     mad_ctpsa_convert (const ctpsa_t *t, ctpsa_t *r, ssz_t n, idx_t t2r_[n], int pb);
 void     mad_ctpsa_setvar  (      ctpsa_t *t, cnum_t v, idx_t iv_, cnum_t scl_);
 void     mad_ctpsa_setvar_r(      ctpsa_t *t, num_t v_re, num_t v_im, idx_t iv_, num_t scl_re_, num_t scl_im_);
 void     mad_ctpsa_clear   (      ctpsa_t *t);
@@ -244,9 +244,9 @@ void     mad_ctpsa_eval     (ssz_t na, const ctpsa_t *ma[na], ssz_t nb, const cn
 
 // I/O
 void     mad_ctpsa_print    (const ctpsa_t *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_);
-ctpsa_t* mad_ctpsa_scan     (                                                       FILE *stream_);
+ctpsa_t* mad_ctpsa_scan     (                  char  name_[12],                     FILE *stream_);
 const
-desc_t*  mad_ctpsa_scan_hdr (                  int  *kind_,                         FILE *stream_);
+desc_t*  mad_ctpsa_scan_hdr (      int *kind_, char  name_[12],                     FILE *stream_);
 void     mad_ctpsa_scan_coef(      ctpsa_t *t,                                      FILE *stream_);
 void     mad_ctpsa_debug    (const ctpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
 log_t    mad_ctpsa_isvalid  (const ctpsa_t *t);

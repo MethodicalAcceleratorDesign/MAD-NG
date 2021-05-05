@@ -32,7 +32,7 @@ local min, max in math
 
 local _C, tostring, complex, vector, cvector, monomial in MAD
 local log, exp                                         in MAD.gmath
-local openfile                                         in MAD.utility
+local openfile, strtrim                                in MAD.utility
 
 -- To review
 local is_nil, is_number, is_integer, is_complex, is_scalar,
@@ -360,27 +360,29 @@ function MC.cutord (x, o, y_)
   return y_
 end
 
-function MR.convert (x, y, tbl_)
+function MR.convert (x, y, tbl_, pb_)
   assert(is_tpsa(y), "invalid argument #2 (tpsa expected)")
-  local n, m = 0
+  local pb, n, m = pb_ or 0, 0
   if tbl_ then
     assert(is_table(tbl_), "invalid argument #3 (table expected)")
+    assert(pb==0 or pb==1 or pb==-1, "invalid argument #4 (-1,0,1 expected)")
     n = #tbl_
     m = int_arr(n) ; for i=1,n do m[i-1] = tbl_[i] end
   end
-  _C.mad_tpsa_convert(x, y, n, m)
+  _C.mad_tpsa_convert(x, y, n, m, pb)
   return y
 end
 
-function MC.convert (x, y, tbl_)
+function MC.convert (x, y, tbl_, pb_)
   assert(is_ctpsa(y), "invalid argument #2 (ctpsa expected)")
-  local n, m = 0
+  local pb, n, m = pb_ or 0, 0
   if tbl_ then
     assert(is_table(tbl_), "invalid argument #3 (table expected)")
+    assert(pb==0 or pb==1 or pb==-1, "invalid argument #4 (-1,0,1 expected)")
     n = #tbl_
     m = int_arr(n) ; for i=1,n do m[i-1] = tbl_[i] end
   end
-  _C.mad_ctpsa_convert(x, y, n, m)
+  _C.mad_ctpsa_convert(x, y, n, m, pb)
   return y
 end
 
@@ -1768,6 +1770,9 @@ end
 -- I/O ------------------------------------------------------------------------o
 
 function MR.write (x, filnam_, name_, eps_, nohdr_)
+  if is_nil(eps_) and is_number(name_) then
+    name_, eps_ = nil, name_ -- right shift
+  end
   local file = openfile(filnam_, 'w', '.dat')
   _C.mad_tpsa_print(x, name_, eps_ or -1, nohdr_ or 0, file)
   if is_string(filnam_) then file:close() else file:flush() end
@@ -1775,6 +1780,9 @@ function MR.write (x, filnam_, name_, eps_, nohdr_)
 end
 
 function MC.write (x, filnam_, name_, eps_, nohdr_)
+  if is_nil(eps_) and is_number(name_) then
+    name_, eps_ = nil, name_ -- right shift
+  end
   local file = openfile(filnam_, 'w', '.dat')
   _C.mad_ctpsa_print(x, name_, eps_ or -1, nohdr_ or 0, file)
   if is_string(filnam_) then file:close() else file:flush() end
@@ -1782,22 +1790,24 @@ function MC.write (x, filnam_, name_, eps_, nohdr_)
 end
 
 function MR.print (x, name_, eps_, nohdr_)
-  if is_nil(eps_) and is_number(name_) then
-    name_, eps_ = nil, name_ -- right shift
-  end
   return x:write(nil, name_, eps_, nohdr_)
 end
 
-function MR.read (_, filnam_)
+local cbuf = chr_arr(12)
+
+function MR.read (x_, filnam_)
   local file = openfile(filnam_, 'r', '.dat')
-  local d = assert(_C.mad_tpsa_scan_hdr(int,file), "unexpected null descriptor")
-  local x
-  if int[0] == 1
-  then x = ctpsa(d) ; _C.mad_ctpsa_scan_coef(x, file)
-  else x = tpsa (d) ; _C.mad_tpsa_scan_coef (x, file)
+  int[0] = -1 -- no expected type
+  local d, x, nam = _C.mad_tpsa_scan_hdr(int, cbuf, file)
+  if d ~= nil then
+    if int[0] == 1
+    then x = ctpsa(d) ; _C.mad_ctpsa_scan_coef(x, file)
+    else x = tpsa (d) ; _C.mad_tpsa_scan_coef (x, file)
+    end
+    nam = strtrim(ffi.string(cbuf))
   end
   if is_string(filnam_) then file:close() end
-  return x
+  return x, nam -- return nil if no TPSA found
 end
 
 -- metamethods ----------------------------------------------------------------o

@@ -467,12 +467,13 @@ module GTPSA
       integer(c_int), value, intent(in) :: ord  ! cut order: 0..-ord or ord..mo
     end subroutine mad_tpsa_cutord
 
-    subroutine mad_tpsa_convert(tpsa,tpsa_r,n,t2r_) bind(C)
+    subroutine mad_tpsa_convert(tpsa,tpsa_r,n,t2r_,pb) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa    ! src
       type(c_ptr), value :: tpsa_r              ! dst
       integer(c_ssz_t), value, intent(in) :: n  ! vector length
       integer(c_idx_t), intent(in) :: t2r_(*)   ! vector of index lookup
+      integer(c_int), value, intent(in) :: pb   ! poisson bracket 0,1:fwd,-1:bwd
     end subroutine mad_tpsa_convert
 
     subroutine mad_tpsa_setvar(tpsa,v,iv_,scl_) bind(C)
@@ -1028,10 +1029,11 @@ module GTPSA
       type(c_ptr), value, intent(in) :: stream_   ! src=c_null_ptr => stdin
     end function mad_tpsa_scan
 
-    function mad_tpsa_scan_hdr(kind_,stream_) result (desc) bind(C)
+    function mad_tpsa_scan_hdr(kind_,name_,stream_) result (desc) bind(C)
       import ; implicit none
       type(c_ptr) :: desc                         ! descriptor from header
       integer(c_int), optional, intent(out) :: kind_! tpsa kind (0 real, 1 complex)
+      character(c_char), optional, intent(out) :: name_(*) ! name[12] (i.e. null terminated string)
       type(c_ptr), value, intent(in) :: stream_   ! src=c_null_ptr => stdin
     end function mad_tpsa_scan_hdr
 
@@ -1138,12 +1140,13 @@ module GTPSA
       integer(c_int), value, intent(in) :: ord   ! cut order: 0..-ord or ord..mo
     end subroutine mad_ctpsa_cutord
 
-    subroutine mad_ctpsa_convert(ctpsa,ctpsa_r,n,t2r_) bind(C)
+    subroutine mad_ctpsa_convert(ctpsa,ctpsa_r,n,t2r_,pb) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: ctpsa    ! src
       type(c_ptr), value :: ctpsa_r              ! dst
       integer(c_ssz_t), value, intent(in) :: n   ! vector length
       integer(c_idx_t), intent(in) :: t2r_(*)    ! vector of index lookup
+      integer(c_int), value, intent(in) :: pb    ! poisson bracket 0,1:fwd,-1:bwd
     end subroutine mad_ctpsa_convert
 
     subroutine mad_ctpsa_clear(ctpsa) bind(C)
@@ -1802,10 +1805,11 @@ module GTPSA
       type(c_ptr), value, intent(in) :: stream_   ! src=c_null_ptr => stdin
     end function mad_ctpsa_scan
 
-    function mad_ctpsa_scan_hdr(kind_,stream_) result(desc) bind(C)
+    function mad_ctpsa_scan_hdr(kind_,name_,stream_) result(desc) bind(C)
       import ; implicit none
       type(c_ptr) :: desc                         ! descriptor from header
       integer(c_int), optional, intent(out) :: kind_! tpsa kind (0 real, 1 complex)
+      character(c_char), optional, intent(out) :: name_(*) ! name[12] (i.e. null terminated string)
       type(c_ptr), value, intent(in) :: stream_   ! src=c_null_ptr => stdin
     end function mad_ctpsa_scan_hdr
 

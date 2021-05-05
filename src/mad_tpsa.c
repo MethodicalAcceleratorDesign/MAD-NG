@@ -294,7 +294,7 @@ FUN(setvar) (T *t, NUM v, idx_t iv, NUM scl)
   DBGTPSA(t); DBGFUN(<-);
 }
 
-// --- copy, convert ----------------------------------------------------------o
+// --- copy, convert, swap ----------------------------------------------------o
 
 void
 FUN(copy) (const T *t, T *r)
@@ -368,9 +368,10 @@ FUN(cutord) (const T *t, T *r, int ord)
 }
 
 void
-FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n])
+FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
 {
   assert(t && r_); DBGFUN(->); DBGTPSA(t); DBGTPSA(r_);
+  ensure(pb >= -1 && pb <= 1, "invalid pb value %d, {-1, 0, 1} expected", pb);
 
   if (t->d == r_->d && !t2r_) { FUN(copy)(t,r_); DBGFUN(<-); return; }
 
@@ -379,26 +380,34 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n])
   ssz_t rn = r->d->nv, tn = t->d->nv;
   ord_t rm[rn], tm[tn];
   idx_t t2r[rn]; // rm[i] = tm[t2r[i]], i=0..rn-1
+  int   pbs[rn];
 
   idx_t i = 0;
   if (!t2r_)
-    for (; i < MIN(rn,tn); ++i) t2r[i] = i; // identity
+    for (; i < MIN(rn,tn); ++i) t2r[i] = i, pbs[i] = 0; // identity
   else
-    for (; i < MIN(rn, n); ++i)
-      t2r[i] = t2r_[i] > 0 && t2r_[i] <= tn ? t2r_[i]-1 : -1; // -1 -> discard var
+    for (; i < MIN(rn, n); ++i) {
+      t2r[i] = t2r_[i] > 0 && t2r_[i] <= tn ? t2r_[i]-1 : -i-1;// -> discard var
+      pbs[i] = pb*(t2r[i]-i)%2 < 0; // poisson bracket sign
+    }
   rn = i; // truncate
 
   const idx_t *o2i = t->d->ord2idx;
   ord_t t_hi = MIN3(t->hi, r->mo, t->d->to);
   for (idx_t ti = o2i[t->lo]; ti < o2i[t_hi+1]; ++ti) {
     if (t->coef[ti] == 0) goto skip;
-    mad_desc_mono(t->d, tn, tm, ti);
-    for (idx_t i = 0; i < rn; ++i) {
-      if (tm[i] && t2r[i] < 0) goto skip;   // discard var
-      rm[i] = tm[t2r[i]];                   // translate/permute
+    mad_desc_mono(t->d, tn, tm, ti);              // get mono tm at index ti
+    int sgn = 0;
+    for (idx_t i = 0; i < rn; ++i) {              // set rm mono
+      if (t2r[i] < 0 && tm[-t2r[i]-1]) goto skip; // discard var
+      rm[i] = tm[t2r[i]];                         // translate tm to rm
+      sgn = sgn - !!rm[i] * pbs[i];               // poisson bracket
     }
-    idx_t ir = mad_desc_idxm(r->d, rn, rm);
-    if (ir >= 0) FUN(seti)(r, ir, 0, t->coef[ti]);
+    idx_t ri = mad_desc_idxm(r->d, rn, rm);       // get index ri of mono rm
+#if DEBUG > 2
+    printf("cvt %d -> %d %s\n", ti+1, ri+1, ti==ri?"" : SIGN1(sgn%2)<0?"-":"+");
+#endif
+    if (ri >= 0) FUN(seti)(r, ri, 0, SIGN1(sgn%2)*t->coef[ti]);
   skip: ;
   }
 

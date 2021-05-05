@@ -65,7 +65,7 @@ ord_t   mad_tpsa_ordn    (ssz_t n, const tpsa_t *t[n]); // max order of all
 void    mad_tpsa_copy    (const tpsa_t *t, tpsa_t *r);
 void    mad_tpsa_getord  (const tpsa_t *t, tpsa_t *r, ord_t ord);
 void    mad_tpsa_cutord  (const tpsa_t *t, tpsa_t *r, int   ord); // ord..mo = 0 or 0..-ord=0
-void    mad_tpsa_convert (const tpsa_t *t, tpsa_t *r, ssz_t n, idx_t t2r_[n]);
+void    mad_tpsa_convert (const tpsa_t *t, tpsa_t *r, ssz_t n, idx_t t2r_[n], int pb);
 void    mad_tpsa_setvar  (      tpsa_t *t, num_t v, idx_t iv_, num_t scl_);
 void    mad_tpsa_clear   (      tpsa_t *t);
 
@@ -176,9 +176,9 @@ void    mad_tpsa_eval     (ssz_t na, const tpsa_t *ma[na], ssz_t nb, const num_t
 
 // I/O
 void    mad_tpsa_print    (const tpsa_t *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_);
-tpsa_t* mad_tpsa_scan     (                                                      FILE *stream_);
+tpsa_t* mad_tpsa_scan     (                 char  name_[12],                     FILE *stream_);
 const
-desc_t* mad_tpsa_scan_hdr (                 int  *kind_,                         FILE *stream_);
+desc_t* mad_tpsa_scan_hdr (     int *kind_, char  name_[12],                     FILE *stream_);
 void    mad_tpsa_scan_coef(      tpsa_t *t,                                      FILE *stream_);
 void    mad_tpsa_debug    (const tpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
 log_t   mad_tpsa_isvalid  (const tpsa_t *t);
