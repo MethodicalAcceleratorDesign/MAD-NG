@@ -18,6 +18,7 @@
 */
 
 #include <math.h>
+#include <ctype.h>
 #include <string.h>
 #include <assert.h>
 
@@ -107,17 +108,33 @@ const D*
 FUN(scan_hdr) (int *kind_, char name_[12], FILE *stream_)
 {
   DBGFUN(->);
-  int nv=0, nk=0, cnt=0, nc=0;
+  int nv=0, nk=0, cnt=0, nc1=0, nc2=0, nn, c;
   ord_t mo, ko;
-  char c1, c2, name[12], typ;
+  char name[12]="", typ='?';
 
   if (!stream_) stream_ = stdin;
 
-  // check a leading \n, a space, the name (which is 10 chars), and the type
-  if (fscanf(stream_, "%c%c%10[^:]: %c%n", &c1, &c2, name, &typ, &nc) != 4
-      || c1 != '\n' || c2 != ' ' || nc < 4 || nc > 15 || !strchr(" RC", typ)
-      || (kind_ && ((*kind_==0 && typ!='R') || (*kind_==1 && typ!='C')))) {
-    fseek(stream_, -nc, SEEK_CUR);
+  // eat white space
+  while ((c=getc(stream_)) != EOF && isspace(c)) ;
+  ungetc(c, stream_);
+
+  // check the name (which is 10 chars) and the type
+  if ((nn = fscanf(stream_, "%12[^:]%n: %c%n", name, &nc1, &typ, &nc2)) != 2
+      || nc2 < 4 || !strchr(" RC", typ)
+      || (kind_ && *kind_ != -1 && (*kind_ != (typ == 'C'))) ) {
+
+#if DEBUG > 2
+    printf("name='%s', typ='%c', nc1=%d, nc2=%d\n", name,typ,nc1,nc2);
+#endif
+
+    if (name_) { // store error in name_
+           if (nc1 < 4)             strcpy(name_, "INVALIDNAME");
+      else if (!strchr(" RC", typ)) strcpy(name_, "INVALIDTYPE");
+      else if (kind_ && *kind_ != -1 && (*kind_ != (typ == 'C')))
+                                    strcpy(name_, "UNXPCTDTYPE");
+    }
+
+    fseek(stream_, nc2>0 ? -nc2 : -nc1, SEEK_CUR); // may fail...
     return NULL;
   }
 
@@ -127,8 +144,13 @@ FUN(scan_hdr) (int *kind_, char name_[12], FILE *stream_)
   if (name_) strncpy(name_, name, 12), name_[12] = '\0';
 
   // 1st line (cnt includes typ)
-  cnt = 1+fscanf(stream_, ", NV = %d, NO = %hhu, NK = %d, KO = %hhu",
-                            &nv,     &mo,       &nk,     &ko);
+  nn  = nc2;
+  cnt = 1+fscanf(stream_, ", NV = %d, NO = %hhu%n, NK = %d, KO = %hhu%n",
+                                  &nv,     &mo,&nc1,    &nk,     &ko,&nc2);
+
+  // sanity checks
+  ensure(nv > 0 && nv < 100000, "invalid NV=%d", nv);
+  ensure(mo > 0 && mo < 64    , "invalid MO=%d", mo);
 
   if (cnt == 3) {
     // TPSA -- ignore rest of lines
@@ -144,6 +166,10 @@ FUN(scan_hdr) (int *kind_, char name_[12], FILE *stream_)
   if (cnt == 5) {
     // GTPSA -- process rest of lines
     ord_t vo[nv];
+
+    // sanity checks
+    ensure(nk > 0 && nk < 100000, "invalid NV=%d", nk);
+    ensure(ko > 0 && ko < 64    , "invalid KO=%d", ko);
 
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish NV,NO line
 

@@ -387,7 +387,7 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
     for (; i < MIN(rn,tn); ++i) t2r[i] = i, pbs[i] = 0; // identity
   else
     for (; i < MIN(rn, n); ++i) {
-      t2r[i] = t2r_[i] > 0 && t2r_[i] <= tn ? t2r_[i]-1 : -i-1;// -> discard var
+      t2r[i] = t2r_[i] > 0 && t2r_[i] <= tn ? t2r_[i]-1 : -i-1; //-> discard var
       pbs[i] = pb*(t2r[i]-i)%2 < 0; // poisson bracket sign
     }
   rn = i; // truncate
