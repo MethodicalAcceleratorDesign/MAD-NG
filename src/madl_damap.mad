@@ -30,7 +30,8 @@ local ffi = require 'ffi'
 
 local min, max in math
 
-local _C, gtpsad, tpsa, ctpsa, vector, cvector, matrix, cmatrix   in MAD
+local _C, option, warn                                            in MAD
+local gtpsad, tpsa, ctpsa, vector, cvector, matrix, cmatrix       in MAD
 local openfile                                                    in MAD.utility
 
 local is_nil, is_number, is_integer, is_complex, is_scalar,
@@ -575,10 +576,21 @@ MC.__pow = MR.__pow -- fully polymorphic
 -- I/O ------------------------------------------------------------------------o
 
 function MR.write (x, filnam_, eps_)
+  if is_number(filnam_) and is_nil(eps_) then
+    eps_, filnam_ = filnam_, nil -- right shift
+  end
   local file = openfile(filnam_, 'w', '.dat')
+  local cvt, t = option.ptcorder and {1,2,3,4,6,5} or nil, nil
   for i=1,#x do
     local vn = x.__vn[i] and string.upper(x.__vn[i]) or tostring(i)
-    x[i]:write(file, vn, eps_)
+    local a = x[i]
+    if cvt then
+      a = a:convert(a:copy(), cvt, 1)
+          if vn == 'T' then t = a:unm(a) ; goto skip -- backup t
+      elseif vn == 'PT' and t then a:write(file, vn, eps_) ; a,vn,t = t,'T' end
+    end
+    a:write(file, vn, eps_)
+::skip::
   end
   if is_string(filnam_) then file:close() else file:flush() end
   return x
@@ -588,8 +600,35 @@ function MR.print (x, eps_)
   return x:write(nil, eps_)
 end
 
-function MR.read (_, file_)
-  error("NYI")
+function MR.read (x_, filnam_, vname_, type_)
+  if is_table(filnam_) and is_nil(type_) then
+    type_, vname_, filnam_ = vname_, filnam_, nil -- right shift
+  end
+  if is_number(vname_) and is_nil(type_) then
+    type_, vname_ = vname_, nil -- right shift
+  end
+  local file, x, s = openfile(filnam_, 'r', '.dat')
+  local x1, s1 = x_[1]:read(file, type_)
+  -- print('\n1', x1, s1)
+  if x1 ~= nil then  -- valid input
+    local td = x1.d
+    local vn = vname_ and cvname_dup(vname_) or cvname[min(td.nmv,6)]
+    x, s = map_alloc(td, vn, is_tpsa(x1) and MR or MC), {}
+    -- x1:print(s1)
+    x[1], s[1] = x1, s1
+    for i=2,td.nv do
+      x1, s1 = x1:read(file, type_)
+      -- print(i, x1, s1)
+      if x1 == nil or x1.d ~= td then
+        warn("missing/invalid gtpsa in damap reading: %s", s1) ; break
+      end
+      -- x1:print(s1)
+      x[i], s[i] = x1, s1
+    end
+  else s = s1
+  end
+  if is_string(filnam_) then file:close() end
+  return x, s
 end
 
 -- metamethods ----------------------------------------------------------------o
