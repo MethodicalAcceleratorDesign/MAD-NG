@@ -1,12 +1,16 @@
 
 -- ./mad ex-fodo.mad
 
-local doplot = 'pdf' -- false | true | 'pdf'
-local deltap = 1e-3  -- to play with deltap
+!-- user settings
+local doplot = false -- false | true | 'pdf'
+local deltap = 0  -- to play with deltap
 local charge = 1     -- to play with particle charge 1 or -1.
+local ncell  = 10    -- number of fodo cells
+local lcell  = 10    -- single cell length
 
---------------------------------------------------------------------------------
+!-------------------------------------------------------------------------------
 
+-- locals
 local beam, beta0, sequence, survey, track, twiss, match in MAD
 local sbend, quadrupole, sextupole in MAD.element
 local printf in MAD.utility
@@ -18,8 +22,11 @@ local pi in math
 local dopdf  = doplot == 'pdf' ; doplot = lbool(doplot) -- make doplot a boolean
 local nslice = doplot and 5 or 1           -- increase #slices for smooth plots,
 local save   = doplot and 'atbody' or nil  -- and save them...
+local mk_plot -- forward decl
 
----------------------------------------
+!---------------------------------------
+!-- make sequence and beam
+!---------------------------------------
 
 local function mk_seq ()
   -- classes
@@ -30,8 +37,8 @@ local function mk_seq ()
   -- prepare beam depending on the user's charge sign...
   local sb = beam { particle = charge<0 and 'electron' or nil, energy=2 }
 
-  printf("particle: '%s', charge = %d, energy = %g\n",
-             sb.particle,   sb.charge,   sb.energy)
+  printf("particle: '%s', charge = %d, energy = %g, mass = %.8e\n",
+             sb.particle,   sb.charge,   sb.energy,     sb.mass)
 
   -- parametric fodo cell (for fun, could use deferred expressions)
   local cell = \ang, chg -> sequence 'cell' {
@@ -45,11 +52,13 @@ local function mk_seq ()
       mb 'b2' { at=7, k0=chg*ang/mb.l, angle=ang },
     }
 
-  -- build full ring, attach beam
-  return sequence 'seq' { beam=sb, 10*cell(2*pi/20, sb.charge) }
+  -- build full ring, attach beam     -- 2 mb per fodo cell
+  return sequence 'seq' { beam=sb, ncell*cell(pi/ncell, sb.charge) }
 end
 
----------------------------------------
+!---------------------------------------
+!-- match tunes and chromaticities
+!---------------------------------------
 
 local function match_tunes_and_chroma (seq, X0)
   io.write("-------------------------------\n")
@@ -76,95 +85,29 @@ local function match_tunes_and_chroma (seq, X0)
   }
 end
 
----------------------------------------
+!---------------------------------------
+!-- study starts here
+!---------------------------------------
 
-local function mk_plot(seq, srv, tws, title)
-  local vector, plot in MAD
-
-  -- make the plot optical functions
-  plot {
-    sequence = seq,
-    range    = tws.direction > 0 and {1,-1, 'idx'} or {-1,1,'idx',-1},
-    table    = tws,
-    x1y1     = { s='beta11' },
-    x1y2     = { s='dx' },
-    xlabel   = "s [m]",
-    ylabel   = "\u{03b2}_x [m]", yrange  = {0, 16},
-    y2label  = "D_x [m]"       , y2range = {0, 5 },
-
-    epilog   = "unset y2tics\nunset y2label\n", -- unset y2 axis
-
-    title    = "Layout in plot with \u{03b2}_x and D_x "..(title or ""),
-    legend   = { beta11='\u{03b2}_x', dx='D_x' },
-    fontsize = 12, legendsize = 10, titlesize = 14, styles = 'lines',
-    output   = dopdf and 'madplot.pdf' or nil,
-  }
-
-  -- move the optical functions in the frame of the layout (XZ plane)
-  local round in MAD.gmath
-  local W = srv.__map                              -- get orientation matrices
-  local beta11, dx in tws                          -- get vectors from twiss
-  local bscl  = beta11:max()/10                    -- betx scale for clean plot
-  local dscl  = dx    :max()/10                    -- dspx scale for clean plot
-  local betx  = beta11/bscl                        -- scale and shift beta11
-  local dspx  = -2+dx /dscl                        -- scale and shift dx
-
-  -- project betx and dx from local xs-plane to global XZ plane
-  local bet1 = { x=vector(#srv), z=vector(#srv) }  -- create betx XZ 2D coord.
-  local dsp1 = { x=vector(#srv), z=vector(#srv) }  -- create dspx XZ 2D coord.
-  for i=1,#srv do                                  -- loop over mtable rows
-    local vb = vector{betx[i], 0, 0}               -- make 3D vector from betx
-    local vd = vector{dspx[i], 0, 0}               -- make 3D vector from dspx
-    vb, vd = W[i]*vb, W[i]*vd                      -- orient betx and dspx
-    bet1.x[i], bet1.z[i] = vb[1], vb[3]            -- save XZ 2D coord.
-    dsp1.x[i], dsp1.z[i] = vd[1], vd[3]            -- save XZ 2D coord.
-  end
-  bet1.x, bet1.z = bet1.x+srv.x, bet1.z+srv.z      -- translate XZ 2D coord.
-  dsp1.x, dsp1.z = dsp1.x+srv.x, dsp1.z+srv.z      -- translate XZ 2D coord.
-
-  -- make the plot optical functions in the frame of the layout
-  plot {
-    sequence = seq,
-    laypos   = "in",
-    layonly  = false,
-
-    data     = { bx=bet1.x, bz=bet1.z, dx=dsp1.x, dz=dsp1.z },
-    x1y1     = { bx='bz', dx='dz' },
-    prolog   = "set size ratio -1\nset size square\n",  -- set   square plot
-    epilog   = "set size noratio\nset size nosquare\n", -- reset square plot
-
-    xlabel   = "x [m]", xrange = {-42, 10},
-    ylabel   = "z [m]", yrange = {-26, 26},
-    title    = "Layout in plot with \u{03b2}_x and D_x "..(title or ""),
-    legend   = { bz='\u{03b2}_x/'..round(bscl*10)/10,
-                 dz='D_x/'       ..round(dscl*10)/10 },
-    fontsize = 12, legendsize = 10, titlesize = 14, styles = 'lines',
-    output   = dopdf and 'madplot.pdf' or nil,
-  }
-end
-
---------------------------------------------------------------------------------
--- program starts here
---------------------------------------------------------------------------------
-
--- create sequence -----
+!-- use sequence
 local seq = mk_seq()
 
--- initial conditions --
+!-- initial conditions
 local X0 = {-1e-3,1e-4, -1e-4,1e-3, 0,0}
 
--- columns selection
+!-- columns selection
 local tk_col = {'name', 's', 'x', 'px', 'y', 'py', 't', 'pt' }
 local tw_col = {'name', 's', 'x', 'px', 'y', 'py', 't', 'pt',
-                'beta11', 'beta22', 'mu1', 'mu2', 'alfa11', 'alfa22'}
+                'beta11', 'beta22', 'mu1', 'mu2', 'alfa11', 'alfa22',
+                'dx', 'dpx', 'dy', 'dpy'}
 
--- initial deltap
+!-- sanity check
 printf("deltap to pt= %.16g\n", dp2pt(deltap, seq.beam.beta))
 
--- survey --------------
-!local srv = survey { sequence=seq } :write('survey_n')
+!-- check geometry
+local srv = survey { sequence=seq } :write('survey_n')
 
--- track ---------------
+-- track (no closed orbit)
 local trk, mfl = track { sequence=seq,
   X0=X0, deltap=deltap, method=4, observe=0, !debug=7
 }
@@ -172,13 +115,13 @@ trk:write('track_n', tk_col)
 
 -- twiss (no closed orbit)
 local tws, mfl = twiss { sequence=seq,
-  X0=beta0(X0), deltap=deltap, method=4, !info=2, debug=5
+  X0=beta0(X0), deltap=deltap, method=4, info=2, debug=7
 }
 tws:write('twiss0_n', tw_col)
 
--- twiss ---------------
+-- twiss (with closed orbit)
 local tws, mfl = twiss { sequence=seq,
-  X0=X0, deltap=deltap, method=4, !info=2, debug=5 !, chrom=true
+  X0=X0, deltap=deltap, method=4, info=2, debug=7, !chrom=true
 }
 tws:write('twiss1_n', tw_col)
 
@@ -187,6 +130,8 @@ local X0 = mfl[1]:get0():print "Unmatched closed obit " -- vector from damap
 X0[5], X0[6] = 0, 0 -- reset t,pt because we use deltap!
 printf("tunes: %.4f, %.4f, chroma: %.4f, %.4f\n",
              tws.q1, tws.q2,    tws.dq1, tws.dq2)
+
+os.exit()
 
 -- plot ----------------
 if doplot then
@@ -272,3 +217,75 @@ print("\nFULL MAP")
 mflw[1]:print()
 option.numfmt = fmt
 trk:write'track_knobs_n'
+
+
+--------------------------------------------------------------------------------
+
+---------------------------------------
+-- plot helper
+---------------------------------------
+
+function mk_plot(seq, srv, tws, title)
+  local vector, plot in MAD
+
+  -- make the plot optical functions
+  plot {
+    sequence = seq,
+    range    = tws.direction > 0 and {1,-1, 'idx'} or {-1,1,'idx',-1},
+    table    = tws,
+    x1y1     = { s='beta11' },
+    x1y2     = { s='dx' },
+    xlabel   = "s [m]",
+    ylabel   = "\u{03b2}_x [m]", yrange  = {0, 16},
+    y2label  = "D_x [m]"       , y2range = {0, 5 },
+
+    epilog   = "unset y2tics\nunset y2label\n", -- unset y2 axis
+
+    title    = "Layout in plot with \u{03b2}_x and D_x "..(title or ""),
+    legend   = { beta11='\u{03b2}_x', dx='D_x' },
+    fontsize = 12, legendsize = 10, titlesize = 14, styles = 'lines',
+    output   = dopdf and 'madplot.pdf' or nil,
+  }
+
+  -- move the optical functions in the frame of the layout (XZ plane)
+  local round in MAD.gmath
+  local W = srv.__map                              -- get orientation matrices
+  local beta11, dx in tws                          -- get vectors from twiss
+  local bscl  = beta11:max()/10                    -- betx scale for clean plot
+  local dscl  = dx    :max()/10                    -- dspx scale for clean plot
+  local betx  = beta11/bscl                        -- scale and shift beta11
+  local dspx  = -2+dx /dscl                        -- scale and shift dx
+
+  -- project betx and dx from local xs-plane to global XZ plane
+  local bet1 = { x=vector(#srv), z=vector(#srv) }  -- create betx XZ 2D coord.
+  local dsp1 = { x=vector(#srv), z=vector(#srv) }  -- create dspx XZ 2D coord.
+  for i=1,#srv do                                  -- loop over mtable rows
+    local vb = vector{betx[i], 0, 0}               -- make 3D vector from betx
+    local vd = vector{dspx[i], 0, 0}               -- make 3D vector from dspx
+    vb, vd = W[i]*vb, W[i]*vd                      -- orient betx and dspx
+    bet1.x[i], bet1.z[i] = vb[1], vb[3]            -- save XZ 2D coord.
+    dsp1.x[i], dsp1.z[i] = vd[1], vd[3]            -- save XZ 2D coord.
+  end
+  bet1.x, bet1.z = bet1.x+srv.x, bet1.z+srv.z      -- translate XZ 2D coord.
+  dsp1.x, dsp1.z = dsp1.x+srv.x, dsp1.z+srv.z      -- translate XZ 2D coord.
+
+  -- make the plot optical functions in the frame of the layout
+  plot {
+    sequence = seq,
+    laypos   = "in",
+    layonly  = false,
+
+    data     = { bx=bet1.x, bz=bet1.z, dx=dsp1.x, dz=dsp1.z },
+    x1y1     = { bx='bz', dx='dz' },
+    prolog   = "set size ratio -1\nset size square\n",  -- set   square plot
+    epilog   = "set size noratio\nset size nosquare\n", -- reset square plot
+
+    xlabel   = "x [m]", xrange = {-42, 10},
+    ylabel   = "z [m]", yrange = {-26, 26},
+    title    = "Layout in plot with \u{03b2}_x and D_x "..(title or ""),
+    legend   = { bz='\u{03b2}_x/'..round(bscl*10)/10,
+                 dz='D_x/'       ..round(dscl*10)/10 },
+    fontsize = 12, legendsize = 10, titlesize = 14, styles = 'lines',
+    output   = dopdf and 'madplot.pdf' or nil,
+  }
+end
