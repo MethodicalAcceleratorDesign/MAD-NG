@@ -51,6 +51,9 @@ local cpx_sz = ffi.sizeof 'cnum_t'
 -- array of indexes
 local int_arr = ffi.typeof 'idx_t [?]'
 
+-- tpsa names
+local chr_arr = ffi.typeof 'char [?]'
+
 local assert, error, tostring =
       assert, error, tostring
 
@@ -1769,8 +1772,10 @@ end
 
 -- I/O ------------------------------------------------------------------------o
 
+local cbuf = chr_arr(12) -- GTPSA name
+
 function MR.write (x, filnam_, name_, eps_, nohdr_)
-  if is_nil(eps_) and is_number(name_) then
+  if is_number(name_) and is_nil(eps_) then
     name_, eps_ = nil, name_ -- right shift
   end
   local file = openfile(filnam_, 'w', '.dat')
@@ -1780,7 +1785,7 @@ function MR.write (x, filnam_, name_, eps_, nohdr_)
 end
 
 function MC.write (x, filnam_, name_, eps_, nohdr_)
-  if is_nil(eps_) and is_number(name_) then
+  if is_number(name_) and is_nil(eps_) then
     name_, eps_ = nil, name_ -- right shift
   end
   local file = openfile(filnam_, 'w', '.dat')
@@ -1793,21 +1798,19 @@ function MR.print (x, name_, eps_, nohdr_)
   return x:write(nil, name_, eps_, nohdr_)
 end
 
-local cbuf = chr_arr(12)
-
-function MR.read (x_, filnam_)
+function MR.read (x_, filnam_, type_)
   local file = openfile(filnam_, 'r', '.dat')
-  int[0] = -1 -- no expected type
-  local d, x, nam = _C.mad_tpsa_scan_hdr(int, cbuf, file)
+  int[0] = type_ or -1 -- expected type (0:R, 1:C, -1:detect)
+  local d, x, s = _C.mad_tpsa_scan_hdr(int, cbuf, file)
   if d ~= nil then
     if int[0] == 1
     then x = ctpsa(d) ; _C.mad_ctpsa_scan_coef(x, file)
     else x = tpsa (d) ; _C.mad_tpsa_scan_coef (x, file)
     end
-    nam = strtrim(ffi.string(cbuf))
   end
+  s = strtrim(ffi.string(cbuf))
   if is_string(filnam_) then file:close() end
-  return x, nam -- return nil if no TPSA found
+  return x, s -- return nil if no TPSA found, s contains error or read name
 end
 
 -- metamethods ----------------------------------------------------------------o
