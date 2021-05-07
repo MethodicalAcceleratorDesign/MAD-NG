@@ -108,33 +108,37 @@ const D*
 FUN(scan_hdr) (int *kind_, char name_[12], FILE *stream_)
 {
   DBGFUN(->);
-  int nv=0, nk=0, cnt=0, nc1=0, nc2=0, nn, c;
+  int nv=0, nk=0, cnt=0, nc=0, nn, c;
   ord_t mo, ko;
   char name[12]="", typ='?';
+  fpos_t fpos;
 
   if (!stream_) stream_ = stdin;
+
+  // backup stream position
+  fgetpos(stream_, &fpos);
 
   // eat white space
   while ((c=getc(stream_)) != EOF && isspace(c)) ;
   ungetc(c, stream_);
 
   // check the name (which is 10 chars) and the type
-  if ((nn = fscanf(stream_, "%12[^:]%n: %c%n", name, &nc1, &typ, &nc2)) != 2
-      || nc2 < 4 || !strchr(" RC", typ)
+  if ((nn = fscanf(stream_, "%12[^:]: %c%n", name, &typ, &nc)) != 2
+      || nc < 4 || !strchr(" RC", typ)
       || (kind_ && *kind_ != -1 && (*kind_ != (typ == 'C'))) ) {
 
 #if DEBUG > 2
-    printf("name='%s', typ='%c', nc1=%d, nc2=%d\n", name,typ,nc1,nc2);
+    printf("name='%s', typ='%c', nc=%d\n", name,typ,nc);
 #endif
 
     if (name_) { // store error in name_
-           if (nc1 < 4)             strcpy(name_, "INVALIDNAME");
+           if (nc < 4)              strcpy(name_, "INVALIDNAME");
       else if (!strchr(" RC", typ)) strcpy(name_, "INVALIDTYPE");
       else if (kind_ && *kind_ != -1 && (*kind_ != (typ == 'C')))
                                     strcpy(name_, "UNXPCTDTYPE");
     }
 
-    fseek(stream_, nc2>0 ? -nc2 : -nc1, SEEK_CUR); // may fail...
+    fsetpos(stream_, &fpos); // may fail for non-seekable stream (e.g. pipes)...
     return NULL;
   }
 
@@ -144,9 +148,8 @@ FUN(scan_hdr) (int *kind_, char name_[12], FILE *stream_)
   if (name_) strncpy(name_, name, 12), name_[12] = '\0';
 
   // 1st line (cnt includes typ)
-  nn  = nc2;
-  cnt = 1+fscanf(stream_, ", NV = %d, NO = %hhu%n, NK = %d, KO = %hhu%n",
-                                  &nv,     &mo,&nc1,    &nk,     &ko,&nc2);
+  cnt = 1+fscanf(stream_, ", NV = %d, NO = %hhu, NK = %d, KO = %hhu%n",
+                                  &nv,     &mo,       &nk,     &ko,&nc);
 
   // sanity checks
   ensure(nv > 0 && nv < 100000, "invalid NV=%d", nv);
@@ -189,9 +192,12 @@ FUN(scan_hdr) (int *kind_, char name_[12], FILE *stream_)
     return ret;
   }
 
-  if (cnt < 3) { warn("could not read (NV,NO) from header"); }
-  if (cnt < 5) { warn("could not read (NK,KO) from header"); }
-  return NULL; // never reached
+       if (cnt < 3) warn("could not read (NV,NO) from header");
+  else if (cnt < 5) warn("could not read (NK,KO) from header");
+  else              warn("unable to parse GTPSA header");
+
+  fsetpos(stream_, &fpos); // may fail for non-seekable stream (e.g. sockets)...
+  return NULL;
 }
 
 #endif // !MAD_CTPSA_IMPL
