@@ -1,1 +1,1 @@
-#define MAD_VERSION "0.9.4"
+#define MAD_VERSION "0.9.5"
