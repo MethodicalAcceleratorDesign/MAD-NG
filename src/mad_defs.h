@@ -51,6 +51,8 @@ typedef double _Complex cnum_t;
 
 // --- macros ----------------------------------------------------------------o
 
+#define SQR(a)        ((a)*(a))
+#define CUB(a)        ((a)*(a)*(a))
 #define MIN(a,b)      ((b)<(a) ? (b):(a))
 #define MAX(a,b)      ((b)>(a) ? (b):(a))
 #define MIN3(a,b,c)   ((b)<(a) ? MIN(b,c):MIN(a,c))

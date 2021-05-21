@@ -37,7 +37,6 @@
 
 #define CHKD    (d=MAX(1,d), n*=d)
 
-#define SQR(a)      ((a)*(a))
 #define CNUM(re,im) (* (cnum_t*) & (num_t[2]) { re, im })
 
 // --- vector, cvector, ivector

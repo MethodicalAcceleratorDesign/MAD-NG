@@ -109,8 +109,6 @@ mad_rad_InvSynFracInt (num_t x)
 
 #include "mad_cst.h"
 #include "mad_num.h"
-#define SQR(a) ((a)*(a))
-#define CUB(a) ((a)*(a)*(a))
 
 // --- RNG for radiation ------------------------------------------------------o
 
