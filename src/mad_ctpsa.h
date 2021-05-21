@@ -162,10 +162,12 @@ void     mad_ctpsa_asin    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_acos    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_atan    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_acot    (const ctpsa_t *a, ctpsa_t *c);
+void     mad_ctpsa_asinc   (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_asinh   (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_acosh   (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_atanh   (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_acoth   (const ctpsa_t *a, ctpsa_t *c);
+void     mad_ctpsa_asinhc  (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_erf     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_erfc    (const ctpsa_t *a, ctpsa_t *c);
 

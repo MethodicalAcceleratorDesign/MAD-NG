@@ -447,7 +447,7 @@ FUN(cot) (const T *a, T *c)                      // checked for real and complex
   return;
 
 #if 0
-  // Inaccurate expansion for small a0
+  // Inaccurate expansion for small a0, need some work...
   NUM ord_coef[to+1], f2 = f0*f0;
   switch(to) {
   case 6: ord_coef[6] = f0*(17./45 + f2*(77./45 + f2*(7./3 + f2))); /* FALLTHRU */
@@ -483,8 +483,6 @@ FUN(sinc) (const T *a, T *c)
     FUN(setvar)(c,f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
   }
 
-  NUM ord_coef[to+1];
-
   if (fabs(a0) > 1e-12) { // sin(x)/x
     T *t = GET_TMPX(c);
     FUN(sin)(a,t);
@@ -505,7 +503,8 @@ FUN(sinc) (const T *a, T *c)
 //      // printf("[%02d]=%+.17e\n", o, 1 - ord_coef[o-1]*fo/f1);
 //    }
 
-  // sinc(x)
+  // sinc(x) at x=0
+  NUM ord_coef[to+1];
   ord_coef[0] = 1;
   ord_coef[1] = 0;
   for (int o = 2; o <= to; ++o)
@@ -693,8 +692,6 @@ FUN(sinhc) (const T *a, T *c)
     FUN(setvar)(c,f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
   }
 
-  NUM ord_coef[to+1];
-
   if (fabs(a0) > 1e-12) { // sinh(x)/x
     T *t = GET_TMPX(c);
     FUN(sinh)(a,t);
@@ -704,7 +701,8 @@ FUN(sinhc) (const T *a, T *c)
     return;
   }
 
-  // sinc(x)
+  // sinhc(x) at x=0
+  NUM ord_coef[to+1];
   ord_coef[0] = 1;
   ord_coef[1] = 0;
   for (int o = 2; o <= to; ++o)
@@ -728,7 +726,7 @@ FUN(asin) (const T *a, T *c)                     // checked for real and complex
     FUN(setvar)(c,f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
   }
 
-  if (to > MANUAL_EXPANSION_ORD) {
+  if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // asin(x) = -i*ln(i*x + sqrt(1-x^2))
 #ifdef MAD_CTPSA_IMPL
     mad_ctpsa_logaxpsqrtbpcx2(a, I, 1, -1, c);
@@ -775,7 +773,7 @@ FUN(acos) (const T *a, T *c)                     // checked for real and complex
     FUN(setvar)(c,f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
   }
 
-  if (to > MANUAL_EXPANSION_ORD) {
+  if (to > MANUAL_EXPANSION_ORD) {  // use simpler and faster approach?
     // acos(x) = -i*ln(x+i*sqrt(1-x^2)) = -asin(x)+pi/2
 #ifdef MAD_CTPSA_IMPL
     mad_ctpsa_logaxpsqrtbpcx2(a, I, 1, -1, c);
@@ -820,7 +818,7 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
     FUN(setvar)(c,f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
   }
 
-  if (to > MANUAL_EXPANSION_ORD) {
+  if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // atan(x) = i/2 ln((i+x) / (i-x))
 #ifdef MAD_CTPSA_IMPL
     ctpsa_t *tn = GET_TMPX(c), *td = GET_TMPX(c);
@@ -873,7 +871,7 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
     FUN(setvar)(c,f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
   }
 
-  if (to > MANUAL_EXPANSION_ORD) {
+  if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // acot(x) = i/2 ln((x-i) / (x+i))
 #ifdef MAD_CTPSA_IMPL
     ctpsa_t *tn = GET_TMPX(c), *td = GET_TMPX(c);
@@ -915,6 +913,44 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
 }
 
 void
+FUN(asinc) (const T *a, T *c)
+{
+  assert(a && c); DBGFUN(->); DBGTPSA(a);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+
+  NUM a0 = a->coef[0];
+  ord_t to = MIN(c->mo,c->d->to);
+
+  if (!to || a->hi == 0) {
+#ifdef MAD_CTPSA_IMPL
+    cnum_t f0 = mad_cnum_asinc(a0);
+#else
+    num_t  f0 = mad_num_asinc (a0);
+#endif
+    FUN(setvar)(c,f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
+  }
+
+  if (fabs(a0) > 1e-12) { // asin(x)/x
+    T *t = GET_TMPX(c);
+    FUN(asin)(a,t);
+    FUN(div)(t,a,c);
+    REL_TMPX(t);
+    DBGTPSA(c); DBGFUN(<-);
+    return;
+  }
+
+  // asinc(x) at x=0
+  NUM ord_coef[to+1];
+  ord_coef[0] = 1;
+  ord_coef[1] = 0;
+  for (int o = 2; o <= to; ++o)
+    ord_coef[o] = (ord_coef[o-2] * SQR(o-1)) / (o * (o+1));
+
+  fun_taylor(a,c,to,ord_coef);
+  DBGTPSA(c); DBGFUN(<-);
+}
+
+void
 FUN(asinh) (const T *a, T *c)                    // checked for real and complex
 {
   assert(a && c); DBGFUN(->); DBGTPSA(a);
@@ -926,7 +962,7 @@ FUN(asinh) (const T *a, T *c)                    // checked for real and complex
     FUN(setvar)(c,f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
   }
 
-  if (to > MANUAL_EXPANSION_ORD) {
+  if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // asinh(x) = log(x + sqrt(x^2+1))
     FUN(logaxpsqrtbpcx2)(a, 1, 1, 1, c);
     DBGTPSA(c); DBGFUN(<-);
@@ -963,7 +999,7 @@ FUN(acosh) (const T *a, T *c)                    // checked for real and complex
     FUN(setvar)(c,f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
   }
 
-  if (to > MANUAL_EXPANSION_ORD) {
+  if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // acosh(x) = ln(x + sqrt(x^2-1))
     FUN(logaxpsqrtbpcx2)(a, 1, -1, 1, c);
     DBGTPSA(c); DBGFUN(<-);
@@ -1000,7 +1036,7 @@ FUN(atanh) (const T *a, T *c)                    // checked for real and complex
     FUN(setvar)(c,f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
   }
 
-  if (to > MANUAL_EXPANSION_ORD) {
+  if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // atanh(x) = 1/2 ln((1+x) / (1-x))
     T *tn = GET_TMPX(c), *td = GET_TMPX(c);
     FUN(copy)(a, tn);
@@ -1043,7 +1079,7 @@ FUN(acoth) (const T *a, T *c)                    // checked for real and complex
     FUN(setvar)(c,f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
   }
 
-  if (to > MANUAL_EXPANSION_ORD) {
+  if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // acoth(x) = 1/2 ln((x+1) / (x-1))
     T *tn = GET_TMPX(c), *td = GET_TMPX(c);
     FUN(copy)(a, tn);
@@ -1068,6 +1104,44 @@ FUN(acoth) (const T *a, T *c)                    // checked for real and complex
   case 0: ord_coef[0] = f0;                              break;
   assert(!"unexpected missing coefficients");
   }
+
+  fun_taylor(a,c,to,ord_coef);
+  DBGTPSA(c); DBGFUN(<-);
+}
+
+void
+FUN(asinhc) (const T *a, T *c)
+{
+  assert(a && c); DBGFUN(->); DBGTPSA(a);
+  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+
+  NUM a0 = a->coef[0];
+  ord_t to = MIN(c->mo,c->d->to);
+
+  if (!to || a->hi == 0) {
+#ifdef MAD_CTPSA_IMPL
+    cnum_t f0 = mad_cnum_asinhc(a0);
+#else
+    num_t  f0 = mad_num_asinhc (a0);
+#endif
+    FUN(setvar)(c,f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
+  }
+
+  if (fabs(a0) > 1e-12) { // asinh(x)/x
+    T *t = GET_TMPX(c);
+    FUN(asinh)(a,t);
+    FUN(div)(t,a,c);
+    REL_TMPX(t);
+    DBGTPSA(c); DBGFUN(<-);
+    return;
+  }
+
+  // asinhc(x) at x=0
+  NUM ord_coef[to+1];
+  ord_coef[0] = 1;
+  ord_coef[1] = 0;
+  for (int o = 2; o <= to; ++o)
+    ord_coef[o] = -(ord_coef[o-2] * SQR(o-1)) / (o * (o+1));
 
   fun_taylor(a,c,to,ord_coef);
   DBGTPSA(c); DBGFUN(<-);
