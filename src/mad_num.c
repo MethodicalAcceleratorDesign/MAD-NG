@@ -45,12 +45,22 @@ int mad_num_sign1 (num_t x)
 
 num_t mad_num_sinc (num_t x)
 {
-  return fabs(x)<1e-4 ? 1 - 0.1666666666666666666667*x*x : sin (x)/x;
+  return fabs(x)<1e-4 ? 1 - 0.1666666666666666666667*x*x : sin(x)/x;
 }
 
 num_t mad_num_sinhc (num_t x)
 {
   return fabs(x)<1e-4 ? 1 + 0.1666666666666666666667*x*x : sinh(x)/x;
+}
+
+num_t mad_num_asinc (num_t x)
+{
+  return fabs(x)<1e-4 ? 1 + 0.1666666666666666666667*x*x : asin(x)/x;
+}
+
+num_t mad_num_asinhc (num_t x)
+{
+  return fabs(x)<1e-4 ? 1 - 0.1666666666666666666667*x*x : asinh(x)/x;
 }
 
 num_t mad_num_powi (num_t x, int n)
@@ -74,6 +84,16 @@ cnum_t mad_cnum_sinc  (cnum_t x)
 cnum_t mad_cnum_sinhc (cnum_t x)
 {
   return cabs(x)<1e-4 ? 1 + 0.1666666666666666666667*x*x : csinh(x)/x;
+}
+
+cnum_t mad_cnum_asinc  (cnum_t x)
+{
+  return cabs(x)<1e-4 ? 1 + 0.1666666666666666666667*x*x : casin (x)/x;
+}
+
+cnum_t mad_cnum_asinhc (cnum_t x)
+{
+  return cabs(x)<1e-4 ? 1 - 0.1666666666666666666667*x*x : casinh(x)/x;
 }
 
 cnum_t mad_cnum_powi (cnum_t x, int n)
@@ -111,8 +131,10 @@ void mad_cnum_atanh_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = catanh ( 
 
 void mad_cnum_proj_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = cproj  ( CNUM(x) ); }
 
-void mad_cnum_sinc_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = mad_cnum_sinc ( CNUM(x) ); }
-void mad_cnum_sinhc_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = mad_cnum_sinhc( CNUM(x) ); }
+void mad_cnum_sinc_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = mad_cnum_sinc  ( CNUM(x) ); }
+void mad_cnum_sinhc_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = mad_cnum_sinhc ( CNUM(x) ); }
+void mad_cnum_asinc_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = mad_cnum_asinc ( CNUM(x) ); }
+void mad_cnum_asinhc_r(num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = mad_cnum_asinhc( CNUM(x) ); }
 
 void mad_cnum_powi_r  (num_t x_re, num_t x_im, int n, cnum_t *r)
 { CHKR; *r = mad_cnum_powi( CNUM(x), n ); }
