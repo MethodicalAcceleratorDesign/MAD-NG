@@ -27,6 +27,9 @@
 
 local M = {}
 
+-- settings
+local new_bend_thick = true -- false (take old maps)
+
 --[=[
 Notes about directions and quantities:
   element direction   edir: affects curvatures    (edir = seq.dir).
@@ -66,8 +69,8 @@ local minlen, minang, minstr, clight, qelect, pi, twopi, pi_2    in MAD.constant
 local printf                                                     in MAD.utility
 local pt2beta                                                    in MAD.gphys
 
-local abs, sqrt, exp, log, sin, cos, tan, asin, acos, atan,
-      atan2, hypot, sinh, cosh, sinc, sinhc                      in MAD.gmath
+local abs, sqrt, invsqrt, exp, log, sin, cos, tan, asin, acos,
+      atan, atan2, hypot, sinh, cosh, sinc, sinhc, asinc         in MAD.gmath
 
 local min, max in math
 local assert = assert
@@ -629,7 +632,63 @@ local function curex_drift0 (elm, m, lw, i, ld, ca, sa, sa2, rho)
   m.atdebug(elm, m, lw, 'curex_drift0:1')
 end
 
+if new_bend_thick then
+
 function M.sbend_thick (elm, m, lw) -- [SSEC]                                 -- checked
+  m.atdebug(elm, m, lw, 'sbend_thick:0')
+
+  local el, eld, eh, tdir, knl, beam, T in m
+  local ld, ang, rho, k0 = (eld or el)*lw, eh*el*lw, 1/eh, knl[1]/el*tdir
+  local beta, k0q = beam.beta, k0*beam.charge
+  local ca, sa, sa2, s2a = cos(ang), sin(ang), sin(ang/2), sin(2*ang)
+
+  for i=1,m.npar do
+    local x, px, y, py, t, pt, beam in m[i]
+
+    if beam and beam.charge == 0 then
+      curex_drift0 (elm, m, lw, i, ld, ca, sa, sa2, rho)
+      goto continue
+    end
+
+    local beta = beam and beam.beta or beta
+    local  k0q = beam and k0*beam.charge or k0q
+    local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
+    local   pz = sqrt(pw2 - px^2)                                      -- PZ
+    local   xr = x+rho
+    local  pzx = pz - k0q*xr
+    local  npx = sa*pzx + ca*px                                        -- XN(2)
+    local  dpx = ca*pzx - sa*px                                        -- DPX'
+    local  pzs = sqrt(pw2 - npx^2)                                     -- PZS
+    local _ptt = invsqrt(pw2)                                          -- PT
+
+    local  xt1 = -k0q*x^2 + 2*(pz*xr - (k0q*rho)*x) - k0q*rho^2
+    local   xi =  px*_ptt
+    local zeta = npx*_ptt
+    local  sxi = sqrt(1-xi^2)
+    local    w = (ca*xi + sa*sxi) * sqrt(1-zeta^2)
+    local    v = (sa*xi - ca*sxi) * zeta
+    local  xt2 = (s2a*px + sa^2*(2*pz - k0q*xr)) * xr*_ptt^2 / (w - v)
+    local  dxs = asinc(xt2*k0q)*xt2
+
+!    printf("beta= %-.16e, k0q= %-.16e, rho=%-.16e, ang=%-.16e\n", beta, k0q, rho, ang)
+!    m.xdump(elm, m, pzs    , "pzs=")
+!    m.xdump(elm, m, dpx/k0q, "dpx=")
+
+    -- eq. 126 in Forest06 with modif. from Sagan
+    m[i].x  = xt1/(dpx+pzs) - rho                                       -- XN(1)
+    m[i].px = npx                                                       -- XN(2)
+    m[i].y  = y + dxs*py                                                -- XN(3)
+    m[i].t  = t - dxs*(1/beta+pt) + (1-T)*(ld/beta)                     -- XN(6)
+
+    ::continue::
+  end
+
+  m.atdebug(elm, m, lw, 'sbend_thick:1')
+end
+
+else -- new_bend_thick
+
+function M.sbend_thick (elm, m, lw) -- [SSEC]                                -- checked
   m.atdebug(elm, m, lw, 'sbend_thick:0')
 
   local el, eld, eh, tdir, knl, beam, T in m
@@ -650,11 +709,10 @@ function M.sbend_thick (elm, m, lw) -- [SSEC]                                 --
     local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
     local   pz = sqrt(pw2 - px^2)                                      -- PZ
     local  pzx = pz - k0q*(rho+x)      -- could be numerically unstable
-    local  npx =  ca*px + sa*pzx                                       -- XN(2)
-    local  dpx = -sa*px + ca*pzx                                       -- DPX'
+    local  npx = sa*pzx + ca*px                                        -- XN(2)
+    local  dpx = ca*pzx - sa*px                                        -- DPX'
     local  pzs = sqrt(pw2 - npx^2)                                     -- PZS
-    local  ptt = sqrt(pw2)                                             -- PT
-    local _ptt = 1/ptt
+    local _ptt = invsqrt(pw2)                                          -- PT
     local  dxs = (ang + asin(px*_ptt) - asin(npx*_ptt))/k0q            -- XN(3)
 
 !    printf("beta= %-.16e, k0q= %-.16e, rho=%-.16e, ang=%-.16e\n", beta, k0q, rho, ang)
@@ -673,9 +731,13 @@ function M.sbend_thick (elm, m, lw) -- [SSEC]                                 --
   m.atdebug(elm, m, lw, 'sbend_thick:1')
 end
 
+end -- new_bend_thick
+
 M.sbend_kick = \el,m,lw -> M.curex_kick(el,m,lw,true) ;                      -- checked
 
 -- TKT [INTER_STREX] ----------------------------------------------------------o
+
+if new_bend_thick then
 
 function M.rbend_thick (elm, m, lw) -- [SPAR]                                -- checked
   m.atdebug(elm, m, lw, 'rbend_thick:0')
@@ -690,12 +752,47 @@ function M.rbend_thick (elm, m, lw) -- [SPAR]                                -- 
     local k0q  = beam and k0*beam.charge or k0q
     local k0lq = beam and knl[1]*lw*beam.charge or k0lq
 
-    local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
-    local   pz = sqrt(pw2 - px^2)
     local  npx = px - k0lq
+    local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
+    local _ptt = invsqrt(pw2)
+    local   pz = sqrt(pw2 - px^2)
     local  pzs = sqrt(pw2 - npx^2)
-    local  ptt = sqrt(pw2)
-    local _ptt = 1/ptt
+    local   xi =  px*_ptt
+    local zeta = npx*_ptt
+    local  xtd = xi*sqrt(1-zeta^2) + zeta*sqrt(1-xi^2)
+    local   xt = ld*(2*px - k0lq)*_ptt^2 / xtd
+    local  dxs = asinc(xt*k0q)*xt
+
+    -- eq. 129 in Forest06 with modif. from Sagan
+    m[i].x  = x + ld*(2*px - k0lq) / (pz+pzs)
+    m[i].px = npx
+    m[i].y  = y + dxs*py
+    m[i].t  = t - dxs*(1/beta+pt) + (1-T)*ld/beta
+  end
+
+  m.atdebug(elm, m, lw, 'rbend_thick:1')
+end
+
+else -- new_bend_thick
+
+function M.rbend_thick (elm, m, lw) -- [SPAR]                                -- checked
+  m.atdebug(elm, m, lw, 'rbend_thick:0')
+
+  local el, eld, knl, beam, T in m
+  local ld, k0 = (eld or el)*lw, knl[1]/abs(el)
+  local beta, k0q, k0lq = beam.beta, k0*beam.charge, knl[1]*lw*beam.charge
+
+  for i=1,m.npar do
+    local x, px, y, py, t, pt, beam in m[i]
+    local beta = beam and beam.beta or beta
+    local k0q  = beam and k0*beam.charge or k0q
+    local k0lq = beam and knl[1]*lw*beam.charge or k0lq
+
+    local  npx = px - k0lq
+    local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
+    local _ptt = invsqrt(pw2)
+    local   pz = sqrt(pw2 - px^2)
+    local  pzs = sqrt(pw2 - npx^2)
     local  dxs = (asin(px*_ptt) - asin(npx*_ptt))/k0q
 
     -- eq. 129 in Forest06
@@ -707,6 +804,8 @@ function M.rbend_thick (elm, m, lw) -- [SPAR]                                -- 
 
   m.atdebug(elm, m, lw, 'rbend_thick:1')
 end
+
+end -- new_bend_thick
 
 M.rbend_kick = \el,m,lw -> M.strex_kick(el,m,lw,true)                        -- checked
 
@@ -1452,31 +1551,45 @@ function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]                     -- 
   else m.frng = fcut(m.fringe, elm.fringe)
   end
 
+  local e1, e2 = (m.e1 or elm.e1)*tdir, (m.e2 or elm.e2)*tdir
+  local h1, h2 =          elm.h1 *tdir,          elm.h2 *tdir
+
+  if lw == -1 then e1, e2, h1, h2 = e2, e1, h2, h1 end -- swap
+
   if sdir*lw == 1 then
 ! print(lw == 1 and 'forward entry' or 'backward exit')
-    local e, h = elm.e1*tdir, elm.h1*tdir
-    local a = 0.5*m.eh*(m.eld or m.el) - e
-    yrotation (-e, m, 1)
-    bend_face ( h, m, 1)
+    local w = true
+    yrotation(-e1, m, 1)
+    if lw == -1 and m.elc ~= nil then
+      m.x, w = m.x+m.elc*sin((e2-e1)/2), false     -- EDGE_TRUE_PARALLEL
+    end
+    bend_face(h1, m, 1)
     if m.frng ~= 0 then
       if ftst(m.frng, fringe.bend) then bend_fringe(elm, m, 1) end
       if ftst(m.frng, fringe.mult) then mult_fringe(elm, m, 1) end
       if ftst(m.frng, fringe.qsad) then qsad_fringe(elm, m, 1) end
     end
-    bend_wedge( a, m, 1)
-
+    if w then                                      -- ! EDGE_TRUE_PARALLEL
+      local a = 0.5*m.eh*(m.eld or m.el) - e1
+      bend_wedge(a, m, 1)
+    end
   else
 ! print(lw == -1 and 'forward exit' or 'backward entry')
-    local e, h = elm.e2*tdir, elm.h2*tdir
-    local a = 0.5*m.eh*(m.eld or m.el) - e
-    bend_wedge( a, m, -1)
+    local w = false
+    if lw == 1 and m.elc == nil then               -- ! EDGE_TRUE_PARALLEL
+      local a, w = 0.5*m.eh*(m.eld or m.el) - e2, true
+      bend_wedge(a, m, -1)
+    end
     if m.frng ~= 0 then
       if ftst(m.frng, fringe.qsad) then qsad_fringe(elm, m, -1) end
       if ftst(m.frng, fringe.mult) then mult_fringe(elm, m, -1) end
       if ftst(m.frng, fringe.bend) then bend_fringe(elm, m, -1) end
     end
-    bend_face ( h, m, -1)
-    yrotation ( e, m, -1)
+    bend_face(h2, m, -1)
+    if w then
+      m.x, w = m.x+m.elc*sin((e2-e1)/2)            -- EDGE_TRUE_PARALLEL
+    end
+    yrotation(e2, m, -1)
   end
 
   m.atdebug(elm, m, lw_, 'strex_fringe:1')
@@ -1595,13 +1708,13 @@ end
 
 function bend_face (h, m, lw) -- [NEWFACE]                                   -- checked
   if h == 0 then return end
-  local el, knl in m
+  local el, eld, knl in m
   if abs(el) < minlen or abs(knl[1]) < minstr then return end
 
   m.atdebug(h, m, lw, 'bend_face:0')
 
   local edir, beam in m
-  local   k0h = 0.5*h * knl[1]/el*edir
+  local   k0h = 0.5*h * knl[1]/(eld or el)*edir
   local   chg = beam.charge
   local _beta = 1/beam.beta
 
@@ -1642,8 +1755,8 @@ function mad8_wedge (e, m, lw_, wc) -- [FRINGE_TEAPOT:MAD8_WEDGE]            -- 
   if e == 0 or abs(m.knl[2]) < minstr then return end
   m.atdebug(e, m, lw_, 'mad8_wedge:0')
 
-  local el, edir, knl, beam in m
-  local  k1e = e*knl[2]/el*edir
+  local el, eld, edir, knl, beam in m
+  local  k1e = e*knl[2]/(eld or el)*edir
   local   c1 = (1+wc)*k1e
   local   c2 = (1-wc)*k1e
   local  chg = beam.charge
@@ -1663,8 +1776,8 @@ function bend_wedge (e, m, lw_) -- [WEDGE] see also [sr]bend_thick           -- 
   if abs(m.knl[1]) < minstr then return yrotation(-e,m,lw_) end
   m.atdebug(e, m, lw_, 'bend_wedge:0')
 
-  local el, tdir, knl, beam in m
-  local    k0 = knl[1]/el*tdir
+  local el, eld, tdir, knl, beam in m
+  local    k0 = knl[1]/(eld or el)*tdir
   local    b1 = k0*beam.charge
   local _beta = 1/beam.beta
   local sa, ca, s2a = sin(e), cos(e), sin(2*e)
@@ -1700,10 +1813,10 @@ function bend_fringe (elm, m, lw) -- [FRINGE_DIPOLE]                         -- 
   if abs(m.knl[1]) < minang then return end
   m.atdebug(elm, m, lw, 'bend_fringe:0')
 
-  local el, sdir, tdir, beam in m
+  local el, eld, sdir, tdir, beam in m
   local    fh = elm.hgap*(sdir*lw == -1 and elm.fintx or elm.fint)
   local  fsad = fh ~= 0 and 1/(72*fh) or 0
-  local   k0w = m.knl[1]/abs(el)*tdir*lw
+  local   k0w = m.knl[1]/abs(eld or el)*tdir*lw
   local    b0 = k0w*beam.charge
   local _beta = 1/beam.beta
 
@@ -1770,7 +1883,7 @@ function qsad_fringe (elm, m, lw) -- [FRINGE2QUAD]                           -- 
 -- fwd entry, bwd exit : lw= 1
 -- fwd exit , bwd entry: lw=-1
 
-  local el, tdir, k1, ca, sa, beam in m
+  local el, eld, tdir, k1, ca, sa, beam in m
   local _beta = 1/beam.beta
   local  wchg = beam.charge*lw
   local    b2 = k1
@@ -1778,7 +1891,7 @@ function qsad_fringe (elm, m, lw) -- [FRINGE2QUAD]                           -- 
   if not b2 then
     local edir, knl, ksl in m
     local a = -0.5*atan2(ksl[2], knl[2])
-    b2, ca, sa = sqrt(knl[2]^2 + ksl[2]^2)/el*edir, cos(a), sin(a)
+    b2, ca, sa = sqrt(knl[2]^2 + ksl[2]^2)/(eld or el)*edir, cos(a), sin(a)
   end
 
   f1 = -abs(f1)*f1*b2/24
@@ -1820,9 +1933,9 @@ end
 function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                      -- checked
   m.atdebug(elm, m, lw, 'mult_fringe:0')
 
-  local el, edir, sdir, tdir, nmul, knl, ksl, beam in m
+  local el, eld, edir, sdir, tdir, nmul, knl, ksl, beam in m
   local _beta = 1/beam.beta
-  local    _l = el ~= 0 and tdir/el or edir
+  local    _l = el ~= 0 and tdir/(eld or el) or edir
   local  wchg = beam.charge*lw
   local  fmax = elm.fringemax or fringemax
   local no_k1 = ftst(m.frng, fringe.bend)
@@ -1979,8 +2092,8 @@ function M.dipeg_fringe (elm, m, lw_) -- [MADX dipedge]                      -- 
   m.atdebug(elm, m, lw_, 'dipeg_fringe:0')
 
   local lw = lw_ or 1
-  local el, edir, sdir, tdir, knl, beam in m
-  local k0 = knl[1]/el*tdir
+  local el, eld, edir, sdir, tdir, knl, beam in m
+  local k0 = knl[1]/(eld or el)*tdir
   local corr, e = 0, 0
 
   if lw == 1 then
