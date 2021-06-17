@@ -626,6 +626,22 @@ FUN(conj) (const T *a, T *c) // c = a.re - a.im I
 
 #endif // MAD_CTPSA_IMPL
 
+num_t
+FUN(nrm) (const T *a)
+{
+  assert(a); DBGFUN(->); DBGTPSA(a);
+
+  num_t nrm = 0;
+  ord_t hi  = MIN(a->hi, a->d->to);
+  if (mad_bit_hcut(a->nz,hi)) {
+    const idx_t *o2i = a->d->ord2idx;
+    for (idx_t i = o2i[a->lo]; i < o2i[hi+1]; ++i)
+      nrm += fabs(a->coef[i]);
+  }
+
+  DBGFUN(<-); return nrm;
+}
+
 void
 FUN(deriv) (const T *a, T *r, int iv)
 {

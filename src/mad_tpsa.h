@@ -103,6 +103,7 @@ void    mad_tpsa_powi    (const tpsa_t *a, int           n, tpsa_t *c);
 void    mad_tpsa_pown    (const tpsa_t *a, num_t         v, tpsa_t *c);
 
 // functions
+num_t   mad_tpsa_nrm     (const tpsa_t *a);
 void    mad_tpsa_abs     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_sqrt    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_exp     (const tpsa_t *a, tpsa_t *c);

@@ -142,6 +142,7 @@ void     mad_ctpsa_poisst  (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c, int 
 void     mad_ctpsa_tpoiss  (const  tpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int nv);
 
 // functions
+num_t    mad_ctpsa_nrm     (const ctpsa_t *a);
 void     mad_ctpsa_conj    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_sqrt    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_exp     (const ctpsa_t *a, ctpsa_t *c);
