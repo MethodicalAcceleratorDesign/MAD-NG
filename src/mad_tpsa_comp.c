@@ -53,6 +53,13 @@ check_compose(ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
   ensure(ma[0]->d == mc[0]->d, "incompatibles GTPSA (descriptors differ)");
 }
 
+static inline void
+print_damap (ssz_t sa, const T *ma[sa])
+{
+  char nam[3] = "#1";
+  for (ssz_t i=0; i < sa; i++, nam[1]++) FUN(print)(ma[i], nam, 0, 0, stdout);
+}
+
 #ifdef _OPENMP
 #include "mad_tpsa_comp_p.tc"
 #endif
