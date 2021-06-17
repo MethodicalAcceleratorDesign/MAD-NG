@@ -1022,7 +1022,7 @@ mad_desc_isvalidm (const D *d, ssz_t n, const ord_t m[n])
 {
   DBGFUN(->);
   assert(d && m);
-  log_t ret = n <= 0 && n <= d->nv && mono_isvalid(d, n, m);
+  log_t ret = 0 <= n && n <= d->nv && mono_isvalid(d, n, m);
   DBGFUN(<-);
   return ret;
 }
