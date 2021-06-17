@@ -20,12 +20,14 @@
  o----------------------------------------------------------------------------o
 */
 
+#define DEBUG_COMPOSE 0
+
 struct compose_ctx_ser {
   ssz_t sa;
-  char *required;
+  log_t *required;
   const T **ma, **mb;
         T **mc, **ords, *knb_coef, *tmp;
-  const D *da;
+  const D *d;
 };
 
 #define CTX struct compose_ctx_ser
@@ -98,15 +100,25 @@ compose_ord1(ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
 static inline void
 compose(int pos, ord_t o, ord_t curr_mono[], CTX *ctx)
 {
-  const D *da = ctx->da;
-  int idx = mad_desc_idxm(da, da->nv, curr_mono);
+  // pos : current variable index
+  // o   : current order
+  // mono: current coef monomial
+  const D *d = ctx->d;
+  int idx = mad_desc_idxm(d, d->nv, curr_mono);
+
+#if DEBUG_COMPOSE
+  printf("compose: var=%d, ord=%d, req=%d, ", pos, o, ctx->required[idx]); // LD
+  mad_mono_print(d->nv, curr_mono); // LD
+  printf("\n"); // LD
+#endif
+
   if (!ctx->required[idx])
     return;
 
   if (o > 0)
     FUN(mul)(ctx->ords[o-1], ctx->mb[pos], ctx->ords[o]);
 
-  if (da->nmv < da->nv) { // there are knobs
+  if (d->nmv < d->nv) { // there are knobs
     for (idx_t i = 0; i < ctx->sa; ++i) {
       T *coef = get_knobs_coef(ctx->ma[i], curr_mono, ctx->knb_coef);
       if (coef->nz) {
@@ -122,16 +134,22 @@ compose(int pos, ord_t o, ord_t curr_mono[], CTX *ctx)
     }
   }
 
-  for(  ; pos < da->nmv; ++pos) {  // don't put knobs in curr_mono
+  for(  ; pos < d->nmv; ++pos) {  // don't put knobs in curr_mono
     curr_mono[pos]++;
-    if (mad_desc_isvalidm(da, da->nv, curr_mono))
-      compose(pos, o+1, curr_mono, ctx);
+    log_t v = mad_desc_isvalidm(d, d->nv, curr_mono);
+
+#if DEBUG_COMPOSE
+  mad_mono_print(d->nv, curr_mono); // LD
+  printf(", valid=%d\n", v); // LD
+#endif
+
+    if (v) compose(pos, o+1, curr_mono, ctx);
     curr_mono[pos]--;
   }
 }
 
 static inline ord_t
-init_required(ssz_t sa, const T *ma[sa], char required[])
+init_required(ssz_t sa, const T *ma[sa], log_t required[])
 {
   assert(ma && required);
   const D *d = ma[0]->d;
@@ -151,29 +169,55 @@ init_required(ssz_t sa, const T *ma[sa], char required[])
   // root is always required
   required[0] = 1;
 
+#if DEBUG_COMPOSE
+  printf("hi: %d\n", highest_ord); // LD
+  for (int i=0; i < o2i[highest_ord+1]; i++)
+    printf("%d: %d | %d\n", i, required[i], d->ords[i]); // LD
+#endif
+
   // fathers of nodes
   ord_t mono[d->nv];
-  idx_t j, father = -1;
+  idx_t j, father;
   for (ord_t o = highest_ord; o > 1; --o) {
     for (idx_t c = o2i[o]; c < o2i[o+1]; ++c)
       if (required[c]) {
-        mad_mono_copy(d->nv,d->To[c],mono);
+        mad_mono_copy(d->nv, d->To[c], mono);
         for (j = d->nv-1; j >= 0 && !mono[j]; --j) ;
+#if DEBUG_COMPOSE
+  mad_mono_print(d->nv, mono); // LD
+#endif
         mono[j]--;
-        father = mad_desc_idxm(d,d->nv,mono);
+        father = mad_desc_idxm(d, d->nv, mono);
         required[father] = 1;
+#if DEBUG_COMPOSE
+  printf("->");
+  mad_mono_print(d->nv, mono); // LD
+  printf(", father=%d\n", father); // LD
+#endif
       }
   }
+
+#if DEBUG_COMPOSE
+  printf("_____\n"); // LD
+  for (int i=0; i < o2i[highest_ord+1]; i++)
+    printf("%d: %d | %d\n", i, required[i], d->ords[i]); // LD
+#endif
+
   return highest_ord;
 }
 
 static inline void
 compose_serial(ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
 {
-  const D *da = ma[0]->d;
-  ord_t mono[da->nv];
-  T *ords[da->mo+1];  // one for each order [0,mo]
-  mad_alloc_tmp(char, required, da->nc); // char required[da->nc];
+  const D *d = ma[0]->d;
+
+#if DEBUG_COMPOSE
+  printf("amo=%d, bmo=%d\n", ma[0]->d->mo, mb[0]->d->mo); // LD
+  printf("ma\n"); print_damap(sa, ma); // LD
+  printf("mb\n"); print_damap(sa, mb); // LD
+#endif
+
+  mad_alloc_tmp(log_t, required, d->nc); // log_t required[d->nc];
 
   ord_t highest_ord = init_required(sa, ma, required);
   if (highest_ord == 1) {
@@ -181,17 +225,23 @@ compose_serial(ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
     return;
   }
 
+#if DEBUG_COMPOSE
+  printf("hi: %d\n", highest_ord);
+#endif
+
   // initialization
-  for (int   v  = 0; v  <  da->nv     ; ++v ) mono[v] = 0;
-  for (ord_t o  = 0; o  <= highest_ord; ++o ) ords[o] = FUN(newd)(da,da->to);
+  ord_t mono[d->nv];
+  T *ords[d->mo+1]; // one for each order [0,mo]
+  for (int   v  = 0; v  <  d->nv      ; ++v ) mono[v] = 0;
+  for (ord_t o  = 0; o  <= highest_ord; ++o ) ords[o] = FUN(newd)(d,d->to);
   for (idx_t ic = 0; ic <  sa         ; ++ic) FUN(clear)(mc[ic]);
 
   FUN(setvar)(ords[0],1,0,0);
 
-  CTX ctx = { .sa=sa, .ma=ma, .mc=mc, .required=required,
-              .da=da, .mb=mb, .ords=ords,
-              .knb_coef = da->ko ? FUN(newd)(da,da->ko) : NULL,
-              .tmp      =          FUN(newd)(da,da->to) };
+  CTX ctx = { .sa=sa, .ma=ma, .mb=mb, .mc=mc,
+              .d=d, .ords=ords, .required=required,
+              .knb_coef = d->ko ? FUN(newd)(d,d->ko) : NULL,
+              .tmp      =         FUN(newd)(d,d->to) };
 
   // do composition from root of tree, ord 0
   compose(0, 0, mono, &ctx);
