@@ -256,8 +256,8 @@ FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
 
-  if (!name_  ) name_ = "-UNNAMED--";
-  if (eps_ < 0) eps_ = 1e-16;
+  if (!name_  ) name_   = "-UNNAMED--";
+  if (eps_ < 0) eps_    = 1e-16;
   if (!stream_) stream_ = stdout;
 
 #ifndef MAD_CTPSA_IMPL
@@ -294,11 +294,12 @@ coeffonly:
   for (ord_t o = t->lo; o <= t->hi ; ++o) {
     if (!mad_bit_tst(t->nz,o)) continue;
     for (idx_t i = o2i[o]; i < o2i[o+1]; ++i) {
-      if (fabs(t->coef[i]) < eps_) continue;
 #ifndef MAD_CTPSA_IMPL
-      fprintf(stream_, "\n%6d  %21.14lE   %2hhu   "           , ++idx, VAL(t->coef[i]), d->ords[i]);
+      if (fabs(t->coef[i]) < eps_) continue;
+      fprintf(stream_, "\n%6d  %21.14lE   %2hhu   "           , ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
 #else
-      fprintf(stream_, "\n%6d  %21.14lE %+21.14lEi   %2hhu   ", ++idx, VAL(t->coef[i]), d->ords[i]);
+      if (fabs(creal(t->coef[i])) < eps_ && fabs(cimag(t->coef[i])) < eps_) continue;
+      fprintf(stream_, "\n%6d  %21.14lE %+21.14lEi   %2hhu   ", ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
 #endif
       (d->nv > 20 ? print_ords_sm : print_ords)(d->nv, d->To[i], stream_);
     }
