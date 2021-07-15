@@ -34,7 +34,7 @@ local _C, option, warn                                            in MAD
 local gtpsad, tpsa, ctpsa, vector, cvector, matrix, cmatrix       in MAD
 local openfile                                                    in MAD.utility
 
-local is_nil, is_number, is_integer, is_complex, is_scalar,
+local is_nil, is_boolean, is_number, is_integer, is_complex, is_scalar,
       is_table, is_string, is_indexable, is_iterable, is_mappable,
       is_vector, is_cvector, isa_vector, is_matrix, is_cmatrix,
       is_tpsa, is_ctpsa, wprotect                                 in MAD.typeid
@@ -183,7 +183,7 @@ MR.maxord = \x     -> x[1]:maxord()
 MR.maxlen = \x     -> x[1]:maxlen()
 MR.gtrunc = \x,to_ -> x[1]:gtrunc(to_)
 
--- same, copy -----------------------------------------------------------------o
+-- same, copy, clear ----------------------------------------------------------o
 
 function MR.__same (x, y_, e_)
   if is_nil(e_) and is_scalar(y_) then -- shift right
@@ -209,6 +209,58 @@ function MR.__copy (x, y_)
     assert(x.__td == y_.__td, "incompatible damaps")
   end
   for i=1,min(#x,#y_) do x[i]:copy(y_[i]) end
+  return y_
+end
+
+function MR.getord (x, o, y_)
+  if is_nil(y_) then
+    y_ = map_alloc(x.__td, x.__vn, MR)
+  else
+    assert(isa_damap(y_), "invalid argument #2 (damap expected)")
+    assert(x.__td == y_.__td, "incompatible damaps")
+  end
+  for i=1,min(#x,#y_) do
+    _C.mad_tpsa_getord(x[i], y_[i], o)
+  end
+  return y_
+end
+
+function MC.getord (x, o, y_)
+  if is_nil(y_) then
+    y_ = map_alloc(x.__td, x.__vn, MC)
+  else
+    assert(isa_damap(y_), "invalid argument #2 (damap expected)")
+    assert(x.__td == y_.__td, "incompatible damaps")
+  end
+  for i=1,min(#x,#y_) do
+    _C.mad_ctpsa_getord(x[i], y_[i], o)
+  end
+  return y_
+end
+
+function MR.cutord (x, o, y_)
+  if is_nil(y_) then
+    y_ = map_alloc(x.__td, x.__vn, MR)
+  else
+    assert(isa_damap(y_), "invalid argument #2 (damap expected)")
+    assert(x.__td == y_.__td, "incompatible damaps")
+  end
+  for i=1,min(#x,#y_) do
+    _C.mad_tpsa_cutord(x[i], y_[i], o)
+  end
+  return y_
+end
+
+function MC.cutord (x, o, y_)
+  if is_nil(y_) then
+    y_ = map_alloc(x.__td, x.__vn, MC)
+  else
+    assert(isa_damap(y_), "invalid argument #2 (damap expected)")
+    assert(x.__td == y_.__td, "incompatible damaps")
+  end
+  for i=1,min(#x,#y_) do
+    _C.mad_ctpsa_cutord(x[i], y_[i], o)
+  end
   return y_
 end
 
@@ -317,6 +369,16 @@ function MC.setvar (x, v)
   return x
 end
 
+function MR.clear (x) -- set everything to zero
+  for i=1,#x do _C.mad_tpsa_clear(x[i]) end
+  return x
+end
+
+function MC.clear (x)
+  for i=1,#x do _C.mad_ctpsa_clear(x[i]) end
+  return x
+end
+
 function MR.getm (x, mt, m_)
   local nr, nc = #mt or 0, is_table(mt[1]) and #mt[1] or 1
   assert(nr > 0 and nc > 0, "invalid argument #2 (non-empty table expected)")
@@ -351,7 +413,7 @@ function MC.getm (x, mt, m_)
   return m
 end
 
--- inv, pinv, compose ---------------------------------------------------------o
+-- inv, pinv, expb, vfld, compose ---------------------------------------------o
 
 -- map inverse: r = x^-1
 
@@ -395,6 +457,102 @@ function MC.pinv (x, sel, r)
   assert(#r == #x, "incompatible cdamap lengths")
   local s = int_arr(#x) ; for i=1,#x do s[i-1] = sel[i] end
   _C.mad_ctpsa_pminv(#x, x.__ta, r.__ta, s) return r
+end
+
+-- map exponential and poisson bracket: r = exp(:x:) y
+
+function MR.exppb (x, y, r, inv)
+      if is_boolean(r) and is_nil(inv) then inv, r = r -- right shift
+  elseif is_string (r) and r == 'in' then r = x end    -- in place
+  r = r or map_alloc(x.__td, x.__vn, MR)
+  assert(is_damap(y), "invalid argument #2 (damap expected)")
+  assert(is_damap(r), "invalid argument #3 (damap expected)")
+  assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
+  assert(r.__td == y.__td, "incompatible damap (GTPSA descriptors differ)")
+  assert(#r == #x, "incompatible damap lengths")
+  _C.mad_tpsa_exppb(#x, x.__ta, #y, y.__ta, r.__ta, inv or false) return r
+end
+
+function MC.exppb (x, y, r, inv)
+      if is_boolean(r) and is_nil(inv) then inv, r = r -- right shift
+  elseif is_string(r) and r == 'in' then r = x end     -- in place
+  r = r or map_alloc(x.__td, x.__vn, MC)
+  assert(is_cdamap(y), "invalid argument #2 (cdamap expected)")
+  assert(is_cdamap(r), "invalid argument #3 (cdamap expected)")
+  assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
+  assert(r.__td == y.__td, "incompatible cdamap (GTPSA descriptors differ)")
+  assert(#r == #x, "incompatible cdamap lengths")
+  _C.mad_ctpsa_exppb(#x, x.__ta, #y, y.__ta, r.__ta, inv or false) return r
+end
+
+-- factored Lie of exponential and poisson bracket: r = exp(:y1:) exp(:y2:)... x
+
+function MR.lieexppb (x, y, r, inv)
+  if is_boolean(r) and is_nil(inv) then inv, r = r end -- right shift
+  r = r or map_alloc(x.__td, x.__vn, MR)
+  assert(is_damap(x), "invalid argument #1 (damap expected)")
+  assert(is_table(y), "invalid argument #2 (list of damap expected)")
+  assert(is_damap(r), "invalid argument #3 (damap expected)")
+  assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
+  assert(#r == #x, "incompatible damap lengths") ; x:copy(r)
+  local n0, n1, d = 1, y.n or #y, y.dir or 1
+  assert(d == 1 or d == -1, "invalid factored Lie direction (1 or -1 expected)")
+  if d < 0 then n0, n1 = n1, n0 end
+  for i=n0,n1,d do
+    local y = y[i]
+    assert(is_damap(y), "invalid argument #2 (list of damap expected)")
+    assert(r.__td == y.__td, "incompatible damap (GTPSA descriptors differ)")
+    assert(#r == #y, "incompatible damap lengths")
+    _C.mad_tpsa_exppb(#y, y.__ta, #r, r.__ta, r.__ta, inv or false)
+  end
+  return r
+end
+
+function MC.lieexppb (x, y, r, inv)
+  if is_boolean(r) and is_nil(inv) then inv, r = r end -- right shift
+  r= r or map_alloc(x.__td, x.__vn, MC)
+  assert(is_cdamap(x), "invalid argument #1 (damap expected)")
+  assert(is_table (y), "invalid argument #2 (list of damap expected)")
+  assert(is_cdamap(r), "invalid argument #3 (damap expected)")
+  assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
+  assert(#r == #x, "incompatible damap lengths") x:copy(r)
+  local n0, n1, d = 1, y.n or #y, y.dir or 1
+  assert(d == 1 or d == -1, "invalid factored Lie direction (1 or -1 expected)")
+  if d < 0 then n0, n1 = n1, n0 end
+  for i=n0,n1,d do
+    local y = y[i]
+    assert(is_cdamap(y), "invalid argument #2 (list of damap expected)")
+    assert(r.__td == y.__td, "incompatible damap (GTPSA descriptors differ)")
+    assert(#r == #y, "incompatible damap lengths")
+    _C.mad_ctpsa_exppb(#y, y.__ta, #r, r.__ta, r.__ta, inv or false)
+  end
+  return r
+end
+
+-- vector to field map:
+
+function MR.vec2fld (x, f)
+  assert(f.d == x.__td, "incompatible tpsa and damap (GTPSA descriptors differ)")
+  _C.mad_tpsa_vec2fld(#x, f, x.__ta) return x
+end
+
+function MC.vec2fld (x, f)
+  assert(f.d == x.__td, "incompatible ctpsa and cdamap (GTPSA descriptors differ)")
+  _C.mad_ctpsa_vec2fld(#x, f, x.__ta) return x
+end
+
+-- field map to vector:
+
+function MR.fld2vec (x, f_)
+  local f = f_ or x[1]:same()
+  assert(f.d == x.__td, "incompatible tpsa and damap (GTPSA descriptors differ)")
+  _C.mad_tpsa_fld2vec(#x, x.__ta, f) return f
+end
+
+function MC.fld2vec (x, f_)
+  local f = f_ or x[1]:same()
+  assert(f.d == x.__td, "incompatible ctpsa and cdamap (GTPSA descriptors differ)")
+  _C.mad_ctpsa_fld2vec(#x, x.__ta, f) return f
 end
 
 -- maps evaluation r = x(h) (special case of composition)
@@ -463,6 +621,26 @@ end
 
 -- operators ------------------------------------------------------------------o
 
+-- unm
+
+function MR.__unm (x, _, r) -- note: _ is dummy arg, see Lua specs.
+  r = r or map_alloc(x.__td, x.__vn, MR)
+  assert(is_damap(r), "invalid argument #3 (damap expected)")
+  assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
+  assert(#r == #x, "incompatible damap lengths")
+  for i=1,#x do _C.mad_tpsa_scl(x[i], -1, r[i]) end
+  return r
+end
+
+function MC.__unm (x, _, r) -- note: _ is dummy arg, see Lua specs.
+  r = r or map_alloc(x.__td, x.__vn, MC)
+  assert(is_cdamap(r), "invalid argument #3 (cdamap expected)")
+  assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
+  assert(#r == #x, "incompatible cdamap lengths")
+  for i=1,#x do _C.mad_ctpsa_scl_r(x[i], -1, 0, r[i]) end
+  return r
+end
+
 -- add
 
 function MR.__radd_mat (t, x, r)
@@ -475,12 +653,9 @@ end
 function MR.__add (x, t, r)
   if t == 0 then                            -- dam + [0] => copy
     return x:copy(r)
-  elseif x == 0 then                        -- 0   + dam => copy
-    return t:copy(r)
   elseif is_iterable(t) then                -- dam + trn
-    return x:translate(t,r)
-  elseif is_iterable(x) then                -- trn + dam => dam + trn
-    return t:translate(x,r)
+    local v = is_vector(t) and t or vector(#x):fill(t)
+    return x:translate(v,r)
   end
   error("invalid arguments (unsupported damap operation '+')")
 end
@@ -514,11 +689,7 @@ end
 -- mul
 
 function MR.__mul (x, y, r)
-  if rawequal(x,1) then                     -- 1 * dam => copy
-    return y:copy(r)
-  elseif rawequal(y,1) then                 -- dam * 1 => copy
-    return x:copy(r)
-  elseif isa_damap(y) then                  -- dam * dam => dam o dam
+  if isa_damap(y) then                      -- dam * dam => dam o dam
     return x:compose(y,r)
   end
   error("invalid arguments (unsupported damap operation '*')")
@@ -531,8 +702,6 @@ MC.__mul = MR.__mul  -- fully polymorphic
 function MR.__div (x, y, r)
   if rawequal(x,1) then                     --   1 / dam => dam:inv()
     return y:inv(r)
-  elseif rawequal(y,1) then                 -- dam / 1   => copy
-    return x:copy(r)
   elseif isa_damap(y) then                  -- dam / dam => dam o dam:inv()
     return x:compose(y:inv(r),r)
   end
@@ -551,7 +720,7 @@ function MR.__pow (x, n, r)
     return x:copy(r)
   elseif n == 2 then                        -- dam^2  => dam o dam
     return x:compose(x,r)
-  elseif n == -1 then                       -- dam^1  => dam:inv()
+  elseif n == -1 then                       -- dam^-1 => dam:inv()
     return x:inv(r)
   elseif n == -2 then                       -- dam^-2 => dam:inv()^2
     r = x:inv(r)
@@ -689,6 +858,9 @@ MR.__same, MR.__copy, MR.__len
 
 MC.  same, MC.  copy, MC.length =
 MC.__same, MC.__copy, MC.__len
+
+MR.unm = \x,r_ -> MR.__unm(x,nil,r_)
+MC.unm = \x,r_ -> MC.__unm(x,nil,r_)
 
 MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  pow =
 MR.__add, MR.__sub, MR.__mul, MR.__div, MR.__pow
