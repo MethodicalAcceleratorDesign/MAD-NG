@@ -33,7 +33,7 @@
 // --- local ------------------------------------------------------------------o
 
 static inline void
-check_same_desc(ssz_t sa, const T *ma[sa])
+check_same_desc (ssz_t sa, const T *ma[sa])
 {
   assert(ma);
   for (idx_t i = 1; i < sa; ++i)
@@ -41,7 +41,7 @@ check_same_desc(ssz_t sa, const T *ma[sa])
 }
 
 static inline void
-check_compose(ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
+check_compose (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 {
   assert(ma && mb && mc);
   ensure(sa>0 && sb>0, "invalid map sizes (zero or negative sizes)");
@@ -99,7 +99,6 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
   for (idx_t ic = 0; ic < sa; ++ic) {
     FUN(copy)(mc_[ic], mc[ic]);
     FUN(del )(mc_[ic]);
-
     DBGTPSA(mc[ic]);
   }
   mad_free_tmp(mc_);
