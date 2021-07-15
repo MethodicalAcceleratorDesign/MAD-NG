@@ -177,43 +177,46 @@ hpoly_mul_ser(const T *a, const T *b, T *c) // serial version
 
 // --- derivative helpers -----------------------------------------------------o
 
-static inline int
-der_coef(idx_t ia, idx_t di, ord_t der_ord, const D* d)
+static inline num_t
+der_coef(idx_t ia, idx_t idx, ord_t ord, const D* d)
 {
-  if (der_ord == 1) // der against var
-    return d->To[ia][di-1];
-
-  const ord_t *srcm = d->To[ia], *derm = d->To[di];
+  if (ord == 1) { // der against var
+//  fprintf(stderr, "der_coef[%d][%d]=%d\n", ia, idx-1, d->To[ia][idx-1]);
+    return d->To[ia][idx-1];
+  }
+  const ord_t *srcm = d->To[ia], *derm = d->To[idx];
   if (mad_mono_gt(d->nv,derm,srcm))
     return 0;
 
-  int c = 1;
+  num_t c = 1;
   for (int v = 0; v < d->nv; ++v)
-    for (int o = 0; o < derm[v]; ++o)
-        c *= srcm[v] - o;
+    for (ord_t o = 0; o < derm[v]; ++o)
+      c *= srcm[v] - o;
   return c;
 }
 
-static inline void
+static inline void // oc < ord
 hpoly_der_lt(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
 {
+//fprintf(stderr, "hpoly_der_lt: idx=%d, oc=%d, ord=%d\n", idx, oc, ord);
   const idx_t ho = d->mo/2;
   const idx_t *lc = d->L[ord*ho + oc], *o2i = d->ord2idx;
   idx_t nc = o2i[oc+1] - o2i[oc], cols = o2i[ord+1] - o2i[ord];
-  // idx = idx - o2i[ord];
+  idx_t idx_shifted = idx - o2i[ord];
   for (idx_t ic = 0; ic < nc; ++ic) {
-    idx_t ia = lc[hpoly_idx(ic,idx-o2i[ord],cols)];
+    idx_t ia = lc[hpoly_idx(ic,idx_shifted,cols)];
     if (ia >= 0 && ca[ia]) {
       assert(o2i[oc+ord] <= ia && ia < o2i[oc+ord+1]);
       cc[ic] = ca[ia] * der_coef(ia,idx,ord,d);
       *cnz = mad_bit_set(*cnz,oc);
-    }
+    } else cc[ic] = 0;
   }
 }
 
-static inline void
+static inline void // oc == ord
 hpoly_der_eq(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
 {
+//fprintf(stderr, "hpoly_der_eq: idx=%d, oc=%d, ord=%d\n", idx, oc, ord);
   const idx_t ho = d->mo/2;
   const idx_t *lc = d->L[ord*ho + oc], *o2i = d->ord2idx;
   idx_t nc = o2i[ord+1] - o2i[ord];
@@ -224,13 +227,14 @@ hpoly_der_eq(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cn
       assert(o2i[oc+ord] <= ia && ia < o2i[oc+ord+1]);
       cc[ic] = ca[ia] * der_coef(ia,idx,ord,d);
       *cnz = mad_bit_set(*cnz,oc);
-    }
+    } else cc[ic] = 0;
   }
 }
 
-static inline void
+static inline void // oc > ord
 hpoly_der_gt(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cnz, const D *d)
 {
+//fprintf(stderr, "hpoly_der_gt: idx=%d, oc=%d, ord=%d\n", idx, oc, ord);
   const idx_t ho = d->mo/2;
   const idx_t *lc = d->L[oc*ho + ord], *o2i = d->ord2idx;
   idx_t nc = o2i[oc+1] - o2i[oc];
@@ -241,13 +245,14 @@ hpoly_der_gt(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cn
       assert(o2i[oc+ord] <= ia && ia < o2i[oc+ord+1]);
       cc[ic] = ca[ia] * der_coef(ia,idx,ord,d);
       *cnz = mad_bit_set(*cnz,oc);
-    }
+    } else cc[ic] = 0;
   }
 }
 
 static inline void
 hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
 {
+//fprintf(stderr, "hpoly_der: idx=%d, ord=%d\n", idx, ord);
   const D *d = c->d;
   const idx_t *o2i = d->ord2idx;
   const NUM *ca = a->coef;
@@ -257,9 +262,9 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
   for (ord_t oc = 1; oc <= c->hi; ++oc) {
     if (mad_bit_tst(a->nz,oc+ord)) {
       cc = c->coef + o2i[oc];
-           if (oc <  ord) hpoly_der_lt(ca,cc,idx,oc,ord,&c->nz,d);
-      else if (oc == ord) hpoly_der_eq(ca,cc,idx,oc,ord,&c->nz,d);
-      else                hpoly_der_gt(ca,cc,idx,oc,ord,&c->nz,d);
+           if (oc >  ord)  hpoly_der_gt(ca,cc,idx,oc,ord,&c->nz,d);
+      else if (oc == ord)  hpoly_der_eq(ca,cc,idx,oc,ord,&c->nz,d);
+      else   /*oc <  ord*/ hpoly_der_lt(ca,cc,idx,oc,ord,&c->nz,d);
     }
   }
 }
@@ -655,7 +660,8 @@ FUN(deriv) (const T *a, T *r, int iv)
   T *c = a == r ? GET_TMPX(r) : FUN(reset0)(r);
 
   if (!a->hi) goto ret; // empty
-  FUN(setvar)(c,FUN(geti)(a,iv), 0, 0);
+
+  FUN(setvar)(c,FUN(geti)(a,iv), 0, 0); // 0
 
   c->lo = a->lo ? a->lo-1 : 0;  // initial guess, readjusted after computation
   c->hi = MIN3(a->hi-1, c->mo, d->to);
@@ -663,12 +669,12 @@ FUN(deriv) (const T *a, T *r, int iv)
   const NUM *ca = a->coef;
 
   ord_t der_ord = 1, oc = 1;
-  if (mad_bit_tst(a->nz,oc+1))
-      hpoly_der_eq(ca,c->coef+o2i[oc],iv,oc,der_ord,&c->nz,d);
+  if (mad_bit_tst(a->nz,oc+1))    // 1
+      hpoly_der_eq(ca, c->coef+o2i[oc], iv, oc, der_ord, &c->nz, d);
 
-  for (oc = 2; oc <= c->hi; ++oc)
+  for (oc = 2; oc <= c->hi; ++oc) // 2..hi
     if (mad_bit_tst(a->nz,oc+1))
-      hpoly_der_gt(ca,c->coef+o2i[oc],iv,oc,der_ord,&c->nz,d);
+      hpoly_der_gt(ca, c->coef+o2i[oc], iv, oc, der_ord, &c->nz, d);
 
   if (c->nz) {
     c->lo = mad_bit_lowest (c->nz);
@@ -690,10 +696,6 @@ FUN(derivm) (const T *a, T *r, ssz_t n, const ord_t mono[n])
   const idx_t *o2i = d->ord2idx;
 
   ensure(d == r->d, "incompatibles GTPSA (descriptors differ)");
-  ensure(mad_desc_isvalidm(d,n,mono), "invalid monomial");
-
-  ord_t der_ord = mad_mono_ord(n,mono);
-  ensure(der_ord > 0, "invalid derivative order");
   idx_t idx = mad_desc_idxm(d,n,mono);
   ensure(idx >= 0, "invalid monomial");
 
@@ -702,12 +704,15 @@ FUN(derivm) (const T *a, T *r, ssz_t n, const ord_t mono[n])
 
   T *c = a == r ? GET_TMPX(r) : FUN(reset0)(r);
 
+  ord_t der_ord = mad_mono_ord(n,mono);
+  ensure(der_ord > 0, "invalid derivative order");
+
   // ord 0 & setup
   FUN(setvar)(c,FUN(geti)(a,idx) * der_coef(idx,idx,der_ord,d), 0, 0);
   if (a->hi <= der_ord) goto ret;
 
   // ords 1..a->hi - 1
-  hpoly_der(a,idx,der_ord,c);
+  hpoly_der(a, idx, der_ord, c);
 
   if (c->nz) {
     c->lo = mad_bit_lowest (c->nz);
@@ -722,35 +727,32 @@ ret:
 }
 
 void
-FUN(poisson) (const T *a, const T *b, T *c, int nv)
+FUN(poisson) (const T *a, const T *b, T *c, int nv)                 // C = [A,B]
 {
-  // C = [A,B]
   assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b); DBGTPSA(c);
   const D *d = a->d;
   ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   nv = nv>0 ? nv/2 : d->nv/2;
 
-  T *is[4];
-  for (int i = 0; i < 4; ++i)
-    is[i] = FUN(new)(a, d->to);
+  T *is[3];
+  for (int i=0; i < 3; ++i) is[i] = FUN(new)(a, d->to);
+
+  FUN(reset0)(c);
 
   for (int i = 1; i <= nv; ++i) {
     FUN(deriv)(a, is[0], 2*i - 1); // res = res + da/dq_i * db/dp_i
     FUN(deriv)(b, is[1], 2*i    );
     FUN(mul)  (is[0],is[1],is[2]);
-    FUN(add)  (is[3],is[2],is[0]);
-    FUN(copy) (is[0],is[3]);
+    FUN(add)  (c, is[2], c);
 
     FUN(deriv)(a, is[0], 2*i    ); // res = res - da/dp_i * db/dq_i
     FUN(deriv)(b, is[1], 2*i - 1);
     FUN(mul)  (is[0],is[1],is[2]);
-    FUN(sub)  (is[3],is[2],is[0]);
-    FUN(copy) (is[0],is[3]);
+    FUN(sub)  (c, is[2], c);
   }
 
-  FUN(copy)(is[3], c);
-  for (int i = 0; i < 4; ++i) FUN(del)(is[i]);
+  for (int i=0; i < 3; ++i) FUN(del)(is[i]);
 
   DBGTPSA(c); DBGFUN(<-);
 }
