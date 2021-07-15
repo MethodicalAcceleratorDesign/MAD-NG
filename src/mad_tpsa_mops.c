@@ -66,45 +66,44 @@ exppb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[3], log_t inv)
 
   num_t nrm0 = 1e300;
 
-fprintf(stderr, "exppb1: X=\n"); print_damap(1, (const T**)&b, stderr);
-fprintf(stderr, "exppb1: H=\n"); print_damap(sa, ma, stderr);
+//fprintf(stderr, "exppb1: X=\n"); print_damap(1, (const T**)&b, stderr);
+//fprintf(stderr, "exppb1: H=\n"); print_damap(sa, ma, stderr);
 
   for (idx_t i = 1; i < 100; ++i) {
 
-fprintf(stderr, "exppb1: i=%d, nrm0=%.10g\n", i, nrm0);
-
-fprintf(stderr, "exppb1: t[0](b1)=\n"); print_damap(1, (const T**)&t[0], stderr);
+//fprintf(stderr, "exppb1: i=%d, nrm0=%.10g\n", i, nrm0);
+//fprintf(stderr, "exppb1: t[0](b1)=\n"); print_damap(1, (const T**)&t[0], stderr);
 
     FUN(scl)(t[0], 1.0/i, t[1]);     // t[1] = t[0]/i
 
-fprintf(stderr, "exppb1: t[1](b2)=\n"); print_damap(1, (const T**)&t[1], stderr);
+//fprintf(stderr, "exppb1: t[1](b2)=\n"); print_damap(1, (const T**)&t[1], stderr);
 
     // -> c_bra_v_ct
     FUN(clear)(t[0]);
 
-fprintf(stderr, "bra: n=%d\n", sa);
+//fprintf(stderr, "bra: n=%d\n", sa);
 
     for (idx_t j = 0; j < sa; ++j) { // t[0] = h*t[1]
-fprintf(stderr, "bra: j=%d\n", j);
+//fprintf(stderr, "bra: j=%d\n", j);
 
       FUN(deriv)(t[1], t[2], j+1);
 
-fprintf(stderr, "bra: t[2](s2.d.i)=\n"); print_damap(1, (const T**)&t[2], stderr);
+//fprintf(stderr, "bra: t[2](s2.d.i)=\n"); print_damap(1, (const T**)&t[2], stderr);
 
       FUN(mul)(ma[j], t[2], t[3]);
       (inv ? FUN(sub) : FUN(add))(t[0], t[3], t[0]);
 
-fprintf(stderr, "bra: t[0](s22)=\n"); print_damap(1, (const T**)&t[0], stderr);
+//fprintf(stderr, "bra: t[0](s22)=\n"); print_damap(1, (const T**)&t[0], stderr);
     } // <- c_bra_v_ct
 
-fprintf(stderr, "exppb1: t[0](b1)=\n"); print_damap(1, (const T**)&t[0], stderr);
+//fprintf(stderr, "exppb1: t[0](b1)=\n"); print_damap(1, (const T**)&t[0], stderr);
 
     FUN(add)(t[0], c, c);           // b3 = t[0]+b3
 
-fprintf(stderr, "exppb1: c(b3)=\n"); print_damap(1, (const T**)&c, stderr);
+//fprintf(stderr, "exppb1: c(b3)=\n"); print_damap(1, (const T**)&c, stderr);
 
     num_t nrm = FUN(nrm)(t[0]);
-fprintf(stderr, "exppb1: nrm=%.10g\n", nrm);
+//fprintf(stderr, "exppb1: nrm=%.10g\n", nrm);
     if (nrm < 1e-9 || nrm > nrm0) break;
     nrm0 = nrm;
   }
@@ -112,13 +111,11 @@ fprintf(stderr, "exppb1: nrm=%.10g\n", nrm);
 
 // --- public -----------------------------------------------------------------o
 
-void
+void // compute exp(:H:) K, where H -> ma, K -> mb
 FUN(exppb) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa], log_t inv)
 {
   DBGFUN(->);
   check_exppb(sa, ma, sb, mb, mc);
-
-fprintf(stderr, "exppb: start\n");
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, sa);
@@ -131,22 +128,18 @@ fprintf(stderr, "exppb: start\n");
     DBGTPSA(mb[ib]);
   }
 
-fprintf(stderr, "exppb: MA[%d]=\n", sa); print_damap(sa, ma, stderr);
-fprintf(stderr, "exppb: MB[%d]=\n", sb); print_damap(sb, mb, stderr);
+//fprintf(stderr, "exppb: MA[%d]=\n", sa); print_damap(sa, ma, stderr);
+//fprintf(stderr, "exppb: MB[%d]=\n", sb); print_damap(sb, mb, stderr);
 
   // temporaries
   T *t[4];
   for (int i = 0; i < 4; ++i) t[i] = FUN(new)(mc[0], mad_tpsa_same);
 
-  // compute exp(:H:) K
-
-fprintf(stderr, "exppb: n=%d\n", sa);
   for (idx_t i = 0; i < sa; ++i) {
-fprintf(stderr, "exppb: i=%d\n", i);
+//fprintf(stderr, "exppb: i=%d\n", i);
     exppb1(sa, ma, mb[i], mc_[i], t, inv);
-fprintf(stderr, "exppb: MC[%d]=\n",i); print_damap(1, (const T**)&mc_[i], stderr);
+//fprintf(stderr, "exppb: MC[%d]=\n",i); print_damap(1, (const T**)&mc_[i], stderr);
   }
-
 
   // temporaries
   for (int i = 0; i < 4; i++) FUN(del)(t[i]);
@@ -158,8 +151,6 @@ fprintf(stderr, "exppb: MC[%d]=\n",i); print_damap(1, (const T**)&mc_[i], stderr
     DBGTPSA(mc[ic]);
   }
   mad_free_tmp(mc_);
-
-fprintf(stderr, "exppb: end\n");
   DBGFUN(<-);
 }
 
@@ -167,7 +158,6 @@ void
 FUN(vec2fld) (ssz_t sc, const T *a, T *mc[sc]) // cpbbra (wo *n_cai)
 {
   DBGFUN(->);
-
   assert(a && mc);
   check_same_desc(sc,(const T**)mc);
   ensure(a->d == mc[0]->d, "incompatibles GTPSA (descriptors differ)");
@@ -180,7 +170,6 @@ FUN(vec2fld) (ssz_t sc, const T *a, T *mc[sc]) // cpbbra (wo *n_cai)
   }
 
   FUN(del)(t);
-
   DBGFUN(<-);
 }
 
@@ -188,7 +177,6 @@ void
 FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // cgetpb (wo /n_cai)
 {
   DBGFUN(->);
-
   assert(ma && c);
   check_same_desc(sa, ma);
   ensure(ma[0]->d == c->d, "incompatibles GTPSA (descriptors differ)");
@@ -205,7 +193,7 @@ FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // cgetpb (wo /n_cai)
     FUN(setvar)(t2, 0, iv, 0);
     FUN(mul)(ma[ia], t2, t1);
 
-    for (ord_t o = t1->lo; o <= t1->hi   ; ++o)
+    for (ord_t o = t1->lo; o <= t1->hi   ; ++o) // TODO: make a function
     for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
       t1->coef[i] /= o;
 
@@ -214,7 +202,6 @@ FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // cgetpb (wo /n_cai)
 
   FUN(del)(t2);
   FUN(del)(t1);
-
   DBGFUN(<-);
 }
 
