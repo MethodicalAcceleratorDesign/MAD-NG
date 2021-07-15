@@ -263,16 +263,17 @@ FUN(setvar) (T *t, NUM v, idx_t iv, NUM scl)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
   const D *d = t->d;
+  const int nfo = !(iv && t->mo && d->to);
 
   // v=0 and no first order: reset
-  if (!v && !(iv && t->mo && d->to)) {
+  if (nfo && !v) {
     FUN(reset0)(t); DBGFUN(<-); return;
   }
 
   t->coef[0] = v;
 
   // no first order: set lo, hi, nz
-  if (!(iv && t->mo && d->to)) {
+  if (nfo) {
     t->lo = t->hi = 0, t->nz = !!v;
     DBGTPSA(t); DBGFUN(<-); return;
   }
@@ -285,8 +286,7 @@ FUN(setvar) (T *t, NUM v, idx_t iv, NUM scl)
   for (idx_t i = o2i[1]; i < o2i[2]; ++i) t->coef[i] = 0;
 
   // set lo, hi, nz, coef[iv]
-  t->hi = 1, t->lo = !v;
-  t->nz = v ? 3 : 2;
+  t->hi = 1, t->lo = !v, t->nz = v ? 3 : 2;
   t->coef[iv] = scl ? scl : 1;
 
   DBGTPSA(t); DBGFUN(<-);
