@@ -280,11 +280,9 @@ FUN(setvar) (T *t, NUM v, idx_t iv, NUM scl)
   ensure(0 <= iv && iv <= d->nv,
          "index %d exceeds GPTSA number of variables %d", iv, d->nv);
 
-  // clear first order (if needed)
-  if (mad_bit_tst(t->nz,1)) {
-    const idx_t *o2i = d->ord2idx;
-    for (idx_t i = o2i[1]; i < o2i[2]; ++i) t->coef[i] = 0;
-  }
+  // clear first order
+  const idx_t *o2i = d->ord2idx;
+  for (idx_t i = o2i[1]; i < o2i[2]; ++i) t->coef[i] = 0;
 
   // set lo, hi, nz, coef[iv]
   t->hi = 1, t->lo = !v;
@@ -451,7 +449,7 @@ FUN(idxsm) (const T *t, ssz_t n, const idx_t m[n])
 }
 
 idx_t
-FUN(cycle) (const T *t, ssz_t n, ord_t m_[n], idx_t i, num_t *v_)
+FUN(cycle) (const T *t, ssz_t n, ord_t m_[n], idx_t i, NUM *v_)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
   const D *d = t->d;
