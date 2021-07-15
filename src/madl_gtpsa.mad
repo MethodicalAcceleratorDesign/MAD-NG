@@ -257,12 +257,12 @@ MC.debug = \x,nam_,fnam_,lin_,fil_ => _C.mad_ctpsa_debug(x,nam_,fnam_,lin_ or 0,
 
 function MR.nxtbyvar (x, m) -- mono -> idx (-1 means invalid or no more)
   if not is_monomial(m) then m = monomial(m) end
-  return _C.mad_desc_nxtbyvar(x.d, m.n, m.ord), m
+  return _C.mad_desc_nxtbyvar(x.d, m.n, m.data), m
 end
 
 function MR.nxtbyord (x, m) -- mono -> idx (-1 means invalid or no more)
   if not is_monomial(m) then m = monomial(m) end
-  return _C.mad_desc_nxtbyord(x.d, m.n, m.ord), m
+  return _C.mad_desc_nxtbyord(x.d, m.n, m.data), m
 end
 
 -- same, copy, getord, cutord, convert, setvar, clear -------------------------o
@@ -411,13 +411,13 @@ end
 function MR.get_idx (x, m) -- mono -> idx (0 means invalid)
   if is_string(m) then return _C.mad_tpsa_idxs(x, #m, m)+1 end
   if not is_monomial(m) then m = monomial(m) end
-  return _C.mad_tpsa_idxm(x, m.n, m.ord)+1
+  return _C.mad_tpsa_idxm(x, m.n, m.data)+1
 end
 
 function MC.get_idx (x, m) -- mono -> idx (0 means invalid)
   if is_string(m) then return _C.mad_ctpsa_idxs(x, #m, m)+1 end
   if not is_monomial(m) then m = monomial(m) end
-  return _C.mad_ctpsa_idxm(x, m.n, m.ord)+1
+  return _C.mad_ctpsa_idxm(x, m.n, m.data)+1
 end
 
 function MR.get_idx_sparse (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... } -> idx
@@ -438,26 +438,34 @@ function MR.get_mono (x, i, r) -- idx -> mono
   assert(is_integer(i), "invalid argument #2 (index expected)")
   local m = r or monomial(x.d.nv)
   assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-  return _C.mad_tpsa_mono(t, m.n, m.ord, i) -- set m, return order
+  return _C.mad_tpsa_mono(t, m.n, m.data, i) -- set m, return order
 end
 
 function MC.get_mono (x, i, r) -- idx -> mono
   assert(is_integer(i), "invalid argument #2 (index expected)")
   local m = r or monomial(x.d.nv)
   assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-  return _C.mad_ctpsa_mono(t, m.n, m.ord, i) -- set m, return order
+  return _C.mad_ctpsa_mono(t, m.n, m.data, i) -- set m, return order
 end
 
 function MR.cycle (x, i, m_) -- loop over indexes for non-zero value, (0 means end)
-  if m_ and not is_monomial(m_) then m_ = monomial(m_) end
-  i = _C.mad_tpsa_cycle(x, m_ and m_.n, m_ and m_.ord, i-1, val)
-  return i+1, val[0]
+  if m_ then
+    if not is_monomial(m_) then m_ = monomial(m_) end
+    i = _C.mad_tpsa_cycle(x, m_.n, m_.data, i-1, val)
+  else
+    i = _C.mad_tpsa_cycle(x, 0   , nil    , i-1, val)
+  end
+  return i+1, val[0], m_
 end
 
-function MR.cycle (x, i, m_) -- loop over indexes for non-zero value, (0 means end)
-  if m_ and not is_monomial(m_) then m_ = monomial(m_) end
-  i = _C.mad_ctpsa_cycle(x, m_ and m_.n, m_ and m_.ord, i-1, cval)
-  return i+1, cval[0]
+function MC.cycle (x, i, m_) -- loop over indexes for non-zero value, (0 means end)
+  if m_ then
+    if not is_monomial(m_) then m_ = monomial(m_) end
+    i = _C.mad_ctpsa_cycle(x, m_.n, m_.data, i-1, cval)
+  else
+    i = _C.mad_ctpsa_cycle(x, 0   , nil    , i-1, cval)
+  end
+  return i+1, cval[0], m_
 end
 
 -- getters and setters --------------------------------------------------------o
@@ -488,7 +496,7 @@ function MR.get (x, m) -- idx or str or mono -> num
     return _C.mad_tpsa_gets(x, #m, m)
   else
     if not is_monomial(m) then m = monomial(m) end
-    return _C.mad_tpsa_getm(x, m.n, m.ord)
+    return _C.mad_tpsa_getm(x, m.n, m.data)
   end
 end
 
@@ -502,7 +510,7 @@ function MC.get (x, m) -- idx or str or mono -> cnum
     _C.mad_ctpsa_gets_r(x, #m, m, cres) return cres[0]
   else
     if not is_monomial(m) then m = monomial(m) end
-    _C.mad_ctpsa_getm_r(x, m.n, m.ord, cres) return cres[0]
+    _C.mad_ctpsa_getm_r(x, m.n, m.data, cres) return cres[0]
   end
 end
 
@@ -517,7 +525,7 @@ function MR.set (x, m, a, b)
     _C.mad_tpsa_sets(x, #m, m, a, b) return x
   else
     if not is_monomial(m) then m = monomial(m) end
-    _C.mad_tpsa_setm(x, m.n, m.ord, a, b) return x
+    _C.mad_tpsa_setm(x, m.n, m.data, a, b) return x
   end
 end
 
@@ -533,7 +541,7 @@ function MC.set (x, m, a, b)
     _C.mad_ctpsa_sets_r(x, #m, m, a.re, a.im, b.re, b.im) return x
   else
     if not is_monomial(m) then m = monomial(m) end
-    _C.mad_ctpsa_setm_r(x, m.n, m.ord, a.re, a.im, b.re, b.im) return x
+    _C.mad_ctpsa_setm_r(x, m.n, m.data, a.re, a.im, b.re, b.im) return x
   end
 end
 
@@ -794,26 +802,26 @@ MC.__le = \ error("invalid operation '<=' on complex GTPSA")
 
 function MR.__add (x, y, r)
   if is_number(x) then                           -- num + tpsa
-    if y.hi == 0 then return x + y.coef[0] end   -- promote to num
+!   if y.hi == 0 then return x + y.coef[0] end   -- promote to num
     r = chksiz(r,y) or tpsa_alloc(y.d, y.mo)
     _C.mad_tpsa_copy(y, r)
     _C.mad_tpsa_set0(r, 1, x) return r
   elseif is_number(y) then                       -- tpsa + num
-    if x.hi == 0 then return x.coef[0] + y end   -- promote to num
+!   if x.hi == 0 then return x.coef[0] + y end   -- promote to num
     r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
     _C.mad_tpsa_copy(x, r)
     _C.mad_tpsa_set0(r, 1, y) return r
   elseif is_tpsa(y) and is_tpsa(x) then          -- tpsa + tpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] + y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] + y.coef[0] end
     r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_tpsa_add(x, y, r) return r
   elseif is_complex(y) then                      -- tpsa + cpx
-    if x.hi == 0 then return x.coef[0] + y end   -- promote to num
+!   if x.hi == 0 then return x.coef[0] + y end   -- promote to num
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)    -- promote to ctpsa
     _C.mad_ctpsa_complex(x, nil, r)
     _C.mad_ctpsa_set0_r(r, 1, 0, y.re, y.im) return r
   elseif is_ctpsa(y) then                        -- tpsa + ctpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] + y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] + y.coef[0] end
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_tadd(x, y, r) return r
   else                                           -- tpsa + ?
@@ -822,7 +830,7 @@ function MR.__add (x, y, r)
 end
 
 function MR.__add_cpx (x, y, r)                  -- cpx + tpsa
-  if y.hi == 0 then return x + y.coef[0] end     -- promote to num
+! if y.hi == 0 then return x + y.coef[0] end     -- promote to num
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)      -- promote to ctpsa
   _C.mad_ctpsa_complex(y, nil, r)
   _C.mad_ctpsa_set0_r(r, 1, 0, x.re, x.im) return r
@@ -830,26 +838,26 @@ end
 
 function MC.__add (x, y, r)
   if is_number(x) then                           -- num + ctpsa
-    if y.hi == 0 then return x + y.coef[0] end   -- promote to cpx
+!   if y.hi == 0 then return x + y.coef[0] end   -- promote to cpx
     r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
     _C.mad_ctpsa_copy(y, r)
     _C.mad_ctpsa_set0_r(r, 1, 0, x, 0) return r
   elseif is_number(y) then                       -- ctpsa + num
-    if x.hi == 0 then return x.coef[0] + y end   -- promote to cpx
+!   if x.hi == 0 then return x.coef[0] + y end   -- promote to cpx
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
     _C.mad_ctpsa_copy(x, r)
     _C.mad_ctpsa_set0_r(r, 1, 0, y, 0) return r
   elseif is_complex(y) then                      -- ctpsa + cpx
-    if x.hi == 0 then return x.coef[0] + y end   -- promote to cpx
+!   if x.hi == 0 then return x.coef[0] + y end   -- promote to cpx
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
     _C.mad_ctpsa_copy(x, r)
     _C.mad_ctpsa_set0_r(r, 1, 0, y.re, y.im) return r
   elseif is_ctpsa(y) and is_ctpsa(x) then        -- ctpsa + ctpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] + y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] + y.coef[0] end
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_add(x, y, r) return r
   elseif is_tpsa(y) then                         -- ctpsa + tpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] + y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] + y.coef[0] end
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_addt(x, y, r) return r
   else                                           -- ctpsa + ?
@@ -858,7 +866,7 @@ function MC.__add (x, y, r)
 end
 
 function MC.__add_cpx (x, y, r)                  -- cpx + ctpsa
-  if y.hi == 0 then return x + y.coef[0] end     -- promote to cpx
+! if y.hi == 0 then return x + y.coef[0] end     -- promote to cpx
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
   _C.mad_ctpsa_copy(y, r)
   _C.mad_ctpsa_set0_r(r, 1, 0, x.re, x.im) return r
@@ -868,26 +876,26 @@ end
 
 function MR.__sub (x, y, r)
   if is_number(x) then                           -- num - tpsa
-    if y.hi == 0 then return x - y.coef[0] end   -- promote to num
+!   if y.hi == 0 then return x - y.coef[0] end   -- promote to num
     r = chksiz(r,y) or tpsa_alloc(y.d, y.mo)
     _C.mad_tpsa_scl(y, -1, r)
     _C.mad_tpsa_set0(r, 1, x) return r
   elseif is_number(y) then                       -- tpsa - num
-    if x.hi == 0 then return x.coef[0] - y end   -- promote to num
+!   if x.hi == 0 then return x.coef[0] - y end   -- promote to num
     r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
     _C.mad_tpsa_copy(x, r)
     _C.mad_tpsa_set0(r, 1, -y) return r
   elseif is_tpsa(y) and is_tpsa(x) then          -- tpsa - tpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] - y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] - y.coef[0] end
     r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_tpsa_sub(x, y, r) return r
   elseif is_complex(y) then                      -- tpsa - cpx
-    if x.hi == 0 then return x.coef[0] - y end   -- promote to num
+!   if x.hi == 0 then return x.coef[0] - y end   -- promote to num
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)    -- promote to ctpsa
     _C.mad_ctpsa_copy(x, r)
     _C.mad_ctpsa_set0_r(r, 1, 0, -y.re, -y.im) return r
   elseif is_ctpsa(y) then                        -- tpsa - ctpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] - y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] - y.coef[0] end
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_tsub(x, y, r) return r
   else                                           -- tpsa - ?
@@ -896,7 +904,7 @@ function MR.__sub (x, y, r)
 end
 
 function MR.__sub_cpx (x, y, r)                  -- cpx - tpsa
-  if y.hi == 0 then return x - y.coef[0] end     -- promote to num
+! if y.hi == 0 then return x - y.coef[0] end     -- promote to num
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)      -- promote to ctpsa
   _C.mad_ctpsa_complex(y, nil, r)
   _C.mad_ctpsa_set0_r(r, 1, 0, x.re, x.im) return r
@@ -904,26 +912,26 @@ end
 
 function MC.__sub (x, y, r)
   if is_number(x) then                           -- num - ctpsa
-    if y.hi == 0 then return x - y.coef[0] end   -- promote to cpx
+!   if y.hi == 0 then return x - y.coef[0] end   -- promote to cpx
     r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
     _C.mad_ctpsa_scl(y, -1, r)
     _C.mad_ctpsa_set0_r(r, 1, 0, x, 0) return r
   elseif is_number(y) then                       -- ctpsa - num
-    if x.hi == 0 then return x.coef[0] - y end   -- promote to cpx
+!   if x.hi == 0 then return x.coef[0] - y end   -- promote to cpx
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
     _C.mad_ctpsa_copy(x, r)
     _C.mad_ctpsa_set0_r(r, 1, 0, -y, 0) return r
   elseif is_complex(y) then                      -- ctpsa - cpx
-    if x.hi == 0 then return x.coef[0] - y end   -- promote to cpx
+!   if x.hi == 0 then return x.coef[0] - y end   -- promote to cpx
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
     _C.mad_ctpsa_copy(x, r)
     _C.mad_ctpsa_set0_r(r, 1, 0, -y.re, -y.im) return r
   elseif is_ctpsa(y) and is_ctpsa(x) then        -- ctpsa - ctpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] - y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] - y.coef[0] end
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_sub(x, y, r) return r
   elseif is_tpsa(y) then                         -- ctpsa - tpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] - y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] - y.coef[0] end
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_subt(x, y, r) return r
   else                                           -- ctpsa - ?
@@ -932,7 +940,7 @@ function MC.__sub (x, y, r)
 end
 
 function MC.__sub_cpx (x, y, r)                  -- cpx - ctpsa
-  if y.hi == 0 then return x - y.coef[0] end     -- promote to cpx
+! if y.hi == 0 then return x - y.coef[0] end     -- promote to cpx
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
   _C.mad_ctpsa_copy(y, r)
   _C.mad_ctpsa_set0_r(r, 1, 0, x.re, x.im) return r
@@ -942,24 +950,24 @@ end
 
 function MR.__mul (x, y, r)
   if is_number(x) then                           -- num * tpsa
-    if y.hi == 0 then return x * y.coef[0] end   -- promote to num
+!   if y.hi == 0 then return x * y.coef[0] end   -- promote to num
     r = chksiz(r,y) or tpsa_alloc(y.d, y.mo)
     _C.mad_tpsa_scl(y, x, r) return r
   elseif is_number(y) then                       -- tpsa * num
-    if x.hi == 0 then return x.coef[0] * y end   -- promote to num
+!   if x.hi == 0 then return x.coef[0] * y end   -- promote to num
     r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
     _C.mad_tpsa_scl(x, y, r) return r
   elseif is_tpsa(y) and is_tpsa(x) then          -- tpsa * tpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] * y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] * y.coef[0] end
     r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_tpsa_mul(x, y, r) return r
   elseif is_complex(y) then                      -- tpsa * cpx
-    if x.hi == 0 then return x.coef[0] * y end   -- promote to num
+!   if x.hi == 0 then return x.coef[0] * y end   -- promote to num
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)    -- promote to ctpsa
     _C.mad_ctpsa_complex(x, nil, r)
     _C.mad_ctpsa_scl_r(r, y.re, y.im, r) return r
   elseif is_ctpsa(y) then                        -- tpsa * ctpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] * y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] * y.coef[0] end
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_tmul(x, y, r) return r
   else                                           -- tpsa * ?
@@ -968,7 +976,7 @@ function MR.__mul (x, y, r)
 end
 
 function MR.__mul_cpx (x, y, r)                  -- cpx * tpsa
-  if y.hi == 0 then return x * y.coef[0] end     -- promote to num
+! if y.hi == 0 then return x * y.coef[0] end     -- promote to num
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)      -- promote to ctpsa
   _C.mad_ctpsa_complex(y, nil, r)
   _C.mad_ctpsa_scl_r(r, x.re, x.im, r) return r
@@ -976,23 +984,23 @@ end
 
 function MC.__mul (x, y, r)
   if is_number(x) then                           -- num * ctpsa
-    if y.hi == 0 then return x * y.coef[0] end   -- promote to cpx
+!   if y.hi == 0 then return x * y.coef[0] end   -- promote to cpx
     r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
     _C.mad_ctpsa_scl_r(y, x, 0, r) return r
   elseif is_number(y) then                       -- ctpsa * num
-    if x.hi == 0 then return x.coef[0] * y end   -- promote to cpx
+!   if x.hi == 0 then return x.coef[0] * y end   -- promote to cpx
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
     _C.mad_ctpsa_scl_r(x, y, 0, r) return r
   elseif is_complex(y) then                      -- ctpsa * cpx
-    if x.hi == 0 then return x.coef[0] * y end   -- promote to cpx
+!   if x.hi == 0 then return x.coef[0] * y end   -- promote to cpx
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
     _C.mad_ctpsa_scl_r(x, y.re, y.im, r) return r
   elseif is_ctpsa(y) and is_ctpsa(x) then        -- ctpsa * ctpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] * y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] * y.coef[0] end
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_mul(x, y, r) return r
   elseif is_tpsa(y) then                         -- ctpsa * tpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] * y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] * y.coef[0] end
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_mult(x, y, r) return r
   else                                           -- ctpsa * ?
@@ -1001,7 +1009,7 @@ function MC.__mul (x, y, r)
 end
 
 function MC.__mul_cpx (x, y, r)                  -- cpx * ctpsa
-  if y.hi == 0 then return x * y.coef[0] end     -- promote to cpx
+!  if y.hi == 0 then return x * y.coef[0] end     -- promote to cpx
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
   _C.mad_ctpsa_scl_r(y, x.re, x.im, r) return r
 end
@@ -1020,25 +1028,25 @@ end
 
 function MR.__div (x, y, r)
   if is_number(x) then                           -- num / tpsa
-    if y.hi == 0 then return x / y.coef[0] end   -- promote to num
+!   if y.hi == 0 then return x / y.coef[0] end   -- promote to num
     r = chksiz(r,y) or tpsa_alloc(y.d, y.mo)
     _C.mad_tpsa_inv(y, x, r) return r
   elseif is_number(y) then                       -- tpsa / num
-    if x.hi == 0 then return x.coef[0] / y end   -- promote to num
+!   if x.hi == 0 then return x.coef[0] / y end   -- promote to num
     r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
     _C.mad_tpsa_scl(x, 1/y, r) return r
   elseif is_tpsa(y) and is_tpsa(x) then          -- tpsa / tpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] / y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] / y.coef[0] end
     r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_tpsa_div(x, y, r) return r
   elseif is_complex(y) then                      -- tpsa / cpx
-    if x.hi == 0 then return x.coef[0] / y end   -- promote to num
+!   if x.hi == 0 then return x.coef[0] / y end   -- promote to num
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)    -- promote to ctpsa
     local _y = 1/y
     _C.mad_ctpsa_complex(x, nil, r)
     _C.mad_ctpsa_scl_r(r, _y.re, _y.im, r) return r
   elseif is_ctpsa(y) then                        -- tpsa / ctpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] / y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] / y.coef[0] end
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_tdiv(x, y, r) return r
   else                                           -- tpsa / ?
@@ -1047,7 +1055,7 @@ function MR.__div (x, y, r)
 end
 
 function MR.__div_cpx (x, y, r)                  -- cpx / tpsa
-  if y.hi == 0 then return x / y.coef[0] end     -- promote to num
+! if y.hi == 0 then return x / y.coef[0] end     -- promote to num
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)      -- promote to ctpsa
   _C.mad_ctpsa_complex(y, nil, r)
   _C.mad_ctpsa_inv_r(r, x.re, x.im, r) return r
@@ -1055,24 +1063,24 @@ end
 
 function MC.__div (x, y, r)
   if is_number(x) then                           -- num / ctpsa
-    if y.hi == 0 then return x / y.coef[0] end   -- promote to cpx
+!   if y.hi == 0 then return x / y.coef[0] end   -- promote to cpx
     r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
     _C.mad_ctpsa_inv_r(y, 1/x, 0, r) return r
   elseif is_number(y) then                       -- ctpsa / num
-    if x.hi == 0 then return x.coef[0] / y end   -- promote to cpx
+!   if x.hi == 0 then return x.coef[0] / y end   -- promote to cpx
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
     _C.mad_ctpsa_scl_r(x, 1/y, 0, r) return r
   elseif is_complex(y) then                      -- ctpsa / cpx
-    if x.hi == 0 then return x.coef[0] / y end   -- promote to cpx
+!   if x.hi == 0 then return x.coef[0] / y end   -- promote to cpx
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
     local _y = 1/y
     _C.mad_ctpsa_scl_r(x, _y.re, _y.im, r) return r
   elseif is_ctpsa(y) and is_ctpsa(x) then        -- ctpsa / ctpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] / y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] / y.coef[0] end
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_div(x, y, r) return r
   elseif is_tpsa(y) then                         -- ctpsa / tpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] / y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] / y.coef[0] end
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_divt(x, y, r) return r
   else                                           -- ctpsa / ?
@@ -1081,7 +1089,7 @@ function MC.__div (x, y, r)
 end
 
 function MC.__div_cpx (x, y, r)                  -- cpx / ctpsa
-  if y.hi == 0 then return x / y.coef[0] end     -- promote to cpx
+! if y.hi == 0 then return x / y.coef[0] end     -- promote to cpx
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
   _C.mad_ctpsa_inv_r(y, x.re, x.im, r) return r
 end
@@ -1110,28 +1118,28 @@ end
 
 function MR.__pow (x, y, r)
   if is_number(y) then                           -- tpsa ^ num
-    if x.hi == 0 then return x.coef[0] ^ y end   -- promote to num
+!   if x.hi == 0 then return x.coef[0] ^ y end   -- promote to num
     r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
     if is_integer(y)
     then _C.mad_tpsa_powi(x, y, r) return r
     else _C.mad_tpsa_pown(x, y, r) return r
     end
   elseif is_number(x) then                       -- num ^ tpsa
-    if y.hi == 0 then return x ^ y.coef[0] end   -- promote to num
+!   if y.hi == 0 then return x ^ y.coef[0] end   -- promote to num
     r = chksiz(r,y) or tpsa_alloc(y.d, y.mo)
     _C.mad_tpsa_scl(y, log(x), r)
     _C.mad_tpsa_exp(r, r) return r
   elseif is_complex(y) then                      -- tpsa ^ cpx
-    if x.hi == 0 then return x.coef[0] ^ y end   -- promote to num
+!   if x.hi == 0 then return x.coef[0] ^ y end   -- promote to num
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)    -- promote to ctpsa
     _C.mad_ctpsa_complex(x, nil, r)
     _C.mad_ctpsa_pown_r(x, y.re, y.im, r) return r
   elseif is_tpsa(y) and is_tpsa(x) then          -- tpsa ^ tpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] ^ y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] ^ y.coef[0] end
     r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_tpsa_pow(x, y, r) return r
   elseif is_ctpsa(y) then                        -- tpsa ^ ctpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] ^ y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] ^ y.coef[0] end
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_tpow(x, y, r) return r
   else                                           -- tpsa ^ ?
@@ -1140,7 +1148,7 @@ function MR.__pow (x, y, r)
 end
 
 function MR.__pow_cpx (x, y, r)                  -- cpx ^ tpsa
-  if y.hi == 0 then return x ^ y.coef[0] end     -- promote to num
+! if y.hi == 0 then return x ^ y.coef[0] end     -- promote to num
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)      -- promote to ctpsa
   local logx = log(x)
   _C.mad_ctpsa_complex(y, nil, r)
@@ -1150,7 +1158,7 @@ end
 
 function MC.__pow (x, y, r)
   if is_number(y) then                           -- ctpsa ^ num
-    if x.hi == 0 then return x.coef[0] ^ y end   -- promote to cpx
+!   if x.hi == 0 then return x.coef[0] ^ y end   -- promote to cpx
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
     if is_integer(y)
     then _C.mad_ctpsa_powi(x, y, r) return r
@@ -1158,21 +1166,21 @@ function MC.__pow (x, y, r)
          _C.mad_ctpsa_pown_r(x, y.re, y.im, r) return r
     end
   elseif is_number(x) then                       -- num ^ ctpsa
-    if y.hi == 0 then return x ^ y.coef[0] end   -- promote to cpx
+!   if y.hi == 0 then return x ^ y.coef[0] end   -- promote to cpx
     r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
     local logx = log(complex(x))
     _C.mad_ctpsa_scl_r(y, logx.re, logx.im, r)
     _C.mad_ctpsa_exp(r, r) return r
   elseif is_complex(y) then                      -- ctpsa ^ cpx
-    if x.hi == 0 then return x.coef[0] ^ y end   -- promote to cpx
+!   if x.hi == 0 then return x.coef[0] ^ y end   -- promote to cpx
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
     _C.mad_ctpsa_pown_r(x, y.re, y.im, r) return r
   elseif is_tpsa(y) then                         -- ctpsa ^ tpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] ^ y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] ^ y.coef[0] end
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_powt(x, y, r) return r
   elseif is_ctpsa(y) and is_ctpsa(x) then        -- ctpsa ^ ctpsa
-    if x.hi == 0 and y.hi == 0 then return x.coef[0] ^ y.coef[0] end
+!   if x.hi == 0 and y.hi == 0 then return x.coef[0] ^ y.coef[0] end
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_pow(x, y, r) return r
   else                                           -- ctpsa ^ ?
@@ -1181,7 +1189,7 @@ function MC.__pow (x, y, r)
 end
 
 function MC.__pow_cpx (x, y, r)                  -- cpx ^ ctpsa
-  if y.hi == 0 then return x ^ y.coef[0] end     -- promote to cpx
+! if y.hi == 0 then return x ^ y.coef[0] end     -- promote to cpx
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
   local logx = log(x)
   _C.mad_ctpsa_scl_r(y, logx.re, logx.im, r)
@@ -1218,7 +1226,7 @@ function MR.deriv (x, m, r)
     _C.mad_tpsa_deriv(x, r, m) return r
   else
     if not is_monomial(m) then m = monomial(m) end
-    _C.mad_tpsa_derivm(x, r, m.n, m.ord) return r
+    _C.mad_tpsa_derivm(x, r, m.n, m.data) return r
   end
 end
 
@@ -1449,7 +1457,7 @@ function MC.deriv (x, m, r)
     _C.mad_ctpsa_deriv(x, r, m) return r
   else
     if not is_monomial(m) then m = monomial(m) end
-    _C.mad_cpsa_derivm(x, r, m.n, m.ord) return r
+    _C.mad_cpsa_derivm(x, r, m.n, m.data) return r
   end
 end
 
