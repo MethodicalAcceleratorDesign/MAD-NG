@@ -40,13 +40,15 @@ struct ctpsa {   // warning: must be identical to LuaJIT def (see mad_cmad.mad)
 
 #ifndef MAD_TPSA_NOHELPER
 
-#define T           ctpsa_t
-#define NUM         cnum_t
-#define FUN(name)   MKNAME(mad_ctpsa_,name)
-#define PFX(name)   MKNAME(c,name)
-#define VAL(num)    creal(num), cimag(num)
-#define FMT         "%+6.4lE%+6.4lEi"
-#define SELECT(R,C) C
+#define T                ctpsa_t
+#define NUM              cnum_t
+#define FUN(name)        MKNAME(mad_ctpsa_,name)
+#define PFX(name)        MKNAME(c,name)
+#define VAL(num)         creal(num), cimag(num)
+#define VALEPS(num,eps) (fabs(creal(num))<(eps) ? 0 : creal(num)), \
+                        (fabs(cimag(num))<(eps) ? 0 : cimag(num))
+#define FMT              "%+6.4lE%+6.4lEi"
+#define SELECT(R,C)      C
 
 #define CNUM(a) (* (cnum_t*) & (num_t[2]) { MKNAME(a,_re), MKNAME(a,_im) })
 

@@ -38,13 +38,14 @@ struct tpsa {   // warning: must be identical to LuaJIT def (see mad_cmad.mad)
 
 #ifndef MAD_TPSA_NOHELPER
 
-#define T           tpsa_t
-#define NUM         num_t
-#define FUN(name)   MKNAME(mad_tpsa_,name)
-#define PFX(name)   name
-#define VAL(num)    num
-#define FMT         "%+6.4lE"
-#define SELECT(R,C) R
+#define T                tpsa_t
+#define NUM              num_t
+#define FUN(name)        MKNAME(mad_tpsa_,name)
+#define PFX(name)        name
+#define VAL(num)         num
+#define VALEPS(num,eps) (fabs(num)<(eps) ? 0 : (num))
+#define FMT              "%+6.4lE"
+#define SELECT(R,C)      R
 
 #endif
 
