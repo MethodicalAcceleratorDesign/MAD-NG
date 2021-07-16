@@ -453,7 +453,7 @@ FUN(cycle) (const T *t, ssz_t n, ord_t m_[n], idx_t i, NUM *v_)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
   const D *d = t->d;
-  ensure(0 <= i && i < d->nc, "index %d out of bounds", i);
+  ensure(0 <= i && i <= d->nc, "index %d out of bounds", i);
 
   const idx_t *o2i = d->ord2idx;
   idx_t ni = o2i[MIN(t->hi,d->to)+1];
@@ -467,8 +467,7 @@ FUN(cycle) (const T *t, ssz_t n, ord_t m_[n], idx_t i, NUM *v_)
   }
   if (v_) *v_ = t->coef[i];
 
-  idx_t ret = ++i == ni ? -1 : i;
-  DBGFUN(<-); return ret;
+  DBGFUN(<-); return i+1;
 }
 
 // --- getters ----------------------------------------------------------------o
