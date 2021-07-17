@@ -199,7 +199,7 @@ FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // cgetpb (wo /n_cai)
     FUN(setvar)(t2, 0, iv, 0);
     FUN(mul)(ma[ia], t2, t1);
 
-    for (ord_t o = t1->lo; o <= t1->hi   ; ++o) // TODO: make a function?
+    for (ord_t o = t1->lo; o <= t1->hi ; ++o) // TODO: make a function?
     for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
       t1->coef[i] /= o;
 
