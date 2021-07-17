@@ -161,7 +161,7 @@ FUN(exppb) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa], log
 }
 
 void
-FUN(vec2fld) (ssz_t sc, const T *a, T *mc[sc]) // cpbbra (wo *n_cai)
+FUN(vec2fld) (ssz_t sc, const T *a, T *mc[sc]) // cpbbra (wo * -2i)
 {
   DBGFUN(->);
   assert(a && mc);
@@ -180,7 +180,7 @@ FUN(vec2fld) (ssz_t sc, const T *a, T *mc[sc]) // cpbbra (wo *n_cai)
 }
 
 void
-FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // cgetpb (wo /n_cai)
+FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // cgetpb (wo / -2i)
 {
   DBGFUN(->);
   assert(ma && c);
@@ -199,9 +199,10 @@ FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // cgetpb (wo /n_cai)
     FUN(setvar)(t2, 0, iv, 0);
     FUN(mul)(ma[ia], t2, t1);
 
-    for (ord_t o = t1->lo; o <= t1->hi ; ++o) // TODO: make a function?
-    for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
-      t1->coef[i] /= o;
+    ord_t lo = MIN(t1->lo,2); // 2..hi, avoid NaN and Inf
+    for (ord_t o = lo; o <= t1->hi; ++o)
+      for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
+        t1->coef[i] /= o;
 
     (ia & 1 ? FUN(add) : FUN(sub))(c, t1, c);
   }
