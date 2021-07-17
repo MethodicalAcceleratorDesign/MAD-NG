@@ -17,6 +17,7 @@
 */
 
 #include <math.h>
+#include <float.h>
 #include <assert.h>
 
 #include "mad_mem.h"
@@ -64,12 +65,13 @@ exppb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[3], log_t inv)
   FUN(copy)(b, t[0]);
   FUN(copy)(b, c);
 
-  num_t nrm0 = 1e300;
+  num_t nrm0 = INFINITY;
+  num_t nrm_min = 10*DBL_EPSILON*sa;
 
 //fprintf(stderr, "exppb1: X=\n"); print_damap(1, (const T**)&b, stderr);
 //fprintf(stderr, "exppb1: H=\n"); print_damap(sa, ma, stderr);
 
-  for (idx_t i = 1; i < 100; ++i) {
+  for (idx_t i=1; i < 100; ++i) { // arbitrary boundary, should be enough!
 
 //fprintf(stderr, "exppb1: i=%d, nrm0=%.10g\n", i, nrm0);
 //fprintf(stderr, "exppb1: t[0](b1)=\n"); print_damap(1, (const T**)&t[0], stderr);
@@ -103,8 +105,12 @@ exppb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[3], log_t inv)
 //fprintf(stderr, "exppb1: c(b3)=\n"); print_damap(1, (const T**)&c, stderr);
 
     num_t nrm = FUN(nrm)(t[0]);
-//fprintf(stderr, "exppb1: nrm=%.10g\n", nrm);
-    if (nrm < 1e-9 || nrm > nrm0) break;
+//fprintf(stderr, "exppb1: nrm0(%d)=%.16e -> nrm(%d)=%.16e\n", i, nrm0, i, nrm);
+
+    if (nrm < nrm_min || nrm >= nrm0) {
+//fprintf(stderr, "exppb1: breaking nrm0(%d)=%.16e -> nrm(%d)=%.16e\n", i,nrm0,i,nrm);
+      break;
+    }
     nrm0 = nrm;
   }
 }
@@ -193,7 +199,7 @@ FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // cgetpb (wo /n_cai)
     FUN(setvar)(t2, 0, iv, 0);
     FUN(mul)(ma[ia], t2, t1);
 
-    for (ord_t o = t1->lo; o <= t1->hi   ; ++o) // TODO: make a function
+    for (ord_t o = t1->lo; o <= t1->hi   ; ++o) // TODO: make a function?
     for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
       t1->coef[i] /= o;
 
