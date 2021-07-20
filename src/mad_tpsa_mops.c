@@ -117,7 +117,7 @@ exppb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[3], log_t inv)
 
 // --- public -----------------------------------------------------------------o
 
-void // compute exp(:H:) K, where H -> ma, K -> mb
+void // compute M x = exp(:f(x;0):) x (eq. 32, 33 & 38 and inverse)
 FUN(exppb) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa], log_t inv)
 {
   DBGFUN(->);
@@ -134,18 +134,12 @@ FUN(exppb) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa], log
     DBGTPSA(mb[ib]);
   }
 
-//fprintf(stderr, "exppb: MA[%d]=\n", sa); print_damap(sa, ma, stderr);
-//fprintf(stderr, "exppb: MB[%d]=\n", sb); print_damap(sb, mb, stderr);
-
   // temporaries
   T *t[4];
   for (int i = 0; i < 4; ++i) t[i] = FUN(new)(mc[0], mad_tpsa_same);
 
-  for (idx_t i = 0; i < sa; ++i) {
-//fprintf(stderr, "exppb: i=%d\n", i);
+  for (idx_t i = 0; i < sa; ++i)
     exppb1(sa, ma, mb[i], mc_[i], t, inv);
-//fprintf(stderr, "exppb: MC[%d]=\n",i); print_damap(1, (const T**)&mc_[i], stderr);
-  }
 
   // temporaries
   for (int i = 0; i < 4; i++) FUN(del)(t[i]);
@@ -160,7 +154,7 @@ FUN(exppb) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa], log
   DBGFUN(<-);
 }
 
-void
+void // compute G(x;0) = -J grad.f(x;0) (eq. 34),
 FUN(vec2fld) (ssz_t sc, const T *a, T *mc[sc]) // cpbbra (wo * -2i)
 {
   DBGFUN(->);
@@ -179,7 +173,7 @@ FUN(vec2fld) (ssz_t sc, const T *a, T *mc[sc]) // cpbbra (wo * -2i)
   DBGFUN(<-);
 }
 
-void
+void // compute f(x;0) = \int_0^x J G(x';0) dx' = x^t J phi G(x;0) (eq. 34, 36 & 37)
 FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // cgetpb (wo / -2i)
 {
   DBGFUN(->);
