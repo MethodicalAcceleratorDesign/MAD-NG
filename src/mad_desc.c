@@ -184,7 +184,7 @@ hsm_print (ssz_t n, const idx_t m[n], int l0_)
   assert(m);
   ssz_t len = printf("[ ") + l0_;
   for (idx_t i=0; i < n; i+=2) {
-    len += printf("%d^%2hhu ", m[i]-1, m[i+1]);
+    len += printf("%d^%2hhu ", m[i]-1, (ord_t)m[i+1]);
     if (len >= 80) { printf("\n"); len = 0; }
   }
   printf("]\n");

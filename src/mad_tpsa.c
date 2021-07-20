@@ -182,7 +182,7 @@ ord_t
 }
 
 ord_t
-FUN(ordn) (ssz_t n, const T *t[])
+FUN(ordn) (ssz_t n, const T *t[n])
 {
   assert(t); DBGFUN(->);
   ord_t mo = 0;

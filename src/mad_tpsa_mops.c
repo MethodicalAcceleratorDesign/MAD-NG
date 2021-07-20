@@ -57,6 +57,7 @@ print_damap (ssz_t sa, const T *ma[sa], FILE *fp)
 {
   char nam[3] = "#1";
   for (ssz_t i=0; i < sa; i++, nam[1]++) FUN(print)(ma[i], nam, 1e-15, 0, fp);
+  (void)print_damap;
 }
 
 static inline void

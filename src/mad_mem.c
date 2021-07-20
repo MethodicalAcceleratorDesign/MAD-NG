@@ -32,7 +32,7 @@ void*  (mad_malloc ) (size_t sz)               { return malloc (sz);        }
 void*  (mad_calloc ) (size_t cnt , size_t sz ) { return calloc (cnt, sz);   }
 void*  (mad_realloc) (void*  ptr_, size_t sz_) { return realloc(ptr_, sz_); }
 void    mad_free     (void*  ptr_)             { free(ptr_); }
-size_t  mad_msize    (void*  ptr_)             { return 0; (void)ptr_; }
+size_t  mad_msize    (void*  ptr_) { (void)ptr_; return 0; }
 size_t  mad_mcached  (void)                    { return 0; }
 size_t  mad_mcollect (void)                    { return 0; }
 

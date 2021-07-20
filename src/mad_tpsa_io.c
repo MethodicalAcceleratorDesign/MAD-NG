@@ -145,7 +145,7 @@ FUN(scan_hdr) (int *kind_, char name_[12], FILE *stream_)
   ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
 
   if (kind_) *kind_ = typ == 'C';
-  if (name_) strncpy(name_, name, 12), name_[12] = '\0';
+  if (name_) strncpy(name_, name, 12), name_[11] = '\0';
 
   // 1st line (cnt includes typ)
   cnt = 1+fscanf(stream_, ", NV = %d, NO = %hhu, NK = %d, KO = %hhu%n",

@@ -88,17 +88,15 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 
 // -----
 
-#if 0
-// [m x n] = [m x p] * [p x n]
-// naive implementation (not vectorized)
-#define MMUL { /* mat * mat */ \
-  for (idx_t i=0; i < m; i++) \
-  for (idx_t j=0; j < n; j++) { \
-    r[i*n+j] = 0; \
-    for (idx_t k=0; k < p; k++) \
-      r[i*n+j] += x[i*p+k] * y[k*n+j]; \
-  } \
-}
+#if 1
+// r[m x n] = x[m x p] * y[p x n]
+// naive implementation (more efficient on recent superscalar arch!)
+#define MMUL() /* mat * mat */ \
+  for (idx_t i=0; i < m*n; i++) r[i] = 0; \
+  for (idx_t i=0; i < m  ; i++) \
+  for (idx_t k=0; k < p  ; k++) \
+  for (idx_t j=0; j < n  ; j++) \
+    r[i*n+j] += x[i*p+k] * y[k*n+j];
 #else
 // [m x n] = [m x p] * [p x n]
 // portable vectorized general matrix-matrix multiplication
@@ -161,26 +159,23 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 
 // n=1: [m x 1] = [m x p] * [p x 1]
 #define MULV() /* mat * vec */ \
-  for (idx_t i=0; i < m; i++) { \
-    r[i] = 0; \
-    for (idx_t k=0; k < p; k++) \
-      r[i] += x[i*p+k] * y[k]; \
-  }
+  for (idx_t i=0; i < m; i++) r[i] = 0; \
+  for (idx_t i=0; i < m; i++) \
+  for (idx_t k=0; k < p; k++) \
+      r[i] += x[i*p+k] * y[k];
 
 // m=1: [1 x n] = [1 x p] * [p x n]
 #define VMUL() /* vec * mat */ \
-  for (idx_t j=0; j < n; j++) { \
-    r[j] = 0; \
-    for (idx_t k=0; k < p; k++) \
-      r[j] += x[k] * y[k*n+j]; \
-  }
+  for (idx_t j=0; j < n; j++) r[j] = 0; \
+  for (idx_t k=0; k < p; k++) \
+  for (idx_t j=0; j < n; j++) \
+      r[j] += y[k*n+j] * x[k];
 
 // m=1, n=1: [1 x 1] = [1 x p] * [p x 1]
 #define IMUL() /* vec * vec */ \
-  { r[0] = 0; \
-    for (idx_t k=0; k < p; k++) \
-      r[0] += x[k] * y[k]; \
-  }
+  r[0] = 0; \
+  for (idx_t k=0; k < p; k++) \
+    r[0] += x[k] * y[k];
 
 // [m x n] = [m x p] * [p x n]
 #define MUL() \
@@ -193,17 +188,15 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 
 // -----
 
-#if 0
+#if 1
 // [m x n] = [p x m]' * [p x n]
-// naive implementation (not vectorized)
-#define TMMUL(C) { /* mat' * mat */ \
-  for (idx_t i=0; i < m; i++) \
-  for (idx_t j=0; j < n; j++) { \
-    r[i*n+j] = 0; \
-    for (idx_t k=0; k < p; k++) \
-      r[i*n+j] += C(x[k*m+i]) * y[k*n+j]; \
-  } \
-}
+// naive implementation (more efficient on recent superscalar arch!)
+#define TMMUL(C) /* mat' * mat */ \
+  for (idx_t i=0; i < m*n; i++) r[i] = 0; \
+  for (idx_t i=0; i < m  ; i++) \
+  for (idx_t k=0; k < p  ; k++) \
+  for (idx_t j=0; j < n  ; j++) \
+    r[i*n+j] += C(x[k*m+i]) * y[k*n+j];
 #else
 // [m x n] = [p x m]' * [p x n]
 // portable vectorized general transpose matrix-matrix multiplication
@@ -266,26 +259,23 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 
 // n=1: [m x 1] = [p x m]' * [p x 1]
 #define TMULV(C) /* mat' * vec */ \
-  for (idx_t i=0; i < m; i++) { \
-    r[i] = 0; \
-    for (idx_t k=0; k < p; k++) \
-      r[i] += C(x[k*m+i]) * y[k]; \
-  }
+  for (idx_t i=0; i < m; i++) r[i] = 0; \
+  for (idx_t k=0; k < p; k++) \
+  for (idx_t i=0; i < m; i++) \
+    r[i] += C(x[k*m+i]) * y[k];
 
 // m=1: [1 x n] = [p x 1]' * [p x n]
 #define TVMUL(C) /* vec' * mat */ \
-  for (idx_t j=0; j < n; j++) { \
-    r[j] = 0; \
-    for (idx_t k=0; k < p; k++) \
-      r[j] += C(x[k]) * y[k*n+j]; \
-  }
+  for (idx_t j=0; j < n; j++) r[j] = 0; \
+  for (idx_t k=0; k < p; k++) \
+  for (idx_t j=0; j < n; j++) \
+    r[j] += C(x[k]) * y[k*n+j];
 
 // m=1, n=1: [1 x 1] = [p x 1]' * [p x 1]
 #define TIMUL(C) /* vec' * vec */ \
-  { r[0] = 0; \
-    for (idx_t k=0; k < p; k++) \
-      r[0] += C(x[k]) * y[k]; \
-  }
+  r[0] = 0; \
+  for (idx_t k=0; k < p; k++) \
+    r[0] += C(x[k]) * y[k];
 
 // [m x n] = [p x m]' * [p x n]
 #define TMUL(C) \
@@ -298,17 +288,15 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 
 // -----
 
-#if 0
+#if 1
 // [m x n] = [m x p] * [n x p]'
-// naive implementation (not vectorized)
-#define MMULT(C) { /* mat * mat' */ \
-  for (idx_t i=0; i < m; i++) \
-  for (idx_t j=0; j < n; j++) { \
-    r[i*n+j] = 0; \
-    for (idx_t k=0; k < p; k++) \
-      r[i*n+j] += x[i*p+k] * C(y[j*p+k]); \
-  } \
-}
+// naive implementation (more efficient on recent superscalar arch!)
+#define MMULT(C) /* mat * mat' */ \
+  for (idx_t i=0; i < m*n; i++) r[i] = 0; \
+  for (idx_t i=0; i < m  ; i++) \
+  for (idx_t j=0; j < n  ; j++) \
+  for (idx_t k=0; k < p  ; k++) \
+    r[i*n+j] += x[i*p+k] * C(y[j*p+k]);
 #else
 // [m x n] = [m x p] * [n x p]'
 // portable vectorized general transpose matrix-matrix multiplication
@@ -364,26 +352,23 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 
 // n=1: [m x 1] = [m x p] * [1 x p]'
 #define MULVT(C) /* mat * vec' */ \
-  for (idx_t i=0; i < m; i++) { \
-    r[i] = 0; \
-    for (idx_t k=0; k < p; k++) \
-      r[i] += x[i*p+k] * C(y[k]); \
-  }
+  for (idx_t i=0; i < m; i++) r[i] = 0; \
+  for (idx_t i=0; i < m; i++) \
+  for (idx_t k=0; k < p; k++) \
+    r[i] += x[i*p+k] * C(y[k]);
 
 // m=1: [1 x n] = [1 x p]' * [n x p]'
 #define VMULT(C) /* vec * mat' */ \
-  for (idx_t j=0; j < n; j++) { \
-    r[j] = 0; \
-    for (idx_t k=0; k < p; k++) \
-      r[j] += x[k] * C(y[j*p+k]); \
-  }
+  for (idx_t j=0; j < n; j++) r[j] = 0; \
+  for (idx_t j=0; j < n; j++) \
+  for (idx_t k=0; k < p; k++) \
+    r[j] += x[k] * C(y[j*p+k]);
 
 // m=1, n=1: [1 x 1] = [1 x p] * [1 x p]'
 #define IMULT(C) /* vec * vec' */ \
-  { r[0] = 0; \
-    for (idx_t k=0; k < p; k++) \
-      r[0] += x[k] * C(y[k]); \
-  }
+  r[0] = 0; \
+  for (idx_t k=0; k < p; k++) \
+    r[0] += x[k] * C(y[k]);
 
 // [m x n] = [m x p] * [n x p]'
 #define MULT(C) \
@@ -397,28 +382,25 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 // -----
 
 // r = [m x n] <*> [m x n]
-#define DOT(C) { \
+#define DOT(C) \
   if (n == 1) { \
     r[0] = 0; \
     for (idx_t i=0; i < m; i++) \
       r[0] += C(x[i]) * y[i]; \
   } else { \
-    for (idx_t j=0; j < n; j++) { \
-      r[j] = 0; \
-      for (idx_t i=0; i < m; i++) \
-        r[j] += C(x[i*n+j]) * y[i*n+j]; \
-    } \
-  } \
-}
+    for (idx_t j=0; j < n; j++) r[j] = 0; \
+    for (idx_t i=0; i < m; i++) \
+    for (idx_t j=0; j < n; j++) \
+      r[j] += C(x[i*n+j]) * y[i*n+j]; \
+  };
 
 // r = [n] <*> [n]
-#define VDOT(C) { \
+#define VDOT(C) \
   for (idx_t i=0, ix=0, iy=0; i < n; i++, ix+=xs, iy+=ys) \
-    r += C(x[ix]) * y[iy]; \
-  }
+    r += C(x[ix]) * y[iy];
 
 // [m x n] transpose
-#define TRANS(T,C) { \
+#define TRANS(T,C) \
   if (m == 1 || n == 1) { \
     if (x != r || I != C(I)) { \
       idx_t mn = m*n; \
@@ -443,31 +425,26 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
       t[j*m+i] = C(x[i*n+j]); \
     memcpy(r, t, m*n*sizeof(T)); \
     mad_free_tmp(t); \
-  } \
-}
+  };
 
-#define CPY(OP) { \
+#define CPY(OP) \
   for (idx_t i=0; i<m; i++) \
   for (idx_t j=0; j<n; j++) \
-    r[i*ldr+j] OP##= x[i*ldx+j]; \
-}
+    r[i*ldr+j] OP##= x[i*ldx+j];
 
-#define SET(OP) { \
+#define SET(OP) \
   for (idx_t i=0; i<m; i++) \
   for (idx_t j=0; j<n; j++) \
-    r[i*ldr+j] OP##= x; \
-}
+    r[i*ldr+j] OP##= x;
 
-#define SEQ(OP) { \
+#define SEQ(OP) \
   for (idx_t i=0; i<m; i++) \
   for (idx_t j=0; j<n; j++) \
-    r[i*ldr+j] OP##= (i*ldr+j)+x; \
-}
+    r[i*ldr+j] OP##= (i*ldr+j)+x;
 
-#define DIAG(OP) { \
+#define DIAG(OP) \
   for (idx_t i=0; i<MIN(m,n); i++) \
-    r[i*ldr+i] OP##= x; \
-}
+    r[i*ldr+i] OP##= x;
 
 // --- mat
 
@@ -1076,7 +1053,7 @@ mad_mat_invn (const num_t y[], num_t x, num_t r[], ssz_t m, ssz_t n, num_t rcond
   mad_mat_eye(1, u, n, n, n);
   int rank = mad_mat_div(u, y, r, n, m, n, rcond);
   mad_free_tmp(u);
-  if (x != 1.0) mad_vec_muln(r, x, r, m*n, 1);
+  if (x != 1) mad_vec_muln(r, x, r, m*n, 1);
   return rank;
 }
 
@@ -1093,7 +1070,7 @@ mad_mat_invc (const num_t y[], cnum_t x, cnum_t r[], ssz_t m, ssz_t n, num_t rco
   mad_alloc_tmp(num_t, t, m*n);
   int rank = mad_mat_div(u, y, t, n, m, n, rcond);
   mad_free_tmp(u);
-  if (x != 1.0) mad_vec_mulc(t, x, r, m*n, 1);
+  if (x != 1) mad_vec_mulc(t, x, r, m*n, 1);
   mad_free_tmp(t);
   return rank;
 }
@@ -1106,7 +1083,7 @@ mad_cmat_invn (const cnum_t y[], num_t x, cnum_t r[], ssz_t m, ssz_t n, num_t rc
   mad_cmat_eye(1, u, n, n, n);
   int rank = mad_cmat_div(u, y, r, n, m, n, rcond);
   mad_free_tmp(u);
-  if (x != 1.0) mad_cvec_muln(r, x, r, m*n, 1);
+  if (x != 1) mad_cvec_muln(r, x, r, m*n, 1);
   return rank;
 }
 
@@ -1118,7 +1095,7 @@ mad_cmat_invc (const cnum_t y[], cnum_t x, cnum_t r[], ssz_t m, ssz_t n, num_t r
   mad_cmat_eye(1, u, n, n, n);
   int rank = mad_cmat_div(u, y, r, n, m, n, rcond);
   mad_free_tmp(u);
-  if (x != 1.0) mad_cvec_mulc(r, x, r, m*n, 1);
+  if (x != 1) mad_cvec_mulc(r, x, r, m*n, 1);
   return rank;
 }
 
@@ -1659,8 +1636,8 @@ mad_cmat_eigen (const cnum_t x[], cnum_t w[], cnum_t vl[], cnum_t vr[], ssz_t n)
 
 #define NN            (N*N)
 #define X(i,j)        x[(i-1)*N+(j-1)]
-#define VCPY(src,dst) for(idx_t i=0; i<N ; dst[i]=src[i], i++)
-#define MCPY(src,dst) for(idx_t i=0; i<NN; dst[i]=src[i], i++)
+#define VCPY(src,dst) for(idx_t i=0; i<N ; dst[i]=src[i], ++i)
+#define MCPY(src,dst) for(idx_t i=0; i<NN; dst[i]=src[i], ++i)
 
 // -- 2D geometry -------------------------------------------------------------o
 
@@ -2529,8 +2506,8 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
 #include "mad_cst.h"
 
 void
-mad_mat_rtbar (num_t Rb[NN], num_t Tb[N], num_t el, num_t ang, num_t tlt,
-               const num_t R_[N], const num_t T[N])
+mad_mat_rtbar (num_t Rb[NN],       num_t Tb[N], num_t el, num_t ang, num_t tlt,
+         const num_t R_[NN], const num_t T [N])
 {
   assert(Rb && Tb && T);
 

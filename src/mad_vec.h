@@ -36,7 +36,7 @@ void   mad_vec_roll   (       num_t x[],                                      ss
 void   mad_vec_copy   (const  num_t x[],                          num_t  r[], ssz_t n, ssz_t d); //  vec -> vec
 void   mad_vec_copyv  (const  num_t x[],                         cnum_t  r[], ssz_t n, ssz_t d); //  vec ->cvec
 void   mad_vec_cvec   (const  num_t x[], const  num_t y[],       cnum_t  r[], ssz_t n, ssz_t d); // vr,vi->cvec
-void   mad_vec_minmax (const  num_t x[],       log_t abs       ,  idx_t  r[], ssz_t n, ssz_t d); // MinMax(vec)
+void   mad_vec_minmax (const  num_t x[],       log_t abs       ,  idx_t r[2], ssz_t n, ssz_t d); // MinMax(vec)
 void   mad_vec_center (const  num_t x[],                          num_t  r[], ssz_t n, ssz_t d); // vec -> vec-<vec>
 num_t  mad_vec_abs    (const  num_t x[],                          num_t  r[], ssz_t n, ssz_t d); // Sum and |vec_i|
 num_t  mad_vec_eval   (const  num_t x[],        num_t x0,                     ssz_t n, ssz_t d); // Horner scheme
@@ -82,7 +82,7 @@ void   mad_cvec_fill  (                        cnum_t x        , cnum_t  r[], ss
 void   mad_cvec_fill_r(                  num_t x_re, num_t x_im, cnum_t  r[], ssz_t n, ssz_t d); //  cnum ->cvec
 void   mad_cvec_shift (      cnum_t x[],                                      ssz_t n, ssz_t d, int nshft);
 void   mad_cvec_roll  (      cnum_t x[],                                      ssz_t n, ssz_t d, int nroll);
-void   mad_cvec_minmax(const cnum_t x[],                          idx_t  r[], ssz_t n, ssz_t d); // MinMax(vec)
+void   mad_cvec_minmax(const cnum_t x[],                          idx_t r[2], ssz_t n, ssz_t d); // MinMax(vec)
 void   mad_cvec_center(const cnum_t x[],                         cnum_t  r[], ssz_t n, ssz_t d); //  cvec ->cvec-<cvec>
 void   mad_cvec_copy  (const cnum_t x[],                         cnum_t  r[], ssz_t n, ssz_t d); //  cvec ->cvec
 void   mad_cvec_vec   (const cnum_t x[],             num_t re[],  num_t ri[], ssz_t n, ssz_t d); //  cvec->vr,vi
@@ -137,7 +137,7 @@ void   mad_ivec_shift (       idx_t x[],                                      ss
 void   mad_ivec_roll  (       idx_t x[],                                      ssz_t n, ssz_t d, int nroll);
 void   mad_ivec_copy  (const  idx_t x[],                          idx_t  r[], ssz_t n, ssz_t d); // ivec ->ivec
 void   mad_ivec_copyv (const  idx_t x[],                          num_t  r[], ssz_t n, ssz_t d); // ivec -> vec
-void   mad_ivec_minmax(const  idx_t x[],       log_t abs       ,  idx_t  r[], ssz_t n, ssz_t d); // MinMax(ivec)
+void   mad_ivec_minmax(const  idx_t x[],       log_t abs       ,  idx_t r[2], ssz_t n, ssz_t d); // MinMax(ivec)
 void   mad_ivec_add   (const  idx_t x[], const  idx_t y[]      ,  idx_t  r[], ssz_t n, ssz_t d); // ivec + ivec
 void   mad_ivec_addn  (const  idx_t x[],        idx_t y        ,  idx_t  r[], ssz_t n, ssz_t d); // ivec +  idx
 void   mad_ivec_sub   (const  idx_t x[], const  idx_t y[]      ,  idx_t  r[], ssz_t n, ssz_t d); // ivec - ivec
