@@ -493,7 +493,7 @@ cnum_t mad_cvec_eval (const cnum_t x[], cnum_t x0, ssz_t n, ssz_t d) // Horner s
 void mad_cvec_eval_r (const cnum_t x[], num_t x0_re, num_t x0_im, cnum_t *r, ssz_t n, ssz_t d)
 { CHKXR; *r = mad_cvec_eval(x, CNUM(x0_re, x0_im), n, d); }
 
-void mad_cvec_minmax(const cnum_t x[], idx_t r[], ssz_t n, ssz_t d)
+void mad_cvec_minmax(const cnum_t x[], idx_t r[2], ssz_t n, ssz_t d)
 { CHKXR; num_t v[2];
   r[0] = r[1] = 0;
   v[0] = v[1] = cabs(x[0]);
