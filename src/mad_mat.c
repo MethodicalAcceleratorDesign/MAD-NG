@@ -1051,7 +1051,10 @@ mad_mat_invn (const num_t y[], num_t x, num_t r[], ssz_t m, ssz_t n, num_t rcond
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(num_t, u, n*n);
   mad_mat_eye(1, u, n, n, n);
+#pragma GCC diagnostic push // remove false-positive
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
   int rank = mad_mat_div(u, y, r, n, m, n, rcond);
+#pragma GCC diagnostic pop
   mad_free_tmp(u);
   if (x != 1) mad_vec_muln(r, x, r, m*n, 1);
   return rank;
@@ -1065,9 +1068,9 @@ int
 mad_mat_invc (const num_t y[], cnum_t x, cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
+  mad_alloc_tmp(num_t, t, m*n);
   mad_alloc_tmp(num_t, u, n*n);
   mad_mat_eye(1, u, n, n, n);
-  mad_alloc_tmp(num_t, t, m*n);
   int rank = mad_mat_div(u, y, t, n, m, n, rcond);
   mad_free_tmp(u);
   if (x != 1) mad_vec_mulc(t, x, r, m*n, 1);
@@ -1081,7 +1084,10 @@ mad_cmat_invn (const cnum_t y[], num_t x, cnum_t r[], ssz_t m, ssz_t n, num_t rc
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(cnum_t, u, n*n);
   mad_cmat_eye(1, u, n, n, n);
+#pragma GCC diagnostic push // remove false-positive
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
   int rank = mad_cmat_div(u, y, r, n, m, n, rcond);
+#pragma GCC diagnostic pop
   mad_free_tmp(u);
   if (x != 1) mad_cvec_muln(r, x, r, m*n, 1);
   return rank;
@@ -1093,7 +1099,10 @@ mad_cmat_invc (const cnum_t y[], cnum_t x, cnum_t r[], ssz_t m, ssz_t n, num_t r
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(cnum_t, u, n*n);
   mad_cmat_eye(1, u, n, n, n);
+#pragma GCC diagnostic push // remove false-positive
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
   int rank = mad_cmat_div(u, y, r, n, m, n, rcond);
+#pragma GCC diagnostic pop
   mad_free_tmp(u);
   if (x != 1) mad_cvec_mulc(r, x, r, m*n, 1);
   return rank;
