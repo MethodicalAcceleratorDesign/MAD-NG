@@ -23,15 +23,16 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local matrix, vector, cvector, trace, warn, option, typeid       in MAD
+local matrix, vector, cvector, monomial, trace, warn, option,
+      typeid                                                     in MAD
 local is_nil, is_number, is_positive, is_integer, is_nonzero,
-      is_odd, is_matrix, is_vector, is_cvector, is_damap,
-      is_table, is_mappable, wrestrict                           in MAD.typeid
+      is_odd, is_matrix, is_vector, is_cvector, is_table,
+      is_damap, is_cdamap, is_mappable, wrestrict                in MAD.typeid
 local assertf, errorf, printf, num2str, setkeys, tblcat          in MAD.utility
 local lbool                                                      in MAD.operator
 local twopi                                                      in MAD.constant
-local min, max, abs, sqrt, sin, cos, tan, atan2, real, cplx,
-      sinh, cosh, rangle                                         in MAD.gmath
+local min, max, abs, sqrt, exp, log, sin, cos, tan, atan2,
+      sinh, cosh, real, cplx, rangle                             in MAD.gmath
 
 local assert, table, type =
       assert, table, type
@@ -258,43 +259,6 @@ function gphys.is_eigsys (V, W, R, eigtol_)
   return true
 end
 
--- check one-turn map normalisation
--- check that N = (1/A * R * A) [= Abar * R * A] contains only rotations
-
-local nrm_tol in phystol
-
-function gphys.is_normal (A, R, nrmtol_)
-  local tol = nrmtol_ or nrm_tol
-  local get, set, n = A.get, A.set, A.nrow
-
-  -- use inverse in case of strong symplectic deviation
-  local N = A:inv() * R * A
-
-  if option.debug >= 2 then
-    io.write("**Normalized form:\n")
-    N:print("N = A^-1 R A ") ; (A:bar() * R * A) :print("Abar R A ")
-  end
-
-  for i = 1,n-1,2 do
-    local a1 = atan2( get(N,i,i+1), get(N,i  ,i  ))
-    local a2 = atan2(-get(N,i+1,i), get(N,i+1,i+1))
-    if abs(a1-a2) > tol then
-      warn("invalid normal form #%d (deviates from a pure rotation by %s)",
-           i, num2str(a1-a2))
-      R:print('R') ; N:print('N')
-      return false
-    end
-    N:setsub(i..i+1, i..i+1, 0)
-  end
-  if not N:eq(0, tol) then
-    warn("invalid normal form N (contains coupling terms)")
-    R:print('R') ; N:print('N')
-    return false
-  end
-
-  return true
-end
-
 -- check for delta pt in one-turn map using dptol tolerance
 
 local dpt_tol in phystol
@@ -474,7 +438,7 @@ function gphys.make_symp (R)
   return R
 end
 
--- closed form ----------------------------------------------------------------o
+-- closed form, eigen systems -------------------------------------------------o
 
 -- close dispersion of A from R
 
@@ -633,12 +597,51 @@ function gphys.order_eigen_madx (V, W)
   end
 end
 
--- set normal form A from one-turn-map R in place.
+-- linear normal form ---------------------------------------------------------o
+
+-- check one-turn map linear normalisation
+-- check that N = (1/A * R * A) [= Abar * R * A] contains only rotations
+
+local nrm_tol in phystol
+
+function gphys.is_normal1 (A, R, nrmtol_)
+  local tol = nrmtol_ or nrm_tol
+  local get, set, n = A.get, A.set, A.nrow
+
+  -- use inverse in case of strong symplectic deviation
+  local N = A:inv() * R * A
+
+  if option.debug >= 2 then
+    io.write("**Normalized linear form:\n")
+    N:print("N = A^-1 R A ") ; (A:bar() * R * A) :print("Abar R A ")
+  end
+
+  for i = 1,n-1,2 do
+    local a1 = atan2( get(N,i,i+1), get(N,i  ,i  ))
+    local a2 = atan2(-get(N,i+1,i), get(N,i+1,i+1))
+    if abs(a1-a2) > tol then
+      warn("invalid linear normal form #%d (deviates from a pure rotation by %s)",
+           i, num2str(a1-a2))
+      R:print('R') ; N:print('N')
+      return false
+    end
+    N:setsub(i..i+1, i..i+1, 0)
+  end
+  if not N:eq(0, tol) then
+    warn("invalid linear normal form N (contains coupling terms)")
+    R:print('R') ; N:print('N')
+    return false
+  end
+
+  return true
+end
+
+-- set linear normal form A from one-turn-map R in place.
 
 function gphys.normal1 (m, nocheck_)
   assert(is_damap(m), "invalid argument #1 (damap expected)")
 
-  -- already a normal form
+  -- already a linear normal form
   if m.status == 'Aset' then return end
 
   local fmt
@@ -692,8 +695,8 @@ function gphys.normal1 (m, nocheck_)
   -- rephase eigen vectors
   gphys.phas_eigen(A)
 
-  -- check that system is a normal form
-  if not nocheck_ then gphys.is_normal(A, R) end
+  -- check that system is a linear normal form
+  if not nocheck_ then gphys.is_normal1(A, R) end
 
   -- back to 6D, close dispersion (5D)
   if rnk == 4 then
@@ -712,6 +715,162 @@ function gphys.normal1 (m, nocheck_)
   m.status = 'Aset'
 
   return m:set1(A), A, W, info
+end
+
+-- full linear and non-linear normal form -------------------------------------o
+
+local c_val = {[1]={0.5, 0.5; -0.5i, 0.5i}, [-1]={1, 1i; 1, -1i}}
+local c_pbv = {[1]=-2i, [-1]=0.5i}
+
+function gphys.phasor (c, inv_)
+  local v, r = c_val[inv_ or 1], c_pbv[inv_ or 1]
+
+  assert(is_cdamap(c), "invalid argument #1 (cdamap expected)" )
+  assert(is_table (v), "invalid argument #2 (-1 or 1 expected)")
+
+  for i=2,#c,2 do -- 2,4,6,..
+    c[i-1]:clear():set(i, 0, v[1]):set(i+1, 0, v[2]) -- c[1]
+    c[i  ]:clear():set(i, 0, v[3]):set(i+1, 0, v[4]) -- c[2]
+  end
+
+  return c, r
+end
+
+function gphys.normal (m, a1_, nocheck_)
+  assert(is_damap(m), "invalid argument #1 (damap expected)")
+
+  local mr = m
+  do -- TODO: tpsa -> ctpsa, damap -> cdamap
+    local mc = m:same(1i):clear()
+    for i=1,#m do mc[i] = mc[i] + m[i] end -- trick on tpsa for R -> C
+    m = mc
+  end
+
+  -- clear orbit
+  m:set0(0)
+
+  -- phasors
+  local c , cr  = gphys.phasor(m:same(),  1)
+  local ci, cir = gphys.phasor(m:same(), -1) -- c^-1
+
+  -- linear normal form
+  local a1, A, W, info = a1_ or gphys.normal1(mr:copy(), nocheck_)
+  assert(is_damap(a1), "invalid argument #2 (damap expected)")
+
+  local a1r = a1
+  do -- TODO: tpsa -> ctpsa, damap -> cdamap
+    local a1c = m:same():clear()
+    for i=1,#a1 do a1c[i] = a1c[i] + a1[i] end -- trick on tpsa for R -> C
+    a1 = a1c
+  end
+
+  -- first iteration, linear map in phasor basis
+  local m_n = ci * a1^-1 * m * a1 * c
+
+  print('M_N1=') ; m_n:print()
+
+  -- retrieve the tunes
+  local r1 = m:same():set1(m_n:get1()) -- need the transpose?
+
+  print('R1=') ; r1:print()
+  local mu = cvector(#m_n/2)
+  for i=2,#m_n,2 do
+    print("***M_N[i]=", m_n[i-1]:get(i))
+    mu[i/2] = log( m_n[i-1]:get(i) )
+  end
+
+  print('exp(MU)=') ; exp(mu):print()
+  print('R1=')      ;     r1 :print()
+
+  -- monomial
+  local mono = monomial(#m)
+
+  -- factored Lie representation
+  local f_op, t_op = {m:same():clear()}, {m:same():clear()}
+  local idm = m:same() -- identity map
+
+  -- nonlinear iteration
+  for ord=2,m:maxord() do
+    io.stderr:write('ORDER=', ord, '\n')
+    print('ORDER=', ord)
+
+    local n_np1 = m_n * r1^-1
+
+    print('N_NP1=') ; n_np1:print()
+
+    n_np1 = n_np1:lieexppb(t_op, -1)
+
+    print('exp_inv(N_NP1)=') ; n_np1:print()
+
+    local g_io = n_np1:getord(ord)
+
+    print('G_IO=') ; g_io:print()
+
+    local k_io = cir * g_io:fld2vec()                               -- [,] / -2i
+
+    print('K_IO=') ; k_io:print()
+
+    local f_pb = k_io:same():clear()
+    local t_pb = k_io:same():clear()
+    local i, v = 1
+
+    while true do
+      i, v = k_io:cycle(i, mono)
+      if i == 0 then break; end
+      print("i=", i, "v=", v, "mono=", tostring(mono))
+      local s = 0 -- TODO: process 5D!!!
+      for j=2,#mono,2 do s = s + (mono[j]-mono[j-1]) * mu[j/2] end
+      if s ~= 0 then                      --   if mono[1] ~= mono[2] then
+        v = v / (1 - exp(s))              --     v = v/(1-expmu^(mono[2]-mono[1]))
+        print("i=", i, "f_pb(i)=v, v=", v)
+        f_pb:set(mono, 0, v)
+      else
+        t_pb:set(mono, 0, v)
+      end
+    end
+
+    f_op[ord] = m:same():clear()
+    local f_op = f_op[ord] -- local ref
+    io.stderr:write('F_PB= (io=', ord, ')\n') ;
+    print('F_PB= (io=', ord, ')')                ; f_pb:print()
+    print('F_OP=') ; f_op:vec2fld(f_pb);
+    for i=1,#f_op do f_op[i] = cr * f_op[i] end                     -- [,] * -2i
+                                                 ; f_op:print()
+    t_op[ord] = m:same():clear()
+    local t_op = t_op[ord] -- local ref
+    io.stderr:write('T_PB= (io=', ord, ')\n') ;
+    print('T_PB= (io=', ord, ')')                ; t_pb:print()
+    print('T_OP=') ; t_op:vec2fld(t_pb)
+    for i=1,#t_op do t_op[i] = cr * t_op[i] end                     -- [,] * -2i
+                                                 ; t_op:print()
+    io.stderr:write('M_N= (io=', ord, ')\n') ;
+    print('M_N= (io=', ord, ')')                 ; m_n:print()
+    io.stderr:write('M_N:1=\n')
+    print('M_N:1=') ; n_np1 = (-f_op):exppb(idm) ; n_np1:print()
+    io.stderr:write('M_N:2=\n')
+    print('M_N:2=') ; m_n = n_np1*m_n            ; m_n:print()
+    io.stderr:write('M_N:3=\n')
+    print('M_N:3=') ; m_n = f_op:exppb(m_n)      ; m_n:print()
+    io.stderr:write('M_N end\n')
+    print('M_N end')
+  end
+
+  -- update tunes (first order)
+  for i=2,#m,2 do
+    t_op[1][i-1]:set(i  , 0,  mu[i/2])
+    t_op[1][i  ]:set(i+1, 0, -mu[i/2])
+  end
+
+  print('T_OP=')
+  for i=1,#t_op do
+    print("T_OP[",i,"]") ; t_op[i]:print()
+  end
+  print('T_OP end')
+
+  local nm = idm:lieexppb(t_op)
+  print('Normalised map=') ; nm:print()
+
+  return nm, m_n, f_op, t_op
 end
 
 -- beta0 block conversion -----------------------------------------------------o
