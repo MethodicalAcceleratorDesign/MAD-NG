@@ -119,9 +119,10 @@ exppb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[3], log_t inv)
 // --- public -----------------------------------------------------------------o
 
 void // compute M x = exp(:f(x;0):) x (eq. 32, 33 & 38 and inverse)
-FUN(exppb) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa], log_t inv)
+FUN(exppb) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa], int inv)
 {
   DBGFUN(->);
+  ensure(inv == 1 || inv == -1, "invalid inv value, -1 or 1 expected, got %d", inv);
   check_exppb(sa, ma, sb, mb, mc);
 
   // handle aliasing
@@ -140,7 +141,7 @@ FUN(exppb) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa], log
   for (int i = 0; i < 4; ++i) t[i] = FUN(new)(mc[0], mad_tpsa_same);
 
   for (idx_t i = 0; i < sa; ++i)
-    exppb1(sa, ma, mb[i], mc_[i], t, inv);
+    exppb1(sa, ma, mb[i], mc_[i], t, inv == -1);
 
   // temporaries
   for (int i = 0; i < 4; i++) FUN(del)(t[i]);
