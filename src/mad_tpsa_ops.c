@@ -528,13 +528,15 @@ FUN(powi) (const T *a, int n, T *c)
     case 4: FUN(mul   ) (a,a, t1); FUN(mul)(t1,t1, c); break; // ok: no copy
     default: {
       T *t2 = GET_TMPX(c), *t;
+      int ns = 0;
       FUN(copy  )(a, t1);
       FUN(setvar)(c, 1, 0, 0);
       for (;;) {
         if (n  & 1)   FUN(mul)(c ,t1, c ); // ok: 1 copy
-        if (n /= 2) { FUN(mul)(t1,t1, t2); SWAP(t1,t2,t); } // ok: no copy
+        if (n /= 2) { FUN(mul)(t1,t1, t2); SWAP(t1,t2,t); ++ns; } // ok: no copy
         else break;
       }
+      if (ns & 1) SWAP(t1,t2,t); // ensure even number of swaps
       REL_TMPX(t2);
     }
   }
