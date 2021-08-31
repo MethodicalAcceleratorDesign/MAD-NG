@@ -377,33 +377,36 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
 
   ssz_t rn = r->d->nv, tn = t->d->nv;
   ord_t rm[rn], tm[tn];
-  idx_t t2r[rn]; // rm[i] = tm[t2r[i]], i=0..rn-1
-  int   pbs[rn];
+  idx_t t2r[tn]; // if t2r[i]>=0 then rm[t2r[i]] = tm[i] for i=0..tn-1
+  int   pbs[tn];
 
   idx_t i = 0;
   if (!t2r_)
-    for (; i < MIN(rn,tn); ++i) t2r[i] = i, pbs[i] = 0; // identity
+    for (; i < rn; ++i) t2r[i] = i, pbs[i] = 0; // identity
   else
-    for (; i < MIN(rn, n); ++i) {
-      t2r[i] = t2r_[i] > 0 && t2r_[i] <= tn ? t2r_[i]-1 : -i-1; //-> discard var
-      pbs[i] = pb*(t2r[i]-i)%2 < 0; // poisson bracket sign
+    for (; i < MIN(tn,n); ++i) {
+      t2r[i] = t2r_[i] >= 0 && t2r_[i] < rn ? t2r_[i] : -1; // -1 discard var
+      pbs[i] = pb*(t2r[i]-i)%2 < 0; // pb sign, ignored for discarded vars
     }
-  rn = i; // truncate
+  for (; i < tn; i++) t2r[i] = -1; // discard remaining vars
 
   const idx_t *o2i = t->d->ord2idx;
   ord_t t_hi = MIN3(t->hi, r->mo, t->d->to);
   for (idx_t ti = o2i[t->lo]; ti < o2i[t_hi+1]; ++ti) {
     if (t->coef[ti] == 0) goto skip;
     mad_desc_mono(t->d, tn, tm, ti);              // get mono tm at index ti
+    mad_mono_fill(rn, rm, 0);
     int sgn = 0;
-    for (idx_t i = 0; i < rn; ++i) {              // set rm mono
-      if (t2r[i] < 0 && tm[-t2r[i]-1]) goto skip; // discard var
-      rm[i] = tm[t2r[i]];                         // translate tm to rm
-      sgn = sgn - !!rm[i] * pbs[i];               // poisson bracket
+    for (idx_t i = 0; i < tn; ++i) {              // set rm mono
+      if (t2r[i] < 0 && tm[i]) goto skip;         // discard coef
+      rm[t2r[i]] = tm[i];                         // translate tm to rm
+      sgn = sgn - !!tm[i] * pbs[i];               // poisson bracket
     }
     idx_t ri = mad_desc_idxm(r->d, rn, rm);       // get index ri of mono rm
 #if DEBUG > 2
-    printf("cvt %d -> %d %s\n", ti+1, ri+1, ti==ri?"" : SIGN1(sgn%2)<0?"-":"+");
+    printf("cvt %d -> %d %c : ", ti+1, ri+1, ti==ri?' ' : SIGN1(sgn%2)<0?'-':'+');
+    mad_mono_print(tn, tm); printf(" -> "); mad_mono_print(rn, rm);
+    printf(" : %-.16e\n", t->coef[ti]); // works only for real, warn for complex
 #endif
     if (ri >= 0) FUN(seti)(r, ri, 0, SIGN1(sgn%2)*t->coef[ti]);
   skip: ;
