@@ -394,7 +394,7 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
   ord_t t_hi = MIN3(t->hi, r->mo, t->d->to);
   for (idx_t ti = o2i[t->lo]; ti < o2i[t_hi+1]; ++ti) {
     if (t->coef[ti] == 0) goto skip;
-    mad_desc_mono(t->d, tn, tm, ti);              // get mono tm at index ti
+    mad_desc_mono(t->d, tn, tm, ti);              // get tm mono at index ti
     mad_mono_fill(rn, rm, 0);
     int sgn = 0;
     for (idx_t i = 0; i < tn; ++i) {              // set rm mono
