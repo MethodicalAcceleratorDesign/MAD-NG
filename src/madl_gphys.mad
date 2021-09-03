@@ -17,6 +17,7 @@
 
   Purpose:
   - Provide useful function for physics computation.
+  - For now expect 4D, 5D or 6D systems.
 
  o-----------------------------------------------------------------------------o
 ]=]
@@ -25,9 +26,9 @@
 
 local matrix, vector, cvector, monomial, trace, warn, option,
       typeid                                                     in MAD
-local is_nil, is_number, is_positive, is_integer, is_nonzero,
-      is_odd, is_matrix, is_vector, is_cvector, is_table,
-      is_damap, is_cdamap, is_mappable, wrestrict                in MAD.typeid
+local is_nil, is_boolean, is_number, is_positive, is_integer,
+      is_nonzero, is_odd, is_matrix, is_vector, is_cvector,
+      is_damap, is_cdamap, is_table, is_mappable, wrestrict      in MAD.typeid
 local assertf, errorf, printf, num2str, setkeys, tblcat          in MAD.utility
 local lbool                                                      in MAD.operator
 local twopi                                                      in MAD.constant
@@ -269,6 +270,8 @@ function gphys.has_dpt (R, dptol_)
   assert(is_positive(tol), "invalid argument #2 (positive number expected)")
 
   local nr, nc = R:sizes()
+  if nr == 4 and nc == 4 then return false end
+
   assert(nr >= 6 and nc >= 6, "invalid one-turn map (6D+ matrix expected)")
 
   local get = R.get
@@ -445,6 +448,12 @@ end
 function gphys.close_disp (A, R)
   chkeigsiz(A) ; chkeigsiz(R)
 
+  local nr, nc = R:sizes()
+
+  if nr == 4 and nc == 4 then return end
+
+  assert(nr >= 6 and nc >= 6, "invalid one-turn map (6D+ matrix expected)")
+
   -- close dispersion as a function of pt (multiply by beta for function of dp)
   local D4 = R:getsub(r4, 6)
   local R4 = R:getsub(r4,r4)
@@ -517,7 +526,7 @@ end
 -- order in place eigenvectors and eigenvvalues by planes (x,px), (y,py) and
 -- (t,pt), detect by horizontal, vertical, longitudinal order
 
-function gphys.order_eigen (V, W)
+function gphys.order_eigen (V, W)  -- default
   chkeigsiz(V, W)
 
   local get, n = V.get, V.nrow
@@ -554,7 +563,7 @@ end
 local idx_p = {3,1,5} -- vertical, horizontal, longitudinal
 local idx_l = {[1]=3,[3]=1,[4]=5,[6]=3,[8]=1}
 
-function gphys.order_eigen_madx (V, W)
+function gphys.order_eigen_madx (V, W)  -- for comparison
   chkeigsiz(V, W)
 
   local get, set, n, idx, sel = V.get, V.set, min(V.nrow,6), {0,0}, {}
@@ -651,6 +660,7 @@ function gphys.normal1 (m, nocheck_)
   end
 
   local R = m:get1()
+  local nr, nc = R:sizes()
 
   -- one-turn map R
   chkeigsiz(R)
@@ -660,11 +670,12 @@ function gphys.normal1 (m, nocheck_)
   end
 
   -- detect rank of the system
-  local rnk = gphys.has_dpt(R) and 6 or 4
+  local dim = min(nr,nc)
+  local rnk = dim >= 6 and gphys.has_dpt(R) and 6 or 4
   local R6
 
   -- switch to 4D
-  if rnk == 4 then R6, R = R, R:getsub(r4,r4) end
+  if rnk == 4 and dim > 4 then R6, R = R, R:getsub(r4,r4) end
 
   -- stabilise R if needed
   gphys.make_stable(R)
@@ -699,7 +710,7 @@ function gphys.normal1 (m, nocheck_)
   if not nocheck_ then gphys.is_normal1(A, R) end
 
   -- back to 6D, close dispersion (5D)
-  if rnk == 4 then
+  if rnk == 4 and dim > 4 then
     A, R = I6:copy():setsub(r4,r4,A), R6
     gphys.close_disp(A, R)
   end
@@ -737,9 +748,30 @@ function gphys.phasor (c, inv_)
 end
 
 function gphys.normal (m, a1_, nocheck_)
+  if is_boolean(a1_) and is_nil(nocheck_) then
+    nocheck_, a1_ = a1_, nil -- right shift
+  end
+
   assert(is_damap(m), "invalid argument #1 (damap expected)")
 
-  local mr = m
+  -- TODO: create damaps with mo+1!!
+
+  -- linear normal form (if not provided)
+  local a1 = a1_
+  if is_nil(a1) then                                                          -- need fixes!!!
+    local a, A, W, info = gphys.normal1(m:copy(), nocheck_)
+    a1 = a:clear():set1(A)        -- workaround for side effect in normal1
+    a1.x = -a1.x ; a1.px = -a1.px -- workaround for wrong signs in normal1
+  end
+
+  assert(is_damap(a1), "invalid argument #2 (damap expected)")
+
+  do -- TODO: tpsa -> ctpsa, damap -> cdamap
+    local a1c = m:same(1i):clear()
+    for i=1,#a1 do a1c[i] = a1c[i] + a1[i] end -- trick on tpsa for R -> C
+    a1 = a1c
+  end
+
   do -- TODO: tpsa -> ctpsa, damap -> cdamap
     local mc = m:same(1i):clear()
     for i=1,#m do mc[i] = mc[i] + m[i] end -- trick on tpsa for R -> C
@@ -749,38 +781,32 @@ function gphys.normal (m, a1_, nocheck_)
   -- clear orbit
   m:set0(0)
 
+  -- non-linear normal form
+
+  print('LD: Linearizing Map A1') ; a1:print(1e-14)
+
   -- phasors
   local c , cr  = gphys.phasor(m:same(),  1)
   local ci, cir = gphys.phasor(m:same(), -1) -- c^-1
 
-  -- linear normal form
-  local a1 = a1_ or gphys.normal1(mr:copy(), nocheck_)
-  assert(is_damap(a1), "invalid argument #2 (damap expected)")
-
-  local a1r = a1
-  do -- TODO: tpsa -> ctpsa, damap -> cdamap
-    local a1c = m:same():clear()
-    for i=1,#a1 do a1c[i] = a1c[i] + a1[i] end -- trick on tpsa for R -> C
-    a1 = a1c
-  end
-
   -- first iteration, linear map in phasor basis
   local m_n = ci * a1^-1 * m * a1 * c
 
-  print('M_N1=') ; m_n:print()
+  print("LD: M1 = C^-1 * M1 * C") ; m_n:print(1e-14)
+
+!  print('M_N1=') ; m_n:print()
 
   -- retrieve the tunes
-  local r1 = m:same():set1(m_n:get1()) -- need the transpose?
+  local r1 = m:same():set1(m_n:get1():t()) -- transpose inverse the map
 
-  print('R1=') ; r1:print()
+  print("LD: R1") ; r1:print(1e-14)
+
   local mu = cvector(#m_n/2)
   for i=2,#m_n,2 do
-    print("***M_N[i]=", m_n[i-1]:get(i))
     mu[i/2] = log( m_n[i-1]:get(i) )
   end
 
   print('exp(MU)=') ; exp(mu):print()
-  print('R1=')      ;     r1 :print()
 
   -- monomial
   local mono = monomial(#m)
@@ -790,25 +816,24 @@ function gphys.normal (m, a1_, nocheck_)
   local idm = m:same() -- identity map
 
   -- nonlinear iterations
-  for ord=2,m:maxord() do
-    io.stderr:write('ORDER=', ord, '\n')
-    print('ORDER=', ord)
+  for ord=2,m:maxord()-1 do
+    print('LD: ORDER=', ord)
 
-    local n_np1 = m_n * r1^-1
+    local n_np1 = m_n * r1 -- ^-1
 
-    print('N_NP1=') ; n_np1:print()
+    print('LD: N_NP1=') ; n_np1:print(1e-14)
 
     n_np1 = n_np1:lieexppb(t_op, -1)
 
-    print('exp_inv(N_NP1)=') ; n_np1:print()
+    print('LD: exp_inv(N_NP1)=') ; n_np1:print(1e-14)
 
     local g_io = n_np1:getord(ord)
 
-    print('G_IO=') ; g_io:print()
+    print('LD: G_IO=') ; g_io:print(1e-14)
 
     local k_io = cir * g_io:fld2vec()                               -- [,] / -2i
 
-    print('K_IO=') ; k_io:print()
+    print('LD: K_IO=') ; k_io:print()
 
     local f_pb = k_io:same():clear()
     local t_pb = k_io:same():clear()
@@ -817,12 +842,10 @@ function gphys.normal (m, a1_, nocheck_)
     while true do
       i, v = k_io:cycle(i, mono)
       if i == 0 then break; end
-      print("i=", i, "v=", v, "mono=", tostring(mono))
-      local s = 0 -- TODO: process 5D!!!
+      local s = 0
       for j=2,#mono,2 do s = s + (mono[j]-mono[j-1]) * mu[j/2] end
       if s ~= 0 then
         v = v / (1 - exp(s))
-        print("i=", i, "f_pb(i)=v, v=", v)
         f_pb:set(mono, 0, v)
       else
         t_pb:set(mono, 0, v)
@@ -831,46 +854,31 @@ function gphys.normal (m, a1_, nocheck_)
 
     f_op[ord] = m:same():clear()
     local f_op = f_op[ord] -- local ref
-    io.stderr:write('F_PB= (io=', ord, ')\n') ;
     print('F_PB= (io=', ord, ')')                ; f_pb:print()
     print('F_OP=') ; f_op:vec2fld(f_pb);
     for i=1,#f_op do f_op[i] = cr * f_op[i] end                     -- [,] * -2i
                                                  ; f_op:print()
     t_op[ord] = m:same():clear()
     local t_op = t_op[ord] -- local ref
-    io.stderr:write('T_PB= (io=', ord, ')\n') ;
     print('T_PB= (io=', ord, ')')                ; t_pb:print()
     print('T_OP=') ; t_op:vec2fld(t_pb)
     for i=1,#t_op do t_op[i] = cr * t_op[i] end                     -- [,] * -2i
                                                  ; t_op:print()
-    io.stderr:write('M_N= (io=', ord, ')\n') ;
+
     print('M_N= (io=', ord, ')')                 ; m_n:print()
-    io.stderr:write('M_N:1=\n')
-    print('M_N:1=') ; n_np1 = (-f_op):exppb(idm) ; n_np1:print()
-    io.stderr:write('M_N:2=\n')
-    print('M_N:2=') ; m_n = n_np1*m_n            ; m_n:print()
-    io.stderr:write('M_N:3=\n')
-    print('M_N:3=') ; m_n = f_op:exppb(m_n)      ; m_n:print()
-    io.stderr:write('M_N end\n')
-    print('M_N end')
+    m_n = f_op:exppb((-f_op):exppb(idm) * m_n)   ; m_n:print()
   end
 
-  -- update tunes (first order)
-  for i=2,#m,2 do
-    t_op[1][i-1]:set(i  , 0,  mu[i/2])
-    t_op[1][i  ]:set(i+1, 0, -mu[i/2])
-  end
+  print('M_N final')
+  m_n:cutord(m:maxord()-1, m_n)                  ; m_n:print(1e-13)
 
-  print('T_OP=')
-  for i=1,#t_op do
-    print("T_OP[",i,"]") ; t_op[i]:print()
-  end
-  print('T_OP end')
+  local a = a1*c*idm:lieexppb(f_op)*ci
+  a:cutord(m:maxord(), a)
+  print('Normalizing map=') ; a:print()
 
-  local nm = idm:lieexppb(t_op)
-  print('Normalised map=') ; nm:print()
+  -- TODO: convert a back to real damap
 
-  return nm, m_n, f_op, t_op
+  return a, a1, f_op, t_op
 end
 
 -- beta0 block conversion -----------------------------------------------------o
