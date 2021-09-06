@@ -24,8 +24,8 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local matrix, vector, cvector, monomial, trace, warn, option,
-      typeid                                                     in MAD
+local vector, cvector, matrix, monomial, damap, cdamap,
+      trace, warn, option, typeid                                in MAD
 local is_nil, is_boolean, is_number, is_positive, is_integer,
       is_nonzero, is_odd, is_matrix, is_vector, is_cvector,
       is_damap, is_cdamap, is_table, is_mappable, wrestrict      in MAD.typeid
@@ -645,21 +645,17 @@ function gphys.is_normal1 (A, R, nrmtol_)
   return true
 end
 
--- set linear normal form A from one-turn-map R in place.
+-- linear normal form A from one-turn-map R in place.
 
-function gphys.normal1 (m, nocheck_)
-  assert(is_damap(m), "invalid argument #1 (damap expected)")
-
-  -- already a linear normal form
-  if m.status == 'Aset' then return end
+function gphys.normal1 (R, nocheck_)
+  assert(is_matrix(R), "invalid argument #1 (matrix expected)")
 
   local fmt
   if option.debug >= 2 then
-    io.write("-> Normal form\n")
+    io.write("-> Linear normal form\n")
     fmt, option.numfmt = option.numfmt, "% .5e"
   end
 
-  local R = m:get1()
   local nr, nc = R:sizes()
 
   -- one-turn map R
@@ -716,16 +712,13 @@ function gphys.normal1 (m, nocheck_)
   end
 
   if option.debug >= 2 then
-    io.write("Normalising map (output):\n")
+    io.write("Linear normalising map (output):\n")
     A:print('A ') ;
     option.numfmt = fmt
-    io.write("<- Normal form\n")
+    io.write("<- Linear normal form\n")
   end
 
-  -- set and return damap
-  m.status = 'Aset'
-
-  return m:set1(A), A, W, info
+  return A, rnk, info
 end
 
 -- full linear and non-linear normal form -------------------------------------o
@@ -747,93 +740,103 @@ function gphys.phasor (c, inv_)
   return c, r
 end
 
-function gphys.normal (m, a1_, nocheck_)
-  if is_boolean(a1_) and is_nil(nocheck_) then
-    nocheck_, a1_ = a1_, nil -- right shift
-  end
-
+function gphys.normal (m, nocheck_)
   assert(is_damap(m), "invalid argument #1 (damap expected)")
 
-  -- TODO: create damaps with mo+1!!
+  -- already a normal form
+  if m.status == 'Aset' then return end
 
-  -- linear normal form (if not provided)
-  local a1 = a1_
-  if is_nil(a1) then                                                          -- need fixes!!!
-    local a, A, W, info = gphys.normal1(m:copy(), nocheck_)
-    a1 = a:clear():set1(A)        -- workaround for side effect in normal1
-    a1.x = -a1.x ; a1.px = -a1.px -- workaround for wrong signs in normal1
-  end
+  -- linear normal form -------------------------
 
-  assert(is_damap(a1), "invalid argument #2 (damap expected)")
+  local A, rnk, info = gphys.normal1(m:get1(), nocheck_)
+  if info ~= 0 then return nil, rnk, info end
+  m.status = 'Aset'
 
-  do -- TODO: tpsa -> ctpsa, damap -> cdamap
-    local a1c = m:same(1i):clear()
-    for i=1,#a1 do a1c[i] = a1c[i] + a1[i] end -- trick on tpsa for R -> C
-    a1 = a1c
-  end
+   -- stop here for order 1
+  if min(m:maxord(), m:gtrunc()) == 1 then return m:clear():set1(A) end
 
-  do -- TODO: tpsa -> ctpsa, damap -> cdamap
-    local mc = m:same(1i):clear()
-    for i=1,#m do mc[i] = mc[i] + m[i] end -- trick on tpsa for R -> C
-    m = mc
+  -- local version (no orbit)
+  local a1 = m:same():clear():set1(A)
+  a1.x = -a1.x ; a1.px = -a1.px -- workaround for wrong sign in normal1
+
+  -- convert damaps for normal form -------------
+
+  -- create damaps with mo+1 and even number of variables (for now)!
+  local nv, mo, nk, ko in m.__td
+  local mr = damap{nv=rnk, mo=mo+1, nk=nk, ko=ko, vn=m.__vn}
+  local ar = mr:same():clear()
+  for i=1,#mr do
+    m [i]:convert(mr[i])
+    a1[i]:convert(ar[i])
   end
 
   -- clear orbit
-  m:set0(0)
+  mr:set0(0)
 
-  -- non-linear normal form
+  -- convert damaps to cdamap for normal form computation
+  local mc = mr:same(1i):clear()
+  local ac = ar:same(1i):clear()
+  for i=1,#mr do -- trick on TPSA for R -> C
+     mc[i] = mc[i] + mr[i]
+     ac[i] = ac[i] + ar[i]
+  end
 
-  print('LD: Linearizing Map A1') ; a1:print(1e-14)
+  -- rename cdamaps for convenience
+  local m_, a1_ = m, a1
+  m, a1 = mc, ac
 
-  -- phasors
+  -- create phasors and their normalization factor
   local c , cr  = gphys.phasor(m:same(),  1)
   local ci, cir = gphys.phasor(m:same(), -1) -- c^-1
 
-  -- first iteration, linear map in phasor basis
+  -- prepare factored Lie representation
+  local f_op, t_op = {m:same():clear()}, {m:same():clear()}
+  local idm = m:same() -- identity map
+  local mono = monomial(#m)
+
+  -- non-linear normal form ---------------------
+
+  local eps = 1e-14
+
+  print('LD: Linearizing Map A1') ; a1:print(eps)
+
+  -- first iteration, linear normal form in phasor basis
   local m_n = ci * a1^-1 * m * a1 * c
 
-  print("LD: M1 = C^-1 * M1 * C") ; m_n:print(1e-14)
-
-!  print('M_N1=') ; m_n:print()
+  print("LD: M1 = C^-1 * A1^-1 * M * A1 * C") ; m_n:print(eps)
 
   -- retrieve the tunes
-  local r1 = m:same():set1(m_n:get1():t()) -- transpose inverse the map
-
-  print("LD: R1") ; r1:print(1e-14)
-
   local mu = cvector(#m_n/2)
   for i=2,#m_n,2 do
     mu[i/2] = log( m_n[i-1]:get(i) )
   end
 
-  print('exp(MU)=') ; exp(mu):print()
+  print('exp(MU)=') ; exp(mu):print(eps)
 
-  -- monomial
-  local mono = monomial(#m)
+  -- linear map in phasors basis
+  local r1i = m:same():set1(m_n:get1():t()) -- transpose inverses the map
 
-  -- factored Lie representation
-  local f_op, t_op = {m:same():clear()}, {m:same():clear()}
-  local idm = m:same() -- identity map
+  print("LD: R1I") ; r1i:print(eps)
 
   -- nonlinear iterations
   for ord=2,m:maxord()-1 do
     print('LD: ORDER=', ord)
 
-    local n_np1 = m_n * r1 -- ^-1
+    local n_np1 = m_n * r1i
 
-    print('LD: N_NP1=') ; n_np1:print(1e-14)
+    print('LD: N_NP1=') ; n_np1:print(eps)
 
     n_np1 = n_np1:lieexppb(t_op, -1)
 
-    print('LD: exp_inv(N_NP1)=') ; n_np1:print(1e-14)
+    print('LD: exp_inv(N_NP1)=') ; n_np1:print(eps)
 
     local g_io = n_np1:getord(ord)
 
-    print('LD: G_IO=') ; g_io:print(1e-14)
+    print('LD: G_IO=') ; g_io:print(eps)
 
     local k_io = cir * g_io:fld2vec()                               -- [,] / -2i
 
-    print('LD: K_IO=') ; k_io:print()
+    print('LD: K_IO=') ; k_io:print(eps)
 
     local f_pb = k_io:same():clear()
     local t_pb = k_io:same():clear()
@@ -854,31 +857,34 @@ function gphys.normal (m, a1_, nocheck_)
 
     f_op[ord] = m:same():clear()
     local f_op = f_op[ord] -- local ref
-    print('F_PB= (io=', ord, ')')                ; f_pb:print()
+    print('F_PB= (io=', ord, ')')                ; f_pb:print(eps)
     print('F_OP=') ; f_op:vec2fld(f_pb);
     for i=1,#f_op do f_op[i] = cr * f_op[i] end                     -- [,] * -2i
-                                                 ; f_op:print()
+                                                 ; f_op:print(eps)
     t_op[ord] = m:same():clear()
     local t_op = t_op[ord] -- local ref
-    print('T_PB= (io=', ord, ')')                ; t_pb:print()
+    print('T_PB= (io=', ord, ')')                ; t_pb:print(eps)
     print('T_OP=') ; t_op:vec2fld(t_pb)
     for i=1,#t_op do t_op[i] = cr * t_op[i] end                     -- [,] * -2i
-                                                 ; t_op:print()
+                                                 ; t_op:print(eps)
 
-    print('M_N= (io=', ord, ')')                 ; m_n:print()
-    m_n = f_op:exppb((-f_op):exppb(idm) * m_n)   ; m_n:print()
+    print('LD: M_N= (io=', ord, ')')
+    m_n = f_op:exppb((-f_op):exppb(idm) * m_n)   ; m_n:print(eps)
   end
 
   print('M_N final')
-  m_n:cutord(m:maxord()-1, m_n)                  ; m_n:print(1e-13)
+  m_n:cutord(m:maxord()-1, m_n)                  ; m_n:print(eps)
 
-  local a = a1*c*idm:lieexppb(f_op)*ci
+  local a = a1 * c * idm:lieexppb(f_op) * ci
   a:cutord(m:maxord(), a)
-  print('Normalizing map=') ; a:print()
+  print('Normalizing map=')                      ; a:print(eps)
 
-  -- TODO: convert a back to real damap
+  -- convert a back to real damap
+  local m = m_:clear()
+  for i=1,#a do a[i]:real(mr[i]):convert(m[i]) end
+  for i=#a+1,#m do m[i]:setvar(0,i) end -- complete with identity
 
-  return a, a1, f_op, t_op
+  return m, a, f_op, t_op -- return A in m (a is reduced complex version)
 end
 
 -- beta0 block conversion -----------------------------------------------------o
