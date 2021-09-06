@@ -382,13 +382,13 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
 
   idx_t i = 0;
   if (!t2r_)
-    for (; i < rn; ++i) t2r[i] = i, pbs[i] = 0; // identity
+    for (; i < MIN(tn,rn); ++i) t2r[i] = i, pbs[i] = 0; // identity
   else
-    for (; i < MIN(tn,n); ++i) {
+    for (; i < MIN(tn, n); ++i) {
       t2r[i] = t2r_[i] >= 0 && t2r_[i] < rn ? t2r_[i] : -1; // -1 discard var
       pbs[i] = pb*(t2r[i]-i)%2 < 0; // pb sign, ignored for discarded vars
     }
-  for (; i < tn; i++) t2r[i] = -1; // discard remaining vars
+  for (; i < tn; i++) t2r[i] = -1;  // discard remaining vars
 
   const idx_t *o2i = t->d->ord2idx;
   ord_t t_hi = MIN3(t->hi, r->mo, t->d->to);
