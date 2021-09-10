@@ -40,13 +40,12 @@ program gtpsa_ex7
   ! t2=sin(t1)
   call mad_tpsa_sin  (t1, t2)
   call mad_tpsa_print(t2, "sin"//c_eos, 0d0, 0,c_null);
-  call mad_ctpsa_complex(t1, c_null, t2); ! no imaginary part
   call mad_tpsa_del  (t1); t1=c_null
 
   ! tpsa functions and operators support aliasing (i.e. src == dst)
-  call mad_ctpsa_asin (t2, t2);           ! asin(x) = -i*ln(i*x + sqrt(1-x^2))
-  call mad_ctpsa_print(t2, "asin"//c_eos, 0d0, 0,c_null);
-  call mad_ctpsa_del  (t2); t2=c_null     ! see the accuracy of asin(sin)
+  call mad_tpsa_asin (t2, t2);           ! asin(x) = -i*ln(i*x + sqrt(1-x^2))
+  call mad_tpsa_print(t2, "asin"//c_eos, 0d0, 0,c_null);
+  call mad_tpsa_del  (t2); t2=c_null     ! see the accuracy of asin(sin)
 
   ! destroy all created descriptors (optional cleanup)
   call mad_desc_cleanup();

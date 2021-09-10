@@ -39,7 +39,7 @@ int main(void)
   // t2=sin(t1)
   mad_tpsa_sin(t1, t1);
   mad_tpsa_print(t1, "sin", 0,0,0);
-  mad_ctpsa_complex(t1, NULL, t2); // no imaginary part
+  mad_ctpsa_cplx(t1, NULL, t2); // no imaginary part
   mad_tpsa_del(t1);
 
   mad_ctpsa_print(t2, "sin", 0,0,0);

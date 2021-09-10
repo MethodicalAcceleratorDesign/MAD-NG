@@ -1175,11 +1175,11 @@ module GTPSA
       type(c_ptr), value :: tpsa_r              ! dst=imag(src)
     end subroutine mad_ctpsa_imag
 
-    subroutine mad_ctpsa_complex(tpsa_re_,tpsa_im_,ctpsa_r) bind(C)
+    subroutine mad_ctpsa_cplx(tpsa_re_,tpsa_im_,ctpsa_r) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa_re_, tpsa_im_ ! src
       type(c_ptr), value :: ctpsa_r                  ! dst=(re or 0)+i*(im or 0)
-    end subroutine mad_ctpsa_complex
+    end subroutine mad_ctpsa_cplx
 
     ! -- Indexing / monomials (return idx_t = -1 if invalid)
 
