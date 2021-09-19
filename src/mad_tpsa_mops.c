@@ -61,57 +61,29 @@ print_damap (ssz_t sa, const T *ma[sa], FILE *fp)
 }
 
 static inline void
-exppb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[3], log_t inv)
+exppb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[4], log_t inv)
 {
   FUN(copy)(b, t[0]);
   FUN(copy)(b, c);
 
   num_t nrm0 = INFINITY;
-  num_t nrm_min = 10*DBL_EPSILON*sa;
-
-//fprintf(stderr, "exppb1: X=\n"); print_damap(1, (const T**)&b, stderr);
-//fprintf(stderr, "exppb1: H=\n"); print_damap(sa, ma, stderr);
+  const num_t nrm_min = 10*DBL_EPSILON*sa;
 
   for (idx_t i=1; i < 100; ++i) { // arbitrary boundary, should be enough!
-
-//fprintf(stderr, "exppb1: i=%d, nrm0=%.10g\n", i, nrm0);
-//fprintf(stderr, "exppb1: t[0](b1)=\n"); print_damap(1, (const T**)&t[0], stderr);
-
-    FUN(scl)(t[0], 1.0/i, t[1]);     // t[1] = t[0]/i
-
-//fprintf(stderr, "exppb1: t[1](b2)=\n"); print_damap(1, (const T**)&t[1], stderr);
-
-    // -> c_bra_v_ct
+    FUN(scl)(t[0], 1.0/i, t[1]);
     FUN(clear)(t[0]);
 
-//fprintf(stderr, "bra: n=%d\n", sa);
-
-    for (idx_t j = 0; j < sa; ++j) { // t[0] = h*t[1]
-//fprintf(stderr, "bra: j=%d\n", j);
-
+    for (idx_t j = 0; j < sa; ++j) {
       FUN(deriv)(t[1], t[2], j+1);
-
-//fprintf(stderr, "bra: t[2](s2.d.i)=\n"); print_damap(1, (const T**)&t[2], stderr);
-
       FUN(mul)(ma[j], t[2], t[3]);
       (inv ? FUN(sub) : FUN(add))(t[0], t[3], t[0]);
-
-//fprintf(stderr, "bra: t[0](s22)=\n"); print_damap(1, (const T**)&t[0], stderr);
-    } // <- c_bra_v_ct
-
-//fprintf(stderr, "exppb1: t[0](b1)=\n"); print_damap(1, (const T**)&t[0], stderr);
-
-    FUN(add)(t[0], c, c);           // b3 = t[0]+b3
-
-//fprintf(stderr, "exppb1: c(b3)=\n"); print_damap(1, (const T**)&c, stderr);
-
-    num_t nrm = FUN(nrm)(t[0]);
-//fprintf(stderr, "exppb1: nrm0(%d)=%.16e -> nrm(%d)=%.16e\n", i, nrm0, i, nrm);
-
-    if (nrm < nrm_min || nrm >= nrm0) {
-//fprintf(stderr, "exppb1: breaking nrm0(%d)=%.16e -> nrm(%d)=%.16e\n", i,nrm0,i,nrm);
-      break;
     }
+
+    FUN(add)(t[0], c, c);
+
+    // check convergence
+    const num_t nrm = FUN(nrm)(t[0]);
+    if (nrm < nrm_min || nrm >= nrm0) break;
     nrm0 = nrm;
   }
 }
@@ -192,15 +164,15 @@ FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // cgetpb (wo / -2i)
 
   for (idx_t ia = 0; ia < sa; ++ia) {
     idx_t iv = ia & 1 ? ia : ia+2;
-    FUN(setvar)(t2, 0, iv, 0);
-    FUN(mul)(ma[ia], t2, t1);
+    FUN(setvar)(t2, 0, iv, 0); // q_i -> p_i monomial, p_i -> q_i monomial
+    FUN(mul)(ma[ia], t2, t1);  // integrate by monomial of "paired" canon. var.
 
-    ord_t lo = MIN(t1->lo,2); // 2..hi, avoid NaN and Inf
+    ord_t lo = MIN(t1->lo,2);  // 2..hi, avoid NaN and Inf
     for (ord_t o = lo; o <= t1->hi; ++o)
       for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
-        t1->coef[i] /= o;
+        t1->coef[i] /= o;      // scale coefs by orders, i.e. integrate
 
-    (ia & 1 ? FUN(add) : FUN(sub))(c, t1, c);
+    (ia & 1 ? FUN(add) : FUN(sub))(c, t1, c); // \sum p_i - q_i to c
   }
 
   FUN(del)(t2);
