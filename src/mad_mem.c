@@ -16,6 +16,10 @@
  o-----------------------------------------------------------------------------o
 */
 
+/* Note: This module adds a thread-safe front-end to the C allocator to speed-up
+   by about x20 frequent interleaved malloc and free of "small" objects, like
+   e.g. in expressions evaluations. See unit test in main() below. */
+
 #include <stdio.h>
 #include <stddef.h>
 #include <stdlib.h>
@@ -24,283 +28,299 @@
 
 #include "mad_mem.h"
 
-#define MAD_MEM_STD 1 // for now...
+#define MAD_MEM_STD   0 // 1 -> use standard C allocator only.
+#define MAD_MEM_UTEST 0 // 1 -> run standalone unit tests in main().
+#define DBGMEM(P)  // P // uncomment for verbose debugging output
 
-#ifdef  MAD_MEM_STD
+// --- standard allocator -----------------------------------------------------o
 
+#if MAD_MEM_STD == 1    // module disabled
+
+// allocators
 void*  (mad_malloc ) (size_t sz)               { return malloc (sz);        }
 void*  (mad_calloc ) (size_t cnt , size_t sz ) { return calloc (cnt, sz);   }
 void*  (mad_realloc) (void*  ptr_, size_t sz_) { return realloc(ptr_, sz_); }
-void    mad_free     (void*  ptr_)             { free(ptr_); }
-size_t  mad_msize    (void*  ptr_) { (void)ptr_; return 0; }
+void   (mad_free   ) (void*  ptr_)             { free(ptr_); }
+
+// utils
 size_t  mad_mcached  (void)                    { return 0; }
-size_t  mad_mcollect (void)                    { return 0; }
+void    mad_mcollect (void)                    { }
+void    mad_mdump    (FILE* fp)                { (void)fp; }
+
+// --- generational allocator -------------------------------------------------o
 
 #else
-
-// --- macros -----------------------------------------------------------------o
-
-/*
-Note about debugging:
-  If MAD_MEM_CHECKMARK != 0, mad_realloc and mad_free check for the marker
-
-Note about auto collect:
-  If MAD_MEM_AUTOCOLLECT != 0, the memory allocator will bound the amount
-  of cached memory to pool_max. Default is to bound the memory cached for
-  OPENMP only. -DMAD_MEM_AUTOCOLLECT sets it to 1.
-*/
-
-#ifdef _OPENMP
-#define MAD_MEM_AUTOCOLLECT 1
-#endif
-
-#ifdef MAD_MEM_CHECKMARK
-#define CHK(...) __VA_ARGS__
-#else
-#define CHK(...)
-#endif
-
-#ifdef  MAD_MEM_AUTOCOLLECT
-#define MAC(...) __VA_ARGS__
-#define CAM(...)
-#else
-#define MAC(...)
-#define CAM(...) __VA_ARGS__
-#endif
 
 // --- types & constants ------------------------------------------------------o
 
-// memory block
-union mblk {
-  struct { // free mblk
-    union mblk *next;
-  } free;
-
-  struct { // used mblk
-    unsigned slot;
-CHK(unsigned mark; )
-    union { // alignment of data
-      ptrdiff_t s, *sp;
-      size_t    u, *up;
-      double    d, *dp;
-      void         *vp;
-      void        (*fp)(void);
-    } data[1];
-  } used;
-};
-
-// pool slots (list of mblk)
-struct slot {
-  union mblk *list;
-};
-
-#define MARK 0xDEADC0DE // marker
-
-// sizes & offsets
+// constant sizes
 enum {
-  mblk_stp = 1<< 4, // step size is 16 bytes
-  mblk_max = 1<<11, // max object size is 2kB
-  pool_max = 1<<24, // max cached size is 16MB
+  stp_slot = sizeof(double), // memblk size increment, don't touch
+  max_slot = 4096, // max 32768, default 4096 -> max memblk size   is 32KB
+#ifdef _OPENMP
+  max_mblk = 1024, // max 32768, default 1024 -> max memory cached is 32MB/th
+#else
+  max_mblk = 2048, // max 32768, default 2048 -> max memory cached is 64MB
+#endif
+};
 
-  slot_max = mblk_max/mblk_stp, // 128 slots
-  cach_max = pool_max/mblk_stp, // 16MB in slots unit
-  mblk_off = offsetof(union mblk, used.data),
-
-  // sanity checks
-  static_assert__mblk_stp_must_be_a_power_of_2 = 1/!(mblk_stp & (mblk_stp-1)),
-  static_assert__mblk_max_must_be_a_power_of_2 = 1/!(mblk_max & (mblk_max-1)),
-  static_assert__pool_max_must_be_a_power_of_2 = 1/!(pool_max & (pool_max-1))
+// memory block
+struct memblk {
+  uint16_t slot; // slot index (i.e. rounded size).
+  uint16_t next; // index of next memblk (i.e. linked list).
+  uint32_t mark; // memory boundary marker
+  union { // alignment of data
+    ptrdiff_t s, *sp;
+    size_t    u, *up;
+    double    d, *dp;
+    void         *vp;
+    void        (*fp)(void);
+  } data[1];
 };
 
 // memory pool
 struct pool {
-MAC(
-  size_t cached; )
-  struct slot slot[slot_max];
+  uint16_t free;            // index of first free slot in mblk
+  uint16_t slot[max_slot];  // index+1 in mblk of first mbp for this size
+  union {
+    size_t         nxt;     // index in mblk of next free slot
+    struct memblk *mbp;
+  }        mblk[max_mblk];
+  char     str[64];         // for debug, see pdump()
+};
+
+// helpers
+#define BASE(ptr) ((void*)((char*)(ptr)-stp_slot)) // ptr -> mbp
+#define SIZE(idx) (((size_t)(idx)+2)*stp_slot)     // sizeof(*mbp)
+#define MARK      0xDEADC0DE
+#define IDXMAX    0xFFFF
+
+// static sanity checks
+enum {
+  static_assert__max_slot_not_a_power_of_2 = 1/!(max_slot & (max_slot-1)),
+  static_assert__max_mblk_not_a_power_of_2 = 1/!(max_mblk & (max_mblk-1)),
+  static_assert__max_slot_not_leq_IDXMAX = 1/(max_slot < IDXMAX),
+  static_assert__max_mblk_not_leq_IDXMAX = 1/(max_mblk < IDXMAX),
+  static_assert__stp_slot_neq_sizeof_double = 1/(sizeof(double) == stp_slot),
+  static_assert__offset_neq_stp_slot = 1/(offsetof(struct memblk,data)==stp_slot),
 };
 
 // --- locals -----------------------------------------------------------------o
 
-static struct pool pool[1];
+static struct pool pool = {0,{0},{{0}},{0}};
 
 #ifdef _OPENMP
 #pragma omp threadprivate(pool)
 #endif
 
+static inline char*
+pdump(struct memblk *mbp)
+{
+  struct pool *p = &pool;
+  snprintf(p->str, sizeof(p->str), "%p {slot=%d(%td), next=%2d, mark=%x}%s",
+         (void*)mbp, mbp->slot,
+         mbp->slot == IDXMAX ? -1 : (ptrdiff_t)SIZE(mbp->slot),
+         mbp->next-1, mbp->mark, mbp->mark == MARK ? "" : " (corrupted!)");
+  return p->str;
+}
+
 // --- implementation ---------------------------------------------------------o
-
-static inline union mblk*
-get_base (void *ptr)
-{
-  return (union mblk*)((char*)ptr - mblk_off);
-}
-
-static inline size_t
-get_slot (size_t size)
-{
-  // size=0 gives highest slot (special case)
-  return (size-1) / mblk_stp;
-}
-
-static inline size_t
-get_size (size_t slot)
-{
-  return (slot+1) * mblk_stp + mblk_off;
-}
-
-static inline void*
-init_node (union mblk *ptr, size_t slot)
-{
-    ptr->used.slot = slot;
-CHK(ptr->used.mark = MARK; )
-    return ptr->used.data;
-}
-
-// -- allocator
 
 void*
 (mad_malloc) (size_t size)
 {
-  size_t slot = get_slot(size);
-  struct pool *ppool = pool;
-  struct slot *pptr = ppool->slot+slot;
-  union  mblk *ptr;
+  struct pool *p = &pool;
+  size_t idx = size ? (size-1) / stp_slot : 0;
+  struct memblk *mbp; // mbp = mblk[slot[idx]-1]
 
-  if (slot < slot_max && pptr->list) {
-    ptr = pptr->list, pptr->list = ptr->free.next;
-MAC(ppool->cached -= slot+1; )
+  if (idx < max_slot && p->slot[idx]) {
+    idx_t slt = p->slot[idx]-1;
+    DBGMEM( printf("alloc: reuse mblk[[%d]=%d]", (int)idx, slt); )
+    mbp = p->mblk[slt].mbp, p->mblk[slt].nxt = p->free;
+    p->free = p->slot[idx], p->slot[idx] = mbp->next;
   } else {
-MAC(if (ppool->cached > cach_max) mad_mcollect(); )
-    ptr = malloc(size ? get_size(slot) : 0);
-    if (!ptr) {
-      mad_mcollect();
-      ptr = malloc(size ? get_size(slot) : 0);
-      if (!ptr) return NULL;
-    }
+    DBGMEM( printf("alloc: malloc(%2zu)", size); )
+    mbp = malloc(SIZE(idx));
+    mbp->slot = idx < max_slot ? idx : IDXMAX;
+    mbp->mark = MARK;
+    ensure((size_t)mbp > IDXMAX, "unexpected very low address"); // see collect
   }
 
-  return init_node(ptr, slot);
+  DBGMEM( printf(" at %s\n", pdump(mbp)); )
+  return mbp->data;
+}
+
+void
+(mad_free) (void *ptr)
+{
+  if (!ptr) return;
+
+  struct memblk *mbp = BASE(ptr);
+  idx_t idx = mbp->slot;
+
+  if (mbp->mark != MARK)
+    mad_error("invalid or corrupted allocated memory");
+
+  if (idx == IDXMAX) {
+    DBGMEM( printf("free : free mblk at %s\n", pdump(mbp)); )
+    free(mbp); return;
+  }
+
+  struct pool *p = &pool;
+  if (!p->free) mad_mcollect(); // no more free slot or init
+
+  idx_t slt = p->free-1;
+  DBGMEM( printf("free : cache mblk[[%d]=%d]", idx, slt); )
+  mbp->next = p->slot[idx], p->slot[idx] = p->free;   // update slot
+  p->free = p->mblk[slt].nxt, p->mblk[slt].mbp = mbp; // store  mblk
+
+  DBGMEM( printf(" at %s\n", pdump(mbp)); )
 }
 
 void*
-(mad_calloc) (size_t count, size_t esize)
+(mad_calloc) (size_t ecount, size_t esize)
 {
-  size_t size = count * esize;
+  size_t size = ecount * esize;
   void  *ptr  = (mad_malloc)(size);
   return memset(ptr, 0, size);
 }
 
 void*
-(mad_realloc) (void *ptr_, size_t size)
+(mad_realloc) (void *ptr, size_t size)
 {
-  if (!size) return (mad_free)(ptr_), NULL;
-  if (!ptr_) return (mad_malloc)(size);
+  if (!size) return (mad_free)(ptr), NULL;
+  if (!ptr ) return (mad_malloc)(size);
 
-  union mblk *ptr = get_base(ptr_);
+  DBGMEM( printf("alloc: realloc(%2zu)", size); )
+  struct memblk *mbp = BASE(ptr);
 
-CHK(
-  if (ptr->used.mark != MARK)
-    mad_error("invalid pointer"); )
+  if (mbp->mark != MARK)
+    mad_error("invalid or corrupted allocated memory");
 
-  size_t slot = get_slot(size);
+  size_t idx = (size-1) / stp_slot;
+  mbp = realloc(mbp, SIZE(idx));
+  mbp->slot = idx < max_slot ? idx : IDXMAX;
 
-MAC(
-  struct pool *ppool = pool;
-  if (ppool->cached > cach_max) mad_mcollect(); )
-
-  ptr = realloc(ptr, size ? get_size(slot) : 0);
-  if (!ptr) {
-    mad_mcollect();
-    ptr = realloc(ptr, size ? get_size(slot) : 0);
-    if (!ptr) return NULL;
-  }
-
-  return init_node(ptr, slot);
-}
-
-void
-mad_free (void *ptr_)
-{
-  if (ptr_) {
-    union mblk *ptr = get_base(ptr_);
-
-CHK(
-  if (ptr->used.mark != MARK)
-    mad_error("invalid pointer"); )
-
-    size_t slot = ptr->used.slot;
-
-    if (slot < slot_max) {
-      struct pool *ppool = pool;
-      struct slot *pptr = ppool->slot+slot;
-      ptr->free.next = pptr->list, pptr->list = ptr;
-MAC(  ppool->cached += slot+1;
-      if (ppool->cached > cach_max) mad_mcollect(); )
-    }
-    else free(ptr);
-  }
+  DBGMEM( printf(" at %s\n", pdump(mbp)); )
+  return mbp->data;
 }
 
 // -- utils
 
 size_t
-mad_msize (void* ptr_)
-{
-  if (!ptr_) return 0;
-  union mblk *ptr = get_base(ptr_);
-
-CHK(
-  if (ptr->used.mark != MARK)
-    mad_error("invalid pointer"); )
-
-  size_t slot = ptr->used.slot;
-  return slot != get_slot(0) ? (slot+1) * mblk_stp : 0;
-}
-
-// note: noinline improves speed of malloc and realloc for GCC 4.8 to 5.3
-size_t __attribute__((noinline))
 mad_mcached (void)
 {
-  struct pool *ppool = pool;
+  struct pool *p = &pool;
   size_t cached = 0;
-CAM(
-  union mblk *ptr;
 
-  for (int slot=0; slot < slot_max; slot++) {
-    struct slot *pptr = ppool->slot+slot;
-    for (ptr=pptr->list; ptr; ptr=ptr->free.next)
-      cached += slot+1;
-  })
-MAC(
-  cached = ppool->cached; )
+  for (idx_t i=0; i < max_mblk; i++)
+    if (p->mblk[i].nxt > IDXMAX) // ptr
+      cached += SIZE(p->mblk[i].mbp->slot);
 
-  return cached * mblk_stp;
+  return cached;
 }
 
-// note: noinline improves speed of malloc and realloc for GCC 4.8 to 5.3
-size_t __attribute__((noinline))
+void
 mad_mcollect (void)
 {
-  struct pool *ppool = pool;
-  union mblk *ptr, *nxt;
-  size_t cached = 0;
+  struct pool *p = &pool;
 
-  for (int slot=0; slot < slot_max; slot++) {
-    struct slot *pptr = ppool->slot+slot;
-    for (ptr=pptr->list; ptr; ptr=nxt) {
-      nxt = ptr->free.next;
-      free(ptr);
-CAM(  cached += slot+1; )
-    }
-    pptr->list = 0;
+  DBGMEM( printf("collect/clear/init cache\n"); )
+  DBGMEM( printf("collecting %zu bytes\n", mad_mcached()); mad_mdump(); )
+
+  p->free = 1;
+
+  for (idx_t i=0; i < max_slot; i++)
+    p->slot[i] = 0;
+
+  for (idx_t i=0; i < max_mblk; i++) {
+    if (p->mblk[i].nxt > IDXMAX) // ptr
+      free(p->mblk[i].mbp);
+    p->mblk[i].nxt = i+2;
   }
-MAC(
-  cached = ppool->cached;
-  ppool->cached = 0; )
+  p->mblk[max_mblk-1].nxt = 0; // close linked list
 
-  return cached * mblk_stp;
+  DBGMEM( printf("status after collect\n"); mad_mdump(); )
 }
+
+// -- debug
+
+void
+mad_mdump (FILE *fp)
+{
+  struct pool *p = &pool;
+
+  if (!fp) fp = stdout;
+
+  fprintf(fp, "mdump: free = mblk[%d]\n", p->free-1);
+
+  // display content of slot[] when used, i.e. link to mblk[] + linked list.
+  for (idx_t i=0; i < max_slot; i++) {
+    idx_t slt = p->slot[i];
+    if (slt) { // from slot (size) to memblk (object)
+      fprintf(fp, "       slot[%d] -> mblk[%d]", i, slt-1);
+      struct memblk *mbp = p->mblk[slt-1].mbp;
+      while (mbp->next) { // linked list
+        fprintf(fp, "->[%d]", mbp->next-1);
+        mbp = p->mblk[mbp->next-1].mbp;
+      }
+      fprintf(fp, "\n");
+    }
+  }
+
+  // display content of mblk[], i.e. object or not trivial link into mblk[]
+  for (idx_t i=0; i < max_mblk; i++)
+    if (p->mblk[i].nxt > IDXMAX) // ptr
+      fprintf(fp, "       mblk[%d]: %s\n", i, pdump(p->mblk[i].mbp));
+    else if (i+2 != (int)p->mblk[i].nxt) // idx
+      fprintf(fp, "       mblk[%d] -> mblk[%d]\n", i, (int)p->mblk[i].nxt-1);
+}
+
+#endif // MAD_MEM_STD != 1
+
+// --- unit test --------------------------------------------------------------o
+
+#if MAD_MEM_UTEST == 1
+
+/*
+gcc -std=c99 -W -Wall -Wextra -pedantic -O3 -march=native -Wcast-align \
+    -Wdisabled-optimization -Wpointer-arith -Wsign-compare -Wmissing-prototypes \
+    -Wstrict-prototypes -Wunreachable-code -I. libgtpsa/mad_log.c mad_mem.c \
+    -o mad_mem_ut
+./mad_mem_ut > out
+*/
+
+int
+main(void)
+{
+  enum { loop=100000, mn = 50, n0 = 5, ni = 7, z = 6 };
+  void *ptr[mn] = {0};
+  size_t mcnt=0, fcnt=0;
+
+  setvbuf(stdout, 0, _IONBF, 0);
+
+  DBGMEM( union { size_t val; void* ptr; } p = {.ptr=ptr}; )
+  DBGMEM( printf("ptr=%p, ptr as uint=0x%lx\n", p.ptr, p.val); )
+
+  for (int k=0; k<loop; k++)
+  for (int i=1, n=n0; n<mn; n+=ni, i++) {
+    DBGMEM( printf("iteration %d: n=%d\n", i, n); )
+    DBGMEM( printf("calling %d malloc\n", n); )
+    for (int i=0; i<n; i++) ptr[i] = (++mcnt, mad_malloc((i%(13)+1)*z));
+    DBGMEM( printf("status after %d malloc\n", n); mad_mdump(stdout); )
+    DBGMEM( printf("calling %d free\n", n); )
+    for (int i=0; i<n; i++) (++fcnt, mad_free(ptr[i]), ptr[i]=0);
+    DBGMEM( printf("status after %d free\n", n); mad_mdump(stdout); )
+  }
+  mad_mdump(stdout);
+  DBGMEM( mad_mdump(stdout); )
+  printf("%zu malloc performed\n", mcnt);
+  printf("%zu free   performed\n", fcnt);
+  printf("%zu byte   cached\n", mad_mcached());
+  mad_mcollect();
+}
+
+#endif
 
 // --- end --------------------------------------------------------------------o
 
-#endif // MAD_MEM_STD

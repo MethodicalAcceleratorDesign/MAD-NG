@@ -28,18 +28,20 @@
   Information:
   - parameters ending with an underscope can be null (i.e. optional).
   - mad_calloc calls mad_malloc and set to zeros the allocated memory.
-  - mad_mcached returns the amount of memory cached (slow).
-  - mad_mcollect frees the cached memory and returns its amount (slow).
+  - mad_mcached returns the amount of memory cached.
+  - mad_mcollect frees the thread cached memory and returns its amount.
   - temporay buffers can be either on the stack or allocated with mad_malloc
     depending on their size, and must _always_ be locally freed.
-  - defining MAD_MEM_STD replaces mad allocator by C allocator
+  - defining MAD_MEM_STD replaces mad allocator by C allocator for debugging.
 
   Errors:
   - mad_realloc or mad_free on pointers not returned by mad_malloc or
-    mad_realloc is undefined.
+    mad_realloc leads to undefined behavior (typically a segfault).
 
  o-----------------------------------------------------------------------------o
  */
+
+#include <stdio.h>
 
 #include "mad_log.h"
 
@@ -56,9 +58,9 @@ void*  mad_realloc (void*  ptr_ , size_t size_);
 void   mad_free    (void*  ptr_);
 
 // utils
-size_t mad_msize    (void*  ptr_);
 size_t mad_mcached  (void);
-size_t mad_mcollect (void);
+void   mad_mcollect (void);
+void   mad_mdump    (FILE*);
 
 // ----------------------------------------------------------------------------o
 // --- implementation (private) -----------------------------------------------o
@@ -68,10 +70,10 @@ size_t mad_mcollect (void);
 #define mad_calloc(c,s)  mad_mcheck(__func__, mad_calloc (c,s))
 #define mad_realloc(p,s) mad_mcheck(__func__, mad_realloc(p,s))
 
-void*  (mad_malloc)  (size_t)         __attribute__((hot,malloc));
-void*  (mad_calloc)  (size_t, size_t) __attribute__((hot,malloc));
-void*  (mad_realloc) (void* , size_t) __attribute__((hot));
-void    mad_free     (void*)          __attribute__((hot));
+void* (mad_malloc) (size_t)        __attribute__((hot,malloc(mad_free,1),malloc,returns_nonnull));
+void* (mad_calloc) (size_t,size_t) __attribute__((hot,malloc(mad_free,1),malloc,returns_nonnull));
+void* (mad_realloc)(void* ,size_t) __attribute__((hot,malloc(mad_free,1)));
+void  (mad_free  ) (void* )        __attribute__((hot));
 
 static inline void*
 mad_mcheck (str_t fname, void *ptr_)
