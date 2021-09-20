@@ -158,8 +158,7 @@ void
   struct memblk *mbp = BASE(ptr);
   idx_t idx = mbp->slot;
 
-  if (mbp->mark != MARK)
-    mad_error("invalid or corrupted allocated memory");
+  ensure(mbp->mark == MARK, "invalid or corrupted allocated memory");
 
   if (idx == IDXMAX) {
     DBGMEM( printf("free : free mblk at %s\n", pdump(mbp)); )
@@ -194,8 +193,7 @@ void*
   DBGMEM( printf("alloc: realloc(%2zu)", size); )
   struct memblk *mbp = BASE(ptr);
 
-  if (mbp->mark != MARK)
-    mad_error("invalid or corrupted allocated memory");
+  ensure(mbp->mark == MARK, "invalid or corrupted allocated memory");
 
   size_t idx = (size-1) / stp_slot;
   mbp = realloc(mbp, SIZE(idx));
