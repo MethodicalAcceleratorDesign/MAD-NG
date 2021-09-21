@@ -645,7 +645,7 @@ function gphys.is_normal1 (A, R, nrmtol_)
   return true
 end
 
--- linear normal form A from one-turn-map R in place.
+-- linear normal form in matrix A from one-turn-map R in place ----------------o
 
 function gphys.normal1 (R, nocheck_)
   assert(is_matrix(R), "invalid argument #1 (matrix expected)")
@@ -721,7 +721,7 @@ function gphys.normal1 (R, nocheck_)
   return A, rnk, info
 end
 
--- full linear and non-linear normal form -------------------------------------o
+-- full linear and non-linear normal form in maps -----------------------------o
 
 local c_val = {[1]={0.5, 0.5; -0.5i, 0.5i}, [-1]={1, 1i; 1, -1i}}
 local c_pbv = {[1]=-2i,                     [-1]=0.5i}
@@ -760,95 +760,57 @@ function gphys.normal (m, rdt, nocheck_)
   end
 
   -- local version (no orbit)
-  local a1 = m:same():clear():set1(A)
+  local a1 = m:same():set1(A)
   a1.x = -a1.x ; a1.px = -a1.px -- why adjust sign from normal1?
 
-  -- convert damaps for normal form -------------
+  -- cdamaps for normal form --------------------
 
   -- create damaps with mo+1 and even number of variables (for now)
   local nv, mo, nk, ko in m.__td
   local mr = damap{nv=rnk, mo=mo+1, nk=nk, ko=ko, vn=m.__vn}
-  local ar = mr:same():clear()
-  for i=1,#mr do
-    m [i]:convert(mr[i])
-    a1[i]:convert(ar[i])
-  end
+  local ar = mr:same()
 
-  -- clear orbit
-  mr:set0(0)
-
-  -- convert damaps to cdamap for normal form computation
-  local mc = mr:same(1i):clear()
-  local ac = ar:same(1i):clear()
-  for i=1,#mr do -- trick on TPSA for R -> C
-     mc[i] = mc[i] + mr[i]
-     ac[i] = ac[i] + ar[i]
-  end
+  -- convert to complex damap for normal form
+  local mc = m :convert(mr):copy(mr:same(1i)):set0(0) -- clear orbit
+  local ac = a1:convert(ar):copy(ar:same(1i))
 
   -- rename cdamaps for convenience
-  local m_, a1_ = m, a1
-  m, a1 = mc, ac
+  local m_, a1_ = m, a1 ; m, a1 = mc, ac
 
   -- create phasors and their normalization factor
   local c , cr  = gphys.phasor(m:same(),  1)
   local ci, cir = gphys.phasor(m:same(), -1) -- c^-1
 
   -- prepare factored Lie representation
-  local f_op, t_op = {m:same():clear()}, {m:same():clear()}
-  local idm = m:same() -- identity map
+  local f_op, t_op, id = {m:same()}, {m:same()}, m:same():eye()  -- identity map
   local mono = monomial(#m)
 
   -- non-linear normal form ---------------------
-
-  print('LD: Linearizing Map A1') ; a1:print(eps)
-
+                                                                                -- print('LD: Linearizing Map A1') ; a1:print(eps)
   -- first iteration, linear normal form in phasor basis
-  local m_n = ci * a1^-1 * m * a1 * c
-
-  print("LD: M1 = C^-1 * A1^-1 * M * A1 * C") ; m_n:print(eps)
+  local m_n = ci * a1^-1 * m * a1 * c                                           -- print("LD: M1 = C^-1 * A1^-1 * M * A1 * C") ; m_n:print(eps)
 
   -- retrieve the tunes
   local mu = cvector(#m_n/2)
-  for i=2,#m_n,2 do
-    mu[i/2] = log( m_n[i-1]:get(i) )
-  end
-
-  print('exp(MU)=') ; exp(mu):print(eps)
+  for i=2,#m_n,2 do mu[i/2] = log( m_n[i-1]:get(i) ) end                        -- print('exp(MU)=') ; exp(mu):print(eps)
 
   -- linear map in phasors basis
-  local r1i = m:same():set1(m_n:get1():t()) -- transpose inverses the map
-
-  print("LD: R1I") ; r1i:print(eps)
+  local r1i = m:same():set1(m_n:get1():t()) -- transpose inverses the map       -- print("LD: R1I") ; r1i:print(eps)
 
   -- nonlinear iterations
-  for ord=2,m:maxord()-1 do
-    print('LD: ORDER=', ord)
-
-    local n_np1 = m_n * r1i
-
-    print('LD: N_NP1=') ; n_np1:print(eps)
-
-    n_np1 = n_np1:lieexppb(t_op, -1)
-
-    print('LD: exp_inv(N_NP1)=') ; n_np1:print(eps)
-
-    local g_io = n_np1:getord(ord)
-
-    print('LD: G_IO=') ; g_io:print(eps)
-
-    local k_io = cir * g_io:fld2vec()                               -- [,] / -2i
-
-    print('LD: K_IO=') ; k_io:print(eps)
-
-    local f_pb = k_io:same():clear()
-    local t_pb = k_io:same():clear()
+  for ord=2,m:maxord()-1 do                                                     -- print('LD: ORDER=', ord)
+    local n_np1 = (m_n * r1i):lieexppb(t_op, -1)                                -- print('LD: exp_inv(N_np1)=') ; n_np1:print(eps)
+    local k_n = n_np1:getord(ord):fld2vec() * cir -- [,] / -2i                  -- print('LD: K_n=') ; k_n:print(eps)
+    local f_pb, t_pb = k_n:same(), k_n:same()
     local i, v = 1
 
     while true do
-      i, v = k_io:cycle(i, mono)
+      i, v = k_n:cycle(i, mono)
       if i == 0 then break; end
+
       local s = 0
       for j=2,#mono,2 do s = s + (mono[j]-mono[j-1]) * mu[j/2] end
+
       if s ~= 0 then
         v = v / (1 - exp(s))
         f_pb:set(mono, 0, v)
@@ -857,34 +819,20 @@ function gphys.normal (m, rdt, nocheck_)
       end
     end
 
-    f_op[ord] = m:same():clear()
-    local f_op = f_op[ord] -- local ref
-    print('F_PB= (io=', ord, ')')                ; f_pb:print(eps)
-    print('F_OP=') ; f_op:vec2fld(f_pb);
-    for i=1,#f_op do f_op[i] = cr * f_op[i] end                     -- [,] * -2i
-                                                 ; f_op:print(eps)
-    t_op[ord] = m:same():clear()
-    local t_op = t_op[ord] -- local ref
-    print('T_PB= (io=', ord, ')')                ; t_pb:print(eps)
-    print('T_OP=') ; t_op:vec2fld(t_pb)
-    for i=1,#t_op do t_op[i] = cr * t_op[i] end                     -- [,] * -2i
-                                                 ; t_op:print(eps)
+    local f_n = m:same():vec2fld(f_pb) * cr -- [,] * -2i
+    local t_n = m:same():vec2fld(t_pb) * cr -- [,] * -2i
+    f_op[ord], t_op[ord] = f_n, t_n
 
-    print('LD: M_N= (io=', ord, ')')
-    m_n = f_op:exppb((-f_op):exppb(idm) * m_n)   ; m_n:print(eps)
-  end
+    if ord == m:maxord()-1 then break end                                       -- comment to print m_n below
+    m_n = f_n:exppb((-f_n):exppb(id) * m_n)
+  end                                                                           -- print('M_N final')
+--  m_n:cutord(m:maxord()-1, m_n)                                               -- m_n:print(eps)
 
-  print('M_N final')
-  m_n:cutord(m:maxord()-1, m_n)                  ; m_n:print(eps)
-
-  local a = a1 * c * idm:lieexppb(f_op) * ci
-  a:cutord(m:maxord(), a)
-  print('Normalizing map=')                      ; a:print(eps)
-
+  local a = a1 * c * id:lieexppb(f_op) * ci
+  a:cutord(m:maxord(), a) -- remove last order
+                                                                                -- print('Normalizing map=') ; a:print(eps)
   -- convert a back to real damap
-  local m = m_:clear()
-  for i=1,#a do a[i]:real(mr[i]):convert(m[i]) end
-  for i=#a+1,#m do m[i]:setvar(0,i) end -- complete with identity
+  m = a:copy(mr):convert(m_)
 
   return m, a, f_op, t_op -- return A in m (a is cpx dim reduced version)
 end
