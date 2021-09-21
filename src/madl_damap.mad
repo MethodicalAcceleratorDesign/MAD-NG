@@ -117,7 +117,7 @@ local function map_alloc (td, vn, mt)
   local mv = table.new(td.nv, nn+3) -- + __ta, __td, __vn
 
   for i=1,td.nv do -- create tpsa
-    mv[i] = ct(td, td.vo[i-1]):setvar(0,i) ; ta[i-1] = mv[i]
+    mv[i] = ct(td, td.vo[i-1]) ; ta[i-1] = mv[i]
   end
 
   for i=1,nn do    -- create named access
@@ -169,13 +169,13 @@ end
 local function damap (arg)
   arg = arg or {}
   assert(is_mappable(arg), "invalid argument #1 (mappable expected)")
-  return map_ctor(arg, MR)
+  return map_ctor(arg, MR):eye()
 end
 
 local function cdamap (arg)
   arg = arg or {}
   assert(is_mappable(arg), "invalid argument #1 (mappable expected)")
-  return map_ctor(arg, MC)
+  return map_ctor(arg, MC):eye()
 end
 
 -- maxord, maxlen, gtrunc -----------------------------------------------------o
@@ -212,6 +212,8 @@ function MR.__copy (x, y_)
   for i=1,min(#x,#y_) do x[i]:copy(y_[i]) end
   return y_
 end
+
+-- getord, cutord -------------------------------------------------------------o
 
 function MR.getord (x, o, y_)
   if is_nil(y_) then
@@ -263,6 +265,18 @@ function MC.cutord (x, o, y_)
     _C.mad_ctpsa_cutord(x[i], y_[i], o)
   end
   return y_
+end
+
+function MR.convert (x, y, tbl_, pb_)
+  assert(is_damap(y), "invalid argument #2 (damap expected)")
+  for i=1,min(#x,#y) do x[i]:convert(y[i], tbl_, pb_) end
+  return y
+end
+
+function MC.convert (x, y, tbl_, pb_)
+  assert(is_cdamap(y), "invalid argument #2 (cdamap expected)")
+  for i=1,min(#x,#y) do x[i]:convert(y[i], tbl_, pb_) end
+  return y
 end
 
 -- get/set tbl/vec/mat ------------------------------------------------------------o
@@ -392,6 +406,18 @@ end
 
 function MC.clear (x)
   for i=1,#x do _C.mad_ctpsa_clear(x[i]) end
+  return x
+end
+
+function MR.eye (x, e_) -- set everything to zero + e in first order diagonal
+  local e = e_ or 0
+  for i=1,#x do _C.mad_tpsa_setvar(x[i], 0, i, e_ or 0) end
+  return x
+end
+
+function MC.eye (x, e_) -- set everything to zero + e in first order
+  local e = complex(e_ or 0)
+  for i=1,#x do _C.mad_ctpsa_setvar_r(x[i], 0, 0, i, e.re, e.im) end
   return x
 end
 
@@ -661,54 +687,72 @@ end
 
 -- add
 
-function MR.__radd_mat (t, x, r)
-  if t == 0
-  then return x:copy(r)                     -- [0] + dam => copy
-  else return x:translate(t,r)              -- vec + dam => dam + vec
-  end
+function MR.__add_cpx (x, y, r)                  -- cpx + dam
+  r = r or map_alloc(y.__td, y.__vn, MC)
+  for i=1,#r do r[i] = x+y[i] end return r
 end
 
-function MR.__add (x, t, r)
-  if t == 0 then                            -- dam + [0] => copy
-    return x:copy(r)
-  elseif is_iterable(t) then                -- dam + trn
-    local v = is_vector(t) and t or vector(#x):fill(t)
-    return x:translate(v,r)
+function MR.__add (x, y, r)
+  if is_number(x) then
+    r = r or map_alloc(y.__td, y.__vn, is_damap(y) and MR or MC)
+    for i=1,#r do r[i] = x+y[i] end return r     -- num + dam
+  elseif is_scalar(y) then
+    r = r or map_alloc(x.__td, x.__vn, is_damap(x) and is_number(y) and MR or MC)
+    for i=1,#r do r[i] = x[i]+y end return r     -- dam + scl
+  elseif isa_damap(y) then
+    r = r or map_alloc(x.__td, x.__vn, is_damap(x) and is_damap(y) and MR or MC)
+    for i=1,#r do r[i] = x[i]+y[i] end return r  -- dam + dam
   end
-  error("invalid arguments (unsupported damap operation '+')")
+  error("invalid arguments (unsupported damap operation '-')")
 end
 
-MC.__radd_cpx  = MR.__radd_mat  -- fully polymorphic
-MC.__radd_cmat = MR.__radd_mat  -- fully polymorphic
-MC.__add       = MR.__add       -- fully polymorphic
+MC.__add = MR.__add -- fully polymorphic
 
 -- sub
 
-function MR.__sub (x, t, r)
-  if t == 0 then                            -- dam - [0] => copy
-    return x:copy(r)
-  elseif is_iterable(t) then                -- dam - trn
-    local v = is_vector(t) and t or vector(#x):fill(t)
-    return x:translate(-v,r)
+function MR.__sub_cpx (x, y, r)                  -- cpx - dam
+  r = r or map_alloc(y.__td, y.__vn, MC)
+  for i=1,#r do r[i] = x-y[i] end return r
+end
+
+function MR.__sub (x, y, r)
+  if is_number(x) then
+    r = r or map_alloc(y.__td, y.__vn, is_damap(y) and MR or MC)
+    for i=1,#r do r[i] = x-y[i] end return r     -- num - dam
+  elseif is_scalar(y) then
+    r = r or map_alloc(x.__td, x.__vn, is_damap(x) and is_number(y) and MR or MC)
+    for i=1,#r do r[i] = x[i]-y end return r     -- dam - scl
+  elseif isa_damap(y) then
+    r = r or map_alloc(x.__td, x.__vn, is_damap(x) and is_damap(y) and MR or MC)
+    for i=1,#r do r[i] = x[i]-y[i] end return r  -- dam - dam
   end
   error("invalid arguments (unsupported damap operation '-')")
 end
 
-function MC.__sub (x, t, r)
-  if t == 0 then                            -- cdam - [0] => copy
-    return x:copy(r)
-  elseif is_iterable(t) then                -- cdam - trn
-    local v = is_cvector(t) and t or cvector(#x):fill(t)
-    return x:translate(-v,r)
-  end
-  error("invalid arguments (unsupported damap operation '-')")
-end
+MC.__sub = MR.__sub  -- fully polymorphic
 
 -- mul
 
+function MR.__rmul_cpx (x, y, r)
+  r = r or map_alloc(y.__td, y.__vn, MC)
+  for i=1,#r do r[i] = x*y[i] end return r       -- cpx * dam
+end
+
 function MR.__mul (x, y, r)
-  if isa_damap(y) then                      -- dam * dam => dam o dam
-    return x:compose(y,r)
+  if is_number(x) then
+    r = r or map_alloc(y.__td, y.__vn, is_damap(y) and MR or MC)
+    for i=1,#r do r[i] = x*y[i] end return r     -- num * dam
+  elseif is_scalar(y) then
+    r = r or map_alloc(x.__td, x.__vn, is_damap(x) and is_number(y) and MR or MC)
+    for i=1,#r do r[i] = x[i]*y end return r     -- dam * scl
+  elseif isa_damap(y) then
+    local MM = is_damap(x) and is_damap(y) and MR or MC
+    if MM == MC then -- promote to cdamap if needed
+      if is_damap(x) then x = x:copy(x:same(1i)) end
+      if is_damap(y) then y = y:copy(y:same(1i)) end
+    end
+    r = r or map_alloc(x.__td, x.__vn, MM)
+    return x:compose(y,r)                        -- dam * dam => dam o dam
   end
   error("invalid arguments (unsupported damap operation '*')")
 end
@@ -717,11 +761,26 @@ MC.__mul = MR.__mul  -- fully polymorphic
 
 -- div
 
+function MR.__rdiv_cpx (x, y, r)
+  r = r or map_alloc(y.__td, y.__vn, MC)
+  return y:inv(r):mul(x,r)                       -- cpx / dam
+end
+
 function MR.__div (x, y, r)
-  if rawequal(x,1) then                     --   1 / dam => dam:inv()
-    return y:inv(r)
-  elseif isa_damap(y) then                  -- dam / dam => dam o dam:inv()
-    return x:compose(y:inv(r),r)
+  if is_number(x) then                           --  num / dam => num*dam:inv()
+    r = r or map_alloc(y.__td, y.__vn, is_damap(y) and MR or MC)
+    return y:inv(r):mul(x,r)
+  elseif is_scalar(y) then
+    r = r or map_alloc(x.__td, x.__vn, is_damap(x) and is_number(y) and MR or MC)
+    for i=1,#x do r[i] = x[i]/y end return r     -- dam / scl
+  elseif isa_damap(y) then
+    local MM = is_damap(x) and is_damap(y) and MR or MC
+    if MM == MC then -- promote to cdamap if needed
+      if is_damap(x) then x = x:copy(x:same(1i)) end
+      if is_damap(y) then y = y:copy(y:same(1i)) end
+    end
+    r = r or map_alloc(x.__td, x.__vn, MM)
+    return x:compose(y:inv(r),r)                 -- dam / dam => dam o dam:inv()
   end
   error("invalid arguments (unsupported damap operation '/')")
 end
@@ -732,8 +791,8 @@ MC.__div = MR.__div  -- fully polymorphic
 
 function MR.__pow (x, n, r)
   assert(is_integer(n), "invalid argument #2 (integer expected)")
-  if n == 0 then                            -- dam^0  => same
-    return x:same()
+  if n == 0 then                            -- dam^0  => eye
+    return r:eye()
   elseif n == 1 then                        -- dam^1  => copy
     return x:copy(r)
   elseif n == 2 then                        -- dam^2  => dam o dam
@@ -746,7 +805,7 @@ function MR.__pow (x, n, r)
   end
 
   local n, t = abs(n), n < 0 and x:inv() or x:copy()
-  r = r or x:same()
+  r = r or x:same():eye()
 
   while true do
     if n%2 == 1 then r = r:compose(t,r) end  -- r = r o t
