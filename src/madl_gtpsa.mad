@@ -66,9 +66,9 @@ typedef uint64_t bit_t; // mad_bit.h
 
 struct desc { // warning: must be kept identical to C definition
   const int   id;          // index in list of registered descriptors
-  const int   nv, nk, nmv; // #vars (max 100000), #params, #mvars = nv-nk (main variables)
-  const ord_t mo, ko, to;  // max order, max order of vars[nmv:nv-1] and global order of truncation
-  const ord_t *const vo;   // orders of vars, vo[nv] (max order for each monomial variable)
+  const int   nn, nv, np;  // #variables, #parameters, nn=nv+np <= 100000
+  const ord_t mo, po, to;  // max order, max order of no[nv:nn-1] and global order of truncation
+  const ord_t *const no;   // orders of vars & params, no[nn] (max order for each gtpsa)
 };            // end of compatibility with Lua FFI (rest is not visible)
 
 struct tpsa { // warning: must be kept identical to C definition and ctpsa
@@ -115,42 +115,43 @@ local cval = ffi.new 'cnum_t[1]'
 -- descriptors ----------------------------------------------------------------o
 
 --[=[
-  variables = main variables + parameters
+  variables + parameters
 
-  nv: number of vars       (number of variables = main vars + knobs)
-  mo: max vars order       (number)
-  vo: vars orders          (string or array, discard/override nv and mo)
-  nk: number of parameters (number of parameters, as right part of variables)
-  ko: knobs cross-order    (number)
+  nv: number of vars         (number)
+  mo: max vars order         (number)
+  np: number of parameters   (number of parameters, as right part of variables)
+  no: vars+params orders     (string or array, discard/override nv and mo)
+  po: parameters cross-order (number)
 
-  default: nv=6, mo=1, nk=0, ko=0, vo=nil
+  default: nv=6, mo=1, np=0, po=0, no=nil
 
   gtpsad(nil)                            : 6 vars of order 1.
   gtpsad(3)         -> nv=3              : 3 vars of order 1.
   gtpsad{mo=3}      -> mo=3              : 6 vars of order 3.
   gtpsad(4,3)       -> nv=4,mo=3         : 4 vars of order 3.
   gtpsad{nv=4,mo=3}                      : as above.
-  gtpsad(6,2,2,1) -> nv=6,mo=2,nk=2,ko=1 : 6 vars of order 2 including..
-  gtpsad{nv=6,mo=2,nk=2,ko=1}            : ..2 parameters of order 1.
-  gtpsad{nv=100,mo=2,nk=94,ko=1}         : 100 vars of order 2 including..
+  gtpsad(4,2,2,1) -> nv=4,mo=2,np=2,po=1 : 4 vars of order 2 and..
+  gtpsad{nv=4,mo=2,np=2,po=1}            : ..2 parameters of order 1.
+  gtpsad{nv=6,mo=2,np=94,po=1}           : 6 vars of order 2 and..
                                          : ..94 parameters of order 1.
-  gtpsad{vo={3,3,1,1}, nk=2, ko=1}       : 4 vars of orders 3,3,1,1 including..
-         -> nv=4, mo=3                   : ..2 parameters with x-order limited to 1.
+  gtpsad{nv=2,np=2,no={3,3,1,1},po=1}    : 2 vars + 2 params of orders 3,3,1,1..
+         -> mo=3                         : with x-order limited to 1.
 --]=]
 
-local function gtpsad (nv_, mo_, nk_, ko_)
+local function gtpsad (nv_, mo_, np_, po_)
   local is = is_mappable(nv_)
   local nv = is and nv_.nv or nv_ or 6   -- number of variables
   local mo = is and nv_.mo or mo_ or 1   -- variables order
-  local nk = is and nv_.nk or nk_ or 0   -- number of knobs
-  local ko = is and nv_.ko or ko_ or 0   -- knob max cross-order
-  local vo = is and nv_.vo or nil        -- variables orders
+  local np = is and nv_.np or np_ or 0   -- number of parameters
+  local po = is and nv_.po or po_ or 0   -- parameters max cross-order
+  local no = is and nv_.no or nil        -- variables orders
   local d
-  if is_nil(vo) then
-    d = _C.mad_desc_newk(nv,mo,nk,ko)
+  if is_nil(no) then
+    d = _C.mad_desc_newvp(nv,np,mo,po)
   else
-    if not is_monomial(vo) then vo = monomial(vo) end
-    d = _C.mad_desc_newv(vo.n,vo.data,nk,ko)
+    if not is_monomial(no) then no = monomial(no) end
+    assert(#no == nv+np, "invalid number of orders (#no ~= nv+np)")
+    d = _C.mad_desc_newvpo(nv,np,no.data,po)
   end
   return assert(d, "unexpected null descriptor")
 end
@@ -242,8 +243,8 @@ MC.__len  = \x     -> _C.mad_ctpsa_len(x)
 MR.ord    = \x     -> _C.mad_tpsa_ord (x)
 MC.ord    = \x     -> _C.mad_ctpsa_ord(x)
 
-MR.nv     = \x     -> _C.mad_desc_nvmok (x.d,nil,nil,nil)
-MR.nk     = \x     => _C.mad_desc_nvmok (x.d,nil,int,ord) return int[0],ord[0] end
+MR.nv     = \x     -> _C.mad_desc_getnv (x.d,nil,nil,nil)
+MR.np     = \x     => _C.mad_desc_getnv (x.d,nil,int,ord) return int[0],ord[0] end
 MR.maxord = \x     -> _C.mad_desc_maxord(x.d)
 MR.maxlen = \x     -> _C.mad_desc_maxlen(x.d)
 MR.ordlen = \x,mo_ -> _C.mad_desc_ordlen(x.d,mo_ or x.mo)
@@ -436,14 +437,14 @@ end
 
 function MR.get_mono (x, i, r) -- idx -> mono
   assert(is_integer(i), "invalid argument #2 (index expected)")
-  local m = r or monomial(x.d.nv)
+  local m = r or monomial(x.d.nn)
   assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
   return _C.mad_tpsa_mono(t, m.n, m.data, i) -- set m, return order
 end
 
 function MC.get_mono (x, i, r) -- idx -> mono
   assert(is_integer(i), "invalid argument #2 (index expected)")
-  local m = r or monomial(x.d.nv)
+  local m = r or monomial(x.d.nn)
   assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
   return _C.mad_ctpsa_mono(t, m.n, m.data, i) -- set m, return order
 end

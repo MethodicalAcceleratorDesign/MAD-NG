@@ -24,8 +24,8 @@
 
 int main(void)
 {
-  // descriptor for TPSA with 1 variables of order 0 (smallest construction)
-  const desc_t *d = mad_desc_newn(1, 0);
+  // descriptor for TPSA with 1 variable of order 0 (smallest construction)
+  const desc_t *d = mad_desc_newv(1, 0);
 
   // two TPSAs, t1 has maximum order, t2 is same as t1
   tpsa_t *t1 = mad_tpsa_newd(d, mad_tpsa_default);

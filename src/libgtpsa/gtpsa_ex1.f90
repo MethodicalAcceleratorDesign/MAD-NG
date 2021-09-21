@@ -27,7 +27,7 @@ program gtpsa_ex1
   integer(c_int) :: fe
 
   ! descriptor for TPSA with 6 variables of order 4
-  d = mad_desc_newn(6, 4_1)
+  d = mad_desc_newv(6, 4_1)
 
   ! two TPSAs, t1 has maximum order, t2 is same as t1
   t1 = mad_tpsa_newd(d , mad_tpsa_default)

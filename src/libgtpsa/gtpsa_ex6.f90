@@ -25,8 +25,8 @@ program gtpsa_ex6
   type(c_ptr)   :: d, t1, t2
   real(c_num_t) :: vec(1:7)
 
-  ! descriptor for TPSA with 6 variables of order 5
-  d=mad_desc_newn(6, 4_1)
+  ! descriptor for TPSA with 6 variables of order 4
+  d=mad_desc_newv(6, 4_1)
 
   ! two TPSAs, t2 is same as t1 but complex!
   t1=mad_tpsa_newd(d , mad_tpsa_default)

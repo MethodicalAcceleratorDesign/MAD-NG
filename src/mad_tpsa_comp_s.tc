@@ -26,70 +26,70 @@ struct compose_ctx_ser {
   ssz_t sa;
   log_t *required;
   const T **ma, **mb;
-        T **mc, **ords, *knb_coef, *tmp;
+        T **mc, **ords, *par_coef, *tmp;
   const D *d;
 };
 
 #define CTX struct compose_ctx_ser
 
 static inline T*
-get_knobs_coef(const T *a, const ord_t pure_mono[], T *knb_coef)
+get_params_coef(const T *a, const ord_t pure_mono[], T *par_coef)
 {
-  // extract from `a` all knob children of `pure_mono`, which contains only canonical vars
-  assert(pure_mono && knb_coef);
+  // extract from `a` all param children of `pure_mono`, which contains only canonical vars
+  assert(pure_mono && par_coef);
   const D *d = a->d;
-  ord_t mono[d->nv], knb_mono[d->nv];
-  mad_mono_copy(d->nv, pure_mono, mono);
+  ord_t mono[d->nn], par_mono[d->nn];
+  mad_mono_copy(d->nn, pure_mono, mono);
   NUM val;
-  idx_t idx, idx_knb_only;
-  FUN(clear)(knb_coef);
+  idx_t idx, idx_par_only;
+  FUN(clear)(par_coef);
 
   do {
-    idx = mad_desc_idxm(d, d->nv, mono);
+    idx = mad_desc_idxm(d, d->nn, mono);
     val = FUN(geti)(a,idx);
     if (val) {
-      mad_mono_copy(d->nv , mono, knb_mono);
-      mad_mono_fill(d->nmv, knb_mono, 0);  // remove map vars, keep only the knobs
-      idx_knb_only = mad_desc_idxm(d, d->nv, knb_mono);
-      FUN(seti)(knb_coef, idx_knb_only, 0.0, val);
+      mad_mono_copy(d->nn , mono, par_mono);
+      mad_mono_fill(d->nv, par_mono, 0);  // remove map vars, keep only the params
+      idx_par_only = mad_desc_idxm(d, d->nn, par_mono);
+      FUN(seti)(par_coef, idx_par_only, 0.0, val);
     }
-  } while(mad_desc_nxtbyvar(d, d->nv, mono));
+  } while(mad_desc_nxtbyvar(d, d->nn, mono));
 
-  return knb_coef;
+  return par_coef;
 }
 
 static inline void
 compose_ord1(ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
 {
   const D *d = ma[0]->d;
-  if (d->nmv < d->nv) { // there are knobs
-    T *knb_coef = FUN(newd)(d,d->ko);
+  if (d->np) { // there are parameters
+    T *par_coef = FUN(newd)(d,d->po);
     T *tmp      = FUN(newd)(d,d->to);
 
     for (idx_t i = 0; i < sa; ++i) {
       FUN(setvar)(mc[i],ma[i]->coef[0],0,0);
 
       // ord 1 -- vars
-      for (int v = 1; v <= d->nmv; ++v)
+      for (int v = 1; v <= d->nv; ++v)
         if (ma[i]->coef[v]) {
-          T *coef = get_knobs_coef(ma[i], d->To[v], knb_coef);
+          T *coef = get_params_coef(ma[i], d->To[v], par_coef);
           if (coef->nz) {
             FUN(mul)(coef, mb[v-1], tmp);
             FUN(acc)(tmp, 1, mc[i]);
           }
         }
-      // ord 1 -- knobs
-      for (int k = d->nmv+1; k <= d->nv; ++k)
+      // ord 1 -- parameters
+      for (int k = d->nv+1; k <= d->nn; ++k)
         mc[i]->coef[k] = ma[i]->coef[k];
     }
 
     FUN(del)(tmp);
-    FUN(del)(knb_coef);
+    FUN(del)(par_coef);
   }
-  else {                        // no knobs
+  else {                        // no parameters
     for (idx_t i = 0; i < sa; ++i) {
       FUN(setvar)(mc[i], ma[i]->coef[0],0,0);
-      for (int v = 1; v <= d->nv; ++v) {
+      for (int v = 1; v <= d->nn; ++v) {
         NUM coef = FUN(geti)(ma[i],v);
         if (coef) FUN(acc)(mb[v-1], coef, mc[i]);
       }
@@ -104,11 +104,11 @@ compose(int pos, ord_t o, ord_t curr_mono[], CTX *ctx)
   // o   : current order
   // mono: current coef monomial
   const D *d = ctx->d;
-  int idx = mad_desc_idxm(d, d->nv, curr_mono);
+  int idx = mad_desc_idxm(d, d->nn, curr_mono);
 
 #if DEBUG_COMPOSE
   printf("compose: var=%d, ord=%d, req=%d, ", pos, o, ctx->required[idx]); // LD
-  mad_mono_print(d->nv, curr_mono); // LD
+  mad_mono_print(d->nn, curr_mono); // LD
   printf("\n"); // LD
 #endif
 
@@ -118,28 +118,28 @@ compose(int pos, ord_t o, ord_t curr_mono[], CTX *ctx)
   if (o > 0)
     FUN(mul)(ctx->ords[o-1], ctx->mb[pos], ctx->ords[o]);
 
-  if (d->nmv < d->nv) { // there are knobs
+  if (d->nv < d->nn) { // there are parameters
     for (idx_t i = 0; i < ctx->sa; ++i) {
-      T *coef = get_knobs_coef(ctx->ma[i], curr_mono, ctx->knb_coef);
+      T *coef = get_params_coef(ctx->ma[i], curr_mono, ctx->par_coef);
       if (coef->nz) {
         FUN(mul)(coef, ctx->ords[o], ctx->tmp);
         FUN(acc)(ctx->tmp, 1, ctx->mc[i]);
       }
     }
   }
-  else {                        // no knobs
+  else {                        // no parameters
     for (idx_t i = 0; i < ctx->sa; ++i) {
       NUM coef = FUN(geti)(ctx->ma[i],idx);
       if (coef) FUN(acc)(ctx->ords[o], coef, ctx->mc[i]);
     }
   }
 
-  for(  ; pos < d->nmv; ++pos) {  // don't put knobs in curr_mono
+  for(  ; pos < d->nv; ++pos) {  // don't put parameters in curr_mono
     curr_mono[pos]++;
-    log_t v = mad_desc_isvalidm(d, d->nv, curr_mono);
+    log_t v = mad_desc_isvalidm(d, d->nn, curr_mono);
 
 #if DEBUG_COMPOSE
-  mad_mono_print(d->nv, curr_mono); // LD
+  mad_mono_print(d->nn, curr_mono); // LD
   printf(", valid=%d\n", v); // LD
 #endif
 
@@ -176,22 +176,22 @@ init_required(ssz_t sa, const T *ma[sa], log_t required[])
 #endif
 
   // fathers of nodes
-  ord_t mono[d->nv];
+  ord_t mono[d->nn];
   idx_t j, father;
   for (ord_t o = highest_ord; o > 1; --o) {
     for (idx_t c = o2i[o]; c < o2i[o+1]; ++c)
       if (required[c]) {
-        mad_mono_copy(d->nv, d->To[c], mono);
-        for (j = d->nv-1; j >= 0 && !mono[j]; --j) ;
+        mad_mono_copy(d->nn, d->To[c], mono);
+        for (j = d->nn-1; j >= 0 && !mono[j]; --j) ;
 #if DEBUG_COMPOSE
-  mad_mono_print(d->nv, mono); // LD
+  mad_mono_print(d->nn, mono); // LD
 #endif
         mono[j]--;
-        father = mad_desc_idxm(d, d->nv, mono);
+        father = mad_desc_idxm(d, d->nn, mono);
         required[father] = 1;
 #if DEBUG_COMPOSE
   printf("->");
-  mad_mono_print(d->nv, mono); // LD
+  mad_mono_print(d->nn, mono); // LD
   printf(", father=%d\n", father); // LD
 #endif
       }
@@ -230,9 +230,9 @@ compose_serial(ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
 #endif
 
   // initialization
-  ord_t mono[d->nv];
+  ord_t mono[d->nn];
   T *ords[d->mo+1]; // one for each order [0,mo]
-  for (int   v  = 0; v  <  d->nv      ; ++v ) mono[v] = 0;
+  for (int   v  = 0; v  <  d->nn      ; ++v ) mono[v] = 0;
   for (ord_t o  = 0; o  <= highest_ord; ++o ) ords[o] = FUN(newd)(d,d->to);
   for (idx_t ic = 0; ic <  sa         ; ++ic) FUN(clear)(mc[ic]);
 
@@ -240,7 +240,7 @@ compose_serial(ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
 
   CTX ctx = { .sa=sa, .ma=ma, .mb=mb, .mc=mc,
               .d=d, .ords=ords, .required=required,
-              .knb_coef = d->ko ? FUN(newd)(d,d->ko) : NULL,
+              .par_coef = d->po ? FUN(newd)(d,d->po) : NULL,
               .tmp      =         FUN(newd)(d,d->to) };
 
   // do composition from root of tree, ord 0
@@ -248,7 +248,7 @@ compose_serial(ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
 
   // cleanup
   FUN(del)(ctx.tmp);
-  FUN(del)(ctx.knb_coef);
+  FUN(del)(ctx.par_coef);
   for (ord_t o = 0; o <= highest_ord; ++o) FUN(del)(ords[o]);
   mad_free_tmp(required);
 }

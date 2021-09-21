@@ -20,7 +20,7 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - provide a full feathered Generalized TPSA package
+  - provide a full featured parametric Generalized TPSA package
 
   Information:
   - parameters ending with an underscope can be null.
@@ -47,23 +47,23 @@ extern const desc_t *mad_desc_curr;
 
 // -- ctor: new general interface
 // mo = max(1,mo_)
-const desc_t* mad_desc_newn(int nv, ord_t mo_);
+const desc_t* mad_desc_newv(int nv, ord_t mo_);
 
-// if nk == 0, same as mad_desc_newn, otherwise
+// if np == 0, same as mad_desc_newv, otherwise
 // mo = max(1, mo_)
-// ko = ko_ ? min(mo,ko_) : mo
-const desc_t* mad_desc_newk(int nv, ord_t mo_, int nk, ord_t ko_);
+// po = po_ ? min(mo,po_) : mo
+const desc_t* mad_desc_newvp(int nv, int np, ord_t mo_, ord_t po_);
 
-// mo = max(vo[0:nv-1])
-// ko = nk>0 ? min(mo, max(ko_, max( vo[nv-nk:nv-1] ))) : mo
-const desc_t* mad_desc_newv(int nv, const ord_t vo[nv], int nk, ord_t ko_);
+// mo = max(no[0:nn-1]), nn = nv+np
+// po = np>0 ? min(mo, max(po_, max( no[nv:nn-1] ))) : mo
+const desc_t* mad_desc_newvpo(int nv, int np, const ord_t no[], ord_t po_);
 
 // -- dtor
 void  mad_desc_del    (const desc_t *d);
 
 // -- introspection
-int   mad_desc_nvmok  (const desc_t *d, ord_t *mo_, int *nk_, ord_t *ko_); // return nv
-ord_t mad_desc_getvo  (const desc_t *d, int nv, ord_t vo_[nv]); // return mo
+int   mad_desc_getnv  (const desc_t *d, ord_t *mo_, int *np_, ord_t *po_); // return nv
+ord_t mad_desc_getno  (const desc_t *d, int nn, ord_t no_[nn]); // return mo
 ord_t mad_desc_maxord (const desc_t *d); // return mo
 ssz_t mad_desc_maxlen (const desc_t *d); // ordlen(mo) == maxlen
 ssz_t mad_desc_ordlen (const desc_t *d, ord_t mo);

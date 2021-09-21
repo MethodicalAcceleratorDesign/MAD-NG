@@ -44,7 +44,7 @@ check_exppb (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 {
   assert(ma && mb && mc);
   ensure(sa>0 && sb>0, "invalid map sizes (zero or negative sizes)");
-  ensure(sb == ma[0]->d->nmv, "incompatibles GTPSA (number of map variables differ)");
+  ensure(sb == ma[0]->d->nv, "incompatibles GTPSA (number of map variables differ)");
   check_same_desc(sa,ma);
   check_same_desc(sb,mb);
   check_same_desc(sa,(const T**)mc);

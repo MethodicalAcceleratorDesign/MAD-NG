@@ -25,9 +25,9 @@ program gtpsa_ex2
   type(c_ptr)   :: d, t1, t2
   real(c_num_t) :: vec(1:7)
 
-  ! descriptor for TPSA with 6 variables of order 4 including
-  !                          2 knobs of order 3 (on the right)
-  d=mad_desc_newk(6, 5_1, 2, 3_1)
+  ! descriptor for TPSA with 4 variables  of order 4 and
+  !                          2 parameters of order 3
+  d=mad_desc_newvp(4, 2, 5_1, 3_1)
 
   ! two TPSAs, t1 has maximum order, t2 is same as t1
   t1=mad_tpsa_newd(d , mad_tpsa_default)

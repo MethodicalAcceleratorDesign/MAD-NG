@@ -24,9 +24,9 @@
 
 int main(void)
 {
-  // descriptor for TPSA with 6 variables of order 4 including
-  //                          2 knobs of order 3 (on the right)
-  const desc_t *d = mad_desc_newk(6, 4, 2, 3);
+  // descriptor for TPSA with 4 variables  of order 4 and
+  //                          2 parameters of order 3
+  const desc_t *d = mad_desc_newvp(4, 2, 4, 3);
 
   // two TPSAs, t1 has maximum order, t2 is same as t1
   tpsa_t *t1 = mad_tpsa_newd(d, mad_tpsa_default);

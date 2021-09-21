@@ -42,12 +42,12 @@ enum { DESC_WARN_MONO  = 1000000, // warn if tpsa can have 1e6 coefs or more
 
 struct desc { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
   int   id;          // index in list of registered descriptors
-  int   nv, nk, nmv; // #vars (max 100000), #knobs, #mvars = nv-nk (main variables)
-  ord_t mo, ko, to;  // max order, max order of vo[nmv:nv-1] and global order of truncation
-  const ord_t *vo;   // orders of vars, vo[nv] (max order for each monomial variable)
+  int   nn, nv, np;  // #variables, #parameters, nn=nv+np <= 100000
+  ord_t mo, po, to;  // max order, max order of vo[nv:nn-1] and global order of truncation
+  const ord_t *no;   // orders of vars & params, no[nn] (max order for each gtpsa)
               // end of compatibility with LuaJIT FFI
 
-  int   uvo, nth;    // user provided vo, max #threads or 1
+  int   uno, nth;    // user provided no, max #threads or 1
   ssz_t nc;          // number of coefs (max length of TPSA)
 
   ord_t *monos,      // 'matrix' storing the monomials (sorted by var)

@@ -216,31 +216,31 @@ module GTPSA
 
     ! -- Constructors (all constructors return a descriptor)
 
-    function mad_desc_newn(nv,mo_) result(desc) bind(C)
+    function mad_desc_newv(nv,mo_) result(desc) bind(C)
       import ; implicit none
       type(c_ptr) :: desc                          ! descriptor
       integer(c_int), value, intent(in) :: nv      ! #vars
       integer(c_ord_t), value, intent(in) :: mo_   ! order of tpsa, mo=max(1,mo_)
-    end function mad_desc_newn
+    end function mad_desc_newv
 
-    function mad_desc_newk(nv,mo_,nk,ko_) result(desc) bind(C)
-      ! if nk == 0, same as mad_desc_newn, otherwise
-      ! mo = max(1,mo_) and ko = ko_ ? min(mo,ko_) : mo
+    function mad_desc_newvp(nv,np,mo_,po_) result(desc) bind(C)
+      ! if np == 0, same as mad_desc_newv, otherwise
+      ! mo = max(1,mo_) and po = po_ ? min(mo,po_) : mo
       import ; implicit none
       type(c_ptr) :: desc                             ! descriptor
-      integer(c_int), value, intent(in) :: nv, nk     ! #vars, #knobs (right part of vars)
-      integer(c_ord_t), value, intent(in) :: mo_, ko_ ! order of tpsa and knobs
-    end function mad_desc_newk
+      integer(c_int), value, intent(in) :: nv, np     ! #vars, #params
+      integer(c_ord_t), value, intent(in) :: mo_, po_ ! order of tpsa and params x-orders
+    end function mad_desc_newvp
 
-    function mad_desc_newv(nv,vo,nk,ko_) result(desc) bind(C)
-      ! mo = max(vo[0:nv-1])
-      ! ko = nk>0 ? min(mo, max(ko_, max( vo[nv-nk:nv-1] ))) : mo
+    function mad_desc_newvpo(nv,np,no,po_) result(desc) bind(C)
+      ! mo = max(no[0:nv+np-1])
+      ! po = np>0 ? min(mo, max(po_, max( no[nv:nv+np-1] ))) : mo
       import ; implicit none
       type(c_ptr) :: desc                         ! descriptor
-      integer(c_int), value, intent(in) :: nv, nk ! #vars, #knobs (i.e. mo=max(vo))
-      integer(c_ord_t), value, intent(in) :: ko_  ! max order of knobs
-      integer(c_ord_t), intent(in) :: vo(*)       ! orders of vars, (mvars and knobs)
-    end function mad_desc_newv
+      integer(c_int), value, intent(in) :: nv, np ! #vars, #params (i.e. mo=max(no))
+      integer(c_ord_t), value, intent(in) :: po_  ! max params x-orders
+      integer(c_ord_t), intent(in) :: no(*)       ! orders of vars & params
+    end function mad_desc_newvpo
 
     ! -- Destructor -------------------
 
@@ -255,21 +255,21 @@ module GTPSA
 
     ! -- Introspection ----------------
 
-    function mad_desc_nvmok(desc,mo_,nk_,ko_) result(nv) bind(C)
+    function mad_desc_getnv(desc,mo_,np_,po_) result(nv) bind(C)
       import ; implicit none
       integer(c_int) :: nv                                ! #variables
       type(c_ptr), value, intent(in) :: desc              ! descriptor
-      integer(c_int), optional, intent(out) :: nk_        ! #knobs
-      integer(c_ord_t), optional, intent(out) :: mo_, ko_ ! tpsa order, knobs orders
-    end function mad_desc_nvmok
+      integer(c_int), optional, intent(out) :: np_        ! #parameters
+      integer(c_ord_t), optional, intent(out) :: mo_, po_ ! tpsa order, params x-orders
+    end function mad_desc_getnv
 
-    function mad_desc_getvo(desc,nv,vo_) result(mo) bind(C)
+    function mad_desc_getno(desc,nn,no_) result(mo) bind(C)
       import ; implicit none
       integer(c_ord_t) :: mo                   ! tpsa max order
       type(c_ptr), value, intent(in) :: desc   ! descriptor
-      integer(c_int), value, intent(in) :: nv  ! #variables, vo_[1..nv]
-      integer(c_ord_t), intent(out) :: vo_(*)  ! orders to be filled if provided
-    end function mad_desc_getvo
+      integer(c_int), value, intent(in) :: nn  ! #variables+parameters, no_[1..nn]
+      integer(c_ord_t), intent(out) :: no_(*)  ! orders to be filled if provided
+    end function mad_desc_getno
 
     function mad_desc_maxord(desc) result(mo) bind(C)
       import ; implicit none

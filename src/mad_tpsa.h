@@ -20,7 +20,7 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - provide a full feathered Generalized TPSA package
+  - provide a full featured parametric Generalized TPSA package
 
   Information:
   - parameters ending with an underscope are optional (i.e. can be null).
@@ -170,7 +170,7 @@ void    mad_tpsa_axpsqrtbpcx2    (const tpsa_t *x, num_t a, num_t b, num_t c, tp
 void    mad_tpsa_logaxpsqrtbpcx2 (const tpsa_t *x, num_t a, num_t b, num_t c, tpsa_t *r);
 void    mad_tpsa_logxdy          (const tpsa_t *x, const tpsa_t *y, tpsa_t *r);
 
-// to check for non-homogeneous maps & knobs
+// to check for non-homogeneous maps & parameters
 void    mad_tpsa_minv     (ssz_t n , const tpsa_t *ma[n ],                                 tpsa_t *mc[n ]);
 void    mad_tpsa_pminv    (ssz_t n , const tpsa_t *ma[n ],                                 tpsa_t *mc[n ], idx_t select[n]);
 void    mad_tpsa_vec2fld  (ssz_t na, const tpsa_t *a     ,                                 tpsa_t *mc[na]); // F . grad

@@ -24,14 +24,14 @@
 
 int main(void)
 {
-  // descriptor for TPSA with 100 variables of order 2 without knobs
-  const desc_t *d2 = mad_desc_newn(100, 2);
+  // descriptor for TPSA with 100 variables of order 2 without parameters
+  const desc_t *d2 = mad_desc_newv(100, 2);
   printf("d2 length=%4d coefs\n", mad_desc_maxlen(d2));
   mad_desc_del(d2); d2 = 0; // not used anymore.
 
-  // descriptor for TPSA with 100 variables of order 2 including
-  //                          94  knobs of order 1 (i.e. 6 main variables)
-  const desc_t *d = mad_desc_newk(100, 2, 94, 1);
+  // descriptor for TPSA with 6  variables  of order 2 and
+  //                          94 parameters of order 1
+  const desc_t *d = mad_desc_newvp(6, 94, 2, 1);
   printf("d  length=%4d coefs\n", mad_desc_maxlen(d));
 
   // two TPSAs, t2 is same as t1

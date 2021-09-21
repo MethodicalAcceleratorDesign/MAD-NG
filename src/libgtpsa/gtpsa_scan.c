@@ -25,38 +25,39 @@
 #include "mad_log.h"
 #include "mad_tpsa.h"
 
-// gtpsa_scan [..|--] mv mo nk ko 'm:' o1 o2 o3
+// gtpsa_scan [..|--] nv mo np po 'm:' o1 o2 o3
 int main(int argc, const char *argv[])
 {
-  // regression test that scan all possible descriptors for mv,mo.
+  // regression test that scan all possible descriptors for nv,mo.
   int  argi = 1;
   int   nvl = argc > argi ? strcmp(argv[argi],"..") ? 0 : 1 : 0;   argi+=nvl;
   int   nol = argc > argi ? strcmp(argv[argi],"--") ? 1 : 0 : 1;   argi+=!nol;
-  int    mv = argc > argi ? strtol(argv[argi],0,10) : 6;           argi+=1;
+  int    nv = argc > argi ? strtol(argv[argi],0,10) : 6;           argi+=1;
   ord_t  mo = argc > argi ? strtol(argv[argi],0,10) : 4*(2-nvl);   argi+=1;
-  ord_t  nk = argc > argi ? strtol(argv[argi],0,10) : 0;           argi+=1;
-  ord_t  ko = argc > argi ? strtol(argv[argi],0,10) : mo;          argi+=1;
+  ord_t  np = argc > argi ? strtol(argv[argi],0,10) : 0;           argi+=1;
+  ord_t  po = argc > argi ? strtol(argv[argi],0,10) : mo;          argi+=1;
   int   mol = argc > argi ? strcmp(argv[argi],"m:") ? 0 : 1 : 0;   argi+=mol;
 
   ssz_t n0 = mol ? argc-argi : 0;
-  ord_t m0[mv];
+  int nn = nv+np;
+  ord_t m0[nn];
 
   if (!nvl)
-    printf("**** mv=%d, mo=%d, nk=%d, ko=%d ****\n", mv, mo, nk, ko);
+    printf("**** nv=%d, mo=%d, np=%d, po=%d ****\n", nv, mo, np, po);
 
   if (!n0) {
     idx_t i=0;
-    for (; i < mv-nk; i++) m0[i] = mo;
-    for (; i < mv   ; i++) m0[i] = MIN(mo,ko);
+    for (; i < nv; i++) m0[i] = mo;
+    for (; i < nn; i++) m0[i] = MIN(mo,po);
   } else {
-    ensure(n0 == mv, "inconsistency between monomial len %d and mv %d", n0, mv);
-    for (idx_t i=0; i < mv; i++)
+    ensure(n0 == nn, "inconsistency between monomial len %d and nn %d", n0, nn);
+    for (idx_t i=0; i < nn; i++)
       m0[i] = strtol(argv[argi++],0,10);
-    printf("**** m0: "); mad_mono_print(mv,m0); printf("\n");
+    printf("**** m0: "); mad_mono_print(nn,m0); printf("\n");
   }
 
-  for (idx_t nv=nvl?nk+1:mv; nv <= mv; nv++) {
-    printf("**** nv=%d, mo=%d, nk=%d, ko=%d ****\n", nv, mo, nk, ko);
+  for (idx_t nv=nvl?np+1:nn; nv <= nn; nv++) {
+    printf("**** nv=%d, mo=%d, np=%d, po=%d ****\n", nv, mo, np, po);
 
     ord_t m[nv];
     if (nol) mad_mono_fill(nv, m,  1);
@@ -64,7 +65,7 @@ int main(int argc, const char *argv[])
 
     ord_t o = mad_mono_ord(nv, m);
     printf("** "); mad_mono_print(nv,m); printf(", o=%2d | ", o);
-    mad_desc_del(mad_desc_newv(nv, m, nk, ko)); printf("\n");
+    mad_desc_del(mad_desc_newvpo(nv, np, m, po)); printf("\n");
 
     for(idx_t k=1; nol; k++) {
       if (k == 1000) { fprintf(stderr, "."); k=0; }
@@ -78,7 +79,7 @@ int main(int argc, const char *argv[])
 
       ord_t o = mad_mono_ord(nv, m);
       printf("** "); mad_mono_print(nv,m); printf(", o=%2d | ", o);
-      mad_desc_del(mad_desc_newv(nv, m, nk, ko)); printf("\n");
+      mad_desc_del(mad_desc_newvpo(nv, np, m, po)); printf("\n");
     }
   }
 

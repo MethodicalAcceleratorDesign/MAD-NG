@@ -19,7 +19,7 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - provide a full feathered Generalized Complex TPSA package
+  - provide a full featured parametric Generalized Complex TPSA package
 
   Information:
   - parameters ending with an underscope can be null.
@@ -238,7 +238,7 @@ void     mad_ctpsa_logaxpsqrtbpcx2_r (const ctpsa_t *x, num_t a_re, num_t a_im,
                                                         num_t b_re, num_t b_im,
                                                         num_t c_re, num_t c_im, ctpsa_t *r);
 
-// to check for non-homogeneous maps & knobs
+// to check for non-homogeneous maps & parameters
 void     mad_ctpsa_minv     (ssz_t na, const ctpsa_t *ma[na],                                  ctpsa_t *mc[na]);
 void     mad_ctpsa_pminv    (ssz_t na, const ctpsa_t *ma[na],                                  ctpsa_t *mc[na], idx_t select[na]);
 void     mad_ctpsa_vec2fld  (ssz_t na, const ctpsa_t *a     ,                                  ctpsa_t *mc[na]); // F . grad

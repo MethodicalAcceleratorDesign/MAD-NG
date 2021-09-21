@@ -28,7 +28,7 @@ program gtpsa_ex3
 
   ! descriptor for TPSA with 6 variables of order 3,3,2,2,1,1
   no = [3_1,3_1, 2_1,2_1, 1_1,1_1]
-  d=mad_desc_newv(6, no, 0,0_1)
+  d=mad_desc_newvpo(6, 0, no, 0_1)
 
   ! two TPSAs, t1 has maximum order, t2 is same as t1
   t1=mad_tpsa_newd(d , mad_tpsa_default)

@@ -108,8 +108,8 @@ const D*
 FUN(scan_hdr) (int *kind_, char name_[12], FILE *stream_)
 {
   DBGFUN(->);
-  int nv=0, nk=0, cnt=0, nc=0, nn, c;
-  ord_t mo, ko;
+  int nv=0, np=0, cnt=0, nc=0, n, c;
+  ord_t mo, po;
   char name[12]="", typ='?';
   fpos_t fpos;
 
@@ -123,7 +123,7 @@ FUN(scan_hdr) (int *kind_, char name_[12], FILE *stream_)
   ungetc(c, stream_);
 
   // check the name (which is 10 chars) and the type
-  if ((nn = fscanf(stream_, "%12[^:]: %c%n", name, &typ, &nc)) != 2
+  if ((n = fscanf(stream_, "%12[^:]: %c%n", name, &typ, &nc)) != 2
       || nc < 4 || !strchr(" RC", typ)
       || (kind_ && *kind_ != -1 && (*kind_ != (typ == 'C'))) ) {
 
@@ -148,37 +148,39 @@ FUN(scan_hdr) (int *kind_, char name_[12], FILE *stream_)
   if (name_) strncpy(name_, name, 12), name_[11] = '\0';
 
   // 1st line (cnt includes typ)
-  cnt = 1+fscanf(stream_, ", NV = %d, NO = %hhu, NK = %d, KO = %hhu%n",
-                                  &nv,     &mo,       &nk,     &ko,&nc);
+  cnt = 1+fscanf(stream_, ", NV = %d, MO = %hhu, NP = %d, PO = %hhu%n",
+                                  &nv,     &mo,       &np,     &po,    &nc);
 
   // sanity checks
-  ensure(nv > 0 && nv < 100000, "invalid NV=%d", nv);
-  ensure(mo > 0 && mo < 64    , "invalid MO=%d", mo);
+  ensure(0 <  nv && nv <= DESC_MAX_VAR, "invalid NV=%d", nv);
+  ensure(           mo <= DESC_MAX_ORD, "invalid MO=%d", mo);
 
   if (cnt == 3) {
     // TPSA -- ignore rest of lines
-    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish NV,NO line
+    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish NV,MO line
     ensure(fscanf(stream_, "%*[*]\n") != 1, "unexpected input (invalid header?)");
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard coeff header
 
-    const D* ret = mad_desc_newn(nv, mo);
+    const D* ret = mad_desc_newv(nv, mo);
     DBGFUN(<-);
     return ret;
   }
 
   if (cnt == 5) {
-    // GTPSA -- process rest of lines
-    ord_t vo[nv];
+    int nn = nv+np;
 
     // sanity checks
-    ensure(nk > 0 && nk < 100000, "invalid NV=%d", nk);
-    ensure(ko > 0 && ko < 64    , "invalid KO=%d", ko);
+    ensure(0 <= np && nn <= DESC_MAX_VAR, "invalid NP=%d", np);
+    ensure(           po <= DESC_MAX_ORD, "invalid PO=%d", po);
+
+    // GTPSA -- process rest of lines
+    ord_t no[nn];
 
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish NV,NO line
 
     // read variables orders if present
     if ((cnt += fscanf(stream_, " V%*[O]: ")) == 6) {
-      read_ords(nv, vo, stream_);
+      read_ords(nn, no, stream_);
       ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish VO line
     }
 
@@ -186,8 +188,8 @@ FUN(scan_hdr) (int *kind_, char name_[12], FILE *stream_)
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard coeff header
     ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
 
-    const D* ret = cnt == 5 ? mad_desc_newv(nv, vo, nk, ko)
-                            : mad_desc_newk(nv, mo, nk, ko);
+    const D* ret = cnt == 5 ? mad_desc_newvpo(nv, np, no, po)
+                            : mad_desc_newvp (nv, np, mo, po);
     DBGFUN(<-);
     return ret;
   }
@@ -210,8 +212,8 @@ FUN(scan_coef) (T *t, FILE *stream_)
   if (!stream_) stream_ = stdin;
 
   NUM c;
-  int nv = t->d->nv, cnt = -1;
-  ord_t o, ords[nv];
+  int nn = t->d->nn, cnt = -1;
+  ord_t o, ords[nn];
   FUN(reset0)(t);
 
 #ifndef MAD_CTPSA_IMPL
@@ -223,10 +225,10 @@ FUN(scan_coef) (T *t, FILE *stream_)
     #if DEBUG > 2
       printf("c=" FMT ", o=%d\n", VAL(c), o);
     #endif
-    read_ords(nv,ords,stream_); // sanity check
-    ensure(mad_mono_ord(nv,ords) == o, "invalid input (bad order?)");
+    read_ords(nn,ords,stream_); // sanity check
+    ensure(mad_mono_ord(nn,ords) == o, "invalid input (bad order?)");
     // discard too high mononial
-    if (o <= t->mo) FUN(setm)(t,nv,ords,0,c);
+    if (o <= t->mo) FUN(setm)(t,nn,ords,0,c);
   }
   FUN(update0)(t, t->lo, t->hi);
   DBGTPSA(t); DBGFUN(<-);
@@ -271,14 +273,14 @@ FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
   if (nohdr_) goto coeffonly;
 
   // print header
-  fprintf(stream_, d->nk || d->uvo
-                 ? "\n %-8s:  %c, NV = %3d, NO = %2hhu, NK = %3d, KO = %2hhu"
-                 : "\n %-8s:  %c, NV = %3d, NO = %2hhu",
-                      name_, typ,    d->nv,      d->mo,    d->nk,      d->ko);
+  fprintf(stream_, d->np || d->uno
+                 ? "\n %-8s:  %c, NV = %3d, MO = %2hhu, NP = %3d, PO = %2hhu"
+                 : "\n %-8s:  %c, NV = %3d, MO = %2hhu",
+                      name_, typ,    d->nn,      d->mo,    d->np,      d->po);
 
-  if (d->uvo) {
+  if (d->uno) {
     fprintf(stream_, "\n VO:");
-    print_ords(d->nv, d->vo, stream_);
+    print_ords(d->nn, d->no, stream_);
   }
   fprintf(stream_, "\n********************************************************");
 #ifdef MAD_CTPSA_IMPL
@@ -301,7 +303,7 @@ coeffonly:
       if (fabs(creal(t->coef[i])) < eps_ && fabs(cimag(t->coef[i])) < eps_) continue;
       fprintf(stream_, "\n%6d  %21.14lE %+21.14lEi   %2hhu   ", ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
 #endif
-      (d->nv > 20 ? print_ords_sm : print_ords)(d->nv, d->To[i], stream_);
+      (d->nn > 20 ? print_ords_sm : print_ords)(d->nn, d->To[i], stream_);
     }
   }
 
