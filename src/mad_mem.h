@@ -59,16 +59,15 @@ void   mad_free    (void*  ptr_);
 
 // utils
 size_t mad_mcached  (void);
-void   mad_mcollect (void);
+size_t mad_mcollect (void);
 void   mad_mdump    (FILE*);
 
 // ----------------------------------------------------------------------------o
 // --- implementation (private) -----------------------------------------------o
 // ----------------------------------------------------------------------------o
 
-#define mad_malloc(s)    mad_mcheck(__func__, mad_malloc (s)  )
-#define mad_calloc(c,s)  mad_mcheck(__func__, mad_calloc (c,s))
-#define mad_realloc(p,s) mad_mcheck(__func__, mad_realloc(p,s))
+#define mad_malloc(s)    mad_mcheck(__func__, mad_malloc(s)  )
+#define mad_calloc(c,s)  mad_mcheck(__func__, mad_calloc(c,s))
 
 void* (mad_malloc) (size_t)        __attribute__((hot,malloc(mad_free,1),malloc,returns_nonnull));
 void* (mad_calloc) (size_t,size_t) __attribute__((hot,malloc(mad_free,1),malloc,returns_nonnull));
@@ -78,7 +77,7 @@ void  (mad_free  ) (void* )        __attribute__((hot));
 static inline void*
 mad_mcheck (str_t fname, void *ptr_)
 {
-  if (!ptr_)
+  if (expect_p(!ptr_, FALSE, 1))
     (mad_error)(fname, "invalid null pointer (out of memory?)");
 
   return ptr_;
