@@ -121,7 +121,7 @@ static inline char*
 pdump(struct memblk *mbp)
 {
   struct pool *p = &pool;
-  snprintf(p->str, sizeof(p->str), "%p {slot=%d(%td), next=%2d, mark=%x}%s",
+  snprintf(p->str, sizeof(p->str), "%p {slot=%4d(%5td), next=%4d, mark=%x}%s",
          (void*)mbp, mbp->slot,
          mbp->slot == IDXMAX ? -1 : (ptrdiff_t)SIZE(mbp->slot),
          mbp->next-1, mbp->mark, mbp->mark == MARK ? "" : " (corrupted!)");
@@ -262,14 +262,13 @@ mad_mdump (FILE *fp)
 
   if (!fp) fp = stdout;
 
-  fprintf(fp, "mdump: cached = %zu bytes\n", CACHED(p));
-  fprintf(fp, "       free   = mblk[%d]\n" , p->free-1);
+  fprintf(fp, "mdump: %zu bytes\n", CACHED(p));
 
   // display content of slot[] when used, i.e. link to mblk[] + linked list.
   for (idx_t i=0; i < max_slot; i++) {
     idx_t slt = p->slot[i];
     if (slt) { // from slot (size) to memblk (object)
-      fprintf(fp, "       slot[%d] -> mblk[%d]", i, slt-1);
+      fprintf(fp, "  slot[%4d] -> mblk[%d]", i, slt-1);
       struct memblk *mbp = p->mblk[slt-1].mbp;
       while (mbp->next) { // linked list
         fprintf(fp, "->[%d]", mbp->next-1);
@@ -281,10 +280,12 @@ mad_mdump (FILE *fp)
 
   // display content of mblk[], i.e. object or not trivial link into mblk[]
   for (idx_t i=0; i < max_mblk; i++)
-    if (p->mblk[i].nxt > IDXMAX) // ptr
-      fprintf(fp, "       mblk[%d]: %s\n", i, pdump(p->mblk[i].mbp));
+    if (p->mblk[i].nxt > IDXMAX)         // ptr
+      fprintf(fp, "  mblk[%4d] -> %s\n", i, pdump(p->mblk[i].mbp));
+    else if (i+1 == p->free)  // free
+      fprintf(fp, "->mblk[%4d] -> [%d]\n", i, (int)p->mblk[i].nxt-1);
     else if (i+2 != (int)p->mblk[i].nxt) // idx
-      fprintf(fp, "       mblk[%d] -> mblk[%d]\n", i, (int)p->mblk[i].nxt-1);
+      fprintf(fp, "  mblk[%4d] -> [%d]\n", i, (int)p->mblk[i].nxt-1);
 }
 
 #endif // MAD_MEM_STD != 1
