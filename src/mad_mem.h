@@ -77,7 +77,7 @@ void  (mad_free  ) (void* )        __attribute__((hot));
 static inline void*
 mad_mcheck (str_t fname, void *ptr_)
 {
-  if (expect_p(!ptr_, FALSE, 1))
+  if (!ptr_)
     (mad_error)(fname, "invalid null pointer (out of memory?)");
 
   return ptr_;
