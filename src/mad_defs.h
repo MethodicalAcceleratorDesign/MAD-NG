@@ -75,6 +75,17 @@ typedef double _Complex cnum_t;
 
 #ifndef __GNUC__
 #define __attribute__(a)
+#define expect(a,v)     (a)
+#define expect_p(a,v,p) (a)
+#define unreachable()
+#else
+#define unreachable()   __builtin_unreachable()
+#define expect(a,v)     __builtin_expect((a),v) // questionnable effect...
+#if __GNUC__ >= 9
+#define expect_p(a,v,p) __builtin_expect_with_probability((a),v,p)
+#else
+#define expect_p(a,v,p) ((p) >= 0.9 ? __builtin_expect((a),v) : (a))
+#endif
 #endif
 
 // --- Open Multi-Processing -------------------------------------------------o
