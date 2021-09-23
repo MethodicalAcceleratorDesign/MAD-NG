@@ -16,9 +16,9 @@
  o-----------------------------------------------------------------------------o
 */
 
-/* Note: This module adds a thread-safe front-end to the C allocator to speed-up
-   by about x20 frequent interleaved malloc and free of "small" objects, like
-   e.g. in expressions evaluations. See unit test in main() below. */
+/* Note: This module adds a thread-safe front-end to the global C allocator to
+   speed-up by x10+ frequent interleaved malloc and free of "small" objects,
+   like e.g. in expressions evaluations. See unit test in main() below. */
 
 #include <stdio.h>
 #include <stddef.h>
