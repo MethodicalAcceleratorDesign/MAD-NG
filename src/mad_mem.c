@@ -105,8 +105,8 @@ enum {
   static_assert__max_slot_not_lt_IDXMAX    = 1/ (max_slot < IDXMAX),
   static_assert__max_mblk_not_lt_IDXMAX    = 1/ (max_mblk < IDXMAX),
   static_assert__max_mkch_not_lt_SLTMAX    = 1/ (max_mkch < SLTMAX),
-  static_assert__stp_slot_neq_sizeof_double = 1/(sizeof(double) == stp_slot),
-  static_assert__offset_neq_stp_slot = 1/(offsetof(struct memblk,data) == stp_slot),
+  static_assert__stp_slot_neq_sizeof       = 1/ (stp_slot == sizeof(double)),
+  static_assert__stp_slot_neq_offsetof     = 1/ (stp_slot == offsetof(struct memblk,data)),
 };
 
 // --- locals -----------------------------------------------------------------o
