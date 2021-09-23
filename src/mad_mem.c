@@ -85,7 +85,7 @@ struct pool {
     size_t         nxt;     // index in mblk of next free slot
     struct memblk *mbp;
   }        mblk[max_mblk];
-  char     str[64];         // for debug, see pdump()
+  char     str[128];        // for debug, see pdump()
 };
 
 // macros
@@ -94,7 +94,7 @@ struct pool {
 #define CACHED(p) ((size_t)(p)->mkch*stp_slot)
 #define IDXMAX    0xFFFF
 #define SLTMAX    0xFFFFFFFF
-#define MARK      0xDEADC0DE
+#define MARK      0xACCEDEAD
 
 // static sanity checks
 enum {
