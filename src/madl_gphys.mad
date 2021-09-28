@@ -740,7 +740,7 @@ function gphys.phasor (c, inv_)
   return c, r
 end
 
-function gphys.normal (m, rdt, nocheck_)
+function gphys.normal (m, rdt_, nocheck_)
   assert(is_damap(m), "invalid argument #1 (damap expected)")
 
   -- already a normal form
@@ -761,13 +761,13 @@ function gphys.normal (m, rdt, nocheck_)
 
   -- local version (no orbit)
   local a1 = m:same():set1(A)
-  a1.x = -a1.x ; a1.px = -a1.px -- why adjust sign from normal1?
+  a1.x = -a1.x ; a1.px = -a1.px -- adjust sign related to phase?
 
   -- cdamaps for normal form --------------------
 
   -- create damaps with mo+1 and even number of variables (for now)
   local nv, mo, np, po in m.__td
-  local mr = damap{nv=rnk, mo=mo+1, np=np, po=po, vn=m.__vn}
+  local mr = damap{nv=rnk, mo=mo, np=np, po=po, vn=m.__vn}
   local ar = mr:same()
 
   -- convert to complex damap for normal form
@@ -777,12 +777,20 @@ function gphys.normal (m, rdt, nocheck_)
   -- rename cdamaps for convenience
   local m_, a1_ = m, a1 ; m, a1 = mc, ac
 
-  -- create phasors and their normalization factor
+  -- create phasors c, ci=1/c and their normalization factor cr and cri = 1/cr
   local c , cr  = gphys.phasor(m:same(),  1)
   local ci, cir = gphys.phasor(m:same(), -1) -- c^-1
 
-  -- prepare factored Lie representation
-  local f_op, t_op, id = {m:same()}, {m:same()}, m:same():eye()  -- identity map
+  -- prepare RDTs (if any)
+  local rdt = {}
+  for i,mn in ipairs(rdt_ or {}) do
+    local idx = m[1]:get_idx(mn)+1 ; rdt[idx] = true
+    io.write("rdt[",tostring(mn),"]=", tostring(idx), "\n")
+  end
+
+  -- prepare factored Lie representation of A and N
+  local tt = cdamap{nv=rnk, mo=mo+1, np=np, po=po, vn=m.__vn}   -- tmp for conv.
+  local f_op, t_op, id = {m:same()}, {m:same()}, m:same():eye() -- identity map
   local mono = monomial(#m)
 
   -- non-linear normal form ---------------------
@@ -794,22 +802,30 @@ function gphys.normal (m, rdt, nocheck_)
   local mu = cvector(#m_n/2)
   for i=2,#m_n,2 do mu[i/2] = log( m_n[i-1]:get(i) ) end                        -- print('exp(MU)=') ; exp(mu):print(eps)
 
-  -- linear map in phasors basis
-  local r1i = m:same():set1(m_n:get1():t()) -- transpose inverses the map       -- print("LD: R1I") ; r1i:print(eps)
+  -- linear map (only) in phasors basis
+  local r1i = m:same():set1(m_n:get1():t()) -- transpose for map inverse        -- print("LD: R1I") ; r1i:print(eps)
 
   -- nonlinear iterations
-  for ord=2,m:maxord()-1 do                                                     -- print('LD: ORDER=', ord)
-    local n_np1 = (m_n * r1i):lieexppb(t_op, -1)                                -- print('LD: exp_inv(N_np1)=') ; n_np1:print(eps)
-    local k_n = n_np1:getord(ord):fld2vec() * cir -- [,] / -2i                  -- print('LD: K_n=') ; k_n:print(eps)
+  for ord=2,m:maxord() do                                                       -- print('LD: ORDER=', ord) ; io.stderr:write("LD: ORDER=", ord, '\n')
+    -- project remaining orders on resonance basis
+    local n_np1 = (m_n * r1i):lieexppb(t_op, -1)                                -- print('LD: exp_inv(N_np1)=') ; n_np1:print(1e-13)
+    -- compute kernel (equiv. hamiltonian) from vector field
+    local k_n = n_np1:getord(ord,n_np1):convert(tt):fld2vec() * cir -- [,] / -2i
+                                                                                -- print('LD: K_n=') ; k_n:print(eps)
     local f_pb, t_pb = k_n:same(), k_n:same()
     local i, v = 1
 
+    -- select/reject resonances
     while true do
       i, v = k_n:cycle(i, mono)
       if i == 0 then break; end
 
       local s = 0
-      for j=2,#mono,2 do s = s + (mono[j]-mono[j-1]) * mu[j/2] end
+      if not rdt[i] then
+        for j=2,#mono,2 do s = s + (mono[j]-mono[j-1]) * mu[j/2] end
+      else
+        io.write("rdt: ord=", ord, ", idx=", i, ", mono=", tostring(mono), ", val=", tostring(v), "\n")
+      end
 
       if s ~= 0 then
         v = v / (1 - exp(s))
@@ -819,17 +835,18 @@ function gphys.normal (m, rdt, nocheck_)
       end
     end
 
-    local f_n = m:same():vec2fld(f_pb) * cr -- [,] * -2i
-    local t_n = m:same():vec2fld(t_pb) * cr -- [,] * -2i
-    f_op[ord], t_op[ord] = f_n, t_n
-
-    if ord == m:maxord()-1 then break end                                       -- comment to print m_n below
+    -- compute vector fields
+    local f_n = tt:clear():vec2fld(f_pb):convert(m:same()) * cr -- [,] * -2i
+    local t_n = tt:clear():vec2fld(t_pb):convert(m:same()) * cr -- [,] * -2i
+    f_op[ord], t_op[ord] = f_n, t_n                                             -- print('LD: F_n=') ; f_n:print(1e-13)
+                                                                                -- print('LD: T_n=') ; t_n:print(1e-13)
+    if ord == m:maxord() then break end                                         -- comment to print m_n below
+    -- kill resonances in the map
+                                                                                -- print('LD: M_N= (before), order=', ord) m_n:print(1e-13) ; io.stderr:write("LD: M_N= (before), order=", ord, "\n")
     m_n = f_n:exppb((-f_n):exppb(id) * m_n)
-  end                                                                           -- print('M_N final')
---  m_n:cutord(m:maxord()-1, m_n)                                               -- m_n:print(eps)
+  end
 
   local a = a1 * c * id:lieexppb(f_op) * ci
-  a:cutord(m:maxord(), a) -- remove last order
                                                                                 -- print('Normalizing map=') ; a:print(eps)
   -- convert a back to real damap
   m = a:copy(mr):convert(m_)
