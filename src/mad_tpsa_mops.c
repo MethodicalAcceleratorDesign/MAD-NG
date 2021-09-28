@@ -55,8 +55,11 @@ check_exppb (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 static inline void
 print_damap (ssz_t sa, const T *ma[sa], FILE *fp)
 {
-  char nam[3] = "#1";
-  for (ssz_t i=0; i < sa; i++, nam[1]++) FUN(print)(ma[i], nam, 1e-15, 0, fp);
+  char nam[12];
+  for (ssz_t i = 0; i < sa; ++i) {
+    snprintf(nam, sizeof(nam), "#%d", i+1);
+    FUN(print)(ma[i], nam, 1e-15, 0, fp);
+  }
   (void)print_damap;
 }
 
@@ -66,26 +69,73 @@ exppb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[4], log_t inv)
   FUN(copy)(b, t[0]);
   FUN(copy)(b, c);
 
+  const num_t nrm_min1 = 1e-10, nrm_min2 = 4*DBL_EPSILON*sa;
   num_t nrm0 = INFINITY;
-  const num_t nrm_min = 10*DBL_EPSILON*sa;
+  log_t conv = FALSE;
 
-  for (idx_t i=1; i < 100; ++i) { // arbitrary boundary, should be enough!
+//fprintf(stderr, "exppb1: START\n");
+
+//fprintf(stderr, "exppb1: H[i]=\n"); print_damap(sa, ma, stderr);
+//fprintf(stderr, "exppb1: X=\n");    print_damap(1, (const T**)&b, stderr);
+
+  for (idx_t i = 1; i <= DESC_MAX_ORD; ++i) {
+
+//fprintf(stderr, "exppb1: i=%d, nrm0=%.10g, coef=%.10g\n", i, nrm0, 1.0/i);
+//fprintf(stderr, "exppb1: t[0](b1)=\n"); print_damap(1, (const T**)&t[0], stderr);
+
     FUN(scl)(t[0], 1.0/i, t[1]);
+
+//fprintf(stderr, "exppb1: t[1](b2)=\n"); print_damap(1, (const T**)&t[1], stderr);
+
+    // -> c_bra_v_ct
+//fprintf(stderr, "bra: START\n");
+
     FUN(clear)(t[0]);
 
+//fprintf(stderr, "bra: n=%d\n", sa);
+
     for (idx_t j = 0; j < sa; ++j) {
+
+//fprintf(stderr, "bra: i=%d\n", j+1);
+
       FUN(deriv)(t[1], t[2], j+1);
+
+//fprintf(stderr, "bra: t[2](s2.d.i)=\n"); print_damap(1, (const T**)&t[2], stderr);
+
       FUN(mul)(ma[j], t[2], t[3]);
+
+//fprintf(stderr, "bra: t[3](s1%%v(i)*s2.d.i)=\n"); print_damap(1, (const T**)&t[3], stderr);
+
       (inv ? FUN(sub) : FUN(add))(t[0], t[3], t[0]);
-    }
+
+//fprintf(stderr, "bra: t[0](s22)=\n"); print_damap(1, (const T**)&t[0], stderr);
+    } // <- c_bra_v_ct
+
+//fprintf(stderr, "bra: END\n");
+
+//fprintf(stderr, "exppb1: t[0](b1)=\n"); print_damap(1, (const T**)&t[0], stderr);
 
     FUN(add)(t[0], c, c);
 
+//fprintf(stderr, "exppb1: c(b3)=\n"); print_damap(1, (const T**)&c, stderr);
+
     // check convergence
     const num_t nrm = FUN(nrm)(t[0]);
-    if (nrm < nrm_min || nrm >= nrm0) break;
+
+//fprintf(stderr, "exppb1: nrm0(%d)=%.16e -> nrm(%d)=%.16e, close=%d\n", i, nrm0, i, nrm, close);
+
+    // avoid numerical oscillations around very small values
+    if (nrm <= nrm_min2 || (conv && nrm >= nrm0)) {
+//fprintf(stderr, "exppb1: breaking (from nrm)\n");
+      break;
+    }
+    // assume convergence is ok, just refine
+    if (nrm <= nrm_min1) conv = TRUE;
+
     nrm0 = nrm;
   }
+
+//fprintf(stderr, "exppb1: END\n");
 }
 
 // --- public -----------------------------------------------------------------o
@@ -112,8 +162,17 @@ FUN(exppb) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa], int
   T *t[4];
   for (int i = 0; i < 4; ++i) t[i] = FUN(new)(mc[0], mad_tpsa_same);
 
-  for (idx_t i = 0; i < sa; ++i)
+//  fprintf(stderr, "exppb: START\n");
+//  fprintf(stderr, "exppb: H(MA)=\n"); print_damap(sa, (const T**)ma, stderr);
+//  fprintf(stderr, "exppb: X(MB)=\n"); print_damap(sb, (const T**)mb, stderr);
+
+  for (idx_t i = 0; i < sa; ++i) {
+//    fprintf(stderr, "exppb: %d\n", i);
     exppb1(sa, ma, mb[i], mc_[i], t, inv == -1);
+//    fprintf(stderr, "exppb: C[i]=c_adjoint_vec(H,X[i])\n"); print_damap(1, (const T**)&mc_[i], stderr);
+  }
+
+//  fprintf(stderr, "exppb: END\n");
 
   // temporaries
   for (int i = 0; i < 4; i++) FUN(del)(t[i]);
