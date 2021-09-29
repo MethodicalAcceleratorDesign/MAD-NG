@@ -470,7 +470,8 @@ FUN(cycle) (const T *t, ssz_t n, ord_t m_[n], idx_t i, NUM *v_)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
   const D *d = t->d;
-  ensure(0 <= i && i <= d->nc, "index %d out of bounds", i);
+  i += 1;
+  ensure(0 <= i && i < d->nc, "index %d out of bounds", i);
 
   const idx_t *o2i = d->ord2idx;
   idx_t ni = o2i[MIN(t->hi,d->to)+1];
@@ -484,7 +485,7 @@ FUN(cycle) (const T *t, ssz_t n, ord_t m_[n], idx_t i, NUM *v_)
   }
   if (v_) *v_ = t->coef[i];
 
-  DBGFUN(<-); return i+1;
+  DBGFUN(<-); return i;
 }
 
 // --- getters ----------------------------------------------------------------o
@@ -502,7 +503,7 @@ FUN(geti) (const T *t, idx_t i)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
   const D *d = t->d;
-  ensure(i >= 0 && i < d->nc, "index %d out of bounds", i);
+  ensure(0 <= i && i < d->nc, "index %d out of bounds", i);
   ord_t o = d->ords[i];
   NUM ret = t->lo <= o && o <= MIN(t->hi,d->to) ? t->coef[i] : 0;
   DBGFUN(<-); return ret;
@@ -552,7 +553,7 @@ FUN(getv) (const T *t, idx_t i, ssz_t n, NUM v[n])
   assert(t && v); DBGFUN(->); DBGTPSA(t);
 
   const D *d = t->d;
-  ensure(i >= 0 && i+n <= d->nc, "indexes %d:%d out of bounds", i, i+n);
+  ensure(0 <= i && i+n <= d->nc, "indexes %d:%d out of bounds", i, i+n);
 
   ord_t hi = MIN(t->hi, d->to);
   const ord_t *ord = d->ords+i;
@@ -596,7 +597,7 @@ FUN(seti) (T *t, idx_t i, NUM a, NUM b)
   if (!i) { FUN(set0)(t,a,b); DBGTPSA(t); DBGFUN(<-); return; }
 
   const D *d = t->d;
-  ensure(i > 0 && i < d->nc, "index order exceeds GPTSA maximum order");
+  ensure(0 <= i && i < d->nc, "index order exceeds GPTSA maximum order");
 
   ord_t o = d->ords[i];
 
@@ -650,7 +651,7 @@ FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
   assert(t && v); DBGFUN(->); DBGTPSA(t);
 
   const D *d = t->d;
-  ensure(i >= 0 && i+n <= d->nc, "index order exceeds GPTSA maximum order");
+  ensure(0 <= i && i+n <= d->nc, "index order exceeds GPTSA maximum order");
 
   // compute boundaries
   const idx_t *o2i = d->ord2idx;
