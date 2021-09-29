@@ -134,7 +134,7 @@ mono_findidx (ord_t **T_, ssz_t n, const ord_t m[n], idx_t from, idx_t to)
     return start;
 
   // error
-  printf("** ERR: "); mad_mono_print(n, m); printf(" <- not found\n");
+  printf("** ERR: "); mad_mono_print(n, m, 0); printf(" <- not found\n");
   error("monomial not found in [%d,%d) (unexpected)", from, to);
   return -1; // never reached
 }
@@ -221,17 +221,17 @@ tbl_print (ssz_t n, ssz_t h, ord_t **t) // t[h][n]
   idx_t i=0;
 #if DEBUG > 2
   for (; i < h; ++i) {
-    printf("(%2d) ",i); mad_mono_print(n,t[i]); printf(" o=%d\n", mad_mono_ord(n,t[i]));
+    printf("(%2d) ",i); mad_mono_print(n,t[i],0); printf(" o=%d\n", mad_mono_ord(n,t[i]));
   }
 #else
   for (; i < MIN(h,50); ++i) {
-    printf("(%2d) ",i); mad_mono_print(n,t[i]); printf(" o=%d\n", mad_mono_ord(n,t[i]));
+    printf("(%2d) ",i); mad_mono_print(n,t[i],0); printf(" o=%d\n", mad_mono_ord(n,t[i]));
   }
   if (h > 100) {
     printf("... [ %d more rows ] ...\n", h - 100);
   }
   for (i=MAX(i,h-50); i < h; ++i) {
-    printf("(%2d) ",i); mad_mono_print(n,t[i]); printf(" o=%d\n", mad_mono_ord(n,t[i]));
+    printf("(%2d) ",i); mad_mono_print(n,t[i],0); printf(" o=%d\n", mad_mono_ord(n,t[i]));
   }
 #endif
 }
@@ -348,7 +348,7 @@ tbl_index_H(const D *d, ssz_t n, const ord_t m[n])
   }
   if (I < 0) {
     printf("%s: I=%d for monomial ", __func__, I);
-    mad_mono_print(n,m); printf("\n");
+    mad_mono_print(n, m, 0); printf("\n");
     assert(I > -1);
   }
 //  DBGFUN(<-);
@@ -562,9 +562,9 @@ tbl_build_LC (ord_t oa, ord_t ob, D *d)
         // fill lc
         lc[ilc] = ic;
 #if DEBUG > 2
-        printf(" ib=%d ", ib); mad_mono_print(nn, To[ib]);
-        printf(" ia=%d ", ia); mad_mono_print(nn, To[ia]);
-        printf(" ic=%d ", ic); mad_mono_print(nn, m);
+        printf(" ib=%d ", ib); mad_mono_print(nn, To[ib], 0);
+        printf(" ia=%d ", ia); mad_mono_print(nn, To[ia], 0);
+        printf(" ic=%d ", ic); mad_mono_print(nn, m     , 0);
         printf(" ilc=%d\n", ilc);
 #endif
       }
@@ -931,7 +931,7 @@ desc_init (int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
   d->no = no;
 
 #if DEBUG > 1
-  printf("desc no: "); mad_mono_print(nn,d->no); printf("\n");
+  printf("desc no: "); mad_mono_print(nn,d->no, 0); printf("\n");
 #endif
 
   set_monos(d);
@@ -966,9 +966,9 @@ desc_build (int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
 
 error:
   printf(eid==1 ? "** >>>>> T BUG <<<<<\n" : "");
-  printf("no= ");  mad_mono_print(d->nn, d->no);   printf("\n");
-  printf("Tv=\n"); tbl_print(d->nn, d->nc, d->Tv); printf("\n");
-  printf("To=\n"); tbl_print(d->nn, d->nc, d->To); printf("\n");
+  printf("no= ");  mad_mono_print(d->nn, d->no, 0); printf("\n");
+  printf("Tv=\n"); tbl_print(d->nn, d->nc, d->Tv);  printf("\n");
+  printf("To=\n"); tbl_print(d->nn, d->nc, d->To);  printf("\n");
   idx_print(d->nc  , d->tv2to,   printf("tv2to= "  ));
   idx_print(d->nc  , d->to2tv,   printf("to2tv= "  ));
   ord_print(d->nc  , d->ords ,   printf("ords = "  ));
@@ -1193,6 +1193,20 @@ mad_desc_gtrunc (const D *d, ord_t to)
 
   ensure(to <= d->mo, "invalid order (exceeds maximum order)");
   DBGFUN(<-); return d_->to = to, old;
+}
+
+void
+mad_desc_info (const D *d, FILE *fp_)
+{
+  assert(d); DBGFUN(->);
+
+  char s[d->nn+1];
+  fprintf(fp_ ? fp_ : stdout,
+          "id=%d, nn=%d, nv=%d, np=%d, mo=%d, po=%d, to=%d, uno=%d, no=[%s]\n",
+           d->id, d->nn, d->nv, d->np, d->mo, d->po, d->to, d->uno,
+           mad_mono_prt(d->nn, d->no, s));
+
+  DBGFUN(<-);
 }
 
 // --- ctors, dtor ------------------------------------------------------------o

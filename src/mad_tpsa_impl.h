@@ -61,10 +61,10 @@ mad_tpsa_reset0 (tpsa_t *t)
 static inline tpsa_t* // copy t_lo, t_hi(r_mo,d_to), t_nz(r_hi) but not coefs!
 mad_tpsa_copy0 (const tpsa_t *t, tpsa_t *r)
 {
-  r->hi = MIN3(t->hi, r->mo, t->d->to);
+  r->hi = MIN4(t->hi, r->mo, t->d->to, r->d->to);
   r->nz = mad_bit_hcut(t->nz, r->hi);
   if (!r->nz) return mad_tpsa_reset0(r);
-  if ((r->lo=t->lo)) r->coef[0] = 0;
+  if ((r->lo=MIN(t->lo, r->hi))) r->coef[0] = 0;
   return r;
 }
 

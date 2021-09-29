@@ -29,8 +29,19 @@ mad_mono_str (ssz_t n, ord_t a[n], str_t s)
 {
   assert(a && s);
   ssz_t i = 0;
-  for (; i < n && s[i]; ++i) a[i] = s[i] - (s[i] > '9' ? 'A'-10 : '0');
+  for (; i < n && s[i]; ++i)
+    a[i] = s[i] - (s[i] > '9' ? (s[i] > 'Z' ? 'a'-36 : 'A'-10) : '0');
   return i;
+}
+
+str_t
+mad_mono_prt (ssz_t n, const ord_t a[n], char s[n+1])
+{
+  assert(a && s);
+  for (ssz_t i=0; i < n; ++i)
+    s[i] = a[i] + (a[i] > 9 ? (a[i] > 36 ? 'a'-36 : 'A'-10) : '0');
+  s[n] = '\0';
+  return s;
 }
 
 void
@@ -189,14 +200,14 @@ mad_mono_sort (ssz_t n, const ord_t a[n], idx_t idxs[n])
 // -- printing
 
 void
-mad_mono_print (ssz_t n, const ord_t m[n])
+mad_mono_print (ssz_t n, const ord_t a[n], FILE *fp_)
 {
-  assert(m);
+  assert(a);
+  if (!fp_) fp_ = stdout;
 
-  printf("[ ");
-  for (idx_t i=0; i < n; ++i)
-    printf("%d ", (int)m[i]);
-  printf("]");
+  fprintf(fp_, "[ ");
+  for (idx_t i=0; i < n; ++i) fprintf(fp_, "%d ", a[i]);
+  fprintf(fp_, "]");
 }
 
 // --- end --------------------------------------------------------------------o

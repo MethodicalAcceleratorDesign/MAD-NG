@@ -30,6 +30,8 @@
  o-----------------------------------------------------------------------------o
  */
 
+#include <stdio.h>
+
 #include "mad_defs.h"
 
 // --- types ------------------------------------------------------------------o
@@ -38,7 +40,9 @@ typedef unsigned char ord_t;
 
 // --- interface --------------------------------------------------------------o
 
-ssz_t mad_mono_str   (ssz_t n,       ord_t a[n], str_t s); // string mono "[0-9]*"
+ssz_t mad_mono_str   (ssz_t n,       ord_t a[n], str_t s);     // from string
+str_t mad_mono_prt   (ssz_t n, const ord_t a[n], char s[n+1]); // to   string
+
 void  mad_mono_fill  (ssz_t n,       ord_t a[n], ord_t v);
 void  mad_mono_copy  (ssz_t n, const ord_t a[n], ord_t r[n]);
 void  mad_mono_rcopy (ssz_t n, const ord_t a[n], ord_t r[n]);
@@ -62,7 +66,7 @@ void  mad_mono_cat   (ssz_t n, const ord_t a[n], ssz_t m, const ord_t b[m], ord_
 
 void  mad_mono_sort  (ssz_t n, const ord_t a[n], idx_t idxs[n]);
 
-void  mad_mono_print (ssz_t n, const ord_t a[n]);
+void  mad_mono_print (ssz_t n, const ord_t a[n], FILE *fp_);
 
 // --- end --------------------------------------------------------------------o
 
