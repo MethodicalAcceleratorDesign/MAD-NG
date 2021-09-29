@@ -371,7 +371,21 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
   assert(t && r_); DBGFUN(->); DBGTPSA(t); DBGTPSA(r_);
   ensure(pb >= -1 && pb <= 1, "invalid pb value %d, {-1, 0, 1} expected", pb);
 
-  if (t->d == r_->d && !t2r_) { FUN(copy)(t,r_); DBGFUN(<-); return; }
+  if (!t2r_) { // shortcut for compatible or almost compatible cases
+    const D *td = t->d, *rd = r_->d;
+
+    if (td == rd) { FUN(copy)(t,r_); DBGFUN(<-); return; }
+
+    if (td->nn == rd->nn && td->np == rd->np && td->po == rd->po && !td->uno && !rd->uno) {
+      FUN(copy0)(t, r_); // copy lo, hi(mo,to), nz(hi)
+      const idx_t *o2i = rd->ord2idx, *to2i = td->ord2idx;
+      if (o2i[r_->lo] == to2i[r_->lo] && o2i[r_->hi] == to2i[r_->hi]) {
+        for (idx_t i = o2i[r_->lo]; i < o2i[r_->hi+1]; ++i) // copy coefs
+          r_->coef[i] = t->coef[i];
+        DBGTPSA(r_); DBGFUN(<-); return;
+      }
+    }
+  }
 
   T *r = t == r_ ? GET_TMPX(r_) : FUN(reset0)(r_);
 
@@ -405,7 +419,7 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
     idx_t ri = mad_desc_idxm(r->d, rn, rm);       // get index ri of mono rm
 #if DEBUG > 2
     printf("cvt %d -> %d %c : ", ti+1, ri+1, ti==ri?' ' : SIGN1(sgn%2)<0?'-':'+');
-    mad_mono_print(tn, tm); printf(" -> "); mad_mono_print(rn, rm);
+    mad_mono_print(tn, tm, 0); printf(" -> "); mad_mono_print(rn, rm, 0);
     printf(" : %-.16e\n", t->coef[ti]); // works only for real, warn for complex
 #endif
     if (ri >= 0) FUN(seti)(r, ri, 0, SIGN1(sgn%2)*t->coef[ti]);
