@@ -24,6 +24,19 @@
 #include "mad_num.h"
 #include "mad_cst.h"
 
+// --- helpers ----------------------------------------------------------------o
+
+static inline const num_t*
+fact(void)
+{
+  static num_t f[171] = {1, 0};
+
+  if (!f[1])
+    for (int i=1; i < 171; ++i) f[i] = i*f[i-1];
+
+  return f;
+}
+
 // --- implementation ---------------------------------------------------------o
 
 #define CHKR  assert( r )
@@ -41,6 +54,28 @@ int mad_num_sign (num_t x)
 int mad_num_sign1 (num_t x)
 {
   return ((int[]){ -1, 1 })[!signbit(x)]; // -1, 1: works for ±0, ±inf and ±NaN
+}
+
+num_t mad_num_fact (int n)
+{
+  const num_t *f = fact();
+  int s = 1;
+
+  if (n < 0)
+    n = -n, s = n & 1 ? -s : s;
+
+  return n < 171 ? s*f[n] : s*INFINITY;
+}
+
+num_t mad_num_invfact (int n)
+{
+  const num_t *f = fact();
+  int s = 1;
+
+  if (n < 0)
+    n = -n, s = n & 1 ? -s : s;
+
+  return n < 171 ? s/f[n] : s*0.0;
 }
 
 num_t mad_num_sinc (num_t x)

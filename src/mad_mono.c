@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include "mad_num.h"
 #include "mad_mono.h"
 
 // --- implementation ---------------------------------------------------------o
@@ -95,6 +96,24 @@ mad_mono_ord (ssz_t n, const ord_t a[n])
   int s = 0;
   for (idx_t i=0; i < n; ++i) s += a[i];
   return s;
+}
+
+num_t
+mad_mono_pord (ssz_t n, const ord_t a[n])
+{
+  assert(a);
+  num_t p = 1;
+  for (idx_t i=0; i < n; ++i) p *= a[i];
+  return p;
+}
+
+num_t
+mad_mono_ford (ssz_t n, const ord_t a[n])
+{
+  assert(a);
+  num_t p = 1;
+  for (idx_t i=0; i < n; ++i) p *= mad_num_fact(a[i]);
+  return p;
 }
 
 log_t
