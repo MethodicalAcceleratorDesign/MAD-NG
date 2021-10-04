@@ -1187,9 +1187,7 @@ mad_desc_gtrunc (const D *d, ord_t to)
   ord_t old = d->to;
   D* d_ = (void*)d;
 
-  if (to == mad_tpsa_default) {
-    DBGFUN(<-); return d_->to = d->mo, old;
-  }
+  if (to == mad_tpsa_default) to = d->mo;
 
   ensure(to <= d->mo, "invalid order (exceeds maximum order)");
   DBGFUN(<-); return d_->to = to, old;
