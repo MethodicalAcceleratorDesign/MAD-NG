@@ -33,7 +33,7 @@ local assertf, errorf, printf, num2str, setkeys, tblcat          in MAD.utility
 local lbool                                                      in MAD.operator
 local twopi                                                      in MAD.constant
 local min, max, abs, sqrt, exp, log, sin, cos, tan, atan2,
-      sinh, cosh, real, cplx, fact, rangle                       in MAD.gmath
+      sinh, cosh, real, imag, cplx, fact, rangle                 in MAD.gmath
 
 local assert, table, type =
       assert, table, type
@@ -746,8 +746,6 @@ function gphys.normal (m, rdt_, nocheck_)
   -- already a normal form
   if m.status == 'Aset' then return end
 
-  local eps = 1e-14
-
   -- linear normal form -------------------------
 
   local A, rnk, info = gphys.normal1(m:get1(), nocheck_)
@@ -793,23 +791,23 @@ function gphys.normal (m, rdt_, nocheck_)
   local mono = monomial(#m)
 
   -- non-linear normal form iteration -----------
-                                                                                -- print('LD: Linearizing Map A1') ; a1:print(eps)
+                                                                                -- print('LD: Linearizing Map A1') ; a1:print(1e-13)
   -- first iteration, linear normal form in phasor basis
-  local m_n = ci * a1^-1 * m * a1 * c                                           -- print("LD: M1 = C^-1 * A1^-1 * M * A1 * C") ; m_n:print(eps)
+  local m_n = ci * a1^-1 * m * a1 * c                                           -- print("LD: M1 = C^-1 * A1^-1 * M * A1 * C") ; m_n:print(1e-13)
 
   -- retrieve the tunes
   local mu = cvector(#m_n/2)
-  for i=2,#m_n,2 do mu[i/2] = log( m_n[i-1]:get(i) ) end                        -- print('Tunes(mu)=') ; (mu/twopi):print(eps)
+  for i=2,#m_n,2 do mu[i/2] = log( m_n[i-1]:get(i) ) end                        -- print('Tunes(mu)=') ; (mu/twopi):print(1e-13)
 
   -- linear map (only) in phasors basis
-  local r1i = m:same():set1(m_n:get1():t()) -- transpose for map inverse        -- print("LD: R1I") ; r1i:print(eps)
+  local r1i = m:same():set1(m_n:get1():t()) -- transpose for map inverse        -- print("LD: R1I") ; r1i:print(1e-13)
 
   -- nonlinear iterations
   for ord=2,m:maxord() do                                                       -- print('LD: ORDER=', ord) ; io.stderr:write("LD: ORDER=", ord, '\n')
     -- project remaining orders on resonance basis
     local n_n = (m_n * r1i):lieexppb(t_op, -1)                                  -- print('LD: exp_inv(N_n)=') ; n_n:print(1e-13)
     -- compute kernel (pseudo hamiltonian) from vector field
-    local k_n = n_n:getord(ord):convert(tc):fld2vec() * cir --[[ /-2i --]]      -- print('LD: K_n=') ; k_n:print(eps)
+    local k_n = n_n:getord(ord):convert(tc):fld2vec() * cir --[[ /-2i --]]      -- print('LD: K_n=') ; k_n:print(1e-13)
     local f_pb, t_pb = k_n:same(), k_n:same()
     local i, v = 0
 
@@ -823,6 +821,14 @@ function gphys.normal (m, rdt_, nocheck_)
 
       local fp = mono:ford()
       if iham[i] then ham[ham[iham[i]]] = v end              -- ham terms
+
+      if option.debug >= 2 then
+        local fmt = option.numfmt ; option.numfmt = "% -.10e"
+        printf("HAM[%s]=%s  % .6f%s\n",
+               mono:tostring(), v:tostring(), imag(s)/twopi,
+               abs(imag(s)/twopi) < 1e-5 and " (*)" or "")
+        option.numfmt = fmt
+      end
 
       if s ~= 0 then
         v = v / (1 - exp(s))
@@ -844,7 +850,7 @@ function gphys.normal (m, rdt_, nocheck_)
     m_n = f_n:exppb((-f_n):exppb(id) * m_n)                                     -- print('LD: M_N= (after), order=', ord) m_n:print(1e-13) ; io.stderr:write("LD: M_N= (after), order=", ord, "\n")
   end
   -- the normalizing map A
-  local a = a1 * c * id:lieexppb(f_op) * ci                                     -- print('Normalizing map A=') ; a:print(eps)
+  local a = a1 * c * id:lieexppb(f_op) * ci                                     -- print('Normalizing map A=') ; a:print(1e-13)
 
   -- convert A back to M, i.e. real damap with full rank
   m = a:copy(tr):convert(m_)
