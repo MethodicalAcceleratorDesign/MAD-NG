@@ -1011,7 +1011,7 @@ mad_mat_det (const num_t x[], num_t *r, ssz_t n)
   mad_vec_copy(x, a, n*n, 1);
   dgetrf_(&nn, &nn, a, &nn, ipiv, &info);
 
-  if (info < 0) error("invalid input argument");
+  if (info < 0) error("Det: invalid input argument");
 
   int perm = 0;
   num_t det = 1;
@@ -1032,7 +1032,7 @@ mad_cmat_det (const cnum_t x[], cnum_t *r, ssz_t n)
   mad_cvec_copy(x, a, n*n, 1);
   zgetrf_(&nn, &nn, a, &nn, ipiv, &info);
 
-  if (info < 0) error("invalid input argument");
+  if (info < 0) error("Det: invalid input argument");
 
   int perm = 0;
   cnum_t det = 1;
@@ -1150,8 +1150,8 @@ mad_mat_div (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_
   mad_mat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
   mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(a);
 
-  if (info < 0) error("invalid input argument");
-  if (info > 0) error("unexpect lapack error");
+  if (info < 0) error("Div: invalid input argument");
+  if (info > 0) error("Div: unexpected lapack error");
 
   return rank;
 }
@@ -1186,8 +1186,8 @@ mad_mat_divm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, s
   mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
   mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(a);
 
-  if (info < 0) error("invalid input argument");
-  if (info > 0) error("unexpect lapack error");
+  if (info < 0) error("Div: invalid input argument");
+  if (info > 0) error("Div: unexpected lapack error");
 
   return rank;
 }
@@ -1222,8 +1222,8 @@ mad_cmat_div (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, 
   mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
   mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(a);
 
-  if (info < 0) error("invalid input argument");
-  if (info > 0) error("unexpect lapack error");
+  if (info < 0) error("Div: invalid input argument");
+  if (info > 0) error("Div: unexpected lapack error");
 
   return rank;
 }
@@ -1258,8 +1258,8 @@ mad_cmat_divm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz_t n, 
   mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
   mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(a);
 
-  if (info < 0) error("invalid input argument");
-  if (info > 0) error("unexpect lapack error");
+  if (info < 0) error("Div: invalid input argument");
+  if (info > 0) error("Div: unexpected lapack error");
 
   return rank;
 }
@@ -1287,8 +1287,8 @@ mad_mat_svd (const num_t x[], num_t u[], num_t s[], num_t v[], ssz_t m, ssz_t n)
   mad_free_tmp(wk); mad_free_tmp(ra);
   mad_mat_trans(u, u, m, m);
 
-  if (info < 0) error("invalid input argument");
-  if (info > 0) warn ("SVD failed to converge");
+  if (info < 0) error("SVD: invalid input argument");
+  if (info > 0) warn ("SVD: failed to converge");
 
   return info;
 }
@@ -1314,8 +1314,8 @@ mad_cmat_svd (const cnum_t x[], cnum_t u[], num_t s[], cnum_t v[], ssz_t m, ssz_
   mad_cmat_trans(u, u, m, m);
   mad_cvec_conj (v, v, n*n, 1);
 
-  if (info < 0) error("invalid input argument");
-  if (info > 0) warn ("SVD failed to converge");
+  if (info < 0) error("SVD: invalid input argument");
+  if (info > 0) warn ("SVD: failed to converge");
 
   return info;
 }
@@ -1346,7 +1346,7 @@ mad_mat_solve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ss
   mad_free_tmp(wk); mad_free_tmp(ta); mad_free_tmp(tb);
 
   if (info < 0) error("Solve: invalid input argument");
-  if (info > 0) warn ("Solve: unexpect lapack error");
+  if (info > 0) warn ("Solve: unexpected lapack error");
 
   return rank;
 }
@@ -1376,7 +1376,7 @@ mad_cmat_solve (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t n
   mad_free_tmp(wk); mad_free_tmp(ta); mad_free_tmp(tb);
 
   if (info < 0) error("Solve: invalid input argument");
-  if (info > 0) warn ("Solve: unexpect lapack error");
+  if (info > 0) warn ("Solve: unexpected lapack error");
 
   return rank;
 }
@@ -1410,7 +1410,7 @@ mad_mat_ssolve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, s
   mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(ts);
 
   if (info < 0) error("SSolve: invalid input argument");
-  if (info > 0) warn ("SSolve failed to converge");
+  if (info > 0) warn ("SSolve: failed to converge");
 
   return rank;
 }
@@ -1608,8 +1608,8 @@ mad_mat_eigen (const num_t x[], cnum_t w[], num_t vl[], num_t vr[], ssz_t n)
   mad_mat_trans(vl, vl, n, n);
   mad_mat_trans(vr, vr, n, n);
 
-  if (info < 0) error("invalid input argument");
-  if (info > 0) warn ("eigen failed to compute all eigenvalues");
+  if (info < 0) error("Eigen: invalid input argument");
+  if (info > 0) warn ("Eigen: failed to compute all eigenvalues");
 
   return info;
 }
@@ -1633,8 +1633,8 @@ mad_cmat_eigen (const cnum_t x[], cnum_t w[], cnum_t vl[], cnum_t vr[], ssz_t n)
   mad_cmat_trans(vl, vl, n, n);
   mad_cmat_trans(vr, vr, n, n);
 
-  if (info < 0) error("invalid input argument");
-  if (info > 0) warn ("eigen failed to compute all eigenvalues");
+  if (info < 0) error("Eigen: invalid input argument");
+  if (info > 0) warn ("Eigen: failed to compute all eigenvalues");
 
   return info;
 }
