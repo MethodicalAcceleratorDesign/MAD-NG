@@ -137,7 +137,7 @@ FUN(minv) (ssz_t sa, const T *ma[sa], T *mc[sa])
   split_and_inv(d, ma, lininv, nonlin);
 
   // iteratively compute higher orders of the inverse
-  // MC (OF ORDER I) = AL^-1 o [ I - ANL (NONLINEAR) o MC (OF ORDER I-1) ]
+  // mc (of order i) = al^-1 (linear) o [ i - anl (nonlinear) o mc (of order i-1) ]
 
   for (idx_t i = 0; i < sa; ++i)
     FUN(copy)(lininv[i], mc[i]);
