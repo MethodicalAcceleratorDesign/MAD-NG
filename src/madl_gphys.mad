@@ -44,9 +44,9 @@ local I6  = matrix(6):eye()
 local I56 = matrix(6):set(5,5,1):set(6,6,1)
 local S4  = matrix(4):symp() -- [4x4] symplectic matrix S
 local S6  = matrix(6):symp() -- [6x6] symplectic matrix S
-                -- i,j,k,l, i,j,k,l, i,j,k,l, i,j,k,l,
-local blkidx   = { 3,1,1,3, 3,3,1,1 } --, 5,1,1,5, 5,3,3,5 } -- keep order!
-local blkidx_n = #blkidx
+
+              -- i,j,k,l, i,j,k,l, i,j,k,l, i,j,k,l,
+local blkidx = { 3,1,1,3, 3,3,1,1 } --, 5,1,1,5, 5,3,3,5 } -- keep order!
 
 -- implementation -------------------------------------------------------------o
 
@@ -305,6 +305,26 @@ function gphys.has_cpl (R, cpltol_)
   return v >= tol
 end
 
+-- similar to has_dpt for damaps, checking for dpt in the linear part
+-- note that rnk=4 or 6 while dim=2,4,5,6 >= rnk and siz=2,... >= dim
+
+function gphys.rnk_dim (m, dptol_)
+  assert(is_damap(m), "invalid argument #1 (damap expected)")
+
+  local dim = min(#m,6)
+  local rnk = dim
+  local pt in m
+
+  if rnk == 6 and pt ~= nil then
+    local i, tol = 2, dptol_ or dpt_tol
+    if abs(pt:get(7) - 1) <= tol then
+      while i <= 6 and abs(pt:get(i)) <= tol do i = i+1 end
+    end
+    rnk = i < 7 and 4 or 6
+  end
+  return rnk, dim, m.__td.nn
+end
+
 -- helpers --------------------------------------------------------------------o
 
 -- conversion between energy deviation and momentum or beta
@@ -377,12 +397,12 @@ local stab_tol in phystol
 
 function gphys.make_stable (R)
   chkeigsiz(R)
-  local get, set, n = R.get, R.set, R.nrow
+  local get, set, nrow in R
 
   -- check trace stability
-  for i=1,n-1,2 do
-    local tr = abs(get(R,i,i)+get(R,i+1,i+1))
-    if tr > 2 then warn("Tr(R)>2 for plane %d, unstable motion!", i) end
+  for i=2,nrow,2 do
+    local tr = abs(get(R,i-1,i-1)+get(R,i,i))
+    if tr > 2 then warn("Tr(R)>2 for plane %d, unstable motion!", i/2) end
   end
 
   -- stabilize the one-turn-map to avoid unstable eigenvectors in case of
@@ -390,8 +410,8 @@ function gphys.make_stable (R)
   -- eps, hence it will remove only numerical noise as the one-turn-map is
   -- supposed to be around the identity where eps represents both a relative
   -- and an absolute numerical error.
-  for idx=1,blkidx_n,4 do
-    if blkidx[idx] > n then break end
+  for idx=1,#blkidx,4 do
+    if blkidx[idx] > nrow then break end
     local i,j,k,l = blkidx[idx], blkidx[idx+1], blkidx[idx+2], blkidx[idx+3]
     local mx = max(abs(get(R,i  ,j)), abs(get(R,i  ,j+1)),
                    abs(get(R,i+1,j)), abs(get(R,i+1,j+1)),
@@ -609,7 +629,7 @@ end
 -- linear normal form ---------------------------------------------------------o
 
 -- check one-turn map linear normalisation
--- check that N = (1/A * R * A) [= Abar * R * A] contains only rotations
+-- check that N = (A^-1 * R * A) [= Abar * R * A] contains only rotations
 
 local nrm_tol in phystol
 
@@ -719,6 +739,29 @@ function gphys.normal1 (R, nocheck_)
   end
 
   return A, rnk, info
+end
+
+-- linear normal form (only) --------------------------------------------------o
+
+function gphys.normal1_new (m, order_, dptol_)
+  assert(is_damap(m), "invalid argument #1 (damap expected)")
+
+  -- detect dimension and rank of the system
+  local rnk, dim, siz = gphys.rnk_dim(m, dptol_)
+
+  print("LD: rnk=", rnk, "dim=", dim, "siz=", siz)
+
+  -- select
+  local v = m:copy()
+  for i=1,rnk do v[i]:set(i+1, 1, -1) end     -- substract I
+  for i=rnk+1,siz do v[i]:setvar(nil, i) end  -- identity
+  v:cutord((order_ or 0) + 1, v)
+
+  local a1 = v^-1 * m
+
+  print('LD: Linearizing Map A1') ; a1:print(1e-13)
+
+  return a1, rnk
 end
 
 -- full linear and non-linear normal form in maps -----------------------------o
