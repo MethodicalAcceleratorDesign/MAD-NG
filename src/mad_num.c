@@ -26,15 +26,15 @@
 
 // --- helpers ----------------------------------------------------------------o
 
-static inline const num_t*
-fact(void)
+static inline num_t
+fact(int n)
 {
   static num_t f[171] = {1, 0};
 
   if (!f[1])
     for (int i=1; i < 171; ++i) f[i] = i*f[i-1];
 
-  return f;
+  return n < 171 ? f[n] : INFINITY;
 }
 
 // --- implementation ---------------------------------------------------------o
@@ -58,24 +58,20 @@ int mad_num_sign1 (num_t x)
 
 num_t mad_num_fact (int n)
 {
-  const num_t *f = fact();
   int s = 1;
 
-  if (n < 0)
-    n = -n, s = n & 1 ? -s : s;
+  if (n < 0) n = -n, s = n & 1 ? -s : s;
 
-  return n < 171 ? s*f[n] : s*INFINITY;
+  return s*fact(n);
 }
 
 num_t mad_num_invfact (int n)
 {
-  const num_t *f = fact();
   int s = 1;
 
-  if (n < 0)
-    n = -n, s = n & 1 ? -s : s;
+  if (n < 0) n = -n, s = n & 1 ? -s : s;
 
-  return n < 171 ? s/f[n] : s*0.0;
+  return s/fact(n);
 }
 
 num_t mad_num_sinc (num_t x)
