@@ -31,7 +31,7 @@ mad_mono_str (ssz_t n, ord_t a[n], str_t s)
   assert(a && s);
   ssz_t i = 0;
   for (; i < n && s[i]; ++i)
-    a[i] = s[i] - (s[i] > '9' ? (s[i] > 'Z' ? 'a'-36 : 'A'-10) : '0');
+    a[i] = s[i] - (s[i] < 'A' ? '0' : (s[i] < 'a' ? 'A'-10 : 'a'-36));
   return i;
 }
 
@@ -40,7 +40,7 @@ mad_mono_prt (ssz_t n, const ord_t a[n], char s[n+1])
 {
   assert(a && s);
   for (ssz_t i=0; i < n; ++i)
-    s[i] = a[i] + (a[i] > 9 ? (a[i] > 36 ? 'a'-36 : 'A'-10) : '0');
+    s[i] = a[i] + (a[i] < 10 ? '0' : (a[i] < 36 ? 'A'-10 : 'a'-36));
   s[n] = '\0';
   return s;
 }
