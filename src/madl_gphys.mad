@@ -264,24 +264,31 @@ end
 
 local dpt_tol in phystol
 
-function gphys.has_dpt (R, dptol_)
+function gphys.has_dpt (m, dptol_)
   local tol = dptol_ or dpt_tol
-  assert(is_matrix(R)    , "invalid argument #1 (matrix expected)")
   assert(is_positive(tol), "invalid argument #2 (positive number expected)")
 
-  local nr, nc = R:sizes()
-  if nr == 4 and nc == 4 then return false end
+  if is_matrix(m) then
+    if min(6, m:sizes()) == 6 then
+      local i = 1
+      if abs(m:get(6,6) - 1) <= tol then
+        while i <= 5 and abs(m:get(6,i)) <= tol do i = i+1 end
+      end
+      return i ~= 6
+    end
 
-  assert(nr >= 6 and nc >= 6, "invalid one-turn map (6D+ matrix expected)")
-
-  local get = R.get
-  local nodpt = abs(get(R,6,6) - 1) <= tol
-
-  for i=1,5 do
-    nodpt = nodpt and abs(get(R,6,i)) <= tol
+  elseif is_damap(m) then
+    local pt in m
+    if min(6, #m) == 6 then
+      local i = 2
+      if abs(pt:get(7) - 1) <= tol then
+        while i <= 6 and abs(pt:get(i)) <= tol do i = i+1 end
+      end
+      return i ~= 7
+    end
   end
 
-  return not nodpt
+  error("invalid argument #1 (matrix or damap expected)")
 end
 
 -- check for coupling blocks in one-turn map using cplg_tol
@@ -293,36 +300,14 @@ function gphys.has_cpl (R, cpltol_)
   assert(is_matrix(R)    , "invalid argument #1 (matrix expected)")
   assert(is_positive(tol), "invalid argument #2 (positive number expected)")
 
-  local get, n = R.get, R.nrow
-
   -- check only transverse coupling
-  if blkidx[1] > n then return false end
+  if blkidx[1] > R.nrow then return false end
   local i,j,k,l = blkidx[1], blkidx[2], blkidx[3], blkidx[4]
-  local v = max(abs(get(R,i  ,j)), abs(get(R,i  ,j+1)),
-                abs(get(R,i+1,j)), abs(get(R,i+1,j+1)),
-                abs(get(R,k  ,l)), abs(get(R,k  ,l+1)),
-                abs(get(R,k+1,l)), abs(get(R,k+1,l+1)))
+  local v = max(abs(R:get(i  ,j)), abs(R:get(i  ,j+1)),
+                abs(R:get(i+1,j)), abs(R:get(i+1,j+1)),
+                abs(R:get(k  ,l)), abs(R:get(k  ,l+1)),
+                abs(R:get(k+1,l)), abs(R:get(k+1,l+1)))
   return v >= tol
-end
-
--- similar to has_dpt for damaps, checking for dpt in the linear part
--- note that rnk=4 or 6 while dim=2,4,5,6 >= rnk and siz=2,... >= dim
-
-function gphys.rnk_dim (m, dptol_)
-  assert(is_damap(m), "invalid argument #1 (damap expected)")
-
-  local dim = min(#m,6)
-  local rnk = dim
-  local pt in m
-
-  if rnk == 6 and pt ~= nil then
-    local i, tol = 2, dptol_ or dpt_tol
-    if abs(pt:get(7) - 1) <= tol then
-      while i <= 6 and abs(pt:get(i)) <= tol do i = i+1 end
-    end
-    rnk = i < 7 and 4 or 6
-  end
-  return rnk, dim, m.__td.nn
 end
 
 -- helpers --------------------------------------------------------------------o
@@ -743,25 +728,42 @@ end
 
 -- linear normal form (only) --------------------------------------------------o
 
-function gphys.normal1_new (m, order_, dptol_)
+function gphys.normal1_new (m, dptol_)
+  local dpt = gphys.has_dpt(m, dptol_)
+  local rnk = dpt and 6 or 4
+
+  if is_damap(m) then
+    local v = m:copy()
+    for i=1,rnk do v[i]:set(i+1, 1, -1) end     -- substract identity to variables
+    for i=rnk+1,siz do v[i]:setvar(nil, i) end  -- set parameters to identity
+
+    v:cutord(2, v)
+
+    local x = v:same()                          -- set variables to zero
+    for i=rnk+1,siz do x[i]:setvar(nil, i) end  -- set parameters to identity
+
+    local a1 = v^-1 * x
+
+    for i=1,rnk do a1[i]:set(i+1, 1, 1) end     -- add identity to variables
+
+    print('LD: Linearizing Map A1(damap)') ; a1:print(1e-13)
+
+    return a1, rnk
+
+  elseif is_matrix(m) then
+    local R = m:get1()
+    local D4 = R:getsub(r4, 6)
+    local R4 = R:getsub(r4,r4)
+    local C4, rnk = (I4-R4):solve(D4)
+    R:eye():setsub(r4,6,C4)
+    local a1 = m:same():set1(R)
+
+    print('LD: Linearizing Map A1(matrix)') ; a1:print(1e-13)
+
+    return a1, rnk
+  end
+
   assert(is_damap(m), "invalid argument #1 (damap expected)")
-
-  -- detect dimension and rank of the system
-  local rnk, dim, siz = gphys.rnk_dim(m, dptol_)
-
-  print("LD: rnk=", rnk, "dim=", dim, "siz=", siz)
-
-  -- select
-  local v = m:copy()
-  for i=1,rnk do v[i]:set(i+1, 1, -1) end     -- substract I
-  for i=rnk+1,siz do v[i]:setvar(nil, i) end  -- identity
-  v:cutord((order_ or 0) + 1, v)
-
-  local a1 = v^-1 * m
-
-  print('LD: Linearizing Map A1') ; a1:print(1e-13)
-
-  return a1, rnk
 end
 
 -- full linear and non-linear normal form in maps -----------------------------o
@@ -783,7 +785,7 @@ function gphys.phasor (c, inv_)
   return c, r
 end
 
-function gphys.normal (m, rdt_, nocheck_)
+function gphys.normal (m, nocheck_)
   assert(is_damap(m), "invalid argument #1 (damap expected)")
 
   -- already a normal form
@@ -821,16 +823,10 @@ function gphys.normal (m, rdt_, nocheck_)
   local c , cr  = gphys.phasor(m:same(),  1)
   local ci, cir = gphys.phasor(m:same(), -1) -- c^-1
 
-  -- prepare monomials (if any)
-  local rdt, ianh, iham, ignf = rdt_ or {}, {}, {}, {}
-  local anh, ham, gnf in rdt
-  for i,mn in ipairs(anh or {}) do ianh[m[1]:get_idx(mn)] = i end
-  for i,mn in ipairs(ham or {}) do iham[m[1]:get_idx(mn)] = i end
-  for i,mn in ipairs(gnf or {}) do ignf[m[1]:get_idx(mn)] = i end
-
   -- prepare factored Lie representation of A and N
   local tc = cdamap{nv=rnk, mo=mo+1, np=np, po=po, vn=m.__vn}   -- tmp for conv.
   local f_op, t_op, id = {m:same()}, {m:same()}, m:same():eye() -- identity map
+  local ham, gnf, anh = {}, {}, {}
   local mono = monomial(#m)
 
   -- non-linear normal form iteration -----------
@@ -862,8 +858,9 @@ function gphys.normal (m, rdt_, nocheck_)
       local s = 0
       for j=2,#mono,2 do s = s + (mono[j]-mono[j-1]) * mu[j/2] end
 
-      local fp = mono:ford()
-      if iham[i] then ham[ham[iham[i]]] = v end              -- ham terms
+      -- local fp = mono:ford()        -- "denormalized" by the factorials?
+      local ms = mono:tostring()
+      ham[#ham+1], ham[ms] = ms, v               -- ham terms
 
       if option.debug >= 2 then
         local fmt = option.numfmt ; option.numfmt = "% -.10e"
@@ -876,10 +873,10 @@ function gphys.normal (m, rdt_, nocheck_)
       if s ~= 0 then
         v = v / (1 - exp(s))
         f_pb:set(mono, 0, v)
-        if ignf[i] then gnf[gnf[ignf[i]]] = -v*fp end        -- gnf terms
+        gnf[#gnf+1], gnf[ms] = ms, -v            -- gnf terms
       else
         t_pb:set(mono, 0, v)
-        if ianh[i] then anh[anh[ianh[i]]] = -v/twopi*fp end  -- anh terms
+        anh[#anh+1], anh[ms] = ms, -v/twopi      -- anh terms
       end
     end
 
@@ -898,7 +895,8 @@ function gphys.normal (m, rdt_, nocheck_)
   -- convert A back to M, i.e. real damap with full rank
   m = a:copy(tr):convert(m_)
 
-  return m, a, f_op, t_op -- return A in M (a = complex rank-reduced version)
+  -- return m, RDTs, a (= complex rank-reduced m), f and t Lie operators
+  return m, {ham=ham, gnf=gnf, anh=anh}, a, f_op, t_op
 end
 
 -- beta0 block conversion -----------------------------------------------------o
