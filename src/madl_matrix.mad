@@ -1848,12 +1848,11 @@ end
 
 MR.__unm  = \x,_,r_ -> x:map (   unm, r_) -- note: _ is dummy arg, see Lua specs.
 MR.__mod  = \x,y,r_ -> x:map2(y, mod, r_) -- for now
-MR.__pow  = \x,y,r_ -> x:map2(y, pow, r_) -- for now
 MR.__emod = \x,y,r_ -> x:map2(y, mod, r_) -- incomplete
 MR.__epow = \x,y,r_ -> x:map2(y, pow, r_) -- incomplete
 
-MI.__unm, MI.__mod, MI.__pow, MI.__emod, MI.__epow =
-MR.__unm, MR.__mod, MR.__pow, MR.__emod, MR.__epow
+MI.__unm, MI.__mod, MI.__emod, MI.__epow =
+MR.__unm, MR.__mod, MR.__emod, MR.__epow
 
 --[[ TODO
   mexp, mlog, msqrt, mpow using Padé approximants or eigen systems
@@ -2352,6 +2351,38 @@ function MC.__ediv_cpx (x, y, r)                 -- cpx ./ cmat => cpx / cvec
 end
 
 MI.__ediv = MI.__div
+
+-- pow (for now)
+
+function MR.__pow (x, n, r)
+  assert(is_integer(n), "invalid argument #2 (integer expected)")
+  if n == 0 then                            -- mat^0  => eye
+    return (r or x:same()):eye()
+  elseif n == 1 then                        -- mat^1  => copy
+    return x:copy(r)
+  elseif n == 2 then                        -- mat^2  => mat * mat
+    return x:mul(x,r)
+  elseif n == -1 then                       -- mat^-1 => mat:inv()
+    return x:inv(r)
+  elseif n == -2 then                       -- mat^-2 => mat:inv()^2
+    return x:mul(x,r):inv(r)
+  end
+
+  local n, t = abs(n), n < 0 and x:inv() or x:copy()
+  r = (r or x:same()):eye()
+
+  while true do
+    if n%2 == 1 then r = r:mul(t,r) end     -- r = r * t
+    n = floor(n/2)
+    if n == 0 then break end
+    t:mul(t,t)                              -- t = t^2
+  end
+
+  return r
+end
+
+MC.__pow = MR.__pow -- fully polymorphic
+MI.__pow = MR.__pow -- raise an error for n<0
 
 -- kadd (in place)
 
