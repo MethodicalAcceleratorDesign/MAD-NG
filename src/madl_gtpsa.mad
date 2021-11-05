@@ -74,18 +74,18 @@ struct desc { // warning: must be kept identical to C definition
 struct tpsa { // warning: must be kept identical to C definition and ctpsa
   const desc_t *const d;  // ptr to tpsa descriptor
   int32_t           uid;  // special "user" field for external use (padding)
-
   const ord_t mo, lo, hi; // max ord (allocated), lowest/highest used ord
   const bit_t nz;         // zero/non-zero homogeneous polynomials
+  const char  nam[16];    // tpsa name
   const num_t coef[?];
 };
 
 struct ctpsa { // warning: must be kept identical to C definition and tpsa
   const desc_t *const d;  // ptr to cptsa descriptor
   int32_t           uid;  // special "user" field for external use (padding)
-
   const ord_t mo, lo, hi; // max ord (allocated), lowest/highest used ord
   const bit_t nz;         // zero/non-zero homogeneous polynomials
+  const char   nam[16];   // tpsa name
   const cnum_t coef[?];
 };
 ]]
@@ -250,8 +250,14 @@ MR.maxlen = \x     -> _C.mad_desc_maxlen(x.d)
 MR.ordlen = \x,mo_ -> _C.mad_desc_ordlen(x.d,mo_ or x.mo)
 MR.gtrunc = \x,to_ -> _C.mad_desc_gtrunc(x.d,to_ or _C.mad_tpsa_same)
 
-MR.isvalid = \x -> _C.mad_tpsa_isvalid (x)
-MC.isvalid = \x -> _C.mad_ctpsa_isvalid(x)
+MR.nam    = \x     -> _C.mad_tpsa_nam (x)
+MC.nam    = \x     -> _C.mad_ctpsa_nam(x)
+
+MR.setnam = \x,s   => _C.mad_tpsa_setnam (x,s) end
+MC.setnam = \x,s   => _C.mad_ctpsa_setnam(x,s) end
+
+MR.isvalid = \x    -> _C.mad_tpsa_isvalid (x)
+MC.isvalid = \x    -> _C.mad_ctpsa_isvalid(x)
 
 MR.debug = \x,nam_,fnam_,lin_,fil_ => _C.mad_tpsa_debug (x,nam_,fnam_,lin_ or 0,fil_) end
 MC.debug = \x,nam_,fnam_,lin_,fil_ => _C.mad_ctpsa_debug(x,nam_,fnam_,lin_ or 0,fil_) end
@@ -1745,8 +1751,6 @@ end
 
 -- I/O ------------------------------------------------------------------------o
 
-local cbuf = chr_arr(12) -- GTPSA name
-
 function MR.write (x, filnam_, name_, eps_, nohdr_)
   if is_number(name_) and is_nil(eps_) then
     name_, eps_ = nil, name_ -- right shift
@@ -1775,21 +1779,22 @@ function MR.print (x, name_, eps_, nohdr_)
   return x:write(nil, name_, eps_, nohdr_)
 end
 
-function MR.read (x_, filnam_, type_)
-  local file = openfile(filnam_, 'r', '.dat')
-  int[0] = type_ or -1 -- expected type (0:R, 1:C, -1:detect)
+local cbuf = chr_arr(16) -- GTPSA name, see NAMSZ
 
-  local d, x, s = _C.mad_tpsa_scan_hdr(int, cbuf, file)
+function MR.read (x_, filnam_, kind_)
+  local file = openfile(filnam_, 'r', '.dat')
+  int[0] = kind_ or -1 -- expected type (0:R, 1:C, -1:detect)
+
+  local d, x = _C.mad_tpsa_scan_hdr(int, cbuf, file)
   if d ~= nil then
     if int[0] == 1
-    then x = ctpsa(d) ; _C.mad_ctpsa_scan_coef(x, file)
-    else x = tpsa (d) ; _C.mad_tpsa_scan_coef (x, file)
+    then x = ctpsa(d) _C.mad_ctpsa_setnam(x,cbuf) _C.mad_ctpsa_scan_coef(x,file)
+    else x = tpsa (d) _C.mad_tpsa_setnam (x,cbuf) _C.mad_tpsa_scan_coef (x,file)
     end
   end
-  s = strtrim(ffi.string(cbuf))
 
   if is_string(filnam_) then file:close() end
-  return x, s -- return nil if no TPSA found, s contains error or read name
+  return x -- return nil if no GTPSA found
 end
 
 -- metamethods ----------------------------------------------------------------o

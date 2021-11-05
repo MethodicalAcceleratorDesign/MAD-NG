@@ -19,6 +19,7 @@
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 #include <assert.h>
 #include <limits.h>
 
@@ -150,6 +151,14 @@ FUN(uid) (T *t, int32_t uid_) // set uid if != 0
   DBGFUN(<-); return ret;
 }
 
+str_t
+FUN(nam) (const T *t)
+{
+  assert(t); DBGFUN(->); DBGTPSA(t);
+  str_t ret = t->nam;
+  DBGFUN(<-); return ret;
+}
+
 ssz_t
 FUN(len) (const T *t)
 {
@@ -206,7 +215,7 @@ FUN(init) (T *t, const D *d, ord_t mo)
   if (mo == mad_tpsa_default) mo = d->mo;
   else ensure(mo <= d->mo, "GTPSA order exceeds descriptor maximum order");
 
-  t->d = d, t->uid = 0, t->mo = mo;
+  t->d = d, t->uid = 0, t->mo = mo, t->nam[0] = 0;
   FUN(reset0)(t);
 
   DBGFUN(<-); return t;
@@ -226,7 +235,7 @@ FUN(newd) (const D *d, ord_t mo)
 
   ssz_t nc = mad_desc_ordlen(d, mo);
   T *t = mad_malloc(sizeof(T) + nc * sizeof(NUM));
-  t->d = d, t->uid = 0, t->mo = mo;
+  t->d = d, t->uid = 0, t->mo = mo, t->nam[0] = 0;
   FUN(reset0)(t);
 
   DBGFUN(<-); return t;
@@ -255,6 +264,14 @@ FUN(clear) (T *t)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
   FUN(reset0)(t);
+  DBGFUN(<-);
+}
+
+void
+FUN(setnam) (T *t, str_t nam)
+{
+  assert(t); DBGFUN(->); DBGTPSA(t);
+  strncpy(t->nam, nam, NAMSZ-1), t->nam[NAMSZ-1] = 0;
   DBGFUN(<-);
 }
 

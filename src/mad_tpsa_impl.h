@@ -27,11 +27,11 @@
 
 struct tpsa {   // warning: must be identical to LuaJIT def (see mad_cmad.mad)
   const desc_t *d;  // ptr to tpsa descriptor
-  int32_t     uid;  // special user field for external use (padding)
-
+  int32_t     uid;  // special user field for external use (and padding)
   ord_t mo, lo, hi; // max ord (allocated), lowest/highest used ord
   bit_t nz;         // zero/non-zero homogeneous polynomials
-  num_t coef[]; // warning: must be identical to ctpsa up to nz included
+  char  nam[NAMSZ]; // tpsa name
+  num_t coef[]; // warning: must be identical to ctpsa up to coef excluded
 };
 
 // --- macros -----------------------------------------------------------------o

@@ -57,6 +57,7 @@ const
 desc_t*  mad_ctpsa_desc    (const ctpsa_t *t);
 int32_t  mad_ctpsa_uid     (      ctpsa_t *t, int32_t uid_); // set uid if != 0
 ssz_t    mad_ctpsa_len     (const ctpsa_t *t);
+str_t    mad_ctpsa_nam     (const ctpsa_t *t);
 ord_t    mad_ctpsa_ord     (const ctpsa_t *t);
 ord_t    mad_ctpsa_ordv    (const ctpsa_t *t, ...);        // max order of all
 ord_t    mad_ctpsa_ordn    (ssz_t n, const ctpsa_t *t[n]); // max order of all
@@ -68,6 +69,7 @@ void     mad_ctpsa_cutord  (const ctpsa_t *t, ctpsa_t *r, int   ord); // ord..mo
 void     mad_ctpsa_convert (const ctpsa_t *t, ctpsa_t *r, ssz_t n, idx_t t2r_[n], int pb);
 void     mad_ctpsa_setvar  (      ctpsa_t *t, cnum_t v, idx_t iv_, cnum_t scl_);
 void     mad_ctpsa_setvar_r(      ctpsa_t *t, num_t v_re, num_t v_im, idx_t iv_, num_t scl_re_, num_t scl_im_);
+void     mad_ctpsa_setnam  (      ctpsa_t *t, str_t nam);
 void     mad_ctpsa_clear   (      ctpsa_t *t);
 
 // real, imaginary, norm, phase, conversion
@@ -249,10 +251,12 @@ void     mad_ctpsa_translate(ssz_t na, const ctpsa_t *ma[na], ssz_t nb, const cn
 void     mad_ctpsa_eval     (ssz_t na, const ctpsa_t *ma[na], ssz_t nb, const cnum_t   tb[nb], cnum_t   tc[nb]);
 
 // I/O
+#define NAMSZ 16
+
 void     mad_ctpsa_print    (const ctpsa_t *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_);
-ctpsa_t* mad_ctpsa_scan     (                  char  name_[12],                     FILE *stream_);
+ctpsa_t* mad_ctpsa_scan     (                                                       FILE *stream_);
 const
-desc_t*  mad_ctpsa_scan_hdr (      int *kind_, char  name_[12],                     FILE *stream_);
+desc_t*  mad_ctpsa_scan_hdr (      int *kind_, char  name_[NAMSZ],                  FILE *stream_);
 void     mad_ctpsa_scan_coef(      ctpsa_t *t,                                      FILE *stream_);
 void     mad_ctpsa_debug    (const ctpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
 log_t    mad_ctpsa_isvalid  (const ctpsa_t *t);

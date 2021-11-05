@@ -57,6 +57,7 @@ const
 desc_t* mad_tpsa_desc    (const tpsa_t *t);
 int32_t mad_tpsa_uid     (      tpsa_t *t, int32_t uid_); // set uid if != 0
 ssz_t   mad_tpsa_len     (const tpsa_t *t);
+str_t   mad_tpsa_nam     (const tpsa_t *t);
 ord_t   mad_tpsa_ord     (const tpsa_t *t);
 ord_t   mad_tpsa_ordv    (const tpsa_t *t, ...);        // max order of all
 ord_t   mad_tpsa_ordn    (ssz_t n, const tpsa_t *t[n]); // max order of all
@@ -67,6 +68,7 @@ void    mad_tpsa_getord  (const tpsa_t *t, tpsa_t *r, ord_t ord);
 void    mad_tpsa_cutord  (const tpsa_t *t, tpsa_t *r, int   ord); // ord..mo = 0 or 0..-ord=0
 void    mad_tpsa_convert (const tpsa_t *t, tpsa_t *r, ssz_t n, idx_t t2r_[n], int pb);
 void    mad_tpsa_setvar  (      tpsa_t *t, num_t v, idx_t iv_, num_t scl_);
+void    mad_tpsa_setnam  (      tpsa_t *t, str_t nam);
 void    mad_tpsa_clear   (      tpsa_t *t);
 
 // indexing / monomials (return idx_t = -1 if invalid)
@@ -181,10 +183,12 @@ void    mad_tpsa_translate(ssz_t na, const tpsa_t *ma[na], ssz_t nb, const num_t
 void    mad_tpsa_eval     (ssz_t na, const tpsa_t *ma[na], ssz_t nb, const num_t   tb[nb], num_t   tc[nb]);
 
 // I/O
+#define NAMSZ 16
+
 void    mad_tpsa_print    (const tpsa_t *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_);
-tpsa_t* mad_tpsa_scan     (                 char  name_[12],                     FILE *stream_);
+tpsa_t* mad_tpsa_scan     (                                                      FILE *stream_);
 const
-desc_t* mad_tpsa_scan_hdr (     int *kind_, char  name_[12],                     FILE *stream_);
+desc_t* mad_tpsa_scan_hdr (     int *kind_, char  name_[NAMSZ],                  FILE *stream_);
 void    mad_tpsa_scan_coef(      tpsa_t *t,                                      FILE *stream_);
 void    mad_tpsa_debug    (const tpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
 log_t   mad_tpsa_isvalid  (const tpsa_t *t);
