@@ -424,6 +424,12 @@ module GTPSA
       type(c_ptr), value, intent(in) :: tpsa
     end function mad_tpsa_len
 
+    function mad_tpsa_nam(tpsa) result(nam) bind(C)
+      import ; implicit none
+      character(c_char) :: nam(*)               ! tpsa string name (max 15 char)
+      type(c_ptr), value, intent(in) :: tpsa
+    end function mad_tpsa_nam
+
     function mad_tpsa_ord(tpsa) result(ord) bind(C)
       import ; implicit none
       integer(c_ord_t) :: ord                   ! tpsa order
@@ -482,6 +488,12 @@ module GTPSA
       real(c_num_t), value, intent(in) :: v, scl_ ! 0th and 1st order values
       integer(c_idx_t), value, intent(in) :: iv_  ! variable index
     end subroutine mad_tpsa_setvar                ! equiv. to set0 if iv=0
+
+    subroutine mad_tpsa_setnam(tpsa,nam) bind(C)
+      import ; implicit none
+      type(c_ptr), value :: tpsa
+      character(c_char), intent(in) :: nam(*)     ! tpsa string name (max 15 char)
+    end subroutine mad_tpsa_setnam
 
     subroutine mad_tpsa_clear(tpsa) bind(C)
       import ; implicit none
