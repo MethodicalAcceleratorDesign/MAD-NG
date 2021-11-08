@@ -426,7 +426,7 @@ module GTPSA
 
     function mad_tpsa_nam(tpsa) result(nam) bind(C)
       import ; implicit none
-      character(c_char) :: nam(*)               ! tpsa string name (max 15 char)
+      type(c_ptr) :: nam                        ! tpsa name (nul term. C str)
       type(c_ptr), value, intent(in) :: tpsa
     end function mad_tpsa_nam
 
@@ -492,7 +492,7 @@ module GTPSA
     subroutine mad_tpsa_setnam(tpsa,nam) bind(C)
       import ; implicit none
       type(c_ptr), value :: tpsa
-      character(c_char), intent(in) :: nam(*)     ! tpsa string name (max 15 char)
+      character(c_char), intent(in) :: nam(*)     ! tpsa name (nul term. C str)
     end subroutine mad_tpsa_setnam
 
     subroutine mad_tpsa_clear(tpsa) bind(C)
@@ -516,7 +516,7 @@ module GTPSA
       integer(c_idx_t) :: idx                  ! monomial index or -1
       type(c_ptr), value, intent(in) :: tpsa   !
       integer(c_ssz_t), value, intent(in) :: n ! string length or 0 (unknown)
-      character(c_char), intent(in) :: s(*)    ! monomial as string "[0-9]*"
+      character(c_char), intent(in) :: s(*)    ! monomial as C string "[0-9]*"
     end function mad_tpsa_idxs
 
     function mad_tpsa_idxm(tpsa,n,m) result(idx) bind(C)
@@ -1029,7 +1029,7 @@ module GTPSA
     subroutine mad_tpsa_print(tpsa,name_,eps_,nohdr_,stream_) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa      ! src
-      character(c_char), intent(in) :: name_(*)   ! name (i.e. null terminated string)
+      character(c_char), intent(in) :: name_(*)   ! tpsa name (nul term. C str)
       real(c_num_t), value, intent(in) :: eps_    ! display precision, e.g. 1d-12
       integer(c_int), value, intent(in) :: nohdr_ ! discard header if not zero
       type(c_ptr), value :: stream_               ! dst=c_null_ptr => stdio
@@ -1045,7 +1045,7 @@ module GTPSA
       import ; implicit none
       type(c_ptr) :: desc                         ! descriptor from header
       integer(c_int), optional, intent(out) :: kind_! tpsa kind (0 real, 1 complex)
-      character(c_char), optional, intent(out) :: name_(*) ! name[12] (i.e. null terminated string)
+      character(c_char), optional, intent(out) :: name_(*) ! tpsa name (nul term. C str)
       type(c_ptr), value, intent(in) :: stream_   ! src=c_null_ptr => stdin
     end function mad_tpsa_scan_hdr
 
@@ -1058,8 +1058,8 @@ module GTPSA
     subroutine mad_tpsa_debug(tpsa,name_,fnam_,line_,stream_) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa     ! src
-      character(c_char), intent(in) :: name_(*)  ! name (i.e. null terminated string)
-      character(c_char), intent(in) :: fnam_(*)  ! filename (i.e. null terminated string)
+      character(c_char), intent(in) :: name_(*)  ! tpsa name (nul term. C str)
+      character(c_char), intent(in) :: fnam_(*)  ! filename  (nul term. C str)
       integer(c_int), value, intent(in) :: line_ ! line number or 0
       type(c_ptr), value :: stream_              ! dst=c_null_ptr => stdio
     end subroutine mad_tpsa_debug
@@ -1108,6 +1108,12 @@ module GTPSA
       integer(c_ssz_t) :: len                   ! #monomials in tpsa
       type(c_ptr), value, intent(in) :: ctpsa
     end function mad_ctpsa_len
+
+    function mad_ctpsa_nam(ctpsa) result(nam) bind(C)
+      import ; implicit none
+      type(c_ptr) :: nam                        ! tpsa name (nul term. C str)
+      type(c_ptr), value, intent(in) :: ctpsa
+    end function mad_ctpsa_nam
 
     function mad_ctpsa_ord(ctpsa) result(ord) bind(C)
       import ; implicit none
@@ -1161,17 +1167,23 @@ module GTPSA
       integer(c_int), value, intent(in) :: pb    ! poisson bracket 0,1:fwd,-1:bwd
     end subroutine mad_ctpsa_convert
 
-    subroutine mad_ctpsa_clear(ctpsa) bind(C)
-      import ; implicit none
-      type(c_ptr), value :: ctpsa
-    end subroutine mad_ctpsa_clear
-
     subroutine mad_ctpsa_setvar(ctpsa,v,iv_,scl_) bind(C)
       import ; implicit none
       type(c_ptr), value :: ctpsa
       complex(c_cnum_t), value, intent(in) :: v, scl_ ! 0th and 1st order values
       integer(c_idx_t), value, intent(in) :: iv_      ! variable index (1st order)
     end subroutine mad_ctpsa_setvar                   ! equiv. to set0 if iv=0
+
+    subroutine mad_ctpsa_setnam(ctpsa,nam) bind(C)
+      import ; implicit none
+      type(c_ptr), value :: ctpsa
+      character(c_char), intent(in) :: nam(*)     ! tpsa name (nul term. C str)
+    end subroutine mad_ctpsa_setnam
+
+    subroutine mad_ctpsa_clear(ctpsa) bind(C)
+      import ; implicit none
+      type(c_ptr), value :: ctpsa
+    end subroutine mad_ctpsa_clear
 
     ! -- Conversion -------------------
 
@@ -1805,7 +1817,7 @@ module GTPSA
     subroutine mad_ctpsa_print(ctpsa,name_,eps_,nohdr_,stream_) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: ctpsa     ! src
-      character(c_char), intent(in) :: name_(*)   ! name (i.e. null terminated string)
+      character(c_char), intent(in) :: name_(*)   ! tpsa name (nul term. C str)
       real(c_num_t), value, intent(in) :: eps_    ! display precision, e.g. 1d-12
       integer(c_int), value, intent(in) :: nohdr_ ! discard header if not zero
       type(c_ptr), value :: stream_               ! dst=c_null_ptr => stdio
@@ -1821,7 +1833,7 @@ module GTPSA
       import ; implicit none
       type(c_ptr) :: desc                         ! descriptor from header
       integer(c_int), optional, intent(out) :: kind_! tpsa kind (0 real, 1 complex)
-      character(c_char), optional, intent(out) :: name_(*) ! name[12] (i.e. null terminated string)
+      character(c_char), optional, intent(out) :: name_(*) ! tpsa name (nul term. C str)
       type(c_ptr), value, intent(in) :: stream_   ! src=c_null_ptr => stdin
     end function mad_ctpsa_scan_hdr
 
@@ -1834,8 +1846,8 @@ module GTPSA
     subroutine mad_ctpsa_debug(ctpsa,name_,fnam_,line_,stream_) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: ctpsa    ! src
-      character(c_char), intent(in) :: name_(*)  ! name (i.e. null terminated string)
-      character(c_char), intent(in) :: fnam_(*)  ! filename (i.e. null terminated string)
+      character(c_char), intent(in) :: name_(*)  ! tpsa name (nul term. C str)
+      character(c_char), intent(in) :: fnam_(*)  ! filename  (nul term. C str)
       integer(c_int), value, intent(in) :: line_ ! line number or 0
       type(c_ptr), value :: stream_              ! dst=c_null_ptr => stdio
     end subroutine mad_ctpsa_debug
@@ -1851,7 +1863,7 @@ module GTPSA
     function mad_cio_fopen(path,mode) result(stream) bind(C, name="fopen")
       import ; implicit none
       type(c_ptr) :: stream                             ! see fopen manual
-      character(c_char), intent(in) :: path(*), mode(*) ! null terminated strings
+      character(c_char), intent(in) :: path(*), mode(*) ! nul term. C str
     end function mad_cio_fopen
 
     function mad_cio_fclose(stream) result(ferr) bind(C, name="fclose")
