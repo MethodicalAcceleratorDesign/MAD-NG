@@ -142,7 +142,8 @@ LUALIB_API void (mad_error) (str_t fn, str_t fmt, ...)
 {
   va_list va;
   va_start(va, fmt);
-   fprintf(stderr, fn ? "error: %s: " : "error: ", fn);
+  fflush(stdout);
+  fprintf(stderr, fn ? "error: %s: " : "error: ", fn);
   vfprintf(stderr, fmt, va);
   va_end(va);
   fputc('\n', stderr);
@@ -156,7 +157,8 @@ LUALIB_API void (mad_warn) (str_t fn, str_t fmt, ...)
   ++mad_warn_count;
   va_list va;
   va_start(va, fmt);
-   fprintf(stderr, fn ? "warning: %s: " : "warning: ", fn);
+  fflush(stdout);
+  fprintf(stderr, fn ? "warning: %s: " : "warning: ", fn);
   vfprintf(stderr, fmt, va);
   va_end(va);
   fputc('\n', stderr);
@@ -167,6 +169,7 @@ LUALIB_API void (mad_trace) (int lvl, str_t fn, str_t fmt, ...)
   if (mad_trace_level < lvl) return;
   va_list va;
   va_start(va, fmt);
+  fflush(stdout);
   if (fn) fprintf(stderr, "%s", fn);
   vfprintf(stderr, fmt, va);
   va_end(va);
@@ -493,6 +496,7 @@ static void mad_signal(int sig)
   while (i < sig_n && sig_i[i] != sig) ++i;
 
   // NOT SAFE! (but let's try...)
+  fflush(stdout);
   fprintf(stderr, "%s: %s\n", sig_s[i], sig_m[i]);
   lua_pushstring(globalL, "");
   lua_error(globalL);
@@ -543,6 +547,8 @@ static void laction(int i)
 
   /* prevent multiple Ctrl-C within 0.2-0.5 sec */
   double sigint_delay = (clock()-sigint_t0)/(double)CLOCKS_PER_SEC;
+
+  fflush(stdout);
 
   if (!mad_is_interactive || sigint_count > 2 || sigint_delay > 0.5) {
     /* too many SIGINT or timeout happened before lstop, terminate process */
