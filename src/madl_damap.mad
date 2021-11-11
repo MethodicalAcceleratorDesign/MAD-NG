@@ -28,7 +28,7 @@ local MR, MC = {}, {}
 
 local ffi = require 'ffi'
 
-local min, max in math
+local abs, min, max, floor in math
 
 local _C, option, warn                                               in MAD
 local gtpsad, tpsa, ctpsa, vector, cvector, matrix, cmatrix, complex in MAD
@@ -39,8 +39,6 @@ local is_nil, is_boolean, is_number, is_integer, is_complex, is_scalar,
       is_table, is_string, is_indexable, is_iterable, is_mappable,
       is_vector, is_cvector, isa_vector, is_matrix, is_cmatrix,
       is_tpsa, is_ctpsa, wprotect                                 in MAD.typeid
-
-local abs, floor in math
 
 local type, assert, getmetatable, setmetatable, rawequal, rawset, tostring =
       type, assert, getmetatable, setmetatable, rawequal, rawset, tostring
@@ -269,18 +267,6 @@ function MC.cutord (x, o, y_)
     _C.mad_ctpsa_cutord(x[i], y_[i], o)
   end
   return y_
-end
-
-function MR.convert (x, y, tbl_, pb_)
-  assert(is_damap(y), "invalid argument #2 (damap expected)")
-  for i=1,min(#x,#y) do x[i]:convert(y[i], tbl_, pb_) end
-  return y
-end
-
-function MC.convert (x, y, tbl_, pb_)
-  assert(is_cdamap(y), "invalid argument #2 (cdamap expected)")
-  for i=1,min(#x,#y) do x[i]:convert(y[i], tbl_, pb_) end
-  return y
 end
 
 -- get/set tbl/vec/mat ------------------------------------------------------------o
@@ -667,6 +653,46 @@ function MC.compose (x, y, r)
   _C.mad_ctpsa_compose(#x, x.__ta, #y, y.__ta, r.__ta) return r
 end
 
+-- maps conversion
+
+function MR.convert (x, r, tbl_, pb_)
+  if is_string(r) and r == 'in' then r = x end
+  r = r or map_alloc(x.__td, x.__vn, MR)
+  assert(is_damap(r), "invalid argument #2 (damap expected)")
+  local pb, n, m = pb_ or 0, 0, nil
+  if tbl_ then
+    assert(is_table(tbl_), "invalid argument #3 (table expected)")
+    assert(pb==0 or pb==1 or pb==-1, "invalid argument #4 (-1,0,1 expected)")
+    n = #tbl_
+    m = int_arr(n) ; for i=1,n do m[i-1] = tbl_[i]-1 end
+  end
+  _C.mad_tpsa_mconv(#x, x.__ta, #r, r.__ta, n, m, pb)
+  return r
+end
+
+function MC.convert (x, r, tbl_, pb_)
+  if is_string(r) and r == 'in' then r = x end
+  r = r or map_alloc(x.__td, x.__vn, MC)
+  assert(is_cdamap(r), "invalid argument #2 (cdamap expected)")
+  local pb, n, m = pb_ or 0, 0, nil
+  if tbl_ then
+    assert(is_table(tbl_), "invalid argument #3 (table expected)")
+    assert(pb==0 or pb==1 or pb==-1, "invalid argument #4 (-1,0,1 expected)")
+    n = #tbl_
+    m = int_arr(n) ; for i=1,n do m[i-1] = tbl_[i]-1 end
+  end
+  _C.mad_ctpsa_mconv(#x, x.__ta, #r, r.__ta, n, m, pb)
+  return r
+end
+
+function MR.fromptc (x)
+  return x:convert(nil, {1,2,3,4,6,5}, 1)
+end
+
+function MR.toptc (x)
+  return x:convert(nil, {1,2,3,4,6,5}, -1)
+end
+
 -- operators ------------------------------------------------------------------o
 
 -- unm
@@ -830,23 +856,16 @@ function MR.write (x, filnam_, name_, eps_)
     name_, eps_ = nil, name_ -- right shift
   end
   local file = openfile(filnam_, 'w', '.dat')
-  local cvt, t = option.ptcorder and {1,2,3,4,6,5} or nil, nil
 
   if name_ then
     file:write('[', #x, is_damap(x) and 'R' or 'C', '] ', name_, ' =\n\n')
   end
 
   for i=1,#x do
-    local vn = x.__vn[i] and string.upper(x.__vn[i]) or tostring(i)
-    local a = x[i]
-    if cvt then
-      a = a:convert(a:copy(), cvt, 1)
-          if vn == 'T' then t = a:unm(a) ; goto skip -- backup t
-      elseif vn == 'PT' and t then a:write(file, vn, eps_) ; a,vn,t = t,'T' end
-    end
-    a:write(file, vn, eps_)
-::skip::
+    local vn = x.__vn[i] and string.upper(x.__vn[i]) or x[i].nam
+    x[i]:write(file, vn, eps_)
   end
+
   if is_string(filnam_) then file:close() else file:flush() end
   return x
 end
@@ -855,14 +874,17 @@ function MR.print (x, name_, eps_)
   return x:write(nil, name_, eps_)
 end
 
-function MR.read (x_, filnam_, vname_, kind_)
-  if is_table(filnam_) and is_nil(kind_) then
-    kind_, vname_, filnam_ = vname_, filnam_, nil -- right shift
+function MR.read (x_, filnam_, kind_, vname_)
+  if is_table(filnam_) and is_nil(vname_) then
+    vname_, kind_, filnam_ = kind_, filnam_, nil -- right shift
   end
-  if is_number(vname_) and is_nil(kind_) then
-    kind_, vname_ = vname_, nil                   -- right shift
+  if is_table(kind_) and is_nil(vname_) then
+    vname_, kind_ = kind_, nil                   -- right shift
   end
   local file, x = openfile(filnam_, 'r', '.dat')
+
+-- TODO: read [%dR] or [%dC] or nothing...
+
   local x1 = x_[1]:read(file, kind_)
   -- print('\n1', x1) ; if x1 then print("X1=") ; x1:print() end
   if x1 ~= nil then  -- valid input
