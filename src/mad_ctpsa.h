@@ -249,6 +249,7 @@ void     mad_ctpsa_exppb    (ssz_t na, const ctpsa_t *ma[na], ssz_t nb, const ct
 void     mad_ctpsa_compose  (ssz_t na, const ctpsa_t *ma[na], ssz_t nb, const ctpsa_t *mb[nb], ctpsa_t *mc[na]);
 void     mad_ctpsa_translate(ssz_t na, const ctpsa_t *ma[na], ssz_t nb, const cnum_t   tb[nb], ctpsa_t *mc[na]);
 void     mad_ctpsa_eval     (ssz_t na, const ctpsa_t *ma[na], ssz_t nb, const cnum_t   tb[nb], cnum_t   tc[nb]);
+void     mad_ctpsa_mconv    (ssz_t na, const ctpsa_t *ma[na], ssz_t nc,                        ctpsa_t *mc[nc], ssz_t n, idx_t t2r_[n], int pb);
 
 // I/O
 #define NAMSZ 16

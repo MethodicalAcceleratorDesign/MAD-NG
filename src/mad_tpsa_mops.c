@@ -1,7 +1,7 @@
 /*
  o-----------------------------------------------------------------------------o
  |
- | TPSA map exponential module implementation
+ | TPSA map operation module implementation
  |
  | Methodical Accelerator Design - Copyright (c) 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -40,7 +40,7 @@ check_same_desc (ssz_t sa, const T *ma[sa])
 }
 
 static inline void
-check_exppb (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
+check_compat (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 {
   assert(ma && mb && mc);
   ensure(sa>0 && sb>0, "invalid map sizes (zero or negative sizes)");
@@ -105,7 +105,7 @@ FUN(exppb) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa], int
 {
   DBGFUN(->);
   ensure(inv == 1 || inv == -1, "invalid inv value, -1 or 1 expected, got %d", inv);
-  check_exppb(sa, ma, sb, mb, mc);
+  check_compat(sa, ma, sb, mb, mc);
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, sa);
@@ -185,6 +185,33 @@ FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // cgetpb (wo / -2i)
 
   FUN(del)(t2);
   FUN(del)(t1);
+  DBGFUN(<-);
+}
+
+void // convert maps to another maps using tpsa conversion.
+FUN(mconv) (ssz_t sa, const T *ma[sa], ssz_t sc, T *mc[sc], ssz_t n, idx_t t2r_[n], int pb)
+{
+  DBGFUN(->);
+  assert(ma && mc);
+
+  if (!t2r_) {
+    ssz_t nn = MIN(sa,sc);
+    for (idx_t i=0; i < nn; ++i) FUN(convert)(ma[i], mc[i], 0,0,0);
+    DBGFUN(<-); return;
+  }
+
+  for (idx_t i=0; i < n; ++i) {
+    if (t2r_[i] < 0) continue; // discard vars
+    idx_t ii = t2r_[i];
+    ensure(0 <= ii && ii < sc, "translation index out of range 0 <= %d < %d", ii, sc);
+    FUN(convert)(ma[i], mc[ii], n, t2r_, pb);
+    int ss = (ii-i)%2 * pb;
+    if (ss == -1) FUN(scl)(mc[ii], -1, mc[ii]);
+#if DEBUG > 2
+    printf("cvt: % 2d -> % d x % 2d [pb=% d]\n", i, ss, ii, pb);
+#endif
+  }
+
   DBGFUN(<-);
 }
 
