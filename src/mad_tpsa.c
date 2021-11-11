@@ -388,7 +388,8 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
   assert(t && r_); DBGFUN(->); DBGTPSA(t); DBGTPSA(r_);
   ensure(pb >= -1 && pb <= 1, "invalid pb value %d, {-1, 0, 1} expected", pb);
 
-  if (!t2r_) { // shortcut for compatible or almost compatible cases
+  // fast branch for (almost) compatible cases avoiding monomials translation
+  if (!t2r_) {
     const D *td = t->d, *rd = r_->d;
 
     if (td == rd) { FUN(copy)(t,r_); DBGFUN(<-); return; }
