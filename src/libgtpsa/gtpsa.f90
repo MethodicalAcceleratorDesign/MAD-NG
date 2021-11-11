@@ -473,15 +473,6 @@ module GTPSA
       integer(c_int), value, intent(in) :: ord  ! cut order: 0..-ord or ord..mo
     end subroutine mad_tpsa_cutord
 
-    subroutine mad_tpsa_convert(tpsa,tpsa_r,n,t2r_,pb) bind(C)
-      import ; implicit none
-      type(c_ptr), value, intent(in) :: tpsa    ! src
-      type(c_ptr), value :: tpsa_r              ! dst
-      integer(c_ssz_t), value, intent(in) :: n  ! vector length
-      integer(c_idx_t), intent(in) :: t2r_(*)   ! vector of index lookup
-      integer(c_int), value, intent(in) :: pb   ! poisson bracket 0,1:fwd,-1:bwd
-    end subroutine mad_tpsa_convert
-
     subroutine mad_tpsa_setvar(tpsa,v,iv_,scl_) bind(C)
       import ; implicit none
       type(c_ptr), value :: tpsa
@@ -499,6 +490,15 @@ module GTPSA
       import ; implicit none
       type(c_ptr), value :: tpsa                  ! clear tpsa (reset to 0)
     end subroutine mad_tpsa_clear
+
+    subroutine mad_tpsa_convert(tpsa,tpsa_r,n,t2r_,pb) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: tpsa    ! src
+      type(c_ptr), value :: tpsa_r              ! dst
+      integer(c_ssz_t), value, intent(in) :: n  ! vector length
+      integer(c_idx_t), intent(in) :: t2r_(*)   ! vector of index lookup
+      integer(c_int), value, intent(in) :: pb   ! poisson bracket 0,1:fwd,-1:bwd
+    end subroutine mad_tpsa_convert
 
     ! -- Indexing / monomials (return idx_t = -1 if invalid)
 
@@ -1024,6 +1024,16 @@ module GTPSA
       real(c_num_t) :: vr(*)                          ! dst[nb]
     end subroutine mad_tpsa_eval
 
+    subroutine mad_tpsa_mconv(na,tpsa_a,nr,tpsa_r,n,t2r_,pb) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: na, nr   ! vectors lengths
+      type(c_ptr), intent(in) :: tpsa_a(*)            ! src
+      type(c_ptr) :: tpsa_r(*)                        ! dst
+      integer(c_ssz_t), value, intent(in) :: n        ! vector length
+      integer(c_idx_t), intent(in) :: t2r_(*)         ! vector of index lookup
+      integer(c_int), value, intent(in) :: pb         ! poisson bracket 0,1:fwd,-1:bwd
+    end subroutine mad_tpsa_mconv
+
     ! -- I/O functions ----------------
 
     subroutine mad_tpsa_print(tpsa,name_,eps_,nohdr_,stream_) bind(C)
@@ -1158,15 +1168,6 @@ module GTPSA
       integer(c_int), value, intent(in) :: ord   ! cut order: 0..-ord or ord..mo
     end subroutine mad_ctpsa_cutord
 
-    subroutine mad_ctpsa_convert(ctpsa,ctpsa_r,n,t2r_,pb) bind(C)
-      import ; implicit none
-      type(c_ptr), value, intent(in) :: ctpsa    ! src
-      type(c_ptr), value :: ctpsa_r              ! dst
-      integer(c_ssz_t), value, intent(in) :: n   ! vector length
-      integer(c_idx_t), intent(in) :: t2r_(*)    ! vector of index lookup
-      integer(c_int), value, intent(in) :: pb    ! poisson bracket 0,1:fwd,-1:bwd
-    end subroutine mad_ctpsa_convert
-
     subroutine mad_ctpsa_setvar(ctpsa,v,iv_,scl_) bind(C)
       import ; implicit none
       type(c_ptr), value :: ctpsa
@@ -1184,6 +1185,15 @@ module GTPSA
       import ; implicit none
       type(c_ptr), value :: ctpsa
     end subroutine mad_ctpsa_clear
+
+    subroutine mad_ctpsa_convert(ctpsa,ctpsa_r,n,t2r_,pb) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: ctpsa    ! src
+      type(c_ptr), value :: ctpsa_r              ! dst
+      integer(c_ssz_t), value, intent(in) :: n   ! vector length
+      integer(c_idx_t), intent(in) :: t2r_(*)    ! vector of index lookup
+      integer(c_int), value, intent(in) :: pb    ! poisson bracket 0,1:fwd,-1:bwd
+    end subroutine mad_ctpsa_convert
 
     ! -- Conversion -------------------
 
@@ -1811,6 +1821,16 @@ module GTPSA
       complex(c_cnum_t), intent(in) :: vb(*)         ! src
       complex(c_cnum_t) :: vr(*)                     ! dst[nb]
     end subroutine mad_ctpsa_eval
+
+    subroutine mad_ctpsa_mconv(na,ctpsa_a,nr,ctpsa_r,n,t2r_,pb) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: na, nr  ! vectors lengths
+      type(c_ptr), intent(in) :: ctpsa_a(*)          ! src
+      type(c_ptr) :: ctpsa_r(*)                      ! dst
+      integer(c_ssz_t), value, intent(in) :: n       ! vector length
+      integer(c_idx_t), intent(in) :: t2r_(*)        ! vector of index lookup
+      integer(c_int), value, intent(in) :: pb        ! poisson bracket 0,1:fwd,-1:bwd
+    end subroutine mad_ctpsa_mconv
 
     ! -- I/O functions ----------------
 
