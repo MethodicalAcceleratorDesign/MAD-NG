@@ -23,6 +23,7 @@
 #include <assert.h>
 
 #include "mad_mem.h"
+#include "mad_str.h"
 #include "mad_desc_impl.h"
 
 #ifdef    MAD_CTPSA_IMPL
@@ -39,11 +40,25 @@
 // --- local ------------------------------------------------------------------o
 
 static inline int
+skip_line_dbg(FILE *stream)
+{
+  int c;
+  printf("skip line\n");
+  while ((c = fgetc(stream)) != '\n' && c != EOF) putchar(c);
+  putchar(c);
+  return c;
+}
+
+static inline int
 skip_line(FILE *stream)
 {
+#if DEBUG > 2
+  return skip_line_dbg(stream);
+#else
   int c;
   while ((c = fgetc(stream)) != '\n' && c != EOF) ;
   return c;
+#endif
 }
 
 static inline void
@@ -70,33 +85,33 @@ read_ords(int ci, str_t name, int n, ord_t ords[n], FILE *stream)
   assert(ords && stream);
   idx_t idx;
   ord_t ord;
-  char  chr;
 
   if (!name[0]) name = "-UNNAMED-";
 
   mad_mono_fill(n, ords, 0);
   for (int i=0; i < n; i++) {
-    idx = chr = ord = 0;
-    int cnt = fscanf(stream, " %d%c%hhu", &idx, &chr, &ord);
+    idx = 0, ord = -1;
+    int cnt = fscanf(stream, " %d^%hhu", &idx, &ord);
 
 #if DEBUG > 2
-    printf("mono: ci=%d, i=%d[%d], cnt=%d, idx=%d, chr='%c', ord=%d\n",
-           ci, i, n, cnt, idx, chr, ord);
+    int chr = getc(stream);
+    printf("mono: ci=%d, i=%d[%d], cnt=%d, idx=%d, ord=%d, nxtchr='%c'\n",
+           ci, i, n, cnt, idx, ord, chr);
+    ungetc(chr, stream);
 #endif
 
-    if (cnt == 3 && chr == '^') {
-      ensure(0 < idx && idx <= n,
-             "invalid index (expecting 0 < %d <= %d) at index %d of '%s'",
-              idx, n, ci, name);
-      ords[idx-1] = ord, i = idx-1;
-    } else
-    if (cnt == 3 && chr == ' ') {
-      ords[i] = idx, ords[++i] = ord;
-    } else
-    if (cnt == 2 && chr == '\n') {
-      ords[i] = idx; ungetc(chr, stream);
-    } else
-      error("invalid monomial input at index %d of '%s'", ci, name);
+         if (cnt == 1) ord = idx, idx = i;
+    else if (cnt == 2) idx = idx-1, i = idx;
+    else error("invalid monomial input at index %d of '%s'", ci, name);
+
+    ensure(0 <= idx && idx < n,
+           "invalid index (expecting 0 < %d <= %d) at index %d of '%s'",
+            idx+1, n, ci, name);
+    ensure(ord <= DESC_MAX_ORD,
+           "invalid order (expecting 0 <= %d <= %d) at index %d of '%s'",
+            ord, DESC_MAX_ORD, ci, name);
+
+    ords[idx] = ord;
   }
 }
 
@@ -132,56 +147,71 @@ FUN(scan_hdr) (int *kind_, char name_[NAMSZ], FILE *stream_)
   while ((c=getc(stream_)) != EOF && isspace(c)) ;
   ungetc(c, stream_);
 
-  // check the name (which is 10 chars) and the type
-  char name[NAMSZ]="", knd='?';
-  int nc=0, n = fscanf(stream_, "%16[^ \t:]%*[ ]: %c%n", name, &knd, &nc);
-  name[NAMSZ-1]=0;
+  // read the name (which is 15+'\0' chars)
+  char name[NAMSZ]="", sep='?';
+  int cnt = fscanf(stream_, "%16[^:,\t\n]%c", name, &sep);
+  name[NAMSZ-1] = '\0';
 
 #if DEBUG > 2
-    printf("header: n=%d, name='%s', knd='%c', nc=%d\n", n,name,knd,nc);
+    printf("header: n=%d, name='%s', sep='%c'\n", cnt, name, sep);
 #endif
 
-  if (n != 2
-      || nc < 4 || !strchr(" RC", knd)
-      || (kind_ && *kind_ != -1 && (*kind_ != (knd == 'C'))) ) {
-
-         if (nc < 4)              strncpy(name, "-INVALIDNAME-", NAMSZ);
-    else if (!strchr(" RC", knd)) strncpy(name, "-INVALIDTYPE-", NAMSZ);
-    else if (kind_ && *kind_ != -1 && (*kind_ != (knd == 'C')))
-                                  strncpy(name, "-UNXPCTDTYPE-", NAMSZ);
-
-    if (name_) strncpy(name_, name, NAMSZ-1), name_[NAMSZ-1] = '\0';
-
-    warn("unable to parse GTPSA header: %s", name);
-
+  if (!(cnt == 2 && (sep == ':' || sep == ','))) {
+    warn("unable to parse TPSA header: '%s'", name);
     fsetpos(stream_, &fpos); // may fail for non-seekable stream (e.g. pipes)...
     return NULL;
   }
 
   ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
 
-  if (kind_) *kind_ = knd == 'C';
-  if (name_) strncpy(name_, name, NAMSZ-1), name_[NAMSZ-1] = '\0';
-
+  char knd=0;
+  int nv=0, np=0;
   ord_t mo=0, po=0;
-  int nv=0, np=0, cnt=0;
+  log_t ptc=sep == ',';
 
-  // 1st line (cnt includes knd)
-  cnt = 1+fscanf(stream_, ", NV = %d, MO = %hhu, NP = %d, PO = %hhu%n",
-                                  &nv,     &mo,       &np,     &po,    &nc);
+  if (ptc) // n = 2, swap input for PTC/BERTZ
+    cnt = fscanf(stream_, " NO = %hhu, NV = %d",
+                                  &mo,     &nv);
+  else // n = 3 or 5
+    cnt = fscanf(stream_, " %c, NV = %d, MO = %hhu, NP = %d, PO = %hhu",
+                          &knd,     &nv,       &mo,     &np,       &po);
 
 #if DEBUG > 2
-    printf("header: cnt=%d, nv=%d, mo=%d, np=%d, po=%d\n", cnt,nv,mo,np,po);
+    printf("header: cnt=%d, knd='%c', nv=%d, mo=%d, np=%d, po=%d\n", cnt,knd,nv,mo,np,po);
 #endif
 
   // sanity checks
   ensure(0 <  nv && nv <= DESC_MAX_VAR, "invalid NV=%d", nv);
   ensure(           mo <= DESC_MAX_ORD, "invalid MO=%d", mo);
+  ensure(strchr("RC ", knd), "invalid kind='%c' (expecting R or C)", knd);
 
-  if (cnt == 3) {
+  if (kind_) {
+    ensure(*kind_ >= -1 && *kind_ <= 1, "invalid kind (expecting -1, 0, 1)");
+    if (*kind_ == -1) *kind_ = knd == 'C';
+    else if (knd && knd != "RC"[*kind_])
+      warn("kind specification '%c' differs from input '%c'", "RC"[*kind_], knd);
+
+#if DEBUG > 2
+    printf("header: kind='%c'\n", "RC"[*kind_]);
+#endif
+  }
+
+  if (name_) {
+    int bnd[2] = {0, strlen(name)};
+    mad_str_trim(name, bnd);
+    memcpy(name_, name+bnd[0], bnd[1]);
+    name_[bnd[1]] = '\0';
+
+#if DEBUG > 2
+    printf("header: name='%s'\n", name_);
+#endif
+  }
+
+  if (cnt == 2 || cnt == 3) {
     // TPSA -- ignore rest of lines
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish NV,MO line
-    ensure(fscanf(stream_, "%*[*]\n") != 1, "unexpected input (invalid header?)");
+    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard *****
+    if (ptc) ensure(skip_line(stream_) != EOF, "invalid input (file error?)");
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard coeff header
 
     const D* ret = mad_desc_newv(nv, mo);
@@ -196,16 +226,14 @@ FUN(scan_hdr) (int *kind_, char name_[NAMSZ], FILE *stream_)
     ensure(0 <= np && nn <= DESC_MAX_VAR, "invalid NP=%d", np);
     ensure(           po <= DESC_MAX_ORD, "invalid PO=%d", po);
 
-    // GTPSA -- process rest of lines
+    // read variables orders if present (GTPSA)
     ord_t no[nn];
-
-    // read variables orders if present
     if ((cnt += fscanf(stream_, ", N%*[O] = ")) == 6) {
       read_ords(-1,name,nn,no,stream_);
       ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish VO line
     }
 
-    ensure(fscanf(stream_, "%*[*]\n") != 1, "unexpected input (invalid header?)");
+    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard *****
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard coeff header
     ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
 
@@ -215,10 +243,10 @@ FUN(scan_hdr) (int *kind_, char name_[NAMSZ], FILE *stream_)
     return ret;
   }
 
-       if (cnt < 3) warn("could not read (NV,NO) from header");
+       if (cnt < 2) warn("could not read (NV,%s) from header", ptc?"NO":"MO");
   else if (cnt < 5) warn("could not read (NP,PO) from header");
   else              warn("unable to parse GTPSA header for '%s'",
-                         name[0] ? name : "-UNNAMED-");
+                          name[0] ? name : "-UNNAMED-");
 
   fsetpos(stream_, &fpos); // may fail for non-seekable stream (e.g. sockets)...
   return NULL;
@@ -233,30 +261,62 @@ FUN(scan_coef) (T *t, FILE *stream_)
 
   if (!stream_) stream_ = stdin;
 
-  NUM c;
-  int nn = t->d->nn, cnt = -1, i = -1;
+  NUM   c;
+  int   nn = t->d->nn, cnt = -1, i = -1;
   ord_t o, ords[nn];
+  char  idx[16];
   FUN(reset0)(t);
 
+  for (;;) {
+    // read index
+    cnt = fscanf(stream_, "%*[ \t]%16[0-9]", idx);
+    if (cnt != 1) break;
+    i = strtol(idx, 0, 0);
+
+    // read coef and order
 #ifndef MAD_CTPSA_IMPL
-  while ((cnt = fscanf(stream_, "%d %lG %hhu", &i, &c, &o)) == 3) {
+    cnt = fscanf(stream_, "%lG %hhu", &c, &o);
+    if (cnt != 2) break;
 #else
-  while ((cnt = fscanf(stream_, "%d %lG%lGi %hhu", &i, (num_t*)&c, (num_t*)&c+1, &o)) == 4) {
+    char chr;
+    cnt = fscanf(stream_, "%lG%lG%c %hhu", (num_t*)&c, (num_t*)&c+1, &chr, &o);
+    if (cnt != 4) break;
+    ensure(chr == ' ' || chr == 'i',
+           "invalid complex number format (' ' or 'i' expected ending)"
+           " at index %d of '%s'", i, t->nam);
 #endif
 
     #if DEBUG > 2
       printf("coef: i=%d, c=" FMT ", o=%d\n", i, VAL(c), o);
     #endif
+
     read_ords(i,t->nam,nn,ords,stream_); // sanity check
     ensure(mad_mono_ord(nn,ords) == o,
            "invalid monomial order at index %d of '%s'", i, t->nam);
+
     // discard too high mononial
     if (o <= t->mo) FUN(setm)(t,nn,ords,0,c);
+
+    // finish line
+    skip_line(stream_);
   }
+
   #if DEBUG > 2
-    printf("coef: i=%d, cnt=%d, c=" FMT ", o=%d\n", i, cnt, VAL(c), o);
+    printf("endc: i=%d, cnt=%d, c=" FMT ", o=%d\n\n", i, cnt, VAL(c), o);
   #endif
-  FUN(update0)(t, t->lo, t->hi);
+
+  if (i == -1) { // no coef read
+    int nc;
+    fscanf(stream_, "ALL COMPONENTS %n", &nc);
+    if (nc != 15) warn("unable to parse GTPSA coefficients for '%s'",
+                       t->nam[0] ? t->nam : "-UNNAMED-");
+
+    #if DEBUG > 2
+      printf("zero: i=%d, cnt=%d, nc=%d\n\n", i, cnt, nc);
+    #endif
+
+    ensure(skip_line(stream_) != EOF, "invalid input (file error?)");
+  } else FUN(update0)(t, t->lo, t->hi);
   DBGTPSA(t); DBGFUN(<-);
 }
 
@@ -310,7 +370,7 @@ FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
     fprintf(stream_, ", NO = ");
     print_ords(d->nn, d->no, stream_);
   }
-  fprintf(stream_, "\n********************************************************");
+  fprintf(stream_, "\n *******************************************************");
 #ifdef MAD_CTPSA_IMPL
   fprintf(stream_, "***********************");
 #endif
@@ -335,7 +395,7 @@ coeffonly:
     }
   }
 
-  if (!idx) fprintf(stream_, "\n          ALL COMPONENTS ZERO");
+  if (!idx) fprintf(stream_, "\n         ALL COMPONENTS ZERO");
 
   fprintf(stream_, "\n\n");
 
