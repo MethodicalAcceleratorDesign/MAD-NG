@@ -765,10 +765,6 @@ local function normal_init (m)
   local rnk = has_dpt(m) and dim or min(5,#m)
   local m_n = m:copy()                     -- make a copy
 
-  for i=rnk,siz do
-    m_n[i]:setvar(nil,i)                   -- set parameters to identity
-  end
-
   return {
    __id = nf_id,                           -- is_nf
     siz = siz,                             -- #(variables + parameters)
@@ -792,9 +788,13 @@ local function normal_a0 (nf)
 
   local v, x = m_n:copy(), m_n:same()      -- case 2nD+1, e.g. case 5D
   for i=1,rnk-1 do v[i]:set(i+1,1,-1) end  -- sub identity to variables
-  for i=rnk,siz do x[i]:setvar(nil,i) end  -- set parameters to identity
+  for i=rnk,siz do x[i]:setvar(0,i) end    -- set parameters to identity
 
   v:cutord(2, v)                           -- keep 1st order only
+
+  v:write"fort/fort_n.1015" ;
+  (v^-1):write"fort/fort_n.1016" ;
+  x:write"fort/fort_n.1017" ;
 
   local a0 = v^-1 * x                      -- close the 2nD+1 form
 
@@ -831,6 +831,8 @@ local function normal_a1 (nf)
   if rnk < dim then R = Rg:eye():setsub(1..rnk,1..rnk,A) end
 
   local a1 = m_n:same():set1(R)
+  a1.x, a1.px = -a1.x, -a1.px              -- TO CHECK!!!
+
   nf.m_n = a1^-1 * m_n * a1                -- linear normal form
   nf.a1  = a1
   return a1
@@ -852,17 +854,35 @@ end
 
 -- full normal form -------------------
 
-function gphys.normal_new (m, nocheck_) -- TODO...
+local function cmpfort(lst)
+  local dum = damap()
+  local openfile in MAD.utility
+
+  for i, v in ipairs(lst) do
+    io.stderr:write("processing files ", v, "\n")
+    local f_n = openfile("fort/fort_n."..v, '.dat')
+    local f_p = openfile("fort/fort."  ..v)
+    f_n:read() ; f_p:read() ; f_p:read()
+    local m_n = dum:read(f_n)                                                   ; m_n:print(1e-13)
+    local m_p = dum:read(f_p,"C"):fromptc():write("fort/fort_p."..v)            ; m_p:print(1e-13)
+    local m_d = m_n:dif(m_p):write("fort/fort_d."..v)                           ; m_d:print(1e-13)
+    f_n:close() ; f_p:close()
+  end
+end
+
+function gphys.normal_new (m, nocheck_)
   assert(is_damap(m), "invalid argument #1 (damap expected)")
 
-  -- already a normal form
+  -- already a normalizing form
   if m.status == 'Aset' then return end
 
   -- linear normal form -------------------------
 
-  local nf = normal_init(m)                                         -- init nf
-  local a0 = normal_a0  (nf) ; a0:print('a0') ; nf.m_n:print('m_n') -- closed form (fix point)
-  local a1 = normal_a1  (nf) ; a1:print('a1') ; nf.m_n:print('m_n') -- linear normal form
+  io.stderr:write("linear normal form\n")
+
+  local nf = normal_init(m)  ; print("nf.rnk=", nf.rnk)           ; nf.m_n:write("fort/fort_n.1010", 'm_n') -- one-turn map
+  local a0 = normal_a0  (nf) ; a0:write("fort/fort_n.1020", 'a0') ; nf.m_n:write("fort/fort_n.1030", 'm_n') -- closed form (fix point)
+  local a1 = normal_a1  (nf) ; a1:write("fort/fort_n.1040", 'a1') ; nf.m_n:write("fort/fort_n.1050", 'm_n') -- linear normal form
   local m  = nf.m_n
   m.status = 'Aset'
 
@@ -871,14 +891,23 @@ function gphys.normal_new (m, nocheck_) -- TODO...
     return m, nf
   end
 
+  -- phasor basis -------------------------------
+
+  io.stderr:write("phasor basis\n")
+
+  local c, cr = normal_c(nf) ; c:write("fort/fort_n.1060", 'c') ; nf.m_n:write("fort/fort_n.1070",'m_n') -- resonance basis
+
+  cmpfort{"1010","1015","1016","1017","1020","1030","1040","1050","1060","1070"}
+
   -- non-linear normal form ---------------------
 
-  local c, cr = normal_c(nf) ; c:print('c') ; nf.m_n:print('m_n') -- resonance basis
+  io.stderr:write("non-linear normal form\n")
 
+--[[
   -- prepare factored Lie representation of A and N
   local m_n, rnk in nf
   local nv, mo, np, po in m_n.__td
-  local tc = cdamap{nv=rnk, mo=mo+1, np=np, po=po, vn=m.__vn}   -- tmp for conv.
+  local tc = cdamap{nv=rnk, mo=mo+1, np=np+nv-rnk, po=po, vn=m.__vn}   -- tmp for conv.
   local f_op, t_op, id = {m_n:same()}, {m_n:same()}, m_n:same():eye()
   local ham, gnf, anh = {}, {}, {}
   local mono = monomial(#m_n)
@@ -893,11 +922,11 @@ function gphys.normal_new (m, nocheck_) -- TODO...
   local r1i = m_n:same():set1(m_n:get1():t()) -- transpose for map inverse      -- print("LD: R1I") ; r1i:print(1e-13)
 
   -- nonlinear iterations
-  for ord=2,m_n:maxord() do                                                       -- print('LD: ORDER=', ord) ; io.stderr:write("LD: ORDER=", ord, '\n')
+  for n=2,m_n:maxord() do                                                       -- print('LD: ORDER=', n) ; io.stderr:write("LD: ORDER=", n, '\n')
     -- project remaining orders on resonance basis
     local n_n = (m_n * r1i):lieexppb(t_op, -1)                                  -- print('LD: exp_inv(N_n)=') ; n_n:print(1e-13)
     -- compute the pseudo hamiltonian from the vector field
-    local g_n = n_n:getord(ord):convert(tc):fld2vec() / cr                      -- print('LD: K_n=') ; k_n:print(1e-13)
+    local g_n = n_n:getord(n):convert(tc):fld2vec() / cr                        -- print('LD: K_n=') ; k_n:print(1e-13)
     local f_pb, t_pb = g_n:same(), g_n:same()
     local i, v = 0
 
@@ -916,7 +945,7 @@ function gphys.normal_new (m, nocheck_) -- TODO...
       if s ~= 0 then
         v = v / (1 - exp(s))
         f_pb:set(mono, 0, v)
-        gnf[#gnf+1], gnf[ms] = ms, -v            -- gnf terms
+        gnf[#gnf+1], gnf[ms] = ms, v             -- gnf terms
       else
         t_pb:set(mono, 0, v)
         anh[#anh+1], anh[ms] = ms, -v/twopi      -- anh terms
@@ -926,11 +955,11 @@ function gphys.normal_new (m, nocheck_) -- TODO...
     -- compute vector fields
     local f_n = tc:vec2fld(f_pb):convert(m_n:same()) * cr                       -- print('LD: F_n=') ; f_n:print(1e-13)
     local t_n = tc:vec2fld(t_pb):convert(m_n:same()) * cr                       -- print('LD: T_n=') ; t_n:print(1e-13)
-    f_op[ord], t_op[ord] = f_n, t_n
-    if ord == m_n:maxord() then break end
-                                                                                -- print('LD: M_N= (before), order=', ord) m_n:print(1e-13) ; io.stderr:write("LD: M_N= (before), order=", ord, "\n")
+    f_op[n], t_op[n] = f_n, t_n
+    if n == m_n:maxord() then break end
+                                                                                -- print('LD: M_N= (before), order=', n) m_n:print(1e-13) ; io.stderr:write("LD: M_N= (before), order=", n, "\n")
     -- kill resonances in the map
-    m_n = f_n:exppb((-f_n):exppb(id) * m_n)                                     -- print('LD: M_N= (after), order=', ord) m_n:print(1e-13) ; io.stderr:write("LD: M_N= (after), order=", ord, "\n")
+    m_n = f_n:exppb((-f_n):exppb(id) * m_n)                                     -- print('LD: M_N= (after), order=', n) m_n:print(1e-13) ; io.stderr:write("LD: M_N= (after), order=", n, "\n")
   end
   -- the normalizing map A
   local a = a1 * c * id:lieexppb(f_op) * c^-1                                   -- print('Normalizing map A=') ; a:print(1e-13)
@@ -940,6 +969,8 @@ function gphys.normal_new (m, nocheck_) -- TODO...
 
   -- return m, RDTs, a (= complex rank-reduced m), f and t Lie operators
   return m, {ham=ham, gnf=gnf, anh=anh}, a, f_op, t_op
+
+--]]
 end
 
 -- full normal form -------------------
@@ -947,7 +978,7 @@ end
 function gphys.normal (m, nocheck_)
   assert(is_damap(m), "invalid argument #1 (damap expected)")
 
-  -- already a normal form
+  -- already a normalizing form
   if m.status == 'Aset' then return end
 
   -- linear normal form -------------------------
@@ -1001,11 +1032,14 @@ function gphys.normal (m, nocheck_)
   local r1i = m:same():set1(m_n:get1():t()) -- transpose for map inverse        -- print("LD: R1I") ; r1i:print(1e-13)
 
   -- nonlinear iterations
-  for ord=2,m:maxord() do                                                       -- print('LD: ORDER=', ord) ; io.stderr:write("LD: ORDER=", ord, '\n')
+  for n=2,m:maxord() do                                                         -- print('LD: ORDER=', n) ; io.stderr:write("LD: ORDER=", n, '\n')
     -- project remaining orders on resonance basis
     local n_n = (m_n * r1i):lieexppb(t_op, -1)                                  -- print('LD: exp_inv(N_n)=') ; n_n:print(1e-13)
     -- compute the pseudo hamiltonian from the vector field
-    local g_n = n_n:getord(ord):convert(tc):fld2vec() * cir --[[ /-2i --]]      -- print('LD: G_n=') ; g_n:print(1e-13)
+    print('LD: before convert ord=', n) ; n_n:getord(n):print(1e-13)
+    print('LD: after  convert ord=', n) ; n_n:getord(n):convert(tc):print(1e-13)
+
+    local g_n = n_n:getord(n):convert(tc):fld2vec() * cir --[[ /-2i --]]        print('LD: G_n=') ; (g_n*cr):print(1e-13)
     local f_pb, t_pb = g_n:same(), g_n:same()
     local i, v = 0
 
@@ -1026,18 +1060,20 @@ function gphys.normal (m, nocheck_)
         gnf[#gnf+1], gnf[ms] = ms, v              -- gnf terms
       else
         t_pb:set(mono, 0, v)
-        anh[#anh+1], anh[ms] = ms, -v/twopi       -- anh terms
+        local p = 1
+        for j=2,#mono,2 do p = p * fact(mono[j-1]) end
+        anh[#anh+1], anh[ms] = ms, p*v/twopi      -- anh terms
       end
     end
 
     -- compute vector fields
     local f_n = tc:vec2fld(f_pb):convert(m:same()) * cr --[[ *-2i --]]          -- print('LD: F_n=') ; f_n:print(1e-13)
     local t_n = tc:vec2fld(t_pb):convert(m:same()) * cr --[[ *-2i --]]          -- print('LD: T_n=') ; t_n:print(1e-13)
-    f_op[ord], t_op[ord] = f_n, t_n
-    if ord == m:maxord() then break end
-                                                                                -- print('LD: M_N= (before), order=', ord) m_n:print(1e-13) ; io.stderr:write("LD: M_N= (before), order=", ord, "\n")
+    f_op[n], t_op[n] = f_n, t_n
+    if n == m:maxord() then break end
+                                                                                -- print('LD: M_N= (before), order=', n) m_n:print(1e-13) ; io.stderr:write("LD: M_N= (before), order=", n, "\n")
     -- kill resonances in the map
-    m_n = f_n:exppb((-f_n):exppb(id) * m_n)                                     -- print('LD: M_N= (after), order=', ord) m_n:print(1e-13) ; io.stderr:write("LD: M_N= (after), order=", ord, "\n")
+    m_n = f_n:exppb((-f_n):exppb(id) * m_n)                                     -- print('LD: M_N= (after), order=', n) m_n:print(1e-13) ; io.stderr:write("LD: M_N= (after), order=", n, "\n")
   end
   -- the normalizing map A
   local a = a1 * c * id:lieexppb(f_op) * ci                                     -- print('Normalizing map A=') ; a:print(1e-13)
