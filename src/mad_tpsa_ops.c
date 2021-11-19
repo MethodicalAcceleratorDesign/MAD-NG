@@ -271,19 +271,19 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
 
 // --- binary ops -------------------------------------------------------------o
 
-// TPSA_LINOP(+, +, 0) => cc[i] = +ca[i] + cb[i], with i from (lo+0) to hi
+// TPSA_LINOP(0, +, +, ) => cc[i] = +ca[i] + cb[i], with i from (lo+0) to hi
 
-#define TPSA_LINOP(OPA, OPB, ORD) \
+#define TPSA_LINOP(ORD, OPA, OPB, OPC) \
 do { \
   const idx_t *o2i = c->d->ord2idx; \
   idx_t start_a = o2i[ORD?MAX(a->lo,ORD):a->lo], end_a = o2i[MIN(a->hi,c_hi)+1]; \
   idx_t start_b = o2i[ORD?MAX(b->lo,ORD):b->lo], end_b = o2i[MIN(b->hi,c_hi)+1]; \
   idx_t i = start_a; \
-  for (; i < MIN(end_a,start_b); ++i) c->coef[i] = OPA a->coef[i]; \
-  for (; i <           start_b ; ++i) c->coef[i] = 0; \
-  for (; i < MIN(end_a,end_b)  ; ++i) c->coef[i] = OPA a->coef[i] OPB b->coef[i]; \
-  for (; i <     end_a         ; ++i) c->coef[i] = OPA a->coef[i]; \
-  for (; i <           end_b   ; ++i) c->coef[i] =                OPB b->coef[i]; \
+  for (; i < MIN(end_a,start_b); ++i) c->coef[i] = (OPA a->coef[i]               ) OPC; \
+  for (; i <           start_b ; ++i) c->coef[i] = (0                            ) OPC; \
+  for (; i < MIN(end_a,end_b)  ; ++i) c->coef[i] = (OPA a->coef[i] OPB b->coef[i]) OPC; \
+  for (; i <     end_a         ; ++i) c->coef[i] = (OPA a->coef[i]               ) OPC; \
+  for (; i <           end_b   ; ++i) c->coef[i] = (               OPB b->coef[i]) OPC; \
 } while(0)
 
 #define TPSA_CLEAR(ORD) \
@@ -365,7 +365,7 @@ FUN(add) (const T *a, const T *b, T *c)
 
   if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
 
-  TPSA_LINOP(, +, 0);  // c->coef[i] = a->coef[i] + b->coef[i];
+  TPSA_LINOP(0, , +, );  // c->coef[i] = a->coef[i] + b->coef[i];
 
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
@@ -392,8 +392,42 @@ FUN(sub) (const T *a, const T *b, T *c)
   const T* t = 0;
   if (a->lo > b->lo) SWAP(a,b,t);
 
-  if (t) TPSA_LINOP(-, +, 0); // c->coef[i] = - a->coef[i] + b->coef[i];
-  else   TPSA_LINOP( , -, 0); // c->coef[i] =   a->coef[i] - b->coef[i];
+  if (t) TPSA_LINOP(0, -, +, ); // c->coef[i] = - a->coef[i] + b->coef[i];
+  else   TPSA_LINOP(0,  , -, ); // c->coef[i] =   a->coef[i] - b->coef[i];
+
+  c->lo = a->lo; // a->lo <= b->lo  (because of swap)
+  c->hi = c_hi;
+  if (c->lo) c->coef[0] = 0;
+  if (TPSA_STRICT_NZ > 1) FUN(update0)(c, c->lo, c->hi);
+
+  DBGTPSA(c); DBGFUN(<-);
+}
+
+void
+FUN(dif) (const T *a, const T *b, T *c)
+{
+  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b); DBGTPSA(c);
+
+  const D *d = a->d;
+  ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
+
+  ord_t   hi = MAX (a->hi,b->hi);
+  ord_t c_hi = MIN3(hi, c->mo, d->to);
+
+  c->nz = mad_bit_hcut(a->nz|b->nz, c_hi);
+  if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
+
+  const T* t = 0;
+  if (a->lo > b->lo) SWAP(a,b,t);
+
+#define OPCA /(i < end_a && fabs(a->coef[i]) ? fabs(a->coef[i]) : mad_cst_EPS)
+#define OPCB /(i < end_b && fabs(b->coef[i]) ? fabs(b->coef[i]) : mad_cst_EPS)
+
+  if (t) TPSA_LINOP(0, -, +, OPCB); // c->coef[i] = (-a->coef[i] +b->coef[i])/|b->coef[i]|;
+  else   TPSA_LINOP(0,  , -, OPCA); // c->coef[i] = ( a->coef[i] -b->coef[i])/|a->coef[i]|;
+
+#undef OPCA
+#undef OPCB
 
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
@@ -447,9 +481,9 @@ FUN(mul) (const T *a, const T *b, T *r)
   // order 2+
   if (c->hi > 1) {
     ord_t c_hi = c->hi, ab_hi = MAX(a->hi,b->hi);
-    if (a0 != 0 && b0 != 0) TPSA_LINOP(b0*, +a0*, 2);
-    else if       (b0 == 0) TPSA_LINOP( 0*, +a0*, 2);
-    else                    TPSA_LINOP(b0*, + 0*, 2);
+    if (a0 != 0 && b0 != 0) TPSA_LINOP(2, b0*, +a0*, );
+    else if       (b0 == 0) TPSA_LINOP(2,  0*, +a0*, );
+    else                    TPSA_LINOP(2, b0*, + 0*, );
     TPSA_CLEAR(ab_hi+1);
 
     if (a0 != 0) { c->nz |= mad_bit_lcut(b->nz,2); }
@@ -828,18 +862,18 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   }
 
   if (c1 == 1) {
-         if (c2 ==  1) TPSA_LINOP( , +   , 0);
-    else if (c2 == -1) TPSA_LINOP( , -   , 0);
-    else               TPSA_LINOP( , +c2*, 0);
+         if (c2 ==  1) TPSA_LINOP(0, , +   , );
+    else if (c2 == -1) TPSA_LINOP(0, , -   , );
+    else               TPSA_LINOP(0, , +c2*, );
   } else
   if (c1 == -1) {
-         if (c2 ==  1) TPSA_LINOP( -, +   , 0);
-    else if (c2 == -1) TPSA_LINOP( -, -   , 0);
-    else               TPSA_LINOP( -, +c2*, 0);
+         if (c2 ==  1) TPSA_LINOP(0, -, +   , );
+    else if (c2 == -1) TPSA_LINOP(0, -, -   , );
+    else               TPSA_LINOP(0, -, +c2*, );
   } else {
-         if (c2 ==  1) TPSA_LINOP( c1*, +   , 0);
-    else if (c2 == -1) TPSA_LINOP( c1*, -   , 0);
-    else               TPSA_LINOP( c1*, +c2*, 0);
+         if (c2 ==  1) TPSA_LINOP(0, c1*, +   , );
+    else if (c2 == -1) TPSA_LINOP(0, c1*, -   , );
+    else               TPSA_LINOP(0, c1*, +c2*, );
   }
 
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
