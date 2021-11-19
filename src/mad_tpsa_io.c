@@ -28,10 +28,8 @@
 
 #ifdef    MAD_CTPSA_IMPL
 #include "mad_ctpsa_impl.h"
-#define  SPC "                       "
 #else
 #include "mad_tpsa_impl.h"
-#define  SPC
 #endif
 
 //#undef  DEBUG
@@ -59,6 +57,24 @@ skip_line(FILE *stream)
   while ((c = fgetc(stream)) != '\n' && c != EOF) ;
   return c;
 #endif
+}
+
+static inline int
+skip_spaces(FILE *stream)
+{
+  int c;
+  while ((c = fgetc(stream)) == ' ' || c == '\t') ;
+  ungetc(c, stream);
+  return c;
+}
+
+static inline int
+skip_wspaces(FILE *stream)
+{
+  int c;
+  while ((c=getc(stream)) != EOF && isspace(c)) ;
+  ungetc(c, stream);
+  return c;
 }
 
 static inline void
@@ -143,9 +159,7 @@ FUN(scan_hdr) (int *kind_, char name_[NAMSZ], FILE *stream_)
   fgetpos(stream_, &fpos);
 
   // eat white space
-  int c;
-  while ((c=getc(stream_)) != EOF && isspace(c)) ;
-  ungetc(c, stream_);
+  skip_wspaces(stream_);
 
   // read the name (which is 15+'\0' chars)
   char name[NAMSZ]="", sep='?';
@@ -153,7 +167,7 @@ FUN(scan_hdr) (int *kind_, char name_[NAMSZ], FILE *stream_)
   name[NAMSZ-1] = '\0';
 
 #if DEBUG > 2
-    printf("header: n=%d, name='%s', sep='%c'\n", cnt, name, sep);
+    printf("header: cnt=%d, name='%s', sep='%c'\n", cnt, name, sep);
 #endif
 
   if (!(cnt == 2 && (sep == ':' || sep == ','))) {
@@ -169,15 +183,16 @@ FUN(scan_hdr) (int *kind_, char name_[NAMSZ], FILE *stream_)
   ord_t mo=0, po=0;
   log_t ptc=sep == ',';
 
-  if (ptc) // n = 2, swap input for PTC/BERTZ
+  if (ptc) // n = 2, swap input for PTC/BERZ
     cnt = fscanf(stream_, " NO = %hhu, NV = %d",
                                   &mo,     &nv);
-  else // n = 3 or 5
+  else     // n = 3 or 5
     cnt = fscanf(stream_, " %c, NV = %d, MO = %hhu, NP = %d, PO = %hhu",
                           &knd,     &nv,       &mo,     &np,       &po);
 
 #if DEBUG > 2
-    printf("header: cnt=%d, knd='%c', nv=%d, mo=%d, np=%d, po=%d\n", cnt,knd,nv,mo,np,po);
+    printf("header: cnt=%d, knd='%c', nv=%d, mo=%d, np=%d, po=%d\n",
+                       cnt,     knd,     nv,    mo,    np,    po);
 #endif
 
   // sanity checks
@@ -211,8 +226,6 @@ FUN(scan_hdr) (int *kind_, char name_[NAMSZ], FILE *stream_)
     // TPSA -- ignore rest of lines
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish NV,MO line
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard *****
-    if (ptc) ensure(skip_line(stream_) != EOF, "invalid input (file error?)");
-    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard coeff header
 
     const D* ret = mad_desc_newv(nv, mo);
     DBGFUN(<-);
@@ -232,10 +245,7 @@ FUN(scan_hdr) (int *kind_, char name_[NAMSZ], FILE *stream_)
       read_ords(-1,name,nn,no,stream_);
       ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish VO line
     }
-
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard *****
-    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard coeff header
-    ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
 
     const D* ret = cnt == 5 ? mad_desc_newvp (nv, np, mo, po)
                             : mad_desc_newvpo(nv, np, no, po);
@@ -261,25 +271,55 @@ FUN(scan_coef) (T *t, FILE *stream_)
 
   if (!stream_) stream_ = stdin;
 
-  NUM   c;
-  int   nn = t->d->nn, cnt = -1, i = -1;
-  ord_t o, ords[nn];
-  char  idx[16];
+  NUM   v = 0;
+  int   nn = t->d->nn, cnt = -1, i = -1, nc;
+  ord_t o = 0, ords[nn];
   FUN(reset0)(t);
 
+  // process coef header or summary
+  int c = skip_wspaces(stream_);
+
+  #if DEBUG > 2
+    printf("coef: c='%c'\n", c);
+  #endif
+
+  if (c == 'I') {
+    fscanf(stream_, "I%*[ \t]COEFFICIENT%*[ \t]ORDER%*[ \t]EXPONENTS%n", &nc);
+    if (nc < 29) warn("unable to parse GTPSA coefficients for '%s'",
+                       t->nam[0] ? t->nam : "-UNNAMED-");
+    #if DEBUG > 2
+      printf("coef: header 'I COEF...' parsed\n");
+    #endif
+    ensure((c=skip_wspaces(stream_)) != EOF, "invalid input (file error?)");
+  }
+
+  if (c == 'A') {
+    fscanf(stream_, "ALL COMPONENTS %n", &nc); // works for 0_dp, ALL and EPS
+    if (nc != 15) warn("unable to parse GTPSA coefficients for '%s'",
+                       t->nam[0] ? t->nam : "-UNNAMED-");
+    #if DEBUG > 2
+      printf("coef: 'ALL COMP...' parsed\n");
+    #endif
+    ensure(skip_line(stream_) != EOF, "invalid input (file error?)");
+    DBGTPSA(t); DBGFUN(<-); return;
+  }
+
   for (;;) {
-    // read index
-    cnt = fscanf(stream_, "%*[ \t]%16[0-9]", idx);
+    skip_spaces(stream_);
+
+    // read index (avoid %d in case next TPSA name is a number!)
+    char idx[16];
+    cnt = fscanf(stream_, "%16[0-9]", idx);
     if (cnt != 1) break;
     i = strtol(idx, 0, 0);
 
     // read coef and order
 #ifndef MAD_CTPSA_IMPL
-    cnt = fscanf(stream_, "%lG %hhu", &c, &o);
+    cnt = fscanf(stream_, "%lG %hhu", &v, &o);
     if (cnt != 2) break;
 #else
     char chr;
-    cnt = fscanf(stream_, "%lG%lG%c %hhu", (num_t*)&c, (num_t*)&c+1, &chr, &o);
+    cnt = fscanf(stream_, "%lG%lG%c %hhu", (num_t*)&v, (num_t*)&v+1, &chr, &o);
     if (cnt != 4) break;
     ensure(chr == ' ' || chr == 'i',
            "invalid complex number format (' ' or 'i' expected ending)"
@@ -287,7 +327,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
 #endif
 
     #if DEBUG > 2
-      printf("coef: i=%d, c=" FMT ", o=%d\n", i, VAL(c), o);
+      printf("coef: i=%d, v=" FMT ", o=%d\n", i, VAL(v), o);
     #endif
 
     read_ords(i,t->nam,nn,ords,stream_); // sanity check
@@ -295,28 +335,22 @@ FUN(scan_coef) (T *t, FILE *stream_)
            "invalid monomial order at index %d of '%s'", i, t->nam);
 
     // discard too high mononial
-    if (o <= t->mo) FUN(setm)(t,nn,ords,0,c);
+    if (o <= t->mo) FUN(setm)(t,nn,ords,0,v);
 
-    // finish line
+    // finish line (handle no '\n' before EOF)
     skip_line(stream_);
   }
 
   #if DEBUG > 2
-    printf("endc: i=%d, cnt=%d, c=" FMT ", o=%d\n\n", i, cnt, VAL(c), o);
+    printf("endc: i=%d, cnt=%d, v=" FMT ", o=%d\n\n", i, cnt, VAL(v), o);
   #endif
 
-  if (i == -1) { // no coef read
-    int nc;
-    fscanf(stream_, "ALL COMPONENTS %n", &nc);
-    if (nc != 15) warn("unable to parse GTPSA coefficients for '%s'",
-                       t->nam[0] ? t->nam : "-UNNAMED-");
+  if (i == -1) // no coef read
+    warn("unable to parse GTPSA coefficients for '%s'",
+         t->nam[0] ? t->nam : "-UNNAMED-");
+  else
+    FUN(update0)(t, t->lo, t->hi);
 
-    #if DEBUG > 2
-      printf("zero: i=%d, cnt=%d, nc=%d\n\n", i, cnt, nc);
-    #endif
-
-    ensure(skip_line(stream_) != EOF, "invalid input (file error?)");
-  } else FUN(update0)(t, t->lo, t->hi);
   DBGTPSA(t); DBGFUN(<-);
 }
 
@@ -347,7 +381,7 @@ FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
   assert(t); DBGFUN(->); DBGTPSA(t);
 
   if (!name_  ) name_   = t->nam[0] ? t->nam : "-UNNAMED-";
-  if (eps_ < 0) eps_    = 1e-16;
+  if (eps_ < 0) eps_    = 0;
   if (!stream_) stream_ = stdout;
 
 #ifndef MAD_CTPSA_IMPL
@@ -375,27 +409,32 @@ FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
   fprintf(stream_, "***********************");
 #endif
 
-coeffonly:
-
-  // print coefficients
-  fprintf(stream_, "\n     I   COEFFICIENT         " SPC "  ORDER   EXPONENTS");
-  const idx_t *o2i = d->ord2idx;
+coeffonly: ;
   idx_t idx = 0;
-  for (ord_t o = t->lo; o <= t->hi ; ++o) {
-    if (!mad_bit_tst(t->nz,o)) continue;
-    for (idx_t i = o2i[o]; i < o2i[o+1]; ++i) {
+  FUN(update0)((T*)t, t->lo, t->hi);
+  if (t->nz != 0) {
+    // print coefficients
+    const idx_t *o2i = d->ord2idx;
+    for (ord_t o = t->lo; o <= t->hi ; ++o) {
+      if (!mad_bit_tst(t->nz,o)) continue;
+      for (idx_t i = o2i[o]; i < o2i[o+1]; ++i) {
 #ifndef MAD_CTPSA_IMPL
-      if (fabs(t->coef[i]) < eps_) continue;
-      fprintf(stream_, "\n%6d  %21.14lE   %2hhu   "           , ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
+        if (fabs(t->coef[i]) < eps_) continue;
+        if (idx == 0)
+          fprintf(stream_, "\n     I   COEFFICIENT           ORDER   EXPONENTS");
+        fprintf(stream_, "\n%6d  %21.14lE   %2hhu   "           , ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
 #else
-      if (fabs(creal(t->coef[i])) < eps_ && fabs(cimag(t->coef[i])) < eps_) continue;
-      fprintf(stream_, "\n%6d  %21.14lE %+21.14lEi   %2hhu   ", ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
+        if (fabs(creal(t->coef[i])) < eps_ && fabs(cimag(t->coef[i])) < eps_) continue;
+        if (idx == 0)
+          fprintf(stream_, "\n     I   COEFFICIENT                                  ORDER   EXPONENTS");
+        fprintf(stream_, "\n%6d  %21.14lE %+21.14lEi   %2hhu   ", ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
 #endif
-      (d->nn > 20 ? print_ords_sm : print_ords)(d->nn, d->To[i], stream_);
+        (d->nn > 20 ? print_ords_sm : print_ords)(d->nn, d->To[i], stream_);
+      }
     }
-  }
-
-  if (!idx) fprintf(stream_, "\n         ALL COMPONENTS ZERO");
+    if (!idx)
+         fprintf(stream_, "\n\n         ALL COMPONENTS ZERO (EPS=%.1lE)", eps_);
+  } else fprintf(stream_, "\n\n         ALL COMPONENTS ZERO");
 
   fprintf(stream_, "\n\n");
 
