@@ -421,13 +421,13 @@ coeffonly: ;
 #ifndef MAD_CTPSA_IMPL
         if (fabs(t->coef[i]) < eps_) continue;
         if (idx == 0)
-          fprintf(stream_, "\n     I   COEFFICIENT           ORDER   EXPONENTS");
-        fprintf(stream_, "\n%6d  %21.14lE   %2hhu   "           , ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
+          fprintf(stream_, "\n     I   COEFFICIENT             ORDER   EXPONENTS");
+        fprintf(stream_, "\n%6d  %23.16lE   %2hhu   "           , ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
 #else
         if (fabs(creal(t->coef[i])) < eps_ && fabs(cimag(t->coef[i])) < eps_) continue;
         if (idx == 0)
-          fprintf(stream_, "\n     I   COEFFICIENT                                  ORDER   EXPONENTS");
-        fprintf(stream_, "\n%6d  %21.14lE %+21.14lEi   %2hhu   ", ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
+          fprintf(stream_, "\n     I   COEFFICIENT                                      ORDER   EXPONENTS");
+        fprintf(stream_, "\n%6d  %23.16lE %+23.16lEi   %2hhu   ", ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
 #endif
         (d->nn > 20 ? print_ords_sm : print_ords)(d->nn, d->To[i], stream_);
       }
