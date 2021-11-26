@@ -420,8 +420,11 @@ FUN(dif) (const T *a, const T *b, T *c)
   const T* t = 0;
   if (a->lo > b->lo) SWAP(a,b,t);
 
-#define OPCA /(i < end_a && fabs(a->coef[i]) ? fabs(a->coef[i]) : mad_cst_EPS)
-#define OPCB /(i < end_b && fabs(b->coef[i]) ? fabs(b->coef[i]) : mad_cst_EPS)
+#define OPCA , c->coef[i] /= (                i < end_a && a->coef[i] && \
+          fabs(c->coef[i]) > mad_cst_EPS ? fabs(a->coef[i]) : 1)
+
+#define OPCB , c->coef[i] /= (i >= start_b && i < end_b && b->coef[i] && \
+          fabs(c->coef[i]) > mad_cst_EPS ? fabs(b->coef[i]) : 1)
 
   if (t) TPSA_LINOP(0, -, +, OPCB); // c->coef[i] = (-a->coef[i] +b->coef[i])/|b->coef[i]|;
   else   TPSA_LINOP(0,  , -, OPCA); // c->coef[i] = ( a->coef[i] -b->coef[i])/|a->coef[i]|;
