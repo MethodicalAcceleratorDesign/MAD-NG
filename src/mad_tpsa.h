@@ -70,6 +70,7 @@ void    mad_tpsa_convert (const tpsa_t *t, tpsa_t *r, ssz_t n, idx_t t2r_[n], in
 void    mad_tpsa_setvar  (      tpsa_t *t, num_t v, idx_t iv_, num_t scl_);
 void    mad_tpsa_setnam  (      tpsa_t *t, str_t nam);
 void    mad_tpsa_clear   (      tpsa_t *t);
+log_t   mad_tpsa_isnul   (const tpsa_t *t);
 
 // indexing / monomials (return idx_t = -1 if invalid)
 ord_t   mad_tpsa_mono    (const tpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i);
@@ -95,8 +96,8 @@ void    mad_tpsa_getv    (const tpsa_t *t, idx_t i, ssz_t n,             num_t v
 void    mad_tpsa_setv    (      tpsa_t *t, idx_t i, ssz_t n,    const    num_t v[n]);
 
 // operators
-log_t   mad_tpsa_equ     (const tpsa_t *a, const tpsa_t *b, num_t eps_);
-void    mad_tpsa_dif     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c); // (a_i-b_i)/|a_i|
+log_t   mad_tpsa_equ     (const tpsa_t *a, const tpsa_t *b, num_t tol_);
+void    mad_tpsa_dif     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c, num_t tol_); // (a_i-b_i)/|a_i|
 void    mad_tpsa_add     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_sub     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_mul     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
@@ -187,7 +188,7 @@ void    mad_tpsa_mconv    (ssz_t na, const tpsa_t *ma[na], ssz_t nc,            
 // I/O
 #define NAMSZ 16
 
-void    mad_tpsa_print    (const tpsa_t *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_);
+void    mad_tpsa_print    (const tpsa_t *t, str_t name_, num_t tol_, int nohdr_, FILE *stream_);
 tpsa_t* mad_tpsa_scan     (                                                      FILE *stream_);
 const
 desc_t* mad_tpsa_scan_hdr (     int *kind_, char  name_[NAMSZ],                  FILE *stream_);

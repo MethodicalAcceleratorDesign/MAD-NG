@@ -267,6 +267,22 @@ FUN(clear) (T *t)
   DBGFUN(<-);
 }
 
+log_t
+FUN(isnul) (const T *t)
+{
+  assert(t); DBGFUN(->); DBGTPSA(t);
+
+  const idx_t *o2i = t->d->ord2idx;
+  for (ord_t o = t->lo; o <= t->hi; o++) {
+    if (mad_bit_tst(t->nz, o))
+      for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
+        if (t->coef[i]) { DBGFUN(<-); return FALSE; }
+  }
+
+  DBGFUN(<-);
+  return TRUE;
+}
+
 void
 FUN(setnam) (T *t, str_t nam)
 {

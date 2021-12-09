@@ -76,7 +76,7 @@ struct tpsa { // warning: must be kept identical to C definition and ctpsa
   int32_t           uid;  // special "user" field for external use (padding)
   const ord_t mo, lo, hi; // max ord (allocated), lowest/highest used ord
   const bit_t nz;         // zero/non-zero homogeneous polynomials
-  const char  nam[16];    // tpsa name
+  const char  nam_[16];   // tpsa name (hidden)
   const num_t coef[?];
 };
 
@@ -85,7 +85,7 @@ struct ctpsa { // warning: must be kept identical to C definition and tpsa
   int32_t           uid;  // special "user" field for external use (padding)
   const ord_t mo, lo, hi; // max ord (allocated), lowest/highest used ord
   const bit_t nz;         // zero/non-zero homogeneous polynomials
-  const char   nam[16];   // tpsa name
+  const char  nam_[16];   // tpsa name (hidden)
   const cnum_t coef[?];
 };
 ]]
@@ -253,8 +253,8 @@ MR.gtrunc = \x,to_ -> _C.mad_desc_gtrunc(x.d,to_ or _C.mad_tpsa_same)
 MR.nam    = \x     -> _C.mad_tpsa_nam (x)
 MC.nam    = \x     -> _C.mad_ctpsa_nam(x)
 
-MR.setnam = \x,s   => _C.mad_tpsa_setnam (x,s) end
-MC.setnam = \x,s   => _C.mad_ctpsa_setnam(x,s) end
+MR.setnam = \x,s   => _C.mad_tpsa_setnam (x,s) return x end
+MC.setnam = \x,s   => _C.mad_ctpsa_setnam(x,s) return x end
 
 MR.isvalid = \x    -> _C.mad_tpsa_isvalid (x)
 MC.isvalid = \x    -> _C.mad_ctpsa_isvalid(x)
@@ -412,6 +412,9 @@ end
 function MC.clear (x)
   _C.mad_ctpsa_clear(x) return x
 end
+
+MR.isnul = \x -> _C.mad_tpsa_isnul(x)
+MC.isnul = \x -> _C.mad_ctpsa_isnul(x)
 
 -- indexing -------------------------------------------------------------------o
 
@@ -1147,26 +1150,28 @@ function MC.__epow (x, y, r_)
   return assert(gmm(y,'__epow_tpsa'), "invalid 'ctpsa .^ ?' operation")(x, y, r)
 end
 
--- dif : r_i = (x_i - y_i) / (x_i && |x_i - y_i| > eps ? |x_i| : 1)
+-- dif : r_i = (x_i - y_i) / (|x_i - y_i| > tol && |x_i| > 100*tol ? |x_i| : 1)
 
-function MR.dif (x, y, r)
+function MR.dif (x, y, r, tol_)
+  if is_number(r) and is_nil(tol_) then tol_, r = r, nil end -- right shift
   if is_tpsa(y) and is_tpsa(x) then              -- tpsa ~ tpsa
     r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
-    _C.mad_tpsa_dif(x, y, r) return r
+    _C.mad_tpsa_dif(x, y, r, tol_ or 0) return r
   elseif is_ctpsa(y) then                        -- tpsa ~ ctpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
-    _C.mad_ctpsa_tdif(x, y, r) return r
+    _C.mad_ctpsa_tdif(x, y, r, tol_ or 0) return r
   end
   error("invalid 'tpsa ~ ?' operation")
 end
 
-function MC.dif (x, y, r)
+function MC.dif (x, y, r, tol_)
+  if is_number(r) and is_nil(tol_) then tol_, r = r, nil end -- right shift
   if is_ctpsa(y) and is_ctpsa(x) then            -- ctpsa ~ ctpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
-    _C.mad_ctpsa_dif(x, y, r) return r
+    _C.mad_ctpsa_dif(x, y, r, tol_ or 0) return r
   elseif is_tpsa(y) then                         -- ctpsa - tpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
-    _C.mad_ctpsa_dift(x, y, r) return r
+    _C.mad_ctpsa_dift(x, y, r, tol_ or 0) return r
   end
   error("invalid 'ctpsa ~ ?' operation")
 end
@@ -1769,34 +1774,34 @@ end
 
 -- I/O ------------------------------------------------------------------------o
 
-function MR.write (x, filnam_, name_, eps_, nohdr_)
-  if is_number(name_) and is_nil(eps_) then
-    name_, eps_ = nil, name_ -- right shift
+function MR.write (x, filnam_, name_, tol_, nohdr_)
+  if is_number(name_) and is_nil(tol_) then
+    name_, tol_ = nil, name_ -- right shift
   end
 
   local file = assert(openfile(filnam_, 'w', '.dat'),
                       "unable to open GTPSA file in write mode")
-  _C.mad_tpsa_print(x, name_, eps_ or option.prteps, nohdr_ or 0, file)
+  _C.mad_tpsa_print(x, name_, tol_ or option.prteps, nohdr_ or 0, file)
 
   if is_string(filnam_) then file:close() else file:flush() end
   return x
 end
 
-function MC.write (x, filnam_, name_, eps_, nohdr_)
-  if is_number(name_) and is_nil(eps_) then
-    name_, eps_ = nil, name_ -- right shift
+function MC.write (x, filnam_, name_, tol_, nohdr_)
+  if is_number(name_) and is_nil(tol_) then
+    name_, tol_ = nil, name_ -- right shift
   end
 
   local file = assert(openfile(filnam_, 'w', '.dat'),
                       "unable to open GTPSA file in write mode")
-  _C.mad_ctpsa_print(x, name_, eps_ or option.prteps, nohdr_ or 0, file)
+  _C.mad_ctpsa_print(x, name_, tol_ or option.prteps, nohdr_ or 0, file)
 
   if is_string(filnam_) then file:close() else file:flush() end
   return x
 end
 
-function MR.print (x, name_, eps_, nohdr_)
-  return x:write(nil, name_, eps_, nohdr_)
+function MR.print (x, name_, tol_, nohdr_)
+  return x:write(nil, name_, tol_, nohdr_)
 end
 
 local cbuf = chr_arr(16) -- GTPSA name, see NAMSZ in mad_tpsa.h

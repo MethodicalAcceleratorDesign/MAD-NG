@@ -404,12 +404,14 @@ FUN(sub) (const T *a, const T *b, T *c)
 }
 
 void
-FUN(dif) (const T *a, const T *b, T *c)
+FUN(dif) (const T *a, const T *b, T *c, num_t tol_)
 {
   assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b); DBGTPSA(c);
 
   const D *d = a->d;
   ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
+
+  if (tol_ <= 0) tol_ = mad_cst_EPS;
 
   ord_t   hi = MAX (a->hi,b->hi);
   ord_t c_hi = MIN3(hi, c->mo, d->to);
@@ -420,11 +422,11 @@ FUN(dif) (const T *a, const T *b, T *c)
   const T* t = 0;
   if (a->lo > b->lo) SWAP(a,b,t);
 
-#define OPCA , c->coef[i] /= (                i < end_a && a->coef[i] && \
-          fabs(c->coef[i]) > mad_cst_EPS ? fabs(a->coef[i]) : 1)
+#define OPCA , c->coef[i] /= (                i < end_a && \
+        fabs(c->coef[i]) > tol_ && fabs(a->coef[i]) > 100*tol_ ? fabs(a->coef[i]) : 1)
 
-#define OPCB , c->coef[i] /= (i >= start_b && i < end_b && b->coef[i] && \
-          fabs(c->coef[i]) > mad_cst_EPS ? fabs(b->coef[i]) : 1)
+#define OPCB , c->coef[i] /= (i >= start_b && i < end_b && \
+        fabs(c->coef[i]) > tol_ && fabs(b->coef[i]) > 100*tol_ ? fabs(b->coef[i]) : 1)
 
   if (t) TPSA_LINOP(0, -, +, OPCB); // c->coef[i] = (-a->coef[i] +b->coef[i])/|b->coef[i]|;
   else   TPSA_LINOP(0,  , -, OPCA); // c->coef[i] = ( a->coef[i] -b->coef[i])/|a->coef[i]|;
@@ -585,14 +587,14 @@ FUN(powi) (const T *a, int n, T *c)
 }
 
 log_t
-FUN(equ) (const T *a, const T *b, num_t eps_)
+FUN(equ) (const T *a, const T *b, num_t tol_)
 {
   assert(a && b); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
   ensure(a->d == b->d, "incompatibles GTPSA (descriptors differ)");
 
   if (!(a->nz|b->nz)) return TRUE;
 
-  if (eps_ < 0) eps_ = 1e-16;
+  if (tol_ <= 0) tol_ = mad_cst_EPS;
 
   if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
 
@@ -601,11 +603,11 @@ FUN(equ) (const T *a, const T *b, num_t eps_)
   const idx_t start_b = o2i[b->lo], end_b = o2i[b->hi+1];
   idx_t i = start_a;
 
-  for (; i < MIN(end_a,start_b); ++i) if (fabs(a->coef[i]) > eps_)              { DBGFUN(<-); return FALSE; }
+  for (; i < MIN(end_a,start_b); ++i) if (fabs(a->coef[i]) > tol_)              { DBGFUN(<-); return FALSE; }
   i = start_b;
-  for (; i < MIN(end_a,end_b)  ; ++i) if (fabs(a->coef[i] - b->coef[i]) > eps_) { DBGFUN(<-); return FALSE; }
-  for (; i <     end_a         ; ++i) if (fabs(a->coef[i]) > eps_)              { DBGFUN(<-); return FALSE; }
-  for (; i <           end_b   ; ++i) if (fabs(b->coef[i]) > eps_)              { DBGFUN(<-); return FALSE; }
+  for (; i < MIN(end_a,end_b)  ; ++i) if (fabs(a->coef[i] - b->coef[i]) > tol_) { DBGFUN(<-); return FALSE; }
+  for (; i <     end_a         ; ++i) if (fabs(a->coef[i]) > tol_)              { DBGFUN(<-); return FALSE; }
+  for (; i <           end_b   ; ++i) if (fabs(b->coef[i]) > tol_)              { DBGFUN(<-); return FALSE; }
 
   DBGFUN(<-); return TRUE;
 }
