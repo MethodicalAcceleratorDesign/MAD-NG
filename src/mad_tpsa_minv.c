@@ -101,10 +101,8 @@ split_and_inv(const D *d, const T *ma[], T *lininv[], T *nonlin[])
   // copy result into TPSA
   for (idx_t i = 0; i < nv; ++i) {
     T *t = lininv[i];
-    for (idx_t v = 0; v < nv; ++v)
-      FUN(seti)(t, v    +1, 0, mat_vari[i*nv + v]);
-    for (idx_t k = 0; k < np; ++k)
-      FUN(seti)(t, k+nv +1, 0, mat_pari[i*np + k]);
+    for (idx_t v = 0; v < nv; ++v) FUN(seti)(t, v    +1, 0, mat_vari[i*nv + v]);
+    for (idx_t k = 0; k < np; ++k) FUN(seti)(t, k+nv +1, 0, mat_pari[i*np + k]);
   }
 
   mad_free_tmp(mat_var );
@@ -139,16 +137,14 @@ FUN(minv) (ssz_t sa, const T *ma[sa], T *mc[sa])
   // iteratively compute higher orders of the inverse
   // mc (of order i) = al^-1 (linear) o [ i - anl (nonlinear) o mc (of order i-1) ]
 
-  for (idx_t i = 0; i < sa; ++i)
-    FUN(copy)(lininv[i], mc[i]);
+  for (idx_t i = 0; i < sa; ++i) FUN(copy)(lininv[i], mc[i]);
 
-  ord_t o_prev = mad_desc_gtrunc(d, 2);
+  ord_t o_prev = mad_desc_gtrunc(d, 1);
   for (ord_t o = 2; o <= d->mo; ++o) {
     mad_desc_gtrunc(d, o);
     FUN(compose)(sa, (const T**)nonlin, sa, (const T**)mc, tmp);
 
-    for (idx_t v = 0; v < sa; ++v)
-      FUN(seti)(tmp[v], v+1, 1,1);    // add I
+    for (idx_t v = 0; v < sa; ++v) FUN(seti)(tmp[v], v+1, 1,1); // add I
 
     FUN(compose)(sa, (const T**)lininv, sa, (const T**)tmp, mc);
   }
@@ -159,7 +155,6 @@ FUN(minv) (ssz_t sa, const T *ma[sa], T *mc[sa])
     FUN(del)(lininv[i]);
     FUN(del)(nonlin[i]);
     FUN(del)(tmp[i]);
-
     DBGTPSA(mc[i]);
   }
   DBGFUN(<-);
