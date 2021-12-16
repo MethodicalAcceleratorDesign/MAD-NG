@@ -97,6 +97,7 @@ int mad_is_interactive = 0;
 
 int mad_trace_level    = 0;
 int mad_trace_location = 0;
+int mad_trace_fortid   = 0;
 
 /* Forward declarations. */
 static int dofile   (lua_State *L, str_t name);
