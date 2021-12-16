@@ -99,7 +99,7 @@ mad_mono_ord (ssz_t n, const ord_t a[n])
 }
 
 num_t
-mad_mono_pord (ssz_t n, const ord_t a[n])
+mad_mono_ordp (ssz_t n, const ord_t a[n])
 {
   assert(a);
   num_t p = 1;
@@ -108,7 +108,7 @@ mad_mono_pord (ssz_t n, const ord_t a[n])
 }
 
 num_t
-mad_mono_ford (ssz_t n, const ord_t a[n])
+mad_mono_ordpf (ssz_t n, const ord_t a[n])
 {
   assert(a);
   num_t p = 1;
