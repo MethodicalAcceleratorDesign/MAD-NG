@@ -1,0 +1,103 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Debug Fortran files module
+ |
+ | Methodical Accelerator Design - Copyright (c) 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Utility routines for comparing damaps or other information dumped into
+    fortran files, e.g. damap vs PTC
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local damap                in MAD
+local is_number, is_string in MAD.typeid
+local openfile             in MAD.utility
+
+-- implementation -------------------------------------------------------------o
+
+local function cmpdaf(lst, eps_)
+  local dum = damap()
+  local eps = eps_ or 1e-14
+
+  if is_string(lst) then lst = {lst} end
+
+  local m_p, m_n, m_d
+
+  for _, v in ipairs(lst) do
+    io.stdout:write("processing files ", v):flush()
+    io.stderr:write("processing files ", v):flush()
+    local f_p = assert(openfile("fort/fort."..v)) ; f_p:read() ; f_p:read() ; f_p:read()
+    io.stdout:write(", ", v, "_p"):flush()
+    io.stderr:write(", ", v, "_p"):flush()
+    m_p = dum:read(f_p,"C"):fromptc():write("fort/fort_p."..v)
+    f_p:close()
+
+    local f_n = openfile("fort/fort_n."..v, '.dat')
+    if f_n then
+      io.stdout:write(", ", v, "_n"):flush()
+      io.stderr:write(", ", v, "_n"):flush()
+      f_n:read()
+      m_n = dum:read(f_n)
+      io.stdout:write(", ", v, "_d"):flush()
+      io.stderr:write(", ", v, "_d"):flush()
+
+      m_d = m_n:dif(m_p, eps):write("fort/fort_d."..v, eps)
+      f_n:close()
+    end
+    io.stdout:write("\n"):flush()
+    io.stderr:write("\n"):flush()
+  end
+  return m_p, m_n, m_d
+end
+
+local function cmpdafN(N, lst_i, lst_n, eps_)
+  local dum = damap()
+  local eps = eps_ or 1e-14
+
+  if is_number(lst_i) then lst_i, lst_n = {lst_i}, {lst_n} end
+  assert(#lst_i == #lst_n, "incompatible table length")
+
+  for i, v in ipairs(lst_i) do
+    io.stdout:write("processing files ", N+v, "\n"):flush()
+    io.stderr:write("processing files ", N+v, "\n"):flush()
+    local f_i = assert(openfile("fort/fort."..N+v))
+    local f_p = assert(openfile("fort/fort_p."..N+v..".dat", "w"))
+    local f_n = assert(openfile("fort/fort_n."..N+v..".dat"))
+    local f_d = assert(openfile("fort/fort_d."..N+v..".dat", "w"))
+
+    for k=1,lst_n[i] or 1 do
+      local x = dum.x:read(f_i,"C")
+      if not x:isnul() then
+        x:convert(x, {1,2,3,4,6,5}, 1):write(f_p)
+        local y = x:read(f_n)
+        if y then
+          if (x-y):nrm() > (-x-y):nrm() then x = -x end
+          x:dif(y, eps):write(f_d, y:nam(), eps)
+        end
+      end
+    end
+
+    f_d:close() ; f_n:close() ; f_p:close() ; f_i:close()
+  end
+end
+
+-- end ------------------------------------------------------------------------o
+return {
+  cmpdaf  = cmpdaf,
+  cmpdafN = cmpdafN,
+}
