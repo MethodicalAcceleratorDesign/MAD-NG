@@ -63,9 +63,8 @@ print_damap (ssz_t sa, const T *ma[sa], FILE *fp)
   (void)print_damap;
 }
 
-int FUN(dbgff) = 0;
-
 #include <stdio.h>
+extern int mad_trace_fortid;
 
 static inline void
 exppb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[4], log_t inv, int n)
@@ -76,12 +75,12 @@ exppb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[4], log_t inv, int n)
 
   FILE *fp = NULL, *fp2 = NULL;
   char nam[100];
-  if (FUN(dbgff) > 0) {
-    snprintf(nam, 100, "fort/fort_n.%d.dat", FUN(dbgff));
+  if (mad_trace_fortid > 0) {
+    snprintf(nam, 100, "fort/fort_n.%d.dat", mad_trace_fortid+101);
     fp = fopen(nam, "a");
     assert(fp);
 
-    snprintf(nam, 100, "fort/fort_n.%d.dat", FUN(dbgff)+100);
+    snprintf(nam, 100, "fort/fort_n.%d.dat", mad_trace_fortid+100);
     fp2 = fopen(nam, "a");
     assert(fp2);
     fprintf(fp2, "\nvar(exp)=%d\n", n);
@@ -106,18 +105,18 @@ exppb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[4], log_t inv, int n)
 
       if (fp) {
         fprintf(fp2,"d(i)=%d\n", j+1);
-        FUN(print) (ma[j], "s1.v(i)", 1e-16, FALSE, fp2);
-        FUN(print) (t[0], "s22 before add", 1e-16, FALSE, fp2);
-        FUN(print) (t[2], "s2.d.i", 1e-16, FALSE, fp2);
-        FUN(print) (t[3], "s1.v(i)*s2.d.i", 1e-16, FALSE, fp2);
+        FUN(print)(ma[j], "s1.v(i)", 1e-16, FALSE, fp2);
+        FUN(print)(t[0] , "s22 before add", 1e-16, FALSE, fp2);
+        FUN(print)(t[2] , "s2.d.i", 1e-16, FALSE, fp2);
+        FUN(print)(t[3] , "s1.v(i)*s2.d.i", 1e-16, FALSE, fp2);
       }
 
       (inv ? FUN(sub) : FUN(add))(t[0], t[3], t[0]);
 
       if (fp && !FUN(isnul)(t[0])) {
         snprintf(nam, sizeof(nam), "t[0].%d.%d.%d", n, i, j+1);
-        FUN(print) (t[0], nam, 1e-16, FALSE, fp);
-        FUN(print) (t[0], nam, 1e-16, FALSE, fp2);
+        FUN(print)(t[0], nam, 1e-16, FALSE, fp);
+        FUN(print)(t[0], nam, 1e-16, FALSE, fp2);
       }
     }
     FUN(add)(t[0], c, c);                                // b3=b1+b4
