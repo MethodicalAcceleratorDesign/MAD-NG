@@ -169,7 +169,11 @@ FUN(inv) (const T *a, NUM v, T *c) // c = v/a    // checked for real and complex
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(a0 != 0, "invalid domain inv("FMT")", VAL(a0));
+#ifdef MAD_CTPSA_IMPL
+  NUM f0 = mad_cnum_inv(a0);
+#else
   NUM f0 = 1/a0;
+#endif
 
   ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) {
@@ -193,14 +197,20 @@ FUN(invsqrt) (const T *a, NUM v, T *c) // v/sqrt(a),checked for real and complex
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(SELECT(a0 > 0, a0 != 0), "invalid domain invsqrt("FMT")", VAL(a0));
-  NUM f0 = 1/sqrt(a0);
+#ifdef MAD_CTPSA_IMPL
+  NUM _a0 = mad_cnum_inv(a0);
+  NUM  f0 = mad_cnum_inv(sqrt(a0));
+#else
+  NUM _a0 = 1/a0;
+  NUM  f0 = 1/sqrt(a0);
+#endif
 
   ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) {
     FUN(setvar)(c,v*f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
   }
 
-  NUM ord_coef[to+1], _a0 = 1/a0;
+  NUM ord_coef[to+1];
   ord_coef[0] = f0;
   for (ord_t o = 1; o <= to; ++o)
     ord_coef[o] = -ord_coef[o-1] * _a0 / (2.0*o) * (2.0*o-1);
@@ -224,7 +234,13 @@ FUN(sqrt) (const T *a, T *c)                     // checked for real and complex
     FUN(setvar)(c,f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
   }
 
-  NUM ord_coef[to+1], _a0 = 1/a0;
+#ifdef MAD_CTPSA_IMPL
+  NUM _a0 = mad_cnum_inv(a0);
+#else
+  NUM _a0 = 1/a0;
+#endif
+
+  NUM ord_coef[to+1];
   ord_coef[0] = f0;
   for (ord_t o = 1; o <= to; ++o)
     ord_coef[o] = -ord_coef[o-1] * _a0 / (2.0*o) * (2.0*o-3);
@@ -476,9 +492,9 @@ FUN(sinc) (const T *a, T *c)
 
   if (!to || a->hi == 0) {
 #ifdef MAD_CTPSA_IMPL
-    cnum_t f0 = mad_cnum_sinc(a0);
+    NUM f0 = mad_cnum_sinc(a0);
 #else
-    num_t  f0 = mad_num_sinc (a0);
+    NUM f0 = mad_num_sinc (a0);
 #endif
     FUN(setvar)(c,f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
   }
@@ -642,7 +658,11 @@ FUN(coth) (const T *a, T *c)                     // checked for real and complex
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
   NUM a0 = a->coef[0], f0 = tanh(a0);
   ensure(f0 != 0, "invalid domain coth("FMT")", VAL(a0));
+#ifdef MAD_CTPSA_IMPL
+  f0 = mad_cnum_inv(f0);
+#else
   f0 = 1/f0;
+#endif
 
   ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) {
@@ -685,9 +705,9 @@ FUN(sinhc) (const T *a, T *c)
 
   if (!to || a->hi == 0) {
 #ifdef MAD_CTPSA_IMPL
-    cnum_t f0 = mad_cnum_sinhc(a0);
+    NUM f0 = mad_cnum_sinhc(a0);
 #else
-    num_t  f0 = mad_num_sinhc (a0);
+    NUM f0 = mad_num_sinhc (a0);
 #endif
     FUN(setvar)(c,f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
   }
@@ -864,7 +884,11 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(a0 != 0, "invalid domain acot("FMT")", VAL(a0));
+#ifdef MAD_CTPSA_IMPL
+  NUM f0 = atan(mad_cnum_inv(a0));
+#else
   NUM f0 = atan(1/a0);
+#endif
 
   ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) {
@@ -923,9 +947,9 @@ FUN(asinc) (const T *a, T *c)
 
   if (!to || a->hi == 0) {
 #ifdef MAD_CTPSA_IMPL
-    cnum_t f0 = mad_cnum_asinc(a0);
+    NUM f0 = mad_cnum_asinc(a0);
 #else
-    num_t  f0 = mad_num_asinc (a0);
+    NUM f0 = mad_num_asinc (a0);
 #endif
     FUN(setvar)(c,f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
   }
@@ -1072,7 +1096,11 @@ FUN(acoth) (const T *a, T *c)                    // checked for real and complex
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(fabs(a0) SELECT(> 1, != 1 && a0 != 0), "invalid domain acoth("FMT")", VAL(a0));
+#ifdef MAD_CTPSA_IMPL
+  NUM f0 = atanh(mad_cnum_inv(a0));
+#else
   NUM f0 = atanh(1/a0);
+#endif
 
   ord_t to = MIN(c->mo,c->d->to);
   if (!to || a->hi == 0) {
@@ -1120,9 +1148,9 @@ FUN(asinhc) (const T *a, T *c)
 
   if (!to || a->hi == 0) {
 #ifdef MAD_CTPSA_IMPL
-    cnum_t f0 = mad_cnum_asinhc(a0);
+    NUM f0 = mad_cnum_asinhc(a0);
 #else
-    num_t  f0 = mad_num_asinhc (a0);
+    NUM f0 = mad_num_asinhc (a0);
 #endif
     FUN(setvar)(c,f0,0,0); DBGTPSA(c); DBGFUN(<-); return;
   }
@@ -1156,9 +1184,9 @@ FUN(erf) (const T *a, T *c)
   // erf(z) = 2/sqrt(pi) \int_0^z exp(-t^2) dt
   NUM a0 = a->coef[0];
 #ifdef MAD_CTPSA_IMPL
-  cnum_t f0 = mad_cnum_erf(a0, 0);
+  NUM f0 = mad_cnum_erf(a0, 0);
 #else
-  num_t  f0 = mad_num_erf (a0);
+  NUM f0 = mad_num_erf (a0);
 #endif
 
   ord_t to = MIN(c->mo,c->d->to);

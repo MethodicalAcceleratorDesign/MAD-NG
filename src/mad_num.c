@@ -17,6 +17,7 @@
 */
 
 #include <math.h>
+#include <float.h>
 #include <complex.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -41,8 +42,8 @@ fact(int n)
 
 #define CHKR  assert( r )
 
+#define CNUM(a)    CNUM2(MKNAME(a,_re), MKNAME(a,_im))
 #define CNUM2(a,b) (* (cnum_t*) & (num_t[2]) { a, b })
-#define CNUM(a) CNUM2(MKNAME(a,_re), MKNAME(a,_im))
 
 // --- num
 
@@ -107,30 +108,115 @@ num_t mad_num_powi (num_t x, int n)
 
 // --- cnum
 
+cnum_t mad_cnum_div (cnum_t x, cnum_t y)
+{
+// REFERENCES
+//
+// [1] Robert L. Smith. Algorithm 116: Complex division.  Commun. ACM,
+//  5(8):435, 1962.
+//
+// [2] Michael Baudin and Robert L. Smith. "A robust complex division in
+// Scilab," October 2012, available at http://arxiv.org/abs/1210.4539.
+
+#define RBIG     (DBL_MAX/2)
+#define RMIN     (DBL_MIN)
+#define RMIN2    (0x1.0p-512)
+#define RMINSCAL (0x1.0p+510)
+
+  num_t x_re = creal(x), x_im = cimag(x);
+  num_t y_re = creal(y), y_im = cimag(y);
+  num_t r_re, r_im, denom, ratio;
+
+  if (fabs(y_re) < fabs(y_im)) {
+    /* avoid overflow/underflow issues when y_re and y_im are small */
+    if (fabs(y_im) < RMIN2) {
+      x_re = x_re * RMINSCAL;
+      x_im = x_im * RMINSCAL;
+      y_re = y_re * RMINSCAL;
+      y_im = y_im * RMINSCAL;
+    }
+//    /* prevent overflow when arguments are near max representable */
+//    else if ((fabs(y_im) >= RBIG) || (fabs(x_re) >= RBIG) || (fabs(x_im) >= RBIG)) {
+//      x_re = x_re * 0.5;
+//      x_im = x_im * 0.5;
+//      y_re = y_re * 0.5;
+//      y_im = y_im * 0.5;
+//    }
+    ratio = y_re / y_im;
+    denom = (y_re * ratio) + y_im;
+    if (fabs(ratio) > RMIN) {
+      r_re = ((x_re * ratio) + x_im) / denom;
+      r_im = ((x_im * ratio) - x_re) / denom;
+    } else {
+      r_re = ((y_re * (x_re / y_im)) + x_im) / denom;
+      r_im = ((y_re * (x_im / y_im)) - x_re) / denom;
+    }
+  } else {
+    /* avoid overflow issues when y_re and y_im are small */
+    if (fabs(y_re) < RMIN2) {
+      x_re = x_re * RMINSCAL;
+      x_im = x_im * RMINSCAL;
+      y_re = y_re * RMINSCAL;
+      y_im = y_im * RMINSCAL;
+    }
+//   /* prevent overflow when arguments are near max representable */
+//    else if ((fabs(y_re) >= RBIG) || (fabs(x_re) >= RBIG) || (fabs(x_im) >= RBIG)) {
+//      x_re = x_re * 0.5;
+//      x_im = x_im * 0.5;
+//      y_re = y_re * 0.5;
+//      y_im = y_im * 0.5;
+//    }
+    ratio = y_im / y_re;
+    denom = (y_im * ratio) + y_re;
+    if (fabs(ratio) > RMIN) {
+      r_re = (x_re + (x_im * ratio)) / denom;
+      r_im = (x_im - (x_re * ratio)) / denom;
+    } else {
+      r_re = (x_re + (y_im * (x_im / y_re))) / denom;
+      r_im = (x_im - (y_im * (x_re / y_re))) / denom;
+    }
+  }
+  return CNUM(r);
+
+#undef RBIG
+#undef RMIN
+#undef RMIN2
+#undef RMINSCAL
+}
+
+cnum_t mad_cnum_inv (cnum_t x)
+{
+  return mad_cnum_div(1, x);
+}
+
 cnum_t mad_cnum_sinc  (cnum_t x)
 {
-  return cabs(x)<1e-4 ? 1 - 0.1666666666666666666667*x*x : csin (x)/x;
+  return cabs(x)<1e-4 ? 1 - 0.1666666666666666666667*x*x
+                      : mad_cnum_div(csin(x), x);
 }
 
 cnum_t mad_cnum_sinhc (cnum_t x)
 {
-  return cabs(x)<1e-4 ? 1 + 0.1666666666666666666667*x*x : csinh(x)/x;
+  return cabs(x)<1e-4 ? 1 + 0.1666666666666666666667*x*x
+                      : mad_cnum_div(csinh(x), x);
 }
 
 cnum_t mad_cnum_asinc  (cnum_t x)
 {
-  return cabs(x)<1e-4 ? 1 + 0.1666666666666666666667*x*x : casin (x)/x;
+  return cabs(x)<1e-4 ? 1 + 0.1666666666666666666667*x*x
+                      : mad_cnum_div(casin(x), x);
 }
 
 cnum_t mad_cnum_asinhc (cnum_t x)
 {
-  return cabs(x)<1e-4 ? 1 - 0.1666666666666666666667*x*x : casinh(x)/x;
+  return cabs(x)<1e-4 ? 1 - 0.1666666666666666666667*x*x
+                      : mad_cnum_div(casinh(x), x);
 }
 
 cnum_t mad_cnum_powi (cnum_t x, int n)
 {
   cnum_t r = 1;
-  if (n < 0) n = -n, x = 1/x;
+  if (n < 0) n = -n, x = mad_cnum_inv(x);
   for (;;) {
     if (n &   1) r *= x;
     if (n >>= 1) x *= x; else break;
@@ -179,14 +265,14 @@ void mad_cnum_rect_r (num_t rho, num_t ang, cnum_t *r)
 void mad_cnum_polar_r (num_t x_re, num_t x_im, cnum_t *r)
 { CHKR; *r = CNUM2( cabs(CNUM(x)), carg(CNUM(x)) ); }
 
-void mad_cnum_inv_r (num_t x_re, num_t x_im, cnum_t *r)
-{ CHKR; *r = 1 / CNUM(x); }
-
 void mad_cnum_div_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
-{ CHKR; *r = CNUM(x) / CNUM(y);  }
+{ CHKR; *r = mad_cnum_div(CNUM(x), CNUM(y)); }
+
+void mad_cnum_inv_r (num_t x_re, num_t x_im, cnum_t *r)
+{ CHKR; *r = mad_cnum_div(1, CNUM(x)); }
 
 void mad_cnum_mod_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
-{ CHKR; cnum_t cr = CNUM(x) / CNUM(y);
+{ CHKR; cnum_t cr = mad_cnum_div(CNUM(x), CNUM(y));
   *r = CNUM(x) - CNUM(y) * CNUM2(round(creal(cr)), round(cimag(cr))); }
 
 void mad_cnum_pow_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)

@@ -41,6 +41,8 @@ num_t  mad_num_asinc   (num_t x);
 num_t  mad_num_asinhc  (num_t x);
 num_t  mad_num_powi    (num_t x, int n);
 
+cnum_t mad_cnum_div    (cnum_t x, cnum_t y);
+cnum_t mad_cnum_inv    (cnum_t x);
 cnum_t mad_cnum_sinc   (cnum_t x);
 cnum_t mad_cnum_sinhc  (cnum_t x);
 cnum_t mad_cnum_asinc  (cnum_t x);

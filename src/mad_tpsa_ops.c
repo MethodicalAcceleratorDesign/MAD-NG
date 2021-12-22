@@ -22,6 +22,7 @@
 
 #include "mad_log.h"
 #include "mad_cst.h"
+#include "mad_num.h"
 #include "mad_desc_impl.h"
 
 #ifdef    MAD_CTPSA_IMPL
@@ -536,7 +537,14 @@ FUN(div) (const T *a, const T *b, T *c)
   NUM b0 = b->coef[0];
   ensure(b0 != 0, "invalid domain");
 
-  if (b->hi == 0) { FUN(scl)(a,1/b0,c); DBGFUN(<-); return; }
+  if (b->hi == 0) {
+#ifdef MAD_CTPSA_IMPL
+    FUN(scl)(a,mad_cnum_inv(b0),c);
+#else
+    FUN(scl)(a,1/b0,c);
+#endif
+    DBGFUN(<-); return;
+  }
 
   T *t = (a == c || b == c) ? GET_TMPX(c) : FUN(reset0)(c);
   FUN(inv)(b,1,t);
