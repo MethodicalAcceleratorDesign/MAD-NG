@@ -97,7 +97,7 @@ void    mad_tpsa_setv    (      tpsa_t *t, idx_t i, ssz_t n,    const    num_t v
 
 // operators
 log_t   mad_tpsa_equ     (const tpsa_t *a, const tpsa_t *b, num_t tol_);
-void    mad_tpsa_dif     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c, num_t tol_); // (a_i-b_i)/|a_i|
+void    mad_tpsa_dif     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c); // (a_i-b_i)/max(|a_i|,1)
 void    mad_tpsa_add     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_sub     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_mul     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);

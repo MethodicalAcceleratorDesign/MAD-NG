@@ -120,7 +120,7 @@ void     mad_ctpsa_setv    (      ctpsa_t *t, idx_t i, ssz_t n,    const cnum_t 
 
 // operators
 log_t    mad_ctpsa_equ     (const ctpsa_t *a, const ctpsa_t *b, num_t tol_);
-void     mad_ctpsa_dif     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c, num_t tol_); // (a_i-b_i)/|a_i|
+void     mad_ctpsa_dif     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c); // (a_i-b_i)/max(|a_i|,1)
 void     mad_ctpsa_add     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_sub     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_mul     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
@@ -134,8 +134,8 @@ void     mad_ctpsa_pown_r    (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t 
 
 // operators with internal real-to-complex conversion
 log_t    mad_ctpsa_equt    (const ctpsa_t *a, const  tpsa_t *b, num_t tol);
-void     mad_ctpsa_dift    (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c, num_t tol_);
-void     mad_ctpsa_tdif    (const  tpsa_t *a, const ctpsa_t *b, ctpsa_t *c, num_t tol_);
+void     mad_ctpsa_dift    (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c);
+void     mad_ctpsa_tdif    (const  tpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_addt    (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_subt    (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_tsub    (const  tpsa_t *a, const ctpsa_t *b, ctpsa_t *c);

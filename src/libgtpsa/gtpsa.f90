@@ -483,13 +483,19 @@ module GTPSA
     subroutine mad_tpsa_setnam(tpsa,nam) bind(C)
       import ; implicit none
       type(c_ptr), value :: tpsa
-      character(c_char), intent(in) :: nam(*)     ! tpsa name (nul term. C str)
+      character(c_char), intent(in) :: nam(*)   ! tpsa name (nul term. C str)
     end subroutine mad_tpsa_setnam
 
     subroutine mad_tpsa_clear(tpsa) bind(C)
       import ; implicit none
-      type(c_ptr), value :: tpsa                  ! clear tpsa (reset to 0)
+      type(c_ptr), value :: tpsa                ! clear tpsa (reset to 0)
     end subroutine mad_tpsa_clear
+
+    function mad_tpsa_isnul(tpsa) result(ret) bind(C)
+      import ; implicit none
+      logical(c_bool) :: ret                    ! true or false
+      type(c_ptr), value, intent(in) :: tpsa
+    end function mad_tpsa_isnul
 
     subroutine mad_tpsa_convert(tpsa,tpsa_r,n,t2r_,pb) bind(C)
       import ; implicit none
@@ -647,6 +653,12 @@ module GTPSA
       type(c_ptr), value, intent(in) :: tpsa_a, tpsa_b
       real(c_num_t), value, intent(in) :: eps_  ! tolerance during comparison
     end function mad_tpsa_equ
+
+    subroutine mad_tpsa_dif(tpsa_a,tpsa_b,tpsa_r) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: tpsa_a, tpsa_b  ! lhs, rhs
+      type(c_ptr), value :: tpsa_r                      ! dst
+    end subroutine mad_tpsa_dif
 
     subroutine mad_tpsa_add(tpsa_a,tpsa_b,tpsa_r) bind(C)
       import ; implicit none
@@ -1178,13 +1190,19 @@ module GTPSA
     subroutine mad_ctpsa_setnam(ctpsa,nam) bind(C)
       import ; implicit none
       type(c_ptr), value :: ctpsa
-      character(c_char), intent(in) :: nam(*)     ! tpsa name (nul term. C str)
+      character(c_char), intent(in) :: nam(*)    ! tpsa name (nul term. C str)
     end subroutine mad_ctpsa_setnam
 
     subroutine mad_ctpsa_clear(ctpsa) bind(C)
       import ; implicit none
       type(c_ptr), value :: ctpsa
     end subroutine mad_ctpsa_clear
+
+    function mad_ctpsa_isnul(ctpsa) result(ret) bind(C)
+      import ; implicit none
+      logical(c_bool) :: ret                     ! true or false
+      type(c_ptr), value, intent(in) :: ctpsa
+    end function mad_ctpsa_isnul
 
     subroutine mad_ctpsa_convert(ctpsa,ctpsa_r,n,t2r_,pb) bind(C)
       import ; implicit none
@@ -1363,6 +1381,12 @@ module GTPSA
       real(c_num_t), value, intent(in) :: eps_  ! tolerance during comparison
     end function mad_ctpsa_equ
 
+    subroutine mad_ctpsa_dif(ctpsa_a,ctpsa_b,ctpsa_r) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: ctpsa_a, ctpsa_b  ! lhs, rhs
+      type(c_ptr), value :: ctpsa_r                       ! dst
+    end subroutine mad_ctpsa_dif
+
     subroutine mad_ctpsa_add(ctpsa_a,ctpsa_b,ctpsa_r) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: ctpsa_a, ctpsa_b  ! lhs, rhs
@@ -1433,6 +1457,18 @@ module GTPSA
       type(c_ptr), value, intent(in) :: tpsa_a, ctpsa_b  ! lhs, rhs
       type(c_ptr), value :: ctpsa_r                      ! dst
     end subroutine mad_ctpsa_tsub
+
+    subroutine mad_ctpsa_dift(ctpsa_a,tpsa_b,ctpsa_r) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: ctpsa_a, tpsa_b  ! lhs, rhs
+      type(c_ptr), value :: ctpsa_r                      ! dst
+    end subroutine mad_ctpsa_dift
+
+    subroutine mad_ctpsa_tdif(tpsa_a,ctpsa_b,ctpsa_r) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: tpsa_a, ctpsa_b  ! lhs, rhs
+      type(c_ptr), value :: ctpsa_r                      ! dst
+    end subroutine mad_ctpsa_tdif
 
     subroutine mad_ctpsa_mult(ctpsa_a,tpsa_b,ctpsa_r) bind(C)
       import ; implicit none

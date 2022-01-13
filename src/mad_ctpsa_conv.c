@@ -192,24 +192,24 @@ log_t mad_ctpsa_equt (const ctpsa_t *a, const tpsa_t *b, num_t tol_)
   DBGFUN(<-); return res;
 }
 
-void mad_ctpsa_dift (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c, num_t tol_)
+void mad_ctpsa_dift (const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ctpsa_t *t = GET_TMPC(b);
   mad_ctpsa_cplx(b, NULL, t);
-  mad_ctpsa_dif (a, t, c, tol_);
+  mad_ctpsa_dif (a, t, c);
   REL_TMPC(t);
   DBGFUN(<-);
 }
 
-void mad_ctpsa_tdif (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c, num_t tol_)
+void mad_ctpsa_tdif (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c)
 {
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ctpsa_t *t = GET_TMPC(a);
   mad_ctpsa_cplx(a, NULL, t);
-  mad_ctpsa_dif (t, b, c, tol_);
+  mad_ctpsa_dif (t, b, c);
   REL_TMPC(t);
   DBGFUN(<-);
 }

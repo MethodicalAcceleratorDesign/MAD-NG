@@ -405,14 +405,12 @@ FUN(sub) (const T *a, const T *b, T *c)
 }
 
 void
-FUN(dif) (const T *a, const T *b, T *c, num_t tol_)
+FUN(dif) (const T *a, const T *b, T *c)
 {
   assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b); DBGTPSA(c);
 
   const D *d = a->d;
   ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
-
-  if (tol_ <= 0) tol_ = mad_cst_EPS;
 
   ord_t   hi = MAX (a->hi,b->hi);
   ord_t c_hi = MIN3(hi, c->mo, d->to);
@@ -424,13 +422,12 @@ FUN(dif) (const T *a, const T *b, T *c, num_t tol_)
   if (a->lo > b->lo) SWAP(a,b,t);
 
 #define OPCA , c->coef[i] /= (                i < end_a && \
-        fabs(c->coef[i]) > tol_ && fabs(a->coef[i]) > 100*tol_ ? fabs(a->coef[i]) : 1)
-
+                              fabs(a->coef[i]) > 1 ? fabs(a->coef[i]) : 1)
 #define OPCB , c->coef[i] /= (i >= start_b && i < end_b && \
-        fabs(c->coef[i]) > tol_ && fabs(b->coef[i]) > 100*tol_ ? fabs(b->coef[i]) : 1)
+                              fabs(b->coef[i]) > 1 ? fabs(b->coef[i]) : 1)
 
-  if (t) TPSA_LINOP(0, -, +, OPCB); // c->coef[i] = (-a->coef[i] +b->coef[i])/|b->coef[i]|;
-  else   TPSA_LINOP(0,  , -, OPCA); // c->coef[i] = ( a->coef[i] -b->coef[i])/|a->coef[i]|;
+  if (t) TPSA_LINOP(0, -, +, OPCB); // c->coef[i] = (-a->coef[i] +b->coef[i])/max(|b->coef[i]|,1);
+  else   TPSA_LINOP(0,  , -, OPCA); // c->coef[i] = ( a->coef[i] -b->coef[i])/max(|a->coef[i]|,1);
 
 #undef OPCA
 #undef OPCB
