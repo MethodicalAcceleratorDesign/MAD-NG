@@ -76,11 +76,11 @@ exppb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[4], log_t inv, int n)
   FILE *fp = NULL, *fp2 = NULL;
   char nam[100];
   if (mad_trace_fortid > 0) {
-    snprintf(nam, 100, "fort/fort_n.%d.dat", mad_trace_fortid+101);
+    snprintf(nam, 100, "fort/fort_n.%d.dat", mad_trace_fortid+100);
     fp = fopen(nam, "a");
     assert(fp);
 
-    snprintf(nam, 100, "fort/fort_n.%d.dat", mad_trace_fortid+100);
+    snprintf(nam, 100, "fort/fort_n.%d.dat", mad_trace_fortid+200);
     fp2 = fopen(nam, "a");
     assert(fp2);
     fprintf(fp2, "\nvar(exp)=%d\n", n);
