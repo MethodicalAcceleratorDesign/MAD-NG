@@ -724,6 +724,13 @@ module GTPSA
       type(c_ptr), value, intent(in) :: tpsa_a, tpsa_b_
     end function mad_tpsa_nrm2
 
+    subroutine mad_tpsa_integ(tpsa_a,tpsa_r,iv) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: tpsa_a   ! src
+      type(c_ptr), value :: tpsa_r               ! dst
+      integer(c_int), value, intent(in) :: iv    ! variable number (1st order)
+    end subroutine mad_tpsa_integ
+
     subroutine mad_tpsa_deriv(tpsa_a,tpsa_r,iv) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa_a   ! src
@@ -1545,6 +1552,13 @@ module GTPSA
       complex(c_cnum_t) :: nrm2                    ! sqrt(sum_i (a[i]-b_[i])^2)
       type(c_ptr), value, intent(in) :: ctpsa_a, ctpsa_b_
     end function mad_ctpsa_nrm2
+
+    subroutine mad_ctpsa_integ(ctpsa_a,ctpsa_r,iv) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: ctpsa_a    ! src
+      type(c_ptr), value :: ctpsa_r                ! dst
+      integer(c_int), value, intent(in) :: iv      ! variable index (1st order)
+    end subroutine mad_ctpsa_integ
 
     subroutine mad_ctpsa_deriv(ctpsa_a,ctpsa_r,iv) bind(C)
       import ; implicit none
