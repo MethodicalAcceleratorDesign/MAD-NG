@@ -186,6 +186,7 @@ void     mad_ctpsa_invsqrt (const ctpsa_t *a, cnum_t v, ctpsa_t *c); // c  = v/s
 void     mad_ctpsa_hypot   (const ctpsa_t *x, const ctpsa_t *y, ctpsa_t *r);
 void     mad_ctpsa_hypot3  (const ctpsa_t *x, const ctpsa_t *y, const ctpsa_t *z, ctpsa_t *r);
 
+void     mad_ctpsa_integ   (const ctpsa_t *a, ctpsa_t *c, int iv);
 void     mad_ctpsa_deriv   (const ctpsa_t *a, ctpsa_t *c, int iv);
 void     mad_ctpsa_derivm  (const ctpsa_t *a, ctpsa_t *c, ssz_t n, const ord_t m[n]);
 void     mad_ctpsa_poisson (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int nv);

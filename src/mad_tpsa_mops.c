@@ -195,7 +195,7 @@ FUN(vec2fld) (ssz_t sc, const T *a, T *mc[sc]) // cpbbra (wo * -2i)
 }
 
 void // compute f(x;0) = \int_0^x J G(x';0) dx' = x^t J phi G(x;0) (eq. 34, 36 & 37)
-FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // cgetpb (wo / -2i)
+FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // getpb
 {
   DBGFUN(->);
   assert(ma && c);
@@ -205,24 +205,13 @@ FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // cgetpb (wo / -2i)
   FUN(reset0)(c);
 
   T *t1 = FUN(new)(c, mad_tpsa_same);
-  T *t2 = FUN(new)(c, mad_tpsa_same);
-
-  const idx_t *o2i = c->d->ord2idx;
 
   for (idx_t ia = 0; ia < sa; ++ia) {
-    idx_t iv = ia & 1 ? ia : ia+2;
-    FUN(setvar)(t2, 0, iv, 0); // q_i -> p_i monomial, p_i -> q_i monomial
-    FUN(mul)(ma[ia], t2, t1);  // integrate by monomial of "paired" canon. var.
-
-    ord_t lo = MIN(t1->lo,2);  // 2..hi, avoid NaN and Inf
-    for (ord_t o = lo; o <= t1->hi; ++o)
-      for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
-        t1->coef[i] /= o;      // scale coefs by orders, i.e. integrate
-
+    idx_t iv = ia & 1 ? ia : ia+2;           // q_i -> p_i mono, p_i -> q_i mono
+    FUN(integ)(ma[ia], t1, iv);
     (ia & 1 ? FUN(add) : FUN(sub))(c, t1, c); // \sum p_i - q_i to c
   }
 
-  FUN(del)(t2);
   FUN(del)(t1);
   DBGFUN(<-);
 }

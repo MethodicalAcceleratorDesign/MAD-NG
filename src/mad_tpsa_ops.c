@@ -694,6 +694,36 @@ FUN(nrm) (const T *a)
 }
 
 void
+FUN(integ) (const T *a, T *r, int iv)
+{
+  assert(a && r); DBGFUN(->); DBGTPSA(a); DBGTPSA(r);
+  const D *d = a->d;
+  const idx_t *o2i = d->ord2idx;
+
+  ensure(d == r->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(iv >= o2i[1] && iv < o2i[2], "invalid domain");
+
+  T *c = a == r ? GET_TMPX(r) : FUN(reset0)(r);
+
+  if (!a->hi) goto ret; // empty
+
+  T *t = GET_TMPX(r);
+
+  FUN(setvar)(t, 0, iv, 0);
+  FUN(mul)(a, t, c);        // integrate
+
+  for (ord_t o = MAX(c->lo,2); o <= c->hi; ++o)
+    for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
+      c->coef[i] /= o;      // scale coefs by orders, i.e. integrate
+
+  REL_TMPX(t);
+
+ret:
+  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
+  DBGTPSA(r); DBGFUN(<-);
+}
+
+void
 FUN(deriv) (const T *a, T *r, int iv)
 {
   assert(a && r); DBGFUN(->); DBGTPSA(a); DBGTPSA(r);

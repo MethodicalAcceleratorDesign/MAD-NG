@@ -147,6 +147,7 @@ void    mad_tpsa_atan2   (const tpsa_t *y, const tpsa_t *x, tpsa_t *r);
 void    mad_tpsa_hypot   (const tpsa_t *x, const tpsa_t *y, tpsa_t *r);
 void    mad_tpsa_hypot3  (const tpsa_t *x, const tpsa_t *y, const tpsa_t *z, tpsa_t *r);
 
+void    mad_tpsa_integ   (const tpsa_t *a, tpsa_t *c, int iv);
 void    mad_tpsa_deriv   (const tpsa_t *a, tpsa_t *c, int iv);
 void    mad_tpsa_derivm  (const tpsa_t *a, tpsa_t *c, ssz_t n, const ord_t m[n]);
 void    mad_tpsa_poisson (const tpsa_t *a, const tpsa_t *b, tpsa_t *c, int nv);
