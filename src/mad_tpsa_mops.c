@@ -205,13 +205,19 @@ FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // getpb
   FUN(reset0)(c);
 
   T *t1 = FUN(new)(c, mad_tpsa_same);
+  T *t2 = FUN(new)(c, mad_tpsa_same);
 
   for (idx_t ia = 0; ia < sa; ++ia) {
-    idx_t iv = ia & 1 ? ia : ia+2;           // q_i -> p_i mono, p_i -> q_i mono
-    FUN(integ)(ma[ia], t1, iv);
+    idx_t iv = ia & 1 ? ia : ia+2;
+
+    FUN(setvar)(t2, 0, iv, 0); // q_i -> p_i monomial, p_i -> q_i monomial
+    FUN(mul)(ma[ia], t2, t1);  // integrate by monomial of "paired" canon. var.
+    FUN(sclord)(t1, t1, TRUE); // scale coefs by orders, i.e. integrate
+
     (ia & 1 ? FUN(add) : FUN(sub))(c, t1, c); // \sum p_i - q_i to c
   }
 
+  FUN(del)(t2);
   FUN(del)(t1);
   DBGFUN(<-);
 }
