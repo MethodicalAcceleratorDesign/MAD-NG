@@ -64,6 +64,7 @@ ord_t    mad_ctpsa_ordn    (ssz_t n, const ctpsa_t *t[n]); // max order of all
 
 // initialization
 void     mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *r);
+void     mad_ctpsa_sclord  (const ctpsa_t *t, ctpsa_t *r, log_t inv); // t[i]*o[i]
 void     mad_ctpsa_getord  (const ctpsa_t *t, ctpsa_t *r, ord_t ord);
 void     mad_ctpsa_cutord  (const ctpsa_t *t, ctpsa_t *r, int   ord); // ord..mo = 0 or 0..-ord=0
 void     mad_ctpsa_convert (const ctpsa_t *t, ctpsa_t *r, ssz_t n, idx_t t2r_[n], int pb);

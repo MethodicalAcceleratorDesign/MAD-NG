@@ -712,9 +712,16 @@ FUN(integ) (const T *a, T *r, int iv)
   FUN(setvar)(t, 0, iv, 0);
   FUN(mul)(a, t, c);        // integrate
 
+  ord_t **mono = d->To;
   for (ord_t o = MAX(c->lo,2); o <= c->hi; ++o)
-    for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
-      c->coef[i] /= o;      // scale coefs by orders, i.e. integrate
+    if (mad_bit_tst(c->nz,o))
+      for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
+        if (c->coef[i] && mono[i][iv-1] > 1) c->coef[i] /= mono[i][iv-1];
+
+//  for (ord_t o = MAX(c->lo,2); o <= c->hi; ++o)
+//    if (mad_bit_tst(c->nz,o))
+//      for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
+//        c->coef[i] /= o;      // scale coefs by orders, i.e. integrate
 
   REL_TMPX(t);
 

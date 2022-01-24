@@ -346,6 +346,30 @@ FUN(copy) (const T *t, T *r)
 }
 
 void
+FUN(sclord) (const T *t, T *r, log_t inv)
+{
+  assert(t && r); DBGFUN(->);
+
+  FUN(copy)(t,r);
+
+  // scale coefs
+  const idx_t *o2i = r->d->ord2idx;
+  if (inv) {
+    for (ord_t o = MAX(r->lo,2); o <= r->hi; ++o)
+      if (mad_bit_tst(r->nz,o))
+        for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
+          r->coef[i] /= o; // scale coefs by 1/order
+  } else {
+    for (ord_t o = MAX(r->lo,2); o <= r->hi; ++o)
+      if (mad_bit_tst(r->nz,o))
+        for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
+          r->coef[i] *= o; // scale coefs by order
+  }
+
+  DBGTPSA(r); DBGFUN(<-);
+}
+
+void
 FUN(getord) (const T *t, T *r, ord_t ord)
 {
   assert(t && r); DBGFUN(->); DBGTPSA(t); DBGTPSA(r);

@@ -459,6 +459,13 @@ module GTPSA
       type(c_ptr), value :: tpsa_r              ! dst
     end subroutine mad_tpsa_copy
 
+    subroutine mad_tpsa_sclord(tpsa,tpsa_r,inv) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: tpsa     ! src
+      type(c_ptr), value :: tpsa_r               ! dst
+      logical(c_bool), value, intent(in) :: inv  ! scl by inverse
+    end subroutine mad_tpsa_sclord
+
     subroutine mad_tpsa_getord(tpsa,tpsa_r,ord) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa     ! src
@@ -1172,6 +1179,13 @@ module GTPSA
       type(c_ptr), value, intent(in) :: ctpsa    ! src
       type(c_ptr), value :: ctpsa_r              ! dst
     end subroutine mad_ctpsa_copy
+
+    subroutine mad_ctpsa_sclord(ctpsa,ctpsa_r,inv) bind(C)
+      import ; implicit none
+      type(c_ptr), value, intent(in) :: ctpsa    ! src
+      type(c_ptr), value :: ctpsa_r              ! dst
+      logical(c_bool), value, intent(in) :: inv  ! scl by inverse
+    end subroutine mad_ctpsa_sclord
 
     subroutine mad_ctpsa_getord(ctpsa,ctpsa_r,ord) bind(C)
       import ; implicit none
