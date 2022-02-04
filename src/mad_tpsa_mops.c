@@ -176,7 +176,7 @@ FUN(exppb) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa], int
 }
 
 void // compute G(x;0) = -J grad.f(x;0) (eq. 34),
-FUN(vec2fld) (ssz_t sc, const T *a, T *mc[sc]) // cpbbra (wo * -2i)
+FUN(vec2fld) (ssz_t sc, const T *a, T *mc[sc]) // pbbra
 {
   DBGFUN(->);
   assert(a && mc);
@@ -212,7 +212,7 @@ FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // getpb
 
     FUN(setvar)(t2, 0, iv, 0); // q_i -> p_i monomial, p_i -> q_i monomial
     FUN(mul)(ma[ia], t2, t1);  // integrate by monomial of "paired" canon. var.
-    FUN(sclord)(t1, t1, TRUE); // scale coefs by orders, i.e. integrate
+    FUN(sclord)(t1, t1, TRUE); // scale coefs by orders, i.e. integrate order
 
     (ia & 1 ? FUN(add) : FUN(sub))(c, t1, c); // \sum p_i - q_i to c
   }
