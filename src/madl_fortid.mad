@@ -24,15 +24,21 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local damap                in MAD
-local is_number, is_string in MAD.typeid
-local openfile             in MAD.utility
+local damap                        in MAD
+local is_nil, is_number, is_string in MAD.typeid
+local openfile                     in MAD.utility
 
 -- implementation -------------------------------------------------------------o
 
-local function cmpdaf(lst, eps_)
+local function cmpdaf(lst, pfx_, eps_)
+  if is_number(pfx_) and is_nil(eps_) then eps_, pfx_ = pfx_, nil end
   local dum = damap()
   local eps = eps_ or 1e-14
+  local pfx = pfx_ or {}
+  local dir = pfx.dir or "fort/fort"
+  local ptc = pfx.ptc or "_p"
+  local mad = pfx.mad or "_n"
+  local dif = pfx.dif or "_d"
 
   if is_string(lst) then lst = {lst} end
 
@@ -40,19 +46,19 @@ local function cmpdaf(lst, eps_)
 
   for _, v in ipairs(lst) do
     io.stderr:write("processing files ", v)
-    local f_p = assert(openfile("fort/fort."..v)) ; f_p:read() ; f_p:read() ; f_p:read()
-    io.stderr:write(", ", v, "_p")
-    m_p = dum:read(f_p,"C"):fromptc():write("fort/fort_p."..v)
+    local f_p = assert(openfile(dir.."."..v)) ; f_p:read() ; f_p:read() ; f_p:read()
+    io.stderr:write(", ", v, ptc)
+    m_p = dum:read(f_p,"C"):fromptc():write(dir..ptc.."."..v)
     f_p:close()
 
-    local f_n = openfile("fort/fort_n."..v, '.dat')
+    local f_n = openfile(dir..mad.."."..v, '.dat')
     if f_n then
       io.stderr:write(", ", v, "_n")
       local nam = (f_n:read() or ""):sub(6,-3)
       m_n = dum:read(f_n)
       io.stderr:write(", ", v, "_d")
 
-      m_d = m_p:dif(m_n):write("fort/fort_d."..v, nam, eps)
+      m_d = m_p:dif(m_n):write(dir..dif.."."..v, nam, eps)
       f_n:close()
     end
     io.stderr:write("\n")
@@ -60,33 +66,53 @@ local function cmpdaf(lst, eps_)
   return m_p, m_n, m_d
 end
 
-local function cmpdafN(N, lst_i, lst_n, eps_)
+local function cmpdafN(lst_i, lst_n, pfx_, eps_)
+  if is_number(pfx_) and is_nil(eps_) then eps_, pfx_ = pfx_, nil end
   local dum = damap()
   local eps = eps_ or 1e-14
+  local pfx = pfx_ or {}
+  local dir = pfx.dir or "fort/fort"
+  local ptc = pfx.ptc or "_p"
+  local mad = pfx.mad or "_n"
+  local dif = pfx.dif or "_d"
+  local nul = pfx.nul or false
 
-  if is_number(lst_i) then lst_i, lst_n = {lst_i}, {lst_n} end
-  assert(#lst_i == #lst_n, "incompatible table length")
+  if is_string(lst_i) then lst_i, lst_n = {lst_i}, {lst_n} end
 
   for i, v in ipairs(lst_i) do
-    io.stderr:write("processing files ", N+v, "\n")
-    local f_i = assert(openfile("fort/fort."..N+v))
-    local f_p = assert(openfile("fort/fort_p."..N+v..".dat", "w"))
-    local f_n = assert(openfile("fort/fort_n."..N+v..".dat"))
-    local f_d = assert(openfile("fort/fort_d."..N+v..".dat", "w"))
+    io.stderr:write("processing files ", v)
+    local f_i = assert(openfile(dir.."."..v)) ; f_i:read()
+    local f_p = assert(openfile(dir..ptc.."."..v..".dat", "w"))
+    local f_n =        openfile(dir..mad.."."..v..".dat")
+    local f_d = nil
 
     for k=1,lst_n[i] or 1 do
       local x = dum.x:read(f_i,"C")
-      if not x:isnul() then
+      if nul or not x:isnul() then
         x:convert(x, {1,2,3,4,6,5}, 1):write(f_p)
-        local y = x:read(f_n)
-        if y then
-          if (x-y):nrm() > (-x-y):nrm() then x = -x end
-          x:dif(y):write(f_d, y:nam(), eps)
+        if f_n then
+          if not f_d then -- create on need
+            f_d = assert(openfile(dir..dif.."."..v..".dat", "w"))
+          end
+
+          local y = x:read(f_n)
+          if y then
+            if (x-y):nrm() > (-x-y):nrm() then x = -x end -- try to detect time
+            x:dif(y):write(f_d, y:nam(), eps)
+          end
         end
       end
     end
 
-    f_d:close() ; f_n:close() ; f_p:close() ; f_i:close()
+    io.stderr:write(", ", v, ptc)
+    f_p:close() ; f_i:close()
+
+    if f_n then
+      io.stderr:write(", ", v, "_n")
+      io.stderr:write(", ", v, "_d")
+      f_n:close() ; f_d:close()
+    end
+    io.stderr:write("\n")
   end
 end
 
