@@ -89,7 +89,7 @@ exppb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[4], log_t inv, int n)
   FUN(copy)(b, t[0]);                                    // b1=x
   FUN(copy)(b, c);                                       // b4=x
 
-  for (idx_t i = 1; i <= DESC_MAX_ORD; ++i) {            // loop nrmax=400
+  for (idx_t i = 1; i <= 100; ++i) {                     // loop nrmax=400
 
     FUN(scl)(t[0], 1.0/i, t[1]);                         // b2=coe*b1
 
@@ -112,6 +112,77 @@ exppb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[4], log_t inv, int n)
       }
 
       (inv ? FUN(sub) : FUN(add))(t[0], t[3], t[0]);
+
+      if (fp && !FUN(isnul)(t[0])) {
+        snprintf(nam, sizeof(nam), "t[0].%d.%d.%d", n, i, j+1);
+        FUN(print)(t[0], nam, 1e-16, FALSE, fp);
+        FUN(print)(t[0], nam, 1e-16, FALSE, fp2);
+      }
+    }
+    FUN(add)(t[0], c, c);                                // b3=b1+b4
+
+    // check for convergence
+    const num_t nrm = FUN(nrm)(t[0]);                    // r=full_abs(b1)
+
+    // avoid numerical oscillations around very small values
+    if (nrm <= nrm_min2 || (conv && nrm >= nrm0))
+      break;
+
+    // assume convergence is ok, just refine
+    if (nrm <= nrm_min1) conv = TRUE;
+
+    nrm0 = nrm;
+  }
+
+  if (fp) { fclose(fp); fclose(fp2); }
+}
+
+static inline void // TODO!!!
+logpb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[4], int n)
+{
+  const num_t nrm_min1 = 1e-10, nrm_min2 = 4*DBL_EPSILON*sa;
+  num_t nrm0 = INFINITY;
+  log_t conv = FALSE;
+
+  FILE *fp = NULL, *fp2 = NULL;
+  char nam[100];
+  if (mad_trace_fortid > 0) {
+    snprintf(nam, 100, "fort/fort_n.%d.dat", mad_trace_fortid+100);
+    fp = fopen(nam, "a");
+    assert(fp);
+
+    snprintf(nam, 100, "fort/fort_n.%d.dat", mad_trace_fortid+200);
+    fp2 = fopen(nam, "a");
+    assert(fp2);
+    fprintf(fp2, "\nvar(exp)=%d\n", n);
+  }
+
+  FUN(copy)(b, t[0]);                                    // b1=x
+  FUN(copy)(b, c);                                       // b4=x
+
+  for (idx_t i = 1; i <= 100; ++i) {                     // loop nrmax=400
+
+    FUN(scl)(t[0], 1.0/i, t[1]);                         // b2=coe*b1
+
+    if (fp) {
+      fprintf(fp2, "itr(*)=%d\nd(0)=\n", i);
+      FUN(print) (t[1], "s2", 1e-16, FALSE, fp2);
+    }
+
+    FUN(clear)(t[0]);
+    for (idx_t j = 0; j < sa; ++j) {                     // b1=h*b2
+      FUN(deriv)(t[1], t[2], j+1);
+      FUN(mul)(ma[j], t[2], t[3]);
+
+      if (fp) {
+        fprintf(fp2,"d(i)=%d\n", j+1);
+        FUN(print)(ma[j], "s1.v(i)", 1e-16, FALSE, fp2);
+        FUN(print)(t[0] , "s22 before add", 1e-16, FALSE, fp2);
+        FUN(print)(t[2] , "s2.d.i", 1e-16, FALSE, fp2);
+        FUN(print)(t[3] , "s1.v(i)*s2.d.i", 1e-16, FALSE, fp2);
+      }
+
+      FUN(add)(t[0], t[3], t[0]);
 
       if (fp && !FUN(isnul)(t[0])) {
         snprintf(nam, sizeof(nam), "t[0].%d.%d.%d", n, i, j+1);
@@ -161,6 +232,42 @@ FUN(exppb) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa], int
 
   for (idx_t i = 0; i < sa; ++i)
     exppb1(sa, ma, mb[i], mc_[i], t, inv == -1, i);
+
+  // temporaries
+  for (int i = 0; i < 4; i++) FUN(del)(t[i]);
+
+  // copy back
+  for (idx_t ic = 0; ic < sa; ++ic) {
+    FUN(copy)(mc_[ic], mc[ic]);
+    FUN(del )(mc_[ic]);
+    DBGTPSA(mc[ic]);
+  }
+  mad_free_tmp(mc_);
+  DBGFUN(<-);
+}
+
+void // compute log(M) x = log(exp(:f(x;0):)) x => f
+FUN(logpb) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
+{
+  DBGFUN(->);
+  check_compat(sa, ma, sb, mb, mc);
+
+  // handle aliasing
+  mad_alloc_tmp(T*, mc_, sa);
+  for (idx_t ic = 0; ic < sa; ++ic) {
+    DBGTPSA(ma[ic]); DBGTPSA(mc[ic]);
+    mc_[ic] = FUN(new)(mc[ic], mad_tpsa_same);
+  }
+
+  for (idx_t ib = 0; ib < sb; ++ib) DBGTPSA(mb[ib]);
+
+  // temporaries
+  T *t[4];
+  for (int i = 0; i < 4; ++i) t[i] = FUN(new)(mc[0], mad_tpsa_same);
+
+  for (idx_t i = 0; i < sa; ++i) {
+    logpb1(sa, ma, mb[i], mc_[i], t, i);
+  }
 
   // temporaries
   for (int i = 0; i < 4; i++) FUN(del)(t[i]);
