@@ -26,7 +26,7 @@
 
 local vector, cvector, matrix, monomial, damap, cdamap,
       trace, warn, option, typeid                                in MAD
-local assertf, errorf, printf, num2str, setkeys, tblcat,
+local assertf, errorf, printf, num2str, tbl2str, setkeys, tblcat,
       mockfile, openfile                                         in MAD.utility
 local lbool                                                      in MAD.operator
 local twopi                                                      in MAD.constant
@@ -694,7 +694,7 @@ local function normal_init (m, rdt_)
     nn   = m.__td.nn,                   -- #(variables + parameters)
     nv   = m.__td.nv,                   -- #(variables)
     ndpt = not has_dpt(m) and 6 or nil, -- no dpt, i.e. coasting beam
-    rdt  = rdt_ or {},                  -- user defined rdt
+    rdt  = rdt_,                        -- user defined rdt
     m    = m,                           -- current ot damap
     m_n  = m:copy(),                    -- current nf damap
   }
@@ -833,6 +833,23 @@ local function normal_c (nf)
   return c, nf
 end
 
+-- normal form RDT extraction (PTC) ---------
+
+function gphys.normal_ana (nf)
+  assert(is_nf(nf), "invalid argument #1 (normal form expected)")
+
+  local nv, ndpt, m_n, ci, cr, rdt, fil in nf
+
+  nf.a = a0 * a1 * c * lieex * ci   ; nf:sav"a"                        -- fid+=1
+
+  nf.fil:write("fid(a)=", nf.fid, "\n")
+  nf.fil:close() ; nf.fil = nil
+
+  -- hook the results
+  nf.ham, nf.gnf, nf.anh, nf.m_n, nf.f_op, nf.t_op, nf.lam =
+     ham,    gnf,    anh,    m_n,    f_op,    t_op,    lam
+end
+
 -- full normal form (PTC) -------------------
 
 function gphys.normal_ptc (m, rdt_)
@@ -870,7 +887,8 @@ function gphys.normal_ptc (m, rdt_)
   -- prepare factored Lie representation of A and N
   local nv, ndpt, m_n, ci, cr, rdt, fil in nf
   local rk = ndpt and 4 or 6
-  local f_op, t_op, id = {m_n:same()}, {m_n:same()}, m_n:same():eye()
+  local f_op, t_op, id = {m_n:same()}, {m_n:same()}
+  local n_op, id = m_n:same(), m_n:same():eye()
   local ham, gnf, anh = {}, {}, {}
   local mono = monomial(nv)
 
@@ -880,9 +898,9 @@ function gphys.normal_ptc (m, rdt_)
 
   nf:sav(r1,"r1"):sav(r1i,"r1^-1")                                     -- fid+=2
 
-  -- retrieve the tunes
-  local mu = cvector(nv)
-  for i=1,nv do mu[i] = r1i[i]:get(i+1) end ; mu:write(fil, "tunes")
+  -- retrieve the eigentunes (lambda)
+  local lam = cvector(nv)
+  for i=1,nv do lam[i] = r1i[i]:get(i+1) end ; lam:write(fil, "tunes")
 
   -- nonlinear iterations
   for n=2,m_n:maxord() do
@@ -891,6 +909,23 @@ function gphys.normal_ptc (m, rdt_)
 
     -- project remaining orders on resonance basis
     local n_n = (m_n * r1i):lieexppb(t_op, -1):getord(n) ; nf:sav(n_n,"n_n @"..n) -- fid+=1
+
+    -- compute pseudo-hamiltonian
+    do
+      n_op = n_op + n_n ; nf:sav(n_op,"n_op @"..n) -- fid+=1
+      local g_n = n_op:fld2vec() / cr ; g_n:print("g_n @ "..n)
+--      nf:sav(n_op:same():vec2fld(g_n) * cr, "g_n->n_n @ "..n) -- fid+=1
+
+      local i, v = 0
+      while true do
+        i, v = g_n:cycle(i, mono)
+        if i == 0 then break; end
+        local ms = mono:tostring()
+        if not ham[ms] then ham[#ham+1], ham[ms] = ms, 0 end
+!        assert(ham[ms] == 0, "unexpected non-zero term")
+        ham[ms] = ham[ms] + v                                     -- ham terms
+      end
+    end
 
     -- use directly the vector field
     local f_n, t_n = n_n:same(), n_n:same() -- fun, ker
@@ -913,7 +948,7 @@ function gphys.normal_ptc (m, rdt_)
         for j=2,rk,2 do              -- check for resonances
           s = s + abs(mt[j]-mt[j-1])
         end
-        if s ~= 0 then               -- check for user resonances
+        if s ~= 0 and rdt then       -- check for user resonances
           for _,r in ipairs(rdt) do  -- {{3,0,0}, {1,2,0}, {0,3,0}, etc.}
             s = 0
             for j=2,rk,2 do
@@ -923,29 +958,29 @@ function gphys.normal_ptc (m, rdt_)
           end
         end
 
-        if not ham[ms] then ham[#ham+1], ham[ms] = ms, 0 end
-        ham[ms] = ham[ms] + v                            -- ham terms
-
         if s ~= 0 then
           s = 1
           for j=1,rk do
-            s = s*mu[j]^mt[j]
-            fil:write("\t",j,"\t",mt[j],"\t",(mu[j]^mt[j]):tostring(),"\t",s:tostring(),"\n")
+            s = s*lam[j]^mt[j]
+            fil:write("\t",j,"\t",mt[j],"\t",(lam[j]^mt[j]):tostring(),"\t",s:tostring(),"\n")
           end
           v = v / (1-s)
-          fil:write("\tf_n[", ms,"]=",f_n[k]:get(mono):tostring(),"\n")
+          if abs(1-s) < 1e-12 then
+            io.stderr:write("Warn: killing [", ms, "] with s = ", s:tostring(), "\n")
+          end
           f_n[k]:set(mono, 1, v)
-          fil:write("\tf_n[", ms,"]=",f_n[k]:get(mono):tostring(),"\n")
-          if not gnf[ms] then gnf[#gnf+1], gnf[ms] = ms, 0 end
-          gnf[ms] = gnf[ms] + v                          -- gnf terms
-          fil:write("gnf[",ms,"]=", gnf[ms]:tostring(), ", v=", v:tostring(), "\n")
+          if mt[k] >= 0 then
+            if not gnf[ms] then gnf[#gnf+1], gnf[ms] = ms, 0 end
+            gnf[ms] = gnf[ms] - v                                   -- gnf terms
+          end
+          fil:write("gnf[",ms,"]=",(gnf[ms] or 0i):tostring(), ", f_n[",ms,"]=",f_n[k]:get(mono):tostring(), "\n")
         else
-          fil:write("\tt_n[", ms,"]=",t_n[k]:get(mono):tostring(),"\n")
           t_n[k]:set(mono, 1, v)
-          fil:write("\tt_n[", ms,"]=",t_n[k]:get(mono):tostring(),"\n")
-          if not anh[ms] then anh[#anh+1], anh[ms] = ms, 0 end
-          anh[ms] = anh[ms] + mono:ordpf()*v/twopi       -- anh terms
-          fil:write("anh[",ms,"]=", anh[ms]:tostring(), ", v=", v:tostring(), "\n")
+          if mt[k] >= 0 then
+            if not anh[ms] then anh[#anh+1], anh[ms] = ms, 0 end
+            anh[ms] = anh[ms] - monomial(mt):ordpf(2)*v:imag()/twopi -- anh terms
+          end
+          fil:write("anh[",ms,"]=",num2str(anh[ms] or 0), ", t_n[",ms,"]=",t_n[k]:get(mono):tostring(), "\n")
         end
       end -- cycle
     end -- for k
@@ -959,21 +994,23 @@ function gphys.normal_ptc (m, rdt_)
     local m_n_2 = m_n_1 * m_n      ; nf:sav(m_n_2, "m_n_2 @"..n)       -- fid+=1
     local m_n_3 = f_n:exppb(m_n_2) ; nf:sav(m_n_3, "m_n_3 @"..n)       -- fid+=1
 
-    m_n = f_n:exppb((-f_n):exppb(id) * m_n)
+    m_n = m_n_3 -- f_n:exppb((-f_n):exppb(id) * m_n)
 
     nf:sav(t_n,"t_n @"..n):sav(f_n,"f_n @"..n):sav(m_n,"m_n @"..n)     -- fid+=3
   end -- for n
 
   -- the normalizing map A
-  nf.a = a0 * a1 * c * id:lieexppb(f_op) * ci
+  local lieex = id:lieexppb(f_op)   ; nf:sav(lieex, "lieex")           -- fid+=1
+  local g_io = lieex:fld2vec() / cr ; g_io:print("g_io=")
 
-  nf:sav"a"                                                            -- fid+=1
+  nf.a = a0 * a1 * c * lieex * ci   ; nf:sav"a"                        -- fid+=1
+
   nf.fil:write("fid(a)=", nf.fid, "\n")
   nf.fil:close() ; nf.fil = nil
 
   -- hook the results
-  nf.ham, nf.gnf, nf.anh, nf.m_n, nf.f_op, nf.t_op =
-     ham,    gnf,    anh,    m_n,    f_op,    t_op
+  nf.ham, nf.gnf, nf.anh, nf.m_n, nf.f_op, nf.t_op, nf.lam =
+     ham,    gnf,    anh,    m_n,    f_op,    t_op,    lam
 
   return nf.a:real(), nf
 end
@@ -1002,8 +1039,6 @@ function gphys.normal (m, rdt_)
     return m, nf
   end
 
-io.stderr:write("UNEXPECTED!!!\n")
-
   -- phasor basis -------------------------------
 
   if option.fortid ~= 0 then io.stderr:write("phasor basis\n") end
@@ -1025,13 +1060,11 @@ io.stderr:write("UNEXPECTED!!!\n")
   local r1 = m_n:getord(1)
   local r1i = r1^-1
 
-  nf:sav"r1":sav(r1i,"r1^-1")                                          -- fid+=2
+  nf:sav(r1,"r1"):sav(r1i,"r1^-1")                                     -- fid+=2
 
-  -- retrieve the tunes
-  local mu = cvector(nv/2)
-  for i=2,nv,2 do mu[i/2] = log( m_n[i-1]:get(i) ) end
-
-  if nf.fid ~= 0 then exp(mu):write(fil, "tunes") end
+  -- retrieve the eigentunes (lambda)
+  local lam = cvector(nv)
+  for i=1,nv do lam[i] = r1i[i]:get(i+1) end ; lam:write(fil, "tunes")
 
   -- cdamap for pseudo hamiltonian (need mo+1)
   local mo, np, po in m_n.__td
@@ -1040,13 +1073,15 @@ io.stderr:write("UNEXPECTED!!!\n")
   -- nonlinear iterations
   for n=2,m_n:maxord() do
     fil:write("****************************************\n")
-    fil:write("Order ",n,"\n")
+    fil:write("Order ",n,", fid=", nf.fid,"\n")
 
     -- project remaining orders on resonance basis
-    local n_n = (m_n * r1i):lieexppb(t_op, -1):getord(n) ; nf:sav"n_n" -- fid+=1
+    local n_n = (m_n * r1i):lieexppb(t_op, -1):getord(n) ; nf:sav(n_n,"n_n @"..n) -- fid+=1
 
     -- compute pseudo-hamiltonian
-    local g_n = n_n:convert(tc):fld2vec() / cr --[[ /-2i --]]
+    local g_n = n_n:convert(tc):fld2vec() / cr ; g_n:print("g_n @ "..n)
+    nf:sav(tc:vec2fld(g_n):convert(n_n) * cr, "g_n->n_n @ "..n) -- fid+=1
+
     local f_pb, t_pb = g_n:same(), g_n:same()
     local i, v = 0
 
@@ -1061,59 +1096,72 @@ io.stderr:write("UNEXPECTED!!!\n")
       for j=2,rk,2 do                   -- check for resonances
         s = s + abs(mono[j]-mono[j-1])
       end
-      if s ~= 0 then                    -- check for user resonances
+      if s ~= 0 and rdt then            -- check for user resonances
         for _,r in ipairs(rdt) do       -- {{3,0,0}, {1,2,0}, {0,3,0}, etc.}
           s = 0
           for j=2,rk,2 do
             s = s + abs(abs(mono[j]-mono[j-1]) - r[j/2])
           end
-          if s == 0 then break end
+          if s == 0 then break end      -- part of user resonances, keep it
         end
       end
 
       if not ham[ms] then ham[#ham+1], ham[ms] = ms, 0 end
-      ham[ms] = ham[ms] + v                            -- ham terms
+      ham[ms] = ham[ms] + v                                         -- ham terms
 
       if s ~= 0 then
-        s = 0
+        s = 1
         for j=2,rk,2 do
-          s = s + (mono[j]-mono[j-1])*mu[j/2]
+          s = s*lam[j]^(mono[j]-mono[j-1])
         end
-        v = v / (1 - exp(s))
-        f_pb:set(mono, 1, v)
+        local vv = v / (1-s)
+        if abs(1-s) < 1e-12 then
+          io.stderr:write("Warn: killing [", ms, "] with s = ", s:tostring(), "\n")
+        end
+        f_pb:set(mono, 1, vv)
         if not gnf[ms] then gnf[#gnf+1], gnf[ms] = ms, 0 end
-        gnf[ms] = gnf[ms] + v                          -- gnf terms
-        fil:write("gnf[",ms,"]=", tostring(gnf[ms]), ", v=", v:tostring(), "\n")
+        gnf[ms] = gnf[ms] - vv                                      -- gnf terms
+        fil:write("gnf[",ms,"]=", gnf[ms]:tostring(), ", v=", v:tostring(), "\n")
       else
         t_pb:set(mono, 1, v)
         if not anh[ms] then anh[#anh+1], anh[ms] = ms, 0 end
-        anh[ms] = anh[ms] + mono:ordpf()*v/twopi       -- anh terms
-        fil:write("anh[",ms,"]=", tostring(anh[ms]), ", v=", v:tostring(), "\n")
+        anh[ms] = anh[ms] - mono:ordpf(2)*v:imag()/twopi            -- anh terms
+        fil:write("anh[",ms,"]=", num2str(anh[ms]), ", v=", v:tostring(), "\n")
       end
     end -- cycle
 
+    f_pb:print("f_pb @ "..n)
+
     -- compute and save vector fields
-    local f_n = tc:vec2fld(f_pb):convert(m_n:same()) * cr --[[ *-2i --]]
-    local t_n = tc:vec2fld(t_pb):convert(m_n:same()) * cr --[[ *-2i --]]
+    local f_n = tc:vec2fld(f_pb):convert(m_n:same()) * cr -- *-2i
+    local t_n = tc:vec2fld(t_pb):convert(m_n:same()) * cr -- *-2i
 
     -- save vector fields
     f_op[n], t_op[n] = f_n, t_n
-    if n == m:maxord() then break end
+    if n == m:maxord() and nf.fid == 0 then break end
 
     -- kill resonances in the map
+    local m_n_1 = (-f_n):exppb(id) ; nf:sav(m_n_1, "m_n_1 @"..n)       -- fid+=1
+    local m_n_2 = m_n_1 * m_n      ; nf:sav(m_n_2, "m_n_2 @"..n)       -- fid+=1
+    local m_n_3 = f_n:exppb(m_n_2) ; nf:sav(m_n_3, "m_n_3 @"..n)       -- fid+=1
+
     m_n = f_n:exppb((-f_n):exppb(id) * m_n)
 
-    nf:sav"t_n":sav"f_n":sav"m_n"                                      -- fid+=3
+    nf:sav(t_n,"t_n @"..n):sav(f_n,"f_n @"..n):sav(m_n,"m_n @"..n)     -- fid+=3
   end -- for n
 
   -- the normalizing map A
-  nf.a = a0 * a1 * c * id:lieexppb(f_op) * ci
+  local lieex = id:lieexppb(f_op)   ; nf:sav(lieex, "lieex")           -- fid+=1
+  local g_io = lieex:fld2vec() / cr ; g_io:print("g_io=")
 
-  nf :sav"a" .fil:close() ; nf.fil = nil                               -- fid+=1
+  nf.a = a0 * a1 * c * lieex * ci   ; nf:sav"a"                        -- fid+=1
+
+  nf.fil:write("fid(a)=", nf.fid, "\n")
+  nf.fil:close() ; nf.fil, nf.fid = nil, 0
 
   -- hook the results
-  nf.ham, nf.gnf, nf.anh, nf.m_n, nf.f_op, nf.t_op, nf.fid =
-     ham,    gnf,    anh,    m_n,    f_op,    t_op,      0
+  nf.ham, nf.gnf, nf.anh, nf.m_n, nf.f_op, nf.t_op, nf.lam =
+     ham,    gnf,    anh,    m_n,    f_op,    t_op,    lam
 
   return nf.a:real(), nf
 end
