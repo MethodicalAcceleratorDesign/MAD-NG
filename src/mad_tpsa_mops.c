@@ -70,6 +70,7 @@ static inline void
 exppb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[4], log_t inv, int n)
 {
   const num_t nrm_min1 = 1e-10, nrm_min2 = 4*DBL_EPSILON*sa;
+  const int imax = 100;
   num_t nrm0 = INFINITY;
   log_t conv = FALSE;
 
@@ -89,7 +90,8 @@ exppb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[4], log_t inv, int n)
   FUN(copy)(b, t[0]);                                    // b1=x
   FUN(copy)(b, c);                                       // b4=x
 
-  for (idx_t i = 1; i <= 100; ++i) {                     // loop nrmax=400
+  idx_t i;
+  for (i = 1; i <= imax; ++i) {
 
     FUN(scl)(t[0], 1.0/i, t[1]);                         // b2=coe*b1
 
@@ -134,6 +136,9 @@ exppb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[4], log_t inv, int n)
     nrm0 = nrm;
   }
 
+  if (i > imax)
+    warn("exppb did not converged after %d iterations for variable %d", imax,n);
+
   if (fp) { fclose(fp); fclose(fp2); }
 }
 
@@ -141,6 +146,7 @@ static inline void // TODO!!!
 logpb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[4], int n)
 {
   const num_t nrm_min1 = 1e-10, nrm_min2 = 4*DBL_EPSILON*sa;
+  const int imax = 100;
   num_t nrm0 = INFINITY;
   log_t conv = FALSE;
 
@@ -160,7 +166,8 @@ logpb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[4], int n)
   FUN(copy)(b, t[0]);                                    // b1=x
   FUN(copy)(b, c);                                       // b4=x
 
-  for (idx_t i = 1; i <= 100; ++i) {                     // loop nrmax=400
+  idx_t i;
+  for (i = 1; i <= imax; ++i) {
 
     FUN(scl)(t[0], 1.0/i, t[1]);                         // b2=coe*b1
 
@@ -205,6 +212,9 @@ logpb1 (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[4], int n)
     nrm0 = nrm;
   }
 
+  if (i > imax)
+    warn("logpb did not converged after %d iterations for variable %d", imax,n);
+
   if (fp) { fclose(fp); fclose(fp2); }
 }
 
@@ -247,7 +257,7 @@ FUN(exppb) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa], int
 }
 
 void // compute log(M) x = log(exp(:f(x;0):)) x => f
-FUN(logpb) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
+FUN(logpb) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa]) // TODO!!!
 {
   DBGFUN(->);
   check_compat(sa, ma, sb, mb, mc);
