@@ -63,6 +63,8 @@ typedef double _Complex cnum_t;
 #define SIGN(a)       (((a) >  0) - ((a) < 0)) // -1, 0, 1
 #define SIGN1(a)      (((a) >= 0) - ((a) < 0)) // -1, 1
 
+#define FOR(i,n)      for (idx_t i=0; i<n; ++i)
+
 #define MKSTR(...)     MKSTR_OP_(__VA_ARGS__)
 #define MKSTR_OP_(...) #__VA_ARGS__
 
