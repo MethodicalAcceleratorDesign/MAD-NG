@@ -94,8 +94,8 @@ mnrm (ssz_t sa, const T *ma[sa])
   return nrm;
 }
 
-//#include <stdio.h>
-//extern int mad_trace_fortid;
+#include <stdio.h>
+extern int mad_trace_fortid;
 
 static inline void
 exppb (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa], T *t[4])
@@ -142,18 +142,18 @@ logpb (ssz_t sa, const T *ma[sa], T *mc[sa], T *t[4+5*sa], num_t eps)
   log_t conv = FALSE;
 
   // temporary damaps
-  T **t0 = &t[4+0*sa]; // t
-  T **t1 = &t[4+1*sa]; // z
-  T **t2 = &t[4+2*sa]; // e2
-  T **t3 = &t[4+3*sa]; // e3
-  T **t4 = &t[4+4*sa]; // e4
+  T **t0 = &t[4+0*sa];
+  T **t1 = &t[4+1*sa];
+  T **t2 = &t[4+2*sa];
+  T **t3 = &t[4+3*sa];
+  T **t4 = &t[4+4*sa];
 
 #define TC (const T**)
 
   idx_t n;
   for (n=1; n <= nmax; ++n) {
     FOR(i,sa) FUN(scl) (mc[i], -1, t1[i]);     // t1 = -mc
-    exppb(sa, TC t1, ma, t0, t);          // t0 = exp(:-mc:) ma
+    exppb(sa, TC t1, ma, t0, t);               // t0 = exp(:-mc:) ma
     FOR(i,sa) FUN(seti)(t0[i], i+1, 1, -1);    // t0 = t0-Id
 
     if (nrm < epsone) {
