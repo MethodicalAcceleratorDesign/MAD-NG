@@ -666,10 +666,10 @@ FUN(seti) (T *t, idx_t i, NUM a, NUM b)
 
   if (!v) { // clear coef[i], might clear order
     t->coef[i] = 0;
-    // update0 below is stricter but can be quadratic with consecutive seti(0),
+    // update0 below is stricter but can be quadratic with consecutive seti(),
     // like in the pattern of clearing an order minus few ending monomials, so
-    // I choosed to be lazy and fast with such consecutive seti(0) as there is
-    // little chance that seti(0) clears the last non-zero coef of the hpoly.
+    // I choosed to be lazy and fast with such consecutive seti() as there is
+    // little chance that seti() clears the last non-zero coef of the hpoly.
     if (TPSA_STRICT_NZ > 2 && mad_bit_tst(t->nz, o)) FUN(update0)(t,o,o);
     DBGTPSA(t); DBGFUN(<-); return;
   }
