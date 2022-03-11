@@ -29,6 +29,7 @@ local MR, MC = {}, {}
 local ffi = require 'ffi'
 
 local abs, min, max, floor in math
+local round                in MAD.gmath
 
 local _C, option, warn                                               in MAD
 local gtpsad, tpsa, ctpsa, vector, cvector, matrix, cmatrix, complex in MAD
@@ -555,30 +556,177 @@ end
 
 -- map exponential and poisson bracket: r = exp(:x:) y
 
-function MR.exppb (x, y, r, inv)
-      if is_number(r) and is_nil(inv) then inv, r = r  -- right shift
-  elseif is_string(r) and r == 'in'   then r = x end   -- in place
-  inv, r = inv or 1, r or map_alloc(x.__td, x.__vn, MC)
+function MR.exppb (x, y, r)
+  if is_string(r) and r == 'in' then r = x end   -- in place
+  r = r or map_alloc(x.__td, x.__vn, MR)
   assert(is_damap(y),           "invalid argument #2 (damap expected)")
   assert(is_damap(r),           "invalid argument #3 (damap expected)")
-  assert(inv == 1 or inv == -1, "invalid argument #4 (-1 or 1 expected)")
   assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
   assert(r.__td == y.__td, "incompatible damap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible damap lengths")
-  _C.mad_tpsa_exppb(#x, x.__ta, #y, y.__ta, r.__ta, inv) return r
+  assert(#y == #x, "incompatible damap lengths")
+  _C.mad_tpsa_exppb(#x, x.__ta, y.__ta, r.__ta) return r
 end
 
-function MC.exppb (x, y, r, inv)
-      if is_number(r) and is_nil(inv) then inv, r = r  -- right shift
-  elseif is_string(r) and r == 'in'   then r = x end   -- in place
-  inv, r = inv or 1, r or map_alloc(x.__td, x.__vn, MC)
+function MC.exppb (x, y, r)
+  if is_string(r) and r == 'in' then r = x end   -- in place
+  r = r or map_alloc(x.__td, x.__vn, MC)
   assert(is_cdamap(y),          "invalid argument #2 (cdamap expected)")
   assert(is_cdamap(r),          "invalid argument #3 (cdamap expected)")
-  assert(inv == 1 or inv == -1, "invalid argument #4 (-1 or 1 expected)")
   assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
   assert(r.__td == y.__td, "incompatible cdamap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible cdamap lengths")
-  _C.mad_ctpsa_exppb(#x, x.__ta, #y, y.__ta, r.__ta, inv) return r
+  assert(#y == #x, "incompatible cdamap lengths")
+  _C.mad_ctpsa_exppb(#x, x.__ta, y.__ta, r.__ta) return r
+end
+
+-- map logarithm of exponential poisson bracket: r = exp(:log(x):) y
+
+local function fgrad (x, t)
+  local r = t:same()
+  for i=1,#x do r = r + x[i]*t:deriv(i) end
+  return r
+end
+
+local function liebra (x, y)
+  local r = x:same()
+  for i=1,#x do
+  for j=1,#x do
+    local t1 = y[j] * x[i]:deriv(j)
+    local t2 = x[j] * y[i]:deriv(j)
+    r[i] = r[i] + t2 - t1
+  end end
+  return r
+end
+
+local function mnrm (x)
+  local nrm = 0
+  for i=1,#x do nrm = nrm + x[i]:nrm() end
+  return nrm
+end
+
+local function logpb (x, r, eps) -- c_logf + c_flofacg
+  -- c_logf
+  local x0 = x:copy():set0(0)
+
+local fid = 1262 -- ..1289
+x0:write("fort/fort_n."..fid, "x0") ; fid = fid+1 ; -- 1263
+
+  -- c_flofacg
+  local v = x:same():eye() -- identity
+
+x0:write("fort/fort_n."..fid, "x") ; fid = fid+1 ; -- 1264
+
+  -- special case where eps = -no
+  if eps and eps <= 0 then
+    for k=1,round(eps)-1 do
+      local y = (-r):exppb(x0)
+      local t = y - v
+      r = r+t
+
+t:write("fort/fort_n."..fid, "t_0 @ "..k) ; fid = fid+1 ;
+r:write("fort/fort_n."..fid, "r_0 @ "..k) ; fid = fid+1 ;
+    end
+    return r
+  end
+
+  local nrm0 = mnrm(x0)
+  local epsone = eps or nrm0/1000
+  local xn, xn0 = 1e4, 1e36
+  local nrmax = 1000
+  local conv = false
+
+  for k=1,nrmax do
+    local y = (-r):exppb(x0)
+    local t = y - v
+
+t:write("fort/fort_n."..fid, "t_1 @ "..k) ; fid = fid+1 ; -- 1265
+
+    if xn < epsone then -- CBH (* == c_bra_v_ct)
+      local e2, e3 = x:same(), x:same()
+      for i=1,#x do e2[i] = -0.5*fgrad(t ,t[i]) end
+      for i=1,#x do e3[i] = -0.5*fgrad(e2,t[i])-(1/6)*fgrad(t,e2[i]) end
+      t = t+e2+e3
+
+t:write("fort/fort_n."..fid, "t_2 @ "..k) ; fid = fid+1 ; -- 1266
+
+      local z  = liebra(r,t) -- <r,t>
+      local e2 = liebra(r,z) -- <r,<r,t>>
+      local e3 = liebra(t,z) -- <t,<r,t>>
+      t = t + 0.5*z + (1/12)*(e2-e3)
+
+t:write("fort/fort_n."..fid, "t_3 @ "..k) ; fid = fid+1 ; -- 1267
+
+      local e4 = liebra(t,e2) -- <t,<r,<r,t>>>
+      t = t - (1/24)*e4
+
+t:write("fort/fort_n."..fid, "t_4 @ "..k) ; fid = fid+1 ; -- 1268
+
+    end
+    r = r+t
+
+r:write("fort/fort_n."..fid, "r_1 @ "..k) ; fid = fid+1 ;
+
+    local nrm = mnrm(t)
+    xn = nrm/nrm0
+
+print("xn=", xn, "epsone=", epsone, "nrm=", nrm, "nrm0=", nrm0)
+
+    -- same scheme as exppb
+    if xn < 1e-14 or conv and xn >= xn0 then break end
+    if xn < 1e-10 then conv = true end
+    xn0 = xn
+  end
+
+  return r
+end
+
+function MR.logpb (x, y0, r)
+  if is_string(r) and r == 'in' then r = x end -- in place
+  r = r or map_alloc(x.__td, x.__vn, MR)
+  assert(is_damap(r), "invalid argument #2 (damap expected)")
+  assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
+  assert(#r == #x, "incompatible damap lengths")
+  if y0 ~= nil then
+    assert(y0.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
+    assert(#y0 == #x, "incompatible damap lengths")
+  end
+  _C.mad_tpsa_logpb(#x, x.__ta, y0 and y0.__ta, r.__ta)
+  return r -- logpb(x, r)
+end
+
+function MC.logpb (x, y0, r)
+  if is_string(r) and r == 'in' then r = x end -- in place
+  r = r or map_alloc(x.__td, x.__vn, MC)
+  assert(is_cdamap(r),     "invalid argument #3 (cdamap expected)")
+  assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
+  assert(#r == #x, "incompatible cdamap lengths")
+  if y0 ~= nil then
+    assert(y0.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
+    assert(#y0 == #x, "incompatible damap lengths")
+  end
+  _C.mad_ctpsa_logpb(#x, x.__ta, y0 and y0.__ta, r.__ta)
+  return r -- logpb(x, r)
+end
+
+-- factorise map x as
+--  x = l exp(f.grad)  if dir =  1, return f and l
+--  x = exp(f.grad) l  if dir = -1, return f and l
+
+function MR.factor_map (x, y, dir)
+  if is_number(y) and is_nil(dir) then dir, y = y end -- right shift
+  local l = y or x:getord(1)
+  local t = dir == -1 and l^-1 * x or x * l^-1
+  local f = t:logpb()
+  return f, l
+end
+
+function MC.factor_map (x, y, dir)
+  if is_number(y) and is_nil(dir) then dir, y = y end -- right shift
+  local l = y or x:getord(1)
+  local t = dir == -1 and l^-1 * x or x * l^-1
+  local f = t:logpb()
+  return f, l
 end
 
 -- factored Lie of exponential and poisson bracket: r = exp(:y1:) exp(:y2:)... x
@@ -599,7 +747,8 @@ function MR.lieexppb (x, y, r, inv)
     assert(is_damap(y), "invalid argument #2 (list of damap expected)")
     assert(r.__td == y.__td, "incompatible damap (GTPSA descriptors differ)")
     assert(#r == #y, "incompatible damap lengths")
-    _C.mad_tpsa_exppb(#y, y.__ta, #r, r.__ta, r.__ta, inv)
+    if inv == -1 then y = -y end
+    _C.mad_tpsa_exppb(#y, y.__ta, r.__ta, r.__ta)
   end
   return r
 end
@@ -620,7 +769,8 @@ function MC.lieexppb (x, y, r, inv)
     assert(is_cdamap(y), "invalid argument #2 (list of cdamap expected)")
     assert(r.__td == y.__td, "incompatible cdamap (GTPSA descriptors differ)")
     assert(#r == #y, "incompatible cdamap lengths")
-    _C.mad_ctpsa_exppb(#y, y.__ta, #r, r.__ta, r.__ta, inv)
+    if inv == -1 then y = -y end
+    _C.mad_ctpsa_exppb(#y, y.__ta, r.__ta, r.__ta)
   end
   return r
 end
