@@ -719,17 +719,11 @@ module GTPSA
       type(c_ptr), value :: tpsa_r               ! dst=|src|
     end subroutine mad_tpsa_abs
 
-    function mad_tpsa_nrm1(tpsa_a,tpsa_b_) result(nrm1) bind(C)
+    function mad_tpsa_nrm(tpsa_a,tpsa_b_) result(nrm) bind(C)
       import ; implicit none
-      real(c_num_t) :: nrm1                      ! sum_i |a[i]-b_[i]|
       type(c_ptr), value, intent(in) :: tpsa_a, tpsa_b_
-    end function mad_tpsa_nrm1
-
-    function mad_tpsa_nrm2(tpsa_a,tpsa_b_) result(nrm2) bind(C)
-      import ; implicit none
-      real(c_num_t) :: nrm2                      ! sqrt(sum_i (a[i]-b_[i])^2)
-      type(c_ptr), value, intent(in) :: tpsa_a, tpsa_b_
-    end function mad_tpsa_nrm2
+      real(c_num_t) :: nrm                       ! sum_i |a[i]-b_[i]|
+    end function mad_tpsa_nrm
 
     subroutine mad_tpsa_integ(tpsa_a,tpsa_r,iv) bind(C)
       import ; implicit none
@@ -753,12 +747,12 @@ module GTPSA
       integer(c_ord_t), intent(in) :: m(*)       ! monomial
     end subroutine mad_tpsa_derivm
 
-    subroutine mad_tpsa_poisson(tpsa_a,tpsa_b,tpsa_r,nv) bind(C)
+    subroutine mad_tpsa_poisbra(tpsa_a,tpsa_b,tpsa_r,nv) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa_a, tpsa_b ! src
       type(c_ptr), value :: tpsa_r                     ! dst
       integer(c_int), value, intent(in) :: nv          ! #variables (desc%nv if 0)
-    end subroutine mad_tpsa_poisson
+    end subroutine mad_tpsa_poisbra
 
     subroutine mad_tpsa_taylor(tpsa_a,n,coef,tpsa_r) bind(C)
       import ; implicit none
@@ -1012,16 +1006,23 @@ module GTPSA
 
     ! -- Maps-like functions ----------
 
-    subroutine mad_tpsa_minv(n,tpsa_a,tpsa_r) bind(C)
+    function mad_tpsa_mnrm(na,tpsa_a) result(mnrm) bind(C)
       import ; implicit none
-      integer(c_ssz_t), value, intent(in) :: n      ! vectors lengths
+      integer(c_ssz_t), value, intent(in) :: na     ! vectors lengths
+      type(c_ptr), intent(in) :: tpsa_a(*)          ! src
+      real(c_num_t) :: mnrm                         ! nrm
+    end function mad_tpsa_mnrm
+
+    subroutine mad_tpsa_minv(na,tpsa_a,tpsa_r) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: na     ! vectors lengths
       type(c_ptr), intent(in) :: tpsa_a(*)          ! src
       type(c_ptr) :: tpsa_r(*)                      ! dst
     end subroutine mad_tpsa_minv
 
-    subroutine mad_tpsa_pminv(n,tpsa_a,tpsa_r,select) bind(C)
+    subroutine mad_tpsa_pminv(na,tpsa_a,tpsa_r,select) bind(C)
       import ; implicit none
-      integer(c_ssz_t), value, intent(in) :: n      ! vectors lengths
+      integer(c_ssz_t), value, intent(in) :: na     ! vectors lengths
       type(c_ptr), intent(in) :: tpsa_a(*)          ! src
       type(c_ptr) :: tpsa_r(*)                      ! dst
       integer(c_idx_t), intent(in) :: select(*)     ! slots to selected
@@ -1059,6 +1060,52 @@ module GTPSA
       integer(c_idx_t), intent(in) :: t2r_(*)         ! vector of index lookup
       integer(c_int), value, intent(in) :: pb         ! poisson bracket 0,1:fwd,-1:bwd
     end subroutine mad_tpsa_mconv
+
+    ! -- Lie operators ----------------
+
+    subroutine mad_tpsa_vec2fld(na,tpsa_a,tpsa_r) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: na     ! vectors length
+      type(c_ptr), value, intent(in) :: tpsa_a      ! src
+      type(c_ptr), intent(out) :: tpsa_r(*)         ! dst
+    end subroutine mad_tpsa_vec2fld
+
+    subroutine mad_tpsa_fld2vec(na,tpsa_a,tpsa_r) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: na     ! vectors length
+      type(c_ptr), intent(in) :: tpsa_a(*)          ! src
+      type(c_ptr), value :: tpsa_r                  ! dst
+    end subroutine mad_tpsa_fld2vec
+
+    subroutine mad_tpsa_fgrad(na,tpsa_a,tpsa_b,tpsa_r) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: na     ! vectors length
+      type(c_ptr), intent(in) :: tpsa_a(*)          ! src
+      type(c_ptr), value, intent(in) :: tpsa_b      ! src
+      type(c_ptr), value :: tpsa_r                  ! dst
+    end subroutine mad_tpsa_fgrad
+
+    subroutine mad_tpsa_liebra(na,tpsa_a,tpsa_b,tpsa_r) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: na       ! vectors length
+      type(c_ptr), intent(in) :: tpsa_a(*), tpsa_b(*) ! src
+      type(c_ptr), intent(out) :: tpsa_r(*)           ! dst[na]
+    end subroutine mad_tpsa_liebra
+
+    subroutine mad_tpsa_exppb(na,tpsa_a,tpsa_b,tpsa_r) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: na       ! vectors length
+      type(c_ptr), intent(in) :: tpsa_a(*), tpsa_b(*) ! src
+      type(c_ptr), intent(out) :: tpsa_r(*)           ! dst[na]
+    end subroutine mad_tpsa_exppb
+
+    subroutine mad_tpsa_logpb(na,tpsa_a,tpsa_b,tpsa_r) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: na       ! vectors length
+      type(c_ptr), intent(in) :: tpsa_a(*)            ! src
+      type(c_ptr), intent(in), optional :: tpsa_b(*)  ! src
+      type(c_ptr), intent(out) :: tpsa_r(*)           ! dst[na]
+    end subroutine mad_tpsa_logpb
 
     ! -- I/O functions ----------------
 
@@ -1521,19 +1568,19 @@ module GTPSA
       type(c_ptr), value :: ctpsa_r                      ! dst
     end subroutine mad_ctpsa_tpow
 
-    subroutine mad_ctpsa_poisst(ctpsa_a,tpsa_b,ctpsa_r,nv) bind(C)
+    subroutine mad_ctpsa_poisbrat(ctpsa_a,tpsa_b,ctpsa_r,nv) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: ctpsa_a, tpsa_b ! src
       type(c_ptr), value :: ctpsa_r                     ! dst
       integer(c_int), value, intent(in) :: nv        ! #variables (desc%nv if 0)
-    end subroutine mad_ctpsa_poisst
+    end subroutine mad_ctpsa_poisbrat
 
-    subroutine mad_ctpsa_tpoiss(tpsa_a,ctpsa_b,ctpsa_r,nv) bind(C)
+    subroutine mad_ctpsa_tpoisbra(tpsa_a,ctpsa_b,ctpsa_r,nv) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: tpsa_a, ctpsa_b ! src
       type(c_ptr), value :: ctpsa_r                     ! dst
       integer(c_int), value, intent(in) :: nv        ! #variables (desc%nv if 0)
-    end subroutine mad_ctpsa_tpoiss
+    end subroutine mad_ctpsa_tpoisbra
 
     ! -- Functions --------------------
 
@@ -1589,12 +1636,12 @@ module GTPSA
       integer(c_ord_t), intent(in) :: m(*)        ! monomial
     end subroutine mad_ctpsa_derivm
 
-    subroutine mad_ctpsa_poisson(ctpsa_a,ctpsa_b,ctpsa_r,nv) bind(C)
+    subroutine mad_ctpsa_poisbra(ctpsa_a,ctpsa_b,ctpsa_r,nv) bind(C)
       import ; implicit none
       type(c_ptr), value, intent(in) :: ctpsa_a,ctpsa_b ! src
       type(c_ptr), value :: ctpsa_r                     ! dst
       integer(c_int), value, intent(in) :: nv        ! #variables (desc%nv if 0)
-    end subroutine mad_ctpsa_poisson
+    end subroutine mad_ctpsa_poisbra
 
     subroutine mad_ctpsa_taylor(ctpsa_a,n,coef,ctpsa_r) bind(C)
       import ; implicit none
@@ -1848,16 +1895,23 @@ module GTPSA
 
     ! -- Maps-like functions ----------
 
-    subroutine mad_ctpsa_minv(n,ctpsa_a,ctpsa_r) bind(C)
+    function mad_ctpsa_mnrm(na,ctpsa_a) result(mnrm) bind(C)
       import ; implicit none
-      integer(c_ssz_t), value, intent(in) :: n        ! vectors lengths
+      integer(c_ssz_t), value, intent(in) :: na     ! vectors lengths
+      type(c_ptr), intent(in) :: ctpsa_a(*)         ! src
+      real(c_num_t) :: mnrm                         ! nrm
+    end function mad_ctpsa_mnrm
+
+    subroutine mad_ctpsa_minv(na,ctpsa_a,ctpsa_r) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: na       ! vectors lengths
       type(c_ptr), intent(in) :: ctpsa_a(*)           ! src
       type(c_ptr) :: ctpsa_r(*)                       ! dst
     end subroutine mad_ctpsa_minv
 
-    subroutine mad_ctpsa_pminv(n,ctpsa_a,ctpsa_r,select) bind(C)
+    subroutine mad_ctpsa_pminv(na,ctpsa_a,ctpsa_r,select) bind(C)
       import ; implicit none
-      integer(c_ssz_t), value, intent(in) :: n        ! vectors lengths
+      integer(c_ssz_t), value, intent(in) :: na       ! vectors lengths
       type(c_ptr), intent(in) :: ctpsa_a(*)           ! src
       type(c_ptr) :: ctpsa_r(*)                       ! dst
       integer(c_ssz_t), intent(in) :: select(*)       ! slots to selected
@@ -1895,6 +1949,52 @@ module GTPSA
       integer(c_idx_t), intent(in) :: t2r_(*)        ! vector of index lookup
       integer(c_int), value, intent(in) :: pb        ! poisson bracket 0,1:fwd,-1:bwd
     end subroutine mad_ctpsa_mconv
+
+    ! -- Lie operators ----------------
+
+    subroutine mad_ctpsa_vec2fld(na,ctpsa_a,ctpsa_r) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: na      ! vectors length
+      type(c_ptr), value, intent(in) :: ctpsa_a      ! src
+      type(c_ptr), intent(out) :: ctpsa_r(*)         ! dst
+    end subroutine mad_ctpsa_vec2fld
+
+    subroutine mad_ctpsa_fld2vec(na,ctpsa_a,ctpsa_r) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: na      ! vectors length
+      type(c_ptr), intent(in) :: ctpsa_a(*)          ! src
+      type(c_ptr), value :: ctpsa_r                  ! dst
+    end subroutine mad_ctpsa_fld2vec
+
+    subroutine mad_ctpsa_fgrad(na,ctpsa_a,ctpsa_b,ctpsa_r) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: na     ! vectors length
+      type(c_ptr), intent(in) :: ctpsa_a(*)          ! src
+      type(c_ptr), value, intent(in) :: ctpsa_b      ! src
+      type(c_ptr), value :: ctpsa_r                  ! dst
+    end subroutine mad_ctpsa_fgrad
+
+    subroutine mad_ctpsa_liebra(na,ctpsa_a,ctpsa_b,ctpsa_r) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: na         ! vectors length
+      type(c_ptr), intent(in) :: ctpsa_a(*), ctpsa_b(*) ! src
+      type(c_ptr), intent(out) :: ctpsa_r(*)            ! dst[na]
+    end subroutine mad_ctpsa_liebra
+
+    subroutine mad_ctpsa_exppb(na,ctpsa_a,ctpsa_b,ctpsa_r) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: na         ! vectors length
+      type(c_ptr), intent(in) :: ctpsa_a(*), ctpsa_b(*) ! src
+      type(c_ptr), intent(out) :: ctpsa_r(*)            ! dst[na]
+    end subroutine mad_ctpsa_exppb
+
+    subroutine mad_ctpsa_logpb(na,ctpsa_a,ctpsa_b,ctpsa_r) bind(C)
+      import ; implicit none
+      integer(c_ssz_t), value, intent(in) :: na        ! vectors length
+      type(c_ptr), intent(in) :: ctpsa_a(*)            ! src
+      type(c_ptr), intent(in), optional :: ctpsa_b(*)  ! src
+      type(c_ptr), intent(out) :: ctpsa_r(*)           ! dst[na]
+    end subroutine mad_ctpsa_logpb
 
     ! -- I/O functions ----------------
 
