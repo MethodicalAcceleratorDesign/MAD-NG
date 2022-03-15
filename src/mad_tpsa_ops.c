@@ -805,7 +805,7 @@ ret:
 }
 
 void
-FUN(poisson) (const T *a, const T *b, T *c, int nv)                 // C = [A,B]
+FUN(poisbra) (const T *a, const T *b, T *c, int nv)                 // C = [A,B]
 {
   assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b); DBGTPSA(c);
   const D *d = a->d;

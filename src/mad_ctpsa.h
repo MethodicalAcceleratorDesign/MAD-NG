@@ -145,8 +145,6 @@ void     mad_ctpsa_divt    (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_tdiv    (const  tpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_powt    (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_tpow    (const  tpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
-void     mad_ctpsa_poisst  (const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c, int nv);
-void     mad_ctpsa_tpoiss  (const  tpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int nv);
 
 // functions
 num_t    mad_ctpsa_nrm     (const ctpsa_t *a);
@@ -190,8 +188,12 @@ void     mad_ctpsa_hypot3  (const ctpsa_t *x, const ctpsa_t *y, const ctpsa_t *z
 void     mad_ctpsa_integ   (const ctpsa_t *a, ctpsa_t *c, int iv);
 void     mad_ctpsa_deriv   (const ctpsa_t *a, ctpsa_t *c, int iv);
 void     mad_ctpsa_derivm  (const ctpsa_t *a, ctpsa_t *c, ssz_t n, const ord_t m[n]);
-void     mad_ctpsa_poisson (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int nv);
+void     mad_ctpsa_poisbra (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int nv);
 void     mad_ctpsa_taylor  (const ctpsa_t *a, ssz_t n, const cnum_t coef[n], ctpsa_t *c);
+
+// functions with internal real-to-complex conversion
+void     mad_ctpsa_poisbrat(const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c, int nv);
+void     mad_ctpsa_tpoisbra(const  tpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int nv);
 
 // functions without complex-by-value arguments
 void     mad_ctpsa_acc_r     (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
@@ -249,9 +251,12 @@ void     mad_ctpsa_logaxpsqrtbpcx2_r (const ctpsa_t *x, num_t a_re, num_t a_im,
 // to check for non-homogeneous maps & parameters
 void     mad_ctpsa_vec2fld  (ssz_t na, const ctpsa_t *a     ,                        ctpsa_t *mc[na]); // F . grad
 void     mad_ctpsa_fld2vec  (ssz_t na, const ctpsa_t *ma[na],                        ctpsa_t *c     );
+void     mad_ctpsa_fgrad    (ssz_t na, const ctpsa_t *ma[na], const ctpsa_t * b    , ctpsa_t *c     );
+void     mad_ctpsa_liebra   (ssz_t na, const ctpsa_t *ma[na], const ctpsa_t *mb[na], ctpsa_t *mc[na]);
 void     mad_ctpsa_exppb    (ssz_t na, const ctpsa_t *ma[na], const ctpsa_t *mb[na], ctpsa_t *mc[na]); // exp(:F:) K
 void     mad_ctpsa_logpb    (ssz_t na, const ctpsa_t *ma[na], const ctpsa_t *mb[na], ctpsa_t *mc[na]); // exp(log(:F:)) K
 
+num_t    mad_ctpsa_mnrm     (ssz_t na, const ctpsa_t *ma[na]);
 void     mad_ctpsa_minv     (ssz_t na, const ctpsa_t *ma[na],                                  ctpsa_t *mc[na]);
 void     mad_ctpsa_pminv    (ssz_t na, const ctpsa_t *ma[na],                                  ctpsa_t *mc[na], idx_t select[na]);
 void     mad_ctpsa_compose  (ssz_t na, const ctpsa_t *ma[na], ssz_t nb, const ctpsa_t *mb[nb], ctpsa_t *mc[na]);

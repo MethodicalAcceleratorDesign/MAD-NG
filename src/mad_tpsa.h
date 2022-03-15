@@ -151,7 +151,7 @@ void    mad_tpsa_hypot3  (const tpsa_t *x, const tpsa_t *y, const tpsa_t *z, tps
 void    mad_tpsa_integ   (const tpsa_t *a, tpsa_t *c, int iv);
 void    mad_tpsa_deriv   (const tpsa_t *a, tpsa_t *c, int iv);
 void    mad_tpsa_derivm  (const tpsa_t *a, tpsa_t *c, ssz_t n, const ord_t m[n]);
-void    mad_tpsa_poisson (const tpsa_t *a, const tpsa_t *b, tpsa_t *c, int nv);
+void    mad_tpsa_poisbra (const tpsa_t *a, const tpsa_t *b, tpsa_t *c, int nv);
 void    mad_tpsa_taylor  (const tpsa_t *a, ssz_t n, const num_t coef[n], tpsa_t *c);
 
 // high level functions (aliasing OK)
@@ -177,13 +177,16 @@ void    mad_tpsa_logaxpsqrtbpcx2 (const tpsa_t *x, num_t a, num_t b, num_t c, tp
 void    mad_tpsa_logxdy          (const tpsa_t *x, const tpsa_t *y, tpsa_t *r);
 
 // to check for non-homogeneous maps & parameters
-void    mad_tpsa_vec2fld  (ssz_t na, const tpsa_t *a     ,                       tpsa_t *mc[na]); // F . grad
+void    mad_tpsa_vec2fld  (ssz_t na, const tpsa_t *a     ,                       tpsa_t *mc[na]);
 void    mad_tpsa_fld2vec  (ssz_t na, const tpsa_t *ma[na],                       tpsa_t *c     );
+void    mad_tpsa_fgrad    (ssz_t na, const tpsa_t *ma[na], const tpsa_t * b    , tpsa_t *c     );
+void    mad_tpsa_liebra   (ssz_t na, const tpsa_t *ma[na], const tpsa_t *mb[na], tpsa_t *mc[na]);
 void    mad_tpsa_exppb    (ssz_t na, const tpsa_t *ma[na], const tpsa_t *mb[na], tpsa_t *mc[na]); // exp(:F:) K
 void    mad_tpsa_logpb    (ssz_t na, const tpsa_t *ma[na], const tpsa_t *mb[na], tpsa_t *mc[na]); // exp(log(:F:))K
 
-void    mad_tpsa_minv     (ssz_t n , const tpsa_t *ma[n ],                       tpsa_t *mc[n ]);
-void    mad_tpsa_pminv    (ssz_t n , const tpsa_t *ma[n ],                       tpsa_t *mc[n ], idx_t select[n]);
+num_t   mad_tpsa_mnrm     (ssz_t na, const tpsa_t *ma[na]);
+void    mad_tpsa_minv     (ssz_t na, const tpsa_t *ma[na],                       tpsa_t *mc[na]);
+void    mad_tpsa_pminv    (ssz_t na, const tpsa_t *ma[na],                       tpsa_t *mc[na], idx_t select[na]);
 void    mad_tpsa_compose  (ssz_t na, const tpsa_t *ma[na], ssz_t nb, const tpsa_t *mb[nb], tpsa_t *mc[na]);
 void    mad_tpsa_translate(ssz_t na, const tpsa_t *ma[na], ssz_t nb, const num_t   tb[nb], tpsa_t *mc[na]);
 void    mad_tpsa_eval     (ssz_t na, const tpsa_t *ma[na], ssz_t nb, const num_t   tb[nb], num_t   tc[nb]);

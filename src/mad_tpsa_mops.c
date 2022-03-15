@@ -81,8 +81,8 @@ liebra (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa], T *t[3])
 {
   for (idx_t i=0; i < sa; ++i) {
     fgrad(sa, mb, ma[i], mc[i], t);
-    fgrad(sa, ma, mb[i], t[3] , t);
-    FUN(sub)(mc[i], t[3], mc[i]);
+    fgrad(sa, ma, mb[i], t[2] , t);
+    FUN(sub)(mc[i], t[2], mc[i]);
   }
 }
 
@@ -162,8 +162,8 @@ logpb (ssz_t sa, const T *ma[sa], T *mc[sa], T *t[4+5*sa], num_t eps)
         FUN(scl)(t2[i], -0.5, t2[i]);
       }
       FOR(i,sa) {  // t3 = -0.5*fgrad(t2, t0_i)-(1/6)*fgrad(t0, t2_i)
-        fgrad(sa, (const T**)t2, t0[i], t3[i], &t[2]);
-        fgrad(sa, (const T**)t0, t2[i], t4[i], &t[2]);
+        fgrad(sa, TC t2, t0[i], t3[i], &t[2]);
+        fgrad(sa, TC t0, t2[i], t4[i], &t[2]);
         FUN(axpbypc)(-0.5, t3[i], -1.0/6, t4[i], 0, t3[i]);
       }
       FOR(i,sa) {  // t0 = t0+t2+t3
@@ -279,6 +279,61 @@ FUN(logpb) (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
   DBGFUN(<-);
 }
 
+void
+FUN(liebra) (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
+{
+  DBGFUN(->); assert(mb);
+  check_compat(sa, ma, mb, mc);
+
+  // handle aliasing
+  mad_alloc_tmp(T*, mc_, sa);
+  FOR(i,sa) {
+    DBGTPSA(ma[i]); DBGTPSA(mb[i]); DBGTPSA(mc[i]);
+    mc_[i] = FUN(new)(mc[i], mad_tpsa_same);
+  }
+
+  // temporaries: 3 tpsa
+  T *t[3];
+  FOR(i,3) t[i] = FUN(new)(mc[0], mad_tpsa_same);
+
+  // main call
+  liebra(sa, ma, mb, mc_, t);
+
+  // temporaries
+  FOR(i,3) FUN(del)(t[i]);
+
+  // copy back
+  FOR(i,sa) {
+    FUN(copy)(mc_[i], mc[i]);
+    FUN(del )(mc_[i]);
+    DBGTPSA(mc[i]);
+  }
+  mad_free_tmp(mc_);
+  DBGFUN(<-);
+}
+
+void
+FUN(fgrad) (ssz_t sa, const T *ma[sa], const T *b, T *c)
+{
+  DBGFUN(->);
+  assert(ma && b && c);
+  check_same_desc(sa,(const T**)ma);
+  ensure(ma[0]->d == b->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(ma[0]->d == c->d, "incompatibles GTPSA (descriptors differ)");
+
+  // temporaries: 3 tpsa
+  T *t[2];
+  FOR(i,2) t[i] = FUN(new)(c, mad_tpsa_same);
+
+  // main call
+  fgrad(sa, ma, b, c, t);
+
+  // temporaries
+  FOR(i,2) FUN(del)(t[i]);
+
+  DBGFUN(<-);
+}
+
 void // compute G(x;0) = -J grad.f(x;0) (eq. 34),
 FUN(vec2fld) (ssz_t sc, const T *a, T *mc[sc]) // pbbra
 {
@@ -291,7 +346,7 @@ FUN(vec2fld) (ssz_t sc, const T *a, T *mc[sc]) // pbbra
 
   FOR(i,sc) {
     FUN(setvar)(t, 0, i+1, 0);
-    FUN(poisson)(a, t, mc[i], 0);
+    FUN(poisbra)(a, t, mc[i], 0);
   }
 
   FUN(del)(t);
@@ -325,6 +380,23 @@ FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // getpb
   FUN(del)(t1);
   DBGFUN(<-);
 }
+
+num_t
+FUN(mnrm) (ssz_t sa, const T *ma[sa])
+{
+  DBGFUN(->);
+  assert(ma);
+
+  num_t nrm = 0;
+  FOR(i,sa) {
+    DBGTPSA(ma[i]);
+    nrm += FUN(nrm)(ma[i]);
+  }
+
+  DBGFUN(<-);
+  return nrm;
+}
+
 
 void // convert maps to another maps using tpsa conversion.
 FUN(mconv) (ssz_t sa, const T *ma[sa], ssz_t sc, T *mc[sc], ssz_t n, idx_t t2r_[n], int pb)

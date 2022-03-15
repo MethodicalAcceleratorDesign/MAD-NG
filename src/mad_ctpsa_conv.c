@@ -302,24 +302,24 @@ void mad_ctpsa_tpow (const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c)
   DBGFUN(<-);
 }
 
-void mad_ctpsa_poisst(const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c, int nv)
+void mad_ctpsa_poisbrat(const ctpsa_t *a, const tpsa_t *b, ctpsa_t *c, int nv)
 {
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ctpsa_t *t = GET_TMPC(b);
   mad_ctpsa_cplx   (b, NULL, t);
-  mad_ctpsa_poisson(a, t, c, nv);
+  mad_ctpsa_poisbra(a, t, c, nv);
   REL_TMPC(t);
   DBGFUN(<-);
 }
 
-void mad_ctpsa_tpoiss(const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int nv)
+void mad_ctpsa_tpoisbra(const tpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int nv)
 {
   assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ctpsa_t *t = GET_TMPC(a);
   mad_ctpsa_cplx   (a, NULL, t);
-  mad_ctpsa_poisson(t, b, c, nv);
+  mad_ctpsa_poisbra(t, b, c, nv);
   REL_TMPC(t);
   DBGFUN(<-);
 }
