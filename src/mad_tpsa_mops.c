@@ -94,8 +94,8 @@ mnrm (ssz_t sa, const T *ma[sa])
   return nrm;
 }
 
-#include <stdio.h>
-extern int mad_trace_fortid;
+//#include <stdio.h>
+//extern int mad_trace_fortid;
 
 static inline void
 exppb (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa], T *t[4])
@@ -239,7 +239,7 @@ FUN(exppb) (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
   DBGFUN(<-);
 }
 
-void // compute log(M) x = log(exp(:f(x;0):)) x => f
+void // compute log(M) x = exp(log(:f(x;0):)) x => f
 FUN(logpb) (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
 {
   DBGFUN(->);
@@ -396,7 +396,6 @@ FUN(mnrm) (ssz_t sa, const T *ma[sa])
   DBGFUN(<-);
   return nrm;
 }
-
 
 void // convert maps to another maps using tpsa conversion.
 FUN(mconv) (ssz_t sa, const T *ma[sa], ssz_t sc, T *mc[sc], ssz_t n, idx_t t2r_[n], int pb)
