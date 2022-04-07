@@ -120,7 +120,7 @@ local function map_alloc (td, vn, mt)
   end
 
   for i=td.nv+1,td.nn do -- create parameters
-    mv[i] = ct(td, 1) ; ta[i-1] = mv[i]:setvar(0,i)
+    mv[i] = ct(td, 1) ; ta[i-1] = mv[i]:set(i+1,0,1)
   end
 
   for i=1,nn do          -- create named access
@@ -183,8 +183,11 @@ end
 
 -- maxord, maxlen, gtrunc -----------------------------------------------------o
 
+MR.nv     = \x     -> x[1]:nv()
+MR.np     = \x     -> x[1]:np()
 MR.maxord = \x     -> x[1]:maxord()
 MR.maxlen = \x     -> x[1]:maxlen()
+MR.ordlen = \x,mo_ -> x[1]:ordlen(mo_)
 MR.gtrunc = \x,to_ -> x[1]:gtrunc(to_)
 
 -- same, copy, clear ----------------------------------------------------------o
@@ -907,12 +910,12 @@ function MC.convert (x, r, tbl_, pb_)
   return r
 end
 
-function MR.fromptc (x)
-  return x:convert(nil, {1,2,3,4,6,5}, 1)
+function MR.fromptc (x, r)
+  return x:nv() >= 6 and x:convert(r, {1,2,3,4,6,5}, 1) or x:copy(r)
 end
 
 function MR.toptc (x)
-  return x:convert(nil, {1,2,3,4,6,5}, -1)
+  return x:nv() >= 6 and x:convert(r, {1,2,3,4,6,5}, -1) or x:copy(r)
 end
 
 -- operators ------------------------------------------------------------------o
@@ -1117,29 +1120,32 @@ function MR.read (x_, filnam_, kind_, vname_)
   local file, x = assert(openfile(filnam_, 'r', '.dat'),
                          "unable to open DA map file in read mode")
 
--- TODO: read [%dR] or [%dC] or nothing...
-
-  local x1 = x_[1]:read(file, kind_)
+  local hdr = file:read() or ""
+  local cnt, knd, nam = (kind_ or hdr):match("[[ ]*(%d*)([RC]?)[] ]*([^ =]*)")   -- sub(6,-3)
+--print("\ndamap read -> cnt=", cnt, ", knd=", knd, ", nam=", nam)
+  local x1 = x_[1]:read(file, knd)
   -- print('\n1', x1) ; if x1 then print("X1=") ; x1:print() end
   if x1 ~= nil then  -- valid input
     local td = x1.d
     local vn = vname_ and cvname_dup(vname_) or cvname[min(td.nv,6)]
     x = map_alloc(td, vn, is_tpsa(x1) and MR or MC)
     x[1] = x1
-    for i=2,td.nv do
-      x1 = x1:read(file, kind_)
+    --x1:print("X1."..1)
+    for i=2,cnt or td.nv do
+      x1 = x1:read(file, knd)
       -- print(i, x1)
       if x1 == nil or x1.d ~= td then
-        warn("missing/invalid gtpsa in damap reading: %s (after %s)",
-             x1 and x1.nam or 'nil', x[i-1].nam)
+        warn("missing/invalid gtpsa in damap reading: '%s' (after '%s')",
+             x1 and x1:nam() or 'nil', x[i-1]:nam())
         break
       end
-      -- x1:print()
+      --x1:print("X1."..i)
       x[i] = x1
     end
   end
   if is_string(filnam_) then file:close() end
-  return x
+--print("\ndamap read <- cnt=", cnt, ", knd=", knd, ", nam=", nam)
+  return x, nam
 end
 
 -- metamethods ----------------------------------------------------------------o
