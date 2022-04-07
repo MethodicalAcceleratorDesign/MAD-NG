@@ -538,7 +538,7 @@ FUN(cycle) (const T *t, ssz_t n, ord_t m_[n], idx_t i, NUM *v_)
   if (i >= ni) { DBGFUN(<-); return -1; }
 
   if (m_) {
-    ensure(0 <= n && n <= d->nv, "invalid monomial length %d", n);
+    ensure(0 <= n && n <= d->nn, "invalid monomial length %d", n);
     mad_mono_copy(n, d->To[i], m_);
   }
   if (v_) *v_ = t->coef[i];
