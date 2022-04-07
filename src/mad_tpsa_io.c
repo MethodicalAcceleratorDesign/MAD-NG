@@ -192,7 +192,7 @@ FUN(scan_hdr) (int *kind_, char name_[NAMSZ], FILE *stream_)
 
 #if DEBUG > 2
     printf("header: cnt=%d, knd='%c', nv=%d, mo=%d, np=%d, po=%d\n",
-                       cnt,     knd,     nv,    mo,    np,    po);
+                       cnt, knd?knd:'?', nv,    mo,    np,    po);
 #endif
 
   // sanity checks
