@@ -30,10 +30,18 @@ local openfile                     in MAD.utility
 
 -- implementation -------------------------------------------------------------o
 
-local function cmpdaf(lst, pfx_, eps_)
-  if is_number(pfx_) and is_nil(eps_) then eps_, pfx_ = pfx_, nil end
-  local dum = damap()
+local dum = damap() -- get a dummy damap object
+
+-- args: tbl|str, tbl|nil, num|nil, str|nil
+local function cmpdaf(lst, pfx_, eps_, knd_)
+  if is_number(pfx_) and is_nil(knd_) then
+    knd_, eps_, pfx_ = eps_, pfx_ -- right shift
+  end
+  if is_string(eps_) and is_nil(knd_) then
+    knd_, eps_ = eps_             -- right shift
+  end
   local eps = eps_ or 1e-14
+  local knd = knd_ or "4C"
   local pfx = pfx_ or {}
   local dir = pfx.dir or "fort/fort"
   local ptc = pfx.ptc or "_p"
@@ -42,25 +50,32 @@ local function cmpdaf(lst, pfx_, eps_)
 
   if is_string(lst) then lst = {lst} end
 
-  local m_p, m_n, m_d
+  local m_p, m_n, m_d, nam
 
   for _, v in ipairs(lst) do
     io.stderr:write("processing files ", v)
-    local f_p = assert(openfile(dir.."."..v)) ; f_p:read() ; f_p:read() ; f_p:read()
-    io.stderr:write(", ", v, ptc)
-    m_p = dum:read(f_p,"C"):fromptc():write(dir..ptc.."."..v)
-    f_p:close()
+
+    local f_p = openfile(dir.."."..v)
+    if f_p then
+      io.stderr:write(", ", v, ptc)
+      f_p:read() ; f_p:read() ; f_p:read()
+      m_p = dum:read(f_p, knd):fromptc():write(dir..ptc.."."..v)
+      f_p:close()
+    end
 
     local f_n = openfile(dir..mad.."."..v, '.dat')
     if f_n then
-      io.stderr:write(", ", v, "_n")
-      local nam = (f_n:read() or ""):sub(6,-3)
-      m_n = dum:read(f_n)
-      io.stderr:write(", ", v, "_d")
-
-      m_d = m_p:dif(m_n):write(dir..dif.."."..v, nam, eps)
+      io.stderr:write(", ", v, mad)
+--      local nam = (f_n:read() or ""):sub(6,-3)
+      m_n, nam = dum:read(f_n)
       f_n:close()
     end
+
+    if m_p and m_n then
+      io.stderr:write(", ", v, dif)
+      m_d = m_p:dif(m_n):write(dir..dif.."."..v, nam, eps)
+    end
+
     io.stderr:write("\n")
   end
   return m_p, m_n, m_d
@@ -68,7 +83,6 @@ end
 
 local function cmpdafN(lst_i, lst_n, pfx_, eps_)
   if is_number(pfx_) and is_nil(eps_) then eps_, pfx_ = pfx_, nil end
-  local dum = damap()
   local eps = eps_ or 1e-14
   local pfx = pfx_ or {}
   local dir = pfx.dir or "fort/fort"
