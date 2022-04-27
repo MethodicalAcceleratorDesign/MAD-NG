@@ -445,7 +445,7 @@ end
 gphys.closed_form = \M, A_ -> closed_form(chksysiz(M), chksysiz(A_))
 
 -- order in place eigenvectors and eigenvalues by planes (x,px), (y,py) and
--- (t,pt), detect by horizontal, vertical, longitudinal order
+-- (t,pt), detect by horizontal, vertical, longitudinal order (MAD-NG order)
 
 local function order_eigen (V, W)  -- default
   for i=1,V.nrow-3,2 do
@@ -470,7 +470,7 @@ end
 
 gphys.order_eigen = \V, W -> order_eigen(chksysiz(V,W))
 
--- order in place eigenvectors and eigenvvalues by planes (x,px), (y,py) and
+-- order in place eigenvectors and eigenvalues by planes (x,px), (y,py) and
 -- (t,pt), detect by vertical, horizontal, longitudinal order (MAD-X order)
 
 local idx_p = {3,1,5} -- vertical, horizontal, longitudinal
@@ -536,18 +536,34 @@ gphys.norml_eigen = \A -> norml_eigen(chksysiz(A))
 local function phase_eigen (A)
   local P = matrix(A.nrow):eye()
 
-  for i=2,A.nrow,2 do
-    local a1, a2 = A:get(i-1,i-1), A:get(i-1,i)
-    local d = hypot(a1,a2)
-    if a1 < 0 then d = -d end  -- add pi => mu > 0
-    assertf(abs(d)>1e-12, "invalid eigenvectors (unexpected denom |% -.16e|>0)", d)
-    P:set(i-1,i-1,  a1 / d )        -- P = [  a1/d  -a2/d ]
-    P:set(i  ,i-1,  a2 / d )        --     [  a2/d   a1/d ]
-    P:set(i-1,i  , -P:get(i  ,i-1)) --   = [ cos a -sin a ]
-    P:set(i  ,i  ,  P:get(i-1,i-1)) --     [ sin a  cos a ] = rot(a)
-  end                               -- a = angle(A11,A12) = mu1*2pi
+! local fmt = option.numfmt ; option.numfmt = "% -.5e" ; A:print("A_in")
 
-  return A:mul(P,A) -- A = P*A (rotate planes of A => A12=A34=0)
+  for i=2,A.nrow,2 do
+    local a1, a2 = A:get(i-1,i-1), A:get(i-1,i) -- mu = atan2(a2, a1) / 2pi
+    local d = hypot(a1,a2)
+!   printf("before: i=%d, a1=% -.16e, a2=% -.16e, d=%.5f, mu=% -.16e\n", i-1, a1, a2, d, atan2(a2,a1)/twopi)
+!   if a1 < 0 then d = -d end  -- add pi (sometimes needed for comparison with PTC...)
+    assertf(abs(d) > 1e-12, "invalid eigenvectors (unexpected denom |% -.16e|>0)", d)
+    a1, a2 = a1/d, a2/d
+    P:set(i-1,i-1,  a1) -- P = [  a1/d  -a2/d ] = [ cos a -sin a ]
+    P:set(i-1,i  , -a2) --     [  a2/d   a1/d ]   [ sin a  cos a ] = rot(a)
+    P:set(i  ,i-1,  a2) -- a = angle(a1, a2)
+    P:set(i  ,i  ,  a1)
+  end
+
+  A:mul(P,A) -- A = A*P (rotate planes of A => A12=A34=0)
+
+-- [  a1  a2 ] [  a1/d  -a2/d ] = [      d              0        ]
+-- [  a3  a4 ] [  a2/d   a1/d ]   [ (a1a3+a2a4)/d (-a2a3+a1a4)/d ]
+
+! for i=2,A.nrow,2 do
+!   local a1, a2 = A:get(i-1,i-1), A:get(i-1,i)
+!   local d = hypot(a1,a2)
+!   printf("after : i=%d, a1=% -.16e, a2=% -.16e, d=%.5f, mu=% -.16e\n", i-1, a1, a2, d, atan2(a2,a1)/twopi)
+! end
+! A:print("A_out") ; option.numfmt = fmt
+
+  return A
 end
 
 gphys.phase_eigen = \A -> phase_eigen(chksysiz(A))
