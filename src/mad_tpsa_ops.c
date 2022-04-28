@@ -259,7 +259,7 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
   const NUM *ca = a->coef;
         NUM *cc;
 
-  c->hi = MIN3(c->mo, d->to, a->hi-ord);  // initial guess, readjust based on nz
+  c->hi = MIN(c->mo, d->to, a->hi-ord);  // initial guess, readjust based on nz
   for (ord_t oc = 1; oc <= c->hi; ++oc) {
     if (mad_bit_tst(a->nz,oc+ord)) {
       cc = c->coef + o2i[oc];
@@ -333,7 +333,7 @@ FUN(acc) (const T *a, NUM v, T *c)
 
   const idx_t *o2i = d->ord2idx;
   ord_t new_lo = MIN (a->lo,c->lo);
-  ord_t new_hi = MIN3(a->hi,c->mo,d->to);
+  ord_t new_hi = MIN(a->hi,c->mo,d->to);
 
   c->nz = mad_bit_hcut(c->nz|a->nz, MAX(new_hi, c->hi));
   if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
@@ -359,7 +359,7 @@ FUN(add) (const T *a, const T *b, T *c)
   ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   ord_t   hi = MAX(a->hi,b->hi);
-  ord_t c_hi = MIN3(hi, c->mo, d->to);
+  ord_t c_hi = MIN(hi, c->mo, d->to);
 
   c->nz = mad_bit_hcut(a->nz|b->nz, c_hi);
   if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
@@ -385,7 +385,7 @@ FUN(sub) (const T *a, const T *b, T *c)
   ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   ord_t   hi = MAX (a->hi,b->hi);
-  ord_t c_hi = MIN3(hi, c->mo, d->to);
+  ord_t c_hi = MIN(hi, c->mo, d->to);
 
   c->nz = mad_bit_hcut(a->nz|b->nz, c_hi);
   if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
@@ -413,7 +413,7 @@ FUN(dif) (const T *a, const T *b, T *c)
   ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   ord_t   hi = MAX (a->hi,b->hi);
-  ord_t c_hi = MIN3(hi, c->mo, d->to);
+  ord_t c_hi = MIN(hi, c->mo, d->to);
 
   c->nz = mad_bit_hcut(a->nz|b->nz, c_hi);
   if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
@@ -451,7 +451,7 @@ FUN(mul) (const T *a, const T *b, T *r)
   T *c = (a == r || b == r) ? GET_TMPX(r) : FUN(reset0)(r);
 
   c->lo = a->lo + b->lo;
-  c->hi = MIN3(a->hi + b->hi, c->mo, d->to);
+  c->hi = MIN(a->hi + b->hi, c->mo, d->to);
   // empty
   if (c->lo > c->hi) { FUN(reset0)(c); goto ret; }
   // a is the left-most one
@@ -663,7 +663,7 @@ FUN(conj) (const T *a, T *c) // c = a.re - a.im I
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   c->lo = a->lo;
-  c->hi = MIN3(a->hi, c->mo, c->d->to);
+  c->hi = MIN(a->hi, c->mo, c->d->to);
   c->nz = mad_bit_hcut(a->nz,c->hi);
 
   if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
@@ -742,7 +742,7 @@ FUN(deriv) (const T *a, T *r, int iv)
   FUN(setvar)(c,FUN(geti)(a,iv), 0, 0); // 0
 
   c->lo = a->lo ? a->lo-1 : 0;  // initial guess, readjusted after computation
-  c->hi = MIN3(a->hi-1, c->mo, d->to);
+  c->hi = MIN(a->hi-1, c->mo, d->to);
 
   const NUM *ca = a->coef;
 
@@ -891,7 +891,7 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   ensure(a->d == b->d && b->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   ord_t   hi = MAX(a->hi,b->hi);
-  ord_t c_hi = MIN3(hi, c->mo, c->d->to);
+  ord_t c_hi = MIN(hi, c->mo, c->d->to);
 
   c->nz = mad_bit_hcut(a->nz|b->nz, c_hi);
   if (!c->nz) {

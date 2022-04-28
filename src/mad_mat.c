@@ -1975,7 +1975,7 @@ void mad_mat_torotq (const num_t x[NN], num_t q[4], log_t inv)
   }
 
   // look for more stable trace
-  num_t m = MAX3(xx, yy, zz);
+  num_t m = MAX(xx, yy, zz);
   if (!inv) {  // normal
     if (m == xx) {
       rr = sqrt(1+xx-yy-zz), ss = 0.5/rr;

@@ -66,7 +66,7 @@ mad_ctpsa_reset0 (ctpsa_t *t)
 static inline ctpsa_t* // copy t_lo, t_hi(r_mo,d_to), t_nz(r_hi) but not coefs!
 mad_ctpsa_copy0 (const ctpsa_t *t, ctpsa_t *r)
 {
-  r->hi = MIN3(t->hi, r->mo, t->d->to);
+  r->hi = MIN(t->hi, r->mo, t->d->to);
   r->nz = mad_bit_hcut(t->nz, r->hi);
   if (!r->nz) return mad_ctpsa_reset0(r);
   if ((r->lo=t->lo)) r->coef[0] = 0;

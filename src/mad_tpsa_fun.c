@@ -153,7 +153,7 @@ FUN(taylor) (const T *a, ssz_t n, const NUM coef[n], T *c)
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   ensure(n > 0, "invalid number of coefficients (>0 expected)");
 
-  ord_t to = MIN3(n-1,c->mo,c->d->to);
+  ord_t to = MIN(n-1,c->mo,c->d->to);
   if (!to || a->hi == 0) {
     FUN(setvar)(c,coef[0],0,0); DBGTPSA(c); DBGFUN(<-); return;
   }

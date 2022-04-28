@@ -36,7 +36,7 @@ mad_ctpsa_real (const ctpsa_t *t, tpsa_t *c)
 
   const D* d = t->d;
 
-  c->hi = MIN3(t->hi, c->mo, d->to);
+  c->hi = MIN(t->hi, c->mo, d->to);
   c->nz = mad_bit_hcut(t->nz,c->hi);
   if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
 
@@ -60,7 +60,7 @@ mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *c)
 
   const D* d = t->d;
 
-  c->hi = MIN3(t->hi, c->mo, d->to);
+  c->hi = MIN(t->hi, c->mo, d->to);
   c->nz = mad_bit_hcut(t->nz,c->hi);
   if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
 
@@ -89,7 +89,7 @@ mad_ctpsa_cplx (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
 
   const D *d = c->d;
 
-  c->hi = MIN3(hi, c->mo, d->to);
+  c->hi = MIN(hi, c->mo, d->to);
   c->nz = mad_bit_hcut(re->nz|im->nz,c->hi);
   if (!c->nz) { mad_ctpsa_reset0(c); DBGFUN(<-); return; }
 

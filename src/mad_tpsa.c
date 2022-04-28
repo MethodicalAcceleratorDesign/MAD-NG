@@ -402,12 +402,12 @@ FUN(cutord) (const T *t, T *r, int ord)
   ensure(d == r->d, "incompatible GTPSAs descriptors 0x%p vs 0x%p", d, r->d);
 
   if (ord < 0) { // cut 0..|ord|, see copy0 with t->lo = |ord|+1
-    r->hi = MIN3(t->hi, r->mo, d->to);
+    r->hi = MIN(t->hi, r->mo, d->to);
     r->nz = mad_bit_hcut(mad_bit_lcut(t->nz, -ord+1), r->hi);
     if (!r->nz) { FUN(reset0)(r); DBGFUN(<-); return; }
     r->lo = -ord+1; r->coef[0] = 0;
   } else {      // cut |ord|..mo, see copy0 with t->hi = |ord|-1
-    r->hi = MIN3(ord-1, r->mo, d->to);
+    r->hi = MIN(ord-1, r->mo, d->to);
     r->nz = mad_bit_hcut(t->nz, r->hi);
     if (!r->nz) { FUN(reset0)(r); DBGFUN(<-); return; }
     if ((r->lo=t->lo)) r->coef[0] = 0;
@@ -463,7 +463,7 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
   for (; i < tn; i++) t2r[i] = -1;  // discard remaining vars
 
   const idx_t *o2i = t->d->ord2idx;
-  ord_t t_hi = MIN3(t->hi, r->mo, t->d->to);
+  ord_t t_hi = MIN(t->hi, r->mo, t->d->to);
   for (idx_t ti = o2i[t->lo]; ti < o2i[t_hi+1]; ++ti) {
     if (t->coef[ti] == 0) goto skip;
     mad_desc_mono(t->d, tn, tm, ti);              // get tm mono at index ti
@@ -716,7 +716,7 @@ FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
   const ord_t *ord = d->ords+i;
   ord_t vlo =         MIN(t->hi+1, ord[ 0 ]);
   ord_t vhi = t->lo ? MAX(t->lo-1, ord[n-1]) : ord[n-1];
-        vhi = MIN3(vhi, t->mo, d->to);
+        vhi = MIN(vhi, t->mo, d->to);
   idx_t j = o2i[vlo], nj = MIN(i+n, o2i[vhi+1]);
 
   for (; j < i         ; j++) t->coef[j] = 0;      // right gap (if any)
