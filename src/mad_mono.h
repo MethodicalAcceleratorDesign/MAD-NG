@@ -32,7 +32,7 @@
 
 #include <stdio.h>
 
-#include "mad_defs.h"
+#include "mad_def.h"
 
 // --- types ------------------------------------------------------------------o
 

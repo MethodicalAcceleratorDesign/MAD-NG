@@ -25,7 +25,7 @@
  */
 
 #include <math.h>
-#include "mad_defs.h"
+#include "mad_def.h"
 
 // --- interface --------------------------------------------------------------o
 
