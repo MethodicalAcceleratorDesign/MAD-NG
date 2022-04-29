@@ -59,17 +59,17 @@ typedef double _Complex cnum_t;
 
 #define MIN(a,...)       MKNAME(MIN_,NARG(__VA_ARGS__))(a,__VA_ARGS__)
 #define MAX(a,...)       MKNAME(MAX_,NARG(__VA_ARGS__))(a,__VA_ARGS__)
-#define MIN_1(a,b)       ((b)<(a) ? (b):(a))
-#define MAX_1(a,b)       ((b)>(a) ? (b):(a))
+#define MIN_1(a,b)       ((b)<(a) ? b : a)
+#define MAX_1(a,b)       ((b)>(a) ? b : a)
 #define MIN_2(a,b,c)     ((b)<(a) ? MIN_1(b,c) : MIN_1(a,c))
 #define MAX_2(a,b,c)     ((b)>(a) ? MAX_1(b,c) : MAX_1(a,c))
 #define MIN_3(a,b,c,d)   ((b)<(a) ? MIN_2(b,c,d) : MIN_2(a,c,d))
 #define MAX_3(a,b,c,d)   ((b)>(a) ? MAX_2(b,c,d) : MAX_2(a,c,d))
 
 #define FOR(i,...)       MKNAME(FOR_,NARG(__VA_ARGS__))(i,__VA_ARGS__)
-#define FOR_1(i,n)       for (idx_t i=  0 ; i<(n); i++)
-#define FOR_2(i,i0,n)    for (idx_t i=(i0); i<(n); i++)
-#define FOR_3(i,i0,n,s)  for (idx_t i=(i0); i<(n); i+=(s))
+#define FOR_1(i,n)       for (idx_t i= 0; i<(n); i++)
+#define FOR_2(i,i0,n)    for (idx_t i=i0; i<(n); i++)
+#define FOR_3(i,i0,n,s)  for (idx_t i=i0; i<(n); i+=s)
 
 #define MKSTR(...)       MKSTR_OP_(__VA_ARGS__)
 #define MKSTR_OP_(...)   #__VA_ARGS__
@@ -79,7 +79,9 @@ typedef double _Complex cnum_t;
 #define MKNAME4(a,b,c,d) MKNAME(a,MKNAME(b,MKNAME(c,d)))
 #define MKNAME_OP_(a,b)  a##b
 
-// -- my old famous PP_NARG published in 2006...
+// my old (2006) famous PP_NARG... for more features consider P99.
+// https://gitlab.inria.fr/gustedt/p99
+// https://gustedt.gitlabpages.inria.fr/p99/p99-html/index.html
 
 #define NARG(...)       NARG_VCAT_(__VA_ARGS__,NARG_RSEQ_())
 #define NARG_VCAT_(...) NARG_NSEQ_(__VA_ARGS__)
