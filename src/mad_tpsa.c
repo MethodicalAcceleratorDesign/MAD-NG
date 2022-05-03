@@ -338,6 +338,9 @@ FUN(copy) (const T *t, T *r)
     // copy lo, hi(mo,to), nz(hi)
     FUN(copy0)(t, r);
 
+    // copy name if unnamed
+    if (!r->nam[0]) strcpy(r->nam, t->nam);
+
     // copy coefs
     const idx_t *o2i = d->ord2idx;
     for (idx_t i = o2i[r->lo]; i < o2i[r->hi+1]; ++i) r->coef[i] = t->coef[i];
