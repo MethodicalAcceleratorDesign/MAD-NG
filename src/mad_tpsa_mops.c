@@ -132,6 +132,8 @@ exppb (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa], T *t[4])
   }
 }
 
+#define TC (const T**)
+
 static inline void
 logpb (ssz_t sa, const T *ma[sa], T *mc[sa], T *t[4+5*sa], num_t eps)
 {
@@ -147,8 +149,6 @@ logpb (ssz_t sa, const T *ma[sa], T *mc[sa], T *t[4+5*sa], num_t eps)
   T **t2 = &t[4+2*sa];
   T **t3 = &t[4+3*sa];
   T **t4 = &t[4+4*sa];
-
-#define TC (const T**)
 
   idx_t n;
   for (n=1; n <= nmax; ++n) {
@@ -198,11 +198,11 @@ logpb (ssz_t sa, const T *ma[sa], T *mc[sa], T *t[4+5*sa], num_t eps)
     nrm_ = nrm;
   }
 
-#undef TC
-
   if (n > nmax)
     warn("logpb did not converged after %d iterations", nmax);
 }
+
+#undef TC
 
 // --- public -----------------------------------------------------------------o
 
