@@ -398,7 +398,7 @@ FUN(print) (const T *t, str_t name_, num_t tol_, int nohdr_, FILE *stream_)
   fprintf(stream_, d->np || d->uno
                  ? "\n %-8s:  %c, NV = %3d, MO = %2hhu, NP = %3d, PO = %2hhu"
                  : "\n %-8s:  %c, NV = %3d, MO = %2hhu",
-                      name_, typ,    d->nn,      d->mo,    d->np,      d->po);
+                      name_, typ,    d->nv,      d->mo,    d->np,      d->po);
 
   if (d->uno) {
     fprintf(stream_, ", NO = ");
