@@ -667,14 +667,14 @@ end
 local function nfrdt (nf, m_)
   assert(is_nf(nf), "invalid argument #1 (normal form expected)")
   assert(is_nil(m_) or is_damap(m_), "invalid argument #2 (damap expected)")
-  local a0, a1, c, ci, m0, nv, lam, ham, gnf in nf
+  local a0, a1, c, ci, m0, nv, lam in nf
   local acs = a0*a1                          -- get fix point & linear map
   local mcs = acs^-1 * (m_ or m0) * acs + 0i -- go to (complex) Courant-Snyder
   local vf  = mcs:set0(0):factor_map()       -- get vector field (take the log)
   local vfc = ci * vf * c                    -- go to phasors basis
   local nh  = vfc:fld2vec()                  -- get pseudo-hamiltonian (integ.)
 
-  local ham_, gnf_, anh_ = {}, {}, {}
+  local ham, gnf, anh = {}, {}, {}
   local mono = monomial(nv)
   local i, v = 0
 
@@ -683,29 +683,29 @@ local function nfrdt (nf, m_)
     i, v = nh:cycle(i, mono)
     if i == 0 then break; end
     local ms = mono:tostring()
-    ham_[#ham_+1], ham_[ms] = ms, v                        -- ham terms
+    ham[#ham+1], ham[ms] = ms, v                         -- ham terms
 
     local s, p = 0, 1
     for j=2,#mono,2 do
       s = s +       abs(mono[j-1]-mono[j])
       p = p * lam[j-1]^(mono[j-1]-mono[j])
     end
-    if abs(1-p) < 1e-10 then
+    if abs(1-p) < 1e-12 then
       io.stderr:write("Warn: killing [", ms, "] with p = ", p:tostring(), "\n")
     else
-      gnf_[#gnf_+1], gnf_[ms] = ms, v / (1-p)              -- gnf terms
+      gnf[#gnf+1], gnf[ms] = ms, v / (1-p)               -- gnf terms
     end
     if s == 0 then
-      anh_[#anh_+1], anh_[ms] = ms, mono:ordpf(2)*v/twopi  -- anh terms
+      anh[#anh+1], anh[ms] = ms, mono:ordpf(2)*v/twopi   -- anh terms
     end
   end
 
-  nf.ham_, nf.gnf_, nf.anh_ = ham_, gnf_, anh_
+  nf.ham, nf.gnf, nf.anh_ = ham, gnf, anh
 end
 
-local function normal_init (m, rdt_)
+local function normal_init (m, urdt_)
   assert(is_damap(m), "invalid argument #1 (damap expected)")
-  assert(is_nil(rdt_) or is_table(rdt_), "invalid argument #2 (table expected)")
+  assert(is_nil(urdt_) or is_table(urdt_), "invalid argument #2 (table expected)")
 
   local fid  = option.fortid
   local fil  = fid == 0 and mockfile or
@@ -725,14 +725,14 @@ local function normal_init (m, rdt_)
     fil  = fil,                          -- fortran file with id 999 (debug)
     fid  = fid == 0 and 0 or fid,        -- fortran files current id (debug)
     sav  = sav,                          -- dump (c)damap/matrix in fort_n.N
-    rdt_ = nfrdt,                        -- compute rdt, fill ham, gnf, anh
+    rdt  = nfrdt,                        -- compute rdt, fill ham, gnf, anh
 
     nn   = m.__td.nn,                    -- #(variables + parameters)
     nv   = m.__td.nv,                    -- #(variables)
     nt   = ndt and 5 or 0,               -- index of t  when coasting
     npt  = ndt and 6 or ndpt and 5 or 0, -- index of pt when constant
     ndpt = ndpt,                         -- true if pt is constant
---  rdt  = rdt_,                         -- user defined rdt
+    urdt = urdt_,                        -- user defined rdt (optional)
     x0   = m:get0(),                     -- backup orbit
     m0   = m:copy(),                     -- backup one-turn map
     m_n  = m:copy(),                     -- normalized map
@@ -750,22 +750,32 @@ local function normal_init (m, rdt_)
   return nf
 end
 
--- closed form (fix point) = a0^-1 * m * a0 -------------------------
+-- closed form (fix point) = a0^-1 * m * a0 -----------------------------------o
 
 local function normal_a0 (nf, ord_)
   if is_damap(nf) then nf = normal_init(nf) end
   assert(is_nf(nf), "invalid argument #1 (normal form expected)")
 
+io.write("a0 in\n")
+
   local nn, nv, nt, npt, m_n in nf
   local v, x, ord = m_n:copy(), m_n:same(), ord_ or 1
 
+if nf.npt > 0 then v:print("V", 1e-14) end
+
+  nn = nv
   if npt ~= 0 then nv = 4 end                       -- process t,pt as params
+
   for i=1,nv    do v[i]:set(i+1,1,-1) end           -- sub id to vars
-  for i=nv+1,nn do v[i]:setvar(0,i)                 -- set params to id
+  for i=nv+1,nn do v[i]:setvar(0,i)                 -- set t,pt params to id
                    x[i]:setvar(0,i)   end
   if nt  ~= 0 then x.t :clear()       end           -- 56D coasting beam
 
   v:cutord(ord+1, v)                                -- keep 1st order (or more)
+
+if nf.npt > 0 then
+  (v^-1):print("V^-1", 1e-14);
+end
 
   local a0 = v^-1 * x                               -- closing form
 
@@ -793,18 +803,29 @@ local function normal_a0 (nf, ord_)
   for i=1,nv do a0[i]:set(i+1,1,1) end              -- add id to vars
 
   m_n:set0(0)                                       -- clear orbit
+
   nf.m_n = a0^-1 * m_n * a0                         -- go to fix point
   nf.a0  = a0
+
+if nf.npt > 0 then
+  nf.a0    :print("A0"    , 1e-14);
+ (nf.a0^-1):print("A0^-1" , 1e-14);
+  nf.m_n   :print("M_n"   , 1e-14);
+end
+
+io.write("a0 out\n")
 end
 
 gphys.normal_a0 = normal_a0 -- export, can be used alone
 
--- linear normal form = a1^-1 * (a0^-1 * m * a0) * a1 ---------------o
+-- linear normal form = a1^-1 * a0^-1 * m * a0 * a1 ---------------------------o
 
 local function normal_a1 (nf)
   assert(is_nf(nf), "invalid argument #1 (normal form expected)")
 
-  local npt, m_n, fid, fil in nf
+io.write("a1 in\n")
+
+  local nn, nv, npt, m_n, fid, fil in nf
   local M = m_n:get1()!; nf:sav(M,"M_orig") -- retrieve one-turn map
 
   -- remove parameters
@@ -824,6 +845,13 @@ local function normal_a1 (nf)
 
   nf.m_n = a1^-1 * m_n * a1                 -- linear normal form
   nf.a1  = a1
+
+if nf.npt > 0 then
+  nf.a1 :print("A1" ) !, true)
+  nf.m_n:print("M_n") !, true)
+end
+
+io.write("a1 out\n")
 end
 
 -- phasor basis = c^-1 * (a1^-1 * (a0^-1 * m * a0) * a1) * c --------o
@@ -853,6 +881,8 @@ gphys.phasor = phasor
 local function normal_c (nf)
   assert(is_nf(nf), "invalid argument #1 (normal form expected)")
 
+io.write("c in\n")
+
   local c , cr  = phasor(nf,  1) -- get phasor
   local ci, cir = phasor(nf, -1) -- get phasor (inverse)
 
@@ -862,6 +892,13 @@ local function normal_c (nf)
 
 ! nf:sav"ci":sav"m_n"
 ! nf.fil:write("fid(c)=", nf.fid, "\n")
+
+if nf.npt > 0 then
+  nf.c  :print("C"  ) !, true)
+  nf.m_n:print("M_n") !, true)
+end
+
+io.write("c out\n")
 end
 
 --[[
@@ -885,7 +922,7 @@ end
 
 -- full normal form (PTC) -------------------Votre Colissimo est en route !
 
-function gphys.normal_ptc (m, rdt_)
+function gphys.normal_ptc (m, urdt_)
   assert(is_damap(m), "invalid argument #1 (damap expected)")
 
   -- already a normalizing form
@@ -895,11 +932,11 @@ function gphys.normal_ptc (m, rdt_)
 
   if option.fortid ~= 0 then io.stderr:write("linear normal form\n") end
 
-  local nf = normal_init(m, rdt_) ; nf:sav(nf.m_n,"m1(--)")  -- one-turn map
-  normal_a0(nf)                   ; nf:sav(nf.m_n,"m1(a1)")  -- closed form
-                                      :sav(nf.a0 ,"a1"    )
-  normal_a1(nf)                   ; nf:sav(nf.m_n,"m1(a2)")  -- linear normal form
-                                      :sav(nf.a1 ,"a2"    )
+  local nf = normal_init(m, urdt_) ; nf:sav(nf.m_n,"m1(--)")  -- one-turn map
+  normal_a0(nf)                    ; nf:sav(nf.m_n,"m1(a1)")  -- closed form
+                                       :sav(nf.a0 ,"a1"    )
+  normal_a1(nf)                    ; nf:sav(nf.m_n,"m1(a2)")  -- linear normal form
+                                       :sav(nf.a1 ,"a2"    )
 
   -- stop here for order 1
   if min(m:maxord(), m:gtrunc()) == 1 then
@@ -920,12 +957,13 @@ function gphys.normal_ptc (m, rdt_)
   if option.fortid ~= 0 then io.stderr:write("non-linear normal form\n") end
 
   -- prepare factored Lie representation of A and N
-  local nv, npt, m_n, rdt, fil in nf
-  local rk = npt ~= 0 and 4 or 6
-  local f_op, t_op, id = {m_n:same()}, {m_n:same()}
-  local n_op, id = m_n:same(), m_n:same():eye()
-  local ham, gnf, anh = {}, {}, {}
+  local nv, npt, m_n, urdt, fil in nf
+  local rk   = npt ~= 0 and 4 or 6
+  local f_op, f_vf = {m_n:same()}, m_n:same()
+  local t_op, t_vf = {m_n:same()}, m_n:same()
+  local id   = m_n:same():eye()
   local mono = monomial(nv)
+  local ham, gnf, anh = {}, {}, {}
 
   -- linear map (only) in phasors basis
   local r1 = m_n:getord(1)        ; nf:sav(r1,"r1")
@@ -961,11 +999,11 @@ function gphys.normal_ptc (m, rdt_)
 
         mt[k] = mt[k]-1
         local s = 0
-        for j=2,rk,2 do              -- check for resonances
+        for j=2,rk,2 do               -- check for resonances
           s = s + abs(mt[j]-mt[j-1])
         end
-        if s ~= 0 and rdt then       -- check for user resonances
-          for _,r in ipairs(rdt) do  -- {{3,0,0}, {1,2,0}, {0,3,0}, etc.}
+        if s ~= 0 and urdt then       -- check for user resonances
+          for _,r in ipairs(urdt) do  -- {{3,0,0}, {1,2,0}, {0,3,0}, etc.}
             local rs = 0
             for j=2,rk,2 do
               rs = rs + abs(abs(mt[j]-mt[j-1]) - r[j/2])
@@ -987,22 +1025,23 @@ function gphys.normal_ptc (m, rdt_)
             io.stderr:write("Warn: killing [", ms, "] with p = ", p:tostring(), "\n")
           end
           f_n[k]:set(mono, 1, v)
-          if mt[k] >= 0 then
+!          if mt[k] >= 0 then
             gnf[#gnf+1], gnf[ms] = ms, -v                                     -- gnf terms
-          end
+!          end
           fil:write("gnf[",ms,"]=",(gnf[ms] or 0i):tostring(), ", f_n[",ms,"]=",f_n[k]:get(mono):tostring(), "\n")
         else
           t_n[k]:set(mono, 1, v)
-          if mt[k] >= 0 then
-            anh[#anh+1], anh[ms] = ms, -monomial(mt):ordpf(2)*v:imag()/twopi  -- anh terms
-          end
+!          if mt[k] >= 0 then
+            anh[#anh+1], anh[ms] = ms, -mono:ordpf(2)*v:imag()/twopi          -- anh terms
+!          end
           fil:write("anh[",ms,"]=",num2str(anh[ms] or 0), ", t_n[",ms,"]=",t_n[k]:get(mono):tostring(), "\n")
         end
       end -- cycle
     end -- for k
 
     -- save vector fields
-    f_op[n], t_op[n] = f_n, t_n    ; nf:sav(f_n,"f_n @"..n):sav(t_n,"t_n @"..n)
+    f_op[n] = f_n ; f_vf:add(f_n, f_vf) ; nf:sav(f_n,"f_n @"..n)
+    t_op[n] = t_n ; t_vf:add(t_n, t_vf) ; nf:sav(t_n,"t_n @"..n)
     if n == m_n:maxord() and nf.fid == 0 then break end
 
     -- kill resonances in the map
@@ -1015,24 +1054,24 @@ function gphys.normal_ptc (m, rdt_)
   end -- for n
 
   -- the normalizing map A
-  local lieex = id:lieexppb(f_op) !; nf:sav(lieex, "lieex")
+  nf.lieex = id:lieexppb(f_op) !; nf:sav"lieex"
 
-  nf.a = nf.a0 * nf.a1 * nf.c * lieex * nf.ci ; nf:sav"a"
+  nf.a = nf.a0 * nf.a1 * nf.c * nf.lieex * nf.ci ; nf:sav"a"
   nf.a:real():copy(m):set0(nf.x0).status = 'Aset'
 
   nf.fil:write("fid(a)=", nf.fid, "\n")
   nf.fil:close() ; nf.fil = nil
 
   -- hook the results
-  nf.ham, nf.gnf, nf.anh, nf.lam, nf.m_n, nf.f_op, nf.t_op =
-     ham,    gnf,    anh,    lam,    m_n,    f_op,    t_op
+  nf.ham_, nf.gnf_, nf.anh, nf.lam, nf.m_n, nf.f_vf, nf.t_vf =
+     ham ,    gnf ,    anh,    lam,    m_n,    f_vf,    t_vf
 
   return m, nf
 end
 
 -- full normal form (NG) -------------------
 
-function gphys.normal (m, rdt_)
+function gphys.normal (m, urdt_)
   assert(is_damap(m), "invalid argument #1 (damap expected)")
 
   -- already a normalizing form
@@ -1042,11 +1081,11 @@ function gphys.normal (m, rdt_)
 
   if option.fortid ~= 0 then io.stderr:write("linear normal form\n") end
 
-  local nf = normal_init(m, rdt_) ; nf:sav(nf.m_n,"m1(--)")  -- one-turn map
-  normal_a0(nf)                   ; nf:sav(nf.m_n,"m1(a1)")  -- closed form
-                                      :sav(nf.a0 ,"a1"    )
-  normal_a1(nf)                   ; nf:sav(nf.m_n,"m1(a2)")  -- linear normal form
-                                      :sav(nf.a1 ,"a2"    )
+  local nf = normal_init(m, urdt_) ; nf:sav(nf.m_n,"m1(--)")  -- one-turn map
+  normal_a0(nf)                    ; nf:sav(nf.m_n,"m1(a1)")  -- closed form
+                                       :sav(nf.a0 ,"a1"    )
+  normal_a1(nf)                    ; nf:sav(nf.m_n,"m1(a2)")  -- linear normal form
+                                       :sav(nf.a1 ,"a2"    )
 
   -- stop here for order 1
   if min(m:maxord(), m:gtrunc()) == 1 then
@@ -1067,11 +1106,13 @@ function gphys.normal (m, rdt_)
   if option.fortid ~= 0 then io.stderr:write("non-linear normal form\n") end
 
   -- prepare factored Lie representation of A and N
-  local nv, npt, m_n, rdt, fil in nf
-  local rk = npt ~= 0 and 4 or 6
-  local f_op, t_op, id = {m_n:same()}, {m_n:same()}, m_n:same():eye()
+  local nv, npt, m_n, urdt, fil in nf
+  local rk            = npt ~= 0 and 4 or 6
+  local mono          = monomial(nv)
+  local id            = m_n:same():eye()
+  local f_op, f_vf    = {m_n:same()}, m_n:same()
+  local t_op, t_vf    = {m_n:same()}, m_n:same()
   local ham, gnf, anh = {}, {}, {}
-  local mono = monomial(nv)
 
   -- linear map (only) in phasors basis
   local r1 = m_n:getord(1)
@@ -1117,8 +1158,8 @@ function gphys.normal (m, rdt_)
       for j=2,rk,2 do                   -- check for resonances
         s = s + abs(mono[j]-mono[j-1])
       end
-      if s ~= 0 and rdt then            -- check for user resonances
-        for _,r in ipairs(rdt) do       -- {{3,0,0}, {1,2,0}, {0,3,0}, etc.}
+      if s ~= 0 and urdt then           -- check for user resonances
+        for _,r in ipairs(urdt) do      -- {{3,0,0}, {1,2,0}, {0,3,0}, etc.}
           local rs = 0
           for j=2,rk,2 do
             rs = rs + abs(abs(mono[j]-mono[j-1]) - r[j/2])
@@ -1150,13 +1191,14 @@ function gphys.normal (m, rdt_)
 
     -- f_pb:print("f_pb @ "..n)
 
-    -- compute and save vector fields
+    -- compute vector fields
     local f_n = tc:vec2fld(f_pb):convert(m_n:same():eye())
     local t_n = tc:vec2fld(t_pb):convert(m_n:same():eye())
 
     -- save vector fields
-    f_op[n], t_op[n] = f_n, t_n    ; nf:sav(f_n,"f_n @"..n):sav(t_n,"t_n @"..n)
-    if n == m:maxord() and nf.fid == 0 then break end
+    f_op[n] = f_n ; f_vf:add(f_n, f_vf) ; nf:sav(f_n,"f_n @"..n)
+    t_op[n] = t_n ; t_vf:add(t_n, t_vf) ; nf:sav(t_n,"t_n @"..n)
+    if n == m_n:maxord() and nf.fid == 0 then break end
 
     -- kill resonances in the map
 !   local m_n_1 = (-f_n):exppb(id) ; nf:sav(m_n_1, "m_n_1 @"..n)
@@ -1168,17 +1210,17 @@ function gphys.normal (m, rdt_)
   end -- for n
 
   -- the normalizing map A
-  local lieex = id:lieexppb(f_op) !; nf:sav(lieex, "lieex")
+  nf.lieex = id:lieexppb(f_op) !; nf:sav"lieex"
 
-  nf.a = nf.a0 * nf.a1 * nf.c * lieex * nf.ci ; nf:sav"a"
+  nf.a = nf.a0 * nf.a1 * nf.c * nf.lieex * nf.ci ; nf:sav"a"
   nf.a:real():copy(m):set0(nf.x0).status = 'Aset'
 
   nf.fil:write("fid(a)=", nf.fid, "\n")
   nf.fil:close() ; nf.fil = nil
 
   -- hook the results
-  nf.ham, nf.gnf, nf.anh, nf.lam, nf.m_n, nf.f_op, nf.t_op =
-     ham,    gnf,    anh,    lam,    m_n,    f_op,    t_op
+  nf.ham_, nf.gnf_, nf.anh, nf.lam, nf.m_n, nf.f_vf, nf.t_vf =
+     ham ,    gnf ,    anh,    lam,    m_n,    f_vf,    t_vf
 
   return m, nf
 end

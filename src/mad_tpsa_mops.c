@@ -18,6 +18,7 @@
 
 #include <math.h>
 #include <float.h>
+#include <string.h>
 #include <assert.h>
 
 #include "mad_mem.h"
@@ -35,7 +36,7 @@ static inline void
 check_same_desc (ssz_t sa, const T *ma[sa])
 {
   assert(ma);
-  for (idx_t i=1; i < sa; ++i)
+  FOR(i,1,sa)
     ensure(ma[i]->d == ma[i-1]->d, "incompatibles GTPSA (descriptors differ)");
 }
 
@@ -55,13 +56,18 @@ check_compat (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
 }
 
 static inline void
-print_damap (ssz_t sa, const T *ma[sa], FILE *fp)
+print_damap (ssz_t sa, const T *ma[sa], FILE *fp_)
 {
-  char nam[12];
-  for (ssz_t i = 0; i < sa; ++i) {
-    snprintf(nam, sizeof(nam), "#%d", i+1);
-    FUN(print)(ma[i], nam, 1e-15, 0, fp);
+  char nam[NAMSZ];
+
+  if (!fp_) fp_ = stdout;
+
+  FOR(i,sa) {
+    strcpy(nam, ma[i]->nam);
+    if (!nam[0]) snprintf(nam, sizeof(nam), "#%d", i+1);
+    FUN(print)(ma[i], nam, 1e-15, 0, fp_);
   }
+
   (void)print_damap;
 }
 
@@ -69,7 +75,7 @@ static inline void
 fgrad (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[2])
 {
   FUN(clear)(c);
-  for (idx_t i=0; i < sa; ++i) {
+  FOR(i,sa) {
     FUN(deriv)(b    , t[0], i+1 );
     FUN(mul)  (ma[i], t[0], t[1]);
     FUN(add)  (c    , t[1], c   );
@@ -79,7 +85,7 @@ fgrad (ssz_t sa, const T *ma[sa], const T *b, T *c, T *t[2])
 static inline void
 liebra (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa], T *t[3])
 {
-  for (idx_t i=0; i < sa; ++i) {
+  FOR(i,sa) {
     fgrad(sa, mb, ma[i], mc[i], t);
     fgrad(sa, ma, mb[i], t[2] , t);
     FUN(sub)(mc[i], t[2], mc[i]);
@@ -90,7 +96,7 @@ static inline num_t
 mnrm (ssz_t sa, const T *ma[sa])
 {
   num_t nrm = 0;
-  for (idx_t i=0; i < sa; ++i) nrm += FUN(nrm)(ma[i]);
+  FOR(i,sa) nrm += FUN(nrm)(ma[i]);
   return nrm;
 }
 
@@ -134,7 +140,7 @@ exppb (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa], T *t[4])
 
 #define TC (const T**)
 
-static inline void
+static inline void // see 2nd Etienne's book, ch11
 logpb (ssz_t sa, const T *ma[sa], T *mc[sa], T *t[4+5*sa], num_t eps)
 {
   const int nmax = 100;

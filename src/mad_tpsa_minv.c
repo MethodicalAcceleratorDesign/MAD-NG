@@ -38,7 +38,7 @@ static inline void
 check_same_desc(ssz_t sa, const T *ma[sa])
 {
   assert(ma);
-  for (idx_t i=1; i < sa; ++i)
+  FOR(i,1,sa)
     ensure(ma[i]->d == ma[i-1]->d, "incompatibles GTPSA (descriptors differ)");
 }
 
@@ -61,7 +61,7 @@ split_and_inv(const D *d, const T *ma[], T *lininv[], T *nonlin[])
   mad_alloc_tmp(NUM, mat_pari, nv*np); // 'inverse' of params
 
   // split linear, (-1 * nonlinear)
-  for (idx_t i = 0; i < nv; ++i) {
+  FOR(i,nv) {
     T *t = nonlin[i];
 
     idx_t v = 0;
@@ -71,7 +71,7 @@ split_and_inv(const D *d, const T *ma[], T *lininv[], T *nonlin[])
     FUN(copy)(ma[i], t);
 
     // clear constant and linear part of coef
-    for (idx_t c = 0; c < d->ord2idx[2]; ++c) t->coef[c] = 0;
+    FOR(c,d->ord2idx[2]) t->coef[c] = 0;
 
     // clear constant and linear part of nz, adjust lo, hi
     t->nz = mad_bit_mclr(t->nz,3);
@@ -101,10 +101,10 @@ split_and_inv(const D *d, const T *ma[], T *lininv[], T *nonlin[])
 # endif
 
   // copy result into TPSA
-  for (idx_t i = 0; i < nv; ++i) {
+  FOR(i,nv) {
     T *t = lininv[i];
-    for (idx_t v = 0; v < nv; ++v) FUN(seti)(t, v    +1, 0, mat_vari[i*nv + v]);
-    for (idx_t k = 0; k < np; ++k) FUN(seti)(t, k+nv +1, 0, mat_pari[i*np + k]);
+    FOR(v,nv) FUN(seti)(t, v   +1, 0, mat_vari[i*nv + v]);
+    FOR(p,np) FUN(seti)(t, p+nv+1, 0, mat_pari[i*np + p]);
   }
 
   mad_free_tmp(mat_var );
@@ -121,7 +121,7 @@ FUN(minv) (ssz_t sa, const T *ma[sa], T *mc[sa])
   DBGFUN(->);
   assert(ma && mc);
   check_minv(sa,ma,mc);
-  for (idx_t i = 0; i < sa; ++i) {
+  FOR(i,sa) {
     DBGTPSA(ma[i]); DBGTPSA(mc[i]);
     ensure(mad_bit_tst(ma[i]->nz,1),
            "invalid rank-deficient map (1st order has zero row)");
@@ -129,7 +129,7 @@ FUN(minv) (ssz_t sa, const T *ma[sa], T *mc[sa])
 
   const D *d = ma[0]->d;
   T *lininv[sa], *nonlin[sa], *tmp[sa];
-  for (idx_t i = 0; i < sa; ++i) {
+  FOR(i,sa) {
     lininv[i] = FUN(newd)(d,1);
     nonlin[i] = FUN(new)(ma[i], mad_tpsa_same);
     tmp[i]    = FUN(new)(ma[i], mad_tpsa_same);
@@ -144,7 +144,7 @@ FUN(minv) (ssz_t sa, const T *ma[sa], T *mc[sa])
   // mc[ord=i] = al^-1 o ( anl o mc[ord=i-1] + id ) ; i > 1
 
   log_t isnul = TRUE;
-  for (idx_t i = 0; i < sa; ++i) {
+  FOR(i,sa) {
     FUN(copy)(lininv[i], mc[i]);
     isnul &= FUN(isnul)(nonlin[i]);
   }
@@ -163,7 +163,7 @@ FUN(minv) (ssz_t sa, const T *ma[sa], T *mc[sa])
   }
 
   // cleanup
-  for (idx_t i = 0; i < sa; ++i) {
+  FOR(i,sa) {
     FUN(del)(lininv[i]);
     FUN(del)(nonlin[i]);
     FUN(del)(tmp[i]);
@@ -178,7 +178,7 @@ FUN(pminv) (ssz_t sa, const T *ma[sa], T *mc[sa], idx_t select[sa])
   DBGFUN(->);
   assert(ma && mc && select);
   check_minv(sa,ma,mc);
-  for (idx_t i = 0; i < sa; ++i) {
+  FOR(i,sa) {
     if (select[i]) {
       DBGTPSA(ma[i]); DBGTPSA(mc[i]);
       ensure(mad_bit_tst(ma[i]->nz,1),
@@ -190,7 +190,7 @@ FUN(pminv) (ssz_t sa, const T *ma[sa], T *mc[sa], idx_t select[sa])
 
   const D *d = ma[0]->d;
   T *mUsed[sa], *mUnused[sa], *mInv[sa];
-  for (idx_t i = 0; i < sa; ++i) {
+  FOR(i,sa) {
     if (select[i]) {
       mUsed  [i] = FUN(new) (ma[i], mad_tpsa_same);
       mInv   [i] = FUN(new) (ma[i], mad_tpsa_same);
@@ -212,7 +212,7 @@ FUN(pminv) (ssz_t sa, const T *ma[sa], T *mc[sa], idx_t select[sa])
   FUN(minv)   (sa, TC mUsed  ,       mInv);
   FUN(compose)(sa, TC mUnused,sa, TC mInv,mc);
 
-  for (idx_t i = 0; i < sa; ++i) {
+  FOR(i,sa) {
     FUN(del)(mUsed[i]);
     FUN(del)(mUnused[i]);
     FUN(del)(mInv[i]);

@@ -36,7 +36,7 @@ static inline void
 check_same_desc (ssz_t sa, const T *ma[sa])
 {
   assert(ma);
-  for (idx_t i = 1; i < sa; ++i)
+  FOR(i,1,sa)
     ensure(ma[i]->d == ma[i-1]->d, "incompatibles GTPSA (descriptors differ)");
 }
 
@@ -54,10 +54,19 @@ check_compose (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 }
 
 static inline void
-print_damap (ssz_t sa, const T *ma[sa])
+print_damap (ssz_t sa, const T *ma[sa], FILE *fp_)
 {
-  char nam[3] = "#1";
-  for (ssz_t i=0; i < sa; i++, nam[1]++) FUN(print)(ma[i], nam, 0, 0, stdout);
+  char nam[NAMSZ];
+
+  if (!fp_) fp_ = stdout;
+
+  FOR(i,sa) {
+    strcpy(nam, ma[i]->nam);
+    if (!nam[0]) snprintf(nam, sizeof(nam), "#%d", i+1);
+    FUN(print)(ma[i], nam, 1e-15, 0, fp_);
+  }
+
+  (void)print_damap;
 }
 
 #ifdef _OPENMP
@@ -75,19 +84,16 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, sa);
-  for (idx_t ic = 0; ic < sa; ++ic) {
+  FOR(ic,sa) {
     DBGTPSA(ma[ic]); DBGTPSA(mc[ic]);
     mc_[ic] = FUN(new)(mc[ic], mad_tpsa_same);
   }
 
-  for (idx_t ib = 0; ib < sb; ++ib) {
-    DBGTPSA(mb[ib]);
-  }
+  FOR(ib,sb) { DBGTPSA(mb[ib]); }
 
   #ifdef _OPENMP
   ord_t highest = 0;
-  for (idx_t i = 0; i < sa; ++i)
-    if (ma[i]->hi > highest) highest = ma[i]->hi;
+  FOR(i,sa) if (ma[i]->hi > highest) highest = ma[i]->hi;
 
   if (highest >= 6)
     compose_parallel(sa,ma,mb,mc_);
@@ -96,7 +102,7 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
     compose_serial  (sa,ma,mb,mc_);
 
   // copy back
-  for (idx_t ic = 0; ic < sa; ++ic) {
+  FOR(ic,sa) {
     FUN(copy)(mc_[ic], mc[ic]);
     FUN(del )(mc_[ic]);
     DBGTPSA(mc[ic]);
@@ -113,7 +119,7 @@ FUN(translate) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], T *mc[sa]
 
   // transform translation vector into damap of order 1
   mad_alloc_tmp(const T*, mb, sb);
-  for (idx_t ib = 0; ib < sb; ++ib) {
+  FOR(ib,sb) {
     T *t = FUN(newd)(ma[0]->d, 1);
     FUN(setvar)(t, tb[ib], ib+1, 0);
     mb[ib] = t;
@@ -122,8 +128,7 @@ FUN(translate) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], T *mc[sa]
   FUN(compose)(sa, ma, sb, mb, mc);
 
   // cleanup
-  for (idx_t ib = 0; ib < sb; ++ib)
-    FUN(del)(mb[ib]);
+  FOR(ib,sb) FUN(del)(mb[ib]);
   mad_free_tmp(mb);
   DBGFUN(<-);
 }
@@ -138,7 +143,7 @@ FUN(eval) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], NUM tc[sb])
   // transform vectors into damap of order 0
   mad_alloc_tmp(const T*, mb, sb);
   mad_alloc_tmp(      T*, mc, sb);
-  for (idx_t ib = 0; ib < sb; ++ib) {
+  FOR(ib,sb) {
     T *t1 = FUN(newd)(ma[0]->d, 0);
     T *t2 = FUN(newd)(ma[0]->d, 0);
     FUN(setvar)(t1, tb[ib], 0, 0);
@@ -149,7 +154,7 @@ FUN(eval) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], NUM tc[sb])
   compose_serial(sa,ma,mb,mc);
 
   // cleanup, save result
-  for (idx_t ib = 0; ib < sb; ++ib) {
+  FOR(ib,sb) {
     tc[ib] = mc[ib]->coef[0];
     FUN(del)(mc[ib]);
     FUN(del)(mb[ib]);
