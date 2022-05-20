@@ -30,6 +30,8 @@
 #include "mad_tpsa_impl.h"
 #endif
 
+#define DEBUG_CONVERT 0
+
 // --- local ------------------------------------------------------------------o
 
 static inline void
@@ -217,17 +219,18 @@ FUN(exppb) (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
 {
   DBGFUN(->); assert(mb);
   check_compat(sa, ma, mb, mc);
+  const D *d = ma[0]->d;
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, sa);
   FOR(i,sa) {
     DBGTPSA(ma[i]); DBGTPSA(mb[i]); DBGTPSA(mc[i]);
-    mc_[i] = FUN(new)(mc[i], mad_tpsa_same);
+    mc_[i] = FUN(newd)(d, d->to);
   }
 
   // temporaries
   T *t[4];
-  FOR(i,4) t[i] = FUN(new)(mc[0], mad_tpsa_same);
+  FOR(i,4) t[i] = FUN(newd)(d, d->to);
 
   // main call
   exppb(sa, ma, mb, mc_, t);
@@ -250,12 +253,13 @@ FUN(logpb) (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
 {
   DBGFUN(->);
   check_compat(sa, ma, mb, mc);
+  const D *d = ma[0]->d;
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, sa);
   FOR(i,sa) {
     DBGTPSA(ma[i]); DBGTPSA(mc[i]);
-    mc_[i] = FUN(new)(mc[i], mad_tpsa_same);
+    mc_[i] = FUN(newd)(d, d->to);
   }
 
   // initial guess provided
@@ -267,7 +271,7 @@ FUN(logpb) (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
   // temporaries: 4 tpsa + 5 damap
   const int nt = 4+5*sa;
   T *t[nt];
-  FOR(i,nt) t[i] = FUN(new)(mc[0], mad_tpsa_same);
+  FOR(i,nt) t[i] = FUN(newd)(d, d->to);
 
   // main call
   logpb(sa, ma, mc_, t, 0);
@@ -290,17 +294,18 @@ FUN(liebra) (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
 {
   DBGFUN(->); assert(mb);
   check_compat(sa, ma, mb, mc);
+  const D *d = ma[0]->d;
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, sa);
   FOR(i,sa) {
     DBGTPSA(ma[i]); DBGTPSA(mb[i]); DBGTPSA(mc[i]);
-    mc_[i] = FUN(new)(mc[i], mad_tpsa_same);
+    mc_[i] = FUN(newd)(d, d->to);
   }
 
   // temporaries: 3 tpsa
   T *t[3];
-  FOR(i,3) t[i] = FUN(new)(mc[0], mad_tpsa_same);
+  FOR(i,3) t[i] = FUN(newd)(d, d->to);
 
   // main call
   liebra(sa, ma, mb, mc_, t);
@@ -326,10 +331,11 @@ FUN(fgrad) (ssz_t sa, const T *ma[sa], const T *b, T *c)
   check_same_desc(sa,(const T**)ma);
   ensure(ma[0]->d == b->d, "incompatibles GTPSA (descriptors differ)");
   ensure(ma[0]->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  const D *d = ma[0]->d;
 
   // temporaries: 3 tpsa
   T *t[2];
-  FOR(i,2) t[i] = FUN(new)(c, mad_tpsa_same);
+  FOR(i,2) t[i] = FUN(newd)(d, d->to);
 
   // main call
   fgrad(sa, ma, b, c, t);
@@ -347,8 +353,9 @@ FUN(vec2fld) (ssz_t sc, const T *a, T *mc[sc]) // pbbra
   assert(a && mc);
   check_same_desc(sc,(const T**)mc);
   ensure(a->d == mc[0]->d, "incompatibles GTPSA (descriptors differ)");
+  const D *d = a->d;
 
-  T *t = FUN(new)(a, mad_tpsa_same);
+  T *t = FUN(newd)(d, d->to);
 
   FOR(i,sc) {
     FUN(setvar)(t, 0, i+1, 0);
@@ -366,11 +373,12 @@ FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // getpb
   assert(ma && c);
   check_same_desc(sa, ma);
   ensure(ma[0]->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  const D *d = ma[0]->d;
 
   FUN(reset0)(c);
 
-  T *t1 = FUN(new)(c, mad_tpsa_same);
-  T *t2 = FUN(new)(c, mad_tpsa_same);
+  T *t1 = FUN(newd)(d, d->to);
+  T *t2 = FUN(newd)(d, d->to);
 
   FOR(i,sa) {
     idx_t iv = i & 1 ? i : i+2;
@@ -422,7 +430,7 @@ FUN(mconv) (ssz_t sa, const T *ma[sa], ssz_t sc, T *mc[sc], ssz_t n, idx_t t2r_[
     FUN(convert)(ma[i], mc[ii], n, t2r_, pb);
     int ss = (ii-i)%2 * pb;
     if (ss == -1) FUN(scl)(mc[ii], -1, mc[ii]);
-#if DEBUG > 2
+#if DEBUG_CONVERT
     printf("cvt: % 2d -> % d x % 2d [pb=% d]\n", i, ss, ii, pb);
 #endif
   }
