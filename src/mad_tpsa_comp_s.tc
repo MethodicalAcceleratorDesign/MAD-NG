@@ -20,280 +20,141 @@
  o----------------------------------------------------------------------------o
 */
 
-#define DEBUG_COMPOSE 1
+#define DEBUG_COMPOSE 0
 
 struct compose_ctx_ser {
-  ssz_t sa;
+  ssz_t sa, sb;
+  ord_t hi_ord;
   log_t *required;
   const T **ma, **mb;
-        T **mc, **ords, *par_coef, *tmp;
+        T **mc, **ords;
   const D *d;
 };
 
 #define CTX struct compose_ctx_ser
 
-static inline T*
-get_params_coef(const T *a, const ord_t pure_mono[], T *par_coef)
-{
-  // extract from `a` all param children of `pure_mono`, which contains only vars
-  assert(pure_mono && par_coef);
-  const D *d = a->d;
-  ord_t mono[d->nn], par_mono[d->nn];
-  mad_mono_copy(d->nn, pure_mono, mono);
-  NUM val;
-  idx_t idx, idx_par_only;
-  FUN(clear)(par_coef);
-
-#if 1
-    do {
-      idx = mad_desc_idxm(d, d->nn, mono);
-      val = FUN(geti)(a,idx);
-      if (val) {
-        mad_mono_copy(d->nn , mono, par_mono);
-        mad_mono_fill(d->nv, par_mono, 0);  // remove vars, keep only params
-        idx_par_only = mad_desc_idxm(d, d->nn, par_mono);
-        FUN(seti)(par_coef, idx_par_only, 0, val);
-      }
-    } while(mad_desc_nxtbyvar(d, d->nn, mono) >= 0);
-#else // by-order approach breaking the scan earlier
-    const idx_t idx_max = d->ord2idx[a->hi+1];
-    do {
-      idx = mad_desc_idxm(d, d->nn, mono);
-      if (idx >= idx_max) break;
-      val = FUN(geti)(a,idx);
-      if (val) {
-        mad_mono_copy(d->nn , mono, par_mono);
-        mad_mono_fill(d->nv, par_mono, 0);  // remove vars, keep only params
-        idx_par_only = mad_desc_idxm(d, d->nn, par_mono);
-        FUN(seti)(par_coef, idx_par_only, 0, val); // set or add?
-      }
-    } while(mad_desc_nxtbyord(d, d->nn, mono) >= 0);
-#endif
-
-//FUN(print)(par_coef, "par_coef", 0, 0, 0);
-
-  return par_coef;
-}
-
 static inline void
-compose_ord1(ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
+compose_ord1(ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 {
-  const D *d = ma[0]->d;
-  if (d->np) { // there are parameters
-printf("C0.1\n");
-    T *par_coef = FUN(newd)(d,d->po);
-    T *tmp      = FUN(newd)(d,d->to);
-
-    for (idx_t i = 0; i < sa; ++i) {
-      FUN(setvar)(mc[i],ma[i]->coef[0],0,0);
-
-      // ord 1 -- vars
-      for (int v = 1; v <= d->nv; ++v) {
-
-#ifndef MAD_CTPSA_IMPL
-printf("C0.2 i=%d, v=%d, c=% -.16e\n", i, v, ma[i]->coef[v]);
-#else
-printf("C0.2 i=%d, v=%d, c=% -.16e% -.16ei\n", i, v, creal(ma[i]->coef[v]), cimag(ma[i]->coef[v]));
-#endif
-        if (ma[i]->coef[v]) {
-          T *coef = get_params_coef(ma[i], d->To[v], par_coef);
-          if (coef->nz) {
-            FUN(mul)(coef, mb[v-1], tmp);
-            FUN(acc)(tmp, 1, mc[i]);
-          }
-        }
-      }
-printf("C0.3\n");
-      // ord 1 -- params
-      for (int k = d->nv+1; k <= d->nn; ++k)
-        mc[i]->coef[k] = ma[i]->coef[k];
-    }
-
-    FUN(del)(tmp);
-    FUN(del)(par_coef);
-  }
-  else { // -- no param
-printf("C0.4\n");
-    FOR(i,sa) {
-      FUN(setvar)(mc[i], ma[i]->coef[0],0,0);
-      for (int v = 1; v <= d->nn; ++v) {
-        NUM coef = FUN(geti)(ma[i],v);
-        if (coef) FUN(acc)(mb[v-1], coef, mc[i]);
-      }
+  FOR(ia,sa) {
+    FUN(setvar)(mc[ia], ma[ia]->coef[0], 0,0);
+    FOR(ib,sb) {
+      NUM coef = FUN(geti)(ma[ia],ib+1);
+      if (coef) FUN(acc)(mb[ib], coef, mc[ia]);
     }
   }
 }
 
 static inline void
-compose(int pos, ord_t o, ord_t mono[], CTX *ctx)
+compose(int ib, idx_t idx, ord_t o, ord_t mono[], CTX *ctx)
 {
-  // pos : current variable index
-  // o   : current order
-  // mono: current coef monomial
+  // ib  : current variable index (in mb)
+  // idx : current monomial index
+  // o   : current monomial order
+  // mono: current monomial
   const D *d = ctx->d;
-  int idx = mad_desc_idxm(d, d->nn, mono);
 
-printf("C2.1 o=%d\n", o);
-
-#if DEBUG_COMPOSE
-  printf("compose: var=%d, ord=%d, req=%d, ", pos, o, ctx->required[idx]); // LD
-  mad_mono_print(d->nn, mono, 0); // LD
-  printf("\n"); // LD
-#endif
-
-  if (!ctx->required[idx])
-    return;
-
-  if (o > 0)
-    FUN(mul)(ctx->ords[o-1], ctx->mb[pos], ctx->ords[o]);
-
-  if (d->nv < d->nn) { // has params
-printf("C2.2\n");
-    for (idx_t i = 0; i < ctx->sa; ++i) {
-      T *coef = get_params_coef(ctx->ma[i], mono, ctx->par_coef);
-      if (coef->nz) {
-        FUN(mul)(coef, ctx->ords[o], ctx->tmp);
-        FUN(acc)(ctx->tmp, 1, ctx->mc[i]);
-      }
-    }
-  }
-  else {               // no params
-printf("C2.3\n");
-    for (idx_t i = 0; i < ctx->sa; ++i) {
-      NUM coef = FUN(geti)(ctx->ma[i],idx);
-      if (coef) FUN(acc)(ctx->ords[o], coef, ctx->mc[i]);
-    }
-  }
-
-printf("C2.4\n");
-
-  for(  ; pos < d->nv; ++pos) {  // don't put parameters in mono
-    mono[pos]++;
-    log_t v = mad_desc_isvalidm(d, d->nn, mono);
+  if (idx < 0 || !ctx->required[idx]) return;
 
 #if DEBUG_COMPOSE
-  mad_mono_print(d->nn, mono, 0); // LD
-  printf(", valid=%d\n", v); // LD
+  printf("compose: ib=%d, o=%d, req[% 3d]->", ib, o, idx);
+  mad_mono_print(d->nn, mono, 0);
+  printf("\n");
 #endif
 
-printf("C2.5\n");
+  if (o > 0) FUN(mul)(ctx->ords[o-1], ctx->mb[ib], ctx->ords[o]);
 
-    if (v) compose(pos, o+1, mono, ctx); // recursive call
-    mono[pos]--;
+  FOR(ia,ctx->sa) {
+    NUM coef = FUN(geti)(ctx->ma[ia],idx);
+    if (coef) FUN(acc)(ctx->ords[o], coef, ctx->mc[ia]);
   }
 
-printf("C2.6 o=%d\n", o);
+  if (o < ctx->hi_ord)
+    for(; ib < ctx->sb; ++ib) {
+      mono[ib]++;
+      idx = mad_desc_idxm(d, d->nn, mono);
+      compose(ib, idx, o+1, mono, ctx); // recursive call
+      mono[ib]--;
+    }
 }
 
 static inline ord_t
-init_required(ssz_t sa, const T *ma[sa], log_t required[])
+init_required(ssz_t sa, const T *ma[sa], log_t required[], ord_t hi_ord)
 {
   assert(ma && required);
   const D *d = ma[0]->d;
   const idx_t *o2i = d->ord2idx;
-  ord_t hi_ord = 0;
-
-  // original nodes
-  FOR(i,sa) {
-    if (ma[i]->hi > hi_ord) hi_ord = ma[i]->hi;
-    FOR(c,o2i[ma[i]->hi+1])
-      if (mad_bit_tst(ma[i]->nz, d->ords[c]) && ma[i]->coef[c] != 0)
-        required[c] = 1;
-  }
 
   // root is always required
   required[0] = 1;
 
-#if DEBUG_COMPOSE
-  printf("hi: %d\n", hi_ord); // LD
-  FOR(i,o2i[hi_ord+1])
-    printf("%d: %d | %d\n", i, required[i], d->ords[i]); // LD
-#endif
+  // primary nodes (non-zero coefs)
+  FOR(ia,sa)
+    FOR(o,ma[ia]->lo,ma[ia]->hi+1)
+      if (mad_bit_tst(ma[ia]->nz, o))
+        FOR(c,o2i[o],o2i[o+1]) if (ma[ia]->coef[c]) required[c] = 1;
 
-  // fathers of nodes
+  // fathers of primary nodes
   ord_t mono[d->nn];
   idx_t j, father;
-  for (ord_t o = hi_ord; o > 1; --o) {
-    for (idx_t c = o2i[o]; c < o2i[o+1]; ++c)
+  for (ord_t o=hi_ord; o > 1; --o) {
+    FOR(c,o2i[o],o2i[o+1])
       if (required[c]) {
         mad_mono_copy(d->nn, d->To[c], mono);
         for (j = d->nn-1; j >= 0 && !mono[j]; --j) ;
-#if DEBUG_COMPOSE
-  mad_mono_print(d->nn, mono, 0); // LD
-#endif
         mono[j]--;
         father = mad_desc_idxm(d, d->nn, mono);
-        required[father] = 1;
+
 #if DEBUG_COMPOSE
+  printf("compini: ");
+  mad_mono_print(d->nn, d->To[c], 0);
   printf("->");
-  mad_mono_print(d->nn, mono, 0); // LD
-  printf(", father=%d\n", father); // LD
+  mad_mono_print(d->nn, mono, 0);
+  printf(" req[% 3d]%c\n", father, required[father] ? '*' : ' ');
 #endif
+
+        required[father] = 1;
       }
   }
-
-// a last scan could remove fathers with zero coefs (?)
-
-#if DEBUG_COMPOSE
-  printf("_____\n"); // LD
-  FOR(i,o2i[hi_ord+1])
-    printf("%d: %d | %d\n", i, required[i], d->ords[i]); // LD
-#endif
 
   return hi_ord;
 }
 
 static inline void
-compose_serial(ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa])
+compose_serial(ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 {
   const D *d = ma[0]->d;
 
-printf("C0\n");
-
-#if DEBUG_COMPOSE
-  printf("ma:\n"); print_damap(sa, ma, 0); // LD
-  printf("mb:\n"); print_damap(sa, mb, 0); // LD
-#endif
-
-  mad_alloc_tmp(log_t, required, d->nc);
-  memset(required, 0, d->nc * sizeof(log_t));
-
-  ord_t hi_ord = init_required(sa, ma, required);
-  if (hi_ord == 1) {
-    mad_free_tmp(required);
-    compose_ord1(sa,ma,mb,mc);
-    return;
-  }
-
-printf("C1 (%zu, %d)\n", sizeof required, d->nc);
+  ord_t hi_ord = 0;
+  FOR(i,sa) if (ma[i]->hi > hi_ord) hi_ord = ma[i]->hi;
+  hi_ord = MIN(hi_ord, d->to);
 
 #if DEBUG_COMPOSE
   printf("hi: %d\n", hi_ord);
+  printf("ma:\n"); print_damap(sa, ma, 0); // LD
+  printf("mb:\n"); print_damap(sb, mb, 0); // LD
 #endif
 
+  if (hi_ord == 1) { compose_ord1(sa,ma,sb,mb,mc); return; }
+
+  mad_alloc_tmp(log_t, required, d->nc);
+  init_required(sa, ma, memset(required, 0, d->nc*sizeof(log_t)), hi_ord);
+
   // initialization
-  ord_t mono[d->nn];
-  T *ords[d->mo+1]; // one for each order [0,mo]
-  for (ord_t o=0; o <= hi_ord; ++o) ords[o] = FUN(newd)(d,d->to);
+  T *ords[hi_ord+1]; // one for each order [0,hi_ord]
+  FOR(o,hi_ord+1) ords[o] = FUN(newd)(d,d->to);
   FUN(setvar)(ords[0],1,0,0);
   FOR(ic,sa) FUN(clear)(mc[ic]);
 
-  CTX ctx = { .sa=sa, .ma=ma, .mb=mb, .mc=mc,
-              .d=d, .ords=ords, .required=required,
-              .par_coef = d->po ? FUN(newd)(d,d->po) : NULL,
-              .tmp      =         FUN(newd)(d,d->to) };
+  CTX ctx = { .d=d, .sa=sa, .sb=sb, .ma=ma, .mb=mb, .mc=mc,
+              .ords=ords, .required=required, .hi_ord=hi_ord };
 
-printf("C2\n");
-
-  // do composition from root of tree, ord 0
-  compose(0, 0, memset(mono, 0, sizeof mono), &ctx);
-
-printf("C3\n");
+  // compose starting at root of tree: ib 0, idx 0, ord 0, mono 0
+  ord_t mono[d->nn];
+  compose(0, 0, 0, memset(mono, 0, sizeof mono), &ctx);
 
   // cleanup
-  FUN(del)(ctx.tmp);
-  FUN(del)(ctx.par_coef);
-  for (ord_t o = 0; o <= hi_ord; ++o) FUN(del)(ords[o]);
+  FOR(o,hi_ord+1) FUN(del)(ords[o]);
   mad_free_tmp(required);
 }
 

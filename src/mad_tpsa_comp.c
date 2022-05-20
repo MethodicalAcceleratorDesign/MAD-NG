@@ -45,12 +45,13 @@ check_compose (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 {
   assert(ma && mb && mc);
   ensure(sa>0 && sb>0, "invalid map sizes (zero or negative sizes)");
-  ensure(sb == ma[0]->d->nv, "incompatibles GTPSA (number of map variables differ)");
   check_same_desc(sa,ma);
   check_same_desc(sb,mb);
   check_same_desc(sa,(const T**)mc);
-  ensure(ma[0]->d == mb[0]->d, "incompatibles GTPSA (descriptors differ)");
-  ensure(ma[0]->d == mc[0]->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(sb >= ma[0]->d->nv  , "incompatibles damap #B < NV(A)");
+  ensure(sb <= ma[0]->d->nn  , "incompatibles damap #B > NV(A)+NP(A)");
+  ensure(ma[0]->d == mb[0]->d, "incompatibles damap A vs C (descriptors differ)");
+  ensure(ma[0]->d == mc[0]->d, "incompatibles damap A vs B (descriptors differ)");
 }
 
 static inline void
@@ -84,22 +85,22 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, sa);
+  FOR(ib,sb) DBGTPSA(mb[ib]);
   FOR(ic,sa) {
     DBGTPSA(ma[ic]); DBGTPSA(mc[ic]);
     mc_[ic] = FUN(new)(mc[ic], mad_tpsa_same);
   }
 
-  FOR(ib,sb) { DBGTPSA(mb[ib]); }
-
   #ifdef _OPENMP
-  ord_t highest = 0;
-  FOR(i,sa) if (ma[i]->hi > highest) highest = ma[i]->hi;
+  ord_t hi_ord = 0;
+  FOR(i,sa) if (ma[i]->hi > hi_ord) hi_ord = ma[i]->hi;
+  hi_ord = MIN(hi_ord, ma[0]->d->to);
 
-  if (highest >= 6)
-    compose_parallel(sa,ma,mb,mc_);
+  if (hi_ord >= 6)
+    compose_parallel(sa,ma,sb,mb,mc_);
   else
   #endif // _OPENMP
-    compose_serial  (sa,ma,mb,mc_);
+    compose_serial  (sa,ma,sb,mb,mc_);
 
   // copy back
   FOR(ic,sa) {
@@ -134,33 +135,36 @@ FUN(translate) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], T *mc[sa]
 }
 
 void
-FUN(eval) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], NUM tc[sb])
+FUN(eval) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], NUM tc[sa])
 {
   assert(ma && tb && tc); DBGFUN(->);
   ensure(sa>0 && sb>0, "invalid map/vector sizes (zero or negative sizes)");
-  ensure(sb == ma[0]->d->nv, "incompatibles GTPSA (number of map variables differ)");
+  ensure(sb >= ma[0]->d->nv, "incompatibles GTPSA (number of map variables differ)");
 
   // transform vectors into damap of order 0
   mad_alloc_tmp(const T*, mb, sb);
-  mad_alloc_tmp(      T*, mc, sb);
+  mad_alloc_tmp(      T*, mc, sa);
   FOR(ib,sb) {
-    T *t1 = FUN(newd)(ma[0]->d, 0);
-    T *t2 = FUN(newd)(ma[0]->d, 0);
-    FUN(setvar)(t1, tb[ib], 0, 0);
-    FUN(setvar)(t2, tc[ib], 0, 0);
-    mb[ib] = t1; mc[ib] = t2;
+    T *t = FUN(newd)(ma[0]->d, 0);
+    FUN(setvar)(t, tb[ib], 0, 0);
+    mb[ib] = t;
+  }
+  FOR(ic,sa) {
+    T *t = FUN(newd)(ma[0]->d, 0);
+    FUN(setvar)(t, tc[ic], 0, 0);
+    mc[ic] = t;
   }
 
-  compose_serial(sa,ma,mb,mc);
+  compose_serial(sa,ma,sb,mb,mc);
 
   // cleanup, save result
-  FOR(ib,sb) {
-    tc[ib] = mc[ib]->coef[0];
-    FUN(del)(mc[ib]);
-    FUN(del)(mb[ib]);
+  FOR(ib,sb) FUN(del)(mb[ib]);
+  FOR(ic,sa) {
+    tc[ic] = mc[ic]->coef[0];
+    FUN(del)(mc[ic]);
   }
-  mad_free_tmp(mc);
   mad_free_tmp(mb);
+  mad_free_tmp(mc);
   DBGFUN(<-);
 }
 
