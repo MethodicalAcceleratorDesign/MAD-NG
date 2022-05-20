@@ -35,6 +35,8 @@
 #include "mad_mem.h"
 #include "mad_desc_impl.h"
 
+#define DEBUG_DESC 0
+
 // --- globals ----------------------------------------------------------------o
 
 // must be global variables for access from LuaJIT FFI.
@@ -219,7 +221,7 @@ tbl_print (ssz_t n, ssz_t h, ord_t **t) // t[h][n]
 {
   assert(t);
   idx_t i=0;
-#if DEBUG > 2
+#if DEBUG_DESC > 2
   for (; i < h; ++i) {
     printf("(%2d) ",i); mad_mono_print(n,t[i],0); printf(" o=%d\n", mad_mono_ord(n,t[i]));
   }
@@ -248,7 +250,7 @@ tbl_by_var(D *d)
   for (idx_t i=0; i < d->nc; ++i)
     d->Tv[i] = d->monos + i*d->nn;
 
-#if DEBUG > 1
+#if DEBUG_DESC > 1
   printf("Tv =\n");
   tbl_print(d->nn, d->nc, d->Tv);
 #endif
@@ -303,7 +305,7 @@ tbl_by_ord(D *d)
   }
   d->ord2idx[d->mo+1] = d->nc;
 
-#if DEBUG > 1
+#if DEBUG_DESC > 1
   printf("To =\n"); tbl_print(d->nn, d->nc, d->To);
   ord_print(d->nc  , d->ords,    printf("ords = "));
   idx_print(d->mo+2, d->ord2idx, printf("ord2idx = "));
@@ -340,7 +342,7 @@ tbl_index_H(const D *d, ssz_t n, const ord_t m[n])
   for (idx_t j=n-1, s=0; j >= 0; --j) {
     idx_t i0 = j*ni + s;
     idx_t i1 = i0 + m[j];
-#if DEBUG > 0
+#if DEBUG_DESC > 0
     assert(m[j] <= d->no[j] && i1 < (d->mo+2)*d->nn);
 #endif
     I += H[i1] - H[i0];
@@ -370,7 +372,7 @@ tbl_index_Hsm(const D *d, ssz_t n, const idx_t m[n])
     j = m[i-1]-1;
     idx_t i0 = j*ni + s;
     idx_t i1 = i0 + m[i];
-#if DEBUG > 0
+#if DEBUG_DESC > 0
     assert(m[i] <= d->no[j] && i0 <= i1 && i1 < (d->mo+2)*d->nn);
 #endif
     I += H[i1] - H[i0];
@@ -412,7 +414,7 @@ tbl_solve_H(D *d)
     }
   }
 
-#if DEBUG > 1
+#if DEBUG_DESC > 1
   printf("H =\n");
   tbl_print_H(d);
 #endif
@@ -433,7 +435,7 @@ tbl_bound_H(D *d)
       H[j*ni+i] = -1; // fill unreacheable orders in H with -1
   }
 
-#if DEBUG > 1
+#if DEBUG_DESC > 1
   printf("H =\n");
   tbl_print_H(d);
 #endif
@@ -466,7 +468,7 @@ tbl_build_H(D *d)
     for (; i < ni; ++i) H[j*ni+i] = 0; // complete row with zeros
   }
 
-#if DEBUG > 1
+#if DEBUG_DESC > 1
   printf("H =\n");
   tbl_print_H(d);
 #endif
@@ -521,7 +523,7 @@ static inline idx_t*
 tbl_build_LC (ord_t oa, ord_t ob, D *d)
 {
   DBGFUN(->);
-#if DEBUG > 2
+#if DEBUG_DESC > 2
   printf("tbl_set_LC oa=%d ob=%d\n", oa, ob);
 #endif
   assert(d && d->To && d->ord2idx && d->tv2to);
@@ -534,7 +536,7 @@ tbl_build_LC (ord_t oa, ord_t ob, D *d)
   const ssz_t cols = o2i[oa+1] - o2i[oa], // sizes of orders
               rows = o2i[ob+1] - o2i[ob];
 
-#if DEBUG > 2
+#if DEBUG_DESC > 2
   printf("LC[%d,%d]=%d index slots\n", rows, cols, rows*cols);
 #endif
   // allocation lc[rows,cols]: lc[ib,ia] = lc[(ib-o2i[ob])*cols + ia-o2i[oa]]
@@ -561,7 +563,7 @@ tbl_build_LC (ord_t oa, ord_t ob, D *d)
         idx_t ilc = hpoly_idx(ib-o2i[ob], ia-o2i[oa], cols);
         // fill lc
         lc[ilc] = ic;
-#if DEBUG > 2
+#if DEBUG_DESC > 2
         printf(" ib=%d ", ib); mad_mono_print(nn, To[ib], 0);
         printf(" ia=%d ", ia); mad_mono_print(nn, To[ia], 0);
         printf(" ic=%d ", ic); mad_mono_print(nn, m     , 0);
@@ -571,7 +573,7 @@ tbl_build_LC (ord_t oa, ord_t ob, D *d)
     }
   }
 
-#if DEBUG > 2
+#if DEBUG_DESC > 2
   tbl_print_LC(lc, oa, ob, o2i);
 #endif
   DBGFUN(<-);
@@ -623,7 +625,7 @@ get_LC_idxs (ord_t oa, ord_t ob, D *d)
       }
   }
 
-#if DEBUG > 2
+#if DEBUG_DESC > 2
   if (oc <= 5) {
     printf("LC_idx[%d][%d] = { [T=%d]\n", ob, oa, T);
     printf("  -->\t  //\t<--\n");
@@ -650,17 +652,27 @@ tbl_set_L (D *d)
   d->L_idx = mad_malloc(Li_sz); memset(d->L_idx, 0, Li_sz);
   d->size += Li_sz;
 
-  // #ifdef _OPENMP
-  // #pragma omp parallel for schedule(guided,1)
-  // #endif
-  for (ord_t oc=2; oc <= d->mo; ++oc) {
-    for (ord_t j=1; j <= oc/2; ++j) {
-      ord_t oa = oc-j, ob = j;
-      d->L    [oa*ho + ob] = tbl_build_LC(oa, ob, d);
-      d->L_idx[oa*ho + ob] = get_LC_idxs (oa, ob, d);
+  #ifdef _OPENMP
+  if (d->mo >= 8) {
+    #pragma omp parallel for schedule(guided)
+    for (ord_t oc=2; oc <= d->mo; ++oc) {
+      for (ord_t j=1; j <= oc/2; ++j) {
+        ord_t oa = oc-j, ob = j;
+        d->L    [oa*ho + ob] = tbl_build_LC(oa, ob, d);
+        d->L_idx[oa*ho + ob] = get_LC_idxs (oa, ob, d);
+      }
     }
-  }
-#if DEBUG > 1
+  } else
+  #endif
+    for (ord_t oc=2; oc <= d->mo; ++oc) {
+      for (ord_t j=1; j <= oc/2; ++j) {
+        ord_t oa = oc-j, ob = j;
+        d->L    [oa*ho + ob] = tbl_build_LC(oa, ob, d);
+        d->L_idx[oa*ho + ob] = get_LC_idxs (oa, ob, d);
+      }
+    }
+
+#if DEBUG_DESC > 1
   tbl_print_L(d);
 #endif
   DBGFUN(<-);
@@ -834,7 +846,7 @@ set_thread (D *d)
     }
   }
 
-#if DEBUG > 1
+#if DEBUG_DESC > 1
   printf("\nTHREAD DISPATCH:\n");
   for (int t = 0; t < nth; ++t) {
     printf("[%d]: ", t);
@@ -863,7 +875,7 @@ set_temp (D *d)
     d->ti[j] = d->cti[j] = 0;
   }
 
-#if DEBUG > 1
+#if DEBUG_DESC > 1
   printf("\nTEMPS #TPSA = 2 (R&C) x %d (#TMPS) x %d (Threads) = %d\n"
          "TEMPS TMEM  = %d (TPSA) x %d (nc) = %llu bytes\n",
           DESC_MAX_TMP, d->nth, 2*DESC_MAX_TMP*d->nth, 2*DESC_MAX_TMP*d->nth,
@@ -902,7 +914,7 @@ desc_init (int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
   ensure(mo <= DESC_MAX_ORD, // variables max orders validation
          "gtpsa order exceeds maximum order (%u > %u)", mo, DESC_MAX_ORD);
 
-#if DEBUG > 1
+#if DEBUG_DESC > 1
   printf("desc in: nn=%d, mo=%d, np=%d, po=%d\n", nn, mo, np, po);
 #endif
 
@@ -930,7 +942,7 @@ desc_init (int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
   }
   d->no = no;
 
-#if DEBUG > 1
+#if DEBUG_DESC > 1
   printf("desc no: "); mad_mono_print(nn,d->no, 0); printf("\n");
 #endif
 
@@ -958,7 +970,7 @@ desc_build (int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
   set_thread(d);
   set_temp  (d);
 
-#if DEBUG > 1
+#if DEBUG_DESC > 1
   printf("desc nc: %d ---- Total desc size: %ld bytes\n", d->nc, d->size);
 #endif
 
@@ -1218,7 +1230,7 @@ mad_desc_newv (int nv, ord_t mo)
   ensure(mo <= DESC_MAX_ORD,
          "invalid maximum order: %d (0<=?<=%d)", mo, DESC_MAX_ORD);
 
-#if DEBUG > 1
+#if DEBUG_DESC > 1
   printf(">> nv=%d,mo=%d\n", nv, mo);
 #endif
 
@@ -1242,7 +1254,7 @@ mad_desc_newvp(int nv, int np, ord_t mo, ord_t po_)
 
   ord_t po = po_ ? MIN(mo,po_) : mo;
 
-#if DEBUG > 1
+#if DEBUG_DESC > 1
   printf(">> nn=%d,mo=%d,np=%d,po=%d[%d]\n", nn, mo, np, po,po_);
 #endif
 
@@ -1271,7 +1283,7 @@ mad_desc_newvpo(int nv, int np, const ord_t no[/*nv+np*/], ord_t po_)
     po = MIN(mo,MAX(po_,po));
   }
 
-#if DEBUG > 1
+#if DEBUG_DESC > 1
   printf(">> nn=%d,mo=%d,np=%d,po=%d[%d]\n", nn, mo, np, po,po_);
 #endif
 
