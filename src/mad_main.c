@@ -122,7 +122,11 @@ static int lua_stdin_is_tty (void)
 
 static void print_mad_version (void)
 {
-  str_t ver = MAD_VERSION " (" LJ_OS_NAME " " MKSTR(LJ_ARCH_BITS) ")";
+  str_t ver = MAD_VERSION
+  #ifdef _OPENMP
+  "_P"
+  #endif
+   " (" LJ_OS_NAME " " MKSTR(LJ_ARCH_BITS) ")";
   str_t msg =
   "    ____  __   ______    ______     |   Methodical Accelerator Design\n"
   "     /  \\/  \\   /  _  \\   /  _  \\   |   release: %s\n"
