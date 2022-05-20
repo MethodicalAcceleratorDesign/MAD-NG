@@ -30,6 +30,8 @@
 #include "mad_tpsa_impl.h"
 #endif
 
+#define DEBUG_COMPOSE 0
+
 // --- local ------------------------------------------------------------------o
 
 static inline void
@@ -71,7 +73,7 @@ print_damap (ssz_t sa, const T *ma[sa], FILE *fp_)
 }
 
 #ifdef _OPENMP
-#include "mad_tpsa_comp_p.tc"
+//#include "mad_tpsa_comp_p.tc" // obsolete
 #endif
 #include "mad_tpsa_comp_s.tc"
 
@@ -83,24 +85,33 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
   DBGFUN(->);
   check_compose(sa, ma, sb, mb, mc);
 
+  const D *d = ma[0]->d;
+
   // handle aliasing
   mad_alloc_tmp(T*, mc_, sa);
   FOR(ib,sb) DBGTPSA(mb[ib]);
   FOR(ic,sa) {
     DBGTPSA(ma[ic]); DBGTPSA(mc[ic]);
-    mc_[ic] = FUN(new)(mc[ic], mad_tpsa_same);
+    mc_[ic] = FUN(newd)(d, d->to);
   }
 
-  #ifdef _OPENMP
   ord_t hi_ord = 0;
   FOR(i,sa) if (ma[i]->hi > hi_ord) hi_ord = ma[i]->hi;
-  hi_ord = MIN(hi_ord, ma[0]->d->to);
+  hi_ord = MIN(hi_ord, d->to);
 
-  if (hi_ord >= 6)
-    compose_parallel(sa,ma,sb,mb,mc_);
-  else
+  #ifdef _OPENMP
+  if (hi_ord >= 5) {
+    #pragma omp parallel for schedule(dynamic)
+    FOR(ia,sa) {
+#if DEBUG_COMPOSE
+    printf("compose: thread no %d\n", omp_get_thread_num());
+#endif
+      compose_serial(1,ma+ia,sb,mb,mc_+ia,ma[ia]->hi);
+//    compose_parallel(sa,ma,sb,mb,mc_,hi_ord);
+    }
+  } else
   #endif // _OPENMP
-    compose_serial  (sa,ma,sb,mb,mc_);
+    compose_serial(sa,ma,sb,mb,mc_,hi_ord);
 
   // copy back
   FOR(ic,sa) {
@@ -155,7 +166,7 @@ FUN(eval) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], NUM tc[sa])
     mc[ic] = t;
   }
 
-  compose_serial(sa,ma,sb,mb,mc);
+  FUN(compose)(sa, ma, sb, mb, mc);
 
   // cleanup, save result
   FOR(ib,sb) FUN(del)(mb[ib]);
