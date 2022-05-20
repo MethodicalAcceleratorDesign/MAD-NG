@@ -149,15 +149,14 @@ hpoly_mul_par(const T *a, const T *b, T *c) // parallel version
 //  FUN(debug)(b,"bin",0,0);
 //  FUN(debug)(c,"cin",0,0);
 
-#pragma omp parallel for
-  for (int t = 0; t < d->nth; ++t) {
+  #pragma omp parallel for schedule(static,1)
+  FOR(t,d->nth) {
     c_nzs[t] = c->nz;
     ord_t i = 0; while (d->ocs[1+t][i] > c->hi+1) ++i;
     hpoly_mul(a, b, c, &d->ocs[1+t][i], &c_nzs[t], TRUE);
   }
 
-  for (int t = 0; t < d->nth; ++t)
-    c->nz |= c_nzs[t];
+  FOR(t,d->nth) c->nz |= c_nzs[t];
 
 //  FUN(debug)(c,"cout",0,0);
 }
@@ -505,12 +504,11 @@ FUN(mul) (const T *a, const T *b, T *r)
     // order 3+
     if (c->hi > 2) {
 #ifdef _OPENMP
-#ifdef MAD_TPSA_MUL_PAR
-      //if (c->hi >= 12)
-      if (d->ord2idx[c->hi+1] >= 1000000) // parallel mul is always slower...
+//#ifdef MAD_TPSA_MUL_PAR
+      if (d->ord2idx[c->hi+1] - d->ord2idx[c->lo] > 10000)
         hpoly_mul_par(a,b,c);
       else
-#endif
+//#endif
 #endif
         hpoly_mul_ser(a,b,c);
     }
