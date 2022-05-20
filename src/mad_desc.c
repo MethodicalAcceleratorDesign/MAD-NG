@@ -66,7 +66,7 @@ mono_isvalid (const D *d, ssz_t n, const ord_t m[n])
 {
   assert(d && m && n <= d->nn);
   return mad_mono_le (n, m, d->no)
-      && mad_mono_ord(n, m)               <= d->mo
+      && mad_mono_ord(n, m)             <= d->mo
       && mad_mono_ord(n-d->nv, m+d->nv) <= d->po;
 }
 
