@@ -653,7 +653,7 @@ tbl_set_L (D *d)
   d->size += Li_sz;
 
   #ifdef _OPENMP
-  if (d->mo >= 8) {
+  if (d->mo > 6) {
     #pragma omp parallel for schedule(guided)
     for (ord_t oc=2; oc <= d->mo; ++oc) {
       for (ord_t j=1; j <= oc/2; ++j) {
