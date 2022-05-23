@@ -39,13 +39,15 @@ local openfile                                                    in MAD.utility
 local is_nil, is_boolean, is_number, is_integer, is_complex, is_scalar,
       is_table, is_string, is_indexable, is_iterable, is_mappable,
       is_vector, is_cvector, isa_vector, is_matrix, is_cmatrix,
-      is_tpsa, is_ctpsa, wprotect                                 in MAD.typeid
+      is_tpsa, is_ctpsa, wprotect, get_metamethod                 in MAD.typeid
 
 local type, assert, getmetatable, setmetatable, rawequal, rawset, tostring =
       type, assert, getmetatable, setmetatable, rawequal, rawset, tostring
 
 local string, table =
       string, table
+
+local gmm = get_metamethod
 
 -- types ----------------------------------------------------------------------o
 
@@ -109,22 +111,35 @@ end
 
 -- ctors ----------------------------------------------------------------------o
 
-local function map_alloc (td, vn, mt, par)
-  local nn = min(#vn, td.nn)
-  local ct = mt == MR and tpsa or ctpsa
-  local ta = mt == MR and tpsa_arr(td.nn) or ctpsa_arr(td.nn)
+local function map_alloc (td, vn, mt)
+  local xx = nil
+
+  if type(td) == "table" then
+    assert(td.__td ~= nil, "invalid damap in ctor")
+    xx, td, vn, mt = td, td.__td, td.__vn, getmetatable(td)
+  end
+
+  local nn = min(vn.__n, td.nn)
+  local ct = mt == MC and ctpsa or tpsa
+  local ta = mt == MC and ctpsa_arr(td.nn) or tpsa_arr(td.nn)
   local mv = table.new(td.nn, nn+3) -- + __ta, __td, __vn
 
-  for i=1,td.nv do       -- create variables
-    mv[i] = ct(td, td.no[i-1]) ; ta[i-1] = mv[i]
+  for i=1,td.nv do         -- create variables
+    mv[i] = ct(td, td.no[i-1]) ; ta[i-1] = mv[i]:setnam(vn[i] or "")
   end
 
-  for i=td.nv+1,td.nn do -- create parameters
-    mv[i] = ct(td, 1) ; ta[i-1] = mv[i]:set(i+1,0,1)
+  if xx ~= nil then
+    for i=td.nv+1,td.nn do -- share parameters
+      mv[i] = xx[i] ; ta[i-1] = mv[i]
+    end
+  else                     -- create parameters
+    for i=td.nv+1,td.nn do
+      mv[i] = ct(td, 1) ; ta[i-1] = mv[i]:set(i+1,0,1):setnam(vn[i] or "")
+    end
   end
 
-  for i=1,nn do          -- create named access
-    mv[vn[i]] = mv[i] ; mv[i]:setnam(vn[i])
+  for i=1,nn do            -- create named access
+    mv[vn[i]] = mv[i]
   end
 
   mv.__ta, mv.__td, mv.__vn = ta, td, vn
@@ -193,13 +208,19 @@ MR.gtrunc = \x,to_ -> x[1]:gtrunc(to_)
 -- same, copy, clear ----------------------------------------------------------o
 
 function MR.__same (x, e_)
-  local mt = is_complex(e_) and MC or MR
-  return map_alloc(x.__td, x.__vn, mt, x)
+  if is_complex(e_) then
+    return map_alloc(x.__td, x.__vn, MC) -- type promotions don't share params
+  else
+    return map_alloc(x)
+  end
 end
 
 function MC.__same (x, e_)
-  local mt = is_number(e_) and MR or MC
-  return map_alloc(x.__td, x.__vn, mt, x)
+  if is_number(e_) then
+    return map_alloc(x.__td, x.__vn, MR) -- type promotions don't share params
+  else
+    return map_alloc(x)
+  end
 end
 
 function MR.__copy (x, y_, e_)
@@ -219,7 +240,7 @@ function MR.cplx (re_, im_, y_) -- (re,im) -> r
   local re, im = re_ or im_, im_ or re_ -- trick for next checks
   assert(is_damap(re) and is_damap(im), "invalid argument #1 or #2 (damap expected)")
   if is_nil(y_) then
-    y_ = map_alloc(re.__td, re.__vn, MC)
+    y_ = map_alloc(re.__td, re.__vn, MC) -- type promotions don't share params
   else
     assert(is_cdamap(y_), "invalid argument #2 (cdamap expected)")
     assert(re.__td == y_.__td, "incompatible damaps")
@@ -233,7 +254,7 @@ end
 
 function MR.real (x, y_)
   if is_nil(y_) then
-    y_ = map_alloc(x.__td, x.__vn, MR)
+    y_ = map_alloc(x)
   else
     assert(is_damap(y_), "invalid argument #2 (damap expected)")
     assert(x.__td == y_.__td, "incompatible damaps")
@@ -244,7 +265,7 @@ end
 
 function MC.real (x, y_)
   if is_nil(y_) then
-    y_ = map_alloc(x.__td, x.__vn, MR)
+    y_ = map_alloc(x.__td, x.__vn, MR) -- type promotions don't share params
   else
     assert(is_damap(y_), "invalid argument #2 (cdamap expected)")
     assert(x.__td == y_.__td, "incompatible damaps")
@@ -255,7 +276,7 @@ end
 
 function MR.imag (x, y_)
   if is_nil(y_) then
-    y_ = map_alloc(x.__td, x.__vn, MR)
+    y_ = map_alloc(x.__td, x.__vn, MR) -- type promotions don't share params
   else
     assert(is_damap(y_), "invalid argument #2 (damap expected)")
     assert(x.__td == y_.__td, "incompatible damaps")
@@ -266,7 +287,7 @@ end
 
 function MC.imag (x, y_)
   if is_nil(y_) then
-    y_ = map_alloc(x.__td, x.__vn, MR)
+    y_ = map_alloc(x.__td, x.__vn, MR) -- type promotions don't share params
   else
     assert(is_damap(y_), "invalid argument #2 (cdamap expected)")
     assert(x.__td == y_.__td, "incompatible damaps")
@@ -279,7 +300,7 @@ end
 
 function MR.getord (x, o, y_)
   if is_nil(y_) then
-    y_ = map_alloc(x.__td, x.__vn, MR)
+    y_ = map_alloc(x)
   else
     assert(is_damap(y_), "invalid argument #2 (damap expected)")
     assert(x.__td == y_.__td, "incompatible damaps")
@@ -292,7 +313,7 @@ end
 
 function MC.getord (x, o, y_)
   if is_nil(y_) then
-    y_ = map_alloc(x.__td, x.__vn, MC)
+    y_ = map_alloc(x)
   else
     assert(is_cdamap(y_), "invalid argument #2 (cdamap expected)")
     assert(x.__td == y_.__td, "incompatible damaps")
@@ -305,7 +326,7 @@ end
 
 function MR.cutord (x, o, y_)
   if is_nil(y_) then
-    y_ = map_alloc(x.__td, x.__vn, MR)
+    y_ = map_alloc(x)
   else
     assert(isa_damap(y_), "invalid argument #2 (damap expected)")
     assert(x.__td == y_.__td, "incompatible damaps")
@@ -318,7 +339,7 @@ end
 
 function MC.cutord (x, o, y_)
   if is_nil(y_) then
-    y_ = map_alloc(x.__td, x.__vn, MC)
+    y_ = map_alloc(x)
   else
     assert(isa_damap(y_), "invalid argument #2 (cdamap expected)")
     assert(x.__td == y_.__td, "incompatible damaps")
@@ -511,7 +532,7 @@ end
 
 function MR.inv (x, r)
   if is_string(r) and r == 'in' then r = x end
-  r = r or map_alloc(x.__td, x.__vn, MR)
+  r = r or map_alloc(x)
   assert(is_damap(r), "invalid argument #2 (damap expected)")
   assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible damap lengths")
@@ -521,7 +542,7 @@ end
 
 function MC.inv (x, r)
   if is_string(r) and r == 'in' then r = x end
-  r = r or map_alloc(x.__td, x.__vn, MC)
+  r = r or map_alloc(x)
   assert(is_cdamap(r), "invalid argument #2 (cdamap expected)")
   assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible cdamap lengths")
@@ -532,7 +553,7 @@ end
 
 function MR.pinv (x, sel, r)
   if is_string(r) and r == 'in' then r = x end
-  r = r or map_alloc(x.__td, x.__vn, MR)
+  r = r or map_alloc(x)
   assert(is_table(sel), "invalid argument #2 (table expected)")
   assert(is_damap(r)  , "invalid argument #3 (damap expected)")
   assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
@@ -543,7 +564,7 @@ end
 
 function MC.pinv (x, sel, r)
   if is_string(r) and r == 'in' then r = x end
-  r = r or map_alloc(x.__td, x.__vn, MC)
+  r = r or map_alloc(x)
   assert(is_table(sel), "invalid argument #2 (table expected)")
   assert(is_cdamap(r) , "invalid argument #3 (cdamap expected)")
   assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
@@ -556,7 +577,7 @@ end
 
 function MR.exppb (x, y, r)
   if is_string(r) and r == 'in' then r = x end   -- in place
-  r = r or map_alloc(x.__td, x.__vn, MR)
+  r = r or map_alloc(x)
   assert(is_damap(y),           "invalid argument #2 (damap expected)")
   assert(is_damap(r),           "invalid argument #3 (damap expected)")
   assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
@@ -568,7 +589,7 @@ end
 
 function MC.exppb (x, y, r)
   if is_string(r) and r == 'in' then r = x end   -- in place
-  r = r or map_alloc(x.__td, x.__vn, MC)
+  r = r or map_alloc(x)
   assert(is_cdamap(y),          "invalid argument #2 (cdamap expected)")
   assert(is_cdamap(r),          "invalid argument #3 (cdamap expected)")
   assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
@@ -681,7 +702,7 @@ end
 
 function MR.logpb (x, y0, r)
   if is_string(r) and r == 'in' then r = x end -- in place
-  r = r or map_alloc(x.__td, x.__vn, MR)
+  r = r or map_alloc(x)
   assert(is_damap(r), "invalid argument #2 (damap expected)")
   assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible damap lengths")
@@ -695,7 +716,7 @@ end
 
 function MC.logpb (x, y0, r)
   if is_string(r) and r == 'in' then r = x end -- in place
-  r = r or map_alloc(x.__td, x.__vn, MC)
+  r = r or map_alloc(x)
   assert(is_cdamap(r),     "invalid argument #3 (cdamap expected)")
   assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible cdamap lengths")
@@ -731,7 +752,7 @@ end
 
 function MR.lieexppb (x, y, r, inv)
   if is_number(r) and is_nil(inv) then inv, r = r end -- right shift
-  inv, r = inv or 1, r or map_alloc(x.__td, x.__vn, MR)
+  inv, r = inv or 1, r or map_alloc(x)
   assert(is_table(y),           "invalid argument #2 (list of damap expected)")
   assert(is_damap(r),           "invalid argument #3 (damap expected)")
   assert(inv == 1 or inv == -1, "invalid argument #4 (-1 or 1 expected)")
@@ -753,7 +774,7 @@ end
 
 function MC.lieexppb (x, y, r, inv)
   if is_number(r) and is_nil(inv) then inv, r = r end -- right shift
-  inv, r = inv or 1, r or map_alloc(x.__td, x.__vn, MC)
+  inv, r = inv or 1, r or map_alloc(x)
   assert(is_table (y),          "invalid argument #2 (list of cdamap expected)")
   assert(is_cdamap(r),          "invalid argument #3 (cdamap expected)")
   assert(inv == 1 or inv == -1, "invalid argument #4 (-1 or 1 expected)")
@@ -832,7 +853,7 @@ end
 function MR.translate (x, t, r)
   local v = is_vector(t) and t or vector(t)
   if is_string(r) and r == 'in' then r = x end
-  r = r or map_alloc(x.__td, x.__vn, MR)
+  r = r or map_alloc(x)
   assert(is_damap(r), "invalid argument #3 (damap expected)")
   assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible damap lengths")
@@ -842,7 +863,7 @@ end
 function MC.translate (x, t, r)
   local v = is_cvector(t) and t or cvector(t)
   if is_string(r) and r == 'in' then r = x end
-  r = r or map_alloc(x.__td, x.__vn, MC)
+  r = r or map_alloc(x)
   assert(is_cdamap(r), "invalid argument #3 (cdamap expected)")
   assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible cdamap lengths")
@@ -853,7 +874,7 @@ end
 
 function MR.compose (x, y, r)
   if is_string(r) and r == 'in' then r = x end
-  r = r or map_alloc(x.__td, x.__vn, MR)
+  r = r or map_alloc(x)
   assert(is_damap(y), "invalid argument #2 (damap expected)")
   assert(is_damap(r), "invalid argument #3 (damap expected)")
   assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
@@ -864,7 +885,7 @@ end
 
 function MC.compose (x, y, r)
   if is_string(r) and r == 'in' then r = x end
-  r = r or map_alloc(x.__td, x.__vn, MC)
+  r = r or map_alloc(x)
   assert(is_cdamap(y), "invalid argument #2 (cdamap expected)")
   assert(is_cdamap(r), "invalid argument #3 (cdamap expected)")
   assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
@@ -877,7 +898,7 @@ end
 
 function MR.convert (x, r, tbl_, pb_)
   if is_string(r) and r == 'in' then r = x end
-  r = r or map_alloc(x.__td, x.__vn, MR)
+  r = r or map_alloc(x)
   assert(is_damap(r), "invalid argument #2 (damap expected)")
   local pb, n, m = pb_ or 0, 0, nil
   if tbl_ then
@@ -892,7 +913,7 @@ end
 
 function MC.convert (x, r, tbl_, pb_)
   if is_string(r) and r == 'in' then r = x end
-  r = r or map_alloc(x.__td, x.__vn, MC)
+  r = r or map_alloc(x)
   assert(is_cdamap(r), "invalid argument #2 (cdamap expected)")
   local pb, n, m = pb_ or 0, 0, nil
   if tbl_ then
@@ -918,150 +939,248 @@ end
 -- unm
 
 function MR.__unm (x, _, r) -- note: _ is dummy arg, see Lua specs.
-  r = r or map_alloc(x.__td, x.__vn, MR)
+  r = r or map_alloc(x)
   assert(is_damap(r), "invalid argument #3 (damap expected)")
   assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible damap lengths")
-  for i=1,#x do _C.mad_tpsa_scl(x[i], -1, r[i]) end
-  return r
+  for i=1,#x do _C.mad_tpsa_scl(x[i], -1, r[i]) end return r
 end
 
 function MC.__unm (x, _, r) -- note: _ is dummy arg, see Lua specs.
-  r = r or map_alloc(x.__td, x.__vn, MC)
+  r = r or map_alloc(x)
   assert(is_cdamap(r), "invalid argument #3 (cdamap expected)")
   assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible cdamap lengths")
-  for i=1,#x do _C.mad_ctpsa_scl_r(x[i], -1, 0, r[i]) end
-  return r
+  for i=1,#x do _C.mad_ctpsa_scl_r(x[i], -1, 0, r[i]) end return r
 end
 
 -- add
 
-function MR.__add_cpx (x, y, r)                  -- cpx + dam
-  r = r or map_alloc(y.__td, y.__vn, MC)
-  for i=1,#r do r[i] = x+y[i] end return r
-end
-
 function MR.__add (x, y, r)
   if is_number(x) then
-    r = r or map_alloc(y.__td, y.__vn, is_damap(y) and MR or MC)
-    for i=1,#r do r[i] = x+y[i] end return r     -- num + dam
-  elseif is_scalar(y) then
-    r = r or map_alloc(x.__td, x.__vn, is_damap(x) and is_number(y) and MR or MC)
-    for i=1,#r do r[i] = x[i]+y end return r     -- dam + scl
-  elseif isa_damap(y) then
-    r = r or map_alloc(x.__td, x.__vn, is_damap(x) and is_damap(y) and MR or MC)
-    for i=1,#r do r[i] = x[i]+y[i] end return r  -- dam + dam
+    r = r or map_alloc(y)
+    for i=1,#r do r[i] = x+y[i] end        -- num + dam
+  elseif is_number(y) then
+    r = r or map_alloc(x)
+    for i=1,#r do r[i] = x[i]+y end        -- dam + num
+  elseif is_damap(y) and is_damap(x) then
+    r = r or map_alloc(x)
+    for i=1,#r do r[i] = x[i]+y[i] end     -- dam + dam
+  elseif is_complex(y) then
+    r = r or map_alloc(x.__td, x.__vn, MC) -- type promotions don't share params
+    for i=1,#r do r[i] = x[i]+y end        -- dam + cpx
+  elseif is_cdamap(y) then
+    r = r or map_alloc(x.__td, x.__vn, MC) -- type promotions don't share params
+    for i=1,#r do r[i] = x[i]+y[i] end     -- dam + cdam
+  else                                     -- dam + ?
+    return assert(gmm(y,'__add_damap'), "invalid 'damap + ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported damap operation '-')")
+  return r
 end
 
-MC.__add = MR.__add -- fully polymorphic
+function MR.__add_cpx (x, y, r)
+  r = r or map_alloc(y.__td, y.__vn, MC)   -- type promotions don't share params
+  for i=1,#r do r[i] = x+y[i] end return r -- cpx + dam
+end
+
+function MC.__add (x, y, r)
+  if is_number(x) then
+    r = r or map_alloc(y)
+    for i=1,#r do r[i] = x+y[i] end        -- num + cdam
+  elseif is_scalar(y) then
+    r = r or map_alloc(x)
+    for i=1,#r do r[i] = x[i]+y end        -- cdam + scl
+  elseif isa_damap(y) and is_cdamap(x) then
+    r = r or map_alloc(x)
+    for i=1,#r do r[i] = x[i]+y[i] end     -- cdam + [c]dam
+  else
+    return assert(gmm(y,'__add_cdamap'), "invalid 'cdamap + ?' operation")(x, y, r)
+  end
+  return r
+end
+
+function MC.__add_cpx (x, y, r)
+  r = r or map_alloc(y)
+  for i=1,#r do r[i] = x+y[i] end return r -- cpx + dam
+end
 
 -- sub
 
-function MR.__sub_cpx (x, y, r)                  -- cpx - dam
-  r = r or map_alloc(y.__td, y.__vn, MC)
-  for i=1,#r do r[i] = x-y[i] end return r
-end
-
 function MR.__sub (x, y, r)
   if is_number(x) then
-    r = r or map_alloc(y.__td, y.__vn, is_damap(y) and MR or MC)
-    for i=1,#r do r[i] = x-y[i] end return r     -- num - dam
-  elseif is_scalar(y) then
-    r = r or map_alloc(x.__td, x.__vn, is_damap(x) and is_number(y) and MR or MC)
-    for i=1,#r do r[i] = x[i]-y end return r     -- dam - scl
-  elseif isa_damap(y) then
-    r = r or map_alloc(x.__td, x.__vn, is_damap(x) and is_damap(y) and MR or MC)
-    for i=1,#r do r[i] = x[i]-y[i] end return r  -- dam - dam
+    r = r or map_alloc(y)
+    for i=1,#r do r[i] = x-y[i] end        -- num - dam
+  elseif is_number(y) then
+    r = r or map_alloc(x)
+    for i=1,#r do r[i] = x[i]-y end        -- dam - num
+  elseif is_damap(y) and is_damap(x) then
+    r = r or map_alloc(x)
+    for i=1,#r do r[i] = x[i]-y[i] end     -- dam - dam
+  elseif is_complex(y) then
+    r = r or map_alloc(x.__td, x.__vn, MC) -- type promotions don't share params
+    for i=1,#r do r[i] = x[i]-y end        -- dam - cpx
+  elseif is_cdamap(y) then
+    r = r or map_alloc(x.__td, x.__vn, MC) -- type promotions don't share params
+    for i=1,#r do r[i] = x[i]-y[i] end     -- dam - cdam
+  else                                     -- dam - ?
+    return assert(gmm(y,'__sub_damap'), "invalid 'damap - ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported damap operation '-')")
+  return r
 end
 
-MC.__sub = MR.__sub  -- fully polymorphic
+function MR.__sub_cpx (x, y, r)
+  r = r or map_alloc(y.__td, y.__vn, MC)   -- type promotions don't share params
+  for i=1,#r do r[i] = x-y[i] end return r -- cpx - dam
+end
+
+function MC.__sub (x, y, r)
+  if is_number(x) then
+    r = r or map_alloc(y)
+    for i=1,#r do r[i] = x-y[i] end        -- num - cdam
+  elseif is_scalar(y) then
+    r = r or map_alloc(x)
+    for i=1,#r do r[i] = x[i]-y end        -- cdam - scl
+  elseif isa_damap(y) and is_cdamap(x) then
+    r = r or map_alloc(x)
+    for i=1,#r do r[i] = x[i]-y[i] end     -- cdam - [c]dam
+  else
+    return assert(gmm(y,'__sub_cdamap'), "invalid 'cdamap - ?' operation")(x, y, r)
+  end
+  return r
+end
+
+function MC.__sub_cpx (x, y, r)
+  r = r or map_alloc(y)
+  for i=1,#r do r[i] = x-y[i] end return r -- cpx - cdam
+end
 
 -- mul
 
-function MR.__rmul_cpx (x, y, r)
-  r = r or map_alloc(y.__td, y.__vn, MC)
-  for i=1,#r do r[i] = x*y[i] end return r       -- cpx * dam
-end
-
 function MR.__mul (x, y, r)
   if is_number(x) then
-    r = r or map_alloc(y.__td, y.__vn, is_damap(y) and MR or MC)
-    for i=1,#r do r[i] = x*y[i] end return r     -- num * dam
-  elseif is_scalar(y) then
-    r = r or map_alloc(x.__td, x.__vn, is_damap(x) and is_number(y) and MR or MC)
-    for i=1,#r do r[i] = x[i]*y end return r     -- dam * scl
-  elseif isa_damap(y) then
-    local MM = is_damap(x) and is_damap(y) and MR or MC
-    if MM == MC then -- promote to cdamap if needed
-      if is_damap(x) then x = x:copy(x:same(1i)) end
-      if is_damap(y) then y = y:copy(y:same(1i)) end
-    end
-    r = r or map_alloc(x.__td, x.__vn, MM)
-    return x:compose(y,r)                        -- dam * dam => dam o dam
+    r = r or map_alloc(y)
+    for i=1,#r do r[i] = x*y[i] end        -- num * dam
+  elseif is_number(y) then
+    r = r or map_alloc(x)
+    for i=1,#r do r[i] = x[i]*y end        -- dam * num
+  elseif is_damap(y) and is_damap(x) then
+    r = r or map_alloc(x)
+    x:compose(y,r)                         -- dam * dam
+  elseif is_complex(y) then
+    r = r or map_alloc(x.__td, x.__vn, MC) -- type promotions don't share params
+    for i=1,#r do r[i] = x[i]*y end        -- dam * cpx
+  elseif is_cdamap(y) then
+    x = x:copy(nil,1i)                     -- type promotions don't share params
+    r = r or map_alloc(x)
+    x:compose(y,r)                         -- dam * cdam -> cdam * cdam
+  else                                     -- dam * ?
+    return assert(gmm(y,'__mul_damap'), "invalid 'damap * ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported damap operation '*')")
+  return r
 end
 
-MC.__mul = MR.__mul  -- fully polymorphic
+function MR.__mul_cpx (x, y, r)
+  r = r or map_alloc(y.__td, y.__vn, MC)   -- type promotions don't share params
+  for i=1,#r do r[i] = x*y[i] end return r -- cpx * cdam
+end
+
+function MC.__mul (x, y, r)
+  if is_number(x) then
+    r = r or map_alloc(y)
+    for i=1,#r do r[i] = x*y[i] end        -- num * cdam
+  elseif is_scalar(y) then
+    r = r or map_alloc(x)
+    for i=1,#r do r[i] = x[i]*y end        -- cdam * scl
+  elseif isa_damap(y) and is_cdamap(x) then
+    r = r or map_alloc(x)
+    if is_damap(y) then y = y:copy(nil,1i) end -- type promo. don't share params
+    x:compose(y,r)                         -- cdam * [c]dam -> cdam * cdam
+  else
+    return assert(gmm(y,'__mul_cdamap'), "invalid 'cdamap * ?' operation")(x, y, r)
+  end
+  return r
+end
+
+function MC.__mul_cpx (x, y, r)
+  r = r or map_alloc(y)
+  for i=1,#r do r[i] = x*y[i] end return r -- cpx * cdam
+end
 
 -- div
 
-function MR.__rdiv_cpx (x, y, r)
-  r = r or map_alloc(y.__td, y.__vn, MC)
-  return y:inv(r):mul(x,r)                       -- cpx / dam
-end
-
 function MR.__div (x, y, r)
-  if is_number(x) then                           --  num / dam => num*dam:inv()
-    r = r or map_alloc(y.__td, y.__vn, is_damap(y) and MR or MC)
-    return y:inv(r):mul(x,r)
-  elseif is_scalar(y) then
-    r = r or map_alloc(x.__td, x.__vn, is_damap(x) and is_number(y) and MR or MC)
-    for i=1,#x do r[i] = x[i]/y end return r     -- dam / scl
-  elseif isa_damap(y) then
-    local MM = is_damap(x) and is_damap(y) and MR or MC
-    if MM == MC then -- promote to cdamap if needed
-      if is_damap(x) then x = x:copy(x:same(1i)) end
-      if is_damap(y) then y = y:copy(y:same(1i)) end
-    end
-    r = r or map_alloc(x.__td, x.__vn, MM)
-    return x:compose(y:inv(r),r)                 -- dam / dam => dam o dam:inv()
+  if is_number(x) then
+    r = r or map_alloc(y)
+    y:inv(r):mul(x,r)                      -- num / dam -> num * dam:inv()
+  elseif is_number(y) then
+    r = r or map_alloc(x)
+    for i=1,#x do r[i] = x[i]/y end        -- dam / num
+  elseif is_damap(y) and is_damap(x) then
+    x:compose(y:inv(r),r)                  -- dam / dam
+  elseif is_complex(y) then
+    r = r or map_alloc(x.__td, x.__vn, MC) -- type promotions don't share params
+    for i=1,#x do r[i] = x[i]/y end        -- dam / cpx -> cdam / cpx
+  elseif is_cdamap(y) then
+    x = x:copy(nil,1i)                     -- type promotions don't share params
+    r = r or map_alloc(x)
+    x:compose(y:inv(r),r)                  -- dam / cdam -> cdam * cdam:inv()
+  else                                     -- dam * ?
+    return assert(gmm(y,'__div_damap'), "invalid 'damap / ?' operation")(x, y, r)
   end
-  error("invalid arguments (unsupported damap operation '/')")
+  return r
 end
 
-MC.__div = MR.__div  -- fully polymorphic
+function MR.__div_cpx (x, y, r)
+  r = r or map_alloc(y.__td, y.__vn, MC)   -- type promotions don't share params
+  return y:inv(r):mul(x,r)                 -- cpx / dam -> cpx / cdam
+end
+
+function MC.__div (x, y, r)
+  if is_number(x) then
+    r = r or map_alloc(y)
+    y:inv(r):mul(x,r)                      -- num / cdam -> num * cdam:inv()
+  elseif is_scalar(y) then
+    r = r or map_alloc(x)
+    for i=1,#r do r[i] = x[i]/y end        -- cdam / scl
+  elseif isa_damap(y) and is_cdamap(x) then
+    r = r or map_alloc(x)
+    if is_damap(y) then y = y:copy(nil,1i) end -- type promo. don't share params
+    x:compose(y:inv(r),r)                  -- cdam / [c]dam -> cdam * cdam:inv()
+  else
+    return assert(gmm(y,'__div_cdamap'), "invalid 'cdamap / ?' operation")(x, y, r)
+  end
+  return r
+end
+
+function MC.__div_cpx (x, y, r)
+  r = r or map_alloc(y)
+  return y:inv(r):mul(x,r)                 -- cpx / cdam
+end
 
 -- pow
 
 function MR.__pow (x, n, r)
   assert(is_integer(n), "invalid argument #2 (integer expected)")
-  if n == 0 then                            -- dam^0  => eye
-    return r:eye()
-  elseif n == 1 then                        -- dam^1  => copy
-    return x:copy(r)
-  elseif n == 2 then                        -- dam^2  => dam o dam
-    return x:compose(x,r)
-  elseif n == -1 then                       -- dam^-1 => dam:inv()
-    return x:inv(r)
-  elseif n == -2 then                       -- dam^-2 => dam:inv()^2
-    r = x:inv(r)
-    return r:compose(r,r)
+  r = r or map_alloc(x)
+  if n == 0 then
+    return r:eye()                          -- dam^0  => eye
+  elseif n == 1 then
+    return x:copy(r)                        -- dam^1  => copy
+  elseif n == 2 then
+    return x:compose(x,r)                   -- dam^2  => dam * dam
+  elseif n == -1 then
+    return x:inv(r)                         -- dam^-1 => dam:inv()
+  elseif n == -2 then
+    return x:inv(r):compose(r,r)            -- dam^-2 => dam:inv()^2
   end
 
   local n, t = abs(n), n < 0 and x:inv() or x:copy()
-  r = r or x:same():eye()
-
+  r:eye()
   while true do
-    if n%2 == 1 then r = r:compose(t,r) end  -- r = r o t
+    if n%2 == 1 then r:compose(t,r) end     -- r = r * t
     n = floor(n/2)
     if n == 0 then break end
-    t:compose(t,t)                           -- t = t^2
+    t:compose(t,t)                          -- t = t^2
   end
 
   return r
@@ -1072,13 +1191,16 @@ MC.__pow = MR.__pow -- fully polymorphic
 -- dif : r_i = (x_i - y_i) / max(|x_i|, 1)
 
 function MR.dif (x, y, r)
-  assert(isa_damap(y), "invalid argument #2 (damap expected)")
-  r = r or map_alloc(x.__td, x.__vn, is_damap(x) and is_damap(y) and MR or MC)
+  assert(is_damap(y), "invalid argument #2 (damap expected)")
+  r = r or map_alloc(x)
   for i=1,#r do x[i]:dif(y[i], r[i]) end return r
 end
 
-MC.dif = MR.dif  -- fully polymorphic
-
+function MC.dif (x, y, r)
+  assert(is_cdamap(y), "invalid argument #2 (cdamap expected)")
+  r = r or map_alloc(x)
+  for i=1,#r do x[i]:dif(y[i], r[i]) end return r
+end
 
 -- I/O ------------------------------------------------------------------------o
                   --  file  , str  , bool, num
@@ -1127,7 +1249,7 @@ function MR.read (x_, filnam_, kind_, vname_)
   if x1 ~= nil then  -- valid input
     local td = x1.d
     local vn = vname_ and cvname_dup(vname_) or cvname[min(td.nv,6)]
-    x = map_alloc(td, vn, is_tpsa(x1) and MR or MC)
+    x = map_alloc(td, vn, is_tpsa(x1) and MR or MC) -- never share params
     x[1] = x1
     --x1:print("X1."..1)
     for i=2,cnt or td.nv do
