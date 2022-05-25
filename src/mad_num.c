@@ -433,3 +433,17 @@ mad_num_xrand (xrng_state_t *rng) // [0.,1.)
   return SCL_RAND * rng->s[rng->n++];
 }
 
+// -- OPENMP TEST -------------------------------------------------------------o
+
+num_t mad_num_suminv(u64_t n)
+{
+  num_t s=0;
+
+#ifdef _OPENMP
+  #pragma omp parallel for reduction(+ : s)
+#endif
+  for (u64_t i=1; i <= n; ++i)
+    s += 1.0/i;
+
+  return s;
+}

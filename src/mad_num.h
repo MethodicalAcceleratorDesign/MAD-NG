@@ -136,6 +136,10 @@ struct xrng_state_ {
   idx_t n;
 };
 
+// --- OMP --------------------------------------------------------------------o
+
+num_t mad_num_suminv(u64_t n); // dummy function for testing OpenMP
+
 // ----------------------------------------------------------------------------o
 
 #endif // MAD_NUM_H
