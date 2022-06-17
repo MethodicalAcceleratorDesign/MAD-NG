@@ -42,7 +42,7 @@ local totable, iter                          in fun
 local abs, min, max                          in math
 
 local is_nil, is_boolean, is_number, is_string, is_table,
-      is_emptytable, is_value, is_integer, is_iterable,
+      is_emptytable, is_value, is_integer, is_natural, is_iterable,
       is_mappable, is_callable, is_stringable, is_tablable,
       is_copiable, is_sameable, get_metatable, get_metamethod,
       is_openfile, wprotect, set_concept, concept                 in MAD.typeid
@@ -402,20 +402,23 @@ function utility.openfile (fname_, mode_, ext_)
   if not filemode[mode_] and is_nil(ext_) then
     mode_, ext_ = nil, mode_                 -- right shift
   end
-  if not is_table(ext_) then ext_ = {ext_} end
 
-  -- mode_ == nil -> read mode -> stdin
-  assert(is_nil(mode_) or filemode[mode_], "invalid argument #2 (file mode expected)")
+  -- special case for compatibility with fortran
+  if is_natural(fname_) then fname_ = "fort."..fname_ end
 
   local file = fname_ -- case mockfile
   if is_string(fname_) then
-    for _,e in ipairs(ext_) do
-      assert(is_string(e), "invalid argument #3 (string expected)")
-      if string.sub(fname_,-#e) == e then ext_ = {} ; break end
+    assert(filemode[mode_ or 'r'], "invalid argument #2 (file mode expected)")
+        if is_nil(ext_) then ext_ = ''
+    elseif is_string(ext_) then -- check if fname_ already ends by ext_
+      if string.sub(fname_,-#ext_) == ext_ then ext_ = '' end
+    elseif is_table(ext_) then -- e.g. {'.tfs', '.txt', '.dat', '.mad', ...}
+      for _,e in ipairs(ext_) do -- check if fname_ already ends by one of ext_
+        assert(is_string(e), "invalid argument #3 (table of string expected)")
+        if string.sub(fname_,-#e) == e then ext_ = '' ; break end
+      end
     end
-    -- e.g. '.tfs', '.txt', '.dat', '.mad', ...
-    if ext_[1] then fname_ = fname_ .. ext_[1] end
-    file = io.open(fname_, mode_ or 'r') -- "file not found" return nil
+    file = io.open(fname_ .. ext_, mode_ or 'r') -- "file not found" return nil
     assert(is_nil(file) or io.type(file) == 'file',
            "invalid argument #1 (unable to open file)")
   elseif fname_ ~= mockfile then

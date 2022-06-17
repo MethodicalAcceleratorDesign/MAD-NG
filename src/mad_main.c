@@ -84,11 +84,8 @@ static const char *progname = "mad";
 #include <assert.h>
 #include <time.h>
 #include "lj_def.h"
-#include "mad_log.h"
-
-#ifndef MAD_VERSION
 #include "mad_ver.h"
-#endif
+#include "mad_log.h"
 
 /* globals */
 int mad_warn_count     = 0;
@@ -122,7 +119,7 @@ static int lua_stdin_is_tty (void)
 
 static void print_mad_version (void)
 {
-  str_t ver = MAD_VERSION
+  str_t rel = MKSTR(MAD_VERSION)
   #ifdef _OPENMP
   "_P"
   #endif
@@ -140,7 +137,7 @@ static void print_mad_version (void)
   char buf[80];
 
   strftime(buf, sizeof buf, "%Y-%m-%d %H:%M:%S", tm);
-  printf(msg, ver, buf);
+  printf(msg, rel, buf);
 }
 
 LUALIB_API void (mad_error) (str_t fn, str_t fmt, ...)
@@ -292,12 +289,13 @@ found:
   str_t dir_sep = buf;
 
   /* set global table '_M' */
-  enum { nitem = 8 };
+  enum { nitem = 9 };
   str_t list[2][nitem] = {
     { "currpath", "homepath", "progpath", "progname", "dirsep",
-      "version", "os", "arch" },
+      "version", "version_date", "os", "arch" },
     { curr_path , home_path , prog_path , prog_name , dir_sep ,
-      MAD_VERSION, LJ_OS_NAME, MKSTR(LJ_ARCH_BITS) }
+      MKSTR(MAD_VERSION), MKSTR(MAD_VERSION_DATE),
+      LJ_OS_NAME, MKSTR(LJ_ARCH_BITS) }
   };
   lua_createtable(L, 0, nitem);
   for (int i = 0; i < nitem; i++) {
