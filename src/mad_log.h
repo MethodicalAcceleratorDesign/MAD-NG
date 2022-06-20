@@ -69,6 +69,7 @@ LUALIB_API void (mad_trace)(int, str_t fn, str_t fmt, ...);
 
 extern int mad_trace_level;
 extern int mad_trace_location;
+extern int mad_trace_fortid;
 
 // --- end --------------------------------------------------------------------o
 

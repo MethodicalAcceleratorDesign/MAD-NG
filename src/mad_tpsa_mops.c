@@ -102,9 +102,6 @@ mnrm (ssz_t sa, const T *ma[sa])
   return nrm;
 }
 
-//#include <stdio.h>
-//extern int mad_trace_fortid;
-
 static inline void
 exppb (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa], T *t[4])
 {
