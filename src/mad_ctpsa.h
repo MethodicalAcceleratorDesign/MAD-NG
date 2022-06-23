@@ -265,7 +265,7 @@ void     mad_ctpsa_eval     (ssz_t na, const ctpsa_t *ma[na], ssz_t nb, const cn
 void     mad_ctpsa_mconv    (ssz_t na, const ctpsa_t *ma[na], ssz_t nc,                        ctpsa_t *mc[nc], ssz_t n, idx_t t2r_[n], int pb);
 
 // I/O
-void     mad_ctpsa_print    (const ctpsa_t *t, str_t name_, num_t tol_, int nohdr_, FILE *stream_);
+void     mad_ctpsa_print    (const ctpsa_t *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_);
 ctpsa_t* mad_ctpsa_scan     (                                                       FILE *stream_);
 const
 desc_t*  mad_ctpsa_scan_hdr (      int *kind_, char  name_[NAMSZ],                  FILE *stream_);

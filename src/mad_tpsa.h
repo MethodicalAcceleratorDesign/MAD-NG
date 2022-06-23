@@ -195,7 +195,7 @@ void    mad_tpsa_mconv    (ssz_t na, const tpsa_t *ma[na], ssz_t nc,            
 // I/O
 #define NAMSZ 16
 
-void    mad_tpsa_print    (const tpsa_t *t, str_t name_, num_t tol_, int nohdr_, FILE *stream_);
+void    mad_tpsa_print    (const tpsa_t *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_);
 tpsa_t* mad_tpsa_scan     (                                                      FILE *stream_);
 const
 desc_t* mad_tpsa_scan_hdr (     int *kind_, char  name_[NAMSZ],                  FILE *stream_);

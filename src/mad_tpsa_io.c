@@ -376,12 +376,12 @@ FUN(scan) (FILE *stream_)
 }
 
 void
-FUN(print) (const T *t, str_t name_, num_t tol_, int nohdr_, FILE *stream_)
+FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
 
   if (!name_  ) name_   = t->nam[0] ? t->nam : "-UNNAMED-";
-  if (tol_ < 0) tol_    = 0;
+  if (eps_ < 0) eps_    = 0;
   if (!stream_) stream_ = stdout;
 
 #ifndef MAD_CTPSA_IMPL
@@ -419,21 +419,21 @@ coeffonly: ;
       if (!mad_bit_tst(t->nz,o)) continue;
       for (idx_t i = o2i[o]; i < o2i[o+1]; ++i) {
 #ifndef MAD_CTPSA_IMPL
-        if (fabs(t->coef[i]) < tol_) continue;
+        if (fabs(t->coef[i]) < eps_) continue;
         if (idx == 0)
           fprintf(stream_, "\n     I   COEFFICIENT             ORDER   EXPONENTS");
-        fprintf(stream_, "\n%6d  %23.16lE   %2hhu   "           , ++idx, VALEPS(t->coef[i],tol_), d->ords[i]);
+        fprintf(stream_, "\n%6d  %23.16lE   %2hhu   "           , ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
 #else
-        if (fabs(creal(t->coef[i])) < tol_ && fabs(cimag(t->coef[i])) < tol_) continue;
+        if (fabs(creal(t->coef[i])) < eps_ && fabs(cimag(t->coef[i])) < eps_) continue;
         if (idx == 0)
           fprintf(stream_, "\n     I   COEFFICIENT                                      ORDER   EXPONENTS");
-        fprintf(stream_, "\n%6d  %23.16lE %+23.16lEi   %2hhu   ", ++idx, VALEPS(t->coef[i],tol_), d->ords[i]);
+        fprintf(stream_, "\n%6d  %23.16lE %+23.16lEi   %2hhu   ", ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
 #endif
         (d->nn > 20 ? print_ords_sm : print_ords)(d->nn, d->To[i], stream_);
       }
     }
     if (!idx)
-         fprintf(stream_, "\n\n         ALL COMPONENTS ZERO (EPS=%.1lE)", tol_);
+         fprintf(stream_, "\n\n         ALL COMPONENTS ZERO (EPS=%.1lE)", eps_);
   } else fprintf(stream_, "\n\n         ALL COMPONENTS ZERO");
 
   fprintf(stream_, "\n\n");
