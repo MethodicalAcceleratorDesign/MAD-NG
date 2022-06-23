@@ -34,7 +34,7 @@ local round                in MAD.gmath
 local _C, option, warn                                               in MAD
 local gtpsad, tpsa, ctpsa, vector, cvector, matrix, cmatrix, complex in MAD
 
-local openfile                                                    in MAD.utility
+local openfile, strtrim                                              in MAD.utility
 
 local is_nil, is_boolean, is_number, is_integer, is_complex, is_scalar,
       is_table, is_string, is_indexable, is_iterable, is_mappable,
@@ -753,6 +753,7 @@ function MC.factor_map (x, y, dir)
   if is_number(y) and is_nil(dir) then dir, y = y end -- right shift
   local l = y or x:getord(1)
   local t = (dir or 1) ~= 1 and l^-1 * x or x * l^-1
+--  (l^-1):print(">>> l^-1") ;  t:print(">>> l^-1 * m")
   local f = t:logpb()
   return f, l
 end
@@ -906,41 +907,51 @@ end
 -- maps conversion
 
 function MR.convert (x, r, tbl_, pb_)
-  if is_string(r) and r == 'in' then r = x end
+  if r == 'in' then r = x end
   r = r or map_alloc(x)
   assert(is_damap(r), "invalid argument #2 (damap expected)")
-  local pb, n, m = pb_ or 0, 0, nil
+  local pb, nv, n, m = pb_ or 0, 0, 0, nil
   if tbl_ then
     assert(is_table(tbl_), "invalid argument #3 (table expected)")
     assert(pb==0 or pb==1 or pb==-1, "invalid argument #4 (-1,0,1 expected)")
     n = #tbl_
-    m = int_arr(n) ; for i=1,n do m[i-1] = tbl_[i]-1 end
+    m = int_arr(n)
+    for i=1,n do m[i-1], nv = tbl_[i]-1, max(nv, tbl_[i]) end
   end
+  assert(#r >= nv, "invalid argument #2 (nv too small)")
   _C.mad_tpsa_mconv(#x, x.__ta, #r, r.__ta, n, m, pb)
   return r
 end
 
 function MC.convert (x, r, tbl_, pb_)
-  if is_string(r) and r == 'in' then r = x end
+  if r == 'in' then r = x end
   r = r or map_alloc(x)
   assert(is_cdamap(r), "invalid argument #2 (cdamap expected)")
-  local pb, n, m = pb_ or 0, 0, nil
+  local pb, nv, n, m = pb_ or 0, 0, 0, nil
   if tbl_ then
     assert(is_table(tbl_), "invalid argument #3 (table expected)")
     assert(pb==0 or pb==1 or pb==-1, "invalid argument #4 (-1,0,1 expected)")
     n = #tbl_
-    m = int_arr(n) ; for i=1,n do m[i-1] = tbl_[i]-1 end
+    m = int_arr(n)
+    for i=1,n do m[i-1], nv = tbl_[i]-1, max(nv, tbl_[i]) end
   end
+  assert(#r >= nv, "invalid argument #2 (nv too small)")
   _C.mad_ctpsa_mconv(#x, x.__ta, #r, r.__ta, n, m, pb)
   return r
 end
 
 function MR.fromptc (x, r)
-  return x:nv() >= 6 and x:convert(r, {1,2,3,4,6,5}, 1) or x:copy(r)
+  if is_nil(r) and x:nv() < 6 then r =  damap{nv=6, mo=x:maxord()} end
+  return x:nv() > 4 and x:convert(r, {1,2,3,4,6,5},  1) or x:copy(r)
+end
+
+function MC.fromptc (x, r)
+  if is_nil(r) and x:nv() < 6 then r = cdamap{nv=6, mo=x:maxord()} end
+  return x:nv() > 4 and x:convert(r, {1,2,3,4,6,5},  1) or x:copy(r)
 end
 
 function MR.toptc (x, r)
-  return x:nv() >= 6 and x:convert(r, {1,2,3,4,6,5}, -1) or x:copy(r)
+  return x:nv() > 4 and x:convert(r, {1,2,3,4,6,5}, -1) or x:copy(r)
 end
 
 -- operators ------------------------------------------------------------------o
@@ -1247,11 +1258,11 @@ function MR.read (x_, filnam_, kind_, vname_)
   if is_table(kind_) and is_nil(vname_) then
     vname_, kind_ = kind_, nil                   -- right shift
   end
-  local file, x = assert(openfile(filnam_, 'r', '.dat'),
+  local file, x = assert(openfile(filnam_, 'r'),
                          "unable to open DA map file in read mode")
 
   local hdr = file:read() or ""
-  local cnt, knd, nam = (kind_ or hdr):match("[[ ]*(%d*)([RC]?)[] ]*([^ =]*)")  -- sub(6,-3)
+  local cnt, knd, nam = (kind_ or hdr):match("[[ ]*(%d*)([RC]?)[] ]*([^=]*)")   -- sub(6,-3)
 --io.write("\ndamap read -> cnt=", cnt, ", knd=", knd, ", nam=", nam, ", hdr='", hdr, "'\n")
   local x1 = x_[1]:read(file, knd)
   -- print('\n1', x1) ; if x1 then print("X1=") ; x1:print() end
@@ -1275,7 +1286,7 @@ function MR.read (x_, filnam_, kind_, vname_)
   end
   if is_string(filnam_) then file:close() end
 --io.write("\ndamap read <- cnt=", cnt, ", knd=", knd, ", nam=", nam, "\n")
-  return x, nam
+  return x, strtrim(nam)
 end
 
 -- metamethods ----------------------------------------------------------------o
