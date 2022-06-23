@@ -24,7 +24,7 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local damap                        in MAD
+local damap                                  in MAD
 local is_nil, is_number, is_string, is_table in MAD.typeid
 local openfile                               in MAD.utility
 
@@ -32,110 +32,107 @@ local openfile                               in MAD.utility
 
 local dum = damap() -- get a dummy damap object
 
--- args: tbl|str, tbl|nil, num|nil, str|nil
-local function cmpdaf(lst, pfx_, eps_, knd_)
-  if not is_table(pfx_) and is_nil(knd_) then
-    knd_, eps_, pfx_ = eps_, pfx_ -- right shift
-  end
-  if not is_number(eps_) and is_nil(knd_) then
-    knd_, eps_ = eps_             -- right shift
+local function cmpdaf(lst, ctx_, eps_)
+  if not is_table(ctx_) and is_nil(eps_) then
+    eps_, ctx_ = ctx_ -- right shift
   end
 
   local eps = eps_ or 1e-14
-  local knd = knd_ or "4C"
-  local pfx = pfx_ or {}
-  local nam = pfx.nam or "fort"
-  local ptc = pfx.ptc or "_p"
-  local mad = pfx.mad or "_n"
-  local dif = pfx.dif or "_d"
-  local ext = pfx.ext or ".dat"
+  local ctx = ctx_ or {}
+  local knd = ctx.knd or "4C"
+  local nam = ctx.nam or "fort"
+  local ptc = ctx.ptc or "_p"
+  local mad = ctx.mad or "_n"
+  local dif = ctx.dif or "_d"
+  local ext = ctx.ext or ".dat"
 
-  if is_string(lst) then lst = {lst} end
+  if not is_table(lst) then lst = {lst} end
 
   local m_p, m_n, m_d, hdr
 
   for _, v in ipairs(lst) do
     io.stderr:write("processing files ", v)
 
+    local f_n = openfile(nam.."."..v..ext)
+    if f_n then
+      io.stderr:write(", ", v, mad)
+      m_n, hdr = dum:read(f_n) -- to improve!
+      f_n:close()
+      m_n:write(nam..mad.."."..v..ext, hdr)
+    end
+
     local f_p = openfile(nam.."."..v)
     if f_p then
       io.stderr:write(", ", v, ptc)
       f_p:read() ; f_p:read() ; f_p:read() -- to improve!
-      m_p = dum:read(f_p, knd):fromptc():write(nam..ptc.."."..v..ext)
+      m_p = dum:read(f_p, knd):fromptc()
       f_p:close()
-    end
-
-    local f_n = openfile(nam..mad.."."..v..ext)
-    if f_n then
-      io.stderr:write(", ", v, mad)
---      local nam = (f_n:read() or ""):sub(6,-3)
-      m_n, hdr = dum:read(f_n) -- to improve!
-      f_n:close()
+      m_p:write(nam..ptc.."."..v..ext, hdr)
     end
 
     if m_p and m_n then
       io.stderr:write(", ", v, dif)
-      m_d = m_p:dif(m_n):write(nam..dif.."."..v..ext, hdr, eps)
+      m_d = m_p:dif(m_n)
+      m_d:write(nam..dif.."."..v..ext, hdr, eps)
     end
-
     io.stderr:write("\n")
   end
 
   return m_p, m_n, m_d
 end
 
-local function cmpdafN(lst_i, lst_n, pfx_, eps_)
-  if is_number(pfx_) and is_nil(eps_) then eps_, pfx_ = pfx_, nil end
-  local eps = eps_ or 1e-14
-  local pfx = pfx_ or {}
-  local nam = pfx.nam or "fort"
-  local ptc = pfx.ptc or "_p"
-  local mad = pfx.mad or "_n"
-  local dif = pfx.dif or "_d"
-  local ext = pfx.ext or ".dat"
-  local nul = pfx.nul or false
-
-  if is_string(lst_i) then lst_i, lst_n = {lst_i}, {lst_n} end
-
-  for i, v in ipairs(lst_i) do
-    io.stderr:write("processing files ", v)
-    local f_i = assert(openfile(nam.."."..v)) ; f_i:read()
-    local f_p = assert(openfile(nam..ptc.."."..v..ext, "w"))
-    local f_n =        openfile(nam..mad.."."..v..ext)
-    local f_d = nil
-
-    for k=1,lst_n[i] or 1 do
-      local x = dum.x:read(f_i,"C")
-      if nul or not x:isnul() then
-        x:convert(x, {1,2,3,4,6,5}, 1):write(f_p)
-        if f_n then
-          if not f_d then -- create on need
-            f_d = assert(openfile(nam..dif.."."..v..ext, "w"))
-          end
-
-          local y = x:read(f_n)
-          if y then
-            if (x-y):nrm() > (-x-y):nrm() then x = -x end -- try to detect time
-            x:dif(y):write(f_d, y:nam(), eps)
-          end
-        end
-      end
-    end
-
-    io.stderr:write(", ", v, ptc)
-    f_p:close() ; f_i:close()
-
-    if f_n then
-      io.stderr:write(", ", v, mad)
-      io.stderr:write(", ", v, dif)
-      f_n:close() ; f_d:close()
-    end
-    io.stderr:write("\n")
-  end
-end
+-- local function cmpdafN(lst_i, lst_n, pfx_, eps_)
+--   if is_number(pfx_) and is_nil(eps_) then eps_, pfx_ = pfx_, nil end
+--   local eps = eps_ or 1e-14
+--   local pfx = pfx_ or {}
+--   local nam = pfx.nam or "fort"
+--   local ptc = pfx.ptc or "_p"
+--   local mad = pfx.mad or "_n"
+--   local dif = pfx.dif or "_d"
+--   local ext = pfx.ext or ".dat"
+--   local nul = pfx.nul or false
+--
+--   if is_string(lst_i) then lst_i, lst_n = {lst_i}, {lst_n} end
+--
+--   for i, v in ipairs(lst_i) do
+--     io.stderr:write("processing files ", v)
+--     local f_i = assert(openfile(nam.."."..v)) ; f_i:read()
+--     local f_p = assert(openfile(nam..ptc.."."..v..ext, "w"))
+--     local f_n =        openfile(nam..mad.."."..v..ext)
+--     local f_d = nil
+--
+--     for k=1,lst_n[i] or 1 do
+--       local x = dum.x:read(f_i,"C")
+--       if nul or not x:isnul() then
+--         x:convert(x, {1,2,3,4,6,5}, 1):write(f_p)
+--         if f_n then
+--           if not f_d then -- create on need
+--             f_d = assert(openfile(nam..dif.."."..v..ext, "w"))
+--           end
+--
+--           local y = x:read(f_n)
+--           if y then
+--             if (x-y):nrm() > (-x-y):nrm() then x = -x end -- try to detect time
+--             x:dif(y):write(f_d, y:nam(), eps)
+--           end
+--         end
+--       end
+--     end
+--
+--     io.stderr:write(", ", v, ptc)
+--     f_p:close() ; f_i:close()
+--
+--     if f_n then
+--       io.stderr:write(", ", v, mad)
+--       io.stderr:write(", ", v, dif)
+--       f_n:close() ; f_d:close()
+--     end
+--     io.stderr:write("\n")
+--   end
+-- end
 
 -- end ------------------------------------------------------------------------o
 return {
   cmpdaf  = cmpdaf,
-  cmpdafN = cmpdafN,
+--cmpdafN = cmpdafN,
 }
