@@ -189,28 +189,35 @@ local expr_weights = { -- default weight = 1
 
 -- getters/setters ------------------------------------------------------------o
 
+local isa_tpsa in MAD.typeid
+
 local function mklocacc (env, fun, vnam, vidx)
-  local var = env.__var
-  return \ => local flvl = 3
-              while flvl < 1e6 do
-                local info = debug.getinfo(flvl, 'f')
-                assert(info, 'user function not found in getter')
-                if info.func == fun then break else flvl = flvl+1 end
+  local var, scp = env.__var, env.__var.scope
+  return \ => if scp[vnam] == nil then
+                for i=3,1e6 do
+                  local info = debug.getinfo(i, 'f')
+                  assert(info, 'local not found in getter (unexpected)')
+                  if info.func == fun then scp[vnam]=i; break end
+                end
               end
-              local k, v = debug.getlocal(flvl, vidx)
+              local k, v = debug.getlocal(scp[vnam], vidx)
               assert(k == vnam, 'invalid local variable in getter')
-              return v
+              return isa_tpsa(v) and v:get0() or v
             end,
-        \x => local flvl = 3
-              while flvl < 1e6 do
-                local info = debug.getinfo(flvl, 'f')
-                assert(info, 'user function not found in setter')
-                if info.func == fun then break else flvl = flvl+1 end
+        \x => if scp[vnam] == nil then
+                for i=3,1e6 do
+                  local info = debug.getinfo(i, 'f')
+                  assert(info, 'local not found in setter (unexpected)')
+                  if info.func == fun then scp[vnam]=i; break end
+                end
               end
-              local k, v = debug.getlocal(flvl, vidx)
+              local k, v = debug.getlocal(scp[vnam], vidx)
               assert(k == vnam, 'invalid local variable in setter')
-              debug.setlocal(flvl, vidx, x)
-              var.flush = var.jitf
+              if isa_tpsa(v) then v:set0(x)
+              else
+                debug.setlocal(scp[vnam], vidx, x)
+                var.flush = var.jitf
+              end
             end
 end
 
@@ -218,12 +225,15 @@ local function mkupvacc (env, fun, vnam, vidx)
   local var = env.__var
   return \ => local k, v = debug.getupvalue(fun, vidx)
               assert(k == vnam, 'invalid upvalue in getter')
-              return v
+              return isa_tpsa(v) and v:get0() or v
             end,
-        \x => local k = debug.getupvalue(fun, vidx)
+        \x => local k, v = debug.getupvalue(fun, vidx)
               assert(k == vnam, 'invalid upvalue in setter')
-              debug.setupvalue(fun, vidx, x)
-              var.flush = var.jitf
+              if isa_tpsa(v) then v:set0(x)
+              else
+                debug.setupvalue(fun, vidx, x)
+                var.flush = var.jitf
+              end
             end
 end
 
@@ -261,14 +271,18 @@ local function accessors (env)
     local v = variables[i]
     if v.get and v.set then goto next end
 
-    local var, fmt, get, set = v.var
+    local var, get, set = v.var
     assertf(is_string(var), "invalid 'var' for variable #%d (string expected)", i)
     local nam, isep = strsplit(var, '.[')
 
     if loc[nam] then     -- local variable
       if isep > 0 then   -- local variable with indirect access
-        fmt = strfmt("return \\%s (\\ %s, \\__x => %s=__x end)", nam, var, var)
-        get, set = assert(loadstring(fmt))()(loc[loc[nam]])
+        local fmt = strfmt([[return \%s,__typ ->
+          (\    ->    __typ(%s) and  %s:get0(   ) or   %s,
+           \__x => if __typ(%s) then %s:set0(__x) else %s=__x end end)
+        ]], nam, var, var, var, var, var, var)
+        -- printf("fmt_loc='%s'\n", fmt)
+        get, set = assert(loadstring(fmt))()(loc[loc[nam]], isa_tpsa)
       else               -- local variable with direct access (need jit.flush!)
         if wrn and not v.set then warn(wmsg, "local variables") ; wrn=false end
         get, set = mklocacc(env, fun, nam, loc[nam])
@@ -276,16 +290,24 @@ local function accessors (env)
 
     elseif upv[nam] then -- upvalue
       if isep > 0 then   -- upvalue with indirect access
-        fmt = strfmt("return \\%s (\\ %s, \\__x => %s=__x end)", nam, var, var)
-        get, set = assert(loadstring(fmt))()(upv[upv[nam]])
+        local fmt = strfmt([[return \%s,__typ ->
+          (\    ->    __typ(%s) and  %s:get0(   ) or   %s,
+           \__x => if __typ(%s) then %s:set0(__x) else %s=__x end end)
+        ]], nam, var, var, var, var, var, var)
+        -- printf("fmt_upv='%s'\n", fmt)
+        get, set = assert(loadstring(fmt))()(upv[upv[nam]],isa_tpsa)
       else               -- upvalue with direct access (need jit.flush!)
         if wrn and not v.set then warn(wmsg, "upvalues") ; wrn=false end
         get, set = mkupvacc(env, fun, nam, upv[nam])
       end
 
     elseif ctx[nam] then -- caller context
-      fmt = strfmt("return \\__ctx (\\ __ctx.%s, \\__x => __ctx.%s=__x end)", var, var)
-      get, set = assert(loadstring(fmt))()(ctx)
+      local fmt = strfmt([[return \__ctx,__typ ->
+          (\    ->    __typ(__ctx.%s) and  __ctx.%s:get0(   ) or   __ctx.%s,
+           \__x => if __typ(__ctx.%s) then __ctx.%s:set0(__x) else __ctx.%s=__x end end)
+        ]], var, var, var, var, var, var)
+      -- printf("fmt_ctx='%s'\n", fmt)
+      get, set = assert(loadstring(fmt))()(ctx, isa_tpsa)
 
     else
       errorf("unable to build '%s' getter and setter (variable not found)", var)
@@ -434,7 +456,7 @@ local function update_vars (env)
   else
     var.flush = nil
     for i=1,x.nrow do variables[i].set(x[i], env) end
-    if var.flush then jit.flush() end -- TODO: avoid jit flush
+    if var.flush then jit.flush() end
   end
 end
 
@@ -749,6 +771,7 @@ local function exec (self)
       status  = _C.NLOPT_RUNNING,         -- algorithm status
       errmsg  = nil,                      -- algorithm error message
       jitf    = false,                    -- JIT must be flushed (C API)
+      scope   = {},                       -- local variables scope level
 
       maxcall = self.maxcall or 0,        -- call limit
       maxtime = self.maxtime or 0,        -- time limit
