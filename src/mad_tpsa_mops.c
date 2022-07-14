@@ -166,7 +166,7 @@ logpb (ssz_t sa, const T *ma[sa], T *mc[sa], T *t[4+5*sa], num_t eps)
         fgrad(sa, TC t0, t0[i], t2[i], &t[2]);
         FUN(scl)(t2[i], -0.5, t2[i]);
       }
-      FOR(i,sa) {  // t3 = -0.5*fgrad(t2, t0_i)-(1/6)*fgrad(t0, t2_i)
+      FOR(i,sa) {  // t3 = -0.5*fgrad(t2, t0_i) - 1/6*fgrad(t0, t2_i)
         fgrad(sa, TC t2, t0[i], t3[i], &t[2]);
         fgrad(sa, TC t0, t2[i], t4[i], &t[2]);
         FUN(axpbypc)(-0.5, t3[i], -1.0/6, t4[i], 0, t3[i]);
