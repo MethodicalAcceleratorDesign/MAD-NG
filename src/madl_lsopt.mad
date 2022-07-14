@@ -30,7 +30,7 @@ local assertf, errorf, printf                                    in MAD.utility
 local eps, inf                                                   in MAD.constant
 local abs, rand                                                  in MAD.gmath
 
-local max in math
+local max, sqrt in math
 
 --[[
   Notes about strategies:
@@ -256,7 +256,7 @@ local function ld_lmdif (env)
 
   -- default setup
   jstra, jiter, jtau, bisec = jstra or 1, max(1, jiter or 10),
-                            max(eps, jtau or 1e-3), bisec or obj.exec and 0 or 1
+                            max(eps, jtau or 1e-3), bisec or obj.exec and 0 or 3
 
   -- adjust variables (i.e. adjust x to fit bbox if any)
   disp_adjrej(env, save_adjrej(xadj, adjust_vars(env)), "adjusting variables")
@@ -268,13 +268,13 @@ local function ld_lmdif (env)
   if var.chkstp(env) then return true end
 
   -- persistent variables
-  local bak, nu, mu = {}, 2
+  local bak, nu0, mu = {}, 2, 0
 
   while true do
     -- compute jacobian
-  if eval_jac(env) == nil then return nil end
+    if eval_jac(env) == nil then return nil end
 
-    -- build system Jh = -b from copies for reduction
+    -- build system J*h = -b from copies for reduction
     local J, b = cjac:copy(), c:copy()
 
     -- reject constraints with insufficient row norm in Jacobian (see jtol)
@@ -285,33 +285,39 @@ local function ld_lmdif (env)
     end
 
     -- build system (A + mu.diag(A))h = -g
-    local A, g = J:tmul(J), J:tmul(b)
+    local nrm  = J:norm() -- conditioning
+    local A, g = J:tmul(J)/nrm, J:tmul(b)/nrm
+
+    -- initialise damping terms
+    local nu = nu0
+    if mu == 0 then mu = jtau/nrm * A:max('diag') end
 
     -- debug info
-    if env.debug >= 2 then dspmat(A, "A") ; dspmat(g, "g") ; end
+    if env.debug >= 2 then
+      printf("N-JAC =\n  % -.16e\n", nrm)
+      dspmat(A, "A") ; dspmat(g, "g")
+    end
 
-    -- initialise damping term
-    if mu == nil then mu = jtau*A:max('diag') end
-
-    -- backup current status
+    -- backup current state
     backup(var, bak)
 
   ::damping_loop::
-    if nu > 2 and env.info >= 4 then
+    if nu > nu0 and env.info >= 4 then
       printf("nlopt: LMD rolling back, trying with mu=%-.6e, nu=%d\n", mu, nu)
     end
 
+    -- compute A + mu.diag(A)
+    local Amu = A:mapij \x,i,j -> i==j and x*(1+mu) or x
+
+    if env.debug >= 2 then dspmat(Amu, "Amu") end
+
     -- solve (and reduce) damped system
-    local A = A:copy() -- extra copy for damping loop (if any)
     local itr, iv, rx, rdx, rk, sv = 1, {n=0}, x:copy()
     while itr <= jiter do
-      do -- solve (A + mu.diag(A))h = -b
-        local Amu = A:mapij \x,i,j -> i==j and x*(1+mu) or x
-        -- one Gauss-Newton step using SVD to find min_h ||g - Ah||
-        rdx, rk, sv = Amu:ssolve(g, obj.rcond)
-        -- turn the solution into min_h ||Ah + g||
-        rdx:unm(rdx)
-      end
+      -- one Gauss-Newton step using SVD to find min_h ||g - Ah||
+      rdx, rk, sv = Amu:ssolve(g, obj.rcond)
+      -- turn the solution into min_h ||Ah + g||
+      rdx:unm(rdx)
 
       -- debug info
       if env.info >= 4 then
@@ -325,7 +331,7 @@ local function ld_lmdif (env)
       if jstra == 0 then break end
 
       -- reject variables with wrong slope and bbox (see jstra)
-      local _iv = reject_vars(env, A, rx, rdx, iv)
+      local _iv = reject_vars(env, Amu, rx, rdx, iv)
       if _iv.n <= 0 then break end -- none or too many variables rejected
       iv, itr = _iv, itr + 1
     end
@@ -365,8 +371,8 @@ local function ld_lmdif (env)
 
     -- debug info
     if env.debug >= 2 then
-      printf("LMDIF: mu=% -.5e, nu=%d, rho=% -.5e, dF=% -.5e, dL=% -.5e\n",
-              mu, nu, rho, dF, dL)
+      printf("LMDIF: mu=% -.5e, nu=%d, rho=% -.5e, dF=% -.5e, dL=% -.5e, nbi=% -.5e\n",
+              mu, nu, rho, dF, dL, nbi)
     end
 
     if dL > 0 and dF > 0 then -- decrease damping term, reset nu (LM step)
@@ -378,7 +384,6 @@ local function ld_lmdif (env)
       mu, nu = mu*nu, 2*nu
       goto damping_loop
     end
-    nu = 2
   end
 end
 
@@ -470,14 +475,6 @@ local function ld_jacobian (env)
     end
   end
 end
-
---    -- add some randomness to h
---    jrand = jrand == true and rand or jrand
---    if jrand then
---      rdx:print('rdx')
---      rdx:map(\h -> 0.5*(1+jrand())*h, 'in')
---      rdx:print('rdx rand')
---    end
 
 -- LSOPT lib ------------------------------------------------------------------o
 
