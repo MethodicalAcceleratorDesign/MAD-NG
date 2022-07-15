@@ -189,7 +189,7 @@ local expr_weights = { -- default weight = 1
 
 -- getters/setters ------------------------------------------------------------o
 
-local isa_tpsa in MAD.typeid
+local is_number in MAD.typeid
 
 local function mklocacc (env, fun, vnam, vidx)
   local var, scp = env.__var, env.__var.scope
@@ -202,7 +202,7 @@ local function mklocacc (env, fun, vnam, vidx)
               end
               local k, v = debug.getlocal(scp[vnam], vidx)
               assert(k == vnam, 'invalid local variable in getter')
-              return isa_tpsa(v) and v:get0() or v
+              return is_number(v) and v or v:get0()
             end,
         \x => if scp[vnam] == nil then
                 for i=3,1e6 do
@@ -213,10 +213,10 @@ local function mklocacc (env, fun, vnam, vidx)
               end
               local k, v = debug.getlocal(scp[vnam], vidx)
               assert(k == vnam, 'invalid local variable in setter')
-              if isa_tpsa(v) then v:set0(x)
-              else
+              if is_number(v) then
                 debug.setlocal(scp[vnam], vidx, x)
                 var.flush = var.jitf
+              else v:set0(x)
               end
             end
 end
@@ -225,14 +225,14 @@ local function mkupvacc (env, fun, vnam, vidx)
   local var = env.__var
   return \ => local k, v = debug.getupvalue(fun, vidx)
               assert(k == vnam, 'invalid upvalue in getter')
-              return isa_tpsa(v) and v:get0() or v
+              return is_number(v) and v or v:get0()
             end,
         \x => local k, v = debug.getupvalue(fun, vidx)
               assert(k == vnam, 'invalid upvalue in setter')
-              if isa_tpsa(v) then v:set0(x)
-              else
+              if is_number(v) then
                 debug.setupvalue(fun, vidx, x)
                 var.flush = var.jitf
+              else v:set0(x)
               end
             end
 end
@@ -278,11 +278,11 @@ local function accessors (env)
     if loc[nam] then     -- local variable
       if isep > 0 then   -- local variable with indirect access
         local fmt = strfmt([[return \%s,__typ ->
-          (\    ->    __typ(%s) and  %s:get0(   ) or   %s,
+          (\    ->    __typ(%s) and %s or %s:get0(),
            \__x => if __typ(%s) then %s:set0(__x) else %s=__x end end)
         ]], nam, var, var, var, var, var, var)
         -- printf("fmt_loc='%s'\n", fmt)
-        get, set = assert(loadstring(fmt))()(loc[loc[nam]], isa_tpsa)
+        get, set = assert(loadstring(fmt))()(loc[loc[nam]], is_number)
       else               -- local variable with direct access (need jit.flush!)
         if wrn and not v.set then warn(wmsg, "local variables") ; wrn=false end
         get, set = mklocacc(env, fun, nam, loc[nam])
@@ -291,11 +291,11 @@ local function accessors (env)
     elseif upv[nam] then -- upvalue
       if isep > 0 then   -- upvalue with indirect access
         local fmt = strfmt([[return \%s,__typ ->
-          (\    ->    __typ(%s) and  %s:get0(   ) or   %s,
-           \__x => if __typ(%s) then %s:set0(__x) else %s=__x end end)
+          (\    ->    __typ(%s) and %s or %s:get0(),
+           \__x => if __typ(%s) then %s=__x else %s:set0(__x) end end)
         ]], nam, var, var, var, var, var, var)
         -- printf("fmt_upv='%s'\n", fmt)
-        get, set = assert(loadstring(fmt))()(upv[upv[nam]],isa_tpsa)
+        get, set = assert(loadstring(fmt))()(upv[upv[nam]], is_number)
       else               -- upvalue with direct access (need jit.flush!)
         if wrn and not v.set then warn(wmsg, "upvalues") ; wrn=false end
         get, set = mkupvacc(env, fun, nam, upv[nam])
@@ -303,11 +303,11 @@ local function accessors (env)
 
     elseif ctx[nam] then -- caller context
       local fmt = strfmt([[return \__ctx,__typ ->
-          (\    ->    __typ(__ctx.%s) and  __ctx.%s:get0(   ) or   __ctx.%s,
-           \__x => if __typ(__ctx.%s) then __ctx.%s:set0(__x) else __ctx.%s=__x end end)
+          (\    ->    __typ(__ctx.%s) and __ctx.%s or __ctx.%s:get0(),
+           \__x => if __typ(__ctx.%s) then __ctx.%s=__x else __ctx.%s:set0(__x) end end)
         ]], var, var, var, var, var, var)
       -- printf("fmt_ctx='%s'\n", fmt)
-      get, set = assert(loadstring(fmt))()(ctx, isa_tpsa)
+      get, set = assert(loadstring(fmt))()(ctx, is_number)
 
     else
       errorf("unable to build '%s' getter and setter (variable not found)", var)
