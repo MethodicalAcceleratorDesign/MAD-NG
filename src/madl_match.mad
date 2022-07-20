@@ -26,7 +26,7 @@
 local ffi = require 'ffi'
 
 local _C, command, vector, matrix, warn, option                  in MAD
-local fnil                                                       in MAD.gfunc
+local fnil, ident                                                in MAD.gfunc
 local assertf, errorf, printf, strsplit, log2num                 in MAD.utility
 local is_nil, is_string, is_iterable, is_mappable, is_callable   in MAD.typeid
 local eps, inf, nan                                              in MAD.constant
@@ -338,30 +338,32 @@ local function disp_summ (env)
   local variables, equalities, inequalities, objective, weights in env
   local var = env.__var
   local m, n, p, q, c, cn, cwgt, edsp in var
-  local s1, s2, s3, v1, v2, v3, xa, xr, cr
+  local s1, s2, s3, v1, v2, xa, xr, cr
 
   env.dtime = os.clock()-var.time0 -- update timer before display
 
   if var.status == _C.NLOPT_RUNNING then
-    s1, s2     = 'Curr. Value', 'Curr. Step '
+    s1, s2, s3 = 'Curr. Value', 'Curr. Step ', 'Expr. Value'
     v1, v2     =  var.x       ,  var.h
     xa, xr, cr =  var.xadj.cur,  var.xrej.cur,  var.crej.cur
+    pf         =  ident
   else
-    s1, s2     = 'Final Value', 'Init. Value'
+    s1, s2, s3 = 'Final Value', 'Init. Value', 'Penalty Value'
     v1, v2     =  var.x       ,  var.x0
     xa, xr, cr =  var.xadj    ,  var.xrej    ,  var.crej
+    pf         =  abs
   end
 
   if m > 0 and (edsp or q > 0) then
-    io.write"\n Constraints                Type        Kind        Weight     Penalty Value\n"
-    io.write"-----------------------------------------------------------------------------\n"
+    printf("\n Constraints                Type        Kind        Weight     %s\n", s3)
+    io.write"------------------------------------------------------------------------------\n"
 
     if edsp then
       for i=1,p do
         local e, v = equalities[i] or {}, c[i]/cwgt[i]
         printf("%2d % -24s % -11s % -10s % -10.5g % -.5e%s\n",
                   i, e.name or '', 'equality', e.kind or ' .', cwgt[i],
-                  abs(v), cr[i] == cr.n and ' *' or cn[i] > 0 and ' >' or '')
+                  pf(v), cr[i] == cr.n and ' *' or cn[i] > 0 and ' >' or '')
       end
     end
     for i=p+1,m do
