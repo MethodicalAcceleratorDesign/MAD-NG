@@ -1,0 +1,160 @@
+CALL, FILE='FCCee_529.seq';
+
+CALL, FILE='sextupole_circuits.madx';
+
+pbeam :=   182.5;
+EXbeam = 1.46e-9;
+EYbeam = 2.9e-12;
+Nbun :=    48;
+NPar :=   2.3e11;
+
+Ebeam := sqrt( pbeam^2 + emass^2 );
+
+// Beam defined without radiation as a start - radiation is turned on later depending on the requirements
+BEAM, PARTICLE=POSITRON, NPART=Npar, KBUNCH=Nbun, ENERGY=Ebeam, RADIATE=FALSE, BV=+1, EX=EXbeam, EY=EYbeam;
+
+
+USE, SEQUENCE = FCC_E_RING;
+
+VOLTCA1 = 0;
+VOLTCA2 = 0;
+
+TWISS, FILE = "twiss_b1.tfs";
+
+! slice final focus quadrupoles into many slices for accurate modelling
+	QC1R1 , NST=20;
+	QC1R2 , NST=20;
+	QC1R3 , NST=20;
+	QC2R1 , NST=20;
+	QC2R2 , NST=20;
+	SY1R , NST=20;
+	SY2R , NST=20;
+	SY2L , NST=20;
+	SY1L , NST=20;
+	QC2L2 , NST=20;
+	QC2L1 , NST=20;
+	QC1L3 , NST=20;
+	QC1L2 , NST=20;
+	QC1L1 , NST=20;
+
+
+ptc_data: MACRO = {
+loop=loop+1 ; value, loop ;
+PTC_CREATE_UNIVERSE;
+PTC_CREATE_LAYOUT, MODEL = 2, METHOD = 6, NST = 1, exact;
+PTC_SETSWITCH, FRINGE = TRUE;
+select_ptc_normal, dq1=1,dq2=1;
+select_ptc_normal, dq1=2,dq2=2;
+select_ptc_normal, dq1=3,dq2=3;
+select_ptc_normal, dq1=4,dq2=4;
+select_ptc_normal, dq1=5,dq2=5;
+select_ptc_normal, anhx=1,0,0; ! dQx/dex
+select_ptc_normal, anhy=0,1,0; ! dQy/dey
+select_ptc_normal, anhx=0,1,0;
+select_ptc_normal, anhy=1,0,0;
+select_ptc_normal, anhx=2,0,0; ! d2Qx/dex^2
+select_ptc_normal, anhx=1,1,0;
+select_ptc_normal, anhx=0,2,0;
+select_ptc_normal, anhy=0,2,0; ! d2Qy/dey^2
+select_ptc_normal, anhy=1,1,0; ! d2Qy/deydex
+select_ptc_normal, anhy=2,0,0;
+select_ptc_normal, anhx=1,0,1; ! dQx/dex ddelta
+select_ptc_normal, anhy=0,1,1; ! dQy/dey ddelta
+select_ptc_normal, anhx=0,1,1;
+select_ptc_normal, anhy=1,0,1;
+ptc_normal,closed_orbit,normal,icase=5,no=6;
+ptc_end;
+
+Qx_prime = TABLE(normal_results, VALUE, 1);
+Qy_prime = TABLE(normal_results, VALUE, 2);
+
+Qx_2prime = TABLE(normal_results, VALUE, 3);
+Qy_2prime = TABLE(normal_results, VALUE, 4);
+
+Qx_3prime = TABLE(normal_results, VALUE, 5);
+Qy_3prime = TABLE(normal_results, VALUE, 6);
+
+Qx_4prime = TABLE(normal_results, VALUE, 7);
+Qy_4prime = TABLE(normal_results, VALUE, 8);
+
+Qx_5prime = TABLE(normal_results, VALUE, 9);
+Qy_5prime = TABLE(normal_results, VALUE, 10);
+};
+
+!! deriv
+deriv(hh, f_xx, f_xmh, f_xph, f_xm2h, f_xp2h) : macro = {
+  ! 1st order derivative with centered O(h^4)
+  deriv.1n = f_xm2h-f_xp2h+8*(f_xph-f_xmh) ;
+  deriv.1d = 12*hh ; deriv.1 = deriv.1n/deriv.1d ;
+  ! 2nd order derivative with centered O(h^4)
+  deriv.2n = -f_xp2h-f_xm2h+16*(f_xph+f_xmh)-30*f_xx ;
+  deriv.2d = 12*hh^2 ; deriv.2 = deriv.2n/deriv.2d;
+  ! 3rd order derivative with O(h^2)
+  deriv.3n = f_xp2h-f_xm2h+2*(f_xmh-f_xph) ;
+  deriv.3d = 2*hh^3 ; deriv.3 = deriv.3n/deriv.3d ;
+  ! 4th order derivative with O(h^2)
+  deriv.4n = f_xp2h+f_xm2h-4*(f_xph+f_xmh)+6*f_xx ;
+  deriv.4d = hh^4 ; deriv.4 = deriv.4n/deriv.4d ;
+}
+!! end
+
+!! chrom
+chrom(dpp,bta): macro {
+  if (bta <= 0) { twiss deltap=-2*dpp:2.1*dpp:dpp ; }
+  else { twiss deltap=-2*dpp:2.1*dpp:dpp, beta0 = chrom.beta ; }
+  chrom.qxm2dp=table(summ,q1,1) ; chrom.qym2dp=table(summ,q2,1);
+  chrom.qxmdp =table(summ,q1,2) ; chrom.qymdp =table(summ,q2,2);
+  chrom.qxx   =table(summ,q1,3) ; chrom.qyy   =table(summ,q2,3);
+  chrom.qxpdp =table(summ,q1,4) ; chrom.qypdp =table(summ,q2,4);
+  chrom.qxp2dp=table(summ,q1,5) ; chrom.qyp2dp=table(summ,q2,5);
+  exec deriv(dpp, chrom.qxx, chrom.qxmdp, chrom.qxpdp,
+             chrom.qxm2dp, chrom.qxp2dp);
+  chrom.dqx1 = deriv.1 ; chrom.dqx2 = deriv.2 ;
+  chrom.dqx3 = deriv.3 ; chrom.dqx4 = deriv.4 ;
+  exec deriv(dpp, chrom.qyy, chrom.qymdp, chrom.qypdp,
+             chrom.qym2dp, chrom.qyp2dp);
+  chrom.dqy1 = deriv.1 ; chrom.dqy2 = deriv.2 ;
+  chrom.dqy3 = deriv.3 ; chrom.dqy4 = deriv.4 ;
+}
+!! end
+
+mdx_data: MACRO = {
+	loop=loop+1 ; value, loop ;
+  dpp = 0.0001 ;
+  exec chrom(dpp,0) ;
+  Qx_prime  = chrom.dqx1 ;
+  Qy_prime  = chrom.dqy1 ;
+  Qx_2prime = chrom.dqx2 ;
+  Qy_2prime = chrom.dqy2 ;
+};
+
+!K2S1 = 4.56163e-01;
+!K2S2 = 4.56163e-01;
+!K2S3 = -7.43662e-01;
+!K2S4 = -7.43662e-01;
+
+!EXEC, ptc_data;
+!Write, TABLE=normal_results, file='test.tfs';
+
+option, -info;
+
+MATCH, USE_MACRO;
+
+VARY, NAME=K2S1;
+VARY, NAME=K2S2;
+VARY, NAME=K2S3;
+VARY, NAME=K2S4;
+
+
+  USE_MACRO, NAME=mdx_data; !mdx_data;
+
+  CONSTRAINT,  EXPR = Qx_prime= 0.0;
+  CONSTRAINT,  EXPR = Qy_prime= 0.0;
+  CONSTRAINT,  EXPR = Qx_2prime= 0.0;
+  CONSTRAINT,  EXPR = Qy_2prime= 0.0;
+  
+
+!LMDIF, CALLS=2000;
+JACOBIAN, CALLS=2000, TOLERANCE=3e-9, BISEC=9;
+
+ENDMATCH;
