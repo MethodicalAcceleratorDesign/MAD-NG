@@ -116,7 +116,7 @@ function TestCMatrixErr:testCtor()
 end
 
 function TestCMatrix:testCtor()
-  for ii,cm in ipairs(G.cmatidx) do
+  for ii,cm in ipairs(G.cmatidx) do --ipairs only implicitly tested
     local nr, nc = cm:sizes()
     for j=1,#cm do
       assertEquals( cm.data[j-1], j+j*1i )
@@ -141,11 +141,11 @@ function TestCMatrixErr:testCtorFromtable()
   assertErrorMsgContains( msg[2], cmatrix, {''}  )
 end
 
-function TestCMatrix:testCtorFromtable()
-  local cv = cvector{1,2,3,4,5,6}
-  local cm = cmatrix{{1,2,3},{4,5,6}}
-  for j=1,#cm do assertEquals( cm.data[j-1], j+0i ) end
-  for j=1,#cv do assertEquals( cv.data[j-1], j+0i ) end
+function TestCMatrix:testCtorFromtable() 
+  local cv = cvector{1,2 + 1i,3 + 2i,4 + 3i,5 + 4i,6 + 5i}
+  local cm = cmatrix{{1 + 2i,2 + 3i,3 + 4i},{4 + 5i,5 + 6i,6 + 7i}}
+  for j=1,#cv do assertEquals( cv.data[j-1], j+(j-1)*1i ) end
+  for j=1,#cm do assertEquals( cm.data[j-1], j+(j+1)*1i ) end
   assertTrue  ( is_cmatrix( cmatrix{2}            ) )
   assertTrue  ( is_cvector( cmatrix{2}            ) )
   assertTrue  ( is_cmatrix( cmatrix{complex(0,0)} ) )
@@ -2593,10 +2593,57 @@ function TestCMatrixOps:testMod()
   end
 end
 
-function TestCMatrixOps:testPow() --TODO after pow() modifications
-  for i,cm in ipairs(G.cmatidx) do
-    local cmref = cm:copy():map(\x x*x)
-    assertEquals( cm^2, cmref )
+local function invForTesting(m)
+  local invMat = cmatrix(m:sizes()):eye()
+  local mCopy = m:copy()
+  for i = 1, mCopy.nrow do --nrow == ncol so using nrow for rest of test
+    local divisor = mCopy:get(i, i)  --assuming mCopy[1] ~= 0
+    for j = 1, mCopy.nrow do 
+      mCopy:set(i, j, mCopy:get(i,j)/ divisor)
+      invMat:set(i, j, invMat:get(i,j)/ divisor)
+    end
+    for otherRow = 1, mCopy.nrow do
+      if otherRow ~= i then 
+        local multiplier = mCopy:get(otherRow, i)
+        for j = 1, mCopy.nrow do
+          mCopy:set(otherRow, j, mCopy:get(otherRow, j) - multiplier * mCopy:get(i,j))
+          invMat:set(otherRow, j, invMat:get(otherRow, j) - multiplier * invMat:get(i,j))
+        end
+      end
+    end
+  end
+  return invMat
+end
+
+function TestCMatrixOps:testInv() --This uses the Gauss-Jordan Elimination method from https://www.intmath.com/matrices-determinants/inverse-matrix-gauss-jordan-elimination.php
+  for _, cmat in ipairs(G.cmatidx) do
+    if cmat.nrow == cmat.ncol then --cmat:inv can inverse non square matrices - however I was not aware they existed
+      assertEquals(cmat:inv(), invForTesting(cmat)) 
+    end
+  end
+end
+
+function TestCMatrixOps:testPow()
+  for _, cmat in ipairs(G.cmatidx) do
+      if cmat.ncol == cmat.nrow then -- Can multiply itself
+        local identity = cmatrix(cmat.nrow, cmat.ncol):eye()
+        assertEquals(cmat^0,identity) --eye previously tested
+        assertEquals(cmat^-0, identity)
+        local cmatExp = cmat:copy()
+        for n = 1,9 do --Fails at n > 9 (rel error of 1.3E-16)
+          assertEquals(cmat^n, cmatExp)
+          cmatExp = cmatExp * cmat --mul previously tested
+        end
+        local invMat = invForTesting(cmat)
+        cmatExp = invMat:copy()
+        for n = 1,10 do --Fails at n > 23 (rel error of 1.3E-16)
+          if n ~= 2 then --See comment src/madl_matrix.mad:2369
+            assertEquals(cmat^-n, cmatExp)
+          end
+          cmatExp = cmatExp * invMat --mul previously tested
+        end
+      end
+      -- cmat:inv(0)
   end
 end
 
