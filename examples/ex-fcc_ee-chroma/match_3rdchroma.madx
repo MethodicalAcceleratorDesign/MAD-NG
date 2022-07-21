@@ -1,0 +1,127 @@
+CALL, FILE='FCCee_529.seq';
+
+CALL, FILE='sextupole_circuits.madx';
+
+
+pbeam :=   182.5;
+EXbeam = 1.46e-9;
+EYbeam = 2.9e-12;
+Nbun :=    48;
+NPar :=   2.3e11;
+
+Ebeam := sqrt( pbeam^2 + emass^2 );
+
+// Beam defined without radiation as a start - radiation is turned on later depending on the requirements
+BEAM, PARTICLE=POSITRON, NPART=Npar, KBUNCH=Nbun, ENERGY=Ebeam, RADIATE=FALSE, BV=+1, EX=EXbeam, EY=EYbeam;
+
+
+USE, SEQUENCE = FCC_E_RING;
+
+VOLTCA1 = 0;
+VOLTCA2 = 0;
+
+TWISS, FILE = "twiss_b1.tfs";
+
+! slice final focus quadrupoles into many slices for accurate modelling
+	QC1R1 , NST=20;
+	QC1R2 , NST=20;
+	QC1R3 , NST=20;
+	QC2R1 , NST=20;
+	QC2R2 , NST=20;
+	SY1R , NST=20;
+	SY2R , NST=20;
+	SY2L , NST=20;
+	SY1L , NST=20;
+	QC2L2 , NST=20;
+	QC2L1 , NST=20;
+	QC1L3 , NST=20;
+	QC1L2 , NST=20;
+	QC1L1 , NST=20;
+
+
+ptc_data: MACRO = {
+PTC_CREATE_UNIVERSE;
+PTC_CREATE_LAYOUT, MODEL = 2, METHOD = 6, NST = 1, exact, time=TRUE;
+PTC_SETSWITCH, FRINGE = TRUE;
+select_ptc_normal, dq1=1,dq2=1;
+select_ptc_normal, dq1=2,dq2=2;
+select_ptc_normal, dq1=3,dq2=3;
+select_ptc_normal, dq1=4,dq2=4;
+! select_ptc_normal, dq1=5,dq2=5;
+! select_ptc_normal, anhx=1,0,0; ! dQx/dex
+! select_ptc_normal, anhy=0,1,0; ! dQy/dey
+! select_ptc_normal, anhx=0,1,0;
+! select_ptc_normal, anhy=1,0,0;
+! select_ptc_normal, anhx=2,0,0; ! d2Qx/dex^2
+! select_ptc_normal, anhx=1,1,0;
+! select_ptc_normal, anhx=0,2,0;
+! select_ptc_normal, anhy=0,2,0; ! d2Qy/dey^2
+! select_ptc_normal, anhy=1,1,0; ! d2Qy/deydex
+! select_ptc_normal, anhy=2,0,0;
+! select_ptc_normal, anhx=1,0,1; ! dQx/dex ddelta
+! select_ptc_normal, anhy=0,1,1; ! dQy/dey ddelta
+! select_ptc_normal, anhx=0,1,1;
+! select_ptc_normal, anhy=1,0,1;
+ptc_normal,closed_orbit,normal,icase=5,no=5;
+ptc_end;
+
+
+Qx_prime = TABLE(normal_results, VALUE, 1);
+Qy_prime = TABLE(normal_results, VALUE, 2);
+
+Qx_2prime = TABLE(normal_results, VALUE, 3);
+Qy_2prime = TABLE(normal_results, VALUE, 4);
+
+Qx_3prime = TABLE(normal_results, VALUE, 5);
+Qy_3prime = TABLE(normal_results, VALUE, 6);
+
+Qx_4prime = TABLE(normal_results, VALUE, 7);
+Qy_4prime = TABLE(normal_results, VALUE, 8);
+
+! Qx_5prime = TABLE(normal_results, VALUE, 9);
+! Qy_5prime = TABLE(normal_results, VALUE, 10);
+
+
+};
+
+
+K2S1 = 4.56163e-01;
+K2S2 = 4.56163e-01;
+K2S3 = 4.56163e-01;
+K2S4 = 4.56163e-01;
+K2S5 = -7.43662e-01;
+K2S6 = -7.43662e-01;
+K2S7 = -7.43662e-01;
+K2S8 = -7.43662e-01;
+
+
+
+EXEC, ptc_data;
+Write, TABLE=normal_results, file='test.tfs';
+
+MATCH, USE_MACRO;
+
+VARY, NAME=K2S1;
+VARY, NAME=K2S2;
+VARY, NAME=K2S3;
+VARY, NAME=K2S4;
+VARY, NAME=K2S5;
+VARY, NAME=K2S6;
+VARY, NAME=K2S7;
+VARY, NAME=K2S8;
+
+
+  USE_MACRO, NAME=ptc_data;
+
+  CONSTRAINT,  EXPR = Qx_prime= 0.0;
+  CONSTRAINT,  EXPR = Qy_prime= 0.0;
+  CONSTRAINT,  EXPR = Qx_2prime= 0.0;
+  CONSTRAINT,  EXPR = Qy_2prime= 0.0;
+  CONSTRAINT,  EXPR = Qx_3prime= 0.0;
+  CONSTRAINT,  EXPR = Qy_3prime= 0.0;
+  
+
+LMDIF, CALLS=20000;
+JACOBIAN, CALLS=2000;
+
+ENDMATCH;
