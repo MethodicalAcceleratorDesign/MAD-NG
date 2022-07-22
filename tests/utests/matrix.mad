@@ -665,6 +665,46 @@ function TestMatrixGet:testGetvec()
   m:getvec(1..5,'in') assertEquals( m, matrix(4):fill(1..16) ) -- same output - to documentation
 end
 
+
+function TestMatrixErr:testRemvec()
+  local msg = {
+    "invalid argument #2 (iterable expected)",
+  }
+  assertErrorMsgContains( msg[1], errMat.remvec, errMat, nil             )
+  assertErrorMsgContains( msg[1], errMat.remvec, errMat, ''              )
+end
+
+function TestMatrixSet:testRemvec()
+  local m = matrix(6):fill(1..36)
+  for n = 1, 25 do --Check single element by element removal
+    assertEquals( m:remvec(1), matrix(1,36-n):fill((n+1)..36))
+  end
+  for n = 1, 25 do --Check multi-element removal
+    assertEquals( m:copy():remvec(1..n), matrix(1,36-n):fill((n+1)..36)) --Always outputs 1D
+  end
+end
+
+function TestMatrixErr:testInsvec()
+  local msg = {
+    "invalid argument #2 (iterable expected)",
+    "invalid argument #3 (scalar or iterable expected)",
+  }
+  assertErrorMsgContains( msg[1], errMat.insvec, errMat, nil             )
+  assertErrorMsgContains( msg[1], errMat.insvec, errMat, ''              )
+  assertErrorMsgContains( msg[2], errMat.insvec, errMat, 1, nil          )
+  assertErrorMsgContains( msg[2], errMat.insvec, errMat, 1, ''           )
+end
+
+function TestMatrixSet:testInsvec()
+  local m = matrix(6):fill(1..36)
+  for n = 1, 25 do --Check single element by element removal
+    assertEquals( m:remvec(1), matrix(1,36-n):fill((n+1)..36))
+  end
+  for n = 1, 25 do --Check multi-element removal
+    assertEquals( m:copy():remvec(1..n), matrix(1,36-n):fill((n+1)..36)) --Always outputs 1D
+  end
+end
+
 function TestMatrixErr:testSetvec()
   local msg = {
     "invalid argument #2 (iterable expected)"          ,
@@ -1156,6 +1196,20 @@ function TestMatrixInPlace:testOnes()
   end
 end
 
+function TestMatrixInPlace:testSeq()
+  for i,m in pairs(G.matidx) do --Assumes G.matidx is a sequence
+    assertEquals(m:same():seq(0), m - 1)  --m starts from 1, seq starts from 0
+    assertEquals(m:same():seq(1), m)      --m starts from 1, seq starts from 1
+    assertEquals(m:same():seq(2), m + 1)  --m starts from 1, seq starts from 2
+    assertEquals(m:same():seq(3), m + 2)  --m starts from 1, seq starts from 3
+    local testCase = m:same():seq()
+    for i, e in ipairs(testCase) do --Checks all elements are 1 greater than previous
+      if i > 1 then assertEquals(testCase[i] - testCase[i-1], 1) end
+    end
+
+  end
+end
+
 function TestMatrixInPlace:testEye()
   for i,m in ipairs(G.matidx) do
     local nr, nc = m:sizes()
@@ -1238,6 +1292,9 @@ function TestMatrixInPlaceII:testCirc()
                    assertEquals( m:get(j  ,j+3), 4   ) end
   end
 end
+
+--function TestMatrixInPlaceII:testMovev(); Not sure about this
+--Would like to understand concept rather than understand what the code does to test
 
 function TestMatrixErr:testShiftv()
   local msg = {
@@ -1331,6 +1388,8 @@ function TestMatrixInPlaceII:testReshape()
     end end
   end end
 end
+
+--Should I test the unsafe functions; Appendto, reshapeto and reshapeby
 
 -- foreach, filter, map, fold, scan -------------------------------------------o
 
@@ -2728,11 +2787,58 @@ function TestMatrixOps:testMod()
   end
 end
 
+local function invForTesting(m)
+  local invMat = matrix(m:sizes()):eye()
+  local mCopy = m:copy()
+  for i = 1, mCopy.nrow do --nrow == ncol so using nrow for rest of test
+    local divisor = mCopy:get(i, i)  --assuming mCopy[1] ~= 0
+    for j = 1, mCopy.nrow do 
+      mCopy:set(i, j, mCopy:get(i,j)/ divisor)
+      invMat:set(i, j, invMat:get(i,j)/ divisor)
+    end
+    for otherRow = 1, mCopy.nrow do
+      if otherRow ~= i then 
+        local multiplier = mCopy:get(otherRow, i)
+        for j = 1, mCopy.nrow do
+          mCopy:set(otherRow, j, mCopy:get(otherRow, j) - multiplier * mCopy:get(i,j))
+          invMat:set(otherRow, j, invMat:get(otherRow, j) - multiplier * invMat:get(i,j))
+        end
+      end
+    end
+  end
+  return invMat
+end
+
+function TestMatrixOps:testInv() --This uses the Gauss-Jordan Elimination method from https://www.intmath.com/matrices-determinants/inverse-matrix-gauss-jordan-elimination.php
+  for _, mat in ipairs(G.matidx) do
+    if mat.nrow == mat.ncol then
+      mat:inv():print()
+      assertEquals(mat:inv(), invForTesting(mat)) -- FAILS when matrix has no inverse (mat:inv returns a non nil matrix)
+    end --Is this failing a problem?
+  end
+end
+
 function TestMatrixOps:testPow()
-  for _,m in ipairs(G.matidx) do
-    local mref = m:copy():map(\x x*x)
-    assertEquals( m^2               , mref )
-    assertEquals( m^m:same():fill(2), mref )
+  for _, mat in ipairs(G.matidx) do
+      if mat.ncol == mat.nrow then -- Can multiply itself
+        local identity = matrix(mat.nrow, mat.ncol):eye()
+        assertEquals(mat^0,identity) --eye previously tested
+        assertEquals(mat^-0, identity)
+        local matExp = mat:copy()
+        for n = 1,9 do --Fails at n > 9 (rel error of 1.3E-16)
+          assertEquals(mat^n, matExp)
+          matExp = matExp * mat --mul previously tested
+        end
+        local invMat = invForTesting(mat)
+        matExp = invMat:copy()
+        for n = 1,10 do --Fails at n > 23 (rel error of 1.3E-16)
+          if n > 2 then --See comment src/madl_matrix.mad:2369
+            mat:print()
+            assertEquals(mat^-n, matExp) -- FAILS when matrix has no inverse (mat:inv returns a non nil matrix)
+          end
+          matExp = matExp * invMat --mul previously tested
+        end
+      end
   end
 end
 
