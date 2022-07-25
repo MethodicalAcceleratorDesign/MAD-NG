@@ -26,13 +26,19 @@
 local assertFalse, assertTrue, assertEquals, assertNotEquals,
       assertAlmostEquals, assertNaN in MAD.utest
 
-local angle, ceil, floor, frac, trunc, round, abs, sqrt,  -- (generic functions)
+local ceil, floor, frac, trunc, round, abs, sqrt,  -- (generic functions)
       sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, acosh,
       asinh, atanh, exp, log, log10, erf, erfc, erfi, erfcx, tgamma, lgamma,
-      atan2, ldexp, frexp, fpow, fmod, modf, max, min,-- (non-generic functions)
+      emul, ediv, emod, epow, sqr, inv, cot, coth, acot, acoth,
+      sinhc, asinc, asinhc, invsqrt, hypot, hypot3, wf, erfi, erfcx, 
+      atan2, ldexp, frexp, fpow, fmod, modf, max, min, fact, invfact,-- (non-generic functions)
       sign, sign1, step, step1, sinc, deg, rad, random, randomseed,
-      carg, real, imag, conj, proj, rect, polar,  -- (generic complex functions)
-      unit in MAD.gmath                       -- (non-generic complex functions)
+      carg, real, imag, conj, proj, rect, polar, cabs, cplx,
+      reim, deg2rad, rad2deg, -- (generic complex functions)
+      unit, --(non-generic complex functions)
+      rangle, cord2arc, arc2cord, len2cord, cord2len, len2arc, arc2len,
+      sumsqr, sumabs, minabs, maxabs, sumysqr, sumyabs,
+      minyabs, maxyabs in MAD.gmath   -- extra functions that relies on gmath itself
 
 local tostring, complex             in MAD
 local first, second                 in MAD.gfunc
@@ -401,6 +407,75 @@ function TestGmath:testSqrt()
   assertNaN   (   sqrt(-tiny) )
   assertNaN   (   sqrt(-inf ) )
   assertNaN   (   sqrt( nan ) )
+end
+
+function TestGmath:testInvsqrt()
+  for _,v in ipairs(values.num) do
+    if v > 0 and v < inf then
+      assertAlmostEquals( v*invsqrt(v)*invsqrt(v) - 1, 0, eps )
+    end
+  end
+  assertNaN( invsqrt(-inf) )
+  assertNaN( invsqrt(-1  ) )
+  assertNaN( invsqrt(-0.1) )
+
+  assertEquals( invsqrt(- 0  ) , -inf ) -- check for -0
+  assertEquals( invsqrt(  0  ) ,  inf ) -- check for +0
+  assertEquals( invsqrt( inf ) ,  0 )
+  assertNaN   ( invsqrt(-tiny) )
+  assertNaN   ( invsqrt( nan ) )
+end
+
+function TestGmath:testHypot()
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      if x > tiny and y > tiny and x < huge and y < huge then
+        if x > 1 or y > 1 then --relative error
+          assertAlmostEquals((hypot(x, y) - sqrt(sqr(x) + sqr(y)))/sqrt(sqr(x) + sqr(y)), 0, eps)
+        else --absolute error
+          assertAlmostEquals(hypot(x, y) - sqrt(sqr(x) + sqr(y)), 0, eps)
+        end
+        -- Check for IEEE:IEC 60559 compliance (all 7 below)
+        assertEquals(hypot(x, y), hypot(y,x))
+        assertEquals(hypot(x, y), hypot(x,-y))
+      end
+    end
+    assertEquals(hypot(x, 0), abs(x))
+    assertEquals(hypot(inf, x), inf)
+    assertEquals(hypot(-inf, x), inf)
+  end
+  assertEquals(hypot(inf,nan), inf)
+  assertEquals(hypot(-inf,nan), inf)
+end
+
+--
+function TestGmath:testHypot3() -- 143 K asserts, too many?
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      for _,z in ipairs(values.num) do
+        if x > tiny and y > tiny and z > tiny and x < huge and y < huge and z < huge then
+          if x > 1 or y > 1 or z > 1 then --relative error
+            assertAlmostEquals((hypot3(x, y, z) - sqrt(sqr(x) + sqr(y) + sqr(z)))/sqrt(sqr(x) + sqr(y) + sqr(z)), 0, eps)
+            assertAlmostEquals((hypot3(x, y, z) - hypot3(y, x, z))/hypot3(x, y, z), 0, eps) --instead of commented out below
+          else --absolute error
+            assertAlmostEquals(hypot3(x, y, z) - sqrt(sqr(x) + sqr(y) + sqr(z)), 0, eps)
+            assertAlmostEquals(hypot3(x, y, z) - hypot3(y, x, z), 0, eps) --instead of commented out below
+          end
+          -- Check for IEEE:IEC 60559 compliance (all below)
+          -- assertEquals(hypot3(x, y, z) - hypot3(y, x, z), 0) --These fail compliance
+          -- assertEquals(hypot3(x, y, z) - hypot3(y, z, x), 0) --No actual entry for hypot3 (interpreted from F.9.4.3 The hypot functions)
+          -- assertEquals(hypot3(x, y, z) - hypot3(z, y, x), 0) --Failure is due to errors in sqrt by performing 2 hypot calculations
+          assertEquals(hypot3(x, y, z) - hypot3(x,-y, z), 0)
+          assertEquals(hypot3(x, y, z) - hypot3(x, y,-z), 0)
+        end
+      end
+    end
+    assertEquals(hypot3(0, x, 0), abs(x))
+    assertEquals(hypot3(inf, x, x), inf)
+    assertEquals(hypot3(x, x, -inf), inf)
+  end
+  assertEquals(hypot3(inf,nan, 0), inf)
+  assertEquals(hypot3(-inf,nan, 0), inf)
 end
 
 function TestGmath:testExp()
@@ -940,7 +1015,53 @@ function TestGmath:testErf()
 end
 
 function TestGmath:testErfc()
-  assert( erfc(1) )
+  for _,v in ipairs(values.num) do
+    assertAlmostEquals( erfc(v) - -erfc(-v) , 2, eps )
+    assertAlmostEquals( erfc(v) - (1- erf(v)), 0, eps )
+  end
+  -- Check for IEEE:IEC 60559 compliance
+  assertEquals( erfc( -inf) , 2 )
+  assertEquals( erfc(  inf) , 0 )
+end
+
+function TestGmath:testErfcx()
+  for _,v in ipairs(values.num) do
+    if sqr(v) < 700 then --ln(1e308) = 709.196...
+      assertAlmostEquals(erfcx(v) - (exp(sqr(v)) * erfc(v)), 0, 16*eps )
+      if v < 2 then
+        assertAlmostEquals(erfcx(v) - (exp(sqr(v)) * (1 - erf(v))), 0, 16*eps )
+      end
+    end
+  end
+  assertEquals( erfcx( -inf) , inf )
+  assertEquals( erfcx(  inf) , 0 )
+end
+--Is this enough for wf and erfi?
+function TestGmath:testWf()
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      local z = x + y * 1i
+      if abs(z) < inf then
+        assertEquals( wf(z) - erfcx(-1i*z), 0 + 0*1i)
+        if abs(sqr(z)) < 700 then --ln(1e308) = 709.196...
+          local result = wf(z) - (exp(-sqr(z)) * erfc(-1i*z))
+          assertAlmostEquals(real(result), 0, eps )
+          assertAlmostEquals(imag(result), 0, eps)
+        end
+      end
+    end
+  end
+end
+
+function TestGmath:testErfi()
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      local z = x + y * 1i
+      if x < 26 and abs(z) < inf then --see https://www.wolframalpha.com/input?i=erfi%2826%29
+        assertEquals(-1i * erf(1i*z) - erfi(z), 0+0*1i)
+      end
+    end
+  end
 end
 
 function TestGmath:testTGamma()
