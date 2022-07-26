@@ -26,13 +26,19 @@
 local assertFalse, assertTrue, assertEquals, assertNotEquals,
       assertAlmostEquals, assertNaN in MAD.utest
 
-local angle, ceil, floor, frac, trunc, round, abs, sqrt,  -- (generic functions)
+      local ceil, floor, frac, trunc, round, abs, sqrt,  -- (generic functions)
       sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, acosh,
       asinh, atanh, exp, log, log10, erf, erfc, erfi, erfcx, tgamma, lgamma,
-      atan2, ldexp, frexp, fpow, fmod, modf, max, min,-- (non-generic functions)
+      emul, ediv, emod, epow, sqr, inv, cot, coth, acot, acoth,
+      sinhc, asinc, asinhc, invsqrt, hypot, hypot3, wf, erfi, erfcx, 
+      atan2, ldexp, frexp, fpow, fmod, modf, max, min, fact, invfact,-- (non-generic functions)
       sign, sign1, step, step1, sinc, deg, rad, random, randomseed,
-      carg, real, imag, conj, proj, rect, polar,  -- (generic complex functions)
-      unit in MAD.gmath                       -- (non-generic complex functions)
+      carg, real, imag, conj, proj, rect, polar, cabs, cplx,
+      reim, deg2rad, rad2deg, -- (generic complex functions)
+      unit, --(non-generic complex functions)
+      rangle, cord2arc, arc2cord, len2cord, cord2len, len2arc, arc2len,
+      sumsqr, sumabs, minabs, maxabs, sumysqr, sumyabs,
+      minyabs, maxyabs in MAD.gmath   -- extra functions that relies on gmath itself
 
 local tostring, complex             in MAD
 local first, second                 in MAD.gfunc
@@ -1292,7 +1298,7 @@ function TestGmath:testAtan2()
   assertNaN   (  atan2( nan,  0 ) )
   assertNaN   (  atan2(  0 , nan) )
   assertNaN   (  atan2( nan, nan) )
-end
+  end
 
 function TestGmath:testLdexp()
   for i,v in ipairs(values.num) do
@@ -2314,6 +2320,127 @@ function TestGmath:testPowOp2()
   assertNaN   (     (-nan)^ -nan )
 end
 
+function TestGmath:testMinabs()
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      local z = random(0,1)
+      assertEquals(minabs(x * (-1^z), y * (-1^z)), min(x, y))
+    end
+  end
+end
+
+function TestGmath:testMaxabs()
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      local z = random(0,1)
+      assertEquals(maxabs(x * (-1^z), y * (-1^z)), max(x, y))
+    end
+  end
+end
+
+function TestGmath:testSumysqr()
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      local z = random(0,1)
+      assertEquals(sumysqr(x, y * (-1^z)), x + y^2)
+    end
+  end
+end
+
+function TestGmath:testSumyabs()
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      local z = random(0,1)
+      assertEquals(sumyabs(x, y * (-1^z)), x + y)
+    end
+  end
+end
+
+function TestGmath:testMinyabs()
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      local z = random(0,1)
+      assertEquals(minyabs(x * (-1^z), y * (-1^z)), min(x * (-1^z), y))
+    end
+  end
+end
+
+function TestGmath:testMaxyabs()
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      local z = random(0,1)
+      assertEquals(maxyabs(x * (-1^z), y * (-1^z)), max(x* (-1^z), y))
+    end
+  end
+end
+
+function TestGmath:testFact()
+  local expected = { --Results from https://www.wolframalpha.com/ (to 20 s.f.)
+    1, 3628800, 2432902008176640000, 2.6525285981219105864e32,
+    8.1591528324789773434e47 , 3.0414093201713378044e64 ,
+    8.3209871127413901443e81 , 1.1978571669969891796e100,
+    7.1569457046263802295e118, 1.4857159644817614973e138,
+    9.3326215443944152682e157
+  }
+  for x = 0, 100, 10 do
+    local index = x/10 + 1
+    assertAlmostEquals((fact(x) - expected[index])/expected[index], 0, 3*eps)
+  end
+  expected = { --Results from https://www.wolframalpha.com/ (to 20 s.f.)
+  1.2265202031961379394e172, 2.5435597334721875571e186,
+  8.0942985252734437397e200, 3.8562048236258042174e215,
+  2.6904727073180504836e230
+  }
+  for x = 107, 135, 7 do
+    local index = (x-100)/7
+    assertAlmostEquals((fact(x) - expected[index])/expected[index], 0, 3*eps)
+  end
+  expected = { --Results from https://www.wolframalpha.com/ (to 20 s.f.)
+  3.8543707171800727705e247, 1.3113358856834525456e267,
+  7.5907050539472187291e286, 7.2574156153079989674e306,
+  }
+  for x = 143, 170, 9 do -- 171! > huge
+    local index = (x-134)/9
+    assertAlmostEquals((fact(x) - expected[index])/expected[index], 0, 4*eps)
+  end
+  for x = 171, 1e4, 5e2 do
+    assertEquals(fact(171), inf)
+  end
+end
+
+function TestGmath:testInvfact()
+  local expected = { --Results from https://www.wolframalpha.com/ (to 20 s.f.)
+    1, 2.7557319223985890653e-7, 4.1103176233121648585e-19,
+    3.7699876288159056439e-33, 1.2256174391283858494e-48, 
+    3.2879494166331580670e-65, 1.2017804936493226702e-82, 
+    8.3482407381423089598e-101, 1.3972440776707049242e-119, 
+    6.7307616254148146188e-139, 1.0715102881254669232e-158
+  }
+  for x = 0, 100, 10 do
+    local index = x/10 + 1
+    assertAlmostEquals((invfact(x) - expected[index])/expected[index], 0, 3*eps)
+  end
+  expected = { --Results from https://www.wolframalpha.com/ (to 20 s.f.)
+  8.1531473953233026938e-173, 3.9314979980238567350e-187,
+  1.2354375081146611587e-201, 2.5932232486026196629e-216,
+  3.7168189711793511715e-231
+  }
+  for x = 107, 135, 7 do
+    local index = (x-100)/7
+    assertAlmostEquals((invfact(x) - expected[index])/expected[index], 0, 3*eps)
+  end
+  expected = { --Results from https://www.wolframalpha.com/ (to 20 s.f.)
+  2.5944572366708360133e-248, 7.6258112884542314364e-268,
+  1.3174006800330005395e-287, 1.3779009677917705867e-307,
+  }
+  for x = 143, 170, 9 do -- 1/(171!) < tiny
+    local index = (x-134)/9
+    assertAlmostEquals((invfact(x) - expected[index])/expected[index], 0, 4*eps)
+  end
+  for x = 171, 1e4, 5e2 do
+    assertEquals(invfact(171), 0)
+  end
+end
 -- delegation --
 
 function TestGmath:testDelegation()
