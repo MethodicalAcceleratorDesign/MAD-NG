@@ -25,13 +25,15 @@ local vector, tpsa, gtpsad                                       in MAD
 local eps, abs, pi                                               in MAD.constant
 local abs                                                        in MAD.gmath
 local ident                                                      in MAD.gfunc
-local assertTrue, assertEquals, assertAlmostEquals               in MAD.utest
+local assertTrue, assertEquals, assertAlmostEquals, assertNaN    in MAD.utest
 
 -- locals ---------------------------------------------------------------------o
 
 local dat = assert(loadfile('data/tpsa.dat'))()
+local datNVar = assert(loadfile('nVarTPSA.dat'))()
 
 local ord = {1,2,3,4,5,6,7,10,12,15}
+local ordNVar = {1,2,3,4,5,6}
 
 -- regression test suites -----------------------------------------------------o
 
@@ -60,6 +62,24 @@ local function checkVal (r, c, neg, alt, trc)
       else assertAlmostEquals(r:get(i)    , v, i*tol)
       end
     end
+  end
+end
+
+local function checkFunXY(singleVarFnam, multiVarFnams, trc) 
+  local d = gtpsad(2,6)
+  local a = 0 --sets c = 0
+  for _, multiVarFnam in ipairs(multiVarFnams) do
+    local fun, r, x, y, z = datNVar[multiVarFnam .. "fun"][singleVarFnam]
+    for _,c in ipairs(fun) do
+      for _,o in ipairs(ordNVar) do
+        x = tpsa(o):set(1,c.x0):set(2,1)
+        y = tpsa(o):set(1,c.y0):set(3,1) --0 0 -> 1 0 -> 0 1 ...
+        z = x[multiVarFnam](x, y, 1, 1, a) --1*x + 1*y + 0 --Best way?
+        r = z[singleVarFnam](z)  ; checkVal(r, c, nil, nil, trc) -- positive (r ~= t)
+        r = z[singleVarFnam](z,z) ; checkVal(r, c, nil, nil, trc) -- aliased  (r == t)
+      end
+    end
+    a = nil -- removes the last input for z; saves like 10 lines of code
   end
 end
 
@@ -118,6 +138,18 @@ TestTPSAFun.testAcosh = \s -> checkFun1('acosh')
 TestTPSAFun.testAtanh = \s -> checkFun1('atanh')
 TestTPSAFun.testAcoth = \s -> checkFun1('acoth')
 TestTPSAFun.testErf   = \s -> checkFun1('erf')
+
+--Below is not a thorough test of each function to second order, the main purpose is to check second order works
+--EXP has high errors when dealing with results on the order of 10^43, so not unexpected
+--The accuracy errors below have not been investigated thoroughly for the trigonometric functions
+TestTPSAFun.testInvXY   = \s -> checkFunXY("inv",     {"axpbypc", "axypb"}) -- 1    * eps
+TestTPSAFun.testISqrtXY = \s -> checkFunXY('invsqrt', {"axpbypc", "axypb"}) -- 6    * eps
+TestTPSAFun.testSqrtXY  = \s -> checkFunXY('sqrt',    {"axpbypc", "axypb"}) -- 1    * eps
+TestTPSAFun.testExpXY   = \s -> checkFunXY('exp',     {"axpbypc", "axypb"}) -- 26   * eps
+TestTPSAFun.testLogXY   = \s -> checkFunXY('log',     {"axpbypc", "axypb"}) -- 1    * eps
+TestTPSAFun.testSinXY   = \s -> checkFunXY('sin',     {"axpbypc", "axypb"}) -- 170  * eps
+TestTPSAFun.testCosXY   = \s -> checkFunXY('cos',     {"axpbypc", "axypb"}) -- 115  * eps
+TestTPSAFun.testTanXY   = \s -> checkFunXY('tan',     {"axpbypc", "axypb"}) -- 23   * eps
 
 -- TODO: operators
 
