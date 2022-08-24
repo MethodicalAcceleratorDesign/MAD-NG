@@ -52,12 +52,8 @@ args: list of variable values to expand around"""
             combinations *= factorial(exp)
         newExpr = newExpr / combinations
         evaledExpr = N(newExpr.subs(subsList), 20)
-        # print(evaledExpr)
         if math.isinf(float(evaledExpr)):
             evaluatedResult["include"] = False
-        # if varVals[0] == varVals[1] == varVals[2] == varVals[3] == Rational(1,10) and varVals[4] == varVals[5] == Integer(6):
-        #     if sum(exponents) < 2:
-        #         print(newExpr, evaledExpr, exponents)
         exprResult[str(exponents)] = newExpr
         evaluatedResult[str(exponents)] = evaledExpr
     return exprResult, evaluatedResult
