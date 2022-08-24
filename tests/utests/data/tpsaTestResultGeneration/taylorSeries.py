@@ -1,5 +1,4 @@
-from sympy import *#simplify, diff, symbols, Derivative, Symbol, ordered, log, sqrt, exp,  #pip install sympy
-# from math import factorial
+from sympy import *
 import math
 def createExponents(nv, maxOrder):
     """nv: number of variables, maxOrder (mo): max order of differentiation"""
@@ -34,8 +33,8 @@ def createExponents(nv, maxOrder):
 
 def taylorSeries(expr, maxOrder, varVals):
     """expr: expression you want the taylor series of;
-    maxorder: order of taylor series
-    args: list of variable values to expand around"""
+maxorder: order of taylor series
+args: list of variable values to expand around"""
     exprResult = {}
     evaluatedResult = {"include": True}
     vars = list(ordered(expr.atoms(Symbol)))
@@ -62,3 +61,23 @@ def taylorSeries(expr, maxOrder, varVals):
         exprResult[str(exponents)] = newExpr
         evaluatedResult[str(exponents)] = evaledExpr
     return exprResult, evaluatedResult
+
+def createStringOfValues(singleVarFunc, multiVarFunc, varVals, order, eps):
+    """"Calls taylor series and generates string for MAD interpretation"""
+    outputString = '{'
+    _, values = taylorSeries(singleVarFunc(multiVarFunc), order, varVals) #For 2 thats up to 66 coefficients
+    vars = list(ordered(multiVarFunc.atoms(Symbol))) #Need to be ordered?
+    if values["include"]:
+        for i in range(len(vars)):
+            outputString += f'{vars[i]}0 = {varVals[i]},'
+        outputString += f"eps={eps}*eps,\n"
+        
+        valueList = list(values.values())
+        for i in range(len(valueList) - 1):
+            outputString += f'{valueList[i + 1]},'
+            if (i+1) % 100 == 0:
+                outputString += "\n"
+        outputString += "\n},\n"
+        return outputString
+    else:
+        return "\n"

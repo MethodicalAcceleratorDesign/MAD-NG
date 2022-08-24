@@ -1,4 +1,4 @@
-from taylorSeries import taylorSeries
+from taylorSeries import createStringOfValues
 from sympy import *
 from itertools import permutations
 from multiprocessing import Process, Manager
@@ -23,33 +23,29 @@ Must be run from /MAD/tests/utests/data/tpsaTestResultGeneration folder
         file.write("\n")
     return filename
 
-def createStringOfValues(singleVarFunc, multiVarFunc, varVals, order, eps):
-    outputString = '{'
-    _, values = taylorSeries(singleVarFunc(multiVarFunc), order, varVals) #For 2 thats up to 66 coefficients
-    vars = list(ordered(multiVarFunc.atoms(Symbol))) #Need to be ordered?
-    if values["include"]:
-        for i in range(len(vars)):
-            outputString += f'{vars[i]}0 = {varVals[i]},'
-        outputString += f"eps={eps}*eps,\n"
-        
-        valueList = list(values.values())
-        for i in range(len(valueList) - 1):
-            outputString += f'{valueList[i + 1]},'
-            if (i+1) % 100 == 0:
-                outputString += "\n"
-        outputString += "\n},\n"
-        return outputString
-    else:
-        return "\n"
-
 def closeFile(filename: str) -> None: #
     """Input the filename gained from creating the file and this will close off the file, allowing use with MAD
     
-/MAD/tests/utests/data/tpsaTestResultGeneration"""
+Must be run from /MAD/tests/utests/data/tpsaTestResultGeneration folder"""
     with open(r"../" + filename, "a") as file: #Could speed up process by passing file object?
         file.write("\nreturn M")
 
-def multiVarDataGenSlow(filename:str, singleVarFuncs: dict, multiVarExprs: list, epsList: list[int], expansionPoints: list, order: int, multiVarFnams: list[str], end: str = "") -> None:
+def multiVarDataGenSlow(filename:str, singleVarFuncs: dict, multiVarExprs: list, epsList: list[list[int]], expansionPoints: list, order: int, multiVarFnams: list[str], end: str = "") -> None:
+    """singleVarFuncs: A dictionary containing the names and functions for single variable
+multiVarExprs: A list of the multivariate functions in symbol form
+
+epsList: A list of eps lists, first dimension is for single variable function and second dimension is for multivariable function
+
+expansionPoints: A list of points to expand the variables around
+
+order: The order to complete the taylor series up to 
+
+multiVarFnams: The names for the multivariable functions that MAD will access.
+
+end (optional): default (""), this is an addition to the end of the function names accessed from lua
+
+returns None, updates filename given
+"""
     stringList = []
     keys = list(singleVarFuncs.keys())
     for multiVarFnam in multiVarFnams:
@@ -70,6 +66,7 @@ def multiVarDataGenSlow(filename:str, singleVarFuncs: dict, multiVarExprs: list,
             stringList[i] += "}\n\n"
             file.write(stringList[i])
 def generateStringsPerMultiVarFunc(multiVarIndex, multiVarExprs, singleVarFuncs, keys, expansionPoints, order, epsList, returnList):
+    """Private function, not for use outside file"""
     stringList = [""] * len(keys)
     for keyIndex in range(len(keys)): 
         for expansionPoint in expansionPoints:
@@ -77,6 +74,21 @@ def generateStringsPerMultiVarFunc(multiVarIndex, multiVarExprs, singleVarFuncs,
     returnList[multiVarIndex] = stringList
 
 def multiVarDataGen(filename:str, singleVarFuncs: dict, multiVarExprs: list, epsList: list[int], expansionPoints: list, order: int, multiVarFnams: list[str], end: str = "") -> None:
+    """singleVarFuncs: A dictionary containing the names and functions for single variable
+multiVarExprs: A list of the multivariate functions in symbol form
+
+epsList: A list of eps lists, first dimension is for single variable function and second dimension is for multivariable function
+
+expansionPoints: A list of points to expand the variables around
+
+order: The order to complete the taylor series up to 
+
+multiVarFnams: The names for the multivariable functions that MAD will access.
+
+end (optional): default (""), this is an addition to the end of the function names accessed from lua
+
+returns None, updates filename given
+"""
     stringList = []
     keys = list(singleVarFuncs.keys())
     for multiVarFnam in multiVarFnams:
