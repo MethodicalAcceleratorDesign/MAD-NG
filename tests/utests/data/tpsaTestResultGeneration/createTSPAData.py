@@ -14,7 +14,7 @@ exprList = [
     a * x + b * y,
     a * x * y + b
     ]
-eps = [[1, 1], [6, 6], [1, 1], [26, 26], [1, 1]]
+eps = [[1, 1], [6, 6], [1, 1], [26, 71], [1, 1]]
 trigVals = [Rational(1, 100), Rational(1, 10), Integer(100), Integer(10), pi*Rational(5,3)]
 multiVarDataGen(filename, singleVarFunctions, exprList,  eps, trigVals, 6, multiVarFuncNames, functionEnding) 
 
