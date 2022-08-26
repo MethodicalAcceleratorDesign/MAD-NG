@@ -1,0 +1,79 @@
+import sys, os, sphinx_rtd_theme
+sys.path.append(os.path.abspath("./_ext"))
+# sys.path.append(os.path.abspath("./styles"))
+
+# Configuration file for the Sphinx documentation builder.
+# For the full list of built-in configuration values, see the documentation:
+# https://www.sphinx-doc.org/en/master/usage/configuration.html
+
+# -- Project information -----------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
+
+master_doc = 'index'
+project = 'MAD-NG'
+copyright = '2022, Laurent Deniau'
+author = 'Laurent Deniau'
+release = '0.9.6'
+
+# -- General configuration ---------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
+
+# sys.path.append(os.path.abspath('../../src'))
+# sys.path.append)
+# print(os.path.abspath("./_ext"))
+
+
+
+extensions = []
+
+source_suffix = {
+    '.rst': 'restructuredtext',
+    '.mad': 'lua',
+}
+
+# extensions = ['sphinx.ext.imgmath', "shortcuts"]
+highlight_language = "lua"
+
+templates_path = ['_templates']
+exclude_patterns = []
+
+# latex_engine = 'xelatex'
+# latex_elements = {
+#     'preamble': r'\usepackage{heppennames2}',
+#     'preamble': r'\usepackage{hepparticles}',
+#     'preamble': r'\usepackage{cernchemsym}',
+#     'preamble': r'\usepackage{cernunits}',
+#     'preamble': r'\usepackage{cernall}',
+    
+# }
+# latex_additional_files = ["cernall.sty", "heppennames2.sty", "hepparticles.sty", "cernchemsym.sty", "cernunits.sty"]
+
+# -- Options for HTML output -------------------------------------------------
+# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
+
+html_theme = 'alabaster'
+html_static_path = ['_static']
+
+html_css_files = [
+    'css/custom.css',
+]
+
+pygments_style = 'sphinx'
+
+html_theme = 'sphinx_rtd_theme'
+html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+
+html_theme_options = {
+  'display_version': True,
+  'prev_next_buttons_location': 'both'
+}
+
+
+
+# -- Options for MAN output -------------------------------------------------
+
+man_pages = [
+    (master_doc, 'madng', 'Mad-ng man pages',[author], 1),
+    ("sequences", 'Sequence', 'Object man page',[author], 2)
+    #Continually list to get all, could automate this?
+]
