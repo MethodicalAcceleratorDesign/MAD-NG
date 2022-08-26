@@ -65,6 +65,8 @@ returns None, updates filename given
         for i in range(len(stringList)):
             stringList[i] += "}\n\n"
             file.write(stringList[i])
+
+
 def generateStringsPerMultiVarFunc(multiVarIndex, multiVarExprs, singleVarFuncs, keys, expansionPoints, order, epsList, returnList):
     """Private function, not for use outside file"""
     stringList = [""] * len(keys)
@@ -72,6 +74,7 @@ def generateStringsPerMultiVarFunc(multiVarIndex, multiVarExprs, singleVarFuncs,
         for expansionPoint in expansionPoints:
             stringList[keyIndex] += createStringOfValues(singleVarFuncs[keys[keyIndex]], multiVarExprs[multiVarIndex], expansionPoint, order, epsList[keyIndex][multiVarIndex])
     returnList[multiVarIndex] = stringList
+
 
 def multiVarDataGen(filename:str, singleVarFuncs: dict, multiVarExprs: list, epsList: list[int], expansionPoints: list, order: int, multiVarFnams: list[str], end: str = "") -> None:
     """singleVarFuncs: A dictionary containing the names and functions for single variable
@@ -114,7 +117,7 @@ returns None, updates filename given
 
         for multiVarIndex in range(len(multiVarExprs)):
             for keyIndex in range(len(keys)): 
-                    stringList[keyIndex + len(keys) * multiVarIndex] += return_dict.values()[multiVarIndex][keyIndex]
+                    stringList[keyIndex + len(keys) * multiVarIndex] += return_dict[multiVarIndex][keyIndex]
         for proc in jobs: #close the processes
             proc.close()
     
