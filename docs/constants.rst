@@ -2,7 +2,7 @@
    single: elementary mathematical and physical constants
 
 ********************
-Elementary constants
+Elementary Constants
 ********************
 
 This chapter describes basic mathematical and physiscal constants provided by the module :code:`constant`.
@@ -13,7 +13,7 @@ Mathematical Constants
 This section describes basic mathematical constants uniquely defined as macros in the C header :file:`mad_cst.h` and available from C and MAD modules. If these mathematical constants are already provided by the system libraries, they are used instead of the local definitions.
 
 ==================  =====================  =========================  ======================
-MAD constants       C Macros               C constants                Values
+MAD constants       C macros               C constants                Values
 ==================  =====================  =========================  ======================
 :code:`eps`         :macro:`DBL_EPSILON`   :const:`mad_cst_EPS`       Smallest representable increment near one
 :code:`tiny`        :macro:`DBL_MIN`       :const:`mad_cst_TINY`      Smallest representable number
