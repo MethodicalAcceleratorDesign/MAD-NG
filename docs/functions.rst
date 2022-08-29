@@ -141,18 +141,18 @@ Functions              Return values
 Generic Functions (Folding-Left based)
 ======================================
 
-=====================  ==================================
-Functions              Return values
-=====================  ==================================
-:code:`sumsqr (x,y)`   :math:`x^2 + y^2`
-:code:`sumabs (x,y)`   :math:`|x| + |y|`
-:code:`minabs (x,y)`   :math:`\min(|x|, |y|)`
-:code:`maxabs (x,y)`   :math:`\max(|x|, |y|)`
-:code:`sumysqr(x,y)`   :math:`x + y^2`
-:code:`sumyabs(x,y)`   :math:`x + |y|`
-:code:`minyabs(x,y)`   :math:`\min(x, |y|)`
-:code:`maxyabs(x,y)`   :math:`\max(x, |y|)`
-=====================  ==================================
+====================  ========================
+Functions             Return values
+====================  ========================
+:code:`sumsqr (x,y)`  :math:`x^2 + y^2`
+:code:`sumabs (x,y)`  :math:`|x| + |y|`
+:code:`minabs (x,y)`  :math:`\min(|x|, |y|)`
+:code:`maxabs (x,y)`  :math:`\max(|x|, |y|)`
+:code:`sumysqr(x,y)`  :math:`x + y^2`
+:code:`sumyabs(x,y)`  :math:`x + |y|`
+:code:`minyabs(x,y)`  :math:`\min(x, |y|)`
+:code:`maxyabs(x,y)`  :math:`\max(x, |y|)`
+====================  ========================
 
 Non-Generic Functions
 =====================
