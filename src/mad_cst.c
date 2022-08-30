@@ -29,6 +29,7 @@ const num_t mad_cst_EPS      = DBL_EPSILON;
 const num_t mad_cst_TINY     = DBL_MIN;
 const num_t mad_cst_HUGE     = DBL_MAX;
 const num_t mad_cst_INF      = INFINITY;
+const num_t mad_cst_NAN      = NAN;
 
 const num_t mad_cst_E        = M_E;
 const num_t mad_cst_LOG2E    = M_LOG2E;

@@ -33,7 +33,8 @@
 extern const num_t mad_cst_EPS     ;  // minimum value such that 1+eps > 1
 extern const num_t mad_cst_TINY    ;  // minimum value above 0
 extern const num_t mad_cst_HUGE    ;  // maximum value below inf
-extern const num_t mad_cst_INFINITY;  // maximum representable value inf
+extern const num_t mad_cst_INF     ;  // maximum representable value inf
+extern const num_t mad_cst_NAN     ;  // Not A Number
 
 extern const num_t mad_cst_E       ;  // e
 extern const num_t mad_cst_LOG2E   ;  // log_2 e
