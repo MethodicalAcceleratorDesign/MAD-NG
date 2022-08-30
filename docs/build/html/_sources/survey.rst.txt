@@ -1,4 +1,0 @@
-Survey
-======
-
-Just a link
