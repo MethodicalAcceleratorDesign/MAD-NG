@@ -1,5 +1,5 @@
 Sequences
-=========
+#########
 
 .. toctree::
    :numbered:
@@ -10,7 +10,8 @@ The ``sequence`` object is the *root object* of sequences that store information
 The ``sequence`` module extends the :doc:`typeid <types>` module with the ``is_sequence`` function, which returns ``true`` if its argument is a ``sequence`` object, ``false`` otherwise.
  
 Attributes
-----------
+==========
+
 The ``sequence`` object provides the following attributes: 
 
 **l**
@@ -41,7 +42,7 @@ The ``sequence`` object provides the following attributes:
 
 
 Methods
--------
+=======
 
 The ``sequence`` object provides the following methods:
 
@@ -213,7 +214,7 @@ The ``sequence`` object provides the following methods:
 
 
 Metamethods
------------
+===========
 
 The ``sequence`` object provides the following metamethods:
 
@@ -246,7 +247,7 @@ The following attribute is stored with metamethods in the metatable, but has dif
 **__sequ** A unique private *reference* that characterizes sequences.
 
 Sequences creation
-------------------
+==================
 
 During its creation as an *object*, a sequence can defined its attributes as any object, and the *list* of its elements that must form a
 *sequence* of increasing :math:`s`-positions. When subsequences are part of this *list*, they are replaced by their respective elements as a 
@@ -288,7 +289,7 @@ Displays
 
 
 Element positions
------------------
+=================
 
 A sequence looks at the following attributes of an element, including sub-sequences, when installing it, *and only at that time*, to determine its position:
 
@@ -316,7 +317,7 @@ A sequence looks at the following attributes of an element, including sub-sequen
 
 
 Element selections
-------------------
+==================
 
 The element selection in sequence use predicates in combination with iterators. The sequence iterator manages the range of elements where to apply the selection, 
 while the predicate says if an element in this range is illegible for the selection. In order to ease the use of methods based on the ``:foreach`` method, 
@@ -354,7 +355,7 @@ not as an attribute in a *set*, and its type will be used to determine the kind 
 to ``self:foreach\{action=act, class=monitor}``.
 
 Indexes, names and counts
--------------------------
+=========================
 
 Indexing a sequence triggers a complex look up mechanism where the arguments will be interpreted in various ways as described in the ``:__index`` metamethod. 
 A *number* will be interpreted as a relative slot index in the list of elements, and a negative index will be considered as relative to the end of the sequence, 
@@ -453,10 +454,10 @@ The following example shows how to access to the elements with the ``:foreach`` 
    (*\$end*)     nil  true
 
 Examples
---------
+========
 
 FODO cell
-^^^^^^^^^
+---------
 
 .. code-block:: lua
    
@@ -500,7 +501,7 @@ Display:
 
 
 SPS compact description
-^^^^^^^^^^^^^^^^^^^^^^^
+-----------------------
 
 The following dummy example shows a compact definition of the SPS mixing elements, beam lines and sequence definitions.
 The elements are zero-length, so the lattice is too. ::
@@ -534,7 +535,7 @@ The elements are zero-length, so the lattice is too. ::
 
 
 Installing elements I
-^^^^^^^^^^^^^^^^^^^^^
+---------------------
 
 The following example shows how to install elements and subsequences in an empty initial sequence:::
 
@@ -576,7 +577,7 @@ Display:
    010  marker        $end       0.000       0      16.000     16.000   0.000
 
 Installing elements II
-^^^^^^^^^^^^^^^^^^^^^^
+----------------------
 
 The following more complex example shows how to install elements and subsequences in a sequence using a selection and the packed form for arguments:::
 
@@ -628,7 +629,7 @@ The following more complex example shows how to install elements and subsequence
    018  marker        $end      0.000       0      10.000     10.000   0.000
 
 Random Maths
-------------
+============
 .. math::
 
    \nabla \cdot \textbf{E} = \frac{\rho}{\epsilon_0}\\\\

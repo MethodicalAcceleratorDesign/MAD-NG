@@ -17,7 +17,7 @@ Welcome to MAD-NG's documentation!
    /elements.rst
    /track.rst
    /survey.rst
-
+   /functions.rst
 
 
 

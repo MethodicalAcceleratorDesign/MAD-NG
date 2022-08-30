@@ -1,6 +1,5 @@
 import sys, os, sphinx_rtd_theme
-sys.path.append(os.path.abspath("./_ext"))
-# sys.path.append(os.path.abspath("./styles"))
+sys.path.append(os.path.abspath("./_ext")) #Add to path here!
 
 # Configuration file for the Sphinx documentation builder.
 # For the full list of built-in configuration values, see the documentation:
@@ -18,35 +17,17 @@ release = '0.9.6'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-# sys.path.append(os.path.abspath('../../src'))
-# sys.path.append)
-# print(os.path.abspath("./_ext"))
-
-
-
-extensions = []
+extensions = ["customRoles"]
 
 source_suffix = {
     '.rst': 'restructuredtext',
     '.mad': 'lua',
 }
 
-# extensions = ['sphinx.ext.imgmath', "shortcuts"]
 highlight_language = "lua"
 
 templates_path = ['_templates']
 exclude_patterns = []
-
-# latex_engine = 'xelatex'
-# latex_elements = {
-#     'preamble': r'\usepackage{heppennames2}',
-#     'preamble': r'\usepackage{hepparticles}',
-#     'preamble': r'\usepackage{cernchemsym}',
-#     'preamble': r'\usepackage{cernunits}',
-#     'preamble': r'\usepackage{cernall}',
-    
-# }
-# latex_additional_files = ["cernall.sty", "heppennames2.sty", "hepparticles.sty", "cernchemsym.sty", "cernunits.sty"]
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
@@ -74,6 +55,8 @@ html_theme_options = {
 
 man_pages = [
     (master_doc, 'madng', 'Mad-ng man pages',[author], 1),
-    ("sequences", 'Sequence', 'Object man page',[author], 2)
+    ("sequences", 'Sequence', 'Object man page',[author], 2),
+    ("constants", 'Constants', 'Elementary Constants',[author], 3),
+    ("functions", 'Functions', 'Elementary functions',[author], 4)
     #Continually list to get all, could automate this?
 ]
