@@ -1,5 +1,5 @@
-.. index::
-   single: elementary mathematical functions
+.. index:: 
+    single: elementary mathematical functions
 
 ********************
 Elementary functions
