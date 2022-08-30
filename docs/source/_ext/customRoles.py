@@ -1,8 +1,4 @@
-from cgitb import text
-from unittest import removeResult
 from docutils import nodes
-from docutils.parsers.rst import directives, Directive
-# from sphinx.directives import 
 
 def type_role(name, rawtext, text, lineno, inliner, options=None, context=None):
     node = nodes.emphasis(text = text)
