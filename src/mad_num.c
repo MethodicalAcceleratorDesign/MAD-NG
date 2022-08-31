@@ -329,7 +329,7 @@ static inline u64_t rotl(const u64_t x, int k) {
   return (x << k) | (x >> (64 - k));
 }
 
-u64_t mad_num_randi (rng_state_t *restrict st)
+u64_t mad_num_randi (prng_state_t *restrict st)
 {
   u64_t *s = st->s;
   const u64_t r = rotl(s[1] * 5, 7) * 9;
@@ -347,21 +347,21 @@ u64_t mad_num_randi (rng_state_t *restrict st)
 
 union numbit { u64_t u; num_t d; };
 
-num_t mad_num_rand (rng_state_t *restrict st)
+num_t mad_num_rand (prng_state_t *restrict st)
 {
   u64_t x = mad_num_randi(st);
   const union numbit n = { .u = 0x3ffULL << 52 | x >> 12 };
   return n.d - 1; // [1.,2.) -> [0.,1.)
 }
 
-void mad_num_randseed (rng_state_t *restrict st, num_t seed)
+void mad_num_randseed (prng_state_t *restrict st, num_t seed)
 {
   const union numbit n = { .d = seed };
   st->s[0] = splitmix64(n.u);
   for (int i=1; i < N; i++) st->s[i] = splitmix64(st->s[i-1]);
 }
 
-void mad_num_randjump (rng_state_t *restrict st)
+void mad_num_randjump (prng_state_t *restrict st)
 {
   static const u64_t jump[N] = {
     0x180ec6d33cfd0abaULL, 0xd5a61266f0c9392cULL,
@@ -413,9 +413,9 @@ irngen(xrng_state_t *rng)
 }
 
 void
-mad_num_xrandseed (xrng_state_t *rng, int seed)
+mad_num_xrandseed (xrng_state_t *rng, u32_t seed)
 {
-  int k = 1, j = abs(seed) % MAX_RAND;
+  int k = 1, j = seed % MAX_RAND;
   rng->s[NR_RAND-1] = j;
   for (int i = 0; i < NR_RAND-1; i++) {
     int ii = (ND_RAND*(i+1)) % NR_RAND;
@@ -431,6 +431,13 @@ mad_num_xrand (xrng_state_t *rng) // [0.,1.)
 {
   if (rng->n == NR_RAND) irngen(rng);
   return SCL_RAND * rng->s[rng->n++];
+}
+
+u32_t
+mad_num_xrandi (xrng_state_t *rng) // [0,UINT_MAX]
+{
+  if (rng->n == NR_RAND) irngen(rng);
+  return rng->s[rng->n++];
 }
 
 // -- OPENMP TEST -------------------------------------------------------------o

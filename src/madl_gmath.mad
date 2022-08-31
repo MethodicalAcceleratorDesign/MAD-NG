@@ -238,34 +238,54 @@ local istype in ffi
 -- support 2^128 jumps of period 2^128 to create multiple independent streams.
 
 ffi.cdef [[
-struct rng_state {
+struct prng_state {
   u64_t s[4];
-  int   id;
   num_t x;
 };
 ]]
 
-local rng_ctor = ffi.typeof 'struct rng_state'
-local rng_sz   = ffi.sizeof 'struct rng_state'
+-- MAD-X generator -- see mad_num.c
 
-local is_randgen = \a -> istype(rng_ctor, a)
+ffi.cdef [[
+struct xrng_state {
+  int s[55];
+  idx_t n;
+  num_t x;
+};
+]]
 
-local randseed = \r,x  => _C.mad_num_randseed(r, x or 0) r.x = nan return r end
-local randjump = \r    => _C.mad_num_randjump(r)         r.x = nan return r end
+local prng_ctor = ffi.typeof 'struct prng_state'
+local prng_sz   = ffi.sizeof 'struct prng_state'
+local xrng_ctor = ffi.typeof 'struct xrng_state'
+local xrng_sz   = ffi.sizeof 'struct xrng_state'
 
-local gref = randseed(rng_ctor()) -- reference stream
-local grng = randseed(rng_ctor()) -- global generator
+local is_randgen  = \a -> istype(prng_ctor, a)
+local is_xrandgen = \a -> istype(xrng_ctor, a)
+local is_arandgen = \a -> istype(prng_ctor, a) or istype(xrng_ctor, a)
 
-local function randnewgen ()
-  local rng = rng_ctor()
-  gref.id = gref.id + 1
-  ffi.copy(rng, gref, rng_sz)
+local randjump  = \r    => _C.mad_num_randjump (r)         r.x = nan return r end
+local randseed  = \r,x  => _C.mad_num_randseed (r, x or 0) r.x = nan return r end
+local xrandseed = \r,x  => _C.mad_num_xrandseed(r, x or 0) r.x = nan return r end
+
+local gref = randseed(prng_ctor()) -- reference generator
+local grng = randseed(prng_ctor()) -- global    generator
+
+local function randnew ()
+  local rng = prng_ctor()
+  ffi.copy(rng, gref, prng_sz)
   return rng:randjump()
 end
 
-local function randsetgen (rng)
-  assert(is_randgen(rng), "invalid argument #1 (randgen expected)")
-  grng, rng = rng, grng
+local function xrandnew ()
+  return xrng_ctor():randseed(123456789)
+end
+
+local function randset (rng_)
+  local rng = grng
+  if rng_ then
+    assert(is_arandgen(rng_), "invalid argument #1 (randgen expected)")
+    grng = rng_
+  end
   return rng
 end
 
@@ -275,6 +295,14 @@ end
 
 local function randi (rng)
   return _C.mad_num_randi(rng)
+end
+
+local function xrand (rng)
+  return _C.mad_num_xrand(rng)
+end
+
+local function xrandi (rng)
+  return _C.mad_num_xrandi(rng)
 end
 
 -- Box-Muller transformation (Marsaglia's polar form)
@@ -325,7 +353,7 @@ local function iter (rng, i)
   return i+1, rng:rand()
 end
 
-local rng_mt = set_concept({
+local prng_mt = set_concept({
   __index = {
     rand     = rand,
     randi    = randi,
@@ -338,34 +366,12 @@ local rng_mt = set_concept({
   __tostring = \r -> string.format("RNG: %p", r),
 }, not_mappable + not_extendable + not_mutable)
 
-ffi.metatype('struct rng_state', rng_mt)
-
--- MADX RNG ----------o
-
-ffi.cdef [[
-struct xrng_state {
-  int s[55];
-  idx_t n;
-  num_t x;
-};
-]]
-
-local xrng_ctor = ffi.typeof 'struct xrng_state'
-local xrng_sz   = ffi.sizeof 'struct xrng_state'
-
-local is_xrandgen = \a -> istype(xrng_ctor, a)
-
-local xrandseed = \r,x => _C.mad_num_xrandseed(r, x or 0) r.x = nan return r end
-
-local xrng = xrandseed(xrng_ctor()) -- global generator
-
-local function xrand (rng)
-  return _C.mad_num_xrand(rng)
-end
+ffi.metatype('struct prng_state', prng_mt)
 
 local xrng_mt = set_concept({
   __index = {
     rand     = xrand,
+    randi    = xrandi,
     randn    = \r -> first(randn(r),randn(r)), -- MADX discard even trials...
     randp    = randp,
     randtn   = randtn,
@@ -377,29 +383,36 @@ local xrng_mt = set_concept({
 
 ffi.metatype('struct xrng_state', xrng_mt)
 
-xrng:randseed(123456789) -- MADX init
-
 -- gmath ----------------------------------------------------------------------o
 
-gmath.randnewgen = randnewgen
-gmath.randsetgen = randsetgen
+gmath.randnew  = randnew
+gmath.xrandnew = xrandnew
+gmath.randset  = randset
 
-gmath.rand     = \     -> grng:rand    ()
-gmath.randi    = \     -> grng:randi   ()
-gmath.randn    = \     -> grng:randn   ()
-gmath.randtn   = \cut_ -> grng:randtn  (cut_)
-gmath.randp    = \lmb_ -> grng:randp   (lmb_)
-gmath.randseed = \seed -> grng:randseed(seed)
+gmath.rand  = \rng_ -> ((rng_ or grng):rand ())
+gmath.randi = \rng_ -> ((rng_ or grng):randi())
+gmath.randn = \rng_ -> ((rng_ or grng):randn())
 
-gmath.xrand     = \     -> xrng:rand    ()
-gmath.xrandn    = \     -> xrng:randn   ()
-gmath.xrandtn   = \cut_ -> xrng:randtn  (cut_)
-gmath.xrandp    = \lmb_ -> xrng:randp   (lmb_)
-gmath.xrandseed = \seed -> xrng:randseed(seed)
+function gmath.randtn (rng_, cut_)
+  if is_number(rng_) then cut_, rng_ = rng_, nil end -- right shift
+  return (rng_ or grng):randtn(cut_)
+end
+
+function gmath.randp (rng_, lmb_)
+  if is_number(rng_) then lmb_, rng_ = rng_, nil end -- right shift
+  return (rng_ or grng):randp(lmb_)
+end
+
+function gmath.randseed (rng_, seed)
+  if is_number(rng_) then seed, rng_ = rng_, nil end -- right shift
+  return (rng_ or grng):randseed(seed)
+end
 
 -- env ------------------------------------------------------------------------o
 
-MAD.typeid.is_randgen = is_randgen
+MAD.typeid.is_randgen  = is_randgen
+MAD.typeid.is_xrandgen = is_xrandgen
+MAD.typeid.is_arandgen = is_arandgen
 
 gmath = wrestrict(setmetatable(gmath, {__tostring := "MAD.gmath"}))
 
