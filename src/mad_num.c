@@ -345,17 +345,17 @@ u64_t mad_num_randi (rng_state_t *restrict st)
   return r; // number within [0,ULLONG_MAX]
 }
 
+union numbit { u64_t u; num_t d; };
+
 num_t mad_num_rand (rng_state_t *restrict st)
 {
-  union numbit { u64_t u; num_t d; };
   u64_t x = mad_num_randi(st);
-  const union numbit n = { .u = 0x3ffULL << 52 | x >> 12 }; // number in [1.,2.)
-  return n.d - 1.0;                                         // number in [0.,1.)
+  const union numbit n = { .u = 0x3ffULL << 52 | x >> 12 };
+  return n.d - 1; // [1.,2.) -> [0.,1.)
 }
 
 void mad_num_randseed (rng_state_t *restrict st, num_t seed)
 {
-  union numbit { u64_t u; num_t d; };
   const union numbit n = { .d = seed };
   st->s[0] = splitmix64(n.u);
   for (int i=1; i < N; i++) st->s[i] = splitmix64(st->s[i-1]);
