@@ -13,11 +13,10 @@ Welcome to MAD-NG's documentation!
    /sequences.rst 
    /types.rst
    /utility.rst
-   /constants.rst
    /elements.rst
    /track.rst
    /survey.rst
-   /functions.rst
+   /elemfunc.rst
 
 
 

@@ -109,7 +109,7 @@ The ``sequence`` object provides the following methods:
    iteration: its index, the element itself or an *implicit* ``drift``, its :math:`s`-position over the running loop and its signed length 
    depending on the direction. Each *implicit* drift is built on-the-fly by the iterator with a length equal to the gap between the elements 
    surrounding it and a half-integer index equal to the average of their indexes. The length of *implicit* drifts is bounded by the maximum 
-   between the sequence attribute ``minlen`` and the ``minlen`` from the :doc:`constant <constants>` module.
+   between the sequence attribute ``minlen`` and the ``minlen`` from the :doc:`constant <elemfunc>` module.
 
 **foreach**
    A *method* ``(act, [rng], [sel], [not])`` returning the sequence itself after applying the action ``act`` on the selected elements. If ``act`` 

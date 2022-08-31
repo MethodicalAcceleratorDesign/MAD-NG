@@ -54,9 +54,8 @@ html_theme_options = {
 # -- Options for MAN output -------------------------------------------------
 
 man_pages = [
-    (master_doc, 'madng', 'Mad-ng man pages',[author], 1),
+    (master_doc, 'MAD-NG Refence Manual', 'MAD-NG man pages',[author], 1),
     ("sequences", 'Sequence', 'Object man page',[author], 2),
-    ("constants", 'Constants', 'Elementary Constants',[author], 3),
-    ("functions", 'Functions', 'Elementary functions',[author], 4)
+    ("elemfunc", 'Elementary Constants and Functions', 'Elementary Constants and Functions man page',[author], 3),
     #Continually list to get all, could automate this?
 ]
