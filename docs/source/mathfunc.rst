@@ -264,16 +264,17 @@ All PRNG *functions* (except constructors) are wrappers around PRNG *methods* wi
 
 .. function:: xrandnew ()
 
-   Return a new MAD-X PRNG initialized with seed 123456789. Hence, all new MAD-X PRNG will generate the same sequence until they are initialized with a seed.
+   Return a new MAD-X PRNG initialized with default seed 123456789. Hence, all new MAD-X PRNG will generate the same sequence until they are initialized with a user-defined seed.
 
 .. function:: randset (rng_)
 
    Set the current global PRNG to :code:`rng` (if provided) and return the previous global PRNG.
 
-.. function:: randseed (rng_, seed)
-              rng:randseed (seed)
+.. function:: randseed (rng_, seed_)
+              rng:randseed (seed_)
 
-   Set the seed of the PRNG :code:`rng`.
+   Set the seed of the PRNG :code:`rng` to :code:`seed_`.
+   Default: :code:`seed_ = os.clock()`. 
 
 .. function:: rand (rng_)
               rng:rand ()
