@@ -202,7 +202,7 @@ Functions               Return values                                           
 Generic MapFold-like Functions
 ------------------------------
 
-MapFold-like generic functions (also known as MapReduce) forward the call to the method of the same name from the first argument when the later is not a :type:`number`. These functions are useful when used as high-order functions passed to methods :code:`map2`, :code:`foldl` (fold left) or :code:`foldr` (fold right) of containers like vectors and matrices.
+MapFold-like generic functions (also known as MapReduce) forward the call to the method of the same name from the first argument when the later is not a :type:`number`. These functions are useful when used as high-order functions passed to methods :func:`map2`, :func:`foldl` (fold left) or :func:`foldr` (fold right) of containers like vectors and matrices.
 
 ====================  ========================
 Functions             Return values
@@ -250,13 +250,13 @@ Pseudo-Random Number Generators
 
 The module :code:`gmath` provides an implementation of the *Xoshiro256\*\**  variant of the `XorShift <https://en.wikipedia.org/wiki/Xorshift>`_ PRNG familly [XORSHFT03]_, an all-purpose, rock-solid generator with a period of :math:`2^{256}-1` that supports long jumps of period :math:`2^{128}`. This PRNG is also the default implementation of recent versions of Lua (not LuaJIT, see below) and GFortran. See https://prng.di.unimi.it for details about xoshiro/xoroshiro PRNGs.
 
-The module :code:`math` of LuaJIT provides an implementation of the *Tausworthe* PRNG [TAUSWTH96]_, which has a period of :math:`2^{223}` but doesn't support long jumps.
+The module :code:`math` of LuaJIT provides an implementation of the *Tausworthe* PRNG [TAUSWTH96]_, which has a period of :math:`2^{223}` but doesn't support long jumps, and hence uses a single global PRNG.
 
 The module :code:`gmath` also provides an implementation of the simple global PRNG of MAD-X for comparison.
 
 It's worth mentionning that none of these PRNG are cryptographically secure generators, but MAD-X PRNG excepted, they are nevertheless superior to the commonly used *Mersenne Twister* PRNG [MERTWIS98]_.
 
-All PRNG *functions* (except constructors) are wrappers around PRNG *methods* and expect an optional PRNG :code:`rng_` as first parameter. If this optional PRNG :code:`rng_` is omitted, i.e. not provided, the current global PRNG is used instead.
+All PRNG *functions* (except constructors) are wrappers around PRNG *methods* with the same name, and expect an optional PRNG :code:`rng_` as first parameter. If this optional PRNG :code:`rng_` is omitted, i.e. not provided, these functions will use the current global PRNG by default.
 
 .. function:: randnew ()
 
@@ -278,27 +278,29 @@ All PRNG *functions* (except constructors) are wrappers around PRNG *methods* an
 .. function:: rand (rng_)
               rng:rand ()
 
-   Return a new peuso-random number in the range ``[0, 1)`` from the PRNG :code:`rng`.
+   Return a new pseudo-random number in the range ``[0, 1)`` from the PRNG :code:`rng`.
 
 .. function:: randi (rng_)
               rng:randi ()
               
-   Return a new peuso-random number in the range ``[0, ULLONG_MAX]`` (``[0, UINT_MAX]`` for MAD-X PRNGs) from the PRNG :code:`rng`.
+   Return a new pseudo-random number in the range ``[0, ULLONG_MAX]`` (``[0, UINT_MAX]`` for MAD-X PRNG) from the PRNG :code:`rng`.
 
 .. function:: randn (rng_)
               rng:randn ()
 
-   Return a new peuso-random gaussian number in the range ``[-inf, +inf]`` from the PRNG :code:`rng` by using the Box-Muller transformation (Marsaglia's polar form) to a peuso-random number in the range ``[0, 1)``.
+   Return a new pseudo-random gaussian number in the range ``[-inf, +inf]`` from the PRNG :code:`rng` by using the Box-Muller transformation (Marsaglia's polar form) to a peuso-random number in the range ``[0, 1)``.
 
 .. function:: randtn (rng_, cut_)
               rng:randtn (cut_)
 
-   Return a new peuso-random gaussian number in the range ``[-cut_, +cut_]`` from the PRNG :code:`rng` by using the *Box-Muller transformation* (Marsaglia's polar form) on uniformly distributed peuso-random numbers. If the optional parameter :code:`cut_` is omitted, it behaves like :mthd:`randn`.
+   Return a new truncated pseudo-random gaussian number in the range ``[-cut_, +cut_]`` from the PRNG :code:`rng` by using iteratively the method :func:`rng:randn`. This simple algorithm is actually used for compatibility with MAD-X.
+   Default: :code:`cut_ = +inf`.
 
 .. function:: randp (rng_, lmb_)
               rng:randp (lmb_)
 
-   Return a new peuso-random poisson number in the range ``[0, +inf]`` from the PRNG :code:`rng` with parameter :math:`\lambda > 0` (:code:`lmb_`, default ``1``) by using the *inverse transform sampling* method on peuso-random gaussian numbers.
+   Return a new pseudo-random poisson number in the range ``[0, +inf]`` from the PRNG :code:`rng` with parameter :math:`\lambda > 0` by using the *inverse transform sampling* method on peuso-random gaussian numbers.
+   Default: :code:`lmb_ = 1`.
 
 C API
 -----
