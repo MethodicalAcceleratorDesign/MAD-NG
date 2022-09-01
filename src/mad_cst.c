@@ -28,13 +28,15 @@
 const num_t mad_cst_EPS      = DBL_EPSILON;
 const num_t mad_cst_TINY     = DBL_MIN;
 const num_t mad_cst_HUGE     = DBL_MAX;
-const num_t mad_cst_INFINITY = INFINITY;
+const num_t mad_cst_INF      = INFINITY;
+const num_t mad_cst_NAN      = NAN;
 
 const num_t mad_cst_E        = M_E;
 const num_t mad_cst_LOG2E    = M_LOG2E;
 const num_t mad_cst_LOG10E   = M_LOG10E;
 const num_t mad_cst_LN2      = M_LN2;
 const num_t mad_cst_LN10     = M_LN10;
+const num_t mad_cst_LNPI     = M_LNPI;
 const num_t mad_cst_PI       = M_PI;
 const num_t mad_cst_2PI      = M_2PI;
 const num_t mad_cst_PI_2     = M_PI_2;
@@ -69,3 +71,4 @@ const num_t mad_cst_PMASS    = P_PMASS;
 const num_t mad_cst_MUMASS   = P_MUMASS;
 const num_t mad_cst_DEUMASS  = P_DEUMASS;
 const num_t mad_cst_ERADIUS  = P_ERADIUS;
+const num_t mad_cst_ALPHAEM  = P_ALPHAEM;
