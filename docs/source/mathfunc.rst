@@ -247,11 +247,10 @@ All PRNG *functions* (except constructors) are wrappers around PRNG *methods* wi
 
    Set the current global PRNG to :code:`rng` (if provided) and return the previous global PRNG.
 
-.. function:: randseed (rng_, seed_)
-              rng:randseed (seed_)
+.. function:: randseed (rng_, seed)
+              rng:randseed (seed)
 
-   Set the seed of the PRNG :code:`rng` to :code:`seed_`.
-   Default: :code:`seed_ = os.clock()`. 
+   Set the seed of the PRNG :code:`rng` to :code:`seed`.
 
 .. function:: rand (rng_)
               rng:rand ()
