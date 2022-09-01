@@ -3,22 +3,23 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to MAD-NG's documentation!
-==================================
+Welcome to MAD-NG's Reference Manual!
+=====================================
 
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
-   /sequences.rst 
    /types.rst
-   /utility.rst
+
    /elements.rst
-   /track.rst
+   /sequences.rst
    /survey.rst
-   /elemfunc.rst
+   /track.rst
 
-
+   /funcutil.rst
+   /utilfunc.rst
+   /mathfunc.rst
 
 Indices and tables
 ==================
