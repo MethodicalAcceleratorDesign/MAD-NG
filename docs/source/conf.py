@@ -1,5 +1,8 @@
 import sys, os, sphinx_rtd_theme
 sys.path.append(os.path.abspath("./_ext")) #Add to path here!
+sys.path.append(os.path.abspath("./_ext/sphinx-mad-domain")) #Add to path here!
+exclude_patterns = ["*/doc/*.rst"]
+
 
 # Configuration file for the Sphinx documentation builder.
 # For the full list of built-in configuration values, see the documentation:
@@ -17,7 +20,8 @@ release = '0.9.6'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ["customRoles"]
+c_extra_keywords = ['alignas', 'alignof', 'bool', 'imaginary', 'noreturn', 'static_assert', 'thread_local']
+extensions = ["customRoles", "sphinx-mad-domain"]
 
 source_suffix = {
     '.rst': 'restructuredtext',
