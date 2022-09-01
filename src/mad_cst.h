@@ -33,13 +33,15 @@
 extern const num_t mad_cst_EPS     ;  // minimum value such that 1+eps > 1
 extern const num_t mad_cst_TINY    ;  // minimum value above 0
 extern const num_t mad_cst_HUGE    ;  // maximum value below inf
-extern const num_t mad_cst_INFINITY;  // maximum representable value inf
+extern const num_t mad_cst_INF     ;  // maximum representable value inf
+extern const num_t mad_cst_NAN     ;  // Not A Number
 
 extern const num_t mad_cst_E       ;  // e
 extern const num_t mad_cst_LOG2E   ;  // log_2 e
 extern const num_t mad_cst_LOG10E  ;  // log_10 e
 extern const num_t mad_cst_LN2     ;  // log_e 2
 extern const num_t mad_cst_LN10    ;  // log_e 10
+extern const num_t mad_cst_LNPI    ;  // log_e pi
 extern const num_t mad_cst_PI      ;  // pi
 extern const num_t mad_cst_2PI     ;  // 2*pi
 extern const num_t mad_cst_PI_2    ;  // pi/2
@@ -75,15 +77,16 @@ extern const num_t mad_cst_PMASS   ;  // [GeV]
 extern const num_t mad_cst_MUMASS  ;  // [GeV]
 extern const num_t mad_cst_DEUMASS ;  // [GeV]
 extern const num_t mad_cst_ERADIUS ;  // [m]
+extern const num_t mad_cst_ALPHAEM ;
 
 // --- math constants ---------------------------------------------------------o
 
 #ifndef M_E         // standard constants
-#define M_E         2.71828182845904523536028747135266250   // e
-#define M_LOG2E     1.44269504088896340735992468100189214   // log_2 e
-#define M_LOG10E    0.434294481903251827651128918916605082  // log_10 e
-#define M_LN2       0.693147180559945309417232121458176568  // log_e 2
-#define M_LN10      2.30258509299404568401799145468436421   // log_e 10
+#define M_E         2.71828182845904523536028747135266250   // e, exp(1)
+#define M_LOG2E     1.44269504088896340735992468100189214   // log_2(e)
+#define M_LOG10E    0.434294481903251827651128918916605082  // log_10(e)
+#define M_LN2       0.693147180559945309417232121458176568  // log_e(2)
+#define M_LN10      2.30258509299404568401799145468436421   // log_e(10)
 #define M_PI        3.14159265358979323846264338327950288   // pi
 #define M_PI_2      1.57079632679489661923132169163975144   // pi/2
 #define M_PI_4      0.785398163397448309615660845819875721  // pi/4
@@ -95,6 +98,7 @@ extern const num_t mad_cst_ERADIUS ;  // [m]
 #endif
                     // extra constants
 #define M_2PI       6.28318530717958647692528676655900577   // 2*pi
+#define M_LNPI      1.14472988584940017414342735135305871   // log_e(pi)
 #define M_SQRTPI    1.77245385090551602729816748334114518   // sqrt(pi)
 #define M_1_SQRTPI  0.564189583547756286948079451560772586  // 1/sqrt(pi)
 #define M_SQRT3     1.73205080756887729352744634150587237   // sqrt(3)
@@ -106,40 +110,42 @@ extern const num_t mad_cst_ERADIUS ;  // [m]
 
 // --- physics constants ------------------------------------------------------o
 
+#define P_MINLEN    1e-10  // [m]   Minimum tolerance on lengths
+#define P_MINANG    1e-10  // [rad] Minimum tolerance on angles
+#define P_MINSTR    1e-10  // [1/m] Minimum tolerance on strengths
+
 // https://physics.nist.gov/cuu/pdf/wall_2018.pdf
-#ifndef P_CLIGHT                           // Source: CODATA 2018
-#define P_CLIGHT     299792458.0           // [m/s]   Speed of light in vacuum
-#define P_CLIGHT2   (P_CLIGHT*P_CLIGHT)    //         c^2
-#define P_MU0       (4e-7*M_PI)            // [T.m/A] Permeability of vacuum
-#define P_EPSILON0  (1/(P_MU0*P_CLIGHT2))  // [F/m]   Permittivity of vacuum
-#define P_QELECT     1.602176634e-19       // [C]     Elementary electric charge
-#define P_HBAR      (6.582119569e-16*1e-9) // [GeV.s] Reduced Plack's constant
-#define P_AMASS     (931.49410242   *1e-3) // [GeV]   Unified atomic mass
-#define P_EMASS     (0.51099895000  *1e-3) // [GeV]   Electron energy-mass
-#define P_PMASS     (938.27208816   *1e-3) // [GeV]   Proton energy-mass
-#define P_NMASS     (939.56542052   *1e-3) // [GeV]   Neutron energy-mass
-#define P_MUMASS    (105.6583755    *1e-3) // [GeV]   Muon energy-mass
-#define P_DEUMASS   (1875.61294257  *1e-3) // [GeV]   Deuteron energy-mass
-#define P_ERADIUS    2.8179403262e-15      // [m]     Classical electron radius
-#define P_ALPHAEM    7.2973525693e-3       //         Fine-structure constant
+#ifndef P_CLIGHT                                  // Source: CODATA 2018
+#define P_CLIGHT     299792458.0                  // [m/s]   Speed of light in vacuum
+#define P_MU0       (4e-7*M_PI)                   // [T.m/A] Permeability of vacuum
+#define P_EPSILON0  (1/(P_MU0*P_CLIGHT*P_CLIGHT)) // [F/m]   Permittivity of vacuum
+#define P_QELECT     1.602176634e-19              // [C]     Elementary electric charge
+#define P_HBAR      (6.582119569e-16*1e-9)        // [GeV.s] Reduced Plack's constant
+#define P_AMASS     (931.49410242   *1e-3)        // [GeV]   Unified atomic mass
+#define P_EMASS     (0.51099895000  *1e-3)        // [GeV]   Electron energy-mass
+#define P_PMASS     (938.27208816   *1e-3)        // [GeV]   Proton energy-mass
+#define P_NMASS     (939.56542052   *1e-3)        // [GeV]   Neutron energy-mass
+#define P_MUMASS    (105.6583755    *1e-3)        // [GeV]   Muon energy-mass
+#define P_DEUMASS   (1875.61294257  *1e-3)        // [GeV]   Deuteron energy-mass
+#define P_ERADIUS    2.8179403262e-15             // [m]     Classical electron radius
+#define P_ALPHAEM    7.2973525693e-3              //         Fine-structure constant
 #endif
 
 // https://physics.nist.gov/cuu/pdf/wall_2014.pdf
-#ifndef P_CLIGHT                           // Source: CODATA 2014
-#define P_CLIGHT    299792458.0            // [m/s]   Speed of light in vacuum
-#define P_CLIGHT2   (P_CLIGHT*P_CLIGHT)    //         c^2
-#define P_MU0       (4e-7*M_PI)            // [T.m/A] Permeability of vacuum
-#define P_EPSILON0  (1/(P_MU0*P_CLIGHT2))  // [F/m]   Permittivity of vacuum
-#define P_QELECT    1.6021766208e-19       // [C]     Elementary electric charge
-#define P_HBAR      6.582119514e-25        // [GeV.s] Reduced Plack's constant
-#define P_AMASS     0.9314940954           // [GeV]   Unified atomic mass
-#define P_EMASS     5.109989461e-4         // [GeV]   Electron mass
-#define P_PMASS     0.9382720813           // [GeV]   Proton mass
-#define P_NMASS     0.9395654133           // [GeV]   Neutron mass
-#define P_MUMASS    0.1056583745           // [GeV]   Muon mass
-#define P_DEUMASS   1.875612928            // [GeV]   Deuteron mass
-#define P_ERADIUS   2.8179403227e-15       // [m]     Classical electron radius
-#define P_ALPHAEM   7.2973525693e-3        //         Fine-structure constant
+#ifndef P_CLIGHT                                  // Source: CODATA 2014
+#define P_CLIGHT    299792458.0                   // [m/s]   Speed of light in vacuum
+#define P_MU0       (4e-7*M_PI)                   // [T.m/A] Permeability of vacuum
+#define P_EPSILON0  (1/(P_MU0*P_CLIGHT*P_CLIGHT)) // [F/m]   Permittivity of vacuum
+#define P_QELECT    1.6021766208e-19              // [C]     Elementary electric charge
+#define P_HBAR      6.582119514e-25               // [GeV.s] Reduced Plack's constant
+#define P_AMASS     0.9314940954                  // [GeV]   Unified atomic mass
+#define P_EMASS     5.109989461e-4                // [GeV]   Electron mass
+#define P_PMASS     0.9382720813                  // [GeV]   Proton mass
+#define P_NMASS     0.9395654133                  // [GeV]   Neutron mass
+#define P_MUMASS    0.1056583745                  // [GeV]   Muon mass
+#define P_DEUMASS   1.875612928                   // [GeV]   Deuteron mass
+#define P_ERADIUS   2.8179403227e-15              // [m]     Classical electron radius
+#define P_ALPHAEM   7.2973525693e-3               //         Fine-structure constant
 #endif
 
 // ----------------------------------------------------------------------------o
