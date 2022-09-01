@@ -17,9 +17,8 @@ Welcome to MAD-NG's Reference Manual!
    /survey.rst
    /track.rst
 
-   /funcutil.rst
-   /utilfunc.rst
-   /mathfunc.rst
+   /mathfuncs.rst
+   /miscellaneous.rst
 
 Indices and tables
 ==================

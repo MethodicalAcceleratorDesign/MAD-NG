@@ -1,11 +1,11 @@
 .. index::
-   single: constants and functions
+   constants and functions
 
 ***********************
 Constants and Functions
 ***********************
 
-This chapter describes elementary constants and functions provided by the modules :code:`MAD.constant` and :code:`MAD.gmath`. The module :code:`gmath` extends the standard LUA module :code:`math` with *generic* functions working on any types that support the methods with the same names. For example, the code :code:`gmath.sin(a)` will call :code:`math.sin(a)` if :code:`a` is a :type:`number`, otherwise it will call the method :code:`a:sin()`, i.e. delegate the invocation to :code:`a`. This is how MAD-NG handles several types like :type:`numbers`, :type:`complex` number and :type:`TPSA` within a single *polymorphic* code that expects scalar-like behavior.
+This chapter describes some constants and functions provided by the modules :mod:`MAD.constant` and :mod:`MAD.gmath`. The module :mod:`gmath` extends the standard LUA module :mod:`math` with *generic* functions working on any types that support the methods with the same names. For example, the code :func:`gmath.sin(a)` will call :func:`math.sin(a)` if :arg:`a` is a :type:`number`, otherwise it will call the method :meth:`a:sin()`, i.e. delegate the invocation to :obj:`a`. This is how MAD-NG handles several types like :type:`numbers`, :type:`complex` number and :type:`TPSA` within a single *polymorphic* code that expects scalar-like behavior.
 
 Mathematical Constants
 ======================
@@ -89,113 +89,113 @@ Mathematical Functions
 Generic Real-like Functions
 ---------------------------
 
-Real-like generic functions forward the call to the method of the same name from the first argument when the later is not a :type:`number`. The C functions column lists the C implementation used when the argument is a :type:`number` and the implementation does not rely on the standard :code:`math` module.
+Real-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`. The C functions column lists the C implementation used when the argument is a :type:`number` and the implementation does not rely on the standard :code:`math` module.
 
 ======================  =======================================================  =============
 Functions               Return values                                            C functions
 ======================  =======================================================  =============
-:code:`abs(x)`          :math:`|x|`
-:code:`acos(x)`         :math:`\cos^{-1} x`
-:code:`acosh(x)`        :math:`\cosh^{-1} x`                                     :func:`acosh`
-:code:`acot(x)`         :math:`\cot^{-1} x`
-:code:`acoth(x)`        :math:`\coth^{-1} x`                                     :func:`atanh`
-:code:`asin(x)`         :math:`\sin^{-1} x`
-:code:`asinc(x)`        :math:`\frac{\sin^{-1} x}{x}`                            :func:`mad_num_asinc`
-:code:`asinh(x)`        :math:`\sinh^{-1} x`                                     :func:`asinh`
-:code:`asinhc(x)`       :math:`\frac{\sinh^{-1} x}{x}`                           :func:`mad_num_asinhc`
-:code:`atan(x)`         :math:`\tan^{-1} x`
-:code:`atan2(x,y)`      :math:`\tan^{-1} \frac{x}{y}`
-:code:`atanh(x)`        :math:`\tanh^{-1} x`                                     :func:`atanh`
-:code:`ceil(x)`         :math:`\operatorname{ceil}(x)`
-:code:`cos(x)`          :math:`\cos x`
-:code:`cosh(x)`         :math:`\cosh x`
-:code:`cot(x)`          :math:`\cot x`
-:code:`coth(x)`         :math:`\coth x`
-:code:`exp(x)`          :math:`\exp x`
-:code:`floor(x)`        :math:`\operatorname{floor}(x)`
-:code:`fact(n)`         :math:`n!`                                               :func:`mad_num_fact` [#]_
-:code:`frac(x)`         :math:`\operatorname{frac}(x)`
-:code:`hypot(x,y)`      :math:`\sqrt{x^2+y^2}`                                   :func:`hypot`
-:code:`hypot3(x,y,z)`   :math:`\sqrt{x^2+y^2+z^2}`                               :func:`hypot`
-:code:`invsqrt(x,v_)`   :math:`\frac{v}{\sqrt x}`
-:code:`invfact(n)`      :math:`\frac{1}{n!}`                                     :func:`mad_num_invfact`
-:code:`log(x)`          :math:`\log x`
-:code:`log10(x)`        :math:`\log_{10} x`
-:code:`pow(x,y)`        :math:`x^y`
-:code:`powi(x,n)`       :math:`x^n`                                              :func:`mad_num_powi`
-:code:`rangle(a,r)`     :math:`a + 2\pi \operatorname{round}(\frac{r-a}{2\pi})`  :func:`round`
-:code:`round(x)`        :math:`\operatorname{round}(x)`                          :func:`round`
-:code:`sign(x)`         :math:`-1, 0\text{ or }1`                                :func:`mad_num_sign`
-:code:`sign1(x)`        :math:`-1\text{ or }1`                                   :func:`mad_num_sign1` [#]_
-:code:`sin(x)`          :math:`\sin x`
-:code:`sinc(x)`         :math:`\frac{\sin x}{x}`                                 :func:`mad_num_sinc`
-:code:`sinh(x)`         :math:`\sinh x`
-:code:`sinhc(x)`        :math:`\frac{\sinh x}{x}`                                :func:`mad_num_sinhc`
-:code:`sqrt(x)`         :math:`\sqrt{x}`
-:code:`tan(x)`          :math:`\tan x`
-:code:`tanh(x)`         :math:`\tanh x`
-:code:`lgamma(x,tol)`   :math:`\ln|\Gamma(x)|`                                   :func:`lgamma`
-:code:`tgamma(x,tol)`   :math:`\Gamma(x)`                                        :func:`tgamma`
-:code:`trunc(x)`        :math:`\operatorname{trunc}(x)`
-:code:`unit(x)`         :math:`\frac{x}{|x|}`
+:func:`abs(x)`          :math:`|x|`
+:func:`acos(x)`         :math:`\cos^{-1} x`
+:func:`acosh(x)`        :math:`\cosh^{-1} x`                                     :c:func:`acosh`
+:func:`acot(x)`         :math:`\cot^{-1} x`
+:func:`acoth(x)`        :math:`\coth^{-1} x`                                     :c:func:`atanh`
+:func:`asin(x)`         :math:`\sin^{-1} x`
+:func:`asinc(x)`        :math:`\frac{\sin^{-1} x}{x}`                            :c:func:`mad_num_asinc`
+:func:`asinh(x)`        :math:`\sinh^{-1} x`                                     :c:func:`asinh`
+:func:`asinhc(x)`       :math:`\frac{\sinh^{-1} x}{x}`                           :c:func:`mad_num_asinhc`
+:func:`atan(x)`         :math:`\tan^{-1} x`
+:func:`atan2(x,y)`      :math:`\tan^{-1} \frac{x}{y}`
+:func:`atanh(x)`        :math:`\tanh^{-1} x`                                     :c:func:`atanh`
+:func:`ceil(x)`         :math:`\operatorname{ceil}(x)`
+:func:`cos(x)`          :math:`\cos x`
+:func:`cosh(x)`         :math:`\cosh x`
+:func:`cot(x)`          :math:`\cot x`
+:func:`coth(x)`         :math:`\coth x`
+:func:`exp(x)`          :math:`\exp x`
+:func:`floor(x)`        :math:`\operatorname{floor}(x)`
+:func:`fact(n)`         :math:`n!`                                               :c:func:`mad_num_fact` [#]_
+:func:`frac(x)`         :math:`\operatorname{frac}(x)`
+:func:`hypot(x,y)`      :math:`\sqrt{x^2+y^2}`                                   :c:func:`hypot`
+:func:`hypot3(x,y,z)`   :math:`\sqrt{x^2+y^2+z^2}`                               :c:func:`hypot`
+:func:`invsqrt(x,v_)`   :math:`\frac{v}{\sqrt x}`
+:func:`invfact(n)`      :math:`\frac{1}{n!}`                                     :c:func:`mad_num_invfact`
+:func:`log(x)`          :math:`\log x`
+:func:`log10(x)`        :math:`\log_{10} x`
+:func:`pow(x,y)`        :math:`x^y`
+:func:`powi(x,n)`       :math:`x^n`                                              :c:func:`mad_num_powi`
+:func:`rangle(a,r)`     :math:`a + 2\pi \operatorname{round}(\frac{r-a}{2\pi})`  :c:func:`round`
+:func:`round(x)`        :math:`\operatorname{round}(x)`                          :c:func:`round`
+:func:`sign(x)`         :math:`-1, 0\text{ or }1`                                :c:func:`mad_num_sign`
+:func:`sign1(x)`        :math:`-1\text{ or }1`                                   :c:func:`mad_num_sign1` [#]_
+:func:`sin(x)`          :math:`\sin x`
+:func:`sinc(x)`         :math:`\frac{\sin x}{x}`                                 :c:func:`mad_num_sinc`
+:func:`sinh(x)`         :math:`\sinh x`
+:func:`sinhc(x)`        :math:`\frac{\sinh x}{x}`                                :c:func:`mad_num_sinhc`
+:func:`sqrt(x)`         :math:`\sqrt{x}`
+:func:`tan(x)`          :math:`\tan x`
+:func:`tanh(x)`         :math:`\tanh x`
+:func:`lgamma(x,tol)`   :math:`\ln|\Gamma(x)|`                                   :c:func:`lgamma`
+:func:`tgamma(x,tol)`   :math:`\Gamma(x)`                                        :c:func:`tgamma`
+:func:`trunc(x)`        :math:`\operatorname{trunc}(x)`
+:func:`unit(x)`         :math:`\frac{x}{|x|}`
 ======================  =======================================================  =============
 
 Generic Complex-like Functions
 ------------------------------
 
-Complex-like generic functions forward the call to the method of the same name from the first argument when the later is not a :type:`number`, otherwise it implements a real-like compatibility layer using the equivalent representation :math:`z=x+0i`.
+Complex-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`, otherwise it implements a real-like compatibility layer using the equivalent representation :math:`z=x+0i`.
 
 ====================  ==================================
 Functions             Return values
 ====================  ==================================
-:code:`cabs(z)`       :math:`|z|`
-:code:`carg(z)`       :math:`\arg z`
-:code:`conj(z)`       :math:`z^*`
-:code:`cplx(x,y)`     :math:`x+i\,y`
-:code:`imag(z)`       :math:`\Im(z)`
-:code:`polar(z)`      :math:`|z|\,e^{i \arg z}`
-:code:`proj(z)`       :math:`\operatorname{proj}(z)`
-:code:`real(z)`       :math:`\Re(z)`
-:code:`rect(z)`       :math:`\Re(z)\cos \Im(z)+i\,\Re(z)\sin \Im(z)`
-:code:`reim(z)`       :math:`\Re(z), \Im(z)`
+:func:`cabs(z)`       :math:`|z|`
+:func:`carg(z)`       :math:`\arg z`
+:func:`conj(z)`       :math:`z^*`
+:func:`cplx(x,y)`     :math:`x+i\,y`
+:func:`imag(z)`       :math:`\Im(z)`
+:func:`polar(z)`      :math:`|z|\,e^{i \arg z}`
+:func:`proj(z)`       :math:`\operatorname{proj}(z)`
+:func:`real(z)`       :math:`\Re(z)`
+:func:`rect(z)`       :math:`\Re(z)\cos \Im(z)+i\,\Re(z)\sin \Im(z)`
+:func:`reim(z)`       :math:`\Re(z), \Im(z)`
 ====================  ==================================
 
 Generic Error-like Functions
 ----------------------------
 
-Error-like generic functions forward the call to the method of the same name from the first argument when the later is not a :type:`number`, otherwise it calls C wrappers to the corresponding functions from the `Faddeeva library <http://ab-initio.mit.edu/wiki/index.php/Faddeeva_Package>`_ from the MIT (see :file:`mad_num.c`).
+Error-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`, otherwise it calls C wrappers to the corresponding functions from the `Faddeeva library <http://ab-initio.mit.edu/wiki/index.php/Faddeeva_Package>`_ from the MIT (see :file:`mad_num.c`).
 
 ======================  ==========================================================  ======================
 Functions               Return values                                               C functions  
 ======================  ==========================================================  ======================
-:code:`erf(z,tol_)`     :math:`\frac{2}{\sqrt\pi}\int_0^z e^{-t^2} dt`              :func:`mad_num_erf`      
-:code:`erfc(z,tol_)`    :math:`1-\operatorname{erf}(z)`                             :func:`mad_num_erfc`     
-:code:`erfi(z,tol_)`    :math:`-i\operatorname{erf}(i z)`                           :func:`mad_num_erfi`     
-:code:`erfcx(z,tol_)`   :math:`e^{z^2}\operatorname{erfc}(z)`                       :func:`mad_num_erfcx`    
-:code:`wf(z,tol_)`      :math:`e^{-z^2}\operatorname{erfc}(-i z)`                   :func:`mad_num_wf`       
-:code:`dawson(z,tol_)`  :math:`\frac{-i\sqrt\pi}{2}e^{-z^2}\operatorname{erf}(iz)`  :func:`mad_num_dawson`
+:func:`erf(z,tol_)`     :math:`\frac{2}{\sqrt\pi}\int_0^z e^{-t^2} dt`              :c:func:`mad_num_erf`      
+:func:`erfc(z,tol_)`    :math:`1-\operatorname{erf}(z)`                             :c:func:`mad_num_erfc`     
+:func:`erfi(z,tol_)`    :math:`-i\operatorname{erf}(i z)`                           :c:func:`mad_num_erfi`     
+:func:`erfcx(z,tol_)`   :math:`e^{z^2}\operatorname{erfc}(z)`                       :c:func:`mad_num_erfcx`    
+:func:`wf(z,tol_)`      :math:`e^{-z^2}\operatorname{erfc}(-i z)`                   :c:func:`mad_num_wf`       
+:func:`dawson(z,tol_)`  :math:`\frac{-i\sqrt\pi}{2}e^{-z^2}\operatorname{erf}(iz)`  :c:func:`mad_num_dawson`
 ======================  ==========================================================  ======================
 
 Generic MapFold-like Functions
 ------------------------------
 
-MapFold-like generic functions (also known as MapReduce) forward the call to the method of the same name from the first argument when the later is not a :type:`number`. These functions are useful when used as high-order functions passed to methods :func:`map2`, :func:`foldl` (fold left) or :func:`foldr` (fold right) of containers like vectors and matrices.
+MapFold-like generic functions (also known as MapReduce) forward the call to the method of the same name from the first argument when the latter is not a :type:`number`. These functions are useful when used as high-order functions passed to methods :meth:`:map2()`, :meth:`:foldl()` (fold left) or :meth:`:foldr()` (fold right) of containers like vectors and matrices.
 
 ====================  ========================
 Functions             Return values
 ====================  ========================
-:code:`sumsqr(x,y)`   :math:`x^2 + y^2`
-:code:`sumabs(x,y)`   :math:`|x| + |y|`
-:code:`minabs(x,y)`   :math:`\min(|x|, |y|)`
-:code:`maxabs(x,y)`   :math:`\max(|x|, |y|)`
-:code:`sumysqr(x,y)`  :math:`x + y^2`
-:code:`sumyabs(x,y)`  :math:`x + |y|`
-:code:`minyabs(x,y)`  :math:`\min(x, |y|)`
-:code:`maxyabs(x,y)`  :math:`\max(x, |y|)`
-:code:`sumxsqr(x,y)`  :math:`x^2 + y`
-:code:`sumxabs(x,y)`  :math:`|x| + y`
-:code:`minxabs(x,y)`  :math:`\min(|x|, y)`
-:code:`maxxabs(x,y)`  :math:`\max(|x|, y)`
+:func:`sumsqr(x,y)`   :math:`x^2 + y^2`
+:func:`sumabs(x,y)`   :math:`|x| + |y|`
+:func:`minabs(x,y)`   :math:`\min(|x|, |y|)`
+:func:`maxabs(x,y)`   :math:`\max(|x|, |y|)`
+:func:`sumysqr(x,y)`  :math:`x + y^2`
+:func:`sumyabs(x,y)`  :math:`x + |y|`
+:func:`minyabs(x,y)`  :math:`\min(x, |y|)`
+:func:`maxyabs(x,y)`  :math:`\max(x, |y|)`
+:func:`sumxsqr(x,y)`  :math:`x^2 + y`
+:func:`sumxabs(x,y)`  :math:`|x| + y`
+:func:`minxabs(x,y)`  :math:`\min(|x|, y)`
+:func:`maxxabs(x,y)`  :math:`\max(|x|, y)`
 ====================  ========================
 
 Functions for Circular Sector
@@ -214,26 +214,26 @@ where :math:`r` stands for the radius and :math:`a` for the angle of the `Circul
 =====================  ==========================
 Functions              Return values
 =====================  ==========================
-:code:`arc2cord(l,a)`  :math:`l_{\text{arc}} \operatorname{sinc} \frac{a}{2}`
-:code:`arc2len(l,a)`   :math:`l_{\text{arc}} \operatorname{sinc} \frac{a}{2}\, \cos a`
-:code:`cord2arc(l,a)`  :math:`\frac{l_{\text{cord}}}{\operatorname{sinc} \frac{a}{2}}`
-:code:`cord2len(l,a)`  :math:`l_{\text{cord}} \cos a`
-:code:`len2arc(l,a)`   :math:`\frac{l}{\operatorname{sinc} \frac{a}{2}\, cos a}`
-:code:`len2cord(l,a)`  :math:`\frac{l}{\cos a}`
+:func:`arc2cord(l,a)`  :math:`l_{\text{arc}} \operatorname{sinc} \frac{a}{2}`
+:func:`arc2len(l,a)`   :math:`l_{\text{arc}} \operatorname{sinc} \frac{a}{2}\, \cos a`
+:func:`cord2arc(l,a)`  :math:`\frac{l_{\text{cord}}}{\operatorname{sinc} \frac{a}{2}}`
+:func:`cord2len(l,a)`  :math:`l_{\text{cord}} \cos a`
+:func:`len2arc(l,a)`   :math:`\frac{l}{\operatorname{sinc} \frac{a}{2}\, cos a}`
+:func:`len2cord(l,a)`  :math:`\frac{l}{\cos a}`
 =====================  ==========================
 
 Pseudo-Random Number Generators
 ===============================
 
-The module :code:`gmath` provides an implementation of the *Xoshiro256\*\**  variant of the `XorShift <https://en.wikipedia.org/wiki/Xorshift>`_ PRNG familly [XORSHFT03]_, an all-purpose, rock-solid generator with a period of :math:`2^{256}-1` that supports long jumps of period :math:`2^{128}`. This PRNG is also the default implementation of recent versions of Lua (not LuaJIT, see below) and GFortran. See https://prng.di.unimi.it for details about xoshiro/xoroshiro PRNGs.
+The module :mod:`gmath` provides an implementation of the *Xoshiro256\*\**  variant of the `XorShift <https://en.wikipedia.org/wiki/Xorshift>`_ PRNG familly [XORSHFT03]_, an all-purpose, rock-solid generator with a period of :math:`2^{256}-1` that supports long jumps of period :math:`2^{128}`. This PRNG is also the default implementation of recent versions of Lua (not LuaJIT, see below) and GFortran. See https://prng.di.unimi.it for details about xoshiro/xoroshiro PRNGs.
 
-The module :code:`math` of LuaJIT provides an implementation of the *Tausworthe* PRNG [TAUSWTH96]_, which has a period of :math:`2^{223}` but doesn't support long jumps, and hence uses a single global PRNG.
+The module :mod:`math` of LuaJIT provides an implementation of the *Tausworthe* PRNG [TAUSWTH96]_, which has a period of :math:`2^{223}` but doesn't support long jumps, and hence uses a single global PRNG.
 
-The module :code:`gmath` also provides an implementation of the simple global PRNG of MAD-X for comparison.
+The module :mod:`gmath` also provides an implementation of the simple global PRNG of MAD-X for comparison.
 
 It's worth mentionning that none of these PRNG are cryptographically secure generators, but MAD-X PRNG excepted, they are nevertheless superior to the commonly used *Mersenne Twister* PRNG [MERTWIS98]_.
 
-All PRNG *functions* (except constructors) are wrappers around PRNG *methods* with the same name, and expect an optional PRNG :code:`rng_` as first parameter. If this optional PRNG :code:`rng_` is omitted, i.e. not provided, these functions will use the current global PRNG by default.
+All PRNG *functions* (except constructors) are wrappers around PRNG *methods* with the same name, and expect an optional PRNG :obj:`rng_` as first parameter. If this optional PRNG :obj:`rng_` is omitted, i.e. not provided, these functions will use the current global PRNG by default.
 
 .. function:: randnew ()
 
@@ -245,38 +245,38 @@ All PRNG *functions* (except constructors) are wrappers around PRNG *methods* wi
 
 .. function:: randset (rng_)
 
-   Set the current global PRNG to :code:`rng` (if provided) and return the previous global PRNG.
+   Set the current global PRNG to :obj:`rng` (if provided) and return the previous global PRNG.
 
 .. function:: randseed (rng_, seed)
               rng:randseed (seed)
 
-   Set the seed of the PRNG :code:`rng` to :code:`seed`.
+   Set the seed of the PRNG :obj:`rng` to :arg:`seed`.
 
 .. function:: rand (rng_)
               rng:rand ()
 
-   Return a new pseudo-random number in the range ``[0, 1)`` from the PRNG :code:`rng`.
+   Return a new pseudo-random number in the range ``[0, 1)`` from the PRNG :obj:`rng`.
 
 .. function:: randi (rng_)
               rng:randi ()
               
-   Return a new pseudo-random number in the range ``[0, ULLONG_MAX]`` (``[0, UINT_MAX]`` for MAD-X PRNG) from the PRNG :code:`rng`.
+   Return a new pseudo-random number in the range ``[0, ULLONG_MAX]`` (``[0, UINT_MAX]`` for MAD-X PRNG) from the PRNG :obj:`rng`.
 
 .. function:: randn (rng_)
               rng:randn ()
 
-   Return a new pseudo-random gaussian number in the range ``[-inf, +inf]`` from the PRNG :code:`rng` by using the Box-Muller transformation (Marsaglia's polar form) to a peuso-random number in the range ``[0, 1)``.
+   Return a new pseudo-random gaussian number in the range ``[-inf, +inf]`` from the PRNG :obj:`rng` by using the Box-Muller transformation (Marsaglia's polar form) to a peuso-random number in the range ``[0, 1)``.
 
 .. function:: randtn (rng_, cut_)
               rng:randtn (cut_)
 
-   Return a new truncated pseudo-random gaussian number in the range ``[-cut_, +cut_]`` from the PRNG :code:`rng` by using iteratively the method :func:`rng:randn`. This simple algorithm is actually used for compatibility with MAD-X.
+   Return a new truncated pseudo-random gaussian number in the range ``[-cut_, +cut_]`` from the PRNG :obj:`rng` by using iteratively the method :meth:`rng:randn()`. This simple algorithm is actually used for compatibility with MAD-X.
    Default: :code:`cut_ = +inf`.
 
 .. function:: randp (rng_, lmb_)
               rng:randp (lmb_)
 
-   Return a new pseudo-random poisson number in the range ``[0, +inf]`` from the PRNG :code:`rng` with parameter :math:`\lambda > 0` by using the *inverse transform sampling* method on peuso-random numbers.
+   Return a new pseudo-random poisson number in the range ``[0, +inf]`` from the PRNG :obj:`rng` with parameter :math:`\lambda > 0` by using the *inverse transform sampling* method on peuso-random numbers.
    Default: :code:`lmb_ = 1`.
 
 C API
