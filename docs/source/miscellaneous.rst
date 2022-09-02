@@ -1,6 +1,3 @@
 ***********************
-Utility Functions
+Miscellaneous Functions
 ***********************
-
-Operators as Functions
-======================
