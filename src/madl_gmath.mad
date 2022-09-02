@@ -28,7 +28,7 @@ local complex = ffi.typeof 'complex'
 
 local _C, option                                                 in MAD
 local nan, twopi                                                 in MAD.constant
-local first, second                                              in MAD.gfunc
+local second                                                     in MAD.gfunc
 local is_nan, is_nil, is_number, is_positive, wrestrict,
       set_concept, concept                                       in MAD.typeid
 local not_mappable, not_extendable, not_mutable                  in concept
@@ -72,21 +72,6 @@ assert(_C.round(0x1.fffffffffffffp-2) == 0, "round bug near 0.5 detected")
 -- implementation -------------------------------------------------------------o
 
 local gmath = {
-
-  -- generic operators
-  unm      = \x   ->  -x,
-  sqr      = \x   -> x * x,
-  inv      = \x   -> 1 / x,
-  add      = \x,y -> x + y,
-  sub      = \x,y -> x - y,
-  mul      = \x,y -> x * y,
-  div      = \x,y -> x / y,
-  mod      = \x,y -> x % y,
-  pow      = \x,y -> x ^ y,
-  emul     = \x,y,_r -> x:__emul(y,r_), -- .*
-  ediv     = \x,y,_r -> x:__ediv(y,r_), -- ./
-  emod     = \x,y,_r -> x:__emod(y,r_), -- .%
-  epow     = \x,y,_r -> x:__epow(y,r_), -- .^
 
   -- generic functions
   abs      = \x -> type(x) == "number" and abs     (x)     or x:abs    (),
@@ -250,7 +235,6 @@ ffi.cdef [[
 struct xrng_state {
   int s[55];
   idx_t n;
-  num_t x;
 };
 ]]
 
@@ -263,17 +247,17 @@ local is_randgen  = \a -> istype(prng_ctor, a)
 local is_xrandgen = \a -> istype(xrng_ctor, a)
 local is_arandgen = \a -> istype(prng_ctor, a) or istype(xrng_ctor, a)
 
-local randjump  = \r    => _C.mad_num_randjump (r)         r.x = nan return r end
-local randseed  = \r,x  => _C.mad_num_randseed (r, x or 0) r.x = nan return r end
-local xrandseed = \r,x  => _C.mad_num_xrandseed(r, x or 0) r.x = nan return r end
+local randjump  = \r   => _C.mad_num_randjump (r)    r.x = nan return r end
+local randseed  = \r,x => _C.mad_num_randseed (r, x) r.x = nan return r end
+local xrandseed = \r,x => _C.mad_num_xrandseed(r, x)           return r end
 
-local gref = randseed(prng_ctor()) -- reference generator
-local grng = randseed(prng_ctor()) -- global    generator
+local gref = randseed(prng_ctor(), 123456789) -- reference generator
+local grng = randseed(prng_ctor(), 123456789) -- global    generator
 
 local function randnew ()
   local rng = prng_ctor()
   ffi.copy(rng, gref, prng_sz)
-  return rng:randjump()
+  return randjump(rng)
 end
 
 local function xrandnew ()
@@ -306,28 +290,31 @@ local function xrandi (rng)
 end
 
 -- Box-Muller transformation (Marsaglia's polar form)
--- generates pseudo-random gaussian numbers (pairs of, cached)
-local function randn (rng)
+-- generates pairs of pseudo-random gaussian numbers
+local function randn2 (rng)
   local x1, x2, w
-  if rng.x == rng.x then
-    x1, rng.x = rng.x, nan
-    return x1
-  end
   repeat
     x1 = 2*rng:rand() - 1
     x2 = 2*rng:rand() - 1
     w = x1*x1 + x2*x2
   until w < 1
   w = sqrt( -2 * log(w) / w )
-  rng.x = x2*w
-  return x1*w
+  return x1*w, x2*w
+end
+
+local function randn (rng)
+  local x1
+  if rng.x == rng.x
+  then x1, rng.x = rng.x, nan -- use cache
+  else x1, rng.x = randn2(rng)
+  end
+  return x1
 end
 
 -- Truncated normal distribution (TODO: use direct formula for cut < ~0.7)
 local function randtn (rng, cut_)
-  if is_nil(cut_) then return rng:randn() end
-  assert(is_number(cut_), "invalid argument #2 (number expected)")
-  local c, r = abs(cut_)
+  local c, r = abs(cut_ or inf)
+  assert(is_number(c), "invalid argument #2 (number expected)")
   repeat r = rng:randn() until abs(r) <= c
   return r
 end
@@ -372,7 +359,7 @@ local xrng_mt = set_concept({
   __index = {
     rand     = xrand,
     randi    = xrandi,
-    randn    = \r -> first(randn(r),randn(r)), -- MADX discard even trials...
+    randn    = \rng -> ((randn2(rng))), -- MAD-X discard even trials...
     randp    = randp,
     randtn   = randtn,
     randseed = xrandseed,

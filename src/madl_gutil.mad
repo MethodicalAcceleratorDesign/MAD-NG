@@ -24,7 +24,6 @@
 -- locals ---------------------------------------------------------------------o
 
 local ffi = require 'ffi'
-local bit = require 'bit'
 
 local string, table, debug, io, os =
       string, table, debug, io, os
@@ -35,11 +34,9 @@ local type, getmetatable, setmetatable, assert, error, load =
 local ipairs, pairs, tostring, tonumber =
       ipairs, pairs, tostring, tonumber
 
-local option, fun, _C in MAD
-
-local band, bor, bnot, lshift, rshift, rol   in bit
-local totable, iter                          in fun
-local abs, min, max                          in math
+local option, gfunc, fun, _C in MAD
+local totable, iter   in fun
+local abs, min, max   in math
 
 local is_nil, is_boolean, is_number, is_string, is_table,
       is_emptytable, is_value, is_integer, is_natural, is_iterable,
@@ -47,117 +44,11 @@ local is_nil, is_boolean, is_number, is_string, is_table,
       is_copiable, is_sameable, get_metatable, get_metamethod,
       is_openfile, wprotect, set_concept, concept                 in MAD.typeid
 local attributes                                                  in MAD.filesys
+local opstr                                                       in MAD.gfunc
 
 local not_mappable, not_extendable, not_mutable                   in concept
 
 -- implementation -------------------------------------------------------------o
-
--- operators
-
-local operator = {
-
-  -- bits operators (see http://bitop.luajit.org/api.html)
-  tobit   = bit.tobit,
-  tohex   = bit.tohex,
-  bnot    = bit.bnot,
-  bor     = bit.bor,
-  band    = bit.band,
-  bxor    = bit.bxor,
-  bswap   = bit.bswap,
-  lshift  = bit.lshift,
-  rshift  = bit.rshift,
-  arshift = bit.arshift,
-  rol     = bit.rol,
-  ror     = bit.ror,
-
-  -- flag (1-bit) operators
-  bset    = \x,n -> bor (x, rol( 1, n)),
-  bclr    = \x,n -> band(x, rol(-2, n)),
-  btst    = \x,n -> band(x, rol( 1, n)) ~= 0,
-
-  -- flags (32-bit) operators
-  fbit    = \n     -> lshift(1, n),
-  fnot    = \x     -> bnot(x),
-  fset    = \x,... -> bor (x, ...), -- fset(x, f1, f2, ...)
-  fcut    = \x,... -> band(x, ...), -- fcut(x, f1, f2, ...)
-  fclr    = \x,f   -> band(x, bnot(f)),
-  ftst    = \x,f   -> band(x,   f) == f,
-  fall    = \x,... -> band(x, ...) == bor(0, ...),
-  fany    = \x,... -> band(x, ...) ~= 0,
-
-  -- logical operators
-  lfalse  = \    -> false,
-  ltrue   = \    -> true,
-  lbool   = \x   -> not not x,
-  lnot    = \x   -> not x,
-  land    = \x,y -> x and y,
-  lor     = \x,y -> x or y,
-  eq      = \x,y -> x == y,
-  ne      = \x,y -> x ~= y,
-  lt      = \x,y -> x <  y,
-  le      = \x,y -> x <= y,
-  gt      = \x,y -> x >  y,
-  ge      = \x,y -> x >= y,
-
-  -- math operators
-  unm     = \x   ->  -x,
-  sqr     = \x   -> x * x,
-  add     = \x,y -> x + y,
-  sub     = \x,y -> x - y,
-  mul     = \x,y -> x * y,
-  div     = \x,y -> x / y,
-  mod     = \x,y -> x % y,
-  pow     = \x,y -> x ^ y,
-  emul    = \x,y -> x:emul(y), -- .*
-  ediv    = \x,y -> x:ediv(y), -- ./
-  emod    = \x,y -> x:emod(y), -- .%
-  epow    = \x,y -> x:epow(y), -- .^
-
-  -- object operators
-  get     = \x,k   -> x[k],
-  set     = \x,k,v => x[k]=v end,
-  len     = \x     -> #x,
-  cat     = \x,y   -> x..y,
-  call    = \x,... -> x(...),
-}
-
--- strings as operators equivalence
-operator['~' ] = operator.unm
-operator['+' ] = operator.add
-operator['-' ] = operator.sub
-operator['*' ] = operator.mul
-operator['/' ] = operator.div
-operator['%' ] = operator.mod
-operator['^' ] = operator.pow
-operator['.*'] = operator.emul
-operator['./'] = operator.ediv
-operator['.%'] = operator.emod
-operator['.^'] = operator.epow
-operator['#' ] = operator.len
-operator['..'] = operator.cat
-operator['<' ] = operator.lt
-operator['>' ] = operator.gt
-operator['<='] = operator.le
-operator['>='] = operator.ge
-operator['~='] = operator.ne
-operator['!='] = operator.ne
-operator['=='] = operator.eq
-operator['!' ] = operator.lnot
-operator['&&'] = operator.land
-operator['||'] = operator.lor
-operator['!!'] = operator.lbool
-
-local function toboolean (str)
-  if str == 'true' then
-    return true
-  elseif str == 'false' then
-    return false
-  else
-    return nil
-  end
-end
-
--- utilities ------------------------------------------------------------------o
 
 local utility = {assert=assert, error=error}
 
@@ -664,6 +555,13 @@ function utility.str2cmp (str)
          "unable to build ordering function from '%s'", str)()
 end
 
+local function toboolean (str)
+  if     str == 'true'  then return true
+  elseif str == 'false' then return false
+  else                       return nil
+  end
+end
+
 utility.luatostring = tostring -- backup orignal lua tostring
 
 function tostring_ (a, ...)      -- to review
@@ -895,8 +793,8 @@ function utility.bsearch (tbl, val, cmp_, low_, high_)
   end
   local low  = max(low_  or    1,    1)
   local high = min(high_ or #tbl, #tbl)
-  local cmp = is_string(cmp_) and operator[cmp_] or cmp_ or
-              tbl[low] <= tbl[high] and operator.le or operator.ge
+  local cmp = is_string(cmp_) and opstr[cmp_] or cmp_ or
+              tbl[low] <= tbl[high] and gfunc.le or gfunc.ge
   assert(is_callable(cmp), "invalid argument #3 (callable expected)")
 
   local len, mid, stp, tst = high-low+1
@@ -916,7 +814,7 @@ function utility.lsearch (tbl, val, cmp_, low_, high_)
   if is_number(cmp_) and is_nil(high_) then
     cmp_, low_, high_ = nil, cmp_, low_ -- right shift
   end
-  local cmp = is_string(cmp_) and operator[cmp_] or cmp_ or operator.eq
+  local cmp = is_string(cmp_) and gfunc[cmp_] or cmp_ or gfunc.eq
   assert(is_callable(cmp), "invalid argument #3 (callable expected)")
 
   local low  = max(low_  or    1,    1)
@@ -933,7 +831,6 @@ MAD.typeid.is_identifier = is_identifier
 
 -- end ------------------------------------------------------------------------o
 return {
-  operator  = wprotect(operator),
   utility   = wprotect(utility),
   totable   = totable_,
   tostring  = tostring_,
