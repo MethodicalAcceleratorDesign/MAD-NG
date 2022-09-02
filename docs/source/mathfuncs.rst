@@ -225,15 +225,15 @@ Functions              Return values
 Pseudo-Random Number Generators
 ===============================
 
-The module :mod:`gmath` provides an implementation of the *Xoshiro256\*\**  variant of the `XorShift <https://en.wikipedia.org/wiki/Xorshift>`_ PRNG familly [XORSHFT03]_, an all-purpose, rock-solid generator with a period of :math:`2^{256}-1` that supports long jumps of period :math:`2^{128}`. This PRNG is also the default implementation of recent versions of Lua (not LuaJIT, see below) and GFortran. See https://prng.di.unimi.it for details about xoshiro/xoroshiro PRNGs.
+The module :mod:`gmath` provides an implementation of the *Xoshiro256\*\** (XOR/shift/rotate) variant of the `XorShift <https://en.wikipedia.org/wiki/Xorshift>`_ PRNG familly [XORSHFT03]_, an all-purpose, rock-solid generator with a period of :math:`2^{256}-1` that supports long jumps of period :math:`2^{128}`. This PRNG is also the default implementation of recent versions of Lua (not LuaJIT, see below) and GFortran. See https://prng.di.unimi.it for details about Xoshiro/Xoroshiro PRNGs.
 
 The module :mod:`math` of LuaJIT provides an implementation of the *Tausworthe* PRNG [TAUSWTH96]_, which has a period of :math:`2^{223}` but doesn't support long jumps, and hence uses a single global PRNG.
 
 The module :mod:`gmath` also provides an implementation of the simple global PRNG of MAD-X for comparison.
 
-It's worth mentionning that none of these PRNG are cryptographically secure generators, but MAD-X PRNG excepted, they are nevertheless superior to the commonly used *Mersenne Twister* PRNG [MERTWIS98]_.
+It's worth mentionning that none of these PRNG are cryptographically secure generators, they are nevertheless superior to the commonly used *Mersenne Twister* PRNG [MERTWIS98]_, with the exception of the MAD-X PRNG.
 
-All PRNG *functions* (except constructors) are wrappers around PRNG *methods* with the same name, and expect an optional PRNG :obj:`rng_` as first parameter. If this optional PRNG :obj:`rng_` is omitted, i.e. not provided, these functions will use the current global PRNG by default.
+All PRNG *functions* (except constructors) are wrappers around PRNG *methods* with the same name, and expect an optional PRNG :obj:`prng_` as first parameter. If this optional PRNG :obj:`prng_` is omitted, i.e. not provided, these functions will use the current global PRNG by default.
 
 .. function:: randnew ()
 
@@ -243,40 +243,40 @@ All PRNG *functions* (except constructors) are wrappers around PRNG *methods* wi
 
    Return a new MAD-X PRNG initialized with default seed 123456789. Hence, all new MAD-X PRNG will generate the same sequence until they are initialized with a user-defined seed.
 
-.. function:: randset (rng_)
+.. function:: randset (prng_)
 
-   Set the current global PRNG to :obj:`rng` (if provided) and return the previous global PRNG.
+   Set the current global PRNG to :obj:`prng` (if provided) and return the previous global PRNG.
 
-.. function:: randseed (rng_, seed)
-              rng:randseed (seed)
+.. function:: randseed (prng_, seed)
+              prng:randseed (seed)
 
-   Set the seed of the PRNG :obj:`rng` to :var:`seed`.
+   Set the seed of the PRNG :obj:`prng` to :var:`seed`.
 
-.. function:: rand (rng_)
-              rng:rand ()
+.. function:: rand (prng_)
+              prng:rand ()
 
-   Return a new pseudo-random number in the range ``[0, 1)`` from the PRNG :obj:`rng`.
+   Return a new pseudo-random number in the range ``[0, 1)`` from the PRNG :obj:`prng`.
 
-.. function:: randi (rng_)
-              rng:randi ()
+.. function:: randi (prng_)
+              prng:randi ()
               
-   Return a new pseudo-random number in the range of a :type:`u64_t` from the PRNG :obj:`rng` (:type:`u32_t` for the MAD-X PRNG), see C API below for details.
+   Return a new pseudo-random number in the range of a :type:`u64_t` from the PRNG :obj:`prng` (:type:`u32_t` for the MAD-X PRNG), see C API below for details.
 
-.. function:: randn (rng_)
-              rng:randn ()
+.. function:: randn (prng_)
+              prng:randn ()
 
-   Return a new pseudo-random gaussian number in the range ``[-inf, +inf]`` from the PRNG :obj:`rng` by using the Box-Muller transformation (Marsaglia's polar form) to a peuso-random number in the range ``[0, 1)``.
+   Return a new pseudo-random gaussian number in the range ``[-inf, +inf]`` from the PRNG :obj:`prng` by using the Box-Muller transformation (Marsaglia's polar form) to a peuso-random number in the range ``[0, 1)``.
 
-.. function:: randtn (rng_, cut_)
-              rng:randtn (cut_)
+.. function:: randtn (prng_, cut_)
+              prng:randtn (cut_)
 
-   Return a new truncated pseudo-random gaussian number in the range ``[-cut_, +cut_]`` from the PRNG :obj:`rng` by using iteratively the method :func:`rng:randn()`. This simple algorithm is actually used for compatibility with MAD-X.
+   Return a new truncated pseudo-random gaussian number in the range ``[-cut_, +cut_]`` from the PRNG :obj:`prng` by using iteratively the method :func:`prng:randn()`. This simple algorithm is actually used for compatibility with MAD-X.
    Default: :code:`cut_ = +inf`.
 
-.. function:: randp (rng_, lmb_)
-              rng:randp (lmb_)
+.. function:: randp (prng_, lmb_)
+              prng:randp (lmb_)
 
-   Return a new pseudo-random poisson number in the range ``[0, +inf]`` from the PRNG :obj:`rng` with parameter :math:`\lambda > 0` by using the *inverse transform sampling* method on peuso-random numbers.
+   Return a new pseudo-random poisson number in the range ``[0, +inf]`` from the PRNG :obj:`prng` with parameter :math:`\lambda > 0` by using the *inverse transform sampling* method on peuso-random numbers.
    Default: :code:`lmb_ = 1`.
 
 C API
@@ -301,7 +301,7 @@ C API
 
 .. c:function:: void mad_num_randjump (prng_state_t*)
 
-   Apply a jump to the PRNG like if :math:`2^{128}` pseudo-random numbers were generated. Hence PRNGs with different number of jumps will never overlapp. This function is applied to new PRNGs with an incremental number of jumps. 
+   Apply a jump to the PRNG as if :math:`2^{128}` pseudo-random numbers were generated. Hence PRNGs with different number of jumps will never overlap. This function is applied to new PRNGs with an incremental number of jumps. 
 
 .. c:function:: num_t mad_num_xrand (xrng_state_t*)
 
