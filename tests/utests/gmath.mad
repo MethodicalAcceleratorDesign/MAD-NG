@@ -26,21 +26,28 @@
 local assertFalse, assertTrue, assertEquals, assertNotEquals,
       assertAlmostEquals, assertNaN in MAD.utest
 
-local angle, ceil, floor, frac, trunc, round, abs, sqrt,  -- (generic functions)
+local ceil, floor, frac, trunc, round, abs, sqrt,  -- (generic functions)
       sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, acosh,
       asinh, atanh, exp, log, log10, erf, erfc, erfi, erfcx, tgamma, lgamma,
-      atan2, ldexp, frexp, fpow, fmod, modf, max, min,-- (non-generic functions)
-      sign, sign1, step, step1, sinc, deg, rad, random, randomseed,
-      carg, real, imag, conj, proj, rect, polar,  -- (generic complex functions)
-      unit in MAD.gmath                       -- (non-generic complex functions)
+      emul, ediv, emod, epow, cot, coth, acot, acoth,
+      sinhc, asinc, asinhc, invsqrt, hypot, hypot3, wf, erfi, erfcx, 
+      atan2, fpow, fact, invfact,-- (non-generic functions)
+      sign, sign1, step, step1, sinc, random, randomseed,
+      carg, real, imag, conj, proj, rect, polar, cabs, cplx,
+      reim, -- (generic complex functions)
+      unit, --(non-generic complex functions)
+      rangle, cord2arc, arc2cord, len2cord, cord2len, len2arc, arc2len,
+      sumsqr, sumabs, minabs, maxabs, sumysqr, sumyabs,
+      minyabs, maxyabs in MAD.gmath   -- extra functions that relies on gmath itself
+  
+local deg, fmod, max, min, modf, frexp, rad, ldexp, rad, deg in math
 
-local tostring, complex             in MAD
-local first, second                 in MAD.gfunc
+local tostring, complex, matrix     in MAD
 local strtrim                       in MAD.utility
 local is_nan                        in MAD.typeid
 local eps, huge, tiny, inf, nan, pi in MAD.constant
-local unm, add, sub, mul, div, mod, pow,
-      eq, ne, lt, le, gt, ge        in MAD.operator  -- (operators as functions)
+local unm, add, sub, mul, div, mod, pow, inv, sqr,
+      eq, ne, lt, le, gt, ge, first, second  in MAD.gfunc  -- (operators as functions)
 
 local infi = MAD.complex(0,inf)
 
@@ -122,55 +129,6 @@ function TestGmath:testConstant()
   assertTrue ( is_nan(-nan)  )
   assertFalse( is_nan('nan') )
   assertFalse( is_nan('NaN') )
-end
-
-function TestGmath:testAngle()
-  for _,x in ipairs(values.num) do
-  for _,y in ipairs(values.num) do
-    assertEquals( angle( x,  y), atan2( y,  x) )
-    assertEquals( angle( x, -y), atan2(-y,  x) )
-    assertEquals( angle(-x,  y), atan2( y, -x) )
-    assertEquals( angle(-x, -y), atan2(-y, -x) )
-  end end
-
-  for _,x in ipairs(values.rad) do
-  for _,y in ipairs(values.rad) do
-    x, y = x/pi, y/pi
-    assertEquals( angle( x,  y), atan2( y,  x) )
-    assertEquals( angle( x, -y), atan2(-y,  x) )
-    assertEquals( angle(-x,  y), atan2( y, -x) )
-    assertEquals( angle(-x, -y), atan2(-y, -x) )
-  end end
-
-  assertEquals( angle(    0,    0),  0      )
-  assertEquals( angle(    0,    1),  pi/2   )
-  assertEquals( angle(    0, -  1), -pi/2   )
-  assertEquals( angle(    0,  inf),  pi/2   )
-  assertEquals( angle(    0, -inf), -pi/2   )
-  assertEquals( angle(    1,    0),  0      )
-  assertEquals( angle(    1,    1),  pi/4   )
-  assertEquals( angle(    1, -  1), -pi/4   )
-  assertEquals( angle(    1,  inf),  pi/2   )
-  assertEquals( angle(    1, -inf), -pi/2   )
-  assertEquals( angle( -  1,    0),  pi     )
-  assertEquals( angle( -  1,    1),  pi/4*3 )
-  assertEquals( angle( -  1, -  1), -pi/4*3 )
-  assertEquals( angle( -  1,  inf),  pi/2   )
-  assertEquals( angle( -  1, -inf), -pi/2   )
-  assertEquals( angle(  inf,    0),  0      )
-  assertEquals( angle(  inf,    1),  0      )
-  assertEquals( angle(  inf, -  1),  0      )
-  assertEquals( angle(  inf,  inf),  pi/4   )
-  assertEquals( angle(  inf, -inf), -pi/4   )
-  assertEquals( angle( -inf,    0),  pi     )
-  assertEquals( angle( -inf,    1),  pi     )
-  assertEquals( angle( -inf, -  1), -pi     )
-  assertEquals( angle( -inf,  inf),  pi/4*3 )
-  assertEquals( angle( -inf, -inf), -pi/4*3 )
-
-  assertNaN   ( angle(nan, 0 ) )
-  assertNaN   ( angle( 0 ,nan) )
-  assertNaN   ( angle(nan,nan) )
 end
 
 function TestGmath:testCeil()
@@ -403,6 +361,75 @@ function TestGmath:testSqrt()
   assertNaN   (   sqrt( nan ) )
 end
 
+function TestGmath:testInvsqrt()
+  for _,v in ipairs(values.num) do
+    if v > 0 and v < inf then
+      assertAlmostEquals( v*invsqrt(v)*invsqrt(v) - 1, 0, eps )
+    end
+  end
+  assertNaN( invsqrt(-inf) )
+  assertNaN( invsqrt(-1  ) )
+  assertNaN( invsqrt(-0.1) )
+
+  assertEquals( invsqrt(- 0  ) , -inf ) -- check for -0
+  assertEquals( invsqrt(  0  ) ,  inf ) -- check for +0
+  assertEquals( invsqrt( inf ) ,  0 )
+  assertNaN   ( invsqrt(-tiny) )
+  assertNaN   ( invsqrt( nan ) )
+end
+
+function TestGmath:testHypot()
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      if x > tiny and y > tiny and x < huge and y < huge then
+        if x > 1 or y > 1 then --relative error
+          assertAlmostEquals((hypot(x, y) - sqrt(sqr(x) + sqr(y)))/sqrt(sqr(x) + sqr(y)), 0, eps)
+        else --absolute error
+          assertAlmostEquals(hypot(x, y) - sqrt(sqr(x) + sqr(y)), 0, eps)
+        end
+        -- Check for IEEE:IEC 60559 compliance (all 7 below)
+        assertEquals(hypot(x, y), hypot(y,x))
+        assertEquals(hypot(x, y), hypot(x,-y))
+      end
+    end
+    assertEquals(hypot(x, 0), abs(x))
+    assertEquals(hypot(inf, x), inf)
+    assertEquals(hypot(-inf, x), inf)
+  end
+  assertEquals(hypot(inf,nan), inf)
+  assertEquals(hypot(-inf,nan), inf)
+end
+
+--
+function TestGmath:testHypot3() -- 143 K asserts, too many?
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      for _,z in ipairs(values.num) do
+        if x > tiny and y > tiny and z > tiny and x < huge and y < huge and z < huge then
+          if x > 1 or y > 1 or z > 1 then --relative error
+            assertAlmostEquals((hypot3(x, y, z) - sqrt(sqr(x) + sqr(y) + sqr(z)))/sqrt(sqr(x) + sqr(y) + sqr(z)), 0, eps)
+            assertAlmostEquals((hypot3(x, y, z) - hypot3(y, x, z))/hypot3(x, y, z), 0, eps) --instead of commented out below
+          else --absolute error
+            assertAlmostEquals(hypot3(x, y, z) - sqrt(sqr(x) + sqr(y) + sqr(z)), 0, eps)
+            assertAlmostEquals(hypot3(x, y, z) - hypot3(y, x, z), 0, eps) --instead of commented out below
+          end
+          -- Check for IEEE:IEC 60559 compliance (all below)
+          -- assertEquals(hypot3(x, y, z) - hypot3(y, x, z), 0) --These fail compliance
+          -- assertEquals(hypot3(x, y, z) - hypot3(y, z, x), 0) --No actual entry for hypot3 (interpreted from F.9.4.3 The hypot functions)
+          -- assertEquals(hypot3(x, y, z) - hypot3(z, y, x), 0) --Failure is due to errors in sqrt by performing 2 hypot calculations
+          assertEquals(hypot3(x, y, z) - hypot3(x,-y, z), 0)
+          assertEquals(hypot3(x, y, z) - hypot3(x, y,-z), 0)
+        end
+      end
+    end
+    assertEquals(hypot3(0, x, 0), abs(x))
+    assertEquals(hypot3(inf, x, x), inf)
+    assertEquals(hypot3(x, x, -inf), inf)
+  end
+  assertEquals(hypot3(inf,nan, 0), inf)
+  assertEquals(hypot3(-inf,nan, 0), inf)
+end
+
 function TestGmath:testExp()
   -- SetPrecision[Table[Exp[x],{x, -1, 1, 0.1}],20]
   local val1 = {0.36787944117144233402, 0.40656965974059910973,
@@ -620,6 +647,16 @@ function TestGmath:testTan()
   assertNaN   (   tan( nan) )
 end
 
+function TestGmath:testCot()
+  for _,v in ipairs(values.rad) do
+    if v > tiny then
+      assertEquals      (cot( v) - -cot(-v)       , 0         )
+      assertEquals      (cot( v) - 1/tan(v)       , 0         )      
+      assertAlmostEquals(cot( v) - cos( v)/sin( v), 0, 16*eps )
+      assertAlmostEquals(cot(-v) - cos(-v)/sin(-v), 0, 16*eps )
+    end
+  end
+end
 function TestGmath:testSinh()
   for _,v in ipairs(values.num) do
     assertEquals( sinh(v), -sinh(-v) )
@@ -699,6 +736,31 @@ function TestGmath:testTanh()
   assertEquals(   tanh(-inf) , -1   )
   assertEquals(   tanh( inf) ,  1   )
   assertNaN   (   tanh( nan) )
+end
+
+function TestGmath:testCoth()
+  for _,v in ipairs(values.num) do
+    assertEquals( coth(v), -coth(-v) )
+    if v < 2e-8 then
+      assertEquals( coth(v), 1/v )
+    end
+    if v > 19.06155 then
+      assertEquals( coth(v), 1 )
+    end
+    if v < 8.74e-06 and v ~= 0 then
+      assertAlmostEquals( coth(v) - 1/v , 0, eps )
+    end
+    if v > 8.74e-06 and v < 19.06155 then
+      assertAlmostEquals( coth( v) -  cosh( v)/sinh( v), 0, 8*eps )
+      assertAlmostEquals( coth(-v) -  cosh(-v)/sinh(-v), 0, 8*eps )
+    end
+  end
+  assertEquals( coth(-inf     ), -1 )
+  assertEquals( coth(-19.06155), -1 )
+  assertEquals( coth(  0      ), inf)
+  assertEquals( coth( -0      ),-inf)
+  assertEquals( coth( 19.06155),  1 )
+  assertEquals( coth( inf)     ,  1 )
 end
 
 function TestGmath:testAsin()
@@ -798,6 +860,25 @@ function TestGmath:testAtan()
   assertNaN   (   atan( nan) )
 end
 
+function TestGmath:testAcot()
+  for _,v in ipairs(values.num) do
+    assertAlmostEquals( acot(v) - -acot(-v), 0, eps) -- randomly not equal ±eps
+  end
+  for _,v in ipairs(values.rad2) do
+    assertAlmostEquals( acot(cot( v)) -  v, 0, eps )
+    assertAlmostEquals( acot(cot(-v)) - -v, 0, eps )
+  end
+  local r3, r6, r12 = sqrt(3), 1/sqrt(3), 2-sqrt(3)
+  assertAlmostEquals( acot(-r3 ) - -pi/6 , 0, eps )
+  assertEquals      ( acot(-1  ) - -pi/4 , 0      )
+  assertAlmostEquals( acot(-r6 ) - -pi/3 , 0, eps )
+  assertAlmostEquals( acot(-r12) - -5*pi/12, 0, eps )
+  assertAlmostEquals( acot( r12) -  5*pi/12, 0, eps )
+  assertAlmostEquals( acot( r6 ) -  pi/3 , 0, eps )
+  assertEquals      ( acot( 1  ) -  pi/4 , 0      )
+  assertAlmostEquals( acot( r3 ) -  pi/6 , 0, eps )
+end
+
 function TestGmath:testAsinh()
   for _,v in ipairs(values.num) do
     if v < inf then
@@ -864,6 +945,26 @@ function TestGmath:testAtanh()
   assertNaN   (   atanh(   nan) )
 end
 
+function TestGmath:testAcoth()
+  for _,v in ipairs(values.rad) do
+    if v > 1 then --Keep in domain
+      assertAlmostEquals( acoth(v) - -acoth(-v), 0, eps )
+    end
+  end
+  for _,v in ipairs(values.rad2) do
+    assertAlmostEquals( acoth(coth( v)) -  v, 0, 2*eps )
+    assertAlmostEquals( acoth(coth(-v)) - -v, 0, 2*eps )
+  end
+  assertEquals( 1/acoth(-inf), -inf ) -- check for -0
+  assertEquals( 1/acoth( inf),  inf ) -- check for +0
+  assertEquals(   acoth(-1), -inf )
+  assertEquals(   acoth( 1),  inf )
+
+  assertNaN   (   acoth(-1+eps) )
+  assertNaN   (   acoth( 1-eps) )
+  assertNaN   (   acoth(   nan) )
+end
+
 function TestGmath:testSinc()
   for _,v in ipairs(values.num) do
     if v < 1e-7 then
@@ -879,6 +980,65 @@ function TestGmath:testSinc()
   assertNaN( sinc(-inf) )
   assertNaN( sinc( inf) )
   assertNaN( sinc( nan) )
+end
+
+function TestGmath:testSinhc()
+  for _,v in ipairs(values.num) do
+    if v < 1e-7 then
+      assertEquals( sinhc( v), 1 )
+      assertEquals( sinhc(-v), 1 )
+    elseif v < inf then
+      assertEquals( sinhc( v), sinhc(-v) )
+      assertEquals( sinhc( v), sinh(v) / v )
+      assertEquals( sinhc(-v), sinh(-v)/-v )
+    end
+  end
+
+  assertNaN( sinhc(-inf) )
+  assertNaN( sinhc( inf) )
+  assertNaN( sinhc( nan) )
+end
+
+function TestGmath:testAsinc()
+  for _,v in ipairs(values.num) do
+    if v < 1e-7 then
+      assertEquals( asinc( v), 1 )
+      assertEquals( asinc(-v), 1 )
+    elseif v < 1 then
+      assertAlmostEquals( asinc(v/pi)    - asinc(-v/pi)    ,  0, eps )
+      assertEquals( asinc( v), asinc(-v) )
+      assertEquals( asinc( v), asin(v) / v )
+      assertEquals( asinc(-v), asin(-v)/-v )
+    end
+  end
+
+  assertEquals(asinc(-1), pi/2)
+  assertEquals(asinc( 1), pi/2)
+
+  assertNaN( asinc(-1 - eps) )
+  assertNaN( asinc( 1 + eps) )
+  assertNaN( asinc( nan) )
+end
+
+--TestGmath.testAsinhc() errors
+--src/madl_gmath.mad:127: attempt to read undeclared variable: asinh
+--Possible fix: use below instead of line 127 
+--asinhc   = \x -> type(x) == "number" and (abs(x)<1e-4 and 1 - x^2/6 or _C.asinh(x)/x) or x:asinhc(),
+function TestGmath:testAsinhc() 
+  for _,v in ipairs(values.num) do
+    if v < 1e-7 then
+      assertEquals( asinhc( v), 1 )
+      assertEquals( asinhc(-v), 1 )
+    elseif v < inf then
+      assertEquals( asinhc( v), asinhc(-v) )
+      assertEquals( asinhc( v), asinh(v) / v )
+      assertEquals( asinhc(-v), asinh(-v)/-v )
+    end
+  end
+
+  assertNaN( asinhc(-inf) )
+  assertNaN( asinhc( inf) )
+  assertNaN( asinhc( nan) )
 end
 
 function TestGmath:testErf()
@@ -940,7 +1100,54 @@ function TestGmath:testErf()
 end
 
 function TestGmath:testErfc()
-  assert( erfc(1) )
+  for _,v in ipairs(values.num) do
+    assertAlmostEquals( erfc(v) - -erfc(-v) , 2, eps )
+    assertAlmostEquals( erfc(v) - (1- erf(v)), 0, eps )
+  end
+  -- Check for IEEE:IEC 60559 compliance
+  assertEquals( erfc( -inf) , 2 )
+  assertEquals( erfc(  inf) , 0 )
+end
+
+function TestGmath:testErfcx()
+  for _,v in ipairs(values.num) do
+    if sqr(v) < 700 then --ln(1e308) = 709.196...
+      assertAlmostEquals(erfcx(v) - (exp(sqr(v)) * erfc(v)), 0, 4*eps )
+      if v < 2 then
+        assertAlmostEquals(erfcx(v) - (exp(sqr(v)) * (1 - erf(v))), 0, 4*eps )
+      end
+    end
+  end
+  assertEquals( erfcx( -inf) , inf )
+  assertEquals( erfcx(  inf) , 0 )
+end
+--Is this enough for wf and erfi?
+function TestGmath:testWf()
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      local z = x + y * 1i
+      if abs(z) < inf then
+        assertEquals( wf(z) - erfcx(-1i*z), 0 + 0*1i)
+        if abs(sqr(z)) < 700 then --ln(1e308) = 709.196...
+          local result = wf(z) - (exp(-sqr(z)) * erfc(-1i*z))
+          assertAlmostEquals(real(result), 0, eps )
+          assertAlmostEquals(imag(result), 0, eps)
+        end
+      end
+    end
+    assertEquals( wf(complex(x, 0)) - erfcx(-1i*x), 0 + 0*1i) --The evaluation of purely real values returns im(w(z)), this appears to be intentional, so the input must be complex
+  end
+end
+
+function TestGmath:testErfi()
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      local z = x + y * 1i
+      if x < 26 and abs(z) < inf then --see https://www.wolframalpha.com/input?i=erfi%2826%29
+        assertEquals(-1i * erf(1i*z) - erfi(z), 0+0*1i)
+      end
+    end
+  end
 end
 
 function TestGmath:testTGamma()
@@ -1292,6 +1499,55 @@ function TestGmath:testAtan2()
   assertNaN   (  atan2( nan,  0 ) )
   assertNaN   (  atan2(  0 , nan) )
   assertNaN   (  atan2( nan, nan) )
+end
+
+--I will not test until I have further understanding: rangle, cord2arc, arc2cord, len2cord, cord2len, len2arc and arc2len
+--I only know what these do by reading the code and therefore will only be testing my reading of the code
+
+function TestGmath:testSumsqr()
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      if x > tiny or y > tiny or x < huge or y < huge then
+        assertEquals(sumsqr(x,y), x^2 + y^2)
+        assertEquals(sumsqr(x,-y), x^2 + y^2)
+      end
+    end
+    assertEquals(sumsqr(-x, 0), x*x)  
+  end
+  assertEquals(sumsqr(inf, 23), inf)
+  assertNaN(sumsqr(inf, nan))
+end
+
+function TestGmath:testSumabs()
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      if x < huge or y < huge then
+        assertEquals(sumabs(x,y), abs(x) + abs(y))
+        assertEquals(sumabs(-x,y), abs(x) + abs(y))
+        assertEquals(sumabs(x,-y), abs(x) + abs(y))
+      end
+    end
+    assertEquals(sumabs(-x, 0), x)  
+  end
+  assertEquals(sumabs(inf, 23), inf)
+  assertNaN(sumabs(inf, nan))
+end
+
+function TestGmath:testDeg2rad()
+  for _,x in ipairs(values.deg) do
+    assertEquals(rad(x), x * pi/180)
+  end
+end
+
+function TestGmath:testRad2deg()
+  for _,x in ipairs(values.rad) do
+    local expected = x * 180/pi
+    if x > tiny then
+      assertAlmostEquals((deg(x) - expected)/expected, 0, eps) --2E-14 error at 150 and 165
+    else
+      assertAlmostEquals(deg(x) - expected, 0, eps)
+    end
+  end
 end
 
 function TestGmath:testLdexp()
@@ -1872,7 +2128,7 @@ function TestGmath:testSign1()
   assertEquals( sign1(    1) ,  1 )
   assertEquals( sign1( huge) ,  1 )
   assertEquals( sign1(  inf) ,  1 )
-  assertEquals( sign1(-   0) , -1 )
+  assertEquals( sign1(-   0) , -1 ) --There is a loss of sign between lua and c
   assertEquals( sign1(-tiny) , -1 )
   assertEquals( sign1(- 0.1) , -1 )
   assertEquals( sign1(-   1) , -1 )
@@ -2314,12 +2570,41 @@ function TestGmath:testPowOp2()
   assertNaN   (     (-nan)^ -nan )
 end
 
+function TestGmath:testSqr()
+  for _,x in ipairs(values.num) do
+    if x > tiny and x < huge then
+      assertEquals(sqr(x), x*x) --Mul previously tested 
+    end
+  end
+end
+
+function TestGmath:testInv()
+  for _,x in ipairs(values.num) do
+    if x > tiny and x < huge then
+      assertEquals(inv(x), 1/x) --Div previously tested 
+    end
+  end
+  assertEquals(  inv(0)   , inf   )
+  assertEquals(  inv(-0)  ,-inf   )
+  assertEquals( inv(-inf) , -0    )
+  assertEquals( inv(inf)  ,  0    )
+
+  assertNaN   (  inv(nan) )
+  assertNaN   (   inv(-nan) )
+end
+
+function TestGmath:testUnit()
+  for _,x in ipairs(values.num) do
+    if x > tiny and x < huge then
+      assertEquals(unit(x), 1)
+      assertEquals(unit(-x), -1) 
+    end
+  end
+end
 -- delegation --
 
 function TestGmath:testDelegation()
   local mock, mock2 = {}, {}
-
-  mock.angle  = \ 'mock.angle ' assertEquals(angle(mock, mock2), 'mock.angle ')
 
   mock.ceil   = \ 'mock.ceil  '       assertEquals(ceil  (mock), 'mock.ceil  ')
   mock.floor  = \ 'mock.floor '       assertEquals(floor (mock), 'mock.floor ')
@@ -2336,16 +2621,20 @@ function TestGmath:testDelegation()
   mock.sin    = \ 'mock.sin   '       assertEquals(sin   (mock), 'mock.sin   ')
   mock.cos    = \ 'mock.cos   '       assertEquals(cos   (mock), 'mock.cos   ')
   mock.tan    = \ 'mock.tan   '       assertEquals(tan   (mock), 'mock.tan   ')
+  mock.cot    = \ 'mock.cot   '       assertEquals(cot   (mock), 'mock.cot   ')
   mock.sinh   = \ 'mock.sinh  '       assertEquals(sinh  (mock), 'mock.sinh  ')
   mock.cosh   = \ 'mock.cosh  '       assertEquals(cosh  (mock), 'mock.cosh  ')
   mock.tanh   = \ 'mock.tanh  '       assertEquals(tanh  (mock), 'mock.tanh  ')
+  mock.coth   = \ 'mock.coth  '       assertEquals(coth  (mock), 'mock.coth  ')
 
   mock.asin   = \ 'mock.asin  '       assertEquals(asin  (mock), 'mock.asin  ')
   mock.acos   = \ 'mock.acos  '       assertEquals(acos  (mock), 'mock.acos  ')
   mock.atan   = \ 'mock.atan  '       assertEquals(atan  (mock), 'mock.atan  ')
+  mock.acot   = \ 'mock.acot  '       assertEquals(acot  (mock), 'mock.acot  ')
   mock.asinh  = \ 'mock.asinh '       assertEquals(asinh (mock), 'mock.asinh ')
   mock.acosh  = \ 'mock.acosh '       assertEquals(acosh (mock), 'mock.acosh ')
   mock.atanh  = \ 'mock.atanh '       assertEquals(atanh (mock), 'mock.atanh ')
+  mock.acoth  = \ 'mock.acoth '       assertEquals(acoth (mock), 'mock.acoth ')
 
   mock.erf    = \ 'mock.erf   '       assertEquals(erf   (mock), 'mock.erf   ')
   mock.tgamma = \ 'mock.tgamma'       assertEquals(tgamma(mock), 'mock.tgamma')
