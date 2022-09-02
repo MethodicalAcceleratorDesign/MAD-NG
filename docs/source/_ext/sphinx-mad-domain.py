@@ -717,7 +717,6 @@ class MadXRefRole(XRefRole):
                     title = title[dot + 1:]
         return title, target
 
-
 class MadModuleIndex(Index):
     """
     Index subclass to provide the Mad module index.
@@ -831,7 +830,6 @@ class MadDomain(Domain):
         'obj': MadXRefRole(),   #Object
         'arg': MadXRefRole(),   #Argument
         'var': MadXRefRole(),   #Variable
-        'type': MadXRefRole()   #Type
     }
     initial_data: Dict[str, Dict[str, Tuple[Any]]] = {
         'objects': {},  # fullname -> docname, objtype

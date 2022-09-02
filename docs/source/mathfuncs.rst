@@ -5,7 +5,7 @@
 Constants and Functions
 ***********************
 
-This chapter describes some constants and functions provided by the modules :mod:`MAD.constant` and :mod:`MAD.gmath`. The module :mod:`gmath` extends the standard LUA module :mod:`math` with *generic* functions working on any types that support the methods with the same names. For example, the code :func:`gmath.sin(a)` will call :func:`math.sin(a)` if :arg:`a` is a :type:`number`, otherwise it will call the method :meth:`a:sin()`, i.e. delegate the invocation to :obj:`a`. This is how MAD-NG handles several types like :type:`numbers`, :type:`complex` number and :type:`TPSA` within a single *polymorphic* code that expects scalar-like behavior.
+This chapter describes some constants and functions provided by the modules :mod:`MAD.constant` and :mod:`MAD.gmath`. The module :mod:`gmath` extends the standard LUA module :mod:`math` with *generic* functions working on any types that support the methods with the same names. For example, the code :func:`gmath.sin(a)` will call :func:`math.sin(a)` if :var:`a` is a :type:`number`, otherwise it will call the method :func:`a:sin()`, i.e. delegate the invocation to :obj:`a`. This is how MAD-NG handles several types like :type:`numbers`, :type:`complex` number and :type:`TPSA` within a single *polymorphic* code that expects scalar-like behavior.
 
 Mathematical Constants
 ======================
@@ -179,7 +179,7 @@ Functions               Return values                                           
 Generic MapFold-like Functions
 ------------------------------
 
-MapFold-like generic functions (also known as MapReduce) forward the call to the method of the same name from the first argument when the latter is not a :type:`number`. These functions are useful when used as high-order functions passed to methods :meth:`:map2()`, :meth:`:foldl()` (fold left) or :meth:`:foldr()` (fold right) of containers like vectors and matrices.
+MapFold-like generic functions (also known as MapReduce) forward the call to the method of the same name from the first argument when the latter is not a :type:`number`. These functions are useful when used as high-order functions passed to methods :func:`:map2()`, :func:`:foldl()` (fold left) or :func:`:foldr()` (fold right) of containers like vectors and matrices.
 
 ====================  ========================
 Functions             Return values
@@ -250,7 +250,7 @@ All PRNG *functions* (except constructors) are wrappers around PRNG *methods* wi
 .. function:: randseed (rng_, seed)
               rng:randseed (seed)
 
-   Set the seed of the PRNG :obj:`rng` to :arg:`seed`.
+   Set the seed of the PRNG :obj:`rng` to :var:`seed`.
 
 .. function:: rand (rng_)
               rng:rand ()
@@ -270,7 +270,7 @@ All PRNG *functions* (except constructors) are wrappers around PRNG *methods* wi
 .. function:: randtn (rng_, cut_)
               rng:randtn (cut_)
 
-   Return a new truncated pseudo-random gaussian number in the range ``[-cut_, +cut_]`` from the PRNG :obj:`rng` by using iteratively the method :meth:`rng:randn()`. This simple algorithm is actually used for compatibility with MAD-X.
+   Return a new truncated pseudo-random gaussian number in the range ``[-cut_, +cut_]`` from the PRNG :obj:`rng` by using iteratively the method :func:`rng:randn()`. This simple algorithm is actually used for compatibility with MAD-X.
    Default: :code:`cut_ = +inf`.
 
 .. function:: randp (rng_, lmb_)
