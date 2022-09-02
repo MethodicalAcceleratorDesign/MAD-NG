@@ -56,8 +56,8 @@ extern const num_t mad_cst_SQRT1_2 ;  // 1/sqrt(2), sqrt(1/2)
 extern const num_t mad_cst_SQRT3   ;  // sqrt(3)
 extern const num_t mad_cst_SQRT1_3 ;  // 1/sqrt(3), sqrt(1/3)
 
-extern const num_t mad_cst_DEGRAD  ;  // degree to radian factor
-extern const num_t mad_cst_RADDEG  ;  // radian to degree factor
+extern const num_t mad_cst_DEG2RAD ;  // degree to radian factor
+extern const num_t mad_cst_RAD2DEG ;  // radian to degree factor
 
 // constants for physics
 
@@ -105,8 +105,8 @@ extern const num_t mad_cst_ALPHAEM ;
 #define M_SQRT1_3   0.577350269189625764509148780501957456  // 1/sqrt(3)
 
                     // constants for conversion
-#define M_RADDEG    57.2957795130823208767981548141051703   // 180/pi
-#define M_DEGRAD    0.0174532925199432957692369076848861271 // pi/180
+#define M_RAD2DEG   57.2957795130823208767981548141051703   // 180/pi
+#define M_DEG2RAD   0.0174532925199432957692369076848861271 // pi/180
 
 // --- physics constants ------------------------------------------------------o
 

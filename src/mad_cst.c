@@ -50,8 +50,8 @@ const num_t mad_cst_SQRT2    = M_SQRT2;
 const num_t mad_cst_SQRT1_2  = M_SQRT1_2;
 const num_t mad_cst_SQRT3    = M_SQRT3;
 const num_t mad_cst_SQRT1_3  = M_SQRT1_3;
-const num_t mad_cst_DEGRAD   = M_DEGRAD;
-const num_t mad_cst_RADDEG   = M_RADDEG;
+const num_t mad_cst_DEG2RAD  = M_DEG2RAD;
+const num_t mad_cst_RAD2DEG  = M_RAD2DEG;
 
 // constants for physics
 
