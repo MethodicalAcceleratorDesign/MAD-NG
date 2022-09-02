@@ -47,14 +47,14 @@ fact(int n)
 
 // --- num
 
-int mad_num_sign (num_t x)
-{
-  return (x > 0) - (x < 0);  // -1, 0, 1
-}
-
 int mad_num_sign1 (num_t x)
 {
   return ((int[]){ -1, 1 })[!signbit(x)]; // -1, 1: works for ±0, ±inf and ±NaN
+}
+
+int mad_num_sign (num_t x)
+{
+  return x == 0 ? 0 : mad_num_sign1(x);  // -1, 0, 1
 }
 
 num_t mad_num_fact (int n)
