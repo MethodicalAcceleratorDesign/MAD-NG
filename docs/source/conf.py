@@ -17,7 +17,8 @@ release = '0.9.6'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ["customRoles"]
+primary_domain = "mad" #Use .. default-domain:: c to change to c then .. default-domain:: mad to change back to mad
+extensions = ["customRoles", "sphinx-mad-domain"]
 
 source_suffix = {
     '.rst': 'restructuredtext',

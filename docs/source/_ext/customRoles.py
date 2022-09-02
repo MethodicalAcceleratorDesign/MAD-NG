@@ -1,16 +1,22 @@
 from docutils import nodes
+from sphinx import addnodes
+from sphinx.locale import _
+from sphinx.domains.c import CDomain, CObject, CXRefRole
+from sphinx.domains import ObjType
 
-def type_role(name, rawtext, text, lineno, inliner, options=None, context=None):
-    node = nodes.emphasis(text = text)
-    return [node], []
 
-def mthd_role(name, rawtext, text, lineno, inliner, options=None, context=None):
-    node = nodes.literal(text = ":"+text)
-    return [node], []
+#------May be useful in the future--------
+# class CConstObject(CObject):
+#     object_type = 'const'
 
-def macro_role(name, rawtext, text, lineno, inliner, options=None, context=None):
-    node = nodes.literal(text = text)
-    return [node], []
+# object_types = CDomain.object_types
+# directives = CDomain.directives
+# roles = CDomain.roles
+
+# object_types['const'] = ObjType(_('const'),           'const',         'identifier', 'type')
+# directives['const'] = CConstObject
+# roles['const'] = CXRefRole()
+#----------------------------------------
 
 def unit_role(name, rawtext, text, lineno, inliner, options=None, context=None):
     node = nodes.strong(text = text)
@@ -18,9 +24,6 @@ def unit_role(name, rawtext, text, lineno, inliner, options=None, context=None):
 
 
 def setup(app):
-    app.add_role("type", type_role)
-    app.add_role("mthd", mthd_role)
-    app.add_role("macro", macro_role)
     app.add_role("unit", unit_role)
 
     return
