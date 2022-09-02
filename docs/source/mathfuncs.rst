@@ -20,7 +20,7 @@ MAD constants        C macros                C constants                Values
 :const:`huge`        :c:macro:`DBL_MAX`      :const:`mad_cst_HUGE`      Largest representable number
 :const:`inf`         :c:macro:`INFINITY`     :const:`mad_cst_INF`       Positive infinity, :math:`1/0`
 :const:`nan`         :c:macro:`NAN`          :const:`mad_cst_NAN`       Canonical NaN [#]_, :math:`0/0`
-:const:`e`           :c:macro:`M_E`          :const:`mad_cst_E`         :math:`e, \exp(1)`
+:const:`e`           :c:macro:`M_E`          :const:`mad_cst_E`         :math:`e`
 :const:`log2e`       :c:macro:`M_LOG2E`      :const:`mad_cst_LOG2E`     :math:`\log_2(e)`
 :const:`log10e`      :c:macro:`M_LOG10E`     :const:`mad_cst_LOG10E`    :math:`\log_{10}(e)`
 :const:`ln2`         :c:macro:`M_LN2`        :const:`mad_cst_LN2`       :math:`\ln(2)`
@@ -39,8 +39,8 @@ MAD constants        C macros                C constants                Values
 :const:`sqrt1_3`     :c:macro:`M_SQRT1_3`    :const:`mad_cst_SQRT1_3`   :math:`\sqrt{1/3}`
 :const:`one_sqrtpi`  :c:macro:`M_1_SQRTPI`   :const:`mad_cst_1_SQRTPI`  :math:`1/\sqrt{\pi}`
 :const:`two_sqrtpi`  :c:macro:`M_2_SQRTPI`   :const:`mad_cst_2_SQRTPI`  :math:`2/\sqrt{\pi}`
-:const:`raddeg`      :c:macro:`M_RADDEG`     :const:`mad_cst_RADDEG`    :math:`180/\pi`
-:const:`degrad`      :c:macro:`M_DEGRAD`     :const:`mad_cst_DEGRAD`    :math:`\pi/180`
+:const:`rad2deg`     :c:macro:`M_RAD2DEG`    :const:`mad_cst_RAD2DEG`   :math:`180/\pi`
+:const:`deg2rad`     :c:macro:`M_DEG2RAD`    :const:`mad_cst_DEG2RAD`   :math:`\pi/180`
 ===================  ======================  =========================  ======================
 
 .. index::
@@ -260,7 +260,7 @@ All PRNG *functions* (except constructors) are wrappers around PRNG *methods* wi
 .. function:: randi (rng_)
               rng:randi ()
               
-   Return a new pseudo-random number in the range ``[0, ULLONG_MAX]`` (``[0, UINT_MAX]`` for MAD-X PRNG) from the PRNG :obj:`rng`.
+   Return a new pseudo-random number in the range of a :type:`u64_t` from the PRNG :obj:`rng` (:type:`u32_t` for the MAD-X PRNG), see C API below for details.
 
 .. function:: randn (rng_)
               rng:randn ()
@@ -293,7 +293,7 @@ C API
 
 .. c:function:: u64_t mad_num_randi (prng_state_t*)
 
-   Return a pseudo-random 64 bit unsigned integer in the range ``[0, ULLONG_MAX]``
+   Return a pseudo-random 64 bit unsigned integer in the range ``[0, ULLONG_MAX]``.
 
 .. c:function:: void mad_num_randseed (prng_state_t*, num_t seed)
 
@@ -321,7 +321,7 @@ C API
 
 .. [#] Canonical NaN bit patterns may differ between MAD and C for the mantissa, but both should exibit the same behavior.
 .. [#] Factorial and inverse factorial support negative integers as input as it uses extended factorial definition.
-.. [#] Sign1 function takes care of special cases like ±0, ±inf and NaN.
+.. [#] Sign and sign1 functions take care of special cases like ±0, ±inf and ±NaN.
 
 References
 ==========
