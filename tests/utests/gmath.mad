@@ -26,6 +26,8 @@
 local assertFalse, assertTrue, assertEquals, assertNotEquals,
       assertAlmostEquals, assertNaN in MAD.utest
 
+local tonumber = tonumber
+
 local ceil, floor, frac, trunc, round, abs, sqrt,  -- (generic functions)
       sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, acosh,
       asinh, atanh, exp, log, log10, erf, erfc, erfi, erfcx, tgamma, lgamma,
@@ -33,12 +35,13 @@ local ceil, floor, frac, trunc, round, abs, sqrt,  -- (generic functions)
       sinhc, asinc, asinhc, invsqrt, hypot, hypot3, wf, erfi, erfcx, 
       atan2, fpow, fact, invfact,-- (non-generic functions)
       sign, sign1, step, step1, sinc, random, randomseed,
-      carg, real, imag, conj, proj, rect, polar, cabs, cplx,
+      carg, real, imag, conj, proj, rect, polar, cplx,
       reim, -- (generic complex functions)
       unit, --(non-generic complex functions)
       rangle, cord2arc, arc2cord, len2cord, cord2len, len2arc, arc2len,
       sumsqr, sumabs, minabs, maxabs, sumysqr, sumyabs,
-      minyabs, maxyabs, sumxsqr, sumxabs, minxabs, maxxabs in MAD.gmath   -- extra functions that relies on gmath itself
+      minyabs, maxyabs, sumxsqr, sumxabs, minxabs, maxxabs,
+      randnew, xrandnew, randset, randseed, rand, randi, randn, randtn, randp in MAD.gmath   -- extra functions that relies on gmath itself
   
 local deg, fmod, max, min, modf, frexp, rad, ldexp, rad, deg in math
 
@@ -414,9 +417,9 @@ function TestGmath:testHypot3() -- 143 K asserts, too many?
             assertAlmostEquals(hypot3(x, y, z) - hypot3(y, x, z), 0, eps) --instead of commented out below
           end
           -- Check for IEEE:IEC 60559 compliance (all below)
-          -- assertEquals(hypot3(x, y, z) - hypot3(y, x, z), 0) --These fail compliance
-          -- assertEquals(hypot3(x, y, z) - hypot3(y, z, x), 0) --No actual entry for hypot3 (interpreted from F.9.4.3 The hypot functions)
-          -- assertEquals(hypot3(x, y, z) - hypot3(z, y, x), 0) --Failure is due to errors in sqrt by performing 2 hypot calculations
+          assertEquals(hypot3(x, y, z) - hypot3(y, x, z), 0) --These fail compliance
+          assertEquals(hypot3(x, y, z) - hypot3(y, z, x), 0) --No actual entry for hypot3 (interpreted from F.9.4.3 The hypot functions)
+          assertEquals(hypot3(x, y, z) - hypot3(z, y, x), 0) --Failure is due to errors in sqrt by performing 2 hypot calculations
           assertEquals(hypot3(x, y, z) - hypot3(x,-y, z), 0)
           assertEquals(hypot3(x, y, z) - hypot3(x, y,-z), 0)
         end
@@ -1020,10 +1023,6 @@ function TestGmath:testAsinc()
   assertNaN( asinc( nan) )
 end
 
---TestGmath.testAsinhc() errors
---src/madl_gmath.mad:127: attempt to read undeclared variable: asinh
---Possible fix: use below instead of line 127 
---asinhc   = \x -> type(x) == "number" and (abs(x)<1e-4 and 1 - x^2/6 or _C.asinh(x)/x) or x:asinhc(),
 function TestGmath:testAsinhc() 
   for _,v in ipairs(values.num) do
     if v < 1e-7 then
@@ -2204,7 +2203,7 @@ function TestGmath:testSign1()
   assertEquals( sign1(    1) ,  1 )
   assertEquals( sign1( huge) ,  1 )
   assertEquals( sign1(  inf) ,  1 )
-  assertEquals( sign1(-   0) , -1 ) --There is a loss of sign between lua and c
+  assertEquals( sign1(-   0.0) , -1 ) -- #  define signbit(x) __builtin_signbit (x) works for random c file but not math.h or mad_num.c
   assertEquals( sign1(-tiny) , -1 )
   assertEquals( sign1(- 0.1) , -1 )
   assertEquals( sign1(-   1) , -1 )
@@ -2765,6 +2764,137 @@ function TestGmath:testMaxxabs()
       local z = random(0,1)
       assertEquals(maxxabs(x * (-1^z), y * (-1^z)), max(x, y * (-1^z)))
     end
+  end
+end
+
+
+function TestGmath:testRand() --Over tested?
+  local result1 = {}
+  local prng = randnew()
+  prng:randseed(1)
+  for x = 1, 20 do
+    result1[x] = prng:rand()
+  end
+  local result2 = {}
+  prng:randseed(2329846)
+  for x = 1, 20 do
+    result2[x] = prng:rand()
+  end
+  local result3 = {}
+  prng:randseed(1)
+  for x = 1, 20 do
+    result3[x] = prng:rand()
+  end
+  local result4 = {}
+  local prng = randnew() --Check that this does not overlapp with other prngs
+  for x = 1, 20 do
+    result4[x] = prng:rand()
+  end
+  for x = 1, 20 do 
+    assertEquals(sign1(result1[x] - 1), -1) --Check less than x - 1 < 0
+    assertEquals(sign1(result1[x]), 1)      --Check that x > 0
+    assertEquals(sign1(result2[x] - 1), -1)
+    assertEquals(sign1(result2[x]), 1)      --Check that x > 0
+    assertEquals(sign1(result4[x] - 1), -1)
+    assertEquals(sign1(result4[x]), 1)      --Check that x > 0
+    assertNotEquals(result1[x], result2[x]) --Check that changing seed works
+    assertEquals(result1[x], result3[x]) --Check keeping the seed works
+    assertNotEquals(result1[x], result4[x]) --Check for no overlap
+    assertNotEquals(result2[x], result4[x]) --Check for no overlap
+    for y = 1, 20 do
+      if x ~= y then
+        assertNotEquals(result1[x], result1[y]) --Check all elements are different from each other
+        assertNotEquals(result2[x], result2[y])
+        assertNotEquals(result4[x], result4[y])
+      end
+    end
+  end
+end
+
+function TestGmath:testXrand()
+  local result1 = {}
+  local xprng1 = xrandnew()
+  local xprng2 = xrandnew()
+  randseed(xprng2, 123456798)
+  for x = 1, 100 do 
+    assertNotEquals(xprng1:rand(), xprng2:rand())
+  end
+  local xprng1 = xrandnew()
+  randseed(xprng2, 123456789)
+  for x = 1, 100 do 
+    assertEquals(xprng1:rand(), xprng2:rand())
+  end
+end
+
+function TestGmath:testRandi() --Check for MAD-X range?
+  for prngType = 1, 2 do
+    local prng
+    if prngType == 1 then prng = xrandnew() else prng = randnew() end
+    local result = {}
+    for x = 1, 20 do
+      result[x] = prng:randi() --These numbers are very big - deliberate?
+    end
+    for x = 1, 20 do
+      assertEquals(frac(tonumber((result[x]))), 0) -- Int
+      assertEquals(sign1(tonumber((result[x]))), 1) -- >= 0
+      assertEquals(sign1(tonumber((result[x])) - (2^32)^prngType), -1) -- > 0
+      for y = 1, 20 do
+        if x ~= y then
+          assertNotEquals(result[x], result[y]) --Check all elements are different from each other
+        end
+      end
+    end
+  end
+end
+
+function TestGmath:testRandn() --Way to check that this in the range [-inf, inf]?
+  local result = {}
+  local prng = randnew() 
+  for x = 1, 20 do
+    result[x] = prng:randn()
+  end
+  for x = 1, 20 do
+    for y = 1, 20 do
+      if x ~= y then
+        assertNotEquals(result[x], result[y]) --Check all elements are different from each other
+      end
+    end
+  end
+end
+
+function TestGmath:testRandtn()
+  local result = {}
+  local resultCut = {}
+  local prng = randnew()
+  for x = 1, 20 do
+    result[x] = prng:randtn() --Errors, need to add inf to line 30 in madl_gmath
+    resultCut[x] = prng:randtn(2)
+  end
+  for x = 1, 20 do
+    assertEquals(sign1(resultCut[x] - 2), -1)     --Check less than x - 2 < 0
+    assertEquals(sign1(resultCut[x] + 2), 1)      --Check that x + 2 > 0
+    for y = 1, 20 do
+      if x ~= y then
+        assertNotEquals(result[x], result[y]) --Check all elements are different from each other
+        assertNotEquals(resultCut[x], resultCut[y]) --Check all elements are different from each other
+      end
+    end
+  end
+end
+
+
+function TestGmath:testRandp()
+  local result = {}
+  local result2 = {}
+  local prng = randnew()
+  for x = 1, 20 do
+    result[x] = prng:randp()
+    result2[x] = prng:randp(23)
+  end
+  for x = 1, 20 do
+    assertEquals(sign1(result[x]), 1)      --Check that x >= 0
+    assertEquals(sign1(result2[x]), 1)      --Check that x >= 0
+    assertNotEquals(result[x], result2[x]) --Check all elements are different from each other
   end
 end
 
