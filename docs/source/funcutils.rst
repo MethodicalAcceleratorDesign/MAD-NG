@@ -1,9 +1,11 @@
 .. index::
    functions utilities
 
-*******************
-Functions Utilities
-*******************
+********************
+Functional Utilities
+********************
+
+This chapter describes useful functions provided by the module :mod:`MAD.gfunc` to help dealing with operators as functions and to manipulate functions in a `functional <https://en.wikipedia.org/wiki/Functional_programming>`_ way [#]_. It also provide a complete set of functions to create, combine and use *functors*, i.e. objects that behave like functions with :type:`callable` semantic. Functors are mainly used by the object model to distinguish from functions that are interpreted as deferred expressions and automatically evaluated on read (see Deferred Expressions), and by the tracking codes Survey and Track to deal with (user-defined) actions. 
 
 Operators as Functions
 ======================
@@ -55,6 +57,21 @@ Functions             Return values           Operator string                 Me
 :func:`ge(x,y)`       :math:`x >= y`          :const:`">="`                   :func:`__lt(x,y)`
 ====================  ======================  ==============================  =================
 
+Object Operators
+----------------
+
+Functions for object operators are wrappers to associated object operators, which themselves can be overridden by their associated metamethods.
+
+====================  ===============  ===============  =================
+Functions             Return values    Operator string  Metamethods
+====================  ===============  ===============  =================
+:func:`get(x,k)`      :math:`x[k]`     :const:`"->"`    :func:`__index(x,k)`
+:func:`set(x,k,v)`    :math:`x[k]=v`   :const:`"<-"`    :func:`__newindex(x,k,v)`
+:func:`len(x)`        :math:`\#x`      :const:`"#"`     :func:`__len(x)`
+:func:`cat(x,y)`      :math:`x .. y`   :const:`".."`    :func:`__concat(x,y)`
+:func:`call(x,...)`   :math:`x(...)`   :const:`"()"`    :func:`__call(x,...)`
+====================  ===============  ===============  =================
+
 Bitwise Functions
 =================
 
@@ -80,7 +97,7 @@ Functions              Return values
 Flags Functions
 ===============
 
-A flag is 32 bit unsigned integer used to store up to 32 binary states with the convention that :const:`0` means disabled/cleared and :const:`1` means enabled/set. Functions on flags are useful aliases to -- or combinaison of -- bitwise operations to manipulate their states (i.e. their bits).
+A flag is 32 bit unsigned integer used to store up to 32 binary states with the convention that :const:`0` means disabled/cleared and :const:`1` means enabled/set. Functions on flags are useful aliases to -- or combinaison of -- bitwise operations to manipulate their states (i.e. their bits). Flags are mainly used by the object model to keep track of hidden and user-defined states in a compact and efficient format. 
 
 =====================  ====================================================
 Functions              Return values         
@@ -98,5 +115,58 @@ Functions              Return values
 :func:`fany(x)`        Return :const:`true` if any state is enabled in :var:`x`, :const:`false` otherwise    
 =====================  ====================================================
 
-Object Operators
-================
+Functors
+========
+
+Functors are objects that behave like functions with :type:`callable` semantic, and like readonly arrays with :type:`indexable` semantic translated into function call with the index as unique argument. The module :mod:`MAD.gfunc` offers few functions to expert users for creating and manipulating them.
+
+.. function:: functor(f)
+
+   Return a :type:`functor` that encapsulates the function (or any callable object) :var:`f`. Calling the returned functor is like calling :var:`f` itself with the same arguments. 
+
+.. function:: compose(f, g)
+
+   Return a :type:`functor` that encapsulates the composition of :var:`f` and :var:`g`. Calling the returned functor is like calling :math:`(f \circ g)(\dots)`. The operator :code:`f ^ g` is a shortcut for :func:`compose` if :var:`f` is a :type:`functor`.
+
+.. function:: chain(f, g)
+
+   Return a :type:`functor` that encapsulates the calls chain of :var:`f` and :var:`g`. Calling the returned functor is like calling :math:`f(\dots) ; g(\dots)`. The operator :code:`f .. g` is a shortcut for :func:`chain` if :var:`f` is a :type:`functor`.
+
+.. function:: achain(f, g)
+
+   Return a :type:`functor` that encapsulates the *ANDed* calls chain of :var:`f` and :var:`g`. Calling the returned functor is like calling :math:`f(\dots) \land g(\dots)`.
+
+.. function:: ochain(f, g)
+
+   Return a :type:`functor` that encapsulates the *ORed* calls chain of :var:`f` and :var:`g`. Calling the returned functor is like calling :math:`f(\dots) \lor g(\dots)`.
+
+.. function:: bind1st(f, a)
+
+   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`a` as its first argument. Calling the returned functor is like calling :math:`f(a,\dots)`.
+
+.. function:: bind2nd(f, b)
+
+   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`b` as its second argument. Calling the returned functor is like calling :math:`f(a,b,\dots)` where :var:`a` has to be provided.
+
+.. function:: bind3rd(f, c)
+
+   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`c` as its third argument. Calling the returned functor is like calling :math:`f(a,b,c,\dots)` where :var:`a` and :var:`b` have to be provided.
+
+.. function:: bind2st(f, a, b)
+
+   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`a` and :var:`b` as its first and second arguments. Calling the returned functor is like calling :math:`f(a,b,\dots)`.
+
+.. function:: bind3st(f, a, b, c)
+
+   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`a`, :var:`b` and :var:`c` as its first, second and third arguments. Calling the returned functor is like calling :math:`f(a,b,c,\dots)`.
+
+.. function:: is_functor(a)
+
+   Return :const:`true` if :var:`a` is a :type:`functor`, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
+
+
+.. ---------------------------------------
+
+.. rubric:: Footnotes
+
+.. [#] For *true* Functional Programming, see the module :mod:`MAD.lfun`, a binding of the `LuaFun <https://github.com/luafun/luafun>`_  library adapted to the ecosystem of MAD-NG.
