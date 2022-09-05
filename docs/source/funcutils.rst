@@ -7,6 +7,29 @@ Functional Utilities
 
 This chapter describes useful functions provided by the module :mod:`MAD.gfunc` to help dealing with operators as functions and to manipulate functions in a `functional <https://en.wikipedia.org/wiki/Functional_programming>`_ way [#]_. It also provide a complete set of functions to create, combine and use *functors*, i.e. objects that behave like functions with :type:`callable` semantic. Functors are mainly used by the object model to distinguish from functions that are interpreted as deferred expressions and automatically evaluated on read (see Deferred Expressions), and by the tracking codes Survey and Track to deal with (user-defined) actions. 
 
+Special Functions
+=================
+
+The module :mod:`MAD.gfunc` provides some useful functions when passed as argument or composed with other functions.
+
+======================  ====================================================
+Functions               Return values         
+======================  ====================================================
+:func:`narg(...)`       Return the number of arguments      
+:func:`ident(...)`      Return all arguments unchanged, i.e. functional identity    
+:func:`fnil()`          Return :const:`nil`, i.e. functional nil    
+:func:`ftrue()`         Return :const:`true`, i.e. functional true
+:func:`ffalse()`        Return :const:`false`, i.e. functional false
+:func:`fzero()`         Return :const:`0`, i.e. functional zero
+:func:`fone()`          Return :const:`1`, i.e. functional one     
+:func:`first(a)`        Return first argument and discard the others
+:func:`second(a,b)`     Return second argument and discard the others
+:func:`third(a,b,c)`    Return third argument and discard the others      
+:func:`swap(a,b)`       Return first and second arguments swapped and discard the other arguments   
+:func:`swapv(a,b,...)`  Return first and second arguments swapped followed by the other arguments        
+:func:`echo(...)`       Return all arguments unchanged after echoing them on stdout       
+======================  ====================================================
+
 Operators as Functions
 ======================
 
@@ -154,11 +177,11 @@ Functors are objects that behave like functions with :type:`callable` semantic, 
 
 .. function:: bind2st(f, a, b)
 
-   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`a` and :var:`b` as its first and second arguments. Calling the returned functor is like calling :math:`f(a,b,\dots)`.
+   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`a` and :var:`b` as its two first arguments. Calling the returned functor is like calling :math:`f(a,b,\dots)`.
 
 .. function:: bind3st(f, a, b, c)
 
-   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`a`, :var:`b` and :var:`c` as its first, second and third arguments. Calling the returned functor is like calling :math:`f(a,b,c,\dots)`.
+   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`a`, :var:`b` and :var:`c` as its three first arguments. Calling the returned functor is like calling :math:`f(a,b,c,\dots)`.
 
 .. function:: is_functor(a)
 
