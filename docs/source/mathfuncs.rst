@@ -165,16 +165,16 @@ Generic Error-like Functions
 
 Error-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`, otherwise it calls C wrappers to the corresponding functions from the `Faddeeva library <http://ab-initio.mit.edu/wiki/index.php/Faddeeva_Package>`_ from the MIT (see :file:`mad_num.c`).
 
-======================  ==========================================================  ======================
-Functions               Return values                                               C functions  
-======================  ==========================================================  ======================
-:func:`erf(z,tol_)`     :math:`\frac{2}{\sqrt\pi}\int_0^z e^{-t^2} dt`              :c:func:`mad_num_erf`      
-:func:`erfc(z,tol_)`    :math:`1-\operatorname{erf}(z)`                             :c:func:`mad_num_erfc`     
-:func:`erfi(z,tol_)`    :math:`-i\operatorname{erf}(i z)`                           :c:func:`mad_num_erfi`     
-:func:`erfcx(z,tol_)`   :math:`e^{z^2}\operatorname{erfc}(z)`                       :c:func:`mad_num_erfcx`    
-:func:`wf(z,tol_)`      :math:`e^{-z^2}\operatorname{erfc}(-i z)`                   :c:func:`mad_num_wf`       
-:func:`dawson(z,tol_)`  :math:`\frac{-i\sqrt\pi}{2}e^{-z^2}\operatorname{erf}(iz)`  :c:func:`mad_num_dawson`
-======================  ==========================================================  ======================
+=======================  ==========================================================  ======================
+Functions                Return values                                               C functions  
+=======================  ==========================================================  ======================
+:func:`erf(z,rtol_)`     :math:`\frac{2}{\sqrt\pi}\int_0^z e^{-t^2} dt`              :c:func:`mad_num_erf`      
+:func:`erfc(z,rtol_)`    :math:`1-\operatorname{erf}(z)`                             :c:func:`mad_num_erfc`     
+:func:`erfi(z,rtol_)`    :math:`-i\operatorname{erf}(i z)`                           :c:func:`mad_num_erfi`     
+:func:`erfcx(z,rtol_)`   :math:`e^{z^2}\operatorname{erfc}(z)`                       :c:func:`mad_num_erfcx`    
+:func:`wf(z,rtol_)`      :math:`e^{-z^2}\operatorname{erfc}(-i z)`                   :c:func:`mad_num_wf`       
+:func:`dawson(z,rtol_)`  :math:`\frac{-i\sqrt\pi}{2}e^{-z^2}\operatorname{erf}(iz)`  :c:func:`mad_num_dawson`
+=======================  ==========================================================  ======================
 
 Generic MapFold-like Functions
 ------------------------------
