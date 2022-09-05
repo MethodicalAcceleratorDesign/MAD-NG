@@ -279,6 +279,18 @@ All PRNG *functions* (except constructors) are wrappers around PRNG *methods* wi
    Return a new pseudo-random poisson number in the range ``[0, +inf]`` from the PRNG :obj:`prng` with parameter :math:`\lambda > 0` by using the *inverse transform sampling* method on peuso-random numbers.
    Default: :code:`lmb_ = 1`.
 
+.. function:: is_randgen(a)
+
+   Return :const:`true` if :var:`a` is a PRNG, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
+
+.. function:: is_xrandgen(a)
+
+   Return :const:`true` if :var:`a` is a MAD-X PRNG, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
+
+.. function:: is_arandgen(a)
+
+   Return :const:`true` if :var:`a` is either a PRNG or a MAD-X PRNG, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
+
 C API
 -----
 
