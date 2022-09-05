@@ -32,7 +32,7 @@ local ceil, floor, frac, trunc, round, abs, sqrt,  -- (generic functions)
       sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, acosh,
       asinh, atanh, exp, log, log10, erf, erfc, erfi, erfcx, tgamma, lgamma,
       emul, ediv, emod, epow, cot, coth, acot, acoth,
-      sinhc, asinc, asinhc, invsqrt, hypot, hypot3, wf, erfi, erfcx, 
+      sinhc, asinc, asinhc, invsqrt, hypot, hypot3, wf, erfi, erfcx, dawson,
       atan2, fpow, fact, invfact,-- (non-generic functions)
       sign, sign1, step, step1, sinc, random, randomseed,
       carg, real, imag, conj, proj, rect, polar, cplx,
@@ -1127,7 +1127,7 @@ function TestGmath:testWf()
       local z = x + y * 1i
       if abs(z) < inf then
         assertEquals( wf(z) - erfcx(-1i*z), 0 + 0*1i)
-        if abs(sqr(z)) < 700 then --ln(1e308) = 709.196...
+        if real(sqr(z)) > -700 and abs(sqr(-1i*z)) < 700 then --ln(1e308) = 709.196...  For real(sqr(z)) < -700, exp(-sqr(z)) = inf and for abs(sqr(-1i*z)) > 700, erfc(-1i*z) = 1+infi
           local result = wf(z) - (exp(-sqr(z)) * erfc(-1i*z))
           assertAlmostEquals(real(result), 0, eps )
           assertAlmostEquals(imag(result), 0, eps)
@@ -1144,6 +1144,34 @@ function TestGmath:testErfi()
       local z = x + y * 1i
       if x < 26 and abs(z) < inf then --see https://www.wolframalpha.com/input?i=erfi%2826%29
         assertEquals(-1i * erf(1i*z) - erfi(z), 0+0*1i)
+      end
+    end
+  end
+end
+
+function TestGmath:testDawson()
+  for _,x in ipairs(values.num) do
+    if erfi(x) < inf then
+      if x > 2 or x < 1 and x > tiny then --for x = tiny dawson(x) = x but exp(-sqr(x)) = 0
+        assertAlmostEquals((dawson(x) - 0.5 * sqrt(pi) * exp(-sqr(x)) * erfi(x))/dawson(x), eps) --relative error
+      else
+        assertAlmostEquals((dawson(x) - 0.5 * sqrt(pi) * exp(-sqr(x)) * erfi(x)), 0, eps) --absolute error
+      end
+    end
+    
+    for _,y in ipairs(values.num) do --This errors as z:dawson does not exist
+      local z = x + y * 1i
+      if abs(z) < sqrt(log(huge)) then
+        local result = dawson(z) - 0.5 * sqrt(pi) * exp(-sqr(z)) * erfi(z)
+        if abs(dawson(z)) > 2 or abs(dawson(z)) < 1 and abs(dawson(z)) > 0 then --for x = tiny dawson(x) = x but exp(-sqr(x)) = 0
+          result = result / dawson(z)               --relative error
+          assertAlmostEquals(real(result), 0, 16*eps)
+          assertAlmostEquals(imag(result), 0, 16*eps)
+        else
+          assertAlmostEquals(real(result), 0, 3*eps) --z = tiny + 0i and tiny + tiny i get resolved here, so of course they pass
+          assertAlmostEquals(imag(result), 0, 3*eps)
+        end
+
       end
     end
   end
