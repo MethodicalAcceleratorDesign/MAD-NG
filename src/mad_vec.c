@@ -227,21 +227,6 @@ num_t mad_vec_ksum (const num_t x[], ssz_t n, ssz_t d)
   return s + c;
 }
 
-num_t mad_vec_knorm (const num_t x[], ssz_t n, ssz_t d)
-{ CHKX; CHKD;
-  num_t s = x[0]*x[0], c = 0, t, v;
-  for (idx_t i=d; i < n; i+=d) {
-    v = x[i]*x[i];
-    t = s + v;
-    if (s >= t)
-      c = c + ((s-t) + v);
-    else
-      c = c + ((v-t) + s);
-    s = t;
-  }
-  return sqrt(s + c);
-}
-
 num_t mad_vec_kdot (const num_t x[], const num_t y[], ssz_t n, ssz_t d)
 { CHKXY; CHKD;
   num_t s = x[0]*y[0], c = 0, t, v;
@@ -255,6 +240,11 @@ num_t mad_vec_kdot (const num_t x[], const num_t y[], ssz_t n, ssz_t d)
     s = t;
   }
   return s + c;
+}
+
+num_t mad_vec_knorm (const num_t x[], ssz_t n, ssz_t d)
+{ CHKX; CHKD;
+  return sqrt( mad_vec_kdot(x,x,n,d) );
 }
 #pragma GCC pop_options
 
