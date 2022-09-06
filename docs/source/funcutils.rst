@@ -183,6 +183,10 @@ Functors are objects that behave like functions with :type:`callable` semantic, 
 
    Return a :type:`functor` that encapsulates :var:`f` and binds :var:`a`, :var:`b` and :var:`c` as its three first arguments. Calling the returned functor is like calling :math:`f(a,b,c,\dots)`.
 
+.. function:: bottom()
+
+   Return a :type:`functor` that encapsulates the identity function :func:`ident` to define the *bottom* symbol of functors. Bottom is also available in the operator strings table :mod:`opstr` as :const:`"_|_"`.
+
 .. function:: is_functor(a)
 
    Return :const:`true` if :var:`a` is a :type:`functor`, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
