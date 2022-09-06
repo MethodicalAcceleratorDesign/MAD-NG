@@ -19,6 +19,7 @@ Welcome to MAD-NG's Reference Manual!
 
    /mathfuncs.rst
    /funcutils.rst
+   /cplxnum.rst
    /miscellaneous.rst
 
 Indices and tables
