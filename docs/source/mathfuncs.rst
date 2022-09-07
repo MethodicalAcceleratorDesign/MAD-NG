@@ -15,7 +15,7 @@ This section describes basic mathematical constants uniquely defined as macros i
 ===================  ======================  =========================  ======================
 MAD constants        C macros                C constants                Values
 ===================  ======================  =========================  ======================
-:const:`eps`         :c:macro:`DBL_EPSILON`  :const:`mad_cst_EPS`       Smallest representable increment near one
+:const:`eps`         :c:macro:`DBL_EPSILON`  :const:`mad_cst_EPS`       Smallest representable step near one
 :const:`tiny`        :c:macro:`DBL_MIN`      :const:`mad_cst_TINY`      Smallest representable number
 :const:`huge`        :c:macro:`DBL_MAX`      :const:`mad_cst_HUGE`      Largest representable number
 :const:`inf`         :c:macro:`INFINITY`     :const:`mad_cst_INF`       Positive infinity, :math:`1/0`
@@ -54,9 +54,9 @@ This section describes basic physical constants uniquely defined as macros in th
 ===============  ===================  =======================  ======================
 MAD constants    C macros             C constants              Values
 ===============  ===================  =======================  ======================
-:const:`minlen`  :c:macro:`P_MINLEN`  :const:`mad_cst_MINLEN`  Minimum length tolerance, default :math:`10^{-10}` in :unit:`[m]`
-:const:`minang`  :c:macro:`P_MINANG`  :const:`mad_cst_MINANG`  Minimum angle tolerance, default :math:`10^{-10}` in :unit:`[1/m]`
-:const:`minstr`  :c:macro:`P_MINSTR`  :const:`mad_cst_MINSTR`  Minimum strength tolerance, default :math:`10^{-10}` in :unit:`[rad]`
+:const:`minlen`  :c:macro:`P_MINLEN`  :const:`mad_cst_MINLEN`  Min length tolerance, default :math:`10^{-10}` in :unit:`[m]`
+:const:`minang`  :c:macro:`P_MINANG`  :const:`mad_cst_MINANG`  Min angle tolerance, default :math:`10^{-10}` in :unit:`[1/m]`
+:const:`minstr`  :c:macro:`P_MINSTR`  :const:`mad_cst_MINSTR`  Min strength tolerance, default :math:`10^{-10}` in :unit:`[rad]`
 ===============  ===================  =======================  ======================
 
 The following table lists some physical constants from the `CODATA 2018 <https://physics.nist.gov/cuu/pdf/wall_2018.pdf>`_ sheet.
@@ -116,8 +116,8 @@ Functions                        Return values                                  
 :func:`frac(x,r_)`               :math:`\operatorname{frac}(x)`
 :func:`hypot(x,y,r_)`            :math:`\sqrt{x^2+y^2}`                                   :c:func:`hypot`
 :func:`hypot3(x,y,z,r_)`         :math:`\sqrt{x^2+y^2+z^2}`                               :c:func:`hypot`
-:func:`inv(x,v_,r_)` [#f4]_      :math:`\frac{v}{x}`
-:func:`invsqrt(x,v_,r_)` [#f4]_  :math:`\frac{v}{\sqrt x}`
+:func:`inv(x,v_,r_)` [#f2]_      :math:`\frac{v}{x}`
+:func:`invsqrt(x,v_,r_)` [#f2]_  :math:`\frac{v}{\sqrt x}`
 :func:`lgamma(x,tol_,r_)`        :math:`\ln|\Gamma(x)|`                                   :c:func:`lgamma`
 :func:`log(x,r_)`                :math:`\log x`
 :func:`log10(x,r_)`              :math:`\log_{10} x`
@@ -164,26 +164,28 @@ Generic Error-like Functions
 
 Error-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`, otherwise it calls C wrappers to the corresponding functions from the `Faddeeva library <http://ab-initio.mit.edu/wiki/index.php/Faddeeva_Package>`_ from the MIT (see :file:`mad_num.c`). The optional argument :var:`r_` represents a destination for results with reference semantic, i.e. avoiding memory allocation, which is ignored by results with value semantic.
 
-==========================  ==========================================================  ======================
+==========================  ==========================================================  ========================
 Functions                   Return values                                               C functions  
-==========================  ==========================================================  ======================
+==========================  ==========================================================  ========================
 :func:`erf(z,rtol_,r_)`     :math:`\frac{2}{\sqrt\pi}\int_0^z e^{-t^2} dt`              :c:func:`mad_num_erf`      
 :func:`erfc(z,rtol_,r_)`    :math:`1-\operatorname{erf}(z)`                             :c:func:`mad_num_erfc`     
 :func:`erfi(z,rtol_,r_)`    :math:`-i\operatorname{erf}(i z)`                           :c:func:`mad_num_erfi`     
 :func:`erfcx(z,rtol_,r_)`   :math:`e^{z^2}\operatorname{erfc}(z)`                       :c:func:`mad_num_erfcx`    
 :func:`wf(z,rtol_,r_)`      :math:`e^{-z^2}\operatorname{erfc}(-i z)`                   :c:func:`mad_num_wf`       
 :func:`dawson(z,rtol_,r_)`  :math:`\frac{-i\sqrt\pi}{2}e^{-z^2}\operatorname{erf}(iz)`  :c:func:`mad_num_dawson`
-==========================  ==========================================================  ======================
+==========================  ==========================================================  ========================
 
-Special functions
+Special Functions
 -----------------
 
-===================  =======================================================  ================================
-Functions            Return values                                            C functions
-===================  =======================================================  ================================
-:func:`fact(n)`      :math:`n!`                                               :c:func:`mad_num_fact` [#f2]_
-:func:`invfact(n)`   :math:`\frac{1}{n!}`                                     :c:func:`mad_num_invfact` [#f2]_
-===================  =======================================================  ================================
+The special functions factorial and inverse factorial support negative integers as input as it uses extended factorial definition. The value are cached making the complexity of these functions in :math:`O(1)` after warmup. 
+
+==================  ====================  =========================
+Functions           Return values         C functions
+==================  ====================  =========================
+:func:`fact(n)`     :math:`n!`            :c:func:`mad_num_fact`
+:func:`invfact(n)`  :math:`\frac{1}{n!}`  :c:func:`mad_num_invfact`
+==================  ====================  =========================
 
 Functions for MapFold
 =====================
@@ -353,6 +355,5 @@ References
 .. rubric:: Footnotes
 
 .. [#f1] Canonical NaN bit patterns may differ between MAD and C for the mantissa, but both should exibit the same behavior.
-.. [#f2] Factorial and inverse factorial support negative integers as input as it uses extended factorial definition.
-.. [#f4] Default: :code:`v_ = 1`. 
+.. [#f2] Default: :code:`v_ = 1`. 
 .. [#f3] Sign and sign1 functions take care of special cases like ±0, ±inf and ±NaN.
