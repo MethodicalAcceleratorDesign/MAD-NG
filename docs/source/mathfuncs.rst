@@ -51,33 +51,33 @@ Physical Constants
 
 This section describes basic physical constants uniquely defined as macros in the C header :file:`mad_cst.h` and available from C and MAD modules as floating point double precision variables.
 
-==================  =====================  =========================  ======================
-MAD constants       C macros               C constants                Values
-==================  =====================  =========================  ======================
-:const:`minlen`     :c:macro:`P_MINLEN`    :const:`mad_cst_MINLEN`    Minimum length tolerance, default :math:`10^{-10}` in :unit:`[m]`
-:const:`minang`     :c:macro:`P_MINANG`    :const:`mad_cst_MINANG`    Minimum angle tolerance, default :math:`10^{-10}` in :unit:`[1/m]`
-:const:`minstr`     :c:macro:`P_MINSTR`    :const:`mad_cst_MINSTR`    Minimum strength tolerance, default :math:`10^{-10}` in :unit:`[rad]`
-==================  =====================  =========================  ======================
+===============  ===================  =======================  ======================
+MAD constants    C macros             C constants              Values
+===============  ===================  =======================  ======================
+:const:`minlen`  :c:macro:`P_MINLEN`  :const:`mad_cst_MINLEN`  Minimum length tolerance, default :math:`10^{-10}` in :unit:`[m]`
+:const:`minang`  :c:macro:`P_MINANG`  :const:`mad_cst_MINANG`  Minimum angle tolerance, default :math:`10^{-10}` in :unit:`[1/m]`
+:const:`minstr`  :c:macro:`P_MINSTR`  :const:`mad_cst_MINSTR`  Minimum strength tolerance, default :math:`10^{-10}` in :unit:`[rad]`
+===============  ===================  =======================  ======================
 
 The following table lists some physical constants from the `CODATA 2018 <https://physics.nist.gov/cuu/pdf/wall_2018.pdf>`_ sheet.
 
-==================  =====================  =========================  ======================
-MAD constants       C macros               C constants                Values
-==================  =====================  =========================  ======================
-:const:`clight`     :c:macro:`P_CLIGHT`    :const:`mad_cst_CLIGHT`    Speed of light, :math:`c` in :unit:`[m/s]`
-:const:`mu0`        :c:macro:`P_MU0`       :const:`mad_cst_MU0`       Permeability of vacuum, :math:`\mu_0` in :unit:`[T.m/A]`
-:const:`epsilon0`   :c:macro:`P_EPSILON0`  :const:`mad_cst_EPSILON0`  Permittivity of vacuum, :math:`\epsilon_0` in :unit:`[F/m]`
-:const:`qelect`     :c:macro:`P_QELECT`    :const:`mad_cst_QELECT`    Elementary electric charge, :math:`e` in :unit:`[C]`
-:const:`hbar`       :c:macro:`P_HBAR`      :const:`mad_cst_HBAR`      Reduced Plack's constant, :math:`\hbar` in :unit:`[GeV.s]`
-:const:`amass`      :c:macro:`P_AMASS`     :const:`mad_cst_AMASS`     Unified atomic mass, :math:`m_u\,c^2` in :unit:`[GeV]`
-:const:`emass`      :c:macro:`P_EMASS`     :const:`mad_cst_EMASS`     Electron mass, :math:`m_e\,c^2` in :unit:`[GeV]`
-:const:`pmass`      :c:macro:`P_PMASS`     :const:`mad_cst_PMASS`     Proton mass, :math:`m_p\,c^2` in :unit:`[GeV]`
-:const:`nmass`      :c:macro:`P_NMASS`     :const:`mad_cst_NMASS`     Neutron mass, :math:`m_n\,c^2` in :unit:`[GeV]`
-:const:`mumass`     :c:macro:`P_MUMASS`    :const:`mad_cst_MUMASS`    Muon mass, :math:`m_{\mu}\,c^2` in :unit:`[GeV]`
-:const:`deumass`    :c:macro:`P_DEUMASS`   :const:`mad_cst_DEUMASS`   Deuteron mass, :math:`m_d\,c^2` in :unit:`[GeV]`
-:const:`eradius`    :c:macro:`P_ERADIUS`   :const:`mad_cst_ERADIUS`   Classical electron radius, :math:`r_e` in :unit:`[m]`
-:const:`alphaem`    :c:macro:`P_ALPHAEM`   :const:`mad_cst_ALPHAEM`   Fine-structure constant, :math:`\alpha`
-==================  =====================  =========================  ======================
+=================  =====================  =========================  ======================
+MAD constants      C macros               C constants                Values
+=================  =====================  =========================  ======================
+:const:`clight`    :c:macro:`P_CLIGHT`    :const:`mad_cst_CLIGHT`    Speed of light, :math:`c` in :unit:`[m/s]`
+:const:`mu0`       :c:macro:`P_MU0`       :const:`mad_cst_MU0`       Permeability of vacuum, :math:`\mu_0` in :unit:`[T.m/A]`
+:const:`epsilon0`  :c:macro:`P_EPSILON0`  :const:`mad_cst_EPSILON0`  Permittivity of vacuum, :math:`\epsilon_0` in :unit:`[F/m]`
+:const:`qelect`    :c:macro:`P_QELECT`    :const:`mad_cst_QELECT`    Elementary electric charge, :math:`e` in :unit:`[C]`
+:const:`hbar`      :c:macro:`P_HBAR`      :const:`mad_cst_HBAR`      Reduced Plack's constant, :math:`\hbar` in :unit:`[GeV.s]`
+:const:`amass`     :c:macro:`P_AMASS`     :const:`mad_cst_AMASS`     Unified atomic mass, :math:`m_u\,c^2` in :unit:`[GeV]`
+:const:`emass`     :c:macro:`P_EMASS`     :const:`mad_cst_EMASS`     Electron mass, :math:`m_e\,c^2` in :unit:`[GeV]`
+:const:`pmass`     :c:macro:`P_PMASS`     :const:`mad_cst_PMASS`     Proton mass, :math:`m_p\,c^2` in :unit:`[GeV]`
+:const:`nmass`     :c:macro:`P_NMASS`     :const:`mad_cst_NMASS`     Neutron mass, :math:`m_n\,c^2` in :unit:`[GeV]`
+:const:`mumass`    :c:macro:`P_MUMASS`    :const:`mad_cst_MUMASS`    Muon mass, :math:`m_{\mu}\,c^2` in :unit:`[GeV]`
+:const:`deumass`   :c:macro:`P_DEUMASS`   :const:`mad_cst_DEUMASS`   Deuteron mass, :math:`m_d\,c^2` in :unit:`[GeV]`
+:const:`eradius`   :c:macro:`P_ERADIUS`   :const:`mad_cst_ERADIUS`   Classical electron radius, :math:`r_e` in :unit:`[m]`
+:const:`alphaem`   :c:macro:`P_ALPHAEM`   :const:`mad_cst_ALPHAEM`   Fine-structure constant, :math:`\alpha`
+=================  =====================  =========================  ======================
 
 .. index::
    physical constants
@@ -91,74 +91,75 @@ Generic Real-like Functions
 
 Real-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`. The C functions column lists the C implementation used when the argument is a :type:`number` and the implementation does not rely on the standard :code:`math` module.
 
-======================  =======================================================  =============
-Functions               Return values                                            C functions
-======================  =======================================================  =============
-:func:`abs(x)`          :math:`|x|`
-:func:`acos(x)`         :math:`\cos^{-1} x`
-:func:`acosh(x)`        :math:`\cosh^{-1} x`                                     :c:func:`acosh`
-:func:`acot(x)`         :math:`\cot^{-1} x`
-:func:`acoth(x)`        :math:`\coth^{-1} x`                                     :c:func:`atanh`
-:func:`asin(x)`         :math:`\sin^{-1} x`
-:func:`asinc(x)`        :math:`\frac{\sin^{-1} x}{x}`                            :c:func:`mad_num_asinc`
-:func:`asinh(x)`        :math:`\sinh^{-1} x`                                     :c:func:`asinh`
-:func:`asinhc(x)`       :math:`\frac{\sinh^{-1} x}{x}`                           :c:func:`mad_num_asinhc`
-:func:`atan(x)`         :math:`\tan^{-1} x`
-:func:`atan2(x,y)`      :math:`\tan^{-1} \frac{x}{y}`
-:func:`atanh(x)`        :math:`\tanh^{-1} x`                                     :c:func:`atanh`
-:func:`ceil(x)`         :math:`\operatorname{ceil}(x)`
-:func:`cos(x)`          :math:`\cos x`
-:func:`cosh(x)`         :math:`\cosh x`
-:func:`cot(x)`          :math:`\cot x`
-:func:`coth(x)`         :math:`\coth x`
-:func:`exp(x)`          :math:`\exp x`
-:func:`floor(x)`        :math:`\operatorname{floor}(x)`
-:func:`fact(n)`         :math:`n!`                                               :c:func:`mad_num_fact` [#]_
-:func:`frac(x)`         :math:`\operatorname{frac}(x)`
-:func:`hypot(x,y)`      :math:`\sqrt{x^2+y^2}`                                   :c:func:`hypot`
-:func:`hypot3(x,y,z)`   :math:`\sqrt{x^2+y^2+z^2}`                               :c:func:`hypot`
-:func:`invsqrt(x,v_)`   :math:`\frac{v}{\sqrt x}`
-:func:`invfact(n)`      :math:`\frac{1}{n!}`                                     :c:func:`mad_num_invfact`
-:func:`log(x)`          :math:`\log x`
-:func:`log10(x)`        :math:`\log_{10} x`
-:func:`pow(x,y)`        :math:`x^y`
-:func:`powi(x,n)`       :math:`x^n`                                              :c:func:`mad_num_powi`
-:func:`rangle(a,r)`     :math:`a + 2\pi \operatorname{round}(\frac{r-a}{2\pi})`  :c:func:`round`
-:func:`round(x)`        :math:`\operatorname{round}(x)`                          :c:func:`round`
-:func:`sign(x)`         :math:`-1, 0\text{ or }1`                                :c:func:`mad_num_sign`
-:func:`sign1(x)`        :math:`-1\text{ or }1`                                   :c:func:`mad_num_sign1` [#]_
-:func:`sin(x)`          :math:`\sin x`
-:func:`sinc(x)`         :math:`\frac{\sin x}{x}`                                 :c:func:`mad_num_sinc`
-:func:`sinh(x)`         :math:`\sinh x`
-:func:`sinhc(x)`        :math:`\frac{\sinh x}{x}`                                :c:func:`mad_num_sinhc`
-:func:`sqrt(x)`         :math:`\sqrt{x}`
-:func:`tan(x)`          :math:`\tan x`
-:func:`tanh(x)`         :math:`\tanh x`
-:func:`lgamma(x,tol)`   :math:`\ln|\Gamma(x)|`                                   :c:func:`lgamma`
-:func:`tgamma(x,tol)`   :math:`\Gamma(x)`                                        :c:func:`tgamma`
-:func:`trunc(x)`        :math:`\operatorname{trunc}(x)`
-:func:`unit(x)`         :math:`\frac{x}{|x|}`
-======================  =======================================================  =============
+=====================  =======================================================  =============
+Functions              Return values                                            C functions
+=====================  =======================================================  =============
+:func:`abs(x)`         :math:`|x|`
+:func:`acos(x)`        :math:`\cos^{-1} x`
+:func:`acosh(x)`       :math:`\cosh^{-1} x`                                     :c:func:`acosh`
+:func:`acot(x)`        :math:`\cot^{-1} x`
+:func:`acoth(x)`       :math:`\coth^{-1} x`                                     :c:func:`atanh`
+:func:`asin(x)`        :math:`\sin^{-1} x`
+:func:`asinc(x)`       :math:`\frac{\sin^{-1} x}{x}`                            :c:func:`mad_num_asinc`
+:func:`asinh(x)`       :math:`\sinh^{-1} x`                                     :c:func:`asinh`
+:func:`asinhc(x)`      :math:`\frac{\sinh^{-1} x}{x}`                           :c:func:`mad_num_asinhc`
+:func:`atan(x)`        :math:`\tan^{-1} x`
+:func:`atan2(x,y)`     :math:`\tan^{-1} \frac{x}{y}`
+:func:`atanh(x)`       :math:`\tanh^{-1} x`                                     :c:func:`atanh`
+:func:`ceil(x)`        :math:`\operatorname{ceil}(x)`
+:func:`cos(x)`         :math:`\cos x`
+:func:`cosh(x)`        :math:`\cosh x`
+:func:`cot(x)`         :math:`\cot x`
+:func:`coth(x)`        :math:`\coth x`
+:func:`exp(x)`         :math:`\exp x`
+:func:`floor(x)`       :math:`\operatorname{floor}(x)`
+:func:`fact(n)`        :math:`n!`                                               :c:func:`mad_num_fact` [#]_
+:func:`frac(x)`        :math:`\operatorname{frac}(x)`
+:func:`hypot(x,y)`     :math:`\sqrt{x^2+y^2}`                                   :c:func:`hypot`
+:func:`hypot3(x,y,z)`  :math:`\sqrt{x^2+y^2+z^2}`                               :c:func:`hypot`
+:func:`inv(x,v_)`      :math:`\frac{v}{x}`
+:func:`invsqrt(x,v_)`  :math:`\frac{v}{\sqrt x}`
+:func:`invfact(n)`     :math:`\frac{1}{n!}`                                     :c:func:`mad_num_invfact`
+:func:`log(x)`         :math:`\log x`
+:func:`log10(x)`       :math:`\log_{10} x`
+:func:`pow(x,y)`       :math:`x^y`
+:func:`powi(x,n)`      :math:`x^n`                                              :c:func:`mad_num_powi`
+:func:`rangle(a,r)`    :math:`a + 2\pi \operatorname{round}(\frac{r-a}{2\pi})`  :c:func:`round`
+:func:`round(x)`       :math:`\operatorname{round}(x)`                          :c:func:`round`
+:func:`sign(x)`        :math:`-1, 0\text{ or }1`                                :c:func:`mad_num_sign`
+:func:`sign1(x)`       :math:`-1\text{ or }1`                                   :c:func:`mad_num_sign1` [#]_
+:func:`sin(x)`         :math:`\sin x`
+:func:`sinc(x)`        :math:`\frac{\sin x}{x}`                                 :c:func:`mad_num_sinc`
+:func:`sinh(x)`        :math:`\sinh x`
+:func:`sinhc(x)`       :math:`\frac{\sinh x}{x}`                                :c:func:`mad_num_sinhc`
+:func:`sqrt(x)`        :math:`\sqrt{x}`
+:func:`tan(x)`         :math:`\tan x`
+:func:`tanh(x)`        :math:`\tanh x`
+:func:`lgamma(x,tol)`  :math:`\ln|\Gamma(x)|`                                   :c:func:`lgamma`
+:func:`tgamma(x,tol)`  :math:`\Gamma(x)`                                        :c:func:`tgamma`
+:func:`trunc(x)`       :math:`\operatorname{trunc}(x)`
+:func:`unit(x)`        :math:`\frac{x}{|x|}`
+=====================  =======================================================  =============
 
 Generic Complex-like Functions
 ------------------------------
 
 Complex-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`, otherwise it implements a real-like compatibility layer using the equivalent representation :math:`z=x+0i`.
 
-====================  ==================================
-Functions             Return values
-====================  ==================================
-:func:`cabs(z)`       :math:`|z|`
-:func:`carg(z)`       :math:`\arg z`
-:func:`conj(z)`       :math:`z^*`
-:func:`cplx(x,y)`     :math:`x+i\,y`
-:func:`imag(z)`       :math:`\Im(z)`
-:func:`polar(z)`      :math:`|z|\,e^{i \arg z}`
-:func:`proj(z)`       :math:`\operatorname{proj}(z)`
-:func:`real(z)`       :math:`\Re(z)`
-:func:`rect(z)`       :math:`\Re(z)\cos \Im(z)+i\,\Re(z)\sin \Im(z)`
-:func:`reim(z)`       :math:`\Re(z), \Im(z)`
-====================  ==================================
+=================  ==================================
+Functions          Return values
+=================  ==================================
+:func:`cabs(z)`    :math:`|z|`
+:func:`carg(z)`    :math:`\arg z`
+:func:`conj(z)`    :math:`z^*`
+:func:`cplx(x,y)`  :math:`x+i\,y`
+:func:`imag(z)`    :math:`\Im(z)`
+:func:`polar(z)`   :math:`|z|\,e^{i \arg z}`
+:func:`proj(z)`    :math:`\operatorname{proj}(z)`
+:func:`real(z)`    :math:`\Re(z)`
+:func:`rect(z)`    :math:`\Re(z)\cos \Im(z)+i\,\Re(z)\sin \Im(z)`
+:func:`reim(z)`    :math:`\Re(z), \Im(z)`
+=================  ==================================
 
 Generic Error-like Functions
 ----------------------------
@@ -234,6 +235,9 @@ The module :mod:`gmath` also provides an implementation of the simple global PRN
 It's worth mentionning that none of these PRNG are cryptographically secure generators, they are nevertheless superior to the commonly used *Mersenne Twister* PRNG [MERTWIS98]_, with the exception of the MAD-X PRNG.
 
 All PRNG *functions* (except constructors) are wrappers around PRNG *methods* with the same name, and expect an optional PRNG :obj:`prng_` as first parameter. If this optional PRNG :obj:`prng_` is omitted, i.e. not provided, these functions will use the current global PRNG by default.
+
+Functions and Methods
+---------------------
 
 .. function:: randnew ()
 

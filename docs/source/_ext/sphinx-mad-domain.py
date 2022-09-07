@@ -792,6 +792,7 @@ class MadDomain(Domain):
     name = 'mad'
     label = 'Mad'
     object_types: Dict[str, ObjType] = {
+        'constant': ObjType(_('constant'), 'const', 'obj'),
         'function': ObjType(_('function'), 'func', 'obj'),
         'data': ObjType(('data'), 'data', 'obj'),
         'class': ObjType(_('class'), 'class', 'exc', 'obj'),
@@ -805,6 +806,7 @@ class MadDomain(Domain):
     }
 
     directives = {
+        'constant': MadModuleLevel,
         'function': MadModuleLevel,
         'data': MadModuleLevel,
         'class': MadClassLike,
@@ -820,10 +822,10 @@ class MadDomain(Domain):
     roles = { #These will appear as black bold and sometimes have a link if in context of class or module
         'data': MadXRefRole(),  #Data
         'exc': MadXRefRole(),   #Exception
+        'const': MadXRefRole(), #Constant
         'func': MadXRefRole(),  #Function
         'class': MadXRefRole(), #Class - to remove?
         'alias': MadXRefRole(), #Alias - remove?
-        'const': MadXRefRole(), #Constant
         'attr': MadXRefRole(),  #Attribute
         'meth': MadXRefRole(),  #Method
         'mod': MadXRefRole(),   #Module

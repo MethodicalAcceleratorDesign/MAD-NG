@@ -253,6 +253,12 @@ void mad_cnum_sinhc_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = mad_cnum_
 void mad_cnum_asinc_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = mad_cnum_asinc ( CNUM(x) ); }
 void mad_cnum_asinhc_r(num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = mad_cnum_asinhc( CNUM(x) ); }
 
+void mad_cnum_invsqrt_r (num_t x_re, num_t x_im, cnum_t *r)
+{ CHKR; *r = csqrt(mad_cnum_inv(CNUM(x))); }
+
+void mad_cnum_inv_r (num_t x_re, num_t x_im, cnum_t *r)
+{ CHKR; *r = mad_cnum_inv(CNUM(x)); }
+
 void mad_cnum_powi_r  (num_t x_re, num_t x_im, int n, cnum_t *r)
 { CHKR; *r = mad_cnum_powi( CNUM(x), n ); }
 
@@ -267,9 +273,6 @@ void mad_cnum_polar_r (num_t x_re, num_t x_im, cnum_t *r)
 
 void mad_cnum_div_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
 { CHKR; *r = mad_cnum_div(CNUM(x), CNUM(y)); }
-
-void mad_cnum_inv_r (num_t x_re, num_t x_im, cnum_t *r)
-{ CHKR; *r = mad_cnum_div(1, CNUM(x)); }
 
 void mad_cnum_mod_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
 { CHKR; cnum_t cr = mad_cnum_div(CNUM(x), CNUM(y));
