@@ -5,7 +5,7 @@
 Functional Utilities
 ********************
 
-This chapter describes useful functions provided by the module :mod:`MAD.gfunc` to help dealing with operators as functions and to manipulate functions in a `functional <https://en.wikipedia.org/wiki/Functional_programming>`_ way [#]_. It also provide a complete set of functions to create, combine and use *functors*, i.e. objects that behave like functions with :type:`callable` semantic. Functors are mainly used by the object model to distinguish from functions that are interpreted as deferred expressions and automatically evaluated on read (see Deferred Expressions), and by the tracking codes Survey and Track to deal with (user-defined) actions. 
+This chapter describes useful functions provided by the module :mod:`MAD.gfunc` to help dealing with operators as functions and to manipulate functions in a `functional <https://en.wikipedia.org/wiki/Functional_programming>`_ way [#f1]_. It also provide a complete set of functions to create, combine and use *functors*, i.e. objects that behave like functions with :type:`callable` semantic. Functors are mainly used by the object model to distinguish from functions which are interpreted as deferred expressions and evaluated automatically on reading, and by the Survey and Track codes to handle (user-defined) actions. 
 
 Special Functions
 =================
@@ -40,45 +40,65 @@ Math Operators
 
 Functions for math operators are wrappers to associated mathematical operators, which themselves can be overridden by their associated metamethods.
 
-====================  =====================  ===============  =======================
-Functions             Return values          Operator string  Metamethods
-====================  =====================  ===============  =======================
-:func:`unm(x)`        :math:`-x`             :const:`"~"`     :func:`__unm(x,_)`
-:func:`inv(x)`        :math:`1 / x`          :const:`"1/"`    :func:`__div(1,x)`
-:func:`sqr(x)`        :math:`x * x`          :const:`"^2"`    :func:`__mul(x,x)`
-:func:`add(x,y)`      :math:`x + y`          :const:`"+"`     :func:`__add(x,y)`
-:func:`sub(x,y)`      :math:`x - y`          :const:`"-"`     :func:`__sub(x,y)`
-:func:`mul(x,y)`      :math:`x * y`          :const:`"*"`     :func:`__mul(x,y)`
-:func:`div(x,y)`      :math:`x / y`          :const:`"/"`     :func:`__div(x,y)`
-:func:`mod(x,y)`      :math:`x\,\%\,y`       :const:`"%"`     :func:`__mod(x,y)`
-:func:`pow(x,y)`      :math:`x ^ y`          :const:`"^"`     :func:`__pow(x,y)`
-:func:`emul(x,y,r_)`  :math:`x\,.*\,y`       :const:`".*"`    :func:`__emul(x,y,r_)` [#]_
-:func:`ediv(x,y,r_)`  :math:`x\,./\,y`       :const:`"./"`    :func:`__ediv(x,y,r_)`
-:func:`emod(x,y,r_)`  :math:`x\,.\%\,y`      :const:`".%"`    :func:`__emod(x,y,r_)`
-:func:`epow(x,y,r_)`  :math:`x\,.\hat\ \ y`  :const:`".^"`    :func:`__epow(x,y,r_)`
-====================  =====================  ===============  =======================
+================  =================  ===============  ===================
+Functions         Return values      Operator string  Metamethods
+================  =================  ===============  ===================
+:func:`unm(x)`    :math:`-x`         :const:`"~"`     :func:`__unm(x,_)`
+:func:`inv(x)`    :math:`1 / x`      :const:`"1/"`    :func:`__div(1,x)`
+:func:`sqr(x)`    :math:`x \cdot x`  :const:`"^2"`    :func:`__mul(x,x)`
+:func:`add(x,y)`  :math:`x + y`      :const:`"+"`     :func:`__add(x,y)`
+:func:`sub(x,y)`  :math:`x - y`      :const:`"-"`     :func:`__sub(x,y)`
+:func:`mul(x,y)`  :math:`x \cdot y`  :const:`"*"`     :func:`__mul(x,y)`
+:func:`div(x,y)`  :math:`x / y`      :const:`"/"`     :func:`__div(x,y)`
+:func:`mod(x,y)`  :math:`x \mod y`   :const:`"%"`     :func:`__mod(x,y)`
+:func:`pow(x,y)`  :math:`x ^ y`      :const:`"^"`     :func:`__pow(x,y)`
+================  =================  ===============  ===================
+
+Vector Operators
+----------------
+
+Functions for element-wise operators [#f2]_ are wrappers to associated mathematical operators of vector-like objects, which themselves can be overridden by their associated metamethods.
+
+=================  =====================  ===============  ====================
+Functions          Return values          Operator string  Metamethods
+=================  =====================  ===============  ====================
+:func:`emul(x,y)`  :math:`x\,.*\,y`       :const:`".*"`    :func:`__emul(x,y)`
+:func:`ediv(x,y)`  :math:`x\,./\,y`       :const:`"./"`    :func:`__ediv(x,y)`
+:func:`emod(x,y)`  :math:`x\,.\%\,y`      :const:`".%"`    :func:`__emod(x,y)`
+:func:`epow(x,y)`  :math:`x\,.\hat\ \ y`  :const:`".^"`    :func:`__epow(x,y)`
+=================  =====================  ===============  ====================
 
 Logical Operators
 -----------------
 
-Functions for logical operators are wrappers to associated logical operators, which themselves can be overridden by their associated metamethods (if any).
+Functions for logical operators are wrappers to associated logical operators.
 
-=================  ====================  ==============================  =================
-Functions          Return values         Operator string                 Metamethods
-=================  ====================  ==============================  =================
+=================  ====================  ===============
+Functions          Return values         Operator string
+=================  ====================  ===============
 :func:`lfalse()`   :const:`true`                                         
 :func:`ltrue()`    :const:`false`                                        
 :func:`lnot(x)`    :math:`\lnot x`       :const:`"!"`                      
 :func:`lbool(x)`   :math:`\lnot\lnot x`  :const:`"!!"`                       
 :func:`land(x,y)`  :math:`x \land y`     :const:`"&&"`                       
 :func:`lor(x,y)`   :math:`x \lor y`      :const:`"||"`                       
-:func:`eq(x,y)`    :math:`x = y`         :const:`"=="`                   :func:`__eq(x,y)`
-:func:`ne(x,y)`    :math:`x \neq y`      :const:`"!="` or :const:`"~="`  :func:`__eq(x,y)`
-:func:`lt(x,y)`    :math:`x < y`         :const:`"<"`                    :func:`__lt(x,y)` [#]_
-:func:`le(x,y)`    :math:`x <= y`        :const:`"<="`                   :func:`__le(x,y)`
-:func:`gt(x,y)`    :math:`x > y`         :const:`">"`                    :func:`__le(x,y)`
-:func:`ge(x,y)`    :math:`x >= y`        :const:`">="`                   :func:`__lt(x,y)`
-=================  ====================  ==============================  =================
+=================  ====================  ===============
+
+Relational Operators
+--------------------
+
+Functions for relational operators are wrappers to associated logical operators, which themselves can be overridden by their associated metamethods. Relational ordering operators are available only for objects that are ordered.
+
+===============  ================  ==============================  =================
+Functions        Return values     Operator string                 Metamethods
+===============  ================  ==============================  =================
+:func:`eq(x,y)`  :math:`x = y`     :const:`"=="`                   :func:`__eq(x,y)`
+:func:`ne(x,y)`  :math:`x \neq y`  :const:`"!="` or :const:`"~="`  :func:`__eq(x,y)`
+:func:`lt(x,y)`  :math:`x < y`     :const:`"<"`                    :func:`__lt(x,y)`
+:func:`le(x,y)`  :math:`x <= y`    :const:`"<="`                   :func:`__le(x,y)`
+:func:`gt(x,y)`  :math:`x > y`     :const:`">"`                    :func:`__le(x,y)`
+:func:`ge(x,y)`  :math:`x >= y`    :const:`">="`                   :func:`__lt(x,y)`
+===============  ================  ==============================  =================
 
 Object Operators
 ----------------
@@ -120,7 +140,7 @@ Functions             Return values
 Flags Functions
 ===============
 
-A flag is 32 bit unsigned integer used to store up to 32 binary states with the convention that :const:`0` means disabled/cleared and :const:`1` means enabled/set. Functions on flags are useful aliases to -- or combinaison of -- bitwise operations to manipulate their states (i.e. their bits). Flags are mainly used by the object model to keep track of hidden and user-defined states in a compact and efficient format. 
+A flag is 32 bit unsigned integer used to store up to 32 binary states with the convention that :const:`0` means disabled/cleared and :const:`1` means enabled/set. Functions on flags are useful aliases to, or combination of, bitwise operations to manipulate their states (i.e. their bits). Flags are mainly used by the object model to keep track of hidden and user-defined states in a compact and efficient format. 
 
 ===================  ====================================================
 Functions            Return values         
@@ -141,7 +161,7 @@ Functions            Return values
 Functors
 ========
 
-Functors are objects that behave like functions with :type:`callable` semantic, and like readonly arrays with :type:`indexable` semantic translated into function call with the index as unique argument. The module :mod:`MAD.gfunc` offers few functions to expert users for creating and manipulating them.
+Functors are objects that behave like functions with :type:`callable` semantic, and also like readonly arrays with :type:`indexable` semantic, where the index is translated as a unique argument into the function call. The module :mod:`MAD.gfunc` offers few functions to expert users for creating and manipulating them.
 
 .. function:: functor(f)
 
@@ -157,11 +177,11 @@ Functors are objects that behave like functions with :type:`callable` semantic, 
 
 .. function:: achain(f, g)
 
-   Return a :type:`functor` that encapsulates the *ANDed* calls chain of :var:`f` and :var:`g`. Calling the returned functor is like calling :math:`f(\dots) \land g(\dots)`.
+   Return a :type:`functor` that encapsulates the *AND*-ed calls chain of :var:`f` and :var:`g`. Calling the returned functor is like calling :math:`f(\dots) \land g(\dots)`.
 
 .. function:: ochain(f, g)
 
-   Return a :type:`functor` that encapsulates the *ORed* calls chain of :var:`f` and :var:`g`. Calling the returned functor is like calling :math:`f(\dots) \lor g(\dots)`.
+   Return a :type:`functor` that encapsulates the *OR*-ed calls chain of :var:`f` and :var:`g`. Calling the returned functor is like calling :math:`f(\dots) \lor g(\dots)`.
 
 .. function:: bind1st(f, a)
 
@@ -169,11 +189,11 @@ Functors are objects that behave like functions with :type:`callable` semantic, 
 
 .. function:: bind2nd(f, b)
 
-   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`b` as its second argument. Calling the returned functor is like calling :math:`f(a,b,\dots)` where :var:`a` has to be provided.
+   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`b` as its second argument. Calling the returned functor is like calling :math:`f(a,b,\dots)` where :var:`a` may or may not be provided.
 
 .. function:: bind3rd(f, c)
 
-   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`c` as its third argument. Calling the returned functor is like calling :math:`f(a,b,c,\dots)` where :var:`a` and :var:`b` have to be provided.
+   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`c` as its third argument. Calling the returned functor is like calling :math:`f(a,b,c,\dots)` where :var:`a` and :var:`b` may or may not be provided.
 
 .. function:: bind2st(f, a, b)
 
@@ -196,8 +216,6 @@ Functors are objects that behave like functions with :type:`callable` semantic, 
 
 .. rubric:: Footnotes
 
-.. [#] For *true* Functional Programming, see the module :mod:`MAD.lfun`, a binding of the `LuaFun <https://github.com/luafun/luafun>`_  library adapted to the ecosystem of MAD-NG.
+.. [#f1] For *true* Functional Programming, see the module :mod:`MAD.lfun`, a binding of the `LuaFun <https://github.com/luafun/luafun>`_  library adapted to the ecosystem of MAD-NG.
 
-.. [#] Element-wise operators are only available for vector-like containers.
-
-.. [#] Relational ordering operators are only available for ordered objects.
+.. [#f2] Element-wise operators are not available directly in the programming language, here we use the Matlab-like notation for convenience.
