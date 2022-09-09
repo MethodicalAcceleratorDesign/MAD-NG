@@ -39,8 +39,8 @@ local ceil, floor, frac, trunc, round, abs, sqrt,  -- (generic functions)
       reim, -- (generic complex functions)
       unit, --(non-generic complex functions)
       rangle, cord2arc, arc2cord, len2cord, cord2len, len2arc, arc2len,
-      sumsqr, sumabs, minabs, maxabs, sumysqr, sumyabs,
-      minyabs, maxyabs, sumxsqr, sumxabs, minxabs, maxxabs,
+      sumsqr, sumabs, minabs, maxabs, sumsqrl, sumabsl,
+      minabsl, maxabsl, sumsqrr, sumabsr, minabsr, maxabsr,
       randnew, xrandnew, randset, randseed, rand, randi, randn, randtn, randp in MAD.gmath   -- extra functions that relies on gmath itself
   
 local deg, fmod, max, min, modf, frexp, rad, ldexp, rad, deg in math
@@ -235,11 +235,10 @@ function TestGmath:testFrac()
   local n,f
   n,f = modf( inf) assertEquals( 1/f ,  inf )
   n,f = modf(-inf) assertEquals( 1/f , -inf )
-
 -- The problem is coming from combining second() and modf() in frac()
 --  if false then -- expected
---    assertEquals( frac(  inf) , 0 ) -- interpreter -> nan, pb with modf [BUG]
---    assertEquals( frac(- inf) , 0 ) -- interpreter -> nan, pb with modf [BUG]
+  assertEquals( frac(  inf) , 0 ) -- interpreter -> nan, pb with modf [BUG] (Passes on Ubuntu 22.04.1 LTS)
+  assertEquals( frac(- inf) , 0 ) -- interpreter -> nan, pb with modf [BUG]
 --  else          -- actual [BUG]
 --    assertNaN( frac(  inf) )        -- jit ->  0 [CORRECT]
 --    assertNaN( frac(- inf) )        -- jit -> -0 [CORRECT]
@@ -654,7 +653,7 @@ function TestGmath:testCot()
     3, pi/2, pi/3, pi/4, pi/5, pi/6, 0.1
   }
   local expected = {
-    inf, 2.5803725126501963905e17, 1.2901862563250981952e17, 57.289961630759424687, 
+    inf, 4.5035996273704960000e15, 2.2517998136852480000e15, 57.289961630759424687, 
     28.636253282915603551, 11.430052302761343067, 5.6712818196177095310,
     3.7320508075688772935, 1.7320508075688772935, 1.0000000000000000000,
     0.57735026918962576451, 0, -0.57735026918962576451,-1.0000000000000000000,
@@ -666,7 +665,7 @@ function TestGmath:testCot()
       assertEquals      (cot( v) - 1/tan(v)       , 0         )      
       assertAlmostEquals(cot( v) - cos( v)/sin( v), 0, 16*eps )
       assertAlmostEquals(cot(-v) - cos(-v)/sin(-v), 0, 16*eps )
-      if v > 2*eps and expected[i] < inf then --for eps, result is 100 * lower
+      if expected[i] < inf then 
         assertAlmostEquals(   1   /tan( v), expected[i], 32*eps )
         assertAlmostEquals(cos( v)/sin( v), expected[i], 32*eps )
       end
@@ -1147,7 +1146,8 @@ function TestGmath:testWf()
         end
       end
     end
-    assertEquals( wf(complex(x, 0)) - erfcx(-1i*x), 0 + 0*1i) --The evaluation of purely real values returns im(w(z)), this appears to be intentional, so the input must be complex
+    assertEquals( wf(complex(x, 0)) - erfcx(-1i*x), 0 + 0*1i)
+    assertEquals( wf(x) - imag(erfcx(-1i*x)), 0) --The evaluation of purely real values returns im(w(z))
   end
 end
 
@@ -1552,7 +1552,7 @@ function TestGmath:testArc2cord()
   for _,a in ipairs(values.rad) do
     for _,l in ipairs(values.num) do
       assertEquals(arc2cord(l, a), l*sinc(a/2))
-      if a ~= 0 and l > tiny and l < huge then --For a == 0, sinc(a) = 1 and for l = huge and a << 1, 2*l/a = inf, but arc2cord == l as sinc(a) = 1; also for l=0, can't fo relatibe error
+      if a ~= 0 and l > tiny and l < huge then --For a == 0, sinc(a) = 1 and for l = huge and a << 1, 2*l/a = inf, but arc2cord == l as sinc(a) = 1; also for l=0, can't for relative error
         assertAlmostEquals((arc2cord(l, a) - 2*l/a * sin(a/2)) / arc2cord(l, a), 0)
       elseif l < huge then --for when a == 0 and l is tiny, we get l
         assertAlmostEquals(arc2cord(l, a), l)
@@ -2234,6 +2234,9 @@ function TestGmath:testSign()
 end
 
 function TestGmath:testSign1()
+  --Note: This test is failing on Ubuntu 22.04.1 LTS specifically for -0.0
+  --In a standalone c file, using the same compiling options, -0.0 gives the
+  --correct result. 
   assertEquals( sign1(    0) ,  1 )
   assertEquals( sign1( tiny) ,  1 )
   assertEquals( sign1(  0.1) ,  1 )
@@ -2697,7 +2700,6 @@ function TestGmath:testEmul()
 end
 
 function TestGmath:testEdiv()
-  print(10 / huge)
   for _, x in ipairs(values.num) do 
     local mat = matrix(3, 3):fill(x)
     for _, y in ipairs(values.num) do 
@@ -2725,9 +2727,15 @@ end
 
 function TestGmath:testEpow()
   for _, x in ipairs(values.num) do 
-      local mat = matrix(3, 3):fill(x)
-      for _, y in ipairs(values.num) do 
-      assertEquals(epow(mat, y), matrix(3,3):fill(x^y))
+    local mat = matrix(3, 3):fill(x)
+    for _, y in ipairs(values.num) do 
+      if x^y < inf then
+        assertAllAlmostEquals(totable(epow(mat, y)), totable(matrix(3,3):fill(x^y)), 10 * x^y * eps)
+      else
+        for _, val in ipairs(epow(mat, y)) do
+          assertInf(val)
+        end
+      end
     end
   end
 end
@@ -2746,7 +2754,7 @@ end
 function TestGmath:testSqr()
   for _,x in ipairs(values.num) do
     if x > tiny and x < huge then
-      assertEquals(sqr(x), x*x) --Mul previously tested 
+      assertEquals(sqr(x), x*x)
     end
   end
 end
@@ -2754,7 +2762,7 @@ end
 function TestGmath:testInv()
   for _,x in ipairs(values.num) do
     if x > tiny and x < huge then
-      assertEquals(inv(x), 1/x) --Div previously tested 
+      assertEquals(inv(x), 1/x)
     end
   end
   assertEquals(  inv(0)   , inf   )
@@ -2793,80 +2801,80 @@ function TestGmath:testMaxabs()
   end
 end
 
-function TestGmath:testSumysqr()
+function TestGmath:testSumsqrl()
   for _,x in ipairs(values.num) do
     for _,y in ipairs(values.num) do
       local z = random(0,1)
-      assertEquals(sumysqr(x, y * (-1^z)), x + y^2)
+      assertEquals(sumsqrl(x, y * (-1^z)), x + y^2)
     end
   end
 end
 
-function TestGmath:testSumyabs()
+function TestGmath:testSumabsl()
   for _,x in ipairs(values.num) do
     for _,y in ipairs(values.num) do
       local z = random(0,1)
-      assertEquals(sumyabs(x, y * (-1^z)), x + y)
+      assertEquals(sumabsl(x, y * (-1^z)), x + y)
     end
   end
 end
 
-function TestGmath:testMinyabs()
+function TestGmath:testMinabsl()
   for _,x in ipairs(values.num) do
     for _,y in ipairs(values.num) do
       local z = random(0,1)
-      assertEquals(minyabs(x * (-1^z), y * (-1^z)), min(x * (-1^z), y))
+      assertEquals(minabsl(x * (-1^z), y * (-1^z)), min(x * (-1^z), y))
     end
   end
 end
 
-function TestGmath:testMaxyabs()
+function TestGmath:testMaxabsl()
   for _,x in ipairs(values.num) do
     for _,y in ipairs(values.num) do
       local z = random(0,1)
-      assertEquals(maxyabs(x * (-1^z), y * (-1^z)), max(x* (-1^z), y))
+      assertEquals(maxabsl(x * (-1^z), y * (-1^z)), max(x* (-1^z), y))
     end
   end
 end
 
-function TestGmath:testSumxsqr()
+function TestGmath:testsumsqrr()
   for _,x in ipairs(values.num) do
     for _,y in ipairs(values.num) do
       local z = random(0,1)
-      assertEquals(sumxsqr(x * (-1^z), y), x^2 + y)
+      assertEquals(sumsqrr(x * (-1^z), y), x^2 + y)
     end
   end
 end
 
-function TestGmath:testSumxabs()
+function TestGmath:testsumabsr()
   for _,x in ipairs(values.num) do
     for _,y in ipairs(values.num) do
       local z = random(0,1)
-      assertEquals(sumxabs(x * (-1^z), y), x + y)
+      assertEquals(sumabsr(x * (-1^z), y), x + y)
     end
   end
 end
 
-function TestGmath:testMinxabs()
+function TestGmath:testminabsr()
   for _,x in ipairs(values.num) do
     for _,y in ipairs(values.num) do
       local z = random(0,1)
-      assertEquals(minxabs(x * (-1^z), y * (-1^z)), min(x, y * (-1^z)))
+      assertEquals(minabsr(x * (-1^z), y * (-1^z)), min(x, y * (-1^z)))
     end
   end
 end
 
-function TestGmath:testMaxxabs()
+function TestGmath:testmaxabsr()
   for _,x in ipairs(values.num) do
     for _,y in ipairs(values.num) do
       local z = random(0,1)
-      assertEquals(maxxabs(x * (-1^z), y * (-1^z)), max(x, y * (-1^z)))
+      assertEquals(maxabsr(x * (-1^z), y * (-1^z)), max(x, y * (-1^z)))
     end
   end
 end
 
 
-function TestGmath:testRand() --Over tested?
+function TestGmath:testRand()
   local actual = {}
   local expected = {
     0.64790572115133815423, 0.63996214375622351156, 0.66062163503512216778, 
@@ -2893,7 +2901,7 @@ function TestGmath:testRand() --Over tested?
     actual[x] = prng:rand()
   end
   assertNotEquals(actual, expected) --Check for no overlap
-  assertEquals(actual, expected2) --Only pass on my machine?
+  assertEquals(actual, expected2) --Should work given the initial seed for randnew is the same everytime
 
 end
 
@@ -2924,7 +2932,7 @@ function TestGmath:testXrand()
   assertEquals(actual2, expected2)
 end
 
-function TestGmath:testRandi() --Check for MAD-X range?
+function TestGmath:testRandi()
   local expected = {
     {
       508008169, 310561559, 712407570,
@@ -2956,7 +2964,7 @@ function TestGmath:testRandi() --Check for MAD-X range?
   end
 end
 
-function TestGmath:testRandn() --Way to check that this in the range [-inf, inf]?
+function TestGmath:testRandn()
   local expected = {-0.59367759959787891333,  0.47214364743257331014,  1.91987525000020720078,
                      1.41011968242511032123,  0.27280488692564197617,  0.43302395404008592328, 
                      0.71984890346562513397,  0.45254445813950616717,  0.59272217168690422007, 
@@ -3123,11 +3131,6 @@ function TestGmath:testDelegation()
   mock.tanh   = \ 'mock.tanh  '       assertEquals(tanh  (mock), 'mock.tanh  ')
   mock.asin   = \ 'mock.asin  '       assertEquals(asin  (mock), 'mock.asin  ')
 
-  mock.emul   = \ 'mock.emul  '       assertEquals(emul  (mock), 'mock.emul  ')
-  mock.ediv   = \ 'mock.ediv  '       assertEquals(ediv  (mock), 'mock.ediv  ')
-  mock.emod   = \ 'mock.emod  '       assertEquals(emod  (mock), 'mock.emod  ')
-  mock.epow   = \ 'mock.epow  '       assertEquals(epow  (mock), 'mock.epow  ')
-
   mock.asin   = \ 'mock.asin  '       assertEquals(asin  (mock), 'mock.asin  ')
   mock.acos   = \ 'mock.acos  '       assertEquals(acos  (mock), 'mock.acos  ')
   mock.atan   = \ 'mock.atan  '       assertEquals(atan  (mock), 'mock.atan  ')
@@ -3159,13 +3162,11 @@ function TestGmath:testDelegation()
   mock.conj   = \ 'mock.conj  '       assertEquals(conj  (mock), 'mock.conj  ')
   mock.proj   = \ 'mock.proj  '       assertEquals(proj  (mock), 'mock.proj  ')
   mock.rect   = \ 'mock.rect  '       assertEquals(rect  (mock), 'mock.rect  ')
-  mock.reim   = \ 'mock.reim  '       assertEquals(reim  (mock), 'mock.real  ') --no imag?
+  mock.reim   = \ 'mock.reim  '       assertEquals({reim  (mock)}, {'mock.real  ', 'mock.imag  '}) 
   mock.polar  = \ 'mock.polar '       assertEquals(polar (mock), 'mock.polar ')
 
   mock.hypot  = \ 'mock.hypot '       assertEquals(hypot (mock), 'mock.hypot ')
   mock.hypot3 = \ 'mock.hypot3'       assertEquals(hypot3(mock), 'mock.hypot3')
-  -- mock.fact   = \ 'mock.fact  '       assertEquals(fact  (mock), 'mock.fact  ')
-  -- mock.invfact = \ 'mock.invfact'       assertEquals(invfact(mock), 'mock.invfact')
 
   local mmock = {}
   setmetatable(mock , mmock)
