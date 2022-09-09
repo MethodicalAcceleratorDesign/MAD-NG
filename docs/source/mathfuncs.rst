@@ -15,11 +15,11 @@ This section describes basic mathematical constants uniquely defined as macros i
 ===================  ======================  =========================  ======================
 MAD constants        C macros                C constants                Values
 ===================  ======================  =========================  ======================
-:const:`eps`         :c:macro:`DBL_EPSILON`  :const:`mad_cst_EPS`       Smallest representable increment near one
+:const:`eps`         :c:macro:`DBL_EPSILON`  :const:`mad_cst_EPS`       Smallest representable step near one
 :const:`tiny`        :c:macro:`DBL_MIN`      :const:`mad_cst_TINY`      Smallest representable number
 :const:`huge`        :c:macro:`DBL_MAX`      :const:`mad_cst_HUGE`      Largest representable number
 :const:`inf`         :c:macro:`INFINITY`     :const:`mad_cst_INF`       Positive infinity, :math:`1/0`
-:const:`nan`         :c:macro:`NAN`          :const:`mad_cst_NAN`       Canonical NaN [#]_, :math:`0/0`
+:const:`nan`         :c:macro:`NAN`          :const:`mad_cst_NAN`       Canonical NaN [#f1]_, :math:`0/0`
 :const:`e`           :c:macro:`M_E`          :const:`mad_cst_E`         :math:`e`
 :const:`log2e`       :c:macro:`M_LOG2E`      :const:`mad_cst_LOG2E`     :math:`\log_2(e)`
 :const:`log10e`      :c:macro:`M_LOG10E`     :const:`mad_cst_LOG10E`    :math:`\log_{10}(e)`
@@ -54,9 +54,9 @@ This section describes basic physical constants uniquely defined as macros in th
 ===============  ===================  =======================  ======================
 MAD constants    C macros             C constants              Values
 ===============  ===================  =======================  ======================
-:const:`minlen`  :c:macro:`P_MINLEN`  :const:`mad_cst_MINLEN`  Minimum length tolerance, default :math:`10^{-10}` in :unit:`[m]`
-:const:`minang`  :c:macro:`P_MINANG`  :const:`mad_cst_MINANG`  Minimum angle tolerance, default :math:`10^{-10}` in :unit:`[1/m]`
-:const:`minstr`  :c:macro:`P_MINSTR`  :const:`mad_cst_MINSTR`  Minimum strength tolerance, default :math:`10^{-10}` in :unit:`[rad]`
+:const:`minlen`  :c:macro:`P_MINLEN`  :const:`mad_cst_MINLEN`  Min length tolerance, default :math:`10^{-10}` in :unit:`[m]`
+:const:`minang`  :c:macro:`P_MINANG`  :const:`mad_cst_MINANG`  Min angle tolerance, default :math:`10^{-10}` in :unit:`[1/m]`
+:const:`minstr`  :c:macro:`P_MINSTR`  :const:`mad_cst_MINSTR`  Min strength tolerance, default :math:`10^{-10}` in :unit:`[rad]`
 ===============  ===================  =======================  ======================
 
 The following table lists some physical constants from the `CODATA 2018 <https://physics.nist.gov/cuu/pdf/wall_2018.pdf>`_ sheet.
@@ -89,98 +89,108 @@ Mathematical Functions
 Generic Real-like Functions
 ---------------------------
 
-Real-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`. The C functions column lists the C implementation used when the argument is a :type:`number` and the implementation does not rely on the standard :code:`math` module.
+Real-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`. The optional argument :var:`r_` represents a destination for results with reference semantic, i.e. avoiding memory allocation, which is ignored by results with value semantic. The C functions column lists the C implementation used when the argument is a :type:`number` and the implementation does not rely on the standard :code:`math` module.
 
-=====================  =======================================================  =============
-Functions              Return values                                            C functions
-=====================  =======================================================  =============
-:func:`abs(x)`         :math:`|x|`
-:func:`acos(x)`        :math:`\cos^{-1} x`
-:func:`acosh(x)`       :math:`\cosh^{-1} x`                                     :c:func:`acosh`
-:func:`acot(x)`        :math:`\cot^{-1} x`
-:func:`acoth(x)`       :math:`\coth^{-1} x`                                     :c:func:`atanh`
-:func:`asin(x)`        :math:`\sin^{-1} x`
-:func:`asinc(x)`       :math:`\frac{\sin^{-1} x}{x}`                            :c:func:`mad_num_asinc`
-:func:`asinh(x)`       :math:`\sinh^{-1} x`                                     :c:func:`asinh`
-:func:`asinhc(x)`      :math:`\frac{\sinh^{-1} x}{x}`                           :c:func:`mad_num_asinhc`
-:func:`atan(x)`        :math:`\tan^{-1} x`
-:func:`atan2(x,y)`     :math:`\tan^{-1} \frac{x}{y}`
-:func:`atanh(x)`       :math:`\tanh^{-1} x`                                     :c:func:`atanh`
-:func:`ceil(x)`        :math:`\operatorname{ceil}(x)`
-:func:`cos(x)`         :math:`\cos x`
-:func:`cosh(x)`        :math:`\cosh x`
-:func:`cot(x)`         :math:`\cot x`
-:func:`coth(x)`        :math:`\coth x`
-:func:`exp(x)`         :math:`\exp x`
-:func:`floor(x)`       :math:`\operatorname{floor}(x)`
-:func:`fact(n)`        :math:`n!`                                               :c:func:`mad_num_fact` [#]_
-:func:`frac(x)`        :math:`\operatorname{frac}(x)`
-:func:`hypot(x,y)`     :math:`\sqrt{x^2+y^2}`                                   :c:func:`hypot`
-:func:`hypot3(x,y,z)`  :math:`\sqrt{x^2+y^2+z^2}`                               :c:func:`hypot`
-:func:`inv(x,v_)`      :math:`\frac{v}{x}`
-:func:`invsqrt(x,v_)`  :math:`\frac{v}{\sqrt x}`
-:func:`invfact(n)`     :math:`\frac{1}{n!}`                                     :c:func:`mad_num_invfact`
-:func:`log(x)`         :math:`\log x`
-:func:`log10(x)`       :math:`\log_{10} x`
-:func:`pow(x,y)`       :math:`x^y`
-:func:`powi(x,n)`      :math:`x^n`                                              :c:func:`mad_num_powi`
-:func:`rangle(a,r)`    :math:`a + 2\pi \operatorname{round}(\frac{r-a}{2\pi})`  :c:func:`round`
-:func:`round(x)`       :math:`\operatorname{round}(x)`                          :c:func:`round`
-:func:`sign(x)`        :math:`-1, 0\text{ or }1`                                :c:func:`mad_num_sign`
-:func:`sign1(x)`       :math:`-1\text{ or }1`                                   :c:func:`mad_num_sign1` [#]_
-:func:`sin(x)`         :math:`\sin x`
-:func:`sinc(x)`        :math:`\frac{\sin x}{x}`                                 :c:func:`mad_num_sinc`
-:func:`sinh(x)`        :math:`\sinh x`
-:func:`sinhc(x)`       :math:`\frac{\sinh x}{x}`                                :c:func:`mad_num_sinhc`
-:func:`sqrt(x)`        :math:`\sqrt{x}`
-:func:`tan(x)`         :math:`\tan x`
-:func:`tanh(x)`        :math:`\tanh x`
-:func:`lgamma(x,tol)`  :math:`\ln|\Gamma(x)|`                                   :c:func:`lgamma`
-:func:`tgamma(x,tol)`  :math:`\Gamma(x)`                                        :c:func:`tgamma`
-:func:`trunc(x)`       :math:`\operatorname{trunc}(x)`
-:func:`unit(x)`        :math:`\frac{x}{|x|}`
-=====================  =======================================================  =============
+===============================  =======================================================  =============
+Functions                        Return values                                            C functions
+===============================  =======================================================  =============
+:func:`abs(x,r_)`                :math:`|x|`
+:func:`acos(x,r_)`               :math:`\cos^{-1} x`
+:func:`acosh(x,r_)`              :math:`\cosh^{-1} x`                                     :c:func:`acosh`
+:func:`acot(x,r_)`               :math:`\cot^{-1} x`
+:func:`acoth(x,r_)`              :math:`\coth^{-1} x`                                     :c:func:`atanh`
+:func:`asin(x,r_)`               :math:`\sin^{-1} x`
+:func:`asinc(x,r_)`              :math:`\frac{\sin^{-1} x}{x}`                            :c:func:`mad_num_asinc`
+:func:`asinh(x,r_)`              :math:`\sinh^{-1} x`                                     :c:func:`asinh`
+:func:`asinhc(x,r_)`             :math:`\frac{\sinh^{-1} x}{x}`                           :c:func:`mad_num_asinhc`
+:func:`atan(x,r_)`               :math:`\tan^{-1} x`
+:func:`atan2(x,y,r_)`            :math:`\tan^{-1} \frac{x}{y}`
+:func:`atanh(x,r_)`              :math:`\tanh^{-1} x`                                     :c:func:`atanh`
+:func:`ceil(x,r_)`               :math:`\operatorname{ceil}(x)`
+:func:`cos(x,r_)`                :math:`\cos x`
+:func:`cosh(x,r_)`               :math:`\cosh x`
+:func:`cot(x,r_)`                :math:`\cot x`
+:func:`coth(x,r_)`               :math:`\coth x`
+:func:`exp(x,r_)`                :math:`\exp x`
+:func:`floor(x,r_)`              :math:`\operatorname{floor}(x)`
+:func:`frac(x,r_)`               :math:`\operatorname{frac}(x)`
+:func:`hypot(x,y,r_)`            :math:`\sqrt{x^2+y^2}`                                   :c:func:`hypot`
+:func:`hypot3(x,y,z,r_)`         :math:`\sqrt{x^2+y^2+z^2}`                               :c:func:`hypot`
+:func:`inv(x,v_,r_)` [#f2]_      :math:`\frac{v}{x}`
+:func:`invsqrt(x,v_,r_)` [#f2]_  :math:`\frac{v}{\sqrt x}`
+:func:`lgamma(x,tol_,r_)`        :math:`\ln|\Gamma(x)|`                                   :c:func:`lgamma`
+:func:`log(x,r_)`                :math:`\log x`
+:func:`log10(x,r_)`              :math:`\log_{10} x`
+:func:`pow(x,y,r_)`              :math:`x^y`
+:func:`powi(x,n,r_)`             :math:`x^n`                                              :c:func:`mad_num_powi`
+:func:`rangle(a,r)`              :math:`a + 2\pi \operatorname{round}(\frac{r-a}{2\pi})`  :c:func:`round`
+:func:`round(x,r_)`              :math:`\operatorname{round}(x)`                          :c:func:`round`
+:func:`sign(x)`                  :math:`-1, 0\text{ or }1`                                :c:func:`mad_num_sign`  [#f3]_
+:func:`sign1(x)`                 :math:`-1\text{ or }1`                                   :c:func:`mad_num_sign1` [#f3]_
+:func:`sin(x,r_)`                :math:`\sin x`
+:func:`sinc(x,r_)`               :math:`\frac{\sin x}{x}`                                 :c:func:`mad_num_sinc`
+:func:`sinh(x,r_)`               :math:`\sinh x`
+:func:`sinhc(x,r_)`              :math:`\frac{\sinh x}{x}`                                :c:func:`mad_num_sinhc`
+:func:`sqrt(x,r_)`               :math:`\sqrt{x}`
+:func:`tan(x,r_)`                :math:`\tan x`
+:func:`tanh(x,r_)`               :math:`\tanh x`
+:func:`tgamma(x,tol_,r_)`        :math:`\Gamma(x)`                                        :c:func:`tgamma`
+:func:`trunc(x,r_)`              :math:`\operatorname{trunc}(x)`
+:func:`unit(x,r_)`               :math:`\frac{x}{|x|}`
+===============================  =======================================================  =============
 
 Generic Complex-like Functions
 ------------------------------
 
-Complex-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`, otherwise it implements a real-like compatibility layer using the equivalent representation :math:`z=x+0i`.
+Complex-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`, otherwise it implements a real-like compatibility layer using the equivalent representation :math:`z=x+0i`. The optional argument :var:`r_` represents a destination for results with reference semantic, i.e. avoiding memory allocation, which is ignored by results with value semantic. 
 
-=================  ==================================
-Functions          Return values
-=================  ==================================
-:func:`cabs(z)`    :math:`|z|`
-:func:`carg(z)`    :math:`\arg z`
-:func:`conj(z)`    :math:`z^*`
-:func:`cplx(x,y)`  :math:`x+i\,y`
-:func:`imag(z)`    :math:`\Im(z)`
-:func:`polar(z)`   :math:`|z|\,e^{i \arg z}`
-:func:`proj(z)`    :math:`\operatorname{proj}(z)`
-:func:`real(z)`    :math:`\Re(z)`
-:func:`rect(z)`    :math:`\Re(z)\cos \Im(z)+i\,\Re(z)\sin \Im(z)`
-:func:`reim(z)`    :math:`\Re(z), \Im(z)`
-=================  ==================================
+=======================  ==================================
+Functions                Return values
+=======================  ==================================
+:func:`cabs(z,r_)`       :math:`|z|`
+:func:`carg(z,r_)`       :math:`\arg z`
+:func:`conj(z,r_)`       :math:`z^*`
+:func:`cplx(x,y,r_)`     :math:`x+i\,y`
+:func:`imag(z,r_)`       :math:`\Im(z)`
+:func:`polar(z,r_)`      :math:`|z|\,e^{i \arg z}`
+:func:`proj(z,r_)`       :math:`\operatorname{proj}(z)`
+:func:`real(z,r_)`       :math:`\Re(z)`
+:func:`rect(z,r_)`       :math:`\Re(z)\cos \Im(z)+i\,\Re(z)\sin \Im(z)`
+:func:`reim(z,re_,im_)`  :math:`\Re(z), \Im(z)`
+=======================  ==================================
 
 Generic Error-like Functions
 ----------------------------
 
-Error-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`, otherwise it calls C wrappers to the corresponding functions from the `Faddeeva library <http://ab-initio.mit.edu/wiki/index.php/Faddeeva_Package>`_ from the MIT (see :file:`mad_num.c`).
+Error-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`, otherwise it calls C wrappers to the corresponding functions from the `Faddeeva library <http://ab-initio.mit.edu/wiki/index.php/Faddeeva_Package>`_ from the MIT (see :file:`mad_num.c`). The optional argument :var:`r_` represents a destination for results with reference semantic, i.e. avoiding memory allocation, which is ignored by results with value semantic.
 
-=======================  ==========================================================  ======================
-Functions                Return values                                               C functions  
-=======================  ==========================================================  ======================
-:func:`erf(z,rtol_)`     :math:`\frac{2}{\sqrt\pi}\int_0^z e^{-t^2} dt`              :c:func:`mad_num_erf`      
-:func:`erfc(z,rtol_)`    :math:`1-\operatorname{erf}(z)`                             :c:func:`mad_num_erfc`     
-:func:`erfi(z,rtol_)`    :math:`-i\operatorname{erf}(i z)`                           :c:func:`mad_num_erfi`     
-:func:`erfcx(z,rtol_)`   :math:`e^{z^2}\operatorname{erfc}(z)`                       :c:func:`mad_num_erfcx`    
-:func:`wf(z,rtol_)`      :math:`e^{-z^2}\operatorname{erfc}(-i z)`                   :c:func:`mad_num_wf`       
-:func:`dawson(z,rtol_)`  :math:`\frac{-i\sqrt\pi}{2}e^{-z^2}\operatorname{erf}(iz)`  :c:func:`mad_num_dawson`
-=======================  ==========================================================  ======================
+==========================  ==========================================================  ========================
+Functions                   Return values                                               C functions  
+==========================  ==========================================================  ========================
+:func:`erf(z,rtol_,r_)`     :math:`\frac{2}{\sqrt\pi}\int_0^z e^{-t^2} dt`              :c:func:`mad_num_erf`      
+:func:`erfc(z,rtol_,r_)`    :math:`1-\operatorname{erf}(z)`                             :c:func:`mad_num_erfc`     
+:func:`erfi(z,rtol_,r_)`    :math:`-i\operatorname{erf}(i z)`                           :c:func:`mad_num_erfi`     
+:func:`erfcx(z,rtol_,r_)`   :math:`e^{z^2}\operatorname{erfc}(z)`                       :c:func:`mad_num_erfcx`    
+:func:`wf(z,rtol_,r_)`      :math:`e^{-z^2}\operatorname{erfc}(-i z)`                   :c:func:`mad_num_wf`       
+:func:`dawson(z,rtol_,r_)`  :math:`\frac{-i\sqrt\pi}{2}e^{-z^2}\operatorname{erf}(iz)`  :c:func:`mad_num_dawson`
+==========================  ==========================================================  ========================
 
-Generic MapFold-like Functions
-------------------------------
+Special Functions
+-----------------
 
-MapFold-like generic functions (also known as MapReduce) forward the call to the method of the same name from the first argument when the latter is not a :type:`number`. These functions are useful when used as high-order functions passed to methods :func:`:map2()`, :func:`:foldl()` (fold left) or :func:`:foldr()` (fold right) of containers like vectors and matrices.
+The special functions factorial and inverse factorial support negative integers as input as it uses extended factorial definition. The value are cached making the complexity of these functions in :math:`O(1)` after warmup. 
+
+==================  ====================  =========================
+Functions           Return values         C functions
+==================  ====================  =========================
+:func:`fact(n)`     :math:`n!`            :c:func:`mad_num_fact`
+:func:`invfact(n)`  :math:`\frac{1}{n!}`  :c:func:`mad_num_invfact`
+==================  ====================  =========================
+
+Functions for MapFold
+=====================
+
+MapFold functions for List-like containers (also known as MapReduce). These functions are useful when used as high-order functions passed to methods :func:`:map2()`, :func:`:foldl()` (fold left) or :func:`:foldr()` (fold right) of containers like tables, vectors and matrices.
 
 ====================  ========================
 Functions             Return values
@@ -189,18 +199,18 @@ Functions             Return values
 :func:`sumabs(x,y)`   :math:`|x| + |y|`
 :func:`minabs(x,y)`   :math:`\min(|x|, |y|)`
 :func:`maxabs(x,y)`   :math:`\max(|x|, |y|)`
-:func:`sumysqr(x,y)`  :math:`x + y^2`
-:func:`sumyabs(x,y)`  :math:`x + |y|`
-:func:`minyabs(x,y)`  :math:`\min(x, |y|)`
-:func:`maxyabs(x,y)`  :math:`\max(x, |y|)`
-:func:`sumxsqr(x,y)`  :math:`x^2 + y`
-:func:`sumxabs(x,y)`  :math:`|x| + y`
-:func:`minxabs(x,y)`  :math:`\min(|x|, y)`
-:func:`maxxabs(x,y)`  :math:`\max(|x|, y)`
+:func:`sumsqrl(x,y)`  :math:`x + y^2`
+:func:`sumabsl(x,y)`  :math:`x + |y|`
+:func:`minabsl(x,y)`  :math:`\min(x, |y|)`
+:func:`maxabsl(x,y)`  :math:`\max(x, |y|)`
+:func:`sumsqrr(x,y)`  :math:`x^2 + y`
+:func:`sumabsr(x,y)`  :math:`|x| + y`
+:func:`minabsr(x,y)`  :math:`\min(|x|, y)`
+:func:`maxabsr(x,y)`  :math:`\max(|x|, y)`
 ====================  ========================
 
 Functions for Circular Sector
------------------------------
+=============================
 
 Basic functions for arc and cord lengths conversion rely on the following elementary relations:
 
@@ -212,16 +222,16 @@ Basic functions for arc and cord lengths conversion rely on the following elemen
 
 where :math:`r` stands for the radius and :math:`a` for the angle of the `Circular Sector <https://en.wikipedia.org/wiki/Circular_sector>`_.
 
-=====================  ==========================
+=====================  =====================================
 Functions              Return values
-=====================  ==========================
+=====================  =====================================
 :func:`arc2cord(l,a)`  :math:`l_{\text{arc}} \operatorname{sinc} \frac{a}{2}`
 :func:`arc2len(l,a)`   :math:`l_{\text{arc}} \operatorname{sinc} \frac{a}{2}\, \cos a`
 :func:`cord2arc(l,a)`  :math:`\frac{l_{\text{cord}}}{\operatorname{sinc} \frac{a}{2}}`
 :func:`cord2len(l,a)`  :math:`l_{\text{cord}} \cos a`
 :func:`len2arc(l,a)`   :math:`\frac{l}{\operatorname{sinc} \frac{a}{2}\, cos a}`
 :func:`len2cord(l,a)`  :math:`\frac{l}{\cos a}`
-=====================  ==========================
+=====================  =====================================
 
 Pseudo-Random Number Generators
 ===============================
@@ -291,7 +301,7 @@ Functions and Methods
 
    Return :const:`true` if :var:`a` is a MAD-X PRNG, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
 
-.. function:: is_arandgen(a)
+.. function:: isa_randgen(a)
 
    Return :const:`true` if :var:`a` is either a PRNG or a MAD-X PRNG, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
 
@@ -331,14 +341,6 @@ C API
 
    Set the seed of the MAD-X PRNG.
 
-.. ------------------------------------------------------------
-
-.. rubric:: Footnotes
-
-.. [#] Canonical NaN bit patterns may differ between MAD and C for the mantissa, but both should exibit the same behavior.
-.. [#] Factorial and inverse factorial support negative integers as input as it uses extended factorial definition.
-.. [#] Sign and sign1 functions take care of special cases like ±0, ±inf and ±NaN.
-
 References
 ==========
 
@@ -347,3 +349,11 @@ References
 .. [TAUSWTH96] P. L’Ecuyer, *“Maximally Equidistributed Combined Tausworthe Generators”*, Mathematics of Computation, 65 (213), 1996, p203–213.
 
 .. [MERTWIS98] M. Matsumoto and T. Nishimura, *“Mersenne Twister: A 623-dimensionally equidistributed uniform pseudorandom number generator”*. ACM Trans. on Modeling and Comp. Simulation, 8 (1), Jan. 1998, p3–30.
+
+.. ------------------------------------------------------------
+
+.. rubric:: Footnotes
+
+.. [#f1] Canonical NaN bit patterns may differ between MAD and C for the mantissa, but both should exibit the same behavior.
+.. [#f2] Default: :code:`v_ = 1`. 
+.. [#f3] Sign and sign1 functions take care of special cases like ±0, ±inf and ±NaN.
