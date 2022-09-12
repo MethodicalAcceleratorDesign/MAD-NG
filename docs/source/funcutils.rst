@@ -1,5 +1,5 @@
 .. index::
-   functions utilities
+   Functions utilities
 
 ********************
 Functional Utilities

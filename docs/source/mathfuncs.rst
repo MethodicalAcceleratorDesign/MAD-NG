@@ -1,5 +1,5 @@
 .. index::
-   constants and functions
+   Constants and functions
 
 ***********************
 Constants and Functions
