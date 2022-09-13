@@ -28,6 +28,8 @@
 
 // --- implementation ---------------------------------------------------------o
 
+#define CHKD    assert( d > 0 )
+
 #define CHKR    assert( r )
 #define CHKX    assert( x )
 #define CHKXY   assert( x && y )
@@ -35,11 +37,9 @@
 #define CHKYR   assert( y && r )
 #define CHKXYR  assert( x && y && r )
 
-#define CHKD    (d=MAX(1,d), n*=d)
-
 #define CNUM(re,im) (* (cnum_t*) & (num_t[2]) { re, im })
 
-// --- vector, cvector, ivector
+// --- vector, cvector, ivector, matrix, cmatrix, imatrix
 
 struct  matrix { ssz_t nr, nc;  num_t data[]; };
 struct cmatrix { ssz_t nr, nc; cnum_t data[]; };
@@ -94,12 +94,17 @@ num_t mad_vec_sum (const num_t x[], ssz_t n, ssz_t d)
 { CHKX; CHKD; num_t r=0; for (idx_t i=0; i < n; i+=d) r += x[i]; return r; }
 
 num_t mad_vec_mean (const num_t x[], ssz_t n, ssz_t d)
-{ CHKX; return mad_vec_sum(x,n,d)/n; }
+{ return mad_vec_sum(x,n,d)/(n/d); }
 
 num_t mad_vec_var (const num_t x[], ssz_t n, ssz_t d)
-{ num_t xb = mad_vec_mean(x,n,d); CHKD;
-  num_t r=0; for (idx_t i=0; i < n; i+=d) r += SQR(x[i]-xb);
-  return sqrt(r/n);
+{ num_t m = mad_vec_mean(x,n,d);
+  num_t s=0, s2=0; for (idx_t i=0; i < n; i+=d) s += x[i]-m, s2 += SQR(x[i]-m);
+  return s2 - SQR(s)/(n/d); // corrected estimator
+}
+
+void mad_vec_center (const num_t x[], num_t r[], ssz_t n, ssz_t d)
+{ CHKR; num_t m = mad_vec_mean(x,n,d);
+  for (idx_t i=0; i < n; i+=d) r[i] = x[i] - m;
 }
 
 num_t mad_vec_dot (const num_t x[], const num_t y[], ssz_t n, ssz_t d)
@@ -179,12 +184,6 @@ void mad_vec_divc (const num_t y[], cnum_t x, cnum_t r[], ssz_t n, ssz_t d)
 void mad_vec_divc_r (const num_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n, ssz_t d)
 {  mad_vec_divc(y, CNUM(x_re,x_im), r, n, d); }
 
-void mad_vec_center (const num_t x[], num_t r[], ssz_t n, ssz_t d)
-{ CHKXR; CHKD;
-  num_t mu  = 0; for (idx_t i=0; i < n; i+=d) mu  += x[i];
-        mu /= n; for (idx_t i=0; i < n; i+=d) r[i] = x[i] - mu;
-}
-
 num_t mad_vec_eval (const num_t x[], num_t x0, ssz_t n, ssz_t d) // Horner scheme
 { CHKX; CHKD; num_t v=x[n-d]; for (idx_t i=n-2*d; i >= 0; i-=d) v = v*x0 + x[i];
   return v;
@@ -228,21 +227,6 @@ num_t mad_vec_ksum (const num_t x[], ssz_t n, ssz_t d)
   return s + c;
 }
 
-num_t mad_vec_knorm (const num_t x[], ssz_t n, ssz_t d)
-{ CHKX; CHKD;
-  num_t s = x[0]*x[0], c = 0, t, v;
-  for (idx_t i=d; i < n; i+=d) {
-    v = x[i]*x[i];
-    t = s + v;
-    if (s >= t)
-      c = c + ((s-t) + v);
-    else
-      c = c + ((v-t) + s);
-    s = t;
-  }
-  return sqrt(s + c);
-}
-
 num_t mad_vec_kdot (const num_t x[], const num_t y[], ssz_t n, ssz_t d)
 { CHKXY; CHKD;
   num_t s = x[0]*y[0], c = 0, t, v;
@@ -257,28 +241,33 @@ num_t mad_vec_kdot (const num_t x[], const num_t y[], ssz_t n, ssz_t d)
   }
   return s + c;
 }
+
+num_t mad_vec_knorm (const num_t x[], ssz_t n, ssz_t d)
+{ CHKX; CHKD;
+  return sqrt( mad_vec_kdot(x,x,n,d) );
+}
 #pragma GCC pop_options
 
 void mad_vec_shift (num_t x[], ssz_t n, ssz_t d, int nshft)
-{ CHKX; ssz_t dd=MAX(1,d);
-  if (nshft > 0) mad_vec_copy(x, x+nshft*dd, n-nshft, d); // shift x down (or right)
+{ CHKX; CHKD;
+  if (nshft > 0) mad_vec_copy(x, x+nshft*d, n-nshft, d); // shift x down (or right)
   else
-  if (nshft < 0) mad_vec_copy(x-nshft*dd, x, n+nshft, d); // shift x up (or left)
+  if (nshft < 0) mad_vec_copy(x-nshft*d, x, n+nshft, d); // shift x up (or left)
 }
 
 void mad_vec_roll (num_t x[], ssz_t n, ssz_t d, int nroll)
-{ CHKX; ssz_t dd=MAX(1,d); nroll %= n;
+{ CHKX; CHKD; nroll %= n;
   ssz_t nsz = abs(nroll);
-  mad_alloc_tmp(num_t, a, nsz*dd);
+  mad_alloc_tmp(num_t, a, nsz*d);
   if (nroll > 0) {
-    mad_vec_copy(x+(n-nsz)*dd, a       ,   nsz, d); // end of x to a
-    mad_vec_copy(x           , x+nsz*dd, n-nsz, d); // shift x down (or right)
-    mad_vec_copy(a           , x       ,   nsz, d); // a to beginning of x
+    mad_vec_copy(x+(n-nsz)*d, a      ,   nsz, d); // end of x to a
+    mad_vec_copy(x          , x+nsz*d, n-nsz, d); // shift x down (or right)
+    mad_vec_copy(a          , x      ,   nsz, d); // a to beginning of x
   } else
   if (nroll < 0) {
-    mad_vec_copy(x       , a           ,   nsz, d); // beginning of x to a
-    mad_vec_copy(x+nsz*dd, x           , n-nsz, d); // shift x up (or left)
-    mad_vec_copy(a       , x+(n-nsz)*dd,   nsz, d); // a to end of x
+    mad_vec_copy(x      , a          ,   nsz, d); // beginning of x to a
+    mad_vec_copy(x+nsz*d, x          , n-nsz, d); // shift x up (or left)
+    mad_vec_copy(a      , x+(n-nsz)*d,   nsz, d); // a to end of x
   }
   mad_free_tmp(a);
 }
@@ -380,19 +369,24 @@ void mad_cvec_sum_r (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
 { CHKXR; *r = mad_cvec_sum(x,n,d); }
 
 cnum_t mad_cvec_mean (const cnum_t x[], ssz_t n, ssz_t d)
-{ CHKX; return mad_cvec_sum(x,n,d)/n; }
+{ CHKX; return mad_cvec_sum(x,n,d)/(n/d); }
 
 void mad_cvec_mean_r (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
 { CHKXR; *r = mad_cvec_mean(x,n,d); }
 
 cnum_t mad_cvec_var (const cnum_t x[], ssz_t n, ssz_t d)
-{ cnum_t xb = mad_cvec_mean(x,n,d); CHKD;
-  cnum_t r=0; for (idx_t i=0; i < n; i+=d) r += SQR(x[i]-xb);
-  return csqrt(r/n);
+{ cnum_t m = mad_cvec_mean(x,n,d);
+  cnum_t s=0, s2=0; for (idx_t i=0; i < n; i+=d) s += x[i]-m, s2 += SQR(x[i]-m);
+  return s2 - SQR(s)/(n/d); // corrected estimator
 }
 
 void mad_cvec_var_r (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
 { CHKXR; *r = mad_cvec_var(x,n,d); }
+
+void mad_cvec_center (const cnum_t x[], cnum_t r[], ssz_t n, ssz_t d)
+{ CHKR; cnum_t m = mad_cvec_mean(x,n,d);
+  for (idx_t i=0; i < n; i+=d) r[i] = x[i] - m;
+}
 
 cnum_t mad_cvec_dot (const cnum_t x[], const cnum_t y[], ssz_t n, ssz_t d)
 { CHKXY; CHKD; cnum_t r=0; for (idx_t i=0; i < n; i+=d) r += conj(x[i])*y[i]; return r; }
@@ -479,12 +473,6 @@ void mad_cvec_divc (const cnum_t y[], cnum_t x, cnum_t r[], ssz_t n, ssz_t d)
 void mad_cvec_divc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n, ssz_t d)
 { mad_cvec_divc(y, CNUM(x_re,x_im), r, n, d); }
 
-void mad_cvec_center (const cnum_t x[], cnum_t r[], ssz_t n, ssz_t d)
-{ CHKXR; CHKD;
-  cnum_t mu  = 0; for (idx_t i=0; i < n; i+=d) mu  += x[i];
-         mu /= n; for (idx_t i=0; i < n; i+=d) r[i] = x[i] - mu;
-}
-
 cnum_t mad_cvec_eval (const cnum_t x[], cnum_t x0, ssz_t n, ssz_t d) // Horner scheme
 { CHKX; CHKD; cnum_t v=x[n-d]; for (idx_t i=n-2*d; i >= 0; i-=d) v = v*x0 + x[i];
   return v;
@@ -505,25 +493,25 @@ void mad_cvec_minmax(const cnum_t x[], idx_t r[2], ssz_t n, ssz_t d)
 }
 
 void mad_cvec_shift (cnum_t x[], ssz_t n, ssz_t d, int nshft)
-{ CHKX; ssz_t dd=MAX(1,d);
-  if (nshft > 0) mad_cvec_copy(x, x+nshft*dd, n-nshft, d); // shift x down (or right)
+{ CHKX; CHKD;
+  if (nshft > 0) mad_cvec_copy(x, x+nshft*d, n-nshft, d); // shift x down (or right)
   else
-  if (nshft < 0) mad_cvec_copy(x-nshft*dd, x, n+nshft, d); // shift x up (or left)
+  if (nshft < 0) mad_cvec_copy(x-nshft*d, x, n+nshft, d); // shift x up (or left)
 }
 
 void mad_cvec_roll (cnum_t x[], ssz_t n, ssz_t d, int nroll)
-{ CHKX; ssz_t dd=MAX(1,d); nroll %= n;
+{ CHKX; CHKD; nroll %= n;
   ssz_t nsz = abs(nroll);
-  mad_alloc_tmp(cnum_t, a, nsz*dd);
+  mad_alloc_tmp(cnum_t, a, nsz*d);
   if (nroll > 0) {
-    mad_cvec_copy(x+(n-nsz)*dd, a       ,   nsz, d); // end of x to a
-    mad_cvec_copy(x           , x+nsz*dd, n-nsz, d); // shift x down (or right)
-    mad_cvec_copy(a           , x       ,   nsz, d); // a to beginning of x
+    mad_cvec_copy(x+(n-nsz)*d, a      ,   nsz, d); // end of x to a
+    mad_cvec_copy(x          , x+nsz*d, n-nsz, d); // shift x down (or right)
+    mad_cvec_copy(a          , x      ,   nsz, d); // a to beginning of x
   } else
   if (nroll < 0) {
-    mad_cvec_copy(x       , a           ,   nsz, d); // beginning of x to a
-    mad_cvec_copy(x+nsz*dd, x           , n-nsz, d); // shift x up (or left)
-    mad_cvec_copy(a       , x+(n-nsz)*dd,   nsz, d); // a to end of x
+    mad_cvec_copy(x      , a          ,   nsz, d); // beginning of x to a
+    mad_cvec_copy(x+nsz*d, x          , n-nsz, d); // shift x up (or left)
+    mad_cvec_copy(a      , x+(n-nsz)*d,   nsz, d); // a to end of x
   }
   mad_free_tmp(a);
 }
@@ -616,25 +604,25 @@ void mad_ivec_minmax(const idx_t x[], log_t absf, idx_t r[2], ssz_t n, ssz_t d)
 }
 
 void mad_ivec_shift (idx_t x[], ssz_t n, ssz_t d, int nshft)
-{ CHKX; ssz_t dd=MAX(1,d);
-  if (nshft > 0) mad_ivec_copy(x, x+nshft*dd, n-nshft, d); // shift x down (or right)
+{ CHKX; CHKD;
+  if (nshft > 0) mad_ivec_copy(x, x+nshft*d, n-nshft, d); // shift x down (or right)
   else
-  if (nshft < 0) mad_ivec_copy(x-nshft*dd, x, n+nshft, d); // shift x up (or left)
+  if (nshft < 0) mad_ivec_copy(x-nshft*d, x, n+nshft, d); // shift x up (or left)
 }
 
 void mad_ivec_roll (idx_t x[], ssz_t n, ssz_t d, int nroll)
-{ CHKX; ssz_t dd=MAX(1,d); nroll %= n;
+{ CHKX; CHKD; nroll %= n;
   ssz_t nsz = abs(nroll);
-  mad_alloc_tmp(idx_t, a, nsz*dd);
+  mad_alloc_tmp(idx_t, a, nsz*d);
   if (nroll > 0) {
-    mad_ivec_copy(x+(n-nsz)*dd, a       ,   nsz, d); // end of x to a
-    mad_ivec_copy(x           , x+nsz*dd, n-nsz, d); // shift x down (or right)
-    mad_ivec_copy(a           , x       ,   nsz, d); // a to beginning of x
+    mad_ivec_copy(x+(n-nsz)*d, a      ,   nsz, d); // end of x to a
+    mad_ivec_copy(x          , x+nsz*d, n-nsz, d); // shift x down (or right)
+    mad_ivec_copy(a          , x      ,   nsz, d); // a to beginning of x
   } else
   if (nroll < 0) {
-    mad_ivec_copy(x       , a          ,   nsz, d); // beginning of x to a
-    mad_ivec_copy(x+nsz*dd, x          , n-nsz, d); // shift x up (or left)
-    mad_ivec_copy(a       , x+(n-nsz)*d,   nsz, d); // a to end of x
+    mad_ivec_copy(x      , a          ,   nsz, d); // beginning of x to a
+    mad_ivec_copy(x+nsz*d, x          , n-nsz, d); // shift x up (or left)
+    mad_ivec_copy(a      , x+(n-nsz)*d,   nsz, d); // a to end of x
   }
   mad_free_tmp(a);
 }
