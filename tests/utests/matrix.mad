@@ -35,6 +35,7 @@ local sqrt, abs, log, exp, min, random, randomseed, floor, round,
       acosh, atanh, rangle, fact, erf, erfc                            in MAD.gmath
 local chain, duplicate                                           in MAD.fun
 local rep                                                        in MAD.utility
+local min                                                        in math
 
 local eps, tiny, huge, inf, nan, pi                              in MAD.constant
 
@@ -686,6 +687,7 @@ function TestMatrixSet:testRemvec()
   for n = 1, 25 do --Check single element by element removal
     assertEquals( m:remvec(1), matrix(1,36-n):fill((n+1)..36))
   end
+  local m = matrix(6):fill(1..36)
   for n = 1, 25 do --Check multi-element removal
     assertEquals( m:copy():remvec(1..n), matrix(1,36-n):fill((n+1)..36)) --Always outputs 1D
   end
@@ -702,13 +704,22 @@ function TestMatrixErr:testInsvec()
   assertErrorMsgContains( msg[2], errMat.insvec, errMat, 1, ''           )
 end
 
-function TestMatrixSet:testInsvec()
-  local m = matrix(6):fill(1..36)
-  for n = 1, 25 do --Check single element by element removal
-    assertEquals( m:remvec(1), matrix(1,36-n):fill((n+1)..36))
+function TestMatrixSet:testInsvec() --size is never changed inserting from the beginning results in end being discarded
+  local m = matrix(6):fill(1)
+  for n = 1, 36 do --Check single element by element addition
+    local expected = matrix(6,6):fill(1)
+    for i = n, 1, -1 do
+      expected[i] = n-i+1
+    end
+    assertEquals( m:insvec(1, n), expected)
   end
-  for n = 1, 25 do --Check multi-element removal
-    assertEquals( m:copy():remvec(1..n), matrix(1,36-n):fill((n+1)..36)) --Always outputs 1D
+  local m = matrix(6):fill(1)
+  for n = 1, 25 do --Check multi-element insertion
+    local expected = matrix(6,6):fill(1)
+    for i = n, 1, -1 do
+      expected[i] = i
+    end
+    assertEquals( m:copy():insvec(1..n, 1..n), expected) --Always outputs 1D
   end
 end
 
@@ -2405,9 +2416,9 @@ end
 function TestMatrixSFolds:testMinabs() --Good enough?
   for _,m in ipairs(G.matidx) do
     local r = nrange(-3, 3, m:size())
-    m:fill(r)
-    local nr,nc,_ = m:sizes()
-    assertEquals( m:minabs()     , m:abs():min())
+    local newMat = m:copy():fill(r)
+    local nr,nc,_ = newMat:sizes()
+    assertEquals( newMat:minabs()     , newMat:abs():min())
   end
 end
 
@@ -2423,9 +2434,9 @@ end
 function TestMatrixSFolds:testMaxabs() --Good enough?
   for _,m in ipairs(G.matidx) do
     local r = nrange(-3, 3, m:size())
-    m:fill(r)
-    local nr,nc,_ = m:sizes()
-    assertEquals( m:maxabs()     , m:abs():max())
+    local newMat = m:copy():fill(r)
+    local nr,nc,_ = newMat:sizes()
+    assertEquals( newMat:maxabs()     , newMat:abs():max())
   end
 end
 
@@ -2557,9 +2568,9 @@ end
 function TestMatrixSScans:testAccminabs() --Good enough?
   for _,m in ipairs(G.matidx) do
     local r = nrange(-3, 3, m:size())
-    m:fill(r)
-    local nr,nc,_ = m:sizes()
-    assertEquals( m:accminabs()     , m:abs():accmin())
+    local newMat = m:copy():fill(r)
+    local nr,nc,_ = newMat:sizes()
+    assertEquals( newMat:accminabs()     , newMat:abs():accmin())
   end
 end
 
@@ -2574,9 +2585,9 @@ end
 function TestMatrixSScans:testAccmaxabs() --Good enough?
   for _,m in ipairs(G.matidx) do
     local r = nrange(-3, 3, m:size())
-    m:fill(r)
-    local nr,nc,_ = m:sizes()
-    assertEquals( m:accmaxabs()     , m:abs():accmax())
+    local newMat = m:copy():fill(r)
+    local nr,nc,_ = newMat:sizes()
+    assertEquals( newMat:accmaxabs()     , newMat:abs():accmax())
   end
 end
 
@@ -2635,9 +2646,9 @@ end
 function TestMatrixSScans:testRaccminabs() --Good enough?
   for _,m in ipairs(G.matidx) do
     local r = nrange(-3, 3, m:size())
-    m:fill(r)
-    local nr,nc,_ = m:sizes()
-    assertEquals( m:raccminabs()     , m:abs():raccmin())
+    local newMat = m:copy():fill(r)
+    local nr,nc,_ = newMat:sizes()
+    assertEquals( newMat:raccminabs()     , newMat:abs():raccmin())
   end
 end
 
@@ -2653,9 +2664,9 @@ end
 function TestMatrixSScans:testRaccmaxabs() --Good enough?
   for _,m in ipairs(G.matidx) do
     local r = nrange(-3, 3, m:size())
-    m:fill(r)
-    local nr,nc,_ = m:sizes()
-    assertEquals( m:raccmaxabs()     , m:abs():raccmax())
+    local newMat = m:copy():fill(r)
+    local nr,nc,_ = newMat:sizes()
+    assertEquals( newMat:raccmaxabs()     , newMat:abs():raccmax())
   end
 end
 
@@ -2706,27 +2717,27 @@ function TestMatrixSScans:testMinmax() --Is this meant to return negative number
     local min, max = m:minmax()
     assertEquals( min     , 1        )
     assertEquals( max     , m:size() )
-    m:fill(nrange(-3, 3.5, m:size()))--3.5 means not symmetric
-    min, max = m:minmax(true)
-    assertEquals( abs(min), m:abs():min()) --m:abs():min() not necessarily m:min():abs()
-    assertEquals( abs(max), m:abs():max())
-    min, max = m:minmax(false)
-    assertEquals( min, m:min())
-    assertEquals( max, m:max())
+    local newMat = m:copy():fill(nrange(-3, 3.5, m:size()))--3.5 means not symmetric
+    min, max = newMat:minmax(true)
+    assertEquals( abs(min), newMat:abs():min()) --m:abs():min() not necessarily m:min():abs()
+    assertEquals( abs(max), newMat:abs():max())
+    min, max = newMat:minmax(false)
+    assertEquals( min, newMat:min())
+    assertEquals( max, newMat:max())
   end
 end
 
 function TestMatrixSScans:testIminmax()
   for _,m in ipairs(G.matidx) do
-    m:fill(nrange(-3, 3.5, m:size())) --3.5 means not symmetric
-    local min, max = m:iminmax(true)
-    assertEquals( abs(m[min]), m:abs():min()) --m:abs():min() not necessarily m:min():abs()
-    assertEquals( abs(m[max]), m:abs():max())
-    min, max = m:iminmax(false)
+    local newMat = m:copy():fill(nrange(-3, 3.5, m:size())) --3.5 means not symmetric
+    local min, max = newMat:iminmax(true)
+    assertEquals( abs(newMat[min]), newMat:abs():min()) --m:abs():min() not necessarily m:min():abs()
+    assertEquals( abs(newMat[max]), newMat:abs():max())
+    min, max = newMat:iminmax(false)
     assertEquals( min, 1)
-    assertEquals( max, m:size())
-    assertEquals( m[min], m:min())
-    assertEquals( m[max], m:max())
+    assertEquals( max, newMat:size())
+    assertEquals( newMat[min], newMat:min())
+    assertEquals( newMat[max], newMat:max())
   end
 end
 -- symplectic matrix ----------------------------------------------------------o
@@ -2827,7 +2838,7 @@ function TestMatrix:testMean()
   end
 end
 
-function TestMatrix:testVariance() --This fails as the function variance actually returns the standard deviation, is this intentional? See line 102 in mad_vec.c
+function TestMatrix:testVariance() --This fails as the function variance uses a different estimator, will have to check what this eastimator is
   for _,m in ipairs(G.matidx) do
     local mean = m:mean()
     local sum = 0
@@ -3162,7 +3173,7 @@ function TestMatrixOps:testPow()
         matExp = invMat:copy()
         for n = 1,10 do --Fails at n > 23 (rel error of 1.3E-16)
           if not (is_nan(matExp[1]) or abs(matExp[1]) == inf) then
-            assertEquals(mat^-n, matExp) -- FAILS when matrix has no inverse (mat:inv returns a non nil matrix)
+            assertAllAlmostEquals(totable(mat^-n), totable(matExp), 24*matExp:max()*eps) 
           end
           matExp = matExp * invMat --mul previously tested
         end
