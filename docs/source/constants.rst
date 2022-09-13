@@ -13,7 +13,7 @@ Numerical Constants
 .. index::
    Numerical constants
 
-This section describes some numerical constants uniquely defined as macros in the C header :file:`mad_cst.h` and available from C and MAD modules as floating point double precision variables. There numerical constants are provided by the system libraries.
+This section describes some numerical constants uniquely defined as macros in the C header :file:`mad_cst.h` and available from C and MAD modules as floating point double precision variables. There numerical constants are provided by the system libraries. Note that constant :const:`huge` differs from :const:`math.huge`, which corresponds in fact to :const:`inf`. 
 
 ===================  ======================  =========================  ======================
 MAD constants        C macros                C constants                Values
