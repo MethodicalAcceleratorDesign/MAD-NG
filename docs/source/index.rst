@@ -13,12 +13,18 @@ Welcome to MAD-NG's Reference Manual!
    /types.rst
 
    /elements.rst
-   /sequences.rst
+   /sequence.rst
    /survey.rst
    /track.rst
 
-   /cstfuns.rst
+   /constants.rst
+   /functions.rst
+   /functor.rst
+   /numrange.rst
+   /randnum.rst
    /cplxnum.rst
+   /linalg.rst
+   /diffalg.rst
    /miscfuns.rst
 
 Indices and tables
