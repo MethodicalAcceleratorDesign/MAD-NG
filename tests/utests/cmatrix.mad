@@ -116,7 +116,7 @@ function TestCMatrixErr:testCtor()
 end
 
 function TestCMatrix:testCtor()
-  for ii,cm in ipairs(G.cmatidx) do --ipairs only implicitly tested
+  for ii,cm in ipairs(G.cmatidx) do
     local nr, nc = cm:sizes()
     for j=1,#cm do
       assertEquals( cm.data[j-1], j+j*1i )
@@ -141,11 +141,11 @@ function TestCMatrixErr:testCtorFromtable()
   assertErrorMsgContains( msg[2], cmatrix, {''}  )
 end
 
-function TestCMatrix:testCtorFromtable() 
-  local cv = cvector{1,2 + 1i,3 + 2i,4 + 3i,5 + 4i,6 + 5i}
-  local cm = cmatrix{{1 + 2i,2 + 3i,3 + 4i},{4 + 5i,5 + 6i,6 + 7i}}
-  for j=1,#cv do assertEquals( cv.data[j-1], j+(j-1)*1i ) end
-  for j=1,#cm do assertEquals( cm.data[j-1], j+(j+1)*1i ) end
+function TestCMatrix:testCtorFromtable()
+  local cv = cvector{1,2,3,4,5,6}
+  local cm = cmatrix{{1,2,3},{4,5,6}}
+  for j=1,#cm do assertEquals( cm.data[j-1], j+0i ) end
+  for j=1,#cv do assertEquals( cv.data[j-1], j+0i ) end
   assertTrue  ( is_cmatrix( cmatrix{2}            ) )
   assertTrue  ( is_cvector( cmatrix{2}            ) )
   assertTrue  ( is_cmatrix( cmatrix{complex(0,0)} ) )
@@ -2028,44 +2028,6 @@ function TestCMatrixSMaps:testImag()
   end
 end
 
-function TestCMatrixErr:testReim()
-  local msg = {
-    "invalid argument #2 (matrix expected)"    ,
-    "invalid argument #3 (matrix expected)",
-  }
-  assertErrorMsgContains( msg[1], mth, 'reim', errCMat, ''                )
-  assertErrorMsgContains( msg[1], mth, 'reim', errCMat, 1..2              )
-  assertErrorMsgContains( msg[1], mth, 'reim', errCMat, 1                 )
-  assertErrorMsgContains( msg[1], mth, 'reim', errCMat, errCMat           )
-  assertErrorMsgContains( msg[1], mth, 'reim', errCMat, { }               )
-  assertErrorMsgContains( msg[2], mth, 'reim', errCMat, errCMat:real(), ''  )
-  assertErrorMsgContains( msg[2], mth, 'reim', errCMat, errCMat:real(), 1..2)
-  assertErrorMsgContains( msg[2], mth, 'reim', errCMat, errCMat:real(), 1 )
-  assertErrorMsgContains( msg[2], mth, 'reim', errCMat, errCMat:real(), errCMat )
-  assertErrorMsgContains( msg[2], mth, 'reim', errCMat, errCMat:real(), { } )
-
-end
-
-function TestCMatrixSMaps:testReim()
-  for _,cm in ipairs(G.cmatidx) do
-    local re, im = cm:copy():reim()
-    assertEquals(re, cm:real())
-    assertEquals(im, cm:imag())
-    assertEquals(re + 1i * im, cm) --Test we get real and imag out
-    local zerosM = matrix(cm:sizes()):zeros() --Is there a function to convet cmat to mat?
-    re, im = cm:reim(nil, zerosM) 
-    assertEquals(re, cm:real())
-    assertEquals(im, zerosM) --Test we can set imag
-    local onesM = matrix(cm:sizes()):ones()
-    re, im = cm:reim(onesM, nil)
-    assertEquals(re, onesM)
-    assertEquals(im, cm:imag()) --Test we can set real
-    re, im = cm:reim(zerosM, onesM)
-    assertEquals(re, zerosM)
-    assertEquals(im, onesM) --Test we can set both
-  end
-end
-
 function TestCMatrixSMaps:testConj()
   for _,cm in ipairs(G.cmatidx) do
     assertEquals( cm:conj(), cm:same():fill(1..cm:size()):map(\x x-x*1i) )
@@ -2631,54 +2593,10 @@ function TestCMatrixOps:testMod()
   end
 end
 
-local function invForTesting(m)
-  local invMat = cmatrix(m:sizes()):eye()
-  local mCopy = m:copy()
-  for i = 1, mCopy.nrow do --nrow == ncol so using nrow for rest of test
-    local divisor = mCopy:get(i, i)  --assuming mCopy[1] ~= 0
-    for j = 1, mCopy.nrow do 
-      mCopy:set(i, j, mCopy:get(i,j)/ divisor)
-      invMat:set(i, j, invMat:get(i,j)/ divisor)
-    end
-    for otherRow = 1, mCopy.nrow do
-      if otherRow ~= i then 
-        local multiplier = mCopy:get(otherRow, i)
-        for j = 1, mCopy.nrow do
-          mCopy:set(otherRow, j, mCopy:get(otherRow, j) - multiplier * mCopy:get(i,j))
-          invMat:set(otherRow, j, invMat:get(otherRow, j) - multiplier * invMat:get(i,j))
-        end
-      end
-    end
-  end
-  return invMat
-end
-
-function TestCMatrixOps:testInv() --This uses the Gauss-Jordan Elimination method from https://www.intmath.com/matrices-determinants/inverse-matrix-gauss-jordan-elimination.php
-  for _, cmat in ipairs(G.cmatidx) do
-    if cmat.nrow == cmat.ncol then --cmat:inv can inverse non square matrices - however I was not aware they existed
-      assertEquals(cmat:inv(), invForTesting(cmat)) 
-    end
-  end
-end
-
-function TestCMatrixOps:testPow()
-  for _, cmat in ipairs(G.cmatidx) do
-      if cmat.ncol == cmat.nrow then -- Can multiply itself
-        local identity = cmatrix(cmat.nrow, cmat.ncol):eye()
-        assertEquals(cmat^0,identity) --eye previously tested
-        assertEquals(cmat^-0, identity)
-        local cmatExp = cmat:copy()
-        for n = 1,9 do --Fails at n > 9 (rel error of 1.3E-16)
-          assertEquals(cmat^n, cmatExp)
-          cmatExp = cmatExp * cmat --mul previously tested
-        end
-        local invMat = invForTesting(cmat)
-        cmatExp = invMat:copy()
-        for n = 1,10 do --Fails at n > 23 (rel error of 1.3E-16)
-          assertEquals(cmat^-n, cmatExp)
-          cmatExp = cmatExp * invMat --mul previously tested
-        end
-      end
+function TestCMatrixOps:testPow() --TODO after pow() modifications
+  for i,cm in ipairs(G.cmatidx) do
+    local cmref = cm:copy():map(\x x*x)
+    assertEquals( cm^2, cmref )
   end
 end
 
@@ -3219,14 +3137,14 @@ function TestCMatrixFFT:testIFFT()
   end end
 end
 
-function TestCMatrixErr:testRFFT()
+function TestCMatrixFFT:testRFFT()
   local msg = {
     "invalid argument #1 (matrix expected)",
   }
   assertErrorMsgContains( msg[1], mth, 'rfft', cmatrix(1) )
 end
 
-function TestCMatrixErr:testIRFFT()
+function TestCMatrixFFT:testIRFFT()
   local msg = {
     "invalid argument #2 (matrix expected)" ,
     "incompatible matrix sizes"             ,
@@ -3235,7 +3153,7 @@ function TestCMatrixErr:testIRFFT()
   assertErrorMsgContains( msg[2], mth, 'irfft', cvector(3), matrix(1) )
 end
 
-function TestCMatrixFFT:testIRFFT()
+function TestMatrixFFT:testIRFFT()
   for i,s in ipairs(dat.sv) do   -- 1D
     local ref = dat.fftVIn:getsub(1..s, 1)
     local res = ref:rfft():irfft(ref:same())
@@ -3261,16 +3179,7 @@ function TestCMatrixFFT:testIRFFT()
 end
 
 --function TestCMatrixFFT:testNFFT() end
-function TestCMatrixFFT:testINFFT()
-  for i,s in ipairs(dat.nfftsv) do   -- 1D
-    local ref = dat.fftVIn:getsub(1..s, 1)
-    local pos = dat.nfftVPosIn:getsub(1..s, 1) / s
-    local res = ref:nfft(pos):infft(pos)
-    assertTrue( res:eq( ref, 38*eps ) )
-  end
-
-  --Need to do 2D
-end
+--function TestCMatrixFFT:testINFFT() end
 
 function TestCMatrixErr:testConv()
   local msg = {
