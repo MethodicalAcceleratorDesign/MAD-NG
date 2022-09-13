@@ -570,8 +570,8 @@ References
 
 .. rubric:: Footnotes
 
+.. [#f4] For *true* Functional Programming, see the module :mod:`MAD.lfun`, a binding of the `LuaFun <https://github.com/luafun/luafun>`_  library adapted to the ecosystem of MAD-NG.
 .. [#f1] Canonical NaN bit patterns may differ between MAD and C for the mantissa, but both should exibit the same behavior.
 .. [#f2] Default: :code:`v_ = 1`. 
 .. [#f3] Sign and sign1 functions take care of special cases like ±0, ±inf and ±NaN.
-.. [#f4] For *true* Functional Programming, see the module :mod:`MAD.lfun`, a binding of the `LuaFun <https://github.com/luafun/luafun>`_  library adapted to the ecosystem of MAD-NG.
 .. [#f5] Element-wise operators are not available directly in the programming language, here we use the Matlab-like notation for convenience.
