@@ -32,6 +32,7 @@ local assertTrue, assertEquals, assertAlmostEquals               in MAD.utest
 local dat = assert(loadfile('data/tpsa.dat'))()
 local dat2Var = assert(loadfile('data/2VarTPSA.dat'))()
 local dat3Var = assert(loadfile('data/3VarTPSA.dat'))()
+local dat4Var = assert(loadfile('data/4VarTPSA.dat'))()
 
 local ord = {1,2,3,4,5,6,7,10,12,15}
 local ordNVar = {1,2,3,4,5,6}
@@ -142,6 +143,35 @@ local function checkFun3Var(singleVarFnam, trc)
   end
 end
 
+local function checkFun4Var(singleVarFnam, trc) 
+  local d = gtpsad(4,5)
+  local multiVarFnams = {"axypbvwpc", "avwxypb", "avpbwpcxpdy"}
+  for _, multiVarFnam in ipairs(multiVarFnams) do
+    local fun, r, s, v, w, x, y = dat4Var[multiVarFnam .. "fun"][singleVarFnam]
+    for _,c in ipairs(fun) do
+      for _,o in ipairs(ordNVar) do
+        v = tpsa(o):set(1,c.v0):set(2,1)
+        w = tpsa(o):set(1,c.w0):set(3,1) 
+        x = tpsa(o):set(1,c.x0):set(4,1)
+        y = tpsa(o):set(1,c.y0):set(5,1) --0 0 0 0 -> 1 0 0 0 -> 0 1 0 0 -> 0 0 1 0 -> 0 0 0 1...
+        if multiVarFnam == "avwxypb" then
+          s = v:axypb(w, 1, 0) -- s = v * w
+          s = s:axypb(x, 1, 0) -- s = v * w * x
+          s = s:axypb(y, 1, 1) -- s = v * w * y + 1
+        elseif multiVarFnam == "avpbwpcxpdy" then
+          s = v:axpbypc(w, 1, 1, 0) -- s = v + w
+          s = s:axpbypc(x, 1, 1, 0) -- s = v + w + x
+          s = s:axpbypc(y, 1, 1, 0) -- s = v + w + x + y
+        else
+          s = v[multiVarFnam](v, w, x, y, 1, 1, 1) -- a = b = 1
+        end
+        r = s[singleVarFnam](s)  ; checkVal(r, c, nil, nil, trc) -- positive (r ~= t)
+        r = s[singleVarFnam](s,s) ; checkVal(r, c, nil, nil, trc) -- aliased  (r == t)
+      end
+    end
+  end
+end
+
 TestTPSAFun.testInv   = \s -> checkFun1('inv')
 TestTPSAFun.testISqrt = \s -> checkFun1('invsqrt')
 TestTPSAFun.testSqrt  = \s -> checkFun1('sqrt')
@@ -184,6 +214,12 @@ TestTPSAFun.testLog3Var   = \s -> checkFun3Var('log')     --8   *eps (axyz + b)
 TestTPSAFun.testSin3Var   = \s -> checkFun3Var('sin')     --3700*eps (axyz + b); 100* eps (axy + bz + c); 8 * eps (ax + by + cz)
 TestTPSAFun.testCos3Var   = \s -> checkFun3Var('cos')     --695 *eps (axyz + b); 160* eps (axy + bz + c); 8 * eps (ax + by + cz)
 TestTPSAFun.testTan3Var   = \s -> checkFun3Var('tan')     --345 *eps (axyz + b); 40 * eps (axy + bz + c); 34* eps (ax + by + cz)
+TestTPSAFun.testInv4Var   = \s -> checkFun4Var('inv')     -- 2 * eps (avwxypb)
+TestTPSAFun.testISqrt4Var = \s -> checkFun4Var('invsqrt') -- 4 * eps (avwxypb)
+TestTPSAFun.testSqrt4Var  = \s -> checkFun4Var('sqrt')    -- 2 * eps (avwxypb)
+TestTPSAFun.testExp4Var   = \s -> checkFun4Var('exp')     --28 * eps (axypbvwpc)      64 * eps (avwxypb)      16 * eps (avpbwpcxpdy)
+TestTPSAFun.testLog4Var   = \s -> checkFun4Var('log')     -- 4 * eps (avwxypb)
+
 -- TODO: operators
 
 -- performance tests ----------------------------------------------------------o
