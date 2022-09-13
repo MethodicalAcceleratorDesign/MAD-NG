@@ -5,6 +5,8 @@
 Miscellaneous Functions
 ***********************
 
+This chapter lists some useful functions complementary to the standard library to manipulate files, strings, tables, and more.
+
 Files Functions
 ===============
 
