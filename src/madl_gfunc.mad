@@ -23,6 +23,10 @@
 
 -- locals ---------------------------------------------------------------------o
 
+local bit = require 'bit'
+
+local band, bor, bnot, lshift, rshift, rol in bit
+
 local is_nil, is_function, is_table, is_callable, wprotect,
       set_concept, concept                                         in MAD.typeid
 local not_scannable, not_extendable, not_mutable                   in concept
@@ -34,6 +38,7 @@ local type, getmetatable, setmetatable, assert, rawget, select, string, io =
 
 local gfunc = {
 
+  -- functions helpers
   narg    = \...   -> select('#',...), -- number of arguments
   ident   = \...   -> ...,             -- identity
   fnil    = \      -> nil,             -- functional nil
@@ -42,89 +47,228 @@ local gfunc = {
   fzero   = \      -> 0,               -- functional zero
   fone    = \      -> 1,               -- functional one
   first   = \a     -> a,               -- 1st argument only
-  second  = \_,a   -> a,               -- 2nd argument only
-  third   = \_,_,a -> a,               -- 3rd argument only
+  second  = \a,b   -> b,               -- 2nd argument only
+  third   = \a,b,c -> c,               -- 3rd argument only
   swap    = \a,b   -> (b,a),           -- swap #1 and #2 arguments, discard others
   swapv   = \a,b,... -> (b,a,...),     -- swap #1 and #2 arguments, keep others
   echo    = \...   => io.write(...) return ... end,
 
+  -- bit-like operators (see http://bitop.luajit.org/api.html)
+  tobit   = bit.tobit,
+  tohex   = bit.tohex,
+  bnot    = bit.bnot,
+  band    = bit.band,
+  bor     = bit.bor,
+  bxor    = bit.bxor,
+  bswap   = bit.bswap,
+  lshift  = bit.lshift,
+  rshift  = bit.rshift,
+  arshift = bit.arshift,
+  rol     = bit.rol,
+  ror     = bit.ror,
+
+  -- flag (1 bit) operators
+  bset    = \x,n -> bor (x, rol( 1, n)),
+  bclr    = \x,n -> band(x, rol(-2, n)),
+  btst    = \x,n -> band(x, rol( 1, n)) ~= 0,
+
+  -- flags (32 bit) operators
+  fbit    = \n     -> lshift(1, n),
+  fnot    = \x     -> bnot(x),
+  fset    = \x,... -> bor (x, ...), -- fset(x, f1, f2, ...)
+  fcut    = \x,... -> band(x, ...), -- fcut(x, f1, f2, ...)
+  fclr    = \x,f   -> band(x, bnot(f)),
+  ftst    = \x,f   -> band(x,   f) == f,
+  fall    = \x,... -> band(x, ...) == bor(0, ...),
+  fany    = \x,... -> band(x, ...) ~= 0,
+
+  -- logical-like operators
+  lfalse  = \    -> false,
+  ltrue   = \    -> true,
+  lbool   = \x   -> not not x,
+  lnot    = \x   -> not x,
+  land    = \x,y -> x and y,
+  lor     = \x,y -> x or y,
+
+  -- relational-like operators
+  eq      = \x,y -> x == y,
+  ne      = \x,y -> x ~= y,
+  lt      = \x,y -> x <  y,
+  le      = \x,y -> x <= y,
+  gt      = \x,y -> x >  y,
+  ge      = \x,y -> x >= y,
+
+  -- math-like operators
+  unm     = \x   ->  -x,
+  sqr     = \x   -> x * x,
+  inv     = \x   -> 1 / x,
+  add     = \x,y -> x + y,
+  sub     = \x,y -> x - y,
+  mul     = \x,y -> x * y,
+  div     = \x,y -> x / y,
+  mod     = \x,y -> x % y,
+  pow     = \x,y -> x ^ y,
+
+  -- vector-like operators
+  emul    = \x,y -> x:__emul(y), -- .*
+  ediv    = \x,y -> x:__ediv(y), -- ./
+  emod    = \x,y -> x:__emod(y), -- .%
+  epow    = \x,y -> x:__epow(y), -- .^
+  
+  -- object-like operators
+  get     = \x,k   -> x[k],
+  set     = \x,k,v => x[k]=v end,
+  len     = \x     -> #x,
+  cat     = \x,y   -> x..y,
+  call    = \x,... -> x(...),
+
+  -- operators as strings
+  opstr   = {} 
 }
+
+-- strings as operators equivalence
+
+local opstr in gfunc
+
+opstr['~' ] = gfunc.unm
+opstr['^2'] = gfunc.sqr
+opstr['1/'] = gfunc.inv
+opstr['+' ] = gfunc.add
+opstr['-' ] = gfunc.sub
+opstr['*' ] = gfunc.mul
+opstr['/' ] = gfunc.div
+opstr['%' ] = gfunc.mod
+opstr['^' ] = gfunc.pow
+
+opstr['.*'] = gfunc.emul
+opstr['./'] = gfunc.ediv
+opstr['.%'] = gfunc.emod
+opstr['.^'] = gfunc.epow
+
+opstr['!!'] = gfunc.lbool
+opstr['!' ] = gfunc.lnot
+opstr['&&'] = gfunc.land
+opstr['||'] = gfunc.lor
+
+opstr['=='] = gfunc.eq
+opstr['~='] = gfunc.ne
+opstr['!='] = gfunc.ne
+opstr['<' ] = gfunc.lt
+opstr['<='] = gfunc.le
+opstr['>' ] = gfunc.gt
+opstr['>='] = gfunc.ge
+
+opstr['->'] = gfunc.get
+opstr['<-'] = gfunc.set
+opstr['#' ] = gfunc.len
+opstr['..'] = gfunc.cat
+opstr['()'] = gfunc.call
 
 -- functors
 
+-- Note: Functors were originally implemented to avoid creating lambda functions
+--       not compiled by LuaJIT (i.e. FNEW bytecode). Let's see if there is any
+--       performances losses when using lambda functions and simplify the code.
+
 local _id = {} -- itdentity
 
-function gfunc.is_functor (a)
+local function is_functor (a)
   local mt = getmetatable(a)
   return mt ~= nil and mt.__obj == _id
 end
 
+gfunc.is_functor = is_functor
+
 -- forward declarations
-local fct_mt, fct_mtc, fct_mtn, fct_mta, fct_mto, fct_mtb1, fct_mtb2, fct_mtb3,
-      fct_mtb12, fct_mtb123
+local fct_mt --, fct_mtc, fct_mtn, fct_mta, fct_mto, fct_mtb1, fct_mtb2, fct_mtb3,
+            -- fct_mtb12, fct_mtb123
 
-local is_functor in gfunc
 
-function gfunc.functor (f)
+local function functor (f)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
-  return is_functor(f) and f or setmetatable({__fun=f}, fct_mt)
+  -- return is_functor(f) and f or setmetatable({__fun=f}, fct_mt)
+  if is_functor(f) then f = f.__fun end
+  return setmetatable({__fun=f}, fct_mt)
 end
 
-local fnil, functor in gfunc
+-- local fnil, functor in gfunc
+gfunc.functor = functor
 
 function gfunc.compose (f, g)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
   assert(is_callable(g), "invalid argument #2 (callable expected)")
-  return setmetatable({__fun=f, __fun2=g}, fct_mtc)
+  -- return setmetatable({__fun=f, __fun2=g}, fct_mtc)
+  if is_functor(f) then f = f.__fun end
+  if is_functor(g) then g = g.__fun end
+  return setmetatable({__fun=\... -> f(g(...))}, fct_mt)
 end
 
 function gfunc.chain (f, g)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
   assert(is_callable(g), "invalid argument #2 (callable expected)")
-  if f == fnil then return functor(g) end
-  if g == fnil then return functor(f) end
-  return setmetatable({__fun=f, __fun2=g}, fct_mtn)
+--  if f == fnil then return functor(g) end
+--  if g == fnil then return functor(f) end
+--  return setmetatable({__fun=f, __fun2=g}, fct_mtn)
+  if is_functor(f) then f = f.__fun end
+  if is_functor(g) then g = g.__fun end
+  return setmetatable({__fun=\... => f(...) ; return g(...) end}, fct_mt)
 end
 
 function gfunc.achain (f, g)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
   assert(is_callable(g), "invalid argument #2 (callable expected)")
-  if f == fnil then return functor(g) end
-  if g == fnil then return functor(f) end
-  return setmetatable({__fun=f, __fun2=g}, fct_mta)
+--  if f == fnil then return functor(g) end
+--  if g == fnil then return functor(f) end
+--  return setmetatable({__fun=f, __fun2=g}, fct_mta)
+  if is_functor(f) then f = f.__fun end
+  if is_functor(g) then g = g.__fun end
+  return setmetatable({__fun=\... -> f(...) and g(...)}, fct_mt)
 end
 
 function gfunc.ochain (f, g)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
   assert(is_callable(g), "invalid argument #2 (callable expected)")
-  if f == fnil then return functor(g) end
-  if g == fnil then return functor(f) end
-  return setmetatable({__fun=f, __fun2=g}, fct_mto)
+--  if f == fnil then return functor(g) end
+--  if g == fnil then return functor(f) end
+--  return setmetatable({__fun=f, __fun2=g}, fct_mto)
+  if is_functor(f) then f = f.__fun end
+  if is_functor(g) then g = g.__fun end
+  return setmetatable({__fun=\... -> f(...) or g(...)}, fct_mt)
 end
 
 function gfunc.bind1st (f, a)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
-  return setmetatable({__fun=f, __arg=a}, fct_mtb1)
+--  return setmetatable({__fun=f, __arg=a}, fct_mtb1)
+  if is_functor(f) then f = f.__fun end
+  return setmetatable({__fun=\... -> f(a,...)}, fct_mt)
 end
 
 function gfunc.bind2nd (f, b)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
-  return setmetatable({__fun=f, __arg2=b}, fct_mtb2)
+--  return setmetatable({__fun=f, __arg2=b}, fct_mtb2)
+  if is_functor(f) then f = f.__fun end
+  return setmetatable({__fun=\a,... -> f(a,b,...)}, fct_mt)
 end
 
 function gfunc.bind3rd (f, c)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
-  return setmetatable({__fun=f, __arg3=c}, fct_mtb3)
+--  return setmetatable({__fun=f, __arg3=c}, fct_mtb3)
+  if is_functor(f) then f = f.__fun end
+  return setmetatable({__fun=\a,b,... -> f(a,b,c,...)}, fct_mt)
 end
 
 function gfunc.bind2st (f, a, b)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
-  return setmetatable({__fun=f, __arg=a, __arg2=b}, fct_mtb12)
+--  return setmetatable({__fun=f, __arg=a, __arg2=b}, fct_mtb12)
+  if is_functor(f) then f = f.__fun end
+  return setmetatable({__fun=\... -> f(a,b,...)}, fct_mt)
 end
 
 function gfunc.bind3st (f, a, b, c)
   assert(is_callable(f), "invalid argument #1 (callable expected)")
-  return setmetatable({__fun=f, __arg=a, __arg2=b, __arg3=c}, fct_mtb123)
+--  return setmetatable({__fun=f, __arg=a, __arg2=b, __arg3=c}, fct_mtb123)
+  if is_functor(f) then f = f.__fun end
+  return setmetatable({__fun=\... -> f(a,b,c,...)}, fct_mt)
 end
 
 local str = \s -> string.format("functor: %p", s)
@@ -132,86 +276,96 @@ local str = \s -> string.format("functor: %p", s)
 fct_mt = set_concept({ -- functor
   __obj       = _id,
   __pow       = gfunc.compose,
+  __concat    = gfunc.chain,
   __call      = \s,... -> s.__fun(...),
   __index     = \s,k   -> s.__fun(k  ),
   __tostring  = str,
 }, not_scannable + not_extendable + not_mutable)
 
-fct_mtc = set_concept({ -- compose
-  __obj       = _id,
-  __pow       = gfunc.compose,
-  __call      = \s,... -> s.__fun(s.__fun2(...)),
-  __index     = \s,k   -> s.__fun(s.__fun2(k  )),
-  __tostring  = str,
-}, not_scannable + not_extendable + not_mutable)
+-- fct_mtc = set_concept({ -- compose
+--   __obj       = _id,
+--   __pow       = gfunc.compose,
+--   __concat    = gfunc.chain,
+--   __call      = \s,... -> s.__fun(s.__fun2(...)),
+--   __index     = \s,k   -> s.__fun(s.__fun2(k  )),
+--   __tostring  = str,
+-- }, not_scannable + not_extendable + not_mutable)
 
-fct_mtn = set_concept({ -- chain
-  __obj       = _id,
-  __pow       = gfunc.compose,
-  __call      = \s,... => s.__fun(...) ; return s.__fun2(...) end,
-  __index     = \s,k   => s.__fun(k  ) ; return s.__fun2(k  ) end,
-  __tostring  = str,
-}, not_scannable + not_extendable + not_mutable)
+-- fct_mtn = set_concept({ -- chain
+--   __obj       = _id,
+--   __pow       = gfunc.compose,
+--   __concat    = gfunc.chain,
+--   __call      = \s,... => s.__fun(...) ; return s.__fun2(...) end,
+--   __index     = \s,k   => s.__fun(k  ) ; return s.__fun2(k  ) end,
+--   __tostring  = str,
+-- }, not_scannable + not_extendable + not_mutable)
 
-fct_mta = set_concept({ -- achain
-  __obj       = _id,
-  __pow       = gfunc.compose,
-  __call      = \s,... -> s.__fun(...) and s.__fun2(...),
-  __index     = \s,k   -> s.__fun(k  ) and s.__fun2(k  ),
-  __tostring  = str,
-}, not_scannable + not_extendable + not_mutable)
+-- fct_mta = set_concept({ -- achain
+--   __obj       = _id,
+--   __pow       = gfunc.compose,
+--   __concat    = gfunc.chain,
+--   __call      = \s,... -> s.__fun(...) and s.__fun2(...),
+--   __index     = \s,k   -> s.__fun(k  ) and s.__fun2(k  ),
+--   __tostring  = str,
+-- }, not_scannable + not_extendable + not_mutable)
 
-fct_mto = set_concept({ -- ochain
-  __obj       = _id,
-  __pow       = gfunc.compose,
-  __call      = \s,... -> s.__fun(...) or s.__fun2(...),
-  __index     = \s,k   -> s.__fun(k  ) or s.__fun2(k  ),
-  __tostring  = str,
-}, not_scannable + not_extendable + not_mutable)
+-- fct_mto = set_concept({ -- ochain
+--   __obj       = _id,
+--   __pow       = gfunc.compose,
+--   __concat    = gfunc.chain,
+--   __call      = \s,... -> s.__fun(...) or s.__fun2(...),
+--   __index     = \s,k   -> s.__fun(k  ) or s.__fun2(k  ),
+--   __tostring  = str,
+-- }, not_scannable + not_extendable + not_mutable)
 
-fct_mtb1 = set_concept({ -- bind1st
-  __obj       = _id,
-  __pow       = gfunc.compose,
-  __call      = \s,... -> s.__fun(rawget(s, '__arg'), ...),
-  __index     = \s,k   -> s.__fun(rawget(s, '__arg'), k  ),
-  __tostring  = str,
-}, not_scannable + not_extendable + not_mutable)
+-- fct_mtb1 = set_concept({ -- bind1st
+--   __obj       = _id,
+--   __pow       = gfunc.compose,
+--   __concat    = gfunc.chain,
+--   __call      = \s,... -> s.__fun(rawget(s, '__arg'), ...),
+--   __index     = \s,k   -> s.__fun(rawget(s, '__arg'), k  ),
+--   __tostring  = str,
+-- }, not_scannable + not_extendable + not_mutable)
 
-fct_mtb2 = set_concept({ -- bind2nd
-  __obj       = _id,
-  __pow       = gfunc.compose,
-  __call      = \s,a,... -> s.__fun(a, rawget(s, '__arg2'), ...),
-  __index     = \s,k     -> s.__fun(   rawget(s, '__arg2'), k  ),
-  __tostring  = str,
-}, not_scannable + not_extendable + not_mutable)
+-- fct_mtb2 = set_concept({ -- bind2nd
+--   __obj       = _id,
+--   __pow       = gfunc.compose,
+--   __concat    = gfunc.chain,
+--   __call      = \s,a,... -> s.__fun(a, rawget(s, '__arg2'), ...),
+--   __index     = \s,k     -> s.__fun(   rawget(s, '__arg2'), k  ),
+--   __tostring  = str,
+-- }, not_scannable + not_extendable + not_mutable)
 
-fct_mtb3 = set_concept({ -- bind3rd
-  __obj       = _id,
-  __pow       = gfunc.compose,
-  __call      = \s,a,b,... -> s.__fun(a, b, rawget(s, '__arg3'), ...),
-  __index     = \s,k       -> s.__fun(      rawget(s, '__arg3'), k  ),
-  __tostring  = str,
-}, not_scannable + not_extendable + not_mutable)
+-- fct_mtb3 = set_concept({ -- bind3rd
+--   __obj       = _id,
+--   __pow       = gfunc.compose,
+--   __concat    = gfunc.chain,
+--   __call      = \s,a,b,... -> s.__fun(a, b, rawget(s, '__arg3'), ...),
+--   __index     = \s,k       -> s.__fun(      rawget(s, '__arg3'), k  ),
+--   __tostring  = str,
+-- }, not_scannable + not_extendable + not_mutable)
 
-fct_mtb12 = set_concept({ -- bind2st
-  __obj       = _id,
-  __pow       = gfunc.compose,
-  __call      = \s,... -> s.__fun(rawget(s,'__arg'), rawget(s,'__arg2'), ...),
-  __index     = \s,k   -> s.__fun(rawget(s,'__arg'), rawget(s,'__arg2'), k  ),
-  __tostring  = str,
-}, not_scannable + not_extendable + not_mutable)
+-- fct_mtb12 = set_concept({ -- bind2st
+--   __obj       = _id,
+--   __pow       = gfunc.compose,
+--   __concat    = gfunc.chain,
+--   __call      = \s,... -> s.__fun(rawget(s,'__arg'), rawget(s,'__arg2'), ...),
+--   __index     = \s,k   -> s.__fun(rawget(s,'__arg'), rawget(s,'__arg2'), k  ),
+--   __tostring  = str,
+-- }, not_scannable + not_extendable + not_mutable)
 
-fct_mtb123 = set_concept({ -- bind3st
-  __obj       = _id,
-  __pow       = gfunc.compose,
-  __call      = \s,... -> s.__fun(rawget(s,'__arg'), rawget(s,'__arg2'), rawget(s,'__arg3'), ...),
-  __index     = \s,k   -> s.__fun(rawget(s,'__arg'), rawget(s,'__arg2'), rawget(s,'__arg3'), k  ),
-  __tostring  = str,
-}, not_scannable + not_extendable + not_mutable)
+-- fct_mtb123 = set_concept({ -- bind3st
+--   __obj       = _id,
+--   __pow       = gfunc.compose,
+--   __concat    = gfunc.chain,
+--   __call      = \s,... -> s.__fun(rawget(s,'__arg'), rawget(s,'__arg2'), rawget(s,'__arg3'), ...),
+--   __index     = \s,k   -> s.__fun(rawget(s,'__arg'), rawget(s,'__arg2'), rawget(s,'__arg3'), k  ),
+--   __tostring  = str,
+-- }, not_scannable + not_extendable + not_mutable)
 
 -- bottom definition uses metatables (must be after)
 gfunc.bottom = gfunc.functor(gfunc.ident)
-gfunc._      = gfunc.bottom -- alias
+gfunc.opstr["_|_"] = gfunc.bottom -- alias
 
 -- env ------------------------------------------------------------------------o
 
