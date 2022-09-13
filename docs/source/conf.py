@@ -51,6 +51,9 @@ html_theme_options = {
 }
 
 
+# -- Options for latexpdf output ----------------------------------------------
+latex_elements = {
+}
 
 # -- Options for MAN output -------------------------------------------------
 
