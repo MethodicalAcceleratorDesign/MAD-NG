@@ -53,7 +53,6 @@ html_theme_options = {
 
 # -- Options for latexpdf output ----------------------------------------------
 latex_elements = {
-    "extraclassoptions": "openany,oneside"
 }
 
 # -- Options for MAN output -------------------------------------------------
