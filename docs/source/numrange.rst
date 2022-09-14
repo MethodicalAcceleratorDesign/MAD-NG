@@ -123,7 +123,7 @@ Unless specified, the object :var:`rng` owning the methods stands for a :type:`r
 
 .. function:: rng:totable()
 
-   Return a :type:`table` filled with the :func:`rng:size()` values computed by :func:`rng:value()`. Note that ranges are objects with a very small memory footprint while the generated tables can be huge.
+   Return a :type:`table` filled with :func:`rng:size()` values computed by :func:`rng:value()`. Note that ranges are objects with a very small memory footprint while the generated tables can be huge.
 
 Operators
 =========
