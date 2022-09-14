@@ -25,13 +25,13 @@
 -- locals ---------------------------------------------------------------------o
 
 local assertEquals, assertAlmostEquals, assertTrue, assertFalse,
-      assertErrorMsgContains, assertNil, assertNaN, assertIsString, assertInf
-      in MAD.utest
+      assertErrorMsgContains, assertNil, assertNaN, assertIsString, 
+      assertInf, assertAllAlmostEquals in MAD.utest
 
-local range, nrange, logrange, nlogrange   in MAD
-local exp, log                             in MAD.gmath
-local is_function, is_range, is_logrange   in MAD.typeid
-local tiny, eps, huge, inf, nan            in MAD.constant
+local range, nrange, logrange, nlogrange, totable   in MAD
+local exp, log                                      in MAD.gmath
+local is_function, is_range, is_logrange            in MAD.typeid
+local tiny, eps, huge, inf, nan                     in MAD.constant
 
 -- regression test suite ------------------------------------------------------o
 
@@ -680,6 +680,78 @@ function TestLogrange:testOverlap()
   assertTrue ( nr:overlap(nlogrange( 1   , 10^5 , 6   )) )
   assertFalse( nr:overlap( logrange( 10^5, 1    , 0.1 )) )
   assertFalse( nr:overlap(nlogrange( 10^5, 1    , 6   )) )
+end
+
+-- operators 
+function TestLogrange:testUnary()
+  for _,v in ipairs(values.lrng) do
+    assertEquals( -log(v[1]..v[2]..v[3]), -logrange(v[1],v[2],v[3]) )
+    assertEquals( log(1/v[1]..1/v[2]..1/v[3]), -logrange(v[1],v[2],v[3]) )
+    assertEquals( -log(v[1]..v[2]..v[3]), logrange(1/v[1],1/v[2],1/v[3]) )
+  end
+  for _,v in ipairs(values.lempty) do
+    assertEquals( -log(v[1]..v[2]..v[3]), logrange(1/v[1],1/v[2],1/v[3]) )
+  end
+  assertAllAlmostEquals(totable(-logrange(1, 150)), {1/exp(0), 1/exp(1),1/exp(2),1/exp(3),1/exp(4),1/exp(5)})
+  assertAllAlmostEquals(totable(-logrange(1, 32, 2)), {1/2^0, 1/2^1, 1/2^2,1/2^3,1/2^4,1/2^5})
+end
+
+function TestLogrange:testAdd()
+  for _,v in ipairs(values.lrng) do
+    -- logrange(1+v[1]..1+v[2]..v[3])
+    assertEquals( 1+logrange(v[1], v[2], v[3]), logrange(exp(1)*v[1], exp(1)*v[2], v[3]) )  --1 + lrng 
+    assertEquals( logrange(v[1], v[2], v[3])+2, logrange(exp(2)*v[1], exp(2)*v[2], v[3]) )  --lrng + 2
+  end
+  for _,v in ipairs(values.lempty) do
+    assertEquals( 3+logrange(v[1], v[2], v[3]), logrange(exp(3)*v[1], exp(3)*v[2], v[3]) )  --3 + lrng
+  end
+  assertAllAlmostEquals(totable(3 + logrange(1, 150)), {exp(3)*exp(0), exp(3)*exp(1),exp(3)*exp(2),exp(3)*exp(3),exp(3)*exp(4),exp(3)*exp(5)}, 4*eps)
+  assertAllAlmostEquals(totable(1 + logrange(1, 32, 2)), {exp(1)*2^0, exp(1)*2^1, exp(1)*2^2,exp(1)*2^3,exp(1)*2^4,exp(1)*2^5}, 192*eps) --192 eps for result of 86.985
+end
+
+function TestLogrange:testSub()
+  for _,v in ipairs(values.lrng) do
+    assertAllAlmostEquals( totable(1-logrange(v[1], v[2], v[3])), totable(logrange(exp(1)/v[1], exp(1)/v[2], 1/v[3])) ) -- 1 - lrng
+    assertEquals( logrange(v[1], v[2], v[3])-2, logrange(v[1]/exp(2), v[2]/exp(2), v[3]) )                            -- lrng - 2
+    assertEquals( 2-(logrange(v[1], v[2], v[3])), 2+(-logrange(v[1], v[2], v[3])))
+  end
+  for _,v in ipairs(values.lempty) do
+    assertAllAlmostEquals( totable(3-logrange(v[1], v[2], v[3])), totable(logrange(exp(3)/v[1], exp(3)/v[2], 1/v[3])) ) -- 3 - lrng
+    assertEquals( logrange(v[1], v[2], v[3])-3, logrange(v[1]/exp(3), v[2]/exp(3), v[3]) )                              -- lrng - 3
+    assertEquals( 2-(logrange(v[1], v[2], v[3])), 2+(-logrange(v[1], v[2], v[3])))
+  end
+
+  assertAllAlmostEquals(totable(logrange(1, 150) - 1), {1/exp(1)*exp(0), 1/exp(1)*exp(1),1/exp(1)*exp(2),1/exp(1)*exp(3),1/exp(1)*exp(4),1/exp(1)*exp(5)}, 2*eps)
+  assertAllAlmostEquals(totable(2 - logrange(1, 32, 2)), {exp(2)/2^0, exp(2)/2^1, exp(2)/2^2,exp(2)/2^3,exp(2)/2^4,exp(2)/2^5}, 2*eps) 
+end
+
+function TestLogrange:testMul()
+  for _,v in ipairs(values.lrng) do
+    assertEquals( 1*logrange(v[1], v[2], v[3]), logrange(v[1], v[2], v[3]) )
+    assertEquals( logrange(v[1], v[2], v[3])*2, logrange(v[1]^2, v[2]^2, v[3]^2) ) --multiplication adjusts step, intentional?
+  end
+  for _,v in ipairs(values.lempty) do
+    assertEquals( 3*logrange(v[1], v[2], v[3]), logrange(v[1]^3, v[2]^3, v[3]^3) )
+    assertEquals( logrange(v[1], v[2], v[3])*3, logrange(v[1]^3, v[2]^3, v[3]^3) )
+  end
+  assertAllAlmostEquals(totable(logrange(1, 150) * 0.5), {exp(0)^0.5, exp(1)^0.5,exp(2)^0.5,exp(3)^0.5,exp(4)^0.5,exp(5)^0.5}, 4*eps)
+  for i, v in ipairs(totable(3 * logrange(1, 32, 2))) do
+    assertAlmostEquals(v, 2^((i-1)*3), 2^((i-1)*3)*eps*5) --Had to do relative eps - large errors ~2000 eps
+  end
+end
+
+function TestLogrange:testDiv()
+  for _,v in ipairs(values.lrng) do
+    assertEquals( logrange(v[1], v[2], v[3])/1, logrange(v[1], v[2], v[3]) )
+    assertEquals( logrange(v[1], v[2], v[3])/2, logrange(v[1]^0.5, v[2]^0.5, v[3]^0.5) ) --division adjusts step, intentional?
+  end
+  for _,v in ipairs(values.lempty) do
+    assertEquals( logrange(v[1], v[2], v[3])/4, logrange(v[1]^0.25, v[2]^0.25, v[3]^0.25) )
+  end
+  assertAllAlmostEquals(totable(logrange(1, 150) / 3), {exp(0)^(1/3), exp(1)^(1/3),exp(2)^(1/3),exp(3)^(1/3),exp(4)^(1/3),exp(5)^(1/3)}, 4*eps)
+  for i, v in ipairs(totable(logrange(1, 32, 2) / 0.5)) do
+    assertAlmostEquals(v, 2^((i-1)*2), 2^((i-1)*2)*eps*2) --Had to do relative eps - large errors
+  end
 end
 
 -- performance test suite -----------------------------------------------------o
