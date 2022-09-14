@@ -71,7 +71,7 @@ Unless specified, the object :var:`rng` owning the methods stands for a :type:`r
 
 .. function:: rng:step()
 
-   Return the :var:`step` value of the range, which may slighlty differ from the value provided to the constructors due to adjustment. 
+   Return the :var:`step` component of the range, which may slighlty differ from the value provided to the constructors due to adjustment. 
 
 .. function:: rng:value(x)
 
@@ -99,11 +99,11 @@ Unless specified, the object :var:`rng` owning the methods stands for a :type:`r
 
 .. function:: rng:ranges()
 
-   Return the three components characterising the range :var:`rng`, namely its :var:`start`, :var:`stop` and :var:`step` in this order. 
+   Return the three numbers characterising the range :var:`rng`, namely its :var:`start`, :var:`stop` and :var:`step` in this order. 
 
 .. function:: rng:bounds()
 
-   Return the three components characterising the boundaries of the range :var:`rng`, namely its :var:`start`, :var:`last` and :var:`step` :math:`>0` in this order, :const:`nil` otherwise.
+   Return the three numbers characterising the boundaries of the range :var:`rng`, namely its :var:`start`, :var:`last` and :var:`step` :math:`>0` in this order, :const:`nil` otherwise.
 
 .. function:: rng:overlap(rng2)
 
