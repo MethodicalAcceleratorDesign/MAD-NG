@@ -66,15 +66,6 @@ num_t mad_num_fact (int n)
   return s*fact(n);
 }
 
-num_t mad_num_invfact (int n)
-{
-  int s = 1;
-
-  if (n < 0) n = -n, s = n & 1 ? -s : s;
-
-  return s/fact(n);
-}
-
 num_t mad_num_sinc (num_t x)
 {
   return fabs(x)<1e-4 ? 1 - 0.1666666666666666666667*x*x : sin(x)/x;
