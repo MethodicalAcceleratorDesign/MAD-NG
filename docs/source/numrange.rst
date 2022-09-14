@@ -59,11 +59,11 @@ Unless specified, the object :var:`rng` owning the methods stands for a :type:`r
 
 .. function:: rng:same()
 
-   Return the :var:`rng` itself. This method is the identity for objects with value semantic.
+   Return :var:`rng` itself. This method is the identity for objects with value semantic.
 
 .. function:: rng:copy()
 
-   Return the :var:`rng` itself. This method is the identity for objects with value semantic.
+   Return :var:`rng` itself. This method is the identity for objects with value semantic.
 
 .. function:: rng:size()
 
@@ -71,7 +71,7 @@ Unless specified, the object :var:`rng` owning the methods stands for a :type:`r
 
 .. function:: rng:step()
 
-   Return the step value of the range, which may slighlty differ from the value provided to the constructors due to adjustment. 
+   Return the :var:`step` value of the range, which may slighlty differ from the value provided to the constructors due to adjustment. 
 
 .. function:: rng:value(x)
 
@@ -87,7 +87,7 @@ Unless specified, the object :var:`rng` owning the methods stands for a :type:`r
 
 .. function:: rng:adjust()
 
-   Return a new range with a :var:`step` adjusted.
+   Return a range with a :var:`step` adjusted.
 
    The internal quantity :var:`step` is adjusted if the computed size is close to an integer by :math:`±10^{-12}`. Then the following properties should hold even for rational numbers (in binary representation) given a consistent input for :var:`start`, :var:`stop`, :var:`step` and :var:`size`:
 
@@ -111,11 +111,11 @@ Unless specified, the object :var:`rng` owning the methods stands for a :type:`r
    
 .. function:: rng:reverse()
 
-   Return the reverse of the range :var:`rng`, i.e. swap :var:`start` and :var:`stop`, and reverse :var:`step`.
+   Return a range which is the reverse of the range :var:`rng`, i.e. swap :var:`start` and :var:`stop`, and reverse :var:`step`.
 
 .. function:: rng:log()
 
-   Return the :type:`logrange` build from the conversion of the :type:`range` :var:`rng`.
+   Return a :type:`logrange` build from the conversion of the :type:`range` :var:`rng`.
 
 .. function:: rng:tostring()
 
@@ -138,29 +138,29 @@ Operators
 
 .. function:: -rng
 
-   Return a new range with all components :var:`start`, :var:`stop` and :var:`step` reversed.
+   Return a range with all components :var:`start`, :var:`stop` and :var:`step` reversed.
 
 .. function:: rng + num
               num + rng
 
-   Return a new range with :var:`start` and :var:`stop` shifted by :var:`num`.
+   Return a range with :var:`start` and :var:`stop` shifted by :var:`num`.
 
 .. function:: rng - num
 
-   Return a new range with :var:`start` and :var:`stop` shifted by :var:`-num`, i.e. it is equivalent to :expr:`rng + (-num)`.
+   Return a range with :var:`start` and :var:`stop` shifted by :var:`-num`, i.e. it is equivalent to :expr:`rng + (-num)`.
 
 .. function:: num - rng
 
-   Return a new range reversed with :var:`start` and :var:`stop` shifted by :var:`num`, i.e. it is equivalent to :expr:`num + (-rng)`.
+   Return a range reversed with :var:`start` and :var:`stop` shifted by :var:`num`, i.e. it is equivalent to :expr:`num + (-rng)`.
 
 .. function:: num * rng
               rng * num
 
-   Return a new range with :var:`start`, :var:`stop` and :var:`step` scaled by :var:`num`.
+   Return a range with :var:`start`, :var:`stop` and :var:`step` scaled by :var:`num`.
 
 .. function:: rng / num
 
-   Return a new range with :var:`start`, :var:`stop` and :var:`step` scaled by :var:`1/num`, i.e. it is equivalent to :expr:`rng * (1/num)`.
+   Return a range with :var:`start`, :var:`stop` and :var:`step` scaled by :var:`1/num`, i.e. it is equivalent to :expr:`rng * (1/num)`.
 
 .. function:: rng == rng2
 
