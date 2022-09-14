@@ -128,13 +128,12 @@ Functions                   Return values                                       
 Special Functions
 -----------------
 
-The special functions factorial and inverse factorial support negative integers as input as it uses extended factorial definition. The value are cached making the complexity of these functions in :math:`O(1)` after warmup. 
+The special function factorial support negative integers as input as it uses extended factorial definition. The values are cached making the complexity of these functions in :math:`O(1)` after warmup. 
 
 ==================  ====================  =========================
 Functions           Return values         C functions
 ==================  ====================  =========================
 :func:`fact(n)`     :math:`n!`            :c:func:`mad_num_fact`
-:func:`invfact(n)`  :math:`\frac{1}{n!}`  :c:func:`mad_num_invfact`
 ==================  ====================  =========================
 
 Functions for Circular Sector
