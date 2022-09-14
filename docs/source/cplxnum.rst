@@ -29,11 +29,11 @@ Functions
 
 .. function:: is_complex(a)
 
-   Return :const:`true` if :var:`a` is a :type:`complex` number, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
+   Return :const:`true` if :var:`a` is a :type:`complex` number, :const:`false` otherwise. This function is only available from the module :mod:`MAD.typeid`.
 
 .. function:: is_scalar(a)
 
-   Return :const:`true` if :var:`a` is a :type:`number` or a :type:`complex` number, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
+   Return :const:`true` if :var:`a` is a :type:`number` or a :type:`complex` number, :const:`false` otherwise. This function is only available from the module :mod:`MAD.typeid`.
 
 Methods
 =======

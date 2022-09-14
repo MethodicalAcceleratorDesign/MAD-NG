@@ -69,11 +69,7 @@ Functions and Methods
 
 .. function:: is_xrandgen(a)
 
-   Return :const:`true` if :var:`a` is a MAD-X PRNG, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
-
-.. function:: isa_randgen(a)
-
-   Return :const:`true` if :var:`a` is either a PRNG or a MAD-X PRNG, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
+   Return :const:`true` if :var:`a` is a MAD-X PRNG, :const:`false` otherwise. This function is only available from the module :mod:`MAD.typeid`.
 
 C API
 -----
