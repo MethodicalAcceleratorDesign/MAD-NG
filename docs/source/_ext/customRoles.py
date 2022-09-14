@@ -22,17 +22,12 @@ def unit_role(name, rawtext, text, lineno, inliner, options=None, context=None):
     node = nodes.strong(text = text)
     return [node], []
 
-def expr_role(name, rawtext, text, lineno, inliner, options=None, context=None):
-    node = nodes.strong(text = text)
-    return [node], []
-
 def type_role(name, rawtext, text, lineno, inliner, options=None, context=None):
     node = nodes.emphasis(text = text)
     return [node], []
 
 def setup(app):
     app.add_role("unit", unit_role)
-    app.add_role("expr", expr_role)
     app.add_role("type", type_role)
 
     return
