@@ -318,6 +318,6 @@ Functions               Return values
 .. rubric:: Footnotes
 
 .. [#f1] For *true* Functional Programming, see the module :mod:`MAD.lfun`, a binding of the `LuaFun <https://github.com/luafun/luafun>`_  library adapted to the ecosystem of MAD-NG.
-.. [#f2] Default: :code:`v_ = 1`. 
+.. [#f2] Default: :expr:`v_ = 1`. 
 .. [#f3] Sign and sign1 functions take care of special cases like ±0, ±inf and ±NaN.
 .. [#f4] Element-wise operators are not available directly in the programming language, here we use the Matlab-like notation for convenience.

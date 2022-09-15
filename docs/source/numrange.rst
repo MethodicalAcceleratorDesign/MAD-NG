@@ -12,30 +12,44 @@ Constructors
 
 The constructors for :type:`range` and :type:`logrange` are directly available from the :mod:`MAD` environment, except for the special case of the concatenation operator applied to two or three numbers, which is part of the language definition as a MAD-NG extension. The :type:`logrange` behave as a the :type:`range` but they work on logarithmic scale. All constructor functions adjust the value of :var:`step` to ensure stable sizes and iterators across platforms (see the method :func:`adjust` for details).
 
-.. constant:: start..stop
-              start..stop..step
+.. constant:: start..stop..step_
 
-   The concatenation operator applied to two or three numbers creates a :type:`range` and does not perform any adjustment of :var:`step`. Default: :code:`step_ = 1`.
+   The concatenation operator applied to two or three numbers creates a :type:`range` and does not perform any adjustment of :var:`step`. Default: :expr:`step_ = 1`.
 
 .. function:: range(start_, stop, step_)
 
-   Return a :type:`range` object starting at :var:`start`, ending at :var:`stop` (included), with increments of size :var:`step`. Default: :code:`start_ = 0, step_ = 1`.
+   Return a :type:`range` object starting at :var:`start`, ending at :var:`stop` (included), with increments of size :var:`step`. Default: :expr:`start_ = 1, step_ = 1`.
 
 .. function:: nrange(start_, stop, size_)
 
-   Return a :type:`range` object starting at :var:`start`, ending at :var:`stop` (included), with :var:`size` increments. Default: :code:`start_ = 0, size_ = 1`.
+   Return a :type:`range` object starting at :var:`start`, ending at :var:`stop` (included), with :var:`size` increments. Default: :expr:`start_ = 1, size_ = 100`.
 
 .. function:: logrange(start_, stop, step_)
 
-   Return a :type:`logrange` object starting at :var:`start`, ending at :var:`stop` (included), with increments of size :var:`step`. Default: :code:`start_ = 0, step_ = 1`.
+   Return a :type:`logrange` object starting at :var:`start`, ending at :var:`stop` (included), with increments of size :var:`step`. Default: :expr:`start_ = 1, step_ = 1`.
 
 .. function:: nlogrange(start_, stop, size_)
 
-   Return a :type:`logrange` object starting at :var:`start`, ending at :var:`stop` (included), with :var:`size` increments. Default: :code:`start_ = 0, size_ = 1`.
+   Return a :type:`logrange` object starting at :var:`start`, ending at :var:`stop` (included), with :var:`size` increments. Default: :expr:`start_ = 1, size_ = 100`.
 
 .. function:: torange(str)
 
    Return a :type:`range` decoded from the string :var:`str` containing a literal numerical ranges of the form :const:`"a..b"` or :const:`"a..b..c"` where :var:`a`,  :var:`b` and :var:`c` are literal numbers.
+
+Emtpy Ranges
+^^^^^^^^^^^^
+
+   Empty ranges of size zero can be created by using :expr:`start > stop` and :expr:`step > 0` or :expr:`start < stop` and :expr:`step < 0` in :type:`range` constructor.
+
+Singleton Ranges
+^^^^^^^^^^^^^^^^
+
+   Singleton ranges of size one can be created by using :expr:`step > stop-start` for :expr:`start < stop` and :expr:`step < stop-start` for :expr:`stop < start` in :type:`range` constructor or :expr:`size = 1` in :type:`nrange` constructor. In this latter case, :var:`step` will be set to :expr:`step = huge * sign(stop-start)`.
+
+Constant Ranges
+^^^^^^^^^^^^^^^
+
+   Constant ranges of infinite size can be created by using :expr:`start == stop` and :expr:`step = 0` in :type:`range` constructor or :expr:`size = inf` in :type:`nrange` constructor. The user must satify the constraint :expr:`start == stop` in both constructors to show its intention.
 
 Functions
 =========
@@ -89,7 +103,7 @@ Unless specified, the object :var:`rng` owning the methods stands for a :type:`r
 
    Return a range with a :var:`step` adjusted.
 
-   The internal quantity :var:`step` is adjusted if the computed size is close to an integer by :math:`±10^{-12}`. Then the following properties should hold even for rational numbers (in binary representation) given a consistent input for :var:`start`, :var:`stop`, :var:`step` and :var:`size`:
+   The internal quantity :var:`step` is adjusted if the computed size is close to an integer by :math:`±10^{-12}`. Then the following properties should hold even for rational binary numbers given a consistent input for :var:`start`, :var:`stop`, :var:`step` and :var:`size`:
 
    - :expr:`range (start, stop, step):size()        == size`
    - :expr:`nrange(start, stop, size):step()        == step`

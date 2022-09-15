@@ -18,7 +18,7 @@ The constructors for :type:`complex` numbers are directly available from the :mo
 
 .. function:: complex(re, im_)
 
-   Return the :type:`complex` number equivalent to :code:`re + im * 1i`. Default: :code:`im_ = 0`.
+   Return the :type:`complex` number equivalent to :code:`re + im * 1i`. Default: :expr:`im_ = 0`.
 
 .. function:: tocomplex(str)
 
@@ -150,5 +150,5 @@ References
 
 .. [#f1] Division and inverse use a robust and fast complex division algorithm, see [CPXDIV]_ and [CPXDIV2]_ for details. 
 .. [#f2] Hypot and hypot3 methods use a trivial implementation that may lead to numerical overflow/underflow.
-.. [#f3] Default: :code:`v_ = 1`. 
+.. [#f3] Default: :expr:`v_ = 1`. 
 
