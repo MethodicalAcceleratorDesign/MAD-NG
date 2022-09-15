@@ -130,17 +130,17 @@ Operators
 Iterators
 =========
 
- .. function:: ipairs(mono)
-    :noindex:
+.. function:: ipairs(mono)
+   :noindex:
 
-    Return an :type:`ipairs` iterator suitable for generic :const:`for` loops. The generated values are those returned by :func:`mono[i]`. 
+   Return an :type:`ipairs` iterator suitable for generic :const:`for` loops. The generated values are those returned by :func:`mono[i]`. 
 
 C API
 =====
 
 .. c:type:: ord_t
 
-   The variable order type, which is an alias for 8-bit unsigned integer. Monomials are arrays of variable orders in the C API, i.e. :var:`a[n]`, where their size :var:`n` is tracked separately. 
+   The variable order type, which is an alias for 8-bit unsigned integer. In the C API, monomials are arrays of variable orders with their size :var:`n` tracked separately, i.e. :var:`a[n]`. 
 
 .. c:function:: ssz_t mad_mono_str (ssz_t n, ord_t a[n], str_t s)
 
@@ -184,15 +184,15 @@ C API
 
 .. c:function:: log_t mad_mono_eq (ssz_t n, const ord_t a[n], const ord_t b[n])
 
-   Return :const:`false` if one variable order in monomial :var:`a[n]` is not equal to the variable order at the same index in monomial :var:`b[n]`, :const:`true` otherwise.
+   Return :const:`FALSE` if one variable order in monomial :var:`a[n]` is not equal to the variable order at the same index in monomial :var:`b[n]`, :const:`TRUE` otherwise.
 
 .. c:function:: log_t mad_mono_lt (ssz_t n, const ord_t a[n], const ord_t b[n])
 
-   Return :const:`false` if one variable order in monomial :var:`a[n]` is greater or equal to the variable order at the same index in monomial :var:`b[n]`, :const:`true` otherwise.
+   Return :const:`FALSE` if one variable order in monomial :var:`a[n]` is greater or equal to the variable order at the same index in monomial :var:`b[n]`, :const:`TRUE` otherwise.
 
 .. c:function:: log_t mad_mono_le (ssz_t n, const ord_t a[n], const ord_t b[n])
 
-   Return :const:`false` if one variable order in monomial :var:`a[n]` is greater than the variable order at the same index in monomial :var:`b[n]`, :const:`true` otherwise.
+   Return :const:`FALSE` if one variable order in monomial :var:`a[n]` is greater than the variable order at the same index in monomial :var:`b[n]`, :const:`TRUE` otherwise.
 
 .. c:function:: int mad_mono_cmp (ssz_t n, const ord_t a[n], const ord_t b[n])
 
