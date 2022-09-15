@@ -5,7 +5,7 @@
 Complex numbers
 ***************
 
-This chapter describes the :type:`complex` numbers as supported by MAD-NG. The module for complex numbers is not exposed, only the contructors are visible. Thus, complex numbers are handled directly by their methods or by the generic functions of the same name from the module :mod:`MAD.gmath`. Note that :type:`complex` have value semantic like :type:`number`. 
+This chapter describes the `Complex numbers <https://en.wikipedia.org/wiki/Complex_number>`_ as supported by MAD-NG. The module for complex numbers is not exposed, only the contructors are visible from the :mod:`MAD` environment and thus, complex numbers are handled directly by their methods or by the generic functions of the same name from the module :mod:`MAD.gmath`. Note that :type:`complex` have value semantic like :type:`number`. 
 
 Constructors
 ============
