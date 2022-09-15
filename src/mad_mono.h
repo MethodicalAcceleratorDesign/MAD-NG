@@ -55,9 +55,7 @@ num_t mad_mono_ordpf (ssz_t n, const ord_t a[n], idx_t stp); // product of facto
 
 log_t mad_mono_eq    (ssz_t n, const ord_t a[n], const ord_t b[n]);
 log_t mad_mono_lt    (ssz_t n, const ord_t a[n], const ord_t b[n]);
-log_t mad_mono_gt    (ssz_t n, const ord_t a[n], const ord_t b[n]);
 log_t mad_mono_le    (ssz_t n, const ord_t a[n], const ord_t b[n]);
-log_t mad_mono_ge    (ssz_t n, const ord_t a[n], const ord_t b[n]);
 
 int   mad_mono_cmp   (ssz_t n, const ord_t a[n], const ord_t b[n]);
 int   mad_mono_rcmp  (ssz_t n, const ord_t a[n], const ord_t b[n]);
