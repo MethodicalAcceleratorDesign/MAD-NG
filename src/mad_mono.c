@@ -182,28 +182,6 @@ mad_mono_cat (ssz_t n, const ord_t a[n],
   mad_mono_copy(m, b, r+n);
 }
 
-// -- sorting
-
-static __thread const ord_t *ords;
-
-static int
-cmp (const void *a, const void *b)
-{
-  int i1 = *(const int*)a;
-  int i2 = *(const int*)b;
-
-  return (int)ords[i1] - ords[i2];
-}
-
-void
-mad_mono_sort (ssz_t n, const ord_t a[n], idx_t idxs[n])
-{
-  assert(a && idxs);
-  ords = a;
-  for (idx_t i=0; i < n; ++i) idxs[i] = i;
-  qsort(idxs, n, sizeof *idxs, cmp);
-}
-
 // -- printing
 
 void

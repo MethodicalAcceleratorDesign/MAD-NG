@@ -64,8 +64,6 @@ void  mad_mono_add   (ssz_t n, const ord_t a[n], const ord_t b[n], ord_t r[n]);
 void  mad_mono_sub   (ssz_t n, const ord_t a[n], const ord_t b[n], ord_t r[n]);
 void  mad_mono_cat   (ssz_t n, const ord_t a[n], ssz_t m, const ord_t b[m], ord_t r[n+m]);
 
-void  mad_mono_sort  (ssz_t n, const ord_t a[n], idx_t idxs[n]);
-
 void  mad_mono_print (ssz_t n, const ord_t a[n], FILE *fp_);
 
 // --- end --------------------------------------------------------------------o
