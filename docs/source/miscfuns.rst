@@ -5,7 +5,7 @@
 Miscellaneous Functions
 ***********************
 
-This chapter lists some useful functions complementary to the standard library to manipulate files, strings, tables, and more.
+This chapter lists some useful functions from the module :mod:`MAD.utility` that are complementary to the standard library for manipulating files, strings, tables, and more.
 
 Files Functions
 ===============
