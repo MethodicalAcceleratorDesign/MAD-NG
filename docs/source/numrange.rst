@@ -5,7 +5,7 @@
 Numerical Ranges
 ****************
 
-This chapter describes *numerical ranges* objects that are useful abstaction of numerical loops, intervals, discrete sets, (log)lines and linear spaces. The module for numerical ranges is not exposed, only the contructors are visible from the :mod:`MAD` environment and thus, numerical ranges must be handled directly by their methods.  Note that :type:`range` and :type:`logrange` have value semantic like :type:`number`.
+This chapter describes :type:`range` and :type:`logrange` objects that are useful abstaction of numerical loops, intervals, discrete sets, (log)lines and linear spaces. The module for numerical ranges is not exposed, only the contructors are visible from the :mod:`MAD` environment and thus, numerical ranges must be handled directly by their methods. Note that :type:`range` and :type:`logrange` have value semantic like :type:`number`.
 
 Constructors
 ============

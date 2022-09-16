@@ -5,7 +5,7 @@
 Complex numbers
 ***************
 
-This chapter describes the `Complex numbers <https://en.wikipedia.org/wiki/Complex_number>`_ as supported by MAD-NG. The module for complex numbers is not exposed, only the contructors are visible from the :mod:`MAD` environment and thus, complex numbers are handled directly by their methods or by the generic functions of the same name from the module :mod:`MAD.gmath`. Note that :type:`complex` have value semantic like :type:`number`. 
+This chapter describes the :type:`complex` numbers as supported by MAD-NG. The module for `Complex numbers <https://en.wikipedia.org/wiki/Complex_number>`_ is not exposed, only the contructors are visible from the :mod:`MAD` environment and thus, complex numbers are handled directly by their methods or by the generic functions of the same name from the module :mod:`MAD.gmath`. Note that :type:`complex` have value semantic like :type:`number`. 
 
 Constructors
 ============
@@ -16,9 +16,9 @@ The constructors for :type:`complex` numbers are directly available from the :mo
 
    The imaginary postfix that qualifies literal numbers as imaginary numbers, i.e. :const:`1i` is the imaginary unit, and :const:`1+2i` is the :type:`complex` number :math:`1+2i`.
 
-.. function:: complex(re, im_)
+.. function:: complex(re_, im_)
 
-   Return the :type:`complex` number equivalent to :code:`re + im * 1i`. Default: :expr:`im_ = 0`.
+   Return the :type:`complex` number equivalent to :code:`re + im * 1i`. Default: :expr:`re_ = 0`, :expr:`im_ = 0`.
 
 .. function:: tocomplex(str)
 
