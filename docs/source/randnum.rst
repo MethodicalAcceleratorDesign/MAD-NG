@@ -2,9 +2,9 @@
    Pseudo-random number generator
    PRNG
 
-************************
-Random Number Generators
-************************
+**************
+Random Numbers
+**************
 
 The module :mod:`gmath` provides few Pseudo-Random Number Generators (PRNGs).The defaut implementation is the *Xoshiro256\*\** (XOR/shift/rotate) variant of the `XorShift <https://en.wikipedia.org/wiki/Xorshift>`_ PRNG familly [XORSHFT03]_, an all-purpose, rock-solid generator with a period of :math:`2^{256}-1` that supports long jumps of period :math:`2^{128}`. This PRNG is also the default implementation of recent versions of Lua (not LuaJIT, see below) and GFortran. See https://prng.di.unimi.it for details about Xoshiro/Xoroshiro PRNGs.
 
@@ -17,7 +17,7 @@ It's worth mentionning that none of these PRNG are cryptographically secure gene
 All PRNG *functions* (except constructors) are wrappers around PRNG *methods* with the same name, and expect an optional PRNG :obj:`prng_` as first parameter. If this optional PRNG :obj:`prng_` is omitted, i.e. not provided, these functions will use the current global PRNG by default.
 
 Functions and Methods
----------------------
+=====================
 
 .. function:: randnew ()
 
@@ -55,13 +55,13 @@ Functions and Methods
               prng:randtn (cut_)
 
    Return a new truncated pseudo-random gaussian number in the range ``[-cut_, +cut_]`` from the PRNG :obj:`prng` by using iteratively the method :func:`prng:randn()`. This simple algorithm is actually used for compatibility with MAD-X.
-   Default: :code:`cut_ = +inf`.
+   Default: :expr:`cut_ = +inf`.
 
 .. function:: randp (prng_, lmb_)
               prng:randp (lmb_)
 
    Return a new pseudo-random poisson number in the range ``[0, +inf]`` from the PRNG :obj:`prng` with parameter :math:`\lambda > 0` by using the *inverse transform sampling* method on peuso-random numbers.
-   Default: :code:`lmb_ = 1`.
+   Default: :expr:`lmb_ = 1`.
 
 .. function:: is_randgen(a)
 
@@ -69,14 +69,10 @@ Functions and Methods
 
 .. function:: is_xrandgen(a)
 
-   Return :const:`true` if :var:`a` is a MAD-X PRNG, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
-
-.. function:: isa_randgen(a)
-
-   Return :const:`true` if :var:`a` is either a PRNG or a MAD-X PRNG, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
+   Return :const:`true` if :var:`a` is a MAD-X PRNG, :const:`false` otherwise. This function is only available from the module :mod:`MAD.typeid`.
 
 C API
------
+=====
 
 .. c:type:: prng_state_t
             xrng_state_t

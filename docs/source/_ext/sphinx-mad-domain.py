@@ -790,6 +790,7 @@ class MadDomain(Domain):
         'data': MadXRefRole(),  #Data
         'exc': MadXRefRole(),   #Exception
         'const': MadXRefRole(), #Constant
+        'expr': MadXRefRole(),  #Expression
         'func': MadXRefRole(),  #Function
         'class': MadXRefRole(), #Class - to remove?
         'alias': MadXRefRole(), #Alias - remove?

@@ -17,7 +17,7 @@ Mathematical Functions
 Generic Real-like Functions
 ---------------------------
 
-Real-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`. The optional argument :var:`r_` represents a destination for results with reference semantic, i.e. avoiding memory allocation, which is ignored by results with value semantic. The C functions column lists the C implementation used when the argument is a :type:`number` and the implementation does not rely on the standard :code:`math` module.
+Real-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`. The optional argument :var:`r_` represents a destination placeholder for results with reference semantic, i.e. avoiding memory allocation, which is ignored by results with value semantic. The C functions column lists the C implementation used when the argument is a :type:`number` and the implementation does not rely on the standard :code:`math` module.
 
 ===============================  =======================================================  =============
 Functions                        Return values                                            C functions
@@ -128,13 +128,12 @@ Functions                   Return values                                       
 Special Functions
 -----------------
 
-The special functions factorial and inverse factorial support negative integers as input as it uses extended factorial definition. The value are cached making the complexity of these functions in :math:`O(1)` after warmup. 
+The special function factorial support negative integers as input as it uses extended factorial definition. The values are cached making the complexity of these functions in :math:`O(1)` after warmup. 
 
 ==================  ====================  =========================
 Functions           Return values         C functions
 ==================  ====================  =========================
 :func:`fact(n)`     :math:`n!`            :c:func:`mad_num_fact`
-:func:`invfact(n)`  :math:`\frac{1}{n!}`  :c:func:`mad_num_invfact`
 ==================  ====================  =========================
 
 Functions for Circular Sector
@@ -319,6 +318,6 @@ Functions               Return values
 .. rubric:: Footnotes
 
 .. [#f1] For *true* Functional Programming, see the module :mod:`MAD.lfun`, a binding of the `LuaFun <https://github.com/luafun/luafun>`_  library adapted to the ecosystem of MAD-NG.
-.. [#f2] Default: :code:`v_ = 1`. 
+.. [#f2] Default: :expr:`v_ = 1`. 
 .. [#f3] Sign and sign1 functions take care of special cases like ±0, ±inf and ±NaN.
 .. [#f4] Element-wise operators are not available directly in the programming language, here we use the Matlab-like notation for convenience.

@@ -5,7 +5,7 @@
 Complex numbers
 ***************
 
-This chapter describes the :type:`complex` numbers as supported by MAD-NG. The module for complex numbers is not exposed, only the contructors are visible. Thus, complex numbers are handled directly by their methods or by the generic functions of the same name from the module :mod:`MAD.gmath`. Note that :type:`complex` have value semantic like :type:`number`. 
+This chapter describes the `Complex numbers <https://en.wikipedia.org/wiki/Complex_number>`_ as supported by MAD-NG. The module for complex numbers is not exposed, only the contructors are visible from the :mod:`MAD` environment and thus, complex numbers are handled directly by their methods or by the generic functions of the same name from the module :mod:`MAD.gmath`. Note that :type:`complex` have value semantic like :type:`number`. 
 
 Constructors
 ============
@@ -18,7 +18,7 @@ The constructors for :type:`complex` numbers are directly available from the :mo
 
 .. function:: complex(re, im_)
 
-   Return the :type:`complex` number equivalent to :code:`re + im * 1i`. Default: :code:`im_ = 0`.
+   Return the :type:`complex` number equivalent to :code:`re + im * 1i`. Default: :expr:`im_ = 0`.
 
 .. function:: tocomplex(str)
 
@@ -29,11 +29,11 @@ Functions
 
 .. function:: is_complex(a)
 
-   Return :const:`true` if :var:`a` is a :type:`complex` number, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
+   Return :const:`true` if :var:`a` is a :type:`complex` number, :const:`false` otherwise. This function is only available from the module :mod:`MAD.typeid`.
 
 .. function:: is_scalar(a)
 
-   Return :const:`true` if :var:`a` is a :type:`number` or a :type:`complex` number, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
+   Return :const:`true` if :var:`a` is a :type:`number` or a :type:`complex` number, :const:`false` otherwise. This function is only available from the module :mod:`MAD.typeid`.
 
 Methods
 =======
@@ -150,5 +150,5 @@ References
 
 .. [#f1] Division and inverse use a robust and fast complex division algorithm, see [CPXDIV]_ and [CPXDIV2]_ for details. 
 .. [#f2] Hypot and hypot3 methods use a trivial implementation that may lead to numerical overflow/underflow.
-.. [#f3] Default: :code:`v_ = 1`. 
+.. [#f3] Default: :expr:`v_ = 1`. 
 

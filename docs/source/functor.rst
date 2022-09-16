@@ -55,4 +55,4 @@ The module :mod:`MAD.gfunc` offers few functions to expert users for creating an
 
 .. function:: is_functor(a)
 
-   Return :const:`true` if :var:`a` is a :type:`functor`, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
+   Return :const:`true` if :var:`a` is a :type:`functor`, :const:`false` otherwise. This function is only available from the module :mod:`MAD.typeid`.
