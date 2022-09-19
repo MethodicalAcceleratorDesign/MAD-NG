@@ -166,13 +166,13 @@ In this section, :const:`num` and :const:`cpx` are generic names used respective
               cpx / num
               cpx / cpx
 
-   Return a :type:`complex` resulting from the division of the left and right operands. If the right operand is a complex number, the division uses a robuts and fast algorithm implemented in :c:func:`mad_cnum_div_r` [#f1]_.
+   Return a :type:`complex` resulting from the division of the left and right operands. If the right operand is a complex number, the division uses a robut and fast algorithm implemented in :c:func:`mad_cnum_div_r` [#f1]_.
 
 .. function:: num % cpx
               cpx % num
               cpx % cpx
 
-   Return a :type:`complex` resulting from the rest of the division of the left and right operands, i.e. :math:`x - y \lfloor \frac{x}{y} \rfloor`. If the right operand is a complex number, the division uses a robuts and fast algorithm implemented in :c:func:`mad_cnum_div_r` [#f1]_.
+   Return a :type:`complex` resulting from the rest of the division of the left and right operands, i.e. :math:`x - y \lfloor \frac{x}{y} \rfloor`. If the right operand is a complex number, the division uses a robut and fast algorithm implemented in :c:func:`mad_cnum_div_r` [#f1]_.
 
 .. function:: num ^ cpx
               cpx ^ num
