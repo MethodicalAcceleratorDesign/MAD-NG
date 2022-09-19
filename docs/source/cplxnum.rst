@@ -138,7 +138,7 @@ Functions                Return values                                          
 Operators
 =========
 
-In this section, :const:`num` and :const:`cpx` are generic names used respectively for real and complex numbers.
+In this section, :var:`num` and :var:`cpx` are generic names used for real and complex numbers respectively.
 
 .. function:: -cpx
 
