@@ -60,6 +60,8 @@ Methods
 Operators
 =========
 
+In this section, :var:`num`, :var:`cpx`and :var:`idx` are generic names used for real, complex and integer numbers respectively, and :var:`mat`, :var:`cmat` and :var:`imat` are generic names used for real, complex and integer matrices respectively, unless otherwise stated.
+
 .. function:: #mat
 
    Return the size of the real, complex or integer matrix :var:`mat` as computed by :func:`mat:size()`.
@@ -71,6 +73,10 @@ Operators
 .. function:: mat[n] = v
 
    Assign the value :var:`v` to index :var:`n` for :expr:`1 <= n <= #mat`, i.e. interpreting the real, complex or integer matrix :var:`mat` as an array, otherwise raise an *"out of bounds"* error.
+
+.. function:: -mat
+
+   Return a real, complex or integer matrix resulting from the unary minus applied individually to all elements of the matrix :var:`mat`.
 
 .. function:: num + mat
               mat + num
@@ -168,10 +174,11 @@ Operators
 .. function:: mat ^ n
               cmat ^ n
 
-   Return a :type:`matrix` or :type:`cmatrix` resulting from :var:`n` products of the input matrix by itself. If :var:`n` is negative, the inverse of the matrix is used.
+   Return a :type:`matrix` or :type:`cmatrix` resulting from :var:`n` products of the square input matrix by itself. If :var:`n` is negative, the inverse of the matrix is used for the product.
 
 .. function:: num == mat
               num == cmat
+              num == imat
               cpx == mat
               cpx == cmat            
               mat == num
@@ -182,11 +189,28 @@ Operators
               cmat == cpx
               cmat == mat
               cmat == cmat2
+              imat == num
+              imat == imat2
+
+   Return :const:`false` if the left and right operands have incompatible sizes or if any element differ in a one-to-one comparison, :const:`true` otherwise. If one of the operand is a scalar, the operator will be applied individually to all elements of the matrix.
 
 .. function:: mat .. mat2
-              mat .. cmat
+              mat .. imat
+              imat .. mat
+
+   Return a :type:`matrix` resulting from the row-oriented (horizontal) concatenation of the left and right operands. If the first element of the right operand :var:`mat` (third case) is an integer, the resulting matrix will be a :type:`imatrix` instead.
+
+.. function:: mat .. cmat
+              imat .. cmat
               cmat .. mat
-              cmat .. cmat
+              cmat .. imat
+              cmat .. cmat2
+
+   Return a :type:`cmatrix` resulting from the row-oriented (horizontal) concatenation of the left and right operands.
+
+.. function:: imat .. imat2
+
+   Return a :type:`imatrix` resulting from the row-oriented (horizontal) concatenation of the left and right operands.
 
 Iterators
 =========
