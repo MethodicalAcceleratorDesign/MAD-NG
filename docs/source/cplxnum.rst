@@ -135,6 +135,57 @@ Functions                Return values                                          
 :func:`z:dawson(rtol_)`  :math:`\frac{-i\sqrt\pi}{2}e^{-z^2}\operatorname{erf}(iz)`  :c:func:`mad_cnum_dawson_r`
 =======================  ==========================================================  ======================
 
+Operators
+=========
+
+In this section, :const:`num` and :const:`cpx` are generic names for respectively real and complex numbers.
+
+.. function:: -cpx
+
+   Return a :type:`complex` with opposite sign of :var:`cpx`.
+
+.. function:: num + cpx
+              cpx + num
+              cpx + cpx
+
+   Return a :type:`complex` resulting from the sum of the left and right operands.
+
+.. function:: num - cpx
+              cpx - num
+              cpx - cpx
+
+   Return a :type:`complex` resulting from the difference of the left and right operands.
+
+.. function:: num * cpx
+              cpx * num
+              cpx * cpx
+
+   Return a :type:`complex` resulting from the product of the left and right operands.
+
+.. function:: num / cpx
+              cpx / num
+              cpx / cpx
+
+   Return a :type:`complex` resulting from the division of the left and right operands. If the right operand is a complex number, the division uses a robuts and fast algorithm implemented in :c:func:`mad_cnum_div_r` [#f1]_.
+
+.. function:: num % cpx
+              cpx % num
+              cpx % cpx
+
+   Return a :type:`complex` resulting from the rest of the division of the left and right operands, i.e. :math:`x - y \lfloor \frac{x}{y} \rfloor`. If the right operand is a complex number, the division uses a robuts and fast algorithm implemented in :c:func:`mad_cnum_div_r` [#f1]_.
+
+.. function:: num ^ cpx
+              cpx ^ num
+              cpx ^ cpx
+
+   Return a :type:`complex` resulting from the left operand raised to the power of the right operand.
+
+.. function:: num == cpx
+              cpx == num
+              cpx == cpx
+
+   Return :const:`false` if the real or the imaginary part differ between the left and right operands, :const:`true` otherwise. A number :var:`a` will be interpreted as :math:`a+i0` for the comparison.
+
 References
 ==========
 
