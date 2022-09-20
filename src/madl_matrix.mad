@@ -66,45 +66,27 @@ local gmm = get_metamethod
 
 ffi.cdef 
 [[ // warning: must be kept identical to C definition
-struct  matrix       { const ssz_t nrow, ncol;        num_t data[?]; };
-struct cmatrix       { const ssz_t nrow, ncol;       cnum_t data[?]; };
-struct imatrix       { const ssz_t nrow, ncol;        idx_t data[?]; };
-
-struct  matrix_cview { const ssz_t nrow, ncol; const  num_t data[?]; }; // to remove
-struct cmatrix_cview { const ssz_t nrow, ncol; const cnum_t data[?]; }; // to remove
-struct imatrix_cview { const ssz_t nrow, ncol; const  idx_t data[?]; }; // to remove
+struct  matrix { const ssz_t nrow, ncol;  num_t data[?]; };
+struct cmatrix { const ssz_t nrow, ncol; cnum_t data[?]; };
+struct imatrix { const ssz_t nrow, ncol;  idx_t data[?]; };
 ]]
 
 local  matrix_ctor  = ffi.typeof 'struct  matrix'
 local cmatrix_ctor  = ffi.typeof 'struct cmatrix'
 local imatrix_ctor  = ffi.typeof 'struct imatrix'
 
-local  matrix_cview = ffi.typeof 'struct  matrix_cview'
-local cmatrix_cview = ffi.typeof 'struct cmatrix_cview'
-local imatrix_cview = ffi.typeof 'struct imatrix_cview'
-
-local  matrix_cref  = ffi.typeof 'struct  matrix&'
-local cmatrix_cref  = ffi.typeof 'struct cmatrix&'
-local imatrix_cref  = ffi.typeof 'struct imatrix&'
-
-local  matrix_cvref = ffi.typeof 'struct  matrix_cview&'
-local cmatrix_cvref = ffi.typeof 'struct cmatrix_cview&'
-local imatrix_cvref = ffi.typeof 'struct imatrix_cview&'
-
 local  matrix_size  = ffi.offsetof( matrix_ctor, 'data')
 local cmatrix_size  = ffi.offsetof(cmatrix_ctor, 'data')
 local imatrix_size  = ffi.offsetof(imatrix_ctor, 'data')
 
-local is_matrix  = \x -> istype( matrix_ctor, x) or istype( matrix_cview, x)
-local is_cmatrix = \x -> istype(cmatrix_ctor, x) or istype(cmatrix_cview, x)
-local is_imatrix = \x -> istype(imatrix_ctor, x) or istype(imatrix_cview, x)
-
-local isa_matrix = \x -> is_matrix(x) or is_cmatrix(x) -- or is_imatrix(x)
+local is_matrix  = \x -> istype( matrix_ctor, x)
+local is_cmatrix = \x -> istype(cmatrix_ctor, x)
+local is_imatrix = \x -> istype(imatrix_ctor, x)
+local isa_matrix = \x -> is_matrix(x) or is_cmatrix(x)
 
 local is_vector  = \x -> is_matrix(x)  and (x.nrow == 1 or x.ncol == 1)
 local is_cvector = \x -> is_cmatrix(x) and (x.nrow == 1 or x.ncol == 1)
 local is_ivector = \x -> is_imatrix(x) and (x.nrow == 1 or x.ncol == 1)
-
 local isa_vector = \x -> isa_matrix(x) and (x.nrow == 1 or x.ncol == 1)
 
 -- allocators -----------------------------------------------------------------o
@@ -127,7 +109,7 @@ end
 
 local function imatrix_alloc (nr, nc)
   local len = nr*nc
-  assert(len <= 2^29, "imatrix is too large")
+  assert(len <= 2^30, "imatrix is too large")
   local mat = imatrix_ctor(len) -- VLA (hooked immediately before calling C)
   _C.mad_imat_reshape(mat, nr, nc)
   return mat
@@ -227,24 +209,12 @@ local set0    = \x,i,j,e => x.data[ i   *x.ncol +  j   ]=e return x end
 local get     = \x,i,j   -> x.data[(i-1)*x.ncol + (j-1)]
 local set     = \x,i,j,e => x.data[(i-1)*x.ncol + (j-1)]=e return x end
 
-local geti0_s = \x,i   -> 0 <= i and i <  x.nrow*x.ncol                     and geti0(x, i) or nil
 local geti_s  = \x,i   -> 1 <= i and i <= x.nrow*x.ncol                     and geti (x, i) or nil
-local get0_s  = \x,i,j -> 0 <= i and i <  x.nrow and 0 <= j and j <  x.ncol and get0(x,i,j) or nil
 local get_s   = \x,i,j -> 1 <= i and i <= x.nrow and 1 <= j and j <= x.ncol and get (x,i,j) or nil
-
-local function seti0_s (x, i, e)
-  assert(0 <= i and i < x.nrow*x.ncol, "0-based index out of bounds")
-  return seti0(x, i, e)
-end
 
 local function seti_s (x, i, e)
   assert(1 <= i and i <= x.nrow*x.ncol, "index out of bounds")
   return seti(x, i, e)
-end
-
-local function set0_s (x, i, j, e)
-  assert(0 <= i and i < x.nrow and 0 <= j and j < x.ncol, "0-based index out of bounds")
-  return set0(x, i, j, e)
 end
 
 local function set_s (x, i, j, e)
@@ -252,42 +222,14 @@ local function set_s (x, i, j, e)
   return set(x, i, j, e)
 end
 
--- unsafe (to remove as method!)
-MR._geti0 = geti0
-MR._seti0 = seti0
-MR._geti  = geti
-MR._seti  = seti
-MR._get0  = get0
-MR._set0  = set0
-MR._get   = get
-MR._set   = set
-
-MI._geti0 = MR._geti0
-MI._seti0 = MR._seti0
-MI._geti  = MR._geti
-MI._seti  = MR._seti
-MI._get0  = MR._get0
-MI._set0  = MR._set0
-MI._get   = MR._get
-MI._set   = MR._set
-
--- safe
-MR.geti0  = geti0_s
 MR.geti   = geti_s
-MR.get0   = get0_s
-MR.get    = get_s
-MR.seti0  = seti0_s
 MR.seti   = seti_s
-MR.set0   = set0_s
+MR.get    = get_s
 MR.set    = set_s
 
-MI.geti0  = MR.geti0_s
 MI.geti   = MR.geti_s
-MI.get0   = MR.get0_s
-MI.get    = MR.get_s
-MI.seti0  = MR.seti0_s
 MI.seti   = MR.seti_s
-MI.set0   = MR.set0_s
+MI.get    = MR.get_s
 MI.set    = MR.set_s
 
 -- size, same -----------------------------------------------------------------o
@@ -348,20 +290,6 @@ function MI.__same (x, e_, nr_, nc_) -- promote to matrix if e_ is not an intege
   else
     error("invalid argument #2 (nil or scalar expected)")
   end
-end
-
--- readonly -------------------------------------------------------------------o
-
-function MR.constview (x)
-  return ffi.cast(matrix_cvref, x)
-end
-
-function MC.constview (x)
-  return ffi.cast(cmatrix_cvref, x)
-end
-
-function MI.constview (x)
-  return ffi.cast(imatrix_cvref, x)
 end
 
 -- copy/clone, resize ---------------------------------------------------------o
@@ -3114,10 +3042,6 @@ MI.__metatable = MI
 ffi.metatype( matrix_ctor , MR)
 ffi.metatype(cmatrix_ctor , MC)
 ffi.metatype(imatrix_ctor , MI)
-
-ffi.metatype( matrix_cview, MR)
-ffi.metatype(cmatrix_cview, MC)
-ffi.metatype(imatrix_cview, MI)
 
 -- end ------------------------------------------------------------------------o
 return {
