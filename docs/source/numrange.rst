@@ -51,6 +51,24 @@ Constant Ranges
 
    Constant ranges of infinite size can be created by using :expr:`start == stop` and :expr:`step = 0` in :type:`range` constructor or :expr:`size = inf` in :type:`nrange` constructor. The user must satify the constraint :expr:`start == stop` in both constructors to show its intention.
 
+Attributes
+==========
+
+.. constant:: rng.start
+              rng.logstart
+
+   The component *start* of the range and the logrange on a linear scale. 
+
+.. constant:: rng.stop
+              rng.logstop
+
+   The component *stop* of the range and the logrange on a linear scale. 
+
+.. constant:: rng.step
+              rng.logstep
+
+   The component *step* of the range and the logrange on a linear scale, which may slighlty differ from the value provided to the constructors due to adjustment. 
+
 Functions
 =========
 
@@ -81,15 +99,23 @@ Unless specified, the object :var:`rng` owning the methods stands for a :type:`r
 
 .. function:: rng:size()
 
-   Return the number of steps contained by the range.
+   Return the number of steps contained by the range :var:`rng`.
+
+.. function:: rng:start()
+
+   Return the start value of the range :var:`rng`.
+
+.. function:: rng:stop()
+
+   Return the stop value of the range :var:`rng`.
 
 .. function:: rng:step()
 
-   Return the :var:`step` component of the range, which may slighlty differ from the value provided to the constructors due to adjustment. 
+   Return the step value of the range :var:`rng`, which may slighlty differ from the value provided to the constructors due to adjustment. 
 
 .. function:: rng:value(x)
 
-   Return the interpolated value at :var:`x`, i.e. interpreting the range as a (log)line with equation :expr:`start + x * step` 
+   Return the interpolated value at :var:`x`, i.e. interpreting the range  :var:`rng` as a (log)line with equation :expr:`start + x * step` 
 
 .. function:: rng:get(x)
    
@@ -97,7 +123,7 @@ Unless specified, the object :var:`rng` owning the methods stands for a :type:`r
 
 .. function:: rng:last()
 
-   Return the last value inside the range's bounds, :const:`nil` otherwise. 
+   Return the last value inside the bounds of the range :var:`rng`, :const:`nil` otherwise. 
 
 .. function:: rng:adjust()
 
