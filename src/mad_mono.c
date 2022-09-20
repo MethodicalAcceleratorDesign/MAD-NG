@@ -61,7 +61,7 @@ mad_mono_copy (ssz_t n, const ord_t a[n], ord_t r[n])
 }
 
 void
-mad_mono_rcopy (ssz_t n, const ord_t a[n], ord_t r[n])
+mad_mono_reverse (ssz_t n, const ord_t a[n], ord_t r[n])
 {
   assert(a && r);
   ord_t t;
@@ -103,7 +103,7 @@ num_t
 mad_mono_ordp (ssz_t n, const ord_t a[n], idx_t stp)
 {
   assert(a);
-  ensure(stp == 1 || stp == 2, "invalid step %d (1 or 2 expected)", stp);
+  ensure(stp >= 1, "invalid step %d (>= 1)", stp);
   num_t p = 1;
   for (idx_t i=0; i < n; i+=stp) p *= a[i];
   return p;
@@ -113,7 +113,7 @@ num_t
 mad_mono_ordpf (ssz_t n, const ord_t a[n], idx_t stp)
 {
   assert(a);
-  ensure(stp == 1 || stp == 2, "invalid step %d (1 or 2 expected)", stp);
+  ensure(stp >= 1, "invalid step %d (>= 1)", stp);
   num_t p = 1;
   for (idx_t i=0; i < n; i+=stp) p *= mad_num_fact(a[i]);
   return p;

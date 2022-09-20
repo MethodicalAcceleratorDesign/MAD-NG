@@ -40,31 +40,31 @@ typedef unsigned char ord_t;
 
 // --- interface --------------------------------------------------------------o
 
-ssz_t mad_mono_str   (ssz_t n,       ord_t a[n], str_t s);     // from string
-str_t mad_mono_prt   (ssz_t n, const ord_t a[n], char s[n+1]); // to   string
+ssz_t mad_mono_str    (ssz_t n,       ord_t a[n], str_t s);     // from string
+str_t mad_mono_prt    (ssz_t n, const ord_t a[n], char s[n+1]); // to   string
 
-void  mad_mono_fill  (ssz_t n,       ord_t a[n], ord_t v);
-void  mad_mono_copy  (ssz_t n, const ord_t a[n], ord_t r[n]);
-void  mad_mono_rcopy (ssz_t n, const ord_t a[n], ord_t r[n]);
+void  mad_mono_fill   (ssz_t n,       ord_t a[n], ord_t v);
+void  mad_mono_copy   (ssz_t n, const ord_t a[n], ord_t r[n]);
+void  mad_mono_reverse(ssz_t n, const ord_t a[n], ord_t r[n]);
 
-ord_t mad_mono_min   (ssz_t n, const ord_t a[n]);
-ord_t mad_mono_max   (ssz_t n, const ord_t a[n]);
-int   mad_mono_ord   (ssz_t n, const ord_t a[n]); // sum of orders
-num_t mad_mono_ordp  (ssz_t n, const ord_t a[n], idx_t stp); // product of orders
-num_t mad_mono_ordpf (ssz_t n, const ord_t a[n], idx_t stp); // product of factorials of orders
+ord_t mad_mono_min    (ssz_t n, const ord_t a[n]);
+ord_t mad_mono_max    (ssz_t n, const ord_t a[n]);
+int   mad_mono_ord    (ssz_t n, const ord_t a[n]); // sum of orders
+num_t mad_mono_ordp   (ssz_t n, const ord_t a[n], idx_t stp); // product of orders
+num_t mad_mono_ordpf  (ssz_t n, const ord_t a[n], idx_t stp); // product of factorials of orders
 
-log_t mad_mono_eq    (ssz_t n, const ord_t a[n], const ord_t b[n]);
-log_t mad_mono_lt    (ssz_t n, const ord_t a[n], const ord_t b[n]);
-log_t mad_mono_le    (ssz_t n, const ord_t a[n], const ord_t b[n]);
+log_t mad_mono_eq     (ssz_t n, const ord_t a[n], const ord_t b[n]);
+log_t mad_mono_lt     (ssz_t n, const ord_t a[n], const ord_t b[n]);
+log_t mad_mono_le     (ssz_t n, const ord_t a[n], const ord_t b[n]);
 
-int   mad_mono_cmp   (ssz_t n, const ord_t a[n], const ord_t b[n]);
-int   mad_mono_rcmp  (ssz_t n, const ord_t a[n], const ord_t b[n]);
+int   mad_mono_cmp    (ssz_t n, const ord_t a[n], const ord_t b[n]);
+int   mad_mono_rcmp   (ssz_t n, const ord_t a[n], const ord_t b[n]);
 
-void  mad_mono_add   (ssz_t n, const ord_t a[n], const ord_t b[n], ord_t r[n]);
-void  mad_mono_sub   (ssz_t n, const ord_t a[n], const ord_t b[n], ord_t r[n]);
-void  mad_mono_cat   (ssz_t n, const ord_t a[n], ssz_t m, const ord_t b[m], ord_t r[n+m]);
+void  mad_mono_add    (ssz_t n, const ord_t a[n], const ord_t b[n], ord_t r[n]);
+void  mad_mono_sub    (ssz_t n, const ord_t a[n], const ord_t b[n], ord_t r[n]);
+void  mad_mono_cat    (ssz_t n, const ord_t a[n], ssz_t m, const ord_t b[m], ord_t r[n+m]);
 
-void  mad_mono_print (ssz_t n, const ord_t a[n], FILE *fp_);
+void  mad_mono_print  (ssz_t n, const ord_t a[n], FILE *fp_);
 
 // --- end --------------------------------------------------------------------o
 
