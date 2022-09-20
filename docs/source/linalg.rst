@@ -6,7 +6,34 @@
 Linear Algebra
 **************
 
-This chapter describes the real :type:`matrix`, complex :type:`cmatrix` and integer :type:`imatrix` objects as supported by MAD-NG. The module for `Matrix <https://en.wikipedia.org/wiki/Matrix_(mathematics)>`_ is not exposed, only the contructors are visible from the :mod:`MAD` environment and thus, matrices are handled directly by their methods or by the generic functions of the same name from the module :mod:`MAD.gmath`. The :type:`imatrix`, i.e. matrix of integers, are mainly used for indexing other types of matrix with limited features. Column and row vectors are not separate types but only shortcuts for :math:`[n\times 1]` and :math:`[1\times n]` matrices. Note that :type:`matrix`, :type:`cmatrix` and :type:`imatrix` are all defined as C structures for direct compliance with the C API. 
+This chapter describes the real :type:`matrix`, complex :type:`cmatrix` and integer :type:`imatrix` objects as supported by MAD-NG. The module for `Matrix <https://en.wikipedia.org/wiki/Matrix_(mathematics)>`_ is not exposed, only the contructors are visible from the :mod:`MAD` environment and thus, matrices are handled directly by their methods or by the generic functions of the same name from the module :mod:`MAD.gmath`. The :type:`imatrix`, i.e. matrix of integers, are mainly used for indexing other types of matrix and therefore supports only a limited subset of the features. Column and row vectors are shortcuts for :math:`[n\times 1]` and :math:`[1\times n]` matrices respectively. Note that :type:`matrix`, :type:`cmatrix` and :type:`imatrix` are all defined as C structures for direct compliance with the C API. 
+
+Types promotion
+===============
+
+The matrix operations may involve few other data types like real and complex numbers leading to many combinations of types. In order to simplify the descriptions, the generic names :var:`num`, :var:`cpx` and :var:`idx` (indexes) are used for real, complex and integer-as-index numbers respectively, and :var:`mat`, :var:`cmat` and :var:`imat` for real, complex and integer matrices respectively. For example, the sum of a complex number :var:`cpx` and a real matrix :var:`mat` gives a complex matrix :var:`cmat`. The case of :var:`idx` means that a :type:`number` will be interpreted as an index and automatically rounded if it does not hold an integer value. The following table summarizes all valid combinations of types for binary operations involving at least one matrix type:
+
+=================  ==================  ===============
+Left Operand Type  Right Operand Type  Result Type
+=================  ==================  ===============
+:type:`number`     :type:`imatrix`     :type:`imatrix`
+:type:`imatrix`    :type:`number`      :type:`imatrix`  
+:type:`imatrix`    :type:`imatrix`     :type:`imatrix`
+                                       
+:type:`number`     :type:`matrix`      :type:`matrix` 
+:type:`matrix`     :type:`number`      :type:`matrix`  
+:type:`matrix`     :type:`matrix`      :type:`matrix`  
+                                       
+:type:`number`     :type:`cmatrix`     :type:`cmatrix`
+:type:`complex`    :type:`matrix`      :type:`cmatrix` 
+:type:`complex`    :type:`cmatrix`     :type:`cmatrix`
+:type:`matrix`     :type:`complex`     :type:`cmatrix`
+:type:`matrix`     :type:`cmatrix`     :type:`cmatrix`
+:type:`cmatrix`    :type:`number`      :type:`cmatrix`  
+:type:`cmatrix`    :type:`complex`     :type:`cmatrix`
+:type:`cmatrix`    :type:`matrix`      :type:`cmatrix`  
+:type:`cmatrix`    :type:`cmatrix`     :type:`cmatrix`
+=================  ==================  ===============
 
 Constructors
 ============
@@ -15,7 +42,7 @@ Constructors
               cvector(nrow)
               ivector(nrow)
 
-   Return a real, complex or integer column vector (i.e. a matrix) of size :math:`[n_{\text{row}}\times 1]` filled with zeros.
+   Return a real, complex or integer column vector (i.e. a matrix of size :math:`[n_{\text{row}}\times 1]`) filled with zeros.
 
 .. function::  matrix(nrow, ncol_)
               cmatrix(nrow, ncol_)
@@ -31,6 +58,17 @@ Constructors
 
    Return a real or complex column vector of length :var:`size` filled with values equally spaced between :var:`start` and :var:`stop` on a logarithmic scale. Default: :expr:`start_ = 1`, :expr:`size_ = 100`.
 
+Attributes
+==========
+
+.. constant:: mat.nrow
+
+   The number of rows of the real, complex or integer matrix :var:`mat`.
+
+.. constant:: mat.ncol
+
+   The number of columns of the real, complex or integer matrix :var:`mat`.
+
 Functions
 =========
 
@@ -38,7 +76,7 @@ Functions
               is_cvector (a)
               is_ivector (a)
 
-   Return :const:`true` if :var:`a` is respectively a real, complex or integer :type:`matrix` of size :math:`[n_{\text{row}}\times 1]` or :math:`[1\times n_{\text{row}}]`, :const:`false` otherwise. These functions are only available from the module :mod:`MAD.typeid`.
+   Return :const:`true` if :var:`a` is respectively a real, complex or integer matrix of size :math:`[n_{\text{row}}\times 1]` or :math:`[1\times n_{\text{row}}]`, :const:`false` otherwise. These functions are only available from the module :mod:`MAD.typeid`.
 
 .. function:: isa_vector (a)
 
@@ -48,7 +86,7 @@ Functions
               is_cmatrix (a)
               is_imatrix (a)
 
-   Return :const:`true` if :var:`a` is respectively a real, complex or integer :type:`matrix`, :const:`false` otherwise. These functions are only available from the module :mod:`MAD.typeid`.
+   Return :const:`true` if :var:`a` is respectively a real, complex or integer matrix, :const:`false` otherwise. These functions are only available from the module :mod:`MAD.typeid`.
 
 .. function:: isa_matrix (a)
 
@@ -56,6 +94,44 @@ Functions
 
 Methods
 =======
+
+Getters/Setters
+---------------
+
+.. function:: mat:size ()
+
+   Return the size of the real, complex or integer matrix :var:`mat`, i.e. the number of elements interpreting the matrix as an array.
+
+.. function:: mat:sizes ()
+
+   Return the number of rows and columns of the real, complex or integer matrix :var:`mat`.
+
+.. function:: mat:tsizes ()
+
+   Return the number of columns and rows (i.e. transposed) of the real, complex or integer matrix :var:`mat`.
+
+.. function:: mat:geti (n)
+
+   Return the value of the element at index :var:`n` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= n <= #mat`, i.e. interpreting the matrix as an array, :const:`nil` otherwise.
+
+.. function:: mat:get (i, j)
+
+   Return the value of the element at indexes :var:`(i,j)` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= i <= nrow` and :expr:`1 <= j <= ncol`, :const:`nil` otherwise.
+
+.. function:: mat:seti (n, v)
+
+   Assign the value :var:`v` to the element at index :var:`n` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= n <= #mat`, i.e. interpreting the matrix as an array, and return the matrix, otherwise raise an *"out of bounds"* error.
+
+.. function:: mat:set (i, j, v)
+
+   Assign the value :var:`v` to the element at indexes :var:`(i,j)` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= i <= nrow` and :expr:`1 <= j <= ncol` and return the matrix, otherwise raise an *"out of bounds"* error.
+
+Copy/Shape
+----------
+
+.. function:: mat:same (v_, nrow_, ncol_)
+
+   Return a matrix with elements of the type of :var:`v` and with :var:`nr` rows and :var:`nc` columns. Default: :expr:`v_ = mat[1]`, :expr:`nrow_ = mat.nrow`, :expr:`ncol_ = mat.ncol`.
 
 Operator-like Methods
 ---------------------
@@ -66,7 +142,13 @@ Operator-like Methods
 
 .. function:: mat:concat (mat2, dir_, r_)
 
-   Return a real, complex or integer matrix resulting from the row-oriented (horizontal) concatenation if :expr:`dir = 'row'`, or column-oriented (vectical) concatenation if :expr:`dir = 'col'`, or vector-oriented (appended) concatenation if :expr:`dir = 'vec'`, of the left and right operands. The returned matrix types is given by the types promotion between :var:`mat` and the first element of :var:`mat2`. Default: :var:`dir_ = 'row'`.
+   Return a real, complex or integer matrix resulting from concatenation of :var:`mat` and :var:`mat2` in the direction determined by :var:`dir_`:
+   
+   - row-oriented (horizontal) for :expr:`dir = 'row'`
+   - column-oriented (vectical) for :expr:`dir = 'col'`
+   - vector-oriented (appended) for :expr:`dir = 'vec'`
+   
+   The type of the returned matrix is given by the type promotion between :var:`mat` and the first element of :var:`mat2`. Default: :var:`dir_ = 'row'`.
 
 Conversion
 ----------
@@ -151,19 +233,17 @@ This section describe methods dealing with 2D and 3D rotations (see `Rotation Ma
 Operators
 =========
 
-In this section, :var:`num`, :var:`cpx`and :var:`idx` are generic names used for real, complex and integer numbers respectively, and :var:`mat`, :var:`cmat` and :var:`imat` are generic names used for real, complex and integer matrices respectively, unless otherwise stated.
-
 .. function:: #mat
 
-   Return the size of the real, complex or integer matrix :var:`mat` as computed by :func:`mat:size()`.
+   Equivalent to :func:`mat:size()`.
 
 .. function:: mat[n]
 
-   Return the value at index :var:`n` for :expr:`1 <= n <= #mat`, i.e. interpreting the real, complex or integer matrix :var:`mat` as an array, :const:`nil` otherwise.
+   Equivalent to :func:`mat:geti(n)`.
 
 .. function:: mat[n] = v
 
-   Assign the value :var:`v` to index :var:`n` for :expr:`1 <= n <= #mat`, i.e. interpreting the real, complex or integer matrix :var:`mat` as an array, otherwise raise an *"out of bounds"* error.
+   Equivalent to :func:`mat:seti(n, v)`.
 
 .. function:: -mat
 
