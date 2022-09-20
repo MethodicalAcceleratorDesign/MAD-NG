@@ -24,6 +24,17 @@ The constructors for :type:`complex` numbers are directly available from the :mo
 
    Return the :type:`complex` number decoded from the string :var:`str` containing the literal complex number :const:`"a+bi"` (with no spaces) where :var:`a` and :var:`b` are literal numbers, i.e. the strings :const:`"1"`, :const:`"2i"` and :const:`"1+2i"` will give respectively the :type:`complex` numbers :math:`1+0i`, :math:`0+2i` and :math:`1+2i`.
 
+Attributes
+==========
+
+.. constant:: z.re
+
+   The real part of the :type:`complex` number :var:`z`.
+
+.. constant:: z.im
+
+   The imaginary part of the :type:`complex` number :var:`z`.
+
 Functions
 =========
 
