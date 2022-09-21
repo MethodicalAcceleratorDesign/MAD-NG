@@ -2,10 +2,23 @@
    Complex numbers
 
 ***************
-Complex numbers
+Complex Numbers
 ***************
 
-This chapter describes the :type:`complex` numbers as supported by MAD-NG. The module for `Complex numbers <https://en.wikipedia.org/wiki/Complex_number>`_ is not exposed, only the contructors are visible from the :mod:`MAD` environment and thus, complex numbers are handled directly by their methods or by the generic functions of the same name from the module :mod:`MAD.gmath`. Note that :type:`complex` have value semantic like :type:`number`. 
+This chapter describes the :type:`complex` numbers as supported by MAD-NG. The module for `Complex numbers <https://en.wikipedia.org/wiki/Complex_number>`_ is not exposed, only the contructors are visible from the :mod:`MAD` environment and thus, complex numbers are handled directly by their methods or by the generic functions of the same name from the module :mod:`MAD.gmath`. Note that :type:`complex` have value semantic like a pair of :type:`number` equivalent to a C structure or an array :expr:`const num_t[2]` for direct compliance with the C API.
+
+Types promotion
+===============
+
+The operations on complex numbers may involve other data types like real numbers leading to few combinations of types. In order to simplify the descriptions, the generic names :var:`num` and :var:`cpx` are used for real and complex numbers respectively. The following table summarizes all valid combinations of types for binary operations involving at least one :type:`complex` type:
+
+=================  ==================  ===============
+Left Operand Type  Right Operand Type  Result Type
+=================  ==================  ===============
+:type:`number`     :type:`complex`     :type:`complex`
+:type:`complex`    :type:`number`      :type:`complex`
+:type:`complex`    :type:`complex`     :type:`complex`
+=================  ==================  ===============
 
 Constructors
 ============
@@ -18,7 +31,7 @@ The constructors for :type:`complex` numbers are directly available from the :mo
 
 .. function:: complex(re_, im_)
 
-   Return the :type:`complex` number equivalent to :code:`re + im * 1i`. Default: :expr:`re_ = 0`, :expr:`im_ = 0`.
+   Return the :type:`complex` number equivalent to :expr:`re + im * 1i`. Default: :expr:`re_ = 0`, :expr:`im_ = 0`.
 
 .. function:: tocomplex(str)
 
@@ -27,13 +40,13 @@ The constructors for :type:`complex` numbers are directly available from the :mo
 Attributes
 ==========
 
-.. constant:: z.re
+.. constant:: cpx.re
 
-   The real part of the :type:`complex` number :var:`z`.
+   The real part of the :type:`complex` number :var:`cpx`.
 
-.. constant:: z.im
+.. constant:: cpx.im
 
-   The imaginary part of the :type:`complex` number :var:`z`.
+   The imaginary part of the :type:`complex` number :var:`cpx`.
 
 Functions
 =========
@@ -133,7 +146,7 @@ Functions          Return values                                   C functions
 Error-like Methods
 ------------------
 
-Error-like methods call C wrappers to the corresponding functions from the `Faddeeva library <http://ab-initio.mit.edu/wiki/index.php/Faddeeva_Package>`_ from the MIT, considered as one of the most accurate and fast implementation over the complex plane [FADDEEVA]_ (see :file:`mad_num.c`).
+Error-like methods call C wrappers to the corresponding functions from the `Faddeeva library <http://ab-initio.mit.edu/Faddeeva>`_ from the MIT, considered as one of the most accurate and fast implementation over the complex plane [FADDEEVA]_ (see :file:`mad_num.c`).
 
 =======================  ==========================================================  ======================
 Functions                Return values                                               C functions  
@@ -149,53 +162,223 @@ Functions                Return values                                          
 Operators
 =========
 
-In this section, :var:`num` and :var:`cpx` are generic names used for real and complex numbers respectively.
+The operators on :type:`complex` follow the conventional mathematical operations of `Complex numbers <https://en.wikipedia.org/wiki/Complex_number#Relations_and_operations>`__.
 
 .. function:: -cpx
 
-   Return a :type:`complex` with opposite sign of :var:`cpx`.
+   Return a :type:`complex` resulting from the negation of the operand as computed by :func:`cpx:unm()`.
 
 .. function:: num + cpx
               cpx + num
               cpx + cpx
 
-   Return a :type:`complex` resulting from the sum of the left and right operands.
+   Return a :type:`complex` resulting from the sum of the left and right operands as computed by :func:`cpx:add()`.
 
 .. function:: num - cpx
               cpx - num
               cpx - cpx
 
-   Return a :type:`complex` resulting from the difference of the left and right operands.
+   Return a :type:`complex` resulting from the difference of the left and right operands as computed by :func:`cpx:sub()`.
 
 .. function:: num * cpx
               cpx * num
               cpx * cpx
 
-   Return a :type:`complex` resulting from the product of the left and right operands.
+   Return a :type:`complex` resulting from the product of the left and right operands as computed by :func:`cpx:mul()`.
 
 .. function:: num / cpx
               cpx / num
               cpx / cpx
 
-   Return a :type:`complex` resulting from the division of the left and right operands. If the right operand is a complex number, the division uses a robut and fast algorithm implemented in :c:func:`mad_cnum_div_r` [#f1]_.
+   Return a :type:`complex` resulting from the division of the left and right operands as computed by :func:`cpx:div()`. If the right operand is a complex number, the division uses a robut and fast algorithm implemented in :c:func:`mad_cnum_div_r` [#f1]_.
 
 .. function:: num % cpx
               cpx % num
               cpx % cpx
 
-   Return a :type:`complex` resulting from the rest of the division of the left and right operands, i.e. :math:`x - y \lfloor \frac{x}{y} \rfloor`. If the right operand is a complex number, the division uses a robut and fast algorithm implemented in :c:func:`mad_cnum_div_r` [#f1]_.
+   Return a :type:`complex` resulting from the rest of the division of the left and right operands, i.e. :math:`x - y \lfloor \frac{x}{y} \rfloor`,  as computed by :func:`cpx:mod()`. If the right operand is a complex number, the division uses a robut and fast algorithm implemented in :c:func:`mad_cnum_div_r` [#f1]_.
 
 .. function:: num ^ cpx
               cpx ^ num
               cpx ^ cpx
 
-   Return a :type:`complex` resulting from the left operand raised to the power of the right operand.
+   Return a :type:`complex` resulting from the left operand raised to the power of the right operand as computed by :func:`cpx:pow()`.
 
 .. function:: num == cpx
               cpx == num
               cpx == cpx
 
    Return :const:`false` if the real or the imaginary part differ between the left and right operands, :const:`true` otherwise. A number :var:`a` will be interpreted as :math:`a+i0` for the comparison.
+
+C API
+=====
+
+These functions are provided for performance reason and compliance (i.e. branch cut) with the C API of other modules dealing with complex numbers like the linear and the differential algebra. For the same reason, some functions hereafter refer to the section 7.3 of the C Programming Language Standard [ISOC99CPX]_.
+
+.. c:function:: num_t mad_cnum_abs_r    (num_t x_re, num_t x_im)
+
+   Return the modulus of the :type:`complex` :var:`x` as computed by :c:func:`cabs()`.
+
+.. c:function:: num_t mad_cnum_arg_r    (num_t x_re, num_t x_im)
+
+   Return the argument in :math:`[-\pi, +\pi]` of the :type:`complex` :var:`x` as computed by :c:func:`carg()`.
+
+.. c:function:: void  mad_cnum_unit_r   (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the :type:`complex` :var:`x` divided by its modulus as computed by :c:func:`cabs()`.
+
+.. c:function:: void  mad_cnum_proj_r   (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the projection of the :type:`complex` :var:`x` on the Riemann sphere as computed by :c:func:`cproj()`.
+
+.. c:function:: void  mad_cnum_rect_r   (num_t  rho, num_t  ang, cnum_t *r)
+
+   Put in :var:`r` the rectangular form of the :type:`complex` :expr:`rho * exp(i*ang)`.
+
+.. c:function:: void  mad_cnum_polar_r  (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the polar form of the :type:`complex` :var:`x`.
+
+.. c:function:: void  mad_cnum_inv_r    (num_t x_re, num_t x_im, cnum_t *r)
+                cnum_t mad_cnum_inv (cnum_t x)
+
+   Put in :var:`r` or return the inverse of the :type:`complex` :var:`x`.
+
+.. c:function:: void  mad_cnum_invsqrt_r(num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the square root of the inverse of the :type:`complex` :var:`x`.
+
+.. c:function:: void  mad_cnum_div_r    (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
+                cnum_t mad_cnum_div (cnum_t x, cnum_t y)
+
+   Put in :var:`r` or return the :type:`complex` :var:`x` divided by the :type:`complex` :var:`y`.
+
+.. c:function:: void  mad_cnum_mod_r    (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
+
+   Put in :var:`r` the remainder of the division of the :type:`complex` :var:`x` by the :type:`complex` :var:`y`.
+
+.. c:function:: void  mad_cnum_pow_r    (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
+
+   Put in :var:`r` the :type:`complex` :var:`x` raised to the power of :type:`complex` :var:`y` using :c:func:`cpow()`.
+
+.. c:function:: void  mad_cnum_powi_r   (num_t x_re, num_t x_im, int   n,                cnum_t *r)
+                cnum_t mad_cnum_powi (cnum_t x, int n)
+
+   Put in :var:`r` or return the :type:`complex` :var:`x` raised to the power of the :type:`integer` :var:`n` using a fast algorithm.
+
+.. c:function:: void  mad_cnum_sqrt_r   (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the square root of the :type:`complex` :var:`x` as computed by :c:func:`csqrt()`.
+
+.. c:function:: void  mad_cnum_exp_r    (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the exponential of the :type:`complex` :var:`x` as computed by :c:func:`cexp()`.
+
+.. c:function:: void  mad_cnum_log_r    (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the natural logarithm of the :type:`complex` :var:`x` as computed by :c:func:`clog()`.
+
+.. c:function:: void  mad_cnum_log10_r  (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the logarithm of the :type:`complex` :var:`x`.
+
+.. c:function:: void  mad_cnum_sin_r    (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the sine of the :type:`complex` :var:`x` as computed by :c:func:`csin()`.
+
+.. c:function:: void  mad_cnum_cos_r    (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the cosine of the :type:`complex` :var:`x` as computed by :c:func:`ccos()`.
+
+.. c:function:: void  mad_cnum_tan_r    (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the tangent of the :type:`complex` :var:`x` as computed by :c:func:`ctan()`.
+
+.. c:function:: void  mad_cnum_sinh_r   (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the hyperbolic sine of the :type:`complex` :var:`x` as computed by :c:func:`csinh()`.
+
+.. c:function:: void  mad_cnum_cosh_r   (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the hyperbolic cosine of the :type:`complex` :var:`x` as computed by :c:func:`ccosh()`.
+
+.. c:function:: void  mad_cnum_tanh_r   (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the hyperbolic tangent of the :type:`complex` :var:`x` as computed by :c:func:`ctanh()`.
+
+.. c:function:: void  mad_cnum_asin_r   (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the arc sine of the :type:`complex` :var:`x` as computed by :c:func:`casin()`.
+
+.. c:function:: void  mad_cnum_acos_r   (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the arc cosine of the :type:`complex` :var:`x` as computed by :c:func:`cacos()`.
+
+.. c:function:: void  mad_cnum_atan_r   (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the arc tangent of the :type:`complex` :var:`x` as computed by :c:func:`catan()`.
+
+.. c:function:: void  mad_cnum_asinh_r  (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the hyperbolic arc sine of the :type:`complex` :var:`x` as computed by :c:func:`casinh()`.
+
+.. c:function:: void  mad_cnum_acosh_r  (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the hyperbolic arc cosine of the :type:`complex` :var:`x` as computed by :c:func:`cacosh()`.
+
+.. c:function:: void  mad_cnum_atanh_r  (num_t x_re, num_t x_im, cnum_t *r)
+
+   Put in :var:`r` the hyperbolic arc tangent of the :type:`complex` :var:`x` as computed by :c:func:`catanh()`.
+
+.. c:function:: void  mad_cnum_sinc_r   (num_t x_re, num_t x_im, cnum_t *r)
+                cnum_t mad_cnum_sinc  (cnum_t x)
+
+   Put in :var:`r` or return the sine cardinal of the :type:`complex` :var:`x`.
+
+.. c:function:: void  mad_cnum_sinhc_r  (num_t x_re, num_t x_im, cnum_t *r)
+                cnum_t mad_cnum_sinhc (cnum_t x)
+
+   Put in :var:`r` or return the hyperbolic sine cardinal of the :type:`complex` :var:`x`.
+
+.. c:function:: void  mad_cnum_asinc_r  (num_t x_re, num_t x_im, cnum_t *r)
+                cnum_t mad_cnum_asinc  (cnum_t x)
+
+   Put in :var:`r` or return the arc sine cardinal of the :type:`complex` :var:`x`.
+
+.. c:function:: void  mad_cnum_asinhc_r (num_t x_re, num_t x_im, cnum_t *r)
+                cnum_t mad_cnum_asinhc (cnum_t x)
+
+   Put in :var:`r` or return the hyperbolic arc sine cardinal of the :type:`complex` :var:`x`.
+
+.. c:function:: void  mad_cnum_wf_r     (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
+                cnum_t mad_cnum_wf    (cnum_t x, num_t relerr)
+
+   Put in :var:`r` or return the Faddeeva function of the :type:`complex` :var:`x`.
+
+.. c:function:: void  mad_cnum_erf_r    (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
+                cnum_t mad_cnum_erf   (cnum_t x, num_t relerr)
+
+   Put in :var:`r` or return the error function of the :type:`complex` :var:`x`.
+
+.. c:function:: void  mad_cnum_erfc_r   (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
+                cnum_t mad_cnum_erfc  (cnum_t x, num_t relerr) 
+
+   Put in :var:`r` or return the complementary error function of the :type:`complex` :var:`x`.
+
+.. c:function:: void  mad_cnum_erfcx_r  (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
+                cnum_t mad_cnum_erfcx (cnum_t x, num_t relerr)
+
+   Put in :var:`r` or return the scaled complementary error function of the :type:`complex` :var:`x`.
+
+.. c:function:: void  mad_cnum_erfi_r   (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
+                cnum_t mad_cnum_erfi  (cnum_t x, num_t relerr)
+
+   Put in :var:`r` or return the imaginary error function of the :type:`complex` :var:`x`.
+
+.. c:function:: void  mad_cnum_dawson_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
+                cnum_t mad_cnum_dawson(cnum_t x, num_t relerr)
+
+   Put in :var:`r` or return the Dawson integral for the :type:`complex` :var:`x`.
 
 References
 ==========
@@ -204,7 +387,9 @@ References
 
 .. [CPXDIV2] M. Baudin and R. L. Smith, *"A robust complex division in Scilab"*, October 2012. http://arxiv.org/abs/1210.4539.
 
-.. [FADDEEVA] A. Oeftiger, R. De Maria, L. Deniau et al, *"Review of CPU and GPU Faddeeva Implementations"*, IPAC2016. https://cds.cern.ch/record/2207430/files/wepoy044.pdf
+.. [FADDEEVA] A. Oeftiger, R. De Maria, L. Deniau et al, *"Review of CPU and GPU Faddeeva Implementations"*, IPAC2016. https://cds.cern.ch/record/2207430/files/wepoy044.pdf.
+
+.. [ISOC99CPX] ISO/IEC 9899:1999 Programming Languages - C. https://www.iso.org/standard/29237.html.
 
 .. ---------------------------------------
 
