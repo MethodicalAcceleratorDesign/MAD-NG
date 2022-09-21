@@ -19,7 +19,7 @@ Attributes
 
 .. constant:: mono.n
 
-   The number of variable orders in :var:`mono`, i.e. its length.
+   The number of variable orders in :var:`mono`, i.e. its size or length.
 
 Functions
 =========
@@ -40,10 +40,6 @@ The optional argument :var:`r_` represents a destination placeholder for results
 .. function:: mono:copy(r_)
 
    Return a copy of :var:`mono`.
-
-.. function:: mono:size()
-
-   Return the number of variable orders in :var:`mono`, i.e. its length.
 
 .. function:: mono:fill(ord_)
 
@@ -75,10 +71,6 @@ The optional argument :var:`r_` represents a destination placeholder for results
 
    Return the product of the factorial of the variable orders of :var:`mono` at every :var:`step`. Default: :expr:`step_ = 1`.
 
-.. function:: mono:reverse(r_)
-
-   Return the reverse of the monomial :var:`mono`.
-
 .. function:: mono:add(mono2, r_)
 
    Return the sum of the monomials :var:`mono` and :var:`mono2`, that is the sum of the all their variable orders, i.e. :math:`(o_1 + o_2) \mod 256` where :math:`o_1` and :math:`o_2` are two variable orders at the same index in :var:`mono` and :var:`mono2`.
@@ -90,6 +82,10 @@ The optional argument :var:`r_` represents a destination placeholder for results
 .. function:: mono:concat(mono2, r_)
 
    Return the concatenation of the monomials :var:`mono` and :var:`mono2`.
+
+.. function:: mono:reverse(r_)
+
+   Return the reverse of the monomial :var:`mono`.
 
 .. function:: mono:totable()
 
@@ -104,7 +100,7 @@ Operators
 
 .. function:: #mono
 
-   Return the size of the monomial as computed by :func:`mono:size()`.
+   Return the number of variable orders in :var:`mono`, i.e. its length.
 
 .. function:: mono[n]
 
@@ -116,11 +112,11 @@ Operators
 
 .. function:: mono + mono2
 
-   Return the sum of the monomials :var:`mono` and :var:`mono2` as computed by :expr:`mono:add(mono2)`.
+   Equivalent to :expr:`mono:add(mono2)`.
 
 .. function:: mono - mono2
 
-   Return the difference of the monomials :var:`mono` and :var:`mono2` as computed by :expr:`mono:sub(mono2)`.
+   Equivalent to :expr:`mono:sub(mono2)`.
 
 .. function:: mono < mono2
 
@@ -136,7 +132,7 @@ Operators
 
 .. function:: mono .. mono2
 
-   Return the concatenation of the monomials :var:`mono` and :var:`mono2` as computed by :expr:`mono:concat(mono2)`.
+   Equivalent to :expr:`mono:concat(mono2)`.
 
 Iterators
 =========
@@ -189,10 +185,6 @@ C API
 
    Return the product of the factorial of the variable orders of the monomial :var:`a[n]` at every :var:`stp`.
 
-.. c:function:: void mad_mono_reverse (ssz_t n, const ord_t a[n], ord_t r[n])
-
-   Reverse the monomial :var:`a[n]` to the monomial :var:`r[n]`.
-
 .. c:function:: log_t mad_mono_eq (ssz_t n, const ord_t a[n], const ord_t b[n])
 
    Return :const:`FALSE` if one variable order in monomial :var:`a[n]` is not equal to the variable order at the same index in monomial :var:`b[n]`, :const:`TRUE` otherwise.
@@ -224,6 +216,10 @@ C API
 .. c:function:: void mad_mono_cat (ssz_t n, const ord_t a[n], ssz_t m, const ord_t b[m], ord_t r[n+m])
 
    Put the concatenation of the monomials :var:`a[n]` and :var:`b[m]` in the monomial :var:`r[n+m]`.
+
+.. c:function:: void mad_mono_rev (ssz_t n, const ord_t a[n], ord_t r[n])
+
+   Put the reverse of the monomial :var:`a[n]` in the monomial :var:`r[n]`.
 
 .. c:function:: void mad_mono_print (ssz_t n, const ord_t a[n], FILE *fp_)
 
