@@ -120,7 +120,7 @@ Unless specified, the object :var:`rng` that owns the methods represents either 
 
 .. function:: rng:get(x)
    
-   Return :func:`rng:value(x)` if the results is inside the range's bounds, :const:`nil` otherwise. 
+   Return :func:`rng:value(x)` if the result is inside the range's bounds, :const:`nil` otherwise. 
 
 .. function:: rng:last()
 
@@ -160,23 +160,23 @@ Unless specified, the object :var:`rng` that owns the methods represents either 
 
 .. function:: rng:unm()
 
-   Equivalent to :expr:`-rng`. 
+   Return a range with all components :var:`start`, :var:`stop` and :var:`step` negated.
 
 .. function:: rng:add(num)
 
-   Equivalent to :expr:`rng + num`. 
+   Return a range with :var:`start` and :var:`stop` shifted by :expr:`num`.
 
 .. function:: rng:sub(num)
 
-   Equivalent to :expr:`rng - num`. 
+   Return a range with :var:`start` and :var:`stop` shifted by :expr:`-num`.
 
 .. function:: rng:mul(num)
 
-   Equivalent to :expr:`rng * num`. 
+   Return a range with :var:`start`, :var:`stop` and :var:`step` scaled by :expr:`num`.
 
 .. function:: rng:div(num)
 
-   Equivalent to :expr:`rng / num`. 
+   Return a range with :var:`start`, :var:`stop` and :var:`step` scaled by :expr:`1/num`.
 
 .. function:: rng:tostring()
 
@@ -191,37 +191,37 @@ Operators
 
 .. function:: #rng
 
-   Return the size of the range as computed by :func:`rng:size()`.
+   Equivalent to :func:`rng:size()`.
 
 .. function:: rng[n]
 
-   Return the value interpolated by the range as computed by :func:`rng:get(n-1)`, i.e. assuming an index-like interpolation.
+   Equivalent to :expr:`rng:get(round(n-1))`.
 
 .. function:: -rng
 
-   Return a range with all components :var:`start`, :var:`stop` and :var:`step` negated.
+   Equivalent to :expr:`rng:unm()`. 
 
 .. function:: rng + num
               num + rng
 
-   Return a range with :var:`start` and :var:`stop` shifted by :var:`num`.
+   Equivalent to :expr:`rng:add(num)`. 
 
 .. function:: rng - num
 
-   Return a range with :var:`start` and :var:`stop` shifted by :var:`-num`, i.e. it is equivalent to :expr:`rng + (-num)`.
+   Equivalent to :expr:`rng:sub(num)`.
 
 .. function:: num - rng
 
-   Return a range reversed with :var:`start` and :var:`stop` shifted by :var:`num`, i.e. it is equivalent to :expr:`num + (-rng)`.
+   Equivalent to :expr:`rng:unm():add(num)`.
 
 .. function:: num * rng
               rng * num
 
-   Return a range with :var:`start`, :var:`stop` and :var:`step` scaled by :var:`num`.
+   Equivalent to :expr:`rng:mul(num)`.
 
 .. function:: rng / num
 
-   Return a range with :var:`start`, :var:`stop` and :var:`step` scaled by :var:`1/num`, i.e. it is equivalent to :expr:`rng * (1/num)`.
+   Equivalent to :expr:`rng:div(num)`.
 
 .. function:: rng == rng2
 
