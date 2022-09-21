@@ -10,7 +10,7 @@ This chapter describes :type:`range` and :type:`logrange` objects that are usefu
 Constructors
 ============
 
-The constructors for :type:`range` and :type:`logrange` are directly available from the :mod:`MAD` environment, except for the special case of the concatenation operator applied to two or three numbers, which is part of the language definition as a MAD-NG extension. The :type:`logrange` behave as a the :type:`range` but they work on logarithmic scale. All constructor functions adjust the value of :var:`step` to ensure stable sizes and iterators across platforms (see the method :func:`adjust` for details).
+The constructors for :type:`range` and :type:`logrange` are directly available from the :mod:`MAD` environment, except for the special case of the concatenation operator applied to two or three :type:`number`, which is part of the language definition as a MAD-NG extension. The :type:`logrange` behave as a the :type:`range` but they work on logarithmic scale. All constructor functions adjust the value of :var:`step` to ensure stable sizes and iterators across platforms (see the method :func:`adjust` for details).
 
 .. constant:: start..stop
               start..stop..step
