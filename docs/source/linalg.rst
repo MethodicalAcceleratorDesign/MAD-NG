@@ -11,7 +11,7 @@ This chapter describes the real :type:`matrix`, complex :type:`cmatrix` and inte
 Types promotion
 ===============
 
-The matrix operations may involve few other data types like real and complex numbers leading to many combinations of types. In order to simplify the descriptions, the generic names :var:`num`, :var:`cpx` and :var:`idx` (indexes) are used for real, complex and integer-as-index numbers respectively, and :var:`mat`, :var:`cmat` and :var:`imat` for real, complex and integer matrices respectively. For example, the sum of a complex number :var:`cpx` and a real matrix :var:`mat` gives a complex matrix :var:`cmat`. The case of :var:`idx` means that a :type:`number` will be interpreted as an index and automatically rounded if it does not hold an integer value. The following table summarizes all valid combinations of types for binary operations involving at least one matrix type:
+The matrix operations may involve other data types like real and complex numbers leading to many combinations of types. In order to simplify the descriptions, the generic names :var:`num`, :var:`cpx` and :var:`idx` (indexes) are used for real, complex and integer-as-index numbers respectively, :var:`vec`, :var:`cvec` and :var:`ivec` for real, complex and integer vectors respectively, and :var:`mat`, :var:`cmat` and :var:`imat` for real, complex and integer matrices respectively. For example, the sum of a complex number :var:`cpx` and a real matrix :var:`mat` gives a complex matrix :var:`cmat`. The case of :var:`idx` means that a :type:`number` will be interpreted as an index and automatically rounded if it does not hold an integer value. The following table summarizes all valid combinations of types for binary operations involving at least one matrix type:
 
 =================  ==================  ===============
 Left Operand Type  Right Operand Type  Result Type
@@ -38,6 +38,8 @@ Left Operand Type  Right Operand Type  Result Type
 Constructors
 ============
 
+The constructors for vectors and matrices are directly available from the :mod:`MAD` environment. Note that real, complex or integer matrix with zero size are not allowed, i.e. the smallest allowed matrix has a size of :math:`[1\times 1]`.
+
 .. function::  vector(nrow)
               cvector(nrow)
               ivector(nrow)
@@ -50,11 +52,11 @@ Constructors
 
    Return a real, complex or integer matrix of size :math:`[n_{\text{row}}\times n_{\text{col}}]` filled with zeros. Default: :expr:`ncol_ = rnow`.
 
-.. function:: linspace(start_, stop, size_)
+.. function:: linspace([start_,] stop, size_)
 
    Return a real or complex column vector of length :var:`size` filled with values equally spaced between :var:`start` and :var:`stop` on a linear scale. Default: :expr:`start_ = 0`, :expr:`size_ = 100`.
 
-.. function:: logspace(start_, stop, size_)
+.. function:: logspace([start_,] stop, size_)
 
    Return a real or complex column vector of length :var:`size` filled with values equally spaced between :var:`start` and :var:`stop` on a logarithmic scale. Default: :expr:`start_ = 1`, :expr:`size_ = 100`.
 
@@ -98,10 +100,6 @@ Methods
 Getters/Setters
 ---------------
 
-.. function:: mat:size ()
-
-   Return the size of the real, complex or integer matrix :var:`mat`, i.e. the number of elements interpreting the matrix as an array.
-
 .. function:: mat:sizes ()
 
    Return the number of rows and columns of the real, complex or integer matrix :var:`mat`.
@@ -110,35 +108,97 @@ Getters/Setters
 
    Return the number of columns and rows (i.e. transposed) of the real, complex or integer matrix :var:`mat`.
 
-.. function:: mat:geti (n)
-
-   Return the value of the element at index :var:`n` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= n <= #mat`, i.e. interpreting the matrix as an array, :const:`nil` otherwise.
-
 .. function:: mat:get (i, j)
 
    Return the value of the element at indexes :var:`(i,j)` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= i <= nrow` and :expr:`1 <= j <= ncol`, :const:`nil` otherwise.
-
-.. function:: mat:seti (n, v)
-
-   Assign the value :var:`v` to the element at index :var:`n` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= n <= #mat`, i.e. interpreting the matrix as an array, and return the matrix, otherwise raise an *"out of bounds"* error.
 
 .. function:: mat:set (i, j, v)
 
    Assign the value :var:`v` to the element at indexes :var:`(i,j)` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= i <= nrow` and :expr:`1 <= j <= ncol` and return the matrix, otherwise raise an *"out of bounds"* error.
 
+.. function:: mat:geti (n)
+
+   Return the value of the element at index :var:`n` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= n <= #mat`, :const:`nil` otherwise.
+
+.. function:: mat:seti (n, v)
+
+   Assign the value :var:`v` to the element at index :var:`n` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= n <= #mat` and return the matrix, otherwise raise an *"out of bounds"* error.
+
 Copy/Shape
 ----------
 
-.. function:: mat:same (v_, nrow_, ncol_)
+.. function:: mat:same ([nrow_, ncol_,] v_)
 
-   Return a matrix with elements of the type of :var:`v` and with :var:`nr` rows and :var:`nc` columns. Default: :expr:`v_ = mat[1]`, :expr:`nrow_ = mat.nrow`, :expr:`ncol_ = mat.ncol`.
+   Return a matrix with elements of the type of :var:`v` (ignored by :type:`imatrix`) and with :var:`nrow` rows and :var:`ncol` columns. Default: :expr:`v_ = mat[1]`, :expr:`nrow_ = mat.nrow`, :expr:`ncol_ = mat.ncol`.
+
+.. function:: mat:copy (r_)
+
+   Return a copy of the real, complex or integer matrix :var:`mat`.
+
+.. function:: mat:reshape (nrow_, ncol_)
+
+   Return the real, complex or integer matrix :var:`mat` reshaped to the new sizes :var:`nrow` and :var:`ncol` that must give to a smaller or an equal size, or raise an *invalid new sizes* error. Default: :expr:`nrow_ = #mat`, :expr:`ncol_ = 1`.
+
+.. function:: mat:_reshapeto (nrow_, ncol_)
+
+   Same as :func:`mat:reshape()` but allows for a new size larger than :var:`mat` current size.
+
+   *WARNING: This method is unsafe and may crash MAD-NG, i.e. with a* `Segmentation fault <https://en.wikipedia.org/wiki/Segmentation_fault>`__ *, if wrongly used. It is the responsibility of the user to ensure that* :var:`mat` *contains enough allocated memory to fulfill the new sizes.* 
+
+.. function:: vec:_appendto (v_)
+
+   Return the real, complex or integer vector :var:`vec` with the value :var:`v` appended at its end and increments its number of rows or columns depending on the kind of vector. Default: :expr:`v_ = 0`.
+
+   *WARNING: This method is unsafe and may crash MAD-NG, i.e. with a* `Segmentation fault <https://en.wikipedia.org/wiki/Segmentation_fault>`__ *, if wrongly used. It is the responsibility of the user to ensure that* :var:`vec` *is effectively a vector and contains enough allocated memory to append the value* :var:`v`. 
+
+Filling/Moving
+--------------
+
+.. function:: mat:is_const (v_, tol_)
+
+.. function:: mat:is_diag (v_, tol_)
+
+.. function:: mat:zeros ()
+
+.. function:: mat:ones (v_)
+
+.. function:: mat:seq (v0_)
+
+.. function:: mat:eye (v_)
+
+.. function:: mat:random (f_, ...)
+
+.. function:: mat:shuffle ()
+
+.. function:: mat:symp ()
+
+.. function:: mat:circ (v)
+
+.. function:: mat:fill (a, p_, s_)
+
+.. function:: mat:movev (i, j, yi, y_)
+
+.. function:: mat:shiftv (ni, ns_)
+
+.. function:: mat:roll (ns_, ms_)
+
+Conversions
+-----------
+
+.. function:: mat:real (r_)
+
+.. function:: mat:imag (r_)
+
+.. function:: mat:rerim (re_, im_)
+
+.. function:: mat:cplx (re_, im_, r_)
+
+.. function:: mat:totable (v_, r_)
+
+.. function:: mat:tostring (sep_, lsep_)
 
 Operator-like Methods
 ---------------------
-
-.. function:: mat:length ()
-
-   Equivalent to :func:`mat:size()`
 
 .. function:: mat:concat (mat2, dir_, r_)
 
@@ -149,13 +209,6 @@ Operator-like Methods
    - vector-oriented (appended) for :expr:`dir = 'vec'`
    
    The type of the returned matrix is given by the type promotion between :var:`mat` and the first element of :var:`mat2`. Default: :var:`dir_ = 'row'`.
-
-Conversion
-----------
-
-.. function:: mat:tostring (sep_, lsep_)
-
-.. function:: mat:totable (v_, r_)
 
 Input/Output
 ------------
@@ -235,15 +288,15 @@ Operators
 
 .. function:: #mat
 
-   Equivalent to :func:`mat:size()`.
+   Return the size of the real, complex or integer matrix :var:`mat`, i.e. the number of elements interpreting the matrix as an array.
 
 .. function:: mat[n]
 
-   Equivalent to :func:`mat:geti(n)`.
+   Return the value of the element at index :var:`n` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= n <= #mat`, i.e. interpreting the matrix as an array, :const:`nil` otherwise.
 
 .. function:: mat[n] = v
 
-   Equivalent to :func:`mat:seti(n, v)`.
+   Assign the value :var:`v` to the element at index :var:`n` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= n <= #mat`, i.e. interpreting the matrix as an array, and return the matrix, otherwise raise an *"out of bounds"* error.
 
 .. function:: -mat
 
