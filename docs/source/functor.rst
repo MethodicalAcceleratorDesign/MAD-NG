@@ -5,9 +5,12 @@
 Functors
 ********
 
-This chapter describes how to create, combine and use *functors* from the :mod:`MAD` environment. Functors are objects that behave like functions with :type:`callable` semantic, and also like readonly arrays with :type:`indexable` semantic, where the index is translated as a unique argument into the function call. They are mainly used by the object model to distinguish them from functions which are interpreted as deferred expressions and evaluated automatically on reading, and by the Survey and Track codes to handle (user-defined) actions. 
+This chapter describes how to create, combine and use *functors* from the :mod:`MAD` environment. Functors are objects that behave like functions with :type:`callable` semantic, and also like readonly arrays with :type:`indexable` semantic, where the index is translated as a unique argument into the function call. They are mainly used by the object model to distinguish them from functions which are interpreted as deferred expressions and evaluated automatically on reading, and by the Survey and Track tracking codes to handle (user-defined) actions. 
 
-The module :mod:`MAD.gfunc` offers few functions to expert users for creating and manipulating them.
+Constructors
+============
+
+This module provides mostly constructors to create functors from functions, functors and any objects with :type:`callable` semantic, and combine them all together.
 
 .. function:: functor(f)
 
@@ -52,6 +55,9 @@ The module :mod:`MAD.gfunc` offers few functions to expert users for creating an
 .. function:: bottom()
 
    Return a :type:`functor` that encapsulates the identity function :func:`ident` to define the *bottom* symbol of functors. Bottom is also available in the operator strings table :mod:`opstr` as :const:`"_|_"`.
+
+Functions
+=========
 
 .. function:: is_functor(a)
 
