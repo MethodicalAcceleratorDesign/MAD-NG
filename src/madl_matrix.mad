@@ -222,12 +222,17 @@ local function set_s (x, i, j, e)
   return set(x, i, j, e)
 end
 
-MR.get = get_s
-MR.set = set_s
-MI.get = get_s
-MI.set = set_s
+MR.get  = get_s
+MR.set  = set_s
+MR.geti = geti_s
+MR.seti = seti_s
 
--- size, same -----------------------------------------------------------------o
+MI.get  = get_s
+MI.set  = set_s
+MI.geti = geti_s
+MI.seti = seti_s
+
+-- sizes, same, copy, reshape -------------------------------------------------o
 
 local size   = \x -> x.nrow * x.ncol -- #x
 local sizes  = \x -> (x.nrow, x.ncol)
@@ -260,86 +265,94 @@ function MI.__same (x, nr_, nc_)
   return imatrix(nr_ or x.nrow, nc_ or x.ncol)
 end
 
--- copy/clone, resize ---------------------------------------------------------o
-
-function MR.__copy (x, y_, ij_)
-  if is_nil(y_) then
-    y_ = matrix_alloc(x:sizes())
-    ffi.copy(y_.data, x.data, dbl_sz*size(x))
-  elseif not rawequal(x,y_) or ij_ then
-    assert(is_matrix(y_), "invalid argument #2 (matrix expected)")
-    local ij = (ij_ or 1) - 1
-    local n = max(0, min(size(x), size(y_)-ij))
-    ffi.copy(y_.data+ij, x.data, dbl_sz*n)
-  end
-  return y_
+function MR.__copy (x, y_)
+  if rawequal(x,y_) then return y_ end
+  local y = chksiz(y_,x) or matrix_alloc(x:sizes())
+  assert(is_matrix(y), "incompatible matrix type (matrix expected)")
+  ffi.copy(y.data, x.data, dbl_sz*size(x))
+  return y
 end
 
-function MC.__copy (x, y_, ij_)
-  if is_nil(y_) then
-    y_ = cmatrix_alloc(x:sizes())
-    ffi.copy(y_.data, x.data, cpx_sz*size(x))
-  elseif not rawequal(x,y_) or ij_ then
-    assert(is_cmatrix(y_), "invalid argument #2 (cmatrix expected)")
-    local ij = (ij_ or 1) - 1
-    local n = max(0, min(size(x), size(y_)-ij))
-    ffi.copy(y_.data+ij, x.data, cpx_sz*n)
-  end
-  return y_
+function MC.__copy (x, y_)
+  if rawequal(x,y_) then return y_ end
+  local y = chksiz(y_,x) or cmatrix_alloc(x:sizes())
+  assert(is_cmatrix(y), "incompatible matrix type (matrix expected)")
+  ffi.copy(y.data, x.data, cpx_sz*size(x))
+  return y
 end
 
-function MI.__copy (x, y_, ij_)
-  if is_nil(y_) then
-    y_ = imatrix_alloc(x:sizes())
-    ffi.copy(y_.data, x.data, idx_sz*size(x))
-  elseif not rawequal(x,y_) or ij_ then
-    assert(is_imatrix(y_), "invalid argument #2 (imatrix expected)")
-    local ij = (ij_ or 1) - 1
-    local n = max(0, min(size(x), size(y_)-ij))
-    ffi.copy(y_.data+ij, x.data, idx_sz*n)
-  end
-  return y_
+function MI.__copy (x, y_)
+  if rawequal(x,y_) then return y_ end
+  local y = chksiz(y_,x) or imatrix_alloc(x:sizes())
+  assert(is_imatrix(y), "incompatible matrix type (matrix expected)")
+  ffi.copy(y.data, x.data, idx_sz*size(x))
+  return y
 end
 
-function MR.resize (x, nr, nc)
-  local y
-  if is_matrix(nr)
-  then x, y = nr, x
-  else x, y = matrix(nr,nc), x
-  end
-
-  local nr, nc = min(x.nrow, y.nrow), min(x.ncol, y.ncol)
-  for i=0,nr-1 do
-    ffi.copy(x.data+x.ncol*i, y.data+y.ncol*i, dbl_sz*nc)
-  end
+function MR.reshape (x, nr_, nc_)
+  local nr, nc = nr_ or size(x), nc_ or 1
+  assert(nr >= 1 and nc >= 1 and nr*nc <= size(x), "invalid matrix new sizes")
+  _C.mad_mat_reshape(x, nr, nc)
   return x
 end
 
-function MC.resize (x, nr, nc)
-  local y
-  if is_cmatrix(nr)
-  then x, y = nr, x
-  else x, y = cmatrix(nr,nc), x
-  end
-
-  local nr, nc = min(x.nrow, y.nrow), min(x.ncol, y.ncol)
-  for i=0,nr-1 do
-    ffi.copy(x.data+x.ncol*i, y.data+y.ncol*i, cpx_sz*nc)
-  end
+function MC.reshape (x, nr_, nc_)
+  local nr, nc = nr_ or size(x), nc_ or 1
+  assert(nr >= 1 and nc >= 1 and nr*nc <= size(x), "invalid cmatrix new sizes")
+  _C.mad_cmat_reshape(x, nr, nc)
   return x
 end
 
-function MI.resize (x, nr, nc)
-  local y
-  if is_imatrix(nr)
-  then x, y = nr, x
-  else x, y = imatrix(nr,nc), x
-  end
+function MI.reshape (x, nr_, nc_)
+  local nr, nc = nr_ or size(x), nc_ or 1
+  assert(nr >= 1 and nc >= 1 and nr*nc <= size(x), "invalid imatrix new sizes")
+  _C.mad_imat_reshape(x, nr, nc)
+  return x
+end
 
-  local nr, nc = min(x.nrow, y.nrow), min(x.ncol, y.ncol)
-  for i=0,nr-1 do
-    ffi.copy(x.data+x.ncol*i, y.data+y.ncol*i, idx_sz*nc)
-  end
+function MR._appendto (x, v_)
+  -- no check, user is responsible for keeping track of the real allocated size
+  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
+  -- increment either nr or nc depending on the VECTOR type, UNDEFINED on matrix
+  _C.mad_vec_append(x, v_ or 0)
+  return x
+end
+
+function MC._appendto (x, v_)
+  -- no check, user is responsible for keeping track of the real allocated size
+  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
+  -- increment either nr or nc depending on the VECTOR type, UNDEFINED on matrix
+  local v = complex(v_)
+  _C.mad_cvec_append_r(x, v.re, v.im)
+  return x
+end
+
+function MI._appendto (x, v_)
+  -- no check, user is responsible for keeping track of the real allocated size
+  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
+  -- increment either nr or nc depending on the VECTOR type, UNDEFINED on matrix
+  _C.mad_ivec_append(x, v_ or 0)
+  return x
+end
+
+function MR._reshapeto (x, nr_, nc_)
+  -- no check, user is responsible for keeping track of the real allocated size
+  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
+  _C.mad_mat_reshape(x, nr_ or size(x), nc_ or 1)
+  return x
+end
+
+function MC._reshapeto (x, nr_, nc_)
+  -- no check, user is responsible for keeping track of the real allocated size
+  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
+  _C.mad_cmat_reshape(x, nr_ or size(x), nc_ or 1)
+  return x
+end
+
+function MI._reshapeto (x, nr_, nc_)
+  -- no check, user is responsible for keeping track of the real allocated size
+  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
+  _C.mad_imat_reshape(x, nr_ or size(x), nc_ or 1)
   return x
 end
 
@@ -579,94 +592,6 @@ function MI.roll (x, ns_, ms_)
   then _C.mad_ivec_roll(x.data, nr*nc, 1, ns_ or 0)
   else _C.mad_imat_roll(x.data, nr, nc, ns_ or 0, ms_ or 0)
   end
-  return x
-end
-
-function MR.reshape (x, nr_, nc_)
-  local nr, nc = nr_ or size(x), nc_ or 1
-  assert(nr >= 1 and nc >= 1 and nr*nc <= size(x), "invalid matrix new sizes")
-  _C.mad_mat_reshape(x, nr, nc)
-  return x
-end
-
-function MC.reshape (x, nr_, nc_)
-  local nr, nc = nr_ or size(x), nc_ or 1
-  assert(nr >= 1 and nc >= 1 and nr*nc <= size(x), "invalid cmatrix new sizes")
-  _C.mad_cmat_reshape(x, nr, nc)
-  return x
-end
-
-function MI.reshape (x, nr_, nc_)
-  local nr, nc = nr_ or size(x), nc_ or 1
-  assert(nr >= 1 and nc >= 1 and nr*nc <= size(x), "invalid imatrix new sizes")
-  _C.mad_imat_reshape(x, nr, nc)
-  return x
-end
-
-function MR._appendto (x, v_)
-  -- no check, user is responsible for keeping track of the real allocated size
-  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
-  -- increment either nr or nc depending on the VECTOR type, UNDEFINED on matrix
-  _C.mad_vec_append(x, v_ or 0)
-  return x
-end
-
-function MC._appendto (x, v_)
-  -- no check, user is responsible for keeping track of the real allocated size
-  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
-  -- increment either nr or nc depending on the VECTOR type, UNDEFINED on matrix
-  local v = complex(v_)
-  _C.mad_cvec_append_r(x, v.re, v.im)
-  return x
-end
-
-function MI._appendto (x, v_)
-  -- no check, user is responsible for keeping track of the real allocated size
-  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
-  -- increment either nr or nc depending on the VECTOR type, UNDEFINED on matrix
-  _C.mad_ivec_append(x, v_ or 0)
-  return x
-end
-
-function MR._reshapeto (x, nr_, nc_)
-  -- no check, user is responsible for keeping track of the real allocated size
-  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
-  _C.mad_mat_reshape(x, nr_ or 1, nc_ or 1)
-  return x
-end
-
-function MC._reshapeto (x, nr_, nc_)
-  -- no check, user is responsible for keeping track of the real allocated size
-  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
-  _C.mad_cmat_reshape(x, nr_ or 1, nc_ or 1)
-  return x
-end
-
-function MI._reshapeto (x, nr_, nc_)
-  -- no check, user is responsible for keeping track of the real allocated size
-  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
-  _C.mad_imat_reshape(x, nr_ or 1, nc_ or 1)
-  return x
-end
-
-function MR._reshapeby (x, nr_, nc_)
-  -- no check, user is responsible for keeping track of the real allocated size
-  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
-  _C.mad_mat_reshape(x, x.nrow + (nr_ or 0), x.ncol + (nc_ or 0))
-  return x
-end
-
-function MC._reshapeby (x, nr_, nc_)
-  -- no check, user is responsible for keeping track of the real allocated size
-  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
-  _C.mad_cmat_reshape(x, x.nrow + (nr_ or 0), x.ncol + (nc_ or 0))
-  return x
-end
-
-function MI._reshapeby (x, nr_, nc_)
-  -- no check, user is responsible for keeping track of the real allocated size
-  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
-  _C.mad_imat_reshape(x, x.nrow + (nr_ or 0), x.ncol + (nc_ or 0))
   return x
 end
 
@@ -2904,14 +2829,14 @@ MC.__add, MC.__sub, MC.__mul, MC.__div, MC.__mod, MC.__pow
 MI.  add, MI.  sub, MI.  mul, MI.  div, MI.  mod, MI.  pow =
 MI.__add, MI.__sub, MI.__mul, MI.__div, MI.__mod, MI.__pow
 
-MR.  eq, MR.  same, MR.  copy, MR.length, MR.  concat =
-MR.__eq, MR.__same, MR.__copy, MR.__len , MR.__concat
+MR.  eq, MR.  same, MR.  copy, MR.  concat =
+MR.__eq, MR.__same, MR.__copy, MR.__concat
 
-MC.  eq, MC.  same, MC.  copy, MC.length, MC.  concat =
-MC.__eq, MC.__same, MC.__copy, MC.__len , MC.__concat
+MC.  eq, MC.  same, MC.  copy, MC.  concat =
+MC.__eq, MC.__same, MC.__copy, MC.__concat
 
-MI.  eq, MI.  same, MI.  copy, MI.length, MI.  concat =
-MI.__eq, MI.__same, MI.__copy, MI.__len , MI.__concat
+MI.  eq, MI.  same, MI.  copy, MI.  concat =
+MI.__eq, MI.__same, MI.__copy, MI.__concat
 
 MR.  emul, MR.  ediv, MR.  emod, MR.  epow =
 MR.__emul, MR.__ediv, MR.__emod, MR.__epow
