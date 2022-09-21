@@ -12,7 +12,7 @@ Constructors
 
 The constructor for :type:`monomial` is directly available from the :mod:`MAD` environment.
 
-.. function:: monomial(len_, ord_)
+.. function:: monomial([len_,] ord_)
 
    Return a :type:`monomial` of size :var:`len` with the variable orders set to the values given by :var:`ord`, as computed by :func:`mono:fill(ord_)`. If :var:`ord` is omitted then :var:`len` must be provided. Default: :expr:`len_ = #ord`, :expr:`ord_ = 0`.
 

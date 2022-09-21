@@ -48,7 +48,7 @@ Methods
 All methods are also provided as functions from the module :mod:`MAD.gmath` for convenience. If the PRNG is not provided, the current global PRNG is used instead.
 
 .. function:: prng:randseed (seed)
-              randseed (prng_, seed)
+              randseed ([prng_,] seed)
 
    Set the seed of the PRNG :obj:`prng` to :var:`seed`.
 
@@ -68,13 +68,13 @@ All methods are also provided as functions from the module :mod:`MAD.gmath` for 
    Return a new pseudo-random gaussian number in the range :const:`[-inf, +inf]` from the PRNG :obj:`prng` by using the Box-Muller transformation (Marsaglia's polar form) to a peuso-random number in the range :const:`[0, 1)`.
 
 .. function:: prng:randtn (cut_)
-              randtn (prng_, cut_)
+              randtn ([prng_,] cut_)
 
    Return a new truncated pseudo-random gaussian number in the range :const:`[-cut_, +cut_]` from the PRNG :obj:`prng` by using iteratively the method :func:`prng:randn()`. This simple algorithm is actually used for compatibility with MAD-X.
    Default: :expr:`cut_ = +inf`.
 
 .. function:: prng:randp (lmb_)
-              randp (prng_, lmb_)
+              randp ([prng_,] lmb_)
 
    Return a new pseudo-random poisson number in the range :const:`[0, +inf]` from the PRNG :obj:`prng` with parameter :math:`\lambda > 0` by using the *inverse transform sampling* method on peuso-random numbers.
    Default: :expr:`lmb_ = 1`.

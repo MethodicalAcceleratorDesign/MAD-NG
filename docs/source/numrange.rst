@@ -17,19 +17,19 @@ The constructors for :type:`range` and :type:`logrange` are directly available f
 
    The concatenation operator applied to two or three numbers creates a :type:`range` and does not perform any adjustment of :var:`step`. The default step for the first form is one.
 
-.. function:: range(start_, stop, step_)
+.. function:: range([start_,] stop, step_)
 
    Return a :type:`range` object starting at :var:`start`, ending at :var:`stop` (included), with increments of size :var:`step`. Default: :expr:`start_ = 1, step_ = 1`.
 
-.. function:: nrange(start_, stop, size_)
+.. function:: nrange([start_,] stop, size_)
 
    Return a :type:`range` object starting at :var:`start`, ending at :var:`stop` (included), with :var:`size` increments. Default: :expr:`start_ = 1, size_ = 100`.
 
-.. function:: logrange(start_, stop, step_)
+.. function:: logrange([start_,] stop, step_)
 
    Return a :type:`logrange` object starting at :var:`start`, ending at :var:`stop` (included), with increments of size :var:`step`. Default: :expr:`start_ = 1, step_ = 1`.
 
-.. function:: nlogrange(start_, stop, size_)
+.. function:: nlogrange([start_,] stop, size_)
 
    Return a :type:`logrange` object starting at :var:`start`, ending at :var:`stop` (included), with :var:`size` increments. Default: :expr:`start_ = 1, size_ = 100`.
 
@@ -234,4 +234,3 @@ Iterators
    :noindex:
 
    Return an :type:`ipairs` iterator suitable for generic :const:`for` loops. The generated values are those returned by :func:`rng:value(i)`. 
-
