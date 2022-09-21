@@ -60,18 +60,6 @@ mad_mono_copy (ssz_t n, const ord_t a[n], ord_t r[n])
   for (idx_t i=0; i < n; ++i) r[i] = a[i];
 }
 
-void
-mad_mono_reverse (ssz_t n, const ord_t a[n], ord_t r[n])
-{
-  assert(a && r);
-  ord_t t;
-  if (a != r)
-    for (idx_t i=0; i < n; ++i) r[i] = a[n-1-i];
-  else
-    for (idx_t i=0; i < n/2; ++i)
-      t = r[i], r[i] = r[n-1-i], r[n-1-i] = t;
-}
-
 ord_t
 mad_mono_min (ssz_t n, const ord_t a[n])
 {
@@ -181,6 +169,19 @@ mad_mono_cat (ssz_t n, const ord_t a[n],
   mad_mono_copy(n, a, r  );
   mad_mono_copy(m, b, r+n);
 }
+
+void
+mad_mono_rev (ssz_t n, const ord_t a[n], ord_t r[n])
+{
+  assert(a && r);
+  ord_t t;
+  if (a != r)
+    for (idx_t i=0; i < n; ++i) r[i] = a[n-1-i];
+  else
+    for (idx_t i=0; i < n/2; ++i)
+      t = r[i], r[i] = r[n-1-i], r[n-1-i] = t; // swap
+}
+
 
 // -- printing
 
