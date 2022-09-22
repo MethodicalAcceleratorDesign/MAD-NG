@@ -51,6 +51,11 @@ html_theme_options = {
 }
 
 
+# -- Options for latexpdf output ----------------------------------------------
+latex_toplevel_sectioning = 'part'
+latex_elements = {
+    'preamble': '\\addto\\captionsenglish{\\renewcommand{\\contentsname}{Table of contents}}',
+}
 
 # -- Options for MAN output -------------------------------------------------
 
