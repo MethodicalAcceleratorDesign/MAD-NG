@@ -98,10 +98,6 @@ Unless specified, the object :var:`rng` that owns the methods represents either 
 
    Return :var:`rng` itself. This method is the identity for objects with value semantic.
 
-.. function:: rng:size()
-
-   Return the number of values, i.e. number of steps plus one, contained by the range :var:`rng`.
-
 .. function:: rng:start()
 
    Return the start value of the range :var:`rng`.
@@ -191,11 +187,11 @@ Operators
 
 .. function:: #rng
 
-   Equivalent to :func:`rng:size()`.
+   Return the number of values contained by the range :var:`rng`, i.e. its size that is the number of steps plus one.
 
 .. function:: rng[n]
 
-   Equivalent to :expr:`rng:get(round(n-1))`.
+   Return the value at index :var:`n` contained by the range :var:`rng`, i.e. its is equivalent to :expr:`rng:get(round(n-1))`.
 
 .. function:: -rng
 
