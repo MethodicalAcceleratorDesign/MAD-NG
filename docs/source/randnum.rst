@@ -2,9 +2,9 @@
    Pseudo-random number generator
    PRNG
 
-************************
-Random Number Generators
-************************
+**************
+Random Numbers
+**************
 
 The module :mod:`gmath` provides few Pseudo-Random Number Generators (PRNGs).The defaut implementation is the *Xoshiro256\*\** (XOR/shift/rotate) variant of the `XorShift <https://en.wikipedia.org/wiki/Xorshift>`_ PRNG familly [XORSHFT03]_, an all-purpose, rock-solid generator with a period of :math:`2^{256}-1` that supports long jumps of period :math:`2^{128}`. This PRNG is also the default implementation of recent versions of Lua (not LuaJIT, see below) and GFortran. See https://prng.di.unimi.it for details about Xoshiro/Xoroshiro PRNGs.
 
@@ -16,8 +16,8 @@ It's worth mentionning that none of these PRNG are cryptographically secure gene
 
 All PRNG *functions* (except constructors) are wrappers around PRNG *methods* with the same name, and expect an optional PRNG :obj:`prng_` as first parameter. If this optional PRNG :obj:`prng_` is omitted, i.e. not provided, these functions will use the current global PRNG by default.
 
-Functions and Methods
----------------------
+Contructors
+===========
 
 .. function:: randnew ()
 
@@ -27,41 +27,12 @@ Functions and Methods
 
    Return a new MAD-X PRNG initialized with default seed 123456789. Hence, all new MAD-X PRNG will generate the same sequence until they are initialized with a user-defined seed.
 
+Functions
+=========
+
 .. function:: randset (prng_)
 
    Set the current global PRNG to :obj:`prng` (if provided) and return the previous global PRNG.
-
-.. function:: randseed (prng_, seed)
-              prng:randseed (seed)
-
-   Set the seed of the PRNG :obj:`prng` to :var:`seed`.
-
-.. function:: rand (prng_)
-              prng:rand ()
-
-   Return a new pseudo-random number in the range ``[0, 1)`` from the PRNG :obj:`prng`.
-
-.. function:: randi (prng_)
-              prng:randi ()
-              
-   Return a new pseudo-random number in the range of a :type:`u64_t` from the PRNG :obj:`prng` (:type:`u32_t` for the MAD-X PRNG), see C API below for details.
-
-.. function:: randn (prng_)
-              prng:randn ()
-
-   Return a new pseudo-random gaussian number in the range ``[-inf, +inf]`` from the PRNG :obj:`prng` by using the Box-Muller transformation (Marsaglia's polar form) to a peuso-random number in the range ``[0, 1)``.
-
-.. function:: randtn (prng_, cut_)
-              prng:randtn (cut_)
-
-   Return a new truncated pseudo-random gaussian number in the range ``[-cut_, +cut_]`` from the PRNG :obj:`prng` by using iteratively the method :func:`prng:randn()`. This simple algorithm is actually used for compatibility with MAD-X.
-   Default: :code:`cut_ = +inf`.
-
-.. function:: randp (prng_, lmb_)
-              prng:randp (lmb_)
-
-   Return a new pseudo-random poisson number in the range ``[0, +inf]`` from the PRNG :obj:`prng` with parameter :math:`\lambda > 0` by using the *inverse transform sampling* method on peuso-random numbers.
-   Default: :code:`lmb_ = 1`.
 
 .. function:: is_randgen(a)
 
@@ -69,14 +40,55 @@ Functions and Methods
 
 .. function:: is_xrandgen(a)
 
-   Return :const:`true` if :var:`a` is a MAD-X PRNG, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
+   Return :const:`true` if :var:`a` is a MAD-X PRNG, :const:`false` otherwise. This function is only available from the module :mod:`MAD.typeid`.
 
-.. function:: isa_randgen(a)
+Methods
+=======
 
-   Return :const:`true` if :var:`a` is either a PRNG or a MAD-X PRNG, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
+All methods are also provided as functions from the module :mod:`MAD.gmath` for convenience. If the PRNG is not provided, the current global PRNG is used instead.
+
+.. function:: prng:randseed (seed)
+              randseed ([prng_,] seed)
+
+   Set the seed of the PRNG :obj:`prng` to :var:`seed`.
+
+.. function:: prng:rand ()
+              rand (prng_)
+              
+   Return a new pseudo-random number in the range :const:`[0, 1)` from the PRNG :obj:`prng`.
+
+.. function:: prng:randi ()
+              randi (prng_)
+
+   Return a new pseudo-random number in the range of a :type:`u64_t` from the PRNG :obj:`prng` (:type:`u32_t` for the MAD-X PRNG), see C API below for details.
+
+.. function:: prng:randn ()
+              randn (prng_)
+
+   Return a new pseudo-random gaussian number in the range :const:`[-inf, +inf]` from the PRNG :obj:`prng` by using the Box-Muller transformation (Marsaglia's polar form) to a peuso-random number in the range :const:`[0, 1)`.
+
+.. function:: prng:randtn (cut_)
+              randtn ([prng_,] cut_)
+
+   Return a new truncated pseudo-random gaussian number in the range :const:`[-cut_, +cut_]` from the PRNG :obj:`prng` by using iteratively the method :func:`prng:randn()`. This simple algorithm is actually used for compatibility with MAD-X.
+   Default: :expr:`cut_ = +inf`.
+
+.. function:: prng:randp (lmb_)
+              randp ([prng_,] lmb_)
+
+   Return a new pseudo-random poisson number in the range :const:`[0, +inf]` from the PRNG :obj:`prng` with parameter :math:`\lambda > 0` by using the *inverse transform sampling* method on peuso-random numbers.
+   Default: :expr:`lmb_ = 1`.
+
+Iterators
+=========
+
+.. function:: ipairs(prng)
+   :noindex:
+
+   Return an :type:`ipairs` iterator suitable for generic :const:`for` loops. The generated values are those returned by :func:`prng:rand()`. 
 
 C API
------
+=====
 
 .. c:type:: prng_state_t
             xrng_state_t
@@ -85,11 +97,11 @@ C API
 
 .. c:function:: num_t mad_num_rand (prng_state_t*)
 
-   Return a pseudo-random double precision float in the range ``[0, 1)``. 
+   Return a pseudo-random double precision float in the range :const:`[0, 1)`. 
 
 .. c:function:: u64_t mad_num_randi (prng_state_t*)
 
-   Return a pseudo-random 64 bit unsigned integer in the range ``[0, ULLONG_MAX]``.
+   Return a pseudo-random 64 bit unsigned integer in the range :const:`[0, ULLONG_MAX]`.
 
 .. c:function:: void mad_num_randseed (prng_state_t*, num_t seed)
 
@@ -101,11 +113,11 @@ C API
 
 .. c:function:: num_t mad_num_xrand (xrng_state_t*)
 
-   Return a pseudo-random double precision float in the range ``[0, 1)`` from the MAD-X PRNG.
+   Return a pseudo-random double precision float in the range :const:`[0, 1)` from the MAD-X PRNG.
 
 .. c:function:: u32_t mad_num_xrandi (xrng_state_t*)
 
-   Return a pseudo-random 32 bit unsigned integer in the range ``[0, UINT_MAX]`` from the MAD-X PRNG.
+   Return a pseudo-random 32 bit unsigned integer in the range :const:`[0, UINT_MAX]` from the MAD-X PRNG.
 
 .. c:function:: void mad_num_xrandseed (xrng_state_t*, u32_t seed)
 

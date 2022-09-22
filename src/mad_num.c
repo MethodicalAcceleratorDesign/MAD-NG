@@ -66,15 +66,6 @@ num_t mad_num_fact (int n)
   return s*fact(n);
 }
 
-num_t mad_num_invfact (int n)
-{
-  int s = 1;
-
-  if (n < 0) n = -n, s = n & 1 ? -s : s;
-
-  return s/fact(n);
-}
-
 num_t mad_num_sinc (num_t x)
 {
   return fabs(x)<1e-4 ? 1 - 0.1666666666666666666667*x*x : sin(x)/x;
@@ -276,7 +267,7 @@ void mad_cnum_div_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
 
 void mad_cnum_mod_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
 { CHKR; cnum_t cr = mad_cnum_div(CNUM(x), CNUM(y));
-  *r = CNUM(x) - CNUM(y) * CNUM2(round(creal(cr)), round(cimag(cr))); }
+  *r = CNUM(x) - CNUM(y) * CNUM2(trunc(creal(cr)), trunc(cimag(cr))); }
 
 void mad_cnum_pow_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
 { CHKR; *r = cpow( CNUM(x), CNUM(y) ); }

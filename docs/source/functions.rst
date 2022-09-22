@@ -17,7 +17,7 @@ Mathematical Functions
 Generic Real-like Functions
 ---------------------------
 
-Real-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`. The optional argument :var:`r_` represents a destination for results with reference semantic, i.e. avoiding memory allocation, which is ignored by results with value semantic. The C functions column lists the C implementation used when the argument is a :type:`number` and the implementation does not rely on the standard :code:`math` module.
+Real-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`. The optional argument :var:`r_` represents a destination placeholder for results with reference semantic, i.e. avoiding memory allocation, which is ignored by results with value semantic. The C functions column lists the C implementation used when the argument is a :type:`number` and the implementation does not rely on the standard :code:`math` module but on functions provided with MAD-NG or by the standard math library described in the C Programming Language Standard [ISOC99]_.
 
 ===============================  =======================================================  =============
 Functions                        Return values                                            C functions
@@ -128,13 +128,12 @@ Functions                   Return values                                       
 Special Functions
 -----------------
 
-The special functions factorial and inverse factorial support negative integers as input as it uses extended factorial definition. The value are cached making the complexity of these functions in :math:`O(1)` after warmup. 
+The special function factorial support negative integers as input as it uses extended factorial definition. The values are cached making the complexity of these functions in :math:`O(1)` after warmup. 
 
 ==================  ====================  =========================
 Functions           Return values         C functions
 ==================  ====================  =========================
 :func:`fact(n)`     :math:`n!`            :c:func:`mad_num_fact`
-:func:`invfact(n)`  :math:`\frac{1}{n!}`  :c:func:`mad_num_invfact`
 ==================  ====================  =========================
 
 Functions for Circular Sector
@@ -314,11 +313,77 @@ Functions               Return values
 :func:`echo(...)`       Return all arguments unchanged after echoing them on stdout       
 ======================  ====================================================
 
+C API
+=====
+
+These functions are provided for performance reason and compliance with the C API of other modules.
+
+.. c:function:: int mad_num_sign (num_t x)
+
+   Return an integer amongst :const:`{-1, 0, 1}` representing the sign of the :type:`number` :var:`x`.
+
+.. c:function:: int mad_num_sign1 (num_t x)
+
+   Return an integer amongst :const:`{-1, 1}` representing the sign of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_fact (int n)
+
+   Return the extended factorial the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_powi (num_t x, int n)
+
+   Return the :type:`number` :var:`x` raised to the power of the :type:`integer` :var:`n` using a fast algorithm.
+
+.. c:function:: num_t mad_num_sinc (num_t x)
+
+   Return the sine cardinal of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_sinhc (num_t x)
+
+   Return the hyperbolic sine cardinal of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_asinc (num_t x)
+
+   Return the arc sine cardinal of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_asinhc (num_t x)
+
+   Return the hyperbolic arc sine cardinal of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_wf (num_t x, num_t relerr)
+
+   Return the Faddeeva function of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_erf (num_t x, num_t relerr)
+
+   Return the error function of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_erfc (num_t x, num_t relerr) 
+
+   Return the complementary error function of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_erfcx (num_t x, num_t relerr)
+
+   Return the scaled complementary error function of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_erfi (num_t x, num_t relerr)
+
+   Return the imaginary error function of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_dawson (num_t x, num_t relerr)
+
+   Return the Dawson integral for the :type:`number` :var:`x`.
+
 .. ------------------------------------------------------------
+
+References
+==========
+
+.. [ISOC99] ISO/IEC 9899:1999 Programming Languages - C. https://www.iso.org/standard/29237.html.
 
 .. rubric:: Footnotes
 
 .. [#f1] For *true* Functional Programming, see the module :mod:`MAD.lfun`, a binding of the `LuaFun <https://github.com/luafun/luafun>`_  library adapted to the ecosystem of MAD-NG.
-.. [#f2] Default: :code:`v_ = 1`. 
+.. [#f2] Default: :expr:`v_ = 1`. 
 .. [#f3] Sign and sign1 functions take care of special cases like ±0, ±inf and ±NaN.
 .. [#f4] Element-wise operators are not available directly in the programming language, here we use the Matlab-like notation for convenience.
