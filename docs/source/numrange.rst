@@ -5,30 +5,31 @@
 Numerical Ranges
 ****************
 
-This chapter describes *numerical ranges* objects that are useful abstaction of numerical loops, intervals, discrete sets, (log)lines and linear spaces. The module for numerical ranges is not exposed, only the contructors are visible from the :mod:`MAD` environment and thus, numerical ranges must be handled directly by their methods.  Note that :type:`range` and :type:`logrange` have value semantic like :type:`number`.
+This chapter describes :type:`range` and :type:`logrange` objects that are useful abstaction of numerical loops, intervals, discrete sets, (log)lines and linear spaces. The module for numerical ranges is not exposed, only the contructors are visible from the :mod:`MAD` environment and thus, numerical ranges must be handled directly by their methods. Note that :type:`range` and :type:`logrange` have value semantic like :type:`number`.
 
 Constructors
 ============
 
-The constructors for :type:`range` and :type:`logrange` are directly available from the :mod:`MAD` environment, except for the special case of the concatenation operator applied to two or three numbers, which is part of the language definition as a MAD-NG extension. The :type:`logrange` behave as a the :type:`range` but they work on logarithmic scale. All constructor functions adjust the value of :var:`step` to ensure stable sizes and iterators across platforms (see the method :func:`adjust` for details).
+The constructors for :type:`range` and :type:`logrange` are directly available from the :mod:`MAD` environment, except for the special case of the concatenation operator applied to two or three :type:`number`, which is part of the language definition as a MAD-NG extension. The :type:`logrange` behave as a the :type:`range` but they work on logarithmic scale. All constructor functions adjust the value of :var:`step` to ensure stable sizes and iterators across platforms (see the method :func:`adjust` for details).
 
-.. constant:: start..stop..step_
+.. constant:: start..stop
+              start..stop..step
 
-   The concatenation operator applied to two or three numbers creates a :type:`range` and does not perform any adjustment of :var:`step`. Default: :expr:`step_ = 1`.
+   The concatenation operator applied to two or three numbers creates a :type:`range` and does not perform any adjustment of :var:`step`. The default step for the first form is one.
 
-.. function:: range(start_, stop, step_)
+.. function:: range([start_,] stop, step_)
 
    Return a :type:`range` object starting at :var:`start`, ending at :var:`stop` (included), with increments of size :var:`step`. Default: :expr:`start_ = 1, step_ = 1`.
 
-.. function:: nrange(start_, stop, size_)
+.. function:: nrange([start_,] stop, size_)
 
    Return a :type:`range` object starting at :var:`start`, ending at :var:`stop` (included), with :var:`size` increments. Default: :expr:`start_ = 1, size_ = 100`.
 
-.. function:: logrange(start_, stop, step_)
+.. function:: logrange([start_,] stop, step_)
 
    Return a :type:`logrange` object starting at :var:`start`, ending at :var:`stop` (included), with increments of size :var:`step`. Default: :expr:`start_ = 1, step_ = 1`.
 
-.. function:: nlogrange(start_, stop, size_)
+.. function:: nlogrange([start_,] stop, size_)
 
    Return a :type:`logrange` object starting at :var:`start`, ending at :var:`stop` (included), with :var:`size` increments. Default: :expr:`start_ = 1, size_ = 100`.
 
@@ -39,17 +40,35 @@ The constructors for :type:`range` and :type:`logrange` are directly available f
 Emtpy Ranges
 ^^^^^^^^^^^^
 
-   Empty ranges of size zero can be created by using :expr:`start > stop` and :expr:`step > 0` or :expr:`start < stop` and :expr:`step < 0` in :type:`range` constructor.
+   Empty ranges of size zero can be created by fulfilling the constraints :expr:`start > stop` and :expr:`step > 0` or :expr:`start < stop` and :expr:`step < 0` in :type:`range` constructor.
 
 Singleton Ranges
 ^^^^^^^^^^^^^^^^
 
-   Singleton ranges of size one can be created by using :expr:`step > stop-start` for :expr:`start < stop` and :expr:`step < stop-start` for :expr:`stop < start` in :type:`range` constructor or :expr:`size = 1` in :type:`nrange` constructor. In this latter case, :var:`step` will be set to :expr:`step = huge * sign(stop-start)`.
+   Singleton ranges of size one can be created by fulfilling the constraints :expr:`step > stop-start` for :expr:`start < stop` and :expr:`step < stop-start` for :expr:`stop < start` in :type:`range` constructor or :expr:`size == 1` in :type:`nrange` constructor. In this latter case, :var:`step` will be set to :expr:`step = huge * sign(stop-start)`.
 
 Constant Ranges
 ^^^^^^^^^^^^^^^
 
-   Constant ranges of infinite size can be created by using :expr:`start == stop` and :expr:`step = 0` in :type:`range` constructor or :expr:`size = inf` in :type:`nrange` constructor. The user must satify the constraint :expr:`start == stop` in both constructors to show its intention.
+   Constant ranges of infinite size can be created by fulfilling the constraints :expr:`start == stop` and :expr:`step == 0` in :type:`range` constructor or :expr:`size == inf` in :type:`nrange` constructor. The user must satify the constraint :expr:`start == stop` in both constructors to show its intention.
+
+Attributes
+==========
+
+.. constant:: rng.start
+              rng.logstart
+
+   The component *start* of the range and the logrange on a linear scale. 
+
+.. constant:: rng.stop
+              rng.logstop
+
+   The component *stop* of the range and the logrange on a linear scale. 
+
+.. constant:: rng.step
+              rng.logstep
+
+   The component *step* of the range and the logrange on a linear scale, which may slighlty differ from the value provided to the constructors due to adjustment. 
 
 Functions
 =========
@@ -60,12 +79,12 @@ Functions
 
 .. function:: is_logrange(a)
 
-   Return :const:`true` if :var:`a` is a :type:`logrange` number, :const:`false` otherwise. This function is only available from the module :mod:`MAD.typeid`.
+   Return :const:`true` if :var:`a` is a :type:`logrange`, :const:`false` otherwise. This function is only available from the module :mod:`MAD.typeid`.
 
 Methods
 =======
 
-Unless specified, the object :var:`rng` owning the methods stands for a :type:`range` or a :type:`logrange` indifferently.
+Unless specified, the object :var:`rng` that owns the methods represents either a :type:`range` or a :type:`logrange`.
 
 .. function:: rng:is_empty()
 
@@ -81,23 +100,31 @@ Unless specified, the object :var:`rng` owning the methods stands for a :type:`r
 
 .. function:: rng:size()
 
-   Return the number of steps contained by the range.
+   Return the number of values, i.e. number of steps plus one, contained by the range :var:`rng`.
+
+.. function:: rng:start()
+
+   Return the start value of the range :var:`rng`.
+
+.. function:: rng:stop()
+
+   Return the stop value of the range :var:`rng`.
 
 .. function:: rng:step()
 
-   Return the :var:`step` component of the range, which may slighlty differ from the value provided to the constructors due to adjustment. 
+   Return the step value of the range :var:`rng`, which may slighlty differ from the value provided to the constructors due to adjustment. 
 
 .. function:: rng:value(x)
 
-   Return the interpolated value at :var:`x`, i.e. interpreting the range as a (log)line with equation :expr:`start + x * step` 
+   Return the interpolated value at :var:`x`, i.e. interpreting the range  :var:`rng` as a (log)line with equation :expr:`start + x * step`.
 
 .. function:: rng:get(x)
    
-   Return :func:`rng:value(x)` if the results is inside the range's bounds, :const:`nil` otherwise. 
+   Return :func:`rng:value(x)` if the result is inside the range's bounds, :const:`nil` otherwise. 
 
 .. function:: rng:last()
 
-   Return the last value inside the range's bounds, :const:`nil` otherwise. 
+   Return the last value inside the bounds of the range :var:`rng`, :const:`nil` otherwise. 
 
 .. function:: rng:adjust()
 
@@ -113,11 +140,11 @@ Unless specified, the object :var:`rng` owning the methods stands for a :type:`r
 
 .. function:: rng:ranges()
 
-   Return the three numbers characterising the range :var:`rng`, namely its :var:`start`, :var:`stop` and :var:`step` in this order. 
+   Return the values of :var:`start`, :var:`stop` and :var:`step`, fully characterising the range :var:`rng`. 
 
 .. function:: rng:bounds()
 
-   Return the three numbers characterising the boundaries of the range :var:`rng`, namely its :var:`start`, :var:`last` and :var:`step` :math:`>0` in this order, :const:`nil` otherwise.
+   Return the values of :var:`start`, :var:`last` (as computed by :func:`rng:last()`) and :var:`step` (made positive) characterising the boundaries of the range :var:`rng`, i.e. interpreted as an interval, :const:`nil` otherwise.
 
 .. function:: rng:overlap(rng2)
 
@@ -129,7 +156,27 @@ Unless specified, the object :var:`rng` owning the methods stands for a :type:`r
 
 .. function:: rng:log()
 
-   Return a :type:`logrange` build from the conversion of the :type:`range` :var:`rng`.
+   Return a :type:`logrange` built by converting the :type:`range` :var:`rng` to logarithmic scale.
+
+.. function:: rng:unm()
+
+   Return a range with all components :var:`start`, :var:`stop` and :var:`step` negated.
+
+.. function:: rng:add(num)
+
+   Return a range with :var:`start` and :var:`stop` shifted by :expr:`num`.
+
+.. function:: rng:sub(num)
+
+   Return a range with :var:`start` and :var:`stop` shifted by :expr:`-num`.
+
+.. function:: rng:mul(num)
+
+   Return a range with :var:`start`, :var:`stop` and :var:`step` scaled by :expr:`num`.
+
+.. function:: rng:div(num)
+
+   Return a range with :var:`start`, :var:`stop` and :var:`step` scaled by :expr:`1/num`.
 
 .. function:: rng:tostring()
 
@@ -144,37 +191,37 @@ Operators
 
 .. function:: #rng
 
-   Return the size of the range as computed by :func:`rng:size()`.
+   Equivalent to :func:`rng:size()`.
 
 .. function:: rng[n]
 
-   Return the value interpolated by the range as computed by :func:`rng:get(n-1)`, i.e. assuming an index-like interpolation.
+   Equivalent to :expr:`rng:get(round(n-1))`.
 
 .. function:: -rng
 
-   Return a range with all components :var:`start`, :var:`stop` and :var:`step` reversed.
+   Equivalent to :expr:`rng:unm()`. 
 
 .. function:: rng + num
               num + rng
 
-   Return a range with :var:`start` and :var:`stop` shifted by :var:`num`.
+   Equivalent to :expr:`rng:add(num)`. 
 
 .. function:: rng - num
 
-   Return a range with :var:`start` and :var:`stop` shifted by :var:`-num`, i.e. it is equivalent to :expr:`rng + (-num)`.
+   Equivalent to :expr:`rng:sub(num)`.
 
 .. function:: num - rng
 
-   Return a range reversed with :var:`start` and :var:`stop` shifted by :var:`num`, i.e. it is equivalent to :expr:`num + (-rng)`.
+   Equivalent to :expr:`rng:unm():add(num)`.
 
 .. function:: num * rng
               rng * num
 
-   Return a range with :var:`start`, :var:`stop` and :var:`step` scaled by :var:`num`.
+   Equivalent to :expr:`rng:mul(num)`.
 
 .. function:: rng / num
 
-   Return a range with :var:`start`, :var:`stop` and :var:`step` scaled by :var:`1/num`, i.e. it is equivalent to :expr:`rng * (1/num)`.
+   Equivalent to :expr:`rng:div(num)`.
 
 .. function:: rng == rng2
 
@@ -187,4 +234,3 @@ Iterators
    :noindex:
 
    Return an :type:`ipairs` iterator suitable for generic :const:`for` loops. The generated values are those returned by :func:`rng:value(i)`. 
-

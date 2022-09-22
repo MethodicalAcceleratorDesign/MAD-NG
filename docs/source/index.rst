@@ -8,30 +8,27 @@ Welcome to MAD-NG's Reference Manual!
 
 .. toctree::
    :maxdepth: 3
-   :caption: Contents:
+   :caption: Part I:
 
    /part-I.rst
-   /types.rst
+
+.. toctree::
+   :maxdepth: 3
+   :caption: Part II:
 
    /part-II.rst
-   /elements.rst
-   /sequence.rst
-   /survey.rst
-   /track.rst
+
+.. toctree::
+   :maxdepth: 3
+   :caption: Part III:
 
    /part-III.rst
 
+.. toctree::
+   :maxdepth: 3
+   :caption: Part IV:
+
    /part-IV.rst
-   /constants.rst
-   /functions.rst
-   /functor.rst
-   /monomial.rst
-   /numrange.rst
-   /randnum.rst
-   /cplxnum.rst
-   /linalg.rst
-   /diffalg.rst
-   /miscfuns.rst
 
 Indices and tables
 ==================
