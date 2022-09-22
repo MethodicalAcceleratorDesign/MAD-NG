@@ -1,91 +1,15 @@
 .. index::
-   Constants and functions
+   Functions
 
-***********************
-Constants and Functions
-***********************
+*********
+Functions
+*********
 
-This chapter describes some constants and functions provided by the modules :mod:`MAD.constant`, :mod:`MAD.gmath` and :mod:`MAD.gfunc`.
+This chapter describes some functions provided by the modules :mod:`MAD.gmath` and :mod:`MAD.gfunc`.
 
 The module :mod:`gmath` extends the standard LUA module :mod:`math` with *generic* functions working on any types that support the methods with the same names. For example, the code :func:`gmath.sin(a)` will call :func:`math.sin(a)` if :var:`a` is a :type:`number`, otherwise it will call the method :func:`a:sin()`, i.e. delegate the invocation to :obj:`a`. This is how MAD-NG handles several types like :type:`numbers`, :type:`complex` number and :type:`TPSA` within a single *polymorphic* code that expects scalar-like behavior.
 
-The module :mod:`gfunc` provides useful functions to help dealing with operators as functions and to manipulate functions in a `functional <https://en.wikipedia.org/wiki/Functional_programming>`_ way [#f4]_. It also provide a complete set of functions to create, combine and use *functors*, i.e. objects that behave like functions with :type:`callable` semantic.
-
-Mathematical Constants
-======================
-
-This section describes basic mathematical constants uniquely defined as macros in the C header :file:`mad_cst.h` and available from C and MAD modules as floating point double precision variables. If these mathematical constants are already provided by the system libraries, they will be used instead of their local definitions.
-
-===================  ======================  =========================  ======================
-MAD constants        C macros                C constants                Values
-===================  ======================  =========================  ======================
-:const:`eps`         :c:macro:`DBL_EPSILON`  :const:`mad_cst_EPS`       Smallest representable step near one
-:const:`tiny`        :c:macro:`DBL_MIN`      :const:`mad_cst_TINY`      Smallest representable number
-:const:`huge`        :c:macro:`DBL_MAX`      :const:`mad_cst_HUGE`      Largest representable number
-:const:`inf`         :c:macro:`INFINITY`     :const:`mad_cst_INF`       Positive infinity, :math:`1/0`
-:const:`nan`         :c:macro:`NAN`          :const:`mad_cst_NAN`       Canonical NaN [#f1]_, :math:`0/0`
-:const:`e`           :c:macro:`M_E`          :const:`mad_cst_E`         :math:`e`
-:const:`log2e`       :c:macro:`M_LOG2E`      :const:`mad_cst_LOG2E`     :math:`\log_2(e)`
-:const:`log10e`      :c:macro:`M_LOG10E`     :const:`mad_cst_LOG10E`    :math:`\log_{10}(e)`
-:const:`ln2`         :c:macro:`M_LN2`        :const:`mad_cst_LN2`       :math:`\ln(2)`
-:const:`ln10`        :c:macro:`M_LN10`       :const:`mad_cst_LN10`      :math:`\ln(10)`
-:const:`lnpi`        :c:macro:`M_LNPI`       :const:`mad_cst_LNPI`      :math:`\ln(\pi)`
-:const:`pi`          :c:macro:`M_PI`         :const:`mad_cst_PI`        :math:`\pi`
-:const:`twopi`       :c:macro:`M_2PI`        :const:`mad_cst_2PI`       :math:`2\pi`
-:const:`pi_2`        :c:macro:`M_PI_2`       :const:`mad_cst_PI_2`      :math:`\pi/2`
-:const:`pi_4`        :c:macro:`M_PI_4`       :const:`mad_cst_PI_4`      :math:`\pi/4`
-:const:`one_pi`      :c:macro:`M_1_PI`       :const:`mad_cst_1_PI`      :math:`1/\pi`
-:const:`two_pi`      :c:macro:`M_2_PI`       :const:`mad_cst_2_PI`      :math:`2/\pi`
-:const:`sqrt2`       :c:macro:`M_SQRT2`      :const:`mad_cst_SQRT2`     :math:`\sqrt 2`
-:const:`sqrt3`       :c:macro:`M_SQRT3`      :const:`mad_cst_SQRT3`     :math:`\sqrt 3`
-:const:`sqrtpi`      :c:macro:`M_SQRTPI`     :const:`mad_cst_SQRTPI`    :math:`\sqrt{\pi}`
-:const:`sqrt1_2`     :c:macro:`M_SQRT1_2`    :const:`mad_cst_SQRT1_2`   :math:`\sqrt{1/2}`
-:const:`sqrt1_3`     :c:macro:`M_SQRT1_3`    :const:`mad_cst_SQRT1_3`   :math:`\sqrt{1/3}`
-:const:`one_sqrtpi`  :c:macro:`M_1_SQRTPI`   :const:`mad_cst_1_SQRTPI`  :math:`1/\sqrt{\pi}`
-:const:`two_sqrtpi`  :c:macro:`M_2_SQRTPI`   :const:`mad_cst_2_SQRTPI`  :math:`2/\sqrt{\pi}`
-:const:`rad2deg`     :c:macro:`M_RAD2DEG`    :const:`mad_cst_RAD2DEG`   :math:`180/\pi`
-:const:`deg2rad`     :c:macro:`M_DEG2RAD`    :const:`mad_cst_DEG2RAD`   :math:`\pi/180`
-===================  ======================  =========================  ======================
-
-.. index::
-   mathematical constants
-
-Physical Constants
-==================
-
-This section describes basic physical constants uniquely defined as macros in the C header :file:`mad_cst.h` and available from C and MAD modules as floating point double precision variables.
-
-===============  ===================  =======================  ======================
-MAD constants    C macros             C constants              Values
-===============  ===================  =======================  ======================
-:const:`minlen`  :c:macro:`P_MINLEN`  :const:`mad_cst_MINLEN`  Min length tolerance, default :math:`10^{-10}` in :unit:`[m]`
-:const:`minang`  :c:macro:`P_MINANG`  :const:`mad_cst_MINANG`  Min angle tolerance, default :math:`10^{-10}` in :unit:`[1/m]`
-:const:`minstr`  :c:macro:`P_MINSTR`  :const:`mad_cst_MINSTR`  Min strength tolerance, default :math:`10^{-10}` in :unit:`[rad]`
-===============  ===================  =======================  ======================
-
-The following table lists some physical constants from the `CODATA 2018 <https://physics.nist.gov/cuu/pdf/wall_2018.pdf>`_ sheet.
-
-=================  =====================  =========================  ======================
-MAD constants      C macros               C constants                Values
-=================  =====================  =========================  ======================
-:const:`clight`    :c:macro:`P_CLIGHT`    :const:`mad_cst_CLIGHT`    Speed of light, :math:`c` in :unit:`[m/s]`
-:const:`mu0`       :c:macro:`P_MU0`       :const:`mad_cst_MU0`       Permeability of vacuum, :math:`\mu_0` in :unit:`[T.m/A]`
-:const:`epsilon0`  :c:macro:`P_EPSILON0`  :const:`mad_cst_EPSILON0`  Permittivity of vacuum, :math:`\epsilon_0` in :unit:`[F/m]`
-:const:`qelect`    :c:macro:`P_QELECT`    :const:`mad_cst_QELECT`    Elementary electric charge, :math:`e` in :unit:`[C]`
-:const:`hbar`      :c:macro:`P_HBAR`      :const:`mad_cst_HBAR`      Reduced Plack's constant, :math:`\hbar` in :unit:`[GeV.s]`
-:const:`amass`     :c:macro:`P_AMASS`     :const:`mad_cst_AMASS`     Unified atomic mass, :math:`m_u\,c^2` in :unit:`[GeV]`
-:const:`emass`     :c:macro:`P_EMASS`     :const:`mad_cst_EMASS`     Electron mass, :math:`m_e\,c^2` in :unit:`[GeV]`
-:const:`pmass`     :c:macro:`P_PMASS`     :const:`mad_cst_PMASS`     Proton mass, :math:`m_p\,c^2` in :unit:`[GeV]`
-:const:`nmass`     :c:macro:`P_NMASS`     :const:`mad_cst_NMASS`     Neutron mass, :math:`m_n\,c^2` in :unit:`[GeV]`
-:const:`mumass`    :c:macro:`P_MUMASS`    :const:`mad_cst_MUMASS`    Muon mass, :math:`m_{\mu}\,c^2` in :unit:`[GeV]`
-:const:`deumass`   :c:macro:`P_DEUMASS`   :const:`mad_cst_DEUMASS`   Deuteron mass, :math:`m_d\,c^2` in :unit:`[GeV]`
-:const:`eradius`   :c:macro:`P_ERADIUS`   :const:`mad_cst_ERADIUS`   Classical electron radius, :math:`r_e` in :unit:`[m]`
-:const:`alphaem`   :c:macro:`P_ALPHAEM`   :const:`mad_cst_ALPHAEM`   Fine-structure constant, :math:`\alpha`
-=================  =====================  =========================  ======================
-
-.. index::
-   physical constants
-   CODATA
+The module :mod:`gfunc` provides useful functions to help dealing with operators as functions and to manipulate functions in a `functional <https://en.wikipedia.org/wiki/Functional_programming>`_ way [#f1]_.
 
 Mathematical Functions
 ======================
@@ -93,7 +17,7 @@ Mathematical Functions
 Generic Real-like Functions
 ---------------------------
 
-Real-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`. The optional argument :var:`r_` represents a destination for results with reference semantic, i.e. avoiding memory allocation, which is ignored by results with value semantic. The C functions column lists the C implementation used when the argument is a :type:`number` and the implementation does not rely on the standard :code:`math` module.
+Real-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`. The optional argument :var:`r_` represents a destination placeholder for results with reference semantic, i.e. avoiding memory allocation, which is ignored by results with value semantic. The C functions column lists the C implementation used when the argument is a :type:`number` and the implementation does not rely on the standard :code:`math` module but on functions provided with MAD-NG or by the standard math library described in the C Programming Language Standard [ISOC99]_.
 
 ===============================  =======================================================  =============
 Functions                        Return values                                            C functions
@@ -204,13 +128,12 @@ Functions                   Return values                                       
 Special Functions
 -----------------
 
-The special functions factorial and inverse factorial support negative integers as input as it uses extended factorial definition. The value are cached making the complexity of these functions in :math:`O(1)` after warmup. 
+The special function factorial support negative integers as input as it uses extended factorial definition. The values are cached making the complexity of these functions in :math:`O(1)` after warmup. 
 
 ==================  ====================  =========================
 Functions           Return values         C functions
 ==================  ====================  =========================
 :func:`fact(n)`     :math:`n!`            :c:func:`mad_num_fact`
-:func:`invfact(n)`  :math:`\frac{1}{n!}`  :c:func:`mad_num_invfact`
 ==================  ====================  =========================
 
 Functions for Circular Sector
@@ -266,7 +189,7 @@ Functions         Return values      Operator string  Metamethods
 Vector Operators
 ----------------
 
-Functions for element-wise operators [#f5]_ are wrappers to associated mathematical operators of vector-like objects, which themselves can be overridden by their associated metamethods.
+Functions for element-wise operators [#f4]_ are wrappers to associated mathematical operators of vector-like objects, which themselves can be overridden by their associated metamethods.
 
 =================  =====================  ===============  ====================
 Functions          Return values          Operator string  Metamethods
@@ -390,188 +313,77 @@ Functions               Return values
 :func:`echo(...)`       Return all arguments unchanged after echoing them on stdout       
 ======================  ====================================================
 
-.. ---------------------------------------
-
-Functors
-========
-
-Functors are objects that behave like functions with :type:`callable` semantic, and also like readonly arrays with :type:`indexable` semantic, where the index is translated as a unique argument into the function call. They are mainly used by the object model to distinguish them from functions which are interpreted as deferred expressions and evaluated automatically on reading, and by the Survey and Track codes to handle (user-defined) actions. 
-
-The module :mod:`MAD.gfunc` offers few functions to expert users for creating and manipulating them.
-
-.. function:: functor(f)
-
-   Return a :type:`functor` that encapsulates the function (or any callable object) :var:`f`. Calling the returned functor is like calling :var:`f` itself with the same arguments. 
-
-.. function:: compose(f, g)
-
-   Return a :type:`functor` that encapsulates the composition of :var:`f` and :var:`g`. Calling the returned functor is like calling :math:`(f \circ g)(\dots)`. The operator :code:`f ^ g` is a shortcut for :func:`compose` if :var:`f` is a :type:`functor`.
-
-.. function:: chain(f, g)
-
-   Return a :type:`functor` that encapsulates the calls chain of :var:`f` and :var:`g`. Calling the returned functor is like calling :math:`f(\dots) ; g(\dots)`. The operator :code:`f .. g` is a shortcut for :func:`chain` if :var:`f` is a :type:`functor`.
-
-.. function:: achain(f, g)
-
-   Return a :type:`functor` that encapsulates the *AND*-ed calls chain of :var:`f` and :var:`g`. Calling the returned functor is like calling :math:`f(\dots) \land g(\dots)`.
-
-.. function:: ochain(f, g)
-
-   Return a :type:`functor` that encapsulates the *OR*-ed calls chain of :var:`f` and :var:`g`. Calling the returned functor is like calling :math:`f(\dots) \lor g(\dots)`.
-
-.. function:: bind1st(f, a)
-
-   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`a` as its first argument. Calling the returned functor is like calling :math:`f(a,\dots)`.
-
-.. function:: bind2nd(f, b)
-
-   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`b` as its second argument. Calling the returned functor is like calling :math:`f(a,b,\dots)` where :var:`a` may or may not be provided.
-
-.. function:: bind3rd(f, c)
-
-   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`c` as its third argument. Calling the returned functor is like calling :math:`f(a,b,c,\dots)` where :var:`a` and :var:`b` may or may not be provided.
-
-.. function:: bind2st(f, a, b)
-
-   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`a` and :var:`b` as its two first arguments. Calling the returned functor is like calling :math:`f(a,b,\dots)`.
-
-.. function:: bind3st(f, a, b, c)
-
-   Return a :type:`functor` that encapsulates :var:`f` and binds :var:`a`, :var:`b` and :var:`c` as its three first arguments. Calling the returned functor is like calling :math:`f(a,b,c,\dots)`.
-
-.. function:: bottom()
-
-   Return a :type:`functor` that encapsulates the identity function :func:`ident` to define the *bottom* symbol of functors. Bottom is also available in the operator strings table :mod:`opstr` as :const:`"_|_"`.
-
-.. function:: is_functor(a)
-
-   Return :const:`true` if :var:`a` is a :type:`functor`, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
-
-.. ---------------------------------------
-
-Pseudo-Random Number Generators
-===============================
-
-The module :mod:`gmath` provides an implementation of the *Xoshiro256\*\** (XOR/shift/rotate) variant of the `XorShift <https://en.wikipedia.org/wiki/Xorshift>`_ PRNG familly [XORSHFT03]_, an all-purpose, rock-solid generator with a period of :math:`2^{256}-1` that supports long jumps of period :math:`2^{128}`. This PRNG is also the default implementation of recent versions of Lua (not LuaJIT, see below) and GFortran. See https://prng.di.unimi.it for details about Xoshiro/Xoroshiro PRNGs.
-
-The module :mod:`math` of LuaJIT provides an implementation of the *Tausworthe* PRNG [TAUSWTH96]_, which has a period of :math:`2^{223}` but doesn't support long jumps, and hence uses a single global PRNG.
-
-The module :mod:`gmath` also provides an implementation of the simple global PRNG of MAD-X for comparison.
-
-It's worth mentionning that none of these PRNG are cryptographically secure generators, they are nevertheless superior to the commonly used *Mersenne Twister* PRNG [MERTWIS98]_, with the exception of the MAD-X PRNG.
-
-All PRNG *functions* (except constructors) are wrappers around PRNG *methods* with the same name, and expect an optional PRNG :obj:`prng_` as first parameter. If this optional PRNG :obj:`prng_` is omitted, i.e. not provided, these functions will use the current global PRNG by default.
-
-Functions and Methods
----------------------
-
-.. function:: randnew ()
-
-   Return a new Xoshiro256\*\* PRNG with a period of :math:`2^{128}` that is garuanteed to not overlapp with any other Xoshiro256\*\* PRNGs, unless it is initialized with a seed.
-
-.. function:: xrandnew ()
-
-   Return a new MAD-X PRNG initialized with default seed 123456789. Hence, all new MAD-X PRNG will generate the same sequence until they are initialized with a user-defined seed.
-
-.. function:: randset (prng_)
-
-   Set the current global PRNG to :obj:`prng` (if provided) and return the previous global PRNG.
-
-.. function:: randseed (prng_, seed)
-              prng:randseed (seed)
-
-   Set the seed of the PRNG :obj:`prng` to :var:`seed`.
-
-.. function:: rand (prng_)
-              prng:rand ()
-
-   Return a new pseudo-random number in the range ``[0, 1)`` from the PRNG :obj:`prng`.
-
-.. function:: randi (prng_)
-              prng:randi ()
-              
-   Return a new pseudo-random number in the range of a :type:`u64_t` from the PRNG :obj:`prng` (:type:`u32_t` for the MAD-X PRNG), see C API below for details.
-
-.. function:: randn (prng_)
-              prng:randn ()
-
-   Return a new pseudo-random gaussian number in the range ``[-inf, +inf]`` from the PRNG :obj:`prng` by using the Box-Muller transformation (Marsaglia's polar form) to a peuso-random number in the range ``[0, 1)``.
-
-.. function:: randtn (prng_, cut_)
-              prng:randtn (cut_)
-
-   Return a new truncated pseudo-random gaussian number in the range ``[-cut_, +cut_]`` from the PRNG :obj:`prng` by using iteratively the method :func:`prng:randn()`. This simple algorithm is actually used for compatibility with MAD-X.
-   Default: :code:`cut_ = +inf`.
-
-.. function:: randp (prng_, lmb_)
-              prng:randp (lmb_)
-
-   Return a new pseudo-random poisson number in the range ``[0, +inf]`` from the PRNG :obj:`prng` with parameter :math:`\lambda > 0` by using the *inverse transform sampling* method on peuso-random numbers.
-   Default: :code:`lmb_ = 1`.
-
-.. function:: is_randgen(a)
-
-   Return :const:`true` if :var:`a` is a PRNG, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
-
-.. function:: is_xrandgen(a)
-
-   Return :const:`true` if :var:`a` is a MAD-X PRNG, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
-
-.. function:: isa_randgen(a)
-
-   Return :const:`true` if :var:`a` is either a PRNG or a MAD-X PRNG, :const:`false` otherwise. This function is also available from the module :mod:`MAD.typeid`.
-
 C API
------
+=====
 
-.. c:type:: prng_state_t
-            xrng_state_t
+These functions are provided for performance reason and compliance with the C API of other modules.
 
-   The Xoshiro256\*\* and the MAD-X PRNG types.
+.. c:function:: int mad_num_sign (num_t x)
 
-.. c:function:: num_t mad_num_rand (prng_state_t*)
+   Return an integer amongst :const:`{-1, 0, 1}` representing the sign of the :type:`number` :var:`x`.
 
-   Return a pseudo-random double precision float in the range ``[0, 1)``. 
+.. c:function:: int mad_num_sign1 (num_t x)
 
-.. c:function:: u64_t mad_num_randi (prng_state_t*)
+   Return an integer amongst :const:`{-1, 1}` representing the sign of the :type:`number` :var:`x`.
 
-   Return a pseudo-random 64 bit unsigned integer in the range ``[0, ULLONG_MAX]``.
+.. c:function:: num_t mad_num_fact (int n)
 
-.. c:function:: void mad_num_randseed (prng_state_t*, num_t seed)
+   Return the extended factorial the :type:`number` :var:`x`.
 
-   Set the seed of the PRNG.
+.. c:function:: num_t mad_num_powi (num_t x, int n)
 
-.. c:function:: void mad_num_randjump (prng_state_t*)
+   Return the :type:`number` :var:`x` raised to the power of the :type:`integer` :var:`n` using a fast algorithm.
 
-   Apply a jump to the PRNG as if :math:`2^{128}` pseudo-random numbers were generated. Hence PRNGs with different number of jumps will never overlap. This function is applied to new PRNGs with an incremental number of jumps. 
+.. c:function:: num_t mad_num_sinc (num_t x)
 
-.. c:function:: num_t mad_num_xrand (xrng_state_t*)
+   Return the sine cardinal of the :type:`number` :var:`x`.
 
-   Return a pseudo-random double precision float in the range ``[0, 1)`` from the MAD-X PRNG.
+.. c:function:: num_t mad_num_sinhc (num_t x)
 
-.. c:function:: u32_t mad_num_xrandi (xrng_state_t*)
+   Return the hyperbolic sine cardinal of the :type:`number` :var:`x`.
 
-   Return a pseudo-random 32 bit unsigned integer in the range ``[0, UINT_MAX]`` from the MAD-X PRNG.
+.. c:function:: num_t mad_num_asinc (num_t x)
 
-.. c:function:: void mad_num_xrandseed (xrng_state_t*, u32_t seed)
+   Return the arc sine cardinal of the :type:`number` :var:`x`.
 
-   Set the seed of the MAD-X PRNG.
+.. c:function:: num_t mad_num_asinhc (num_t x)
+
+   Return the hyperbolic arc sine cardinal of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_wf (num_t x, num_t relerr)
+
+   Return the Faddeeva function of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_erf (num_t x, num_t relerr)
+
+   Return the error function of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_erfc (num_t x, num_t relerr) 
+
+   Return the complementary error function of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_erfcx (num_t x, num_t relerr)
+
+   Return the scaled complementary error function of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_erfi (num_t x, num_t relerr)
+
+   Return the imaginary error function of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_dawson (num_t x, num_t relerr)
+
+   Return the Dawson integral for the :type:`number` :var:`x`.
+
+.. ------------------------------------------------------------
 
 References
 ==========
 
-.. [XORSHFT03] G. Marsaglia, *"Xorshift RNGs"*, Journal of Statistical Software, 8 (14), July 2003. doi:10.18637/jss.v008.i14.
-
-.. [TAUSWTH96] P. L’Ecuyer, *“Maximally Equidistributed Combined Tausworthe Generators”*, Mathematics of Computation, 65 (213), 1996, p203–213.
-
-.. [MERTWIS98] M. Matsumoto and T. Nishimura, *“Mersenne Twister: A 623-dimensionally equidistributed uniform pseudorandom number generator”*. ACM Trans. on Modeling and Comp. Simulation, 8 (1), Jan. 1998, p3–30.
-
-.. ------------------------------------------------------------
+.. [ISOC99] ISO/IEC 9899:1999 Programming Languages - C. https://www.iso.org/standard/29237.html.
 
 .. rubric:: Footnotes
 
-.. [#f4] For *true* Functional Programming, see the module :mod:`MAD.lfun`, a binding of the `LuaFun <https://github.com/luafun/luafun>`_  library adapted to the ecosystem of MAD-NG.
-.. [#f1] Canonical NaN bit patterns may differ between MAD and C for the mantissa, but both should exibit the same behavior.
-.. [#f2] Default: :code:`v_ = 1`. 
+.. [#f1] For *true* Functional Programming, see the module :mod:`MAD.lfun`, a binding of the `LuaFun <https://github.com/luafun/luafun>`_  library adapted to the ecosystem of MAD-NG.
+.. [#f2] Default: :expr:`v_ = 1`. 
 .. [#f3] Sign and sign1 functions take care of special cases like ±0, ±inf and ±NaN.
-.. [#f5] Element-wise operators are not available directly in the programming language, here we use the Matlab-like notation for convenience.
+.. [#f4] Element-wise operators are not available directly in the programming language, here we use the Matlab-like notation for convenience.

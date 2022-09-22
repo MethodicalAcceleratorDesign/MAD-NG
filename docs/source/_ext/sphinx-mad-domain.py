@@ -48,48 +48,15 @@ mad_sig_re = re.compile(
 def _pseudo_parse_arglist(sig_node: addnodes.desc_signature, arg_list: str) -> None:
     """"Parse" a list of arguments separated by commas.
 
-    Arguments can have "optional" annotations given by enclosing them in
-    brackets.  Currently, this will split at any comma, even if it's inside a
-    string literal (e.g. default argument value).
+    Arguments can have "optional" annotations given by ending in an underscore
     """
     param_list = addnodes.desc_parameterlist()
-    stack = [param_list]
-    try:
-        for argument in arg_list.split(','):
-            argument = argument.strip()
-            ends_open = ends_close = 0
-            while argument.startswith('['):
-                stack.append(addnodes.desc_optional())
-                stack[-2] += stack[-1]
-                argument = argument[1:].strip()
-            while argument.startswith(']'):
-                stack.pop()
-                argument = argument[1:].strip()
-            while argument.endswith(']') and not argument.endswith('[]'):
-                ends_close += 1
-                argument = argument[:-1].strip()
-            while argument.endswith('['):
-                ends_open += 1
-                argument = argument[:-1].strip()
-            if argument:
-                stack[-1] += addnodes.desc_parameter(argument, argument)
-            while ends_open:
-                stack.append(addnodes.desc_optional())
-                stack[-2] += stack[-1]
-                ends_open -= 1
-            while ends_close:
-                stack.pop()
-                ends_close -= 1
-        if len(stack) != 1:
-            raise IndexError
-    except IndexError:
-        # if there are too few or too many elements on the stack, just give up
-        # and treat the whole argument list as one argument, discarding the
-        # already partially populated paramlist node
-        sig_node += addnodes.desc_parameterlist()
-        sig_node[-1] += addnodes.desc_parameter(arg_list, arg_list)
-    else:
-        sig_node += param_list
+    for argument in arg_list.split(','):
+        # if argument[-1] == "_": #Here in case we would like to do anything with optional arguments
+        #     param_list += addnodes.desc_optional(argument, argument)
+        # else:
+            param_list += addnodes.desc_parameter(argument, argument)
+    sig_node += param_list
 
 
 class MadField(Field):
@@ -564,7 +531,7 @@ class MadAliasObject(ObjectDescription):
         return _('%s (alias)') % alias_name
 
 
-class MadClassMember(MadObject):
+class MadClassMember(MadObject): #How would we like to describe a class?
     """
     Description of a class member (methods, attributes).
     """
@@ -823,6 +790,7 @@ class MadDomain(Domain):
         'data': MadXRefRole(),  #Data
         'exc': MadXRefRole(),   #Exception
         'const': MadXRefRole(), #Constant
+        'expr': MadXRefRole(),  #Expression
         'func': MadXRefRole(),  #Function
         'class': MadXRefRole(), #Class - to remove?
         'alias': MadXRefRole(), #Alias - remove?

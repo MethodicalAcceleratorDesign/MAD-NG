@@ -60,18 +60,6 @@ mad_mono_copy (ssz_t n, const ord_t a[n], ord_t r[n])
   for (idx_t i=0; i < n; ++i) r[i] = a[i];
 }
 
-void
-mad_mono_rcopy (ssz_t n, const ord_t a[n], ord_t r[n])
-{
-  assert(a && r);
-  ord_t t;
-  if (a != r)
-    for (idx_t i=0; i < n; ++i) r[i] = a[n-1-i];
-  else
-    for (idx_t i=0; i < n/2; ++i)
-      t = r[i], r[i] = r[n-1-i], r[n-1-i] = t;
-}
-
 ord_t
 mad_mono_min (ssz_t n, const ord_t a[n])
 {
@@ -103,7 +91,7 @@ num_t
 mad_mono_ordp (ssz_t n, const ord_t a[n], idx_t stp)
 {
   assert(a);
-  ensure(stp == 1 || stp == 2, "invalid step %d (1 or 2 expected)", stp);
+  ensure(stp >= 1, "invalid step %d (>= 1)", stp);
   num_t p = 1;
   for (idx_t i=0; i < n; i+=stp) p *= a[i];
   return p;
@@ -113,7 +101,7 @@ num_t
 mad_mono_ordpf (ssz_t n, const ord_t a[n], idx_t stp)
 {
   assert(a);
-  ensure(stp == 1 || stp == 2, "invalid step %d (1 or 2 expected)", stp);
+  ensure(stp >= 1, "invalid step %d (>= 1)", stp);
   num_t p = 1;
   for (idx_t i=0; i < n; i+=stp) p *= mad_num_fact(a[i]);
   return p;
@@ -141,22 +129,6 @@ mad_mono_le (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
   for (idx_t i=0; i < n; ++i) if (a[i] > b[i]) return FALSE;
-  return TRUE;
-}
-
-log_t
-mad_mono_gt (ssz_t n, const ord_t a[n], const ord_t b[n])
-{
-  assert(a && b);
-  for (idx_t i=0; i < n; ++i) if (a[i] <= b[i]) return FALSE;
-  return TRUE;
-}
-
-log_t
-mad_mono_ge (ssz_t n, const ord_t a[n], const ord_t b[n])
-{
-  assert(a && b);
-  for (idx_t i=0; i < n; ++i) if (a[i] < b[i]) return FALSE;
   return TRUE;
 }
 
@@ -198,27 +170,18 @@ mad_mono_cat (ssz_t n, const ord_t a[n],
   mad_mono_copy(m, b, r+n);
 }
 
-// -- sorting
-
-static __thread const ord_t *ords;
-
-static int
-cmp (const void *a, const void *b)
-{
-  int i1 = *(const int*)a;
-  int i2 = *(const int*)b;
-
-  return (int)ords[i1] - ords[i2];
-}
-
 void
-mad_mono_sort (ssz_t n, const ord_t a[n], idx_t idxs[n])
+mad_mono_rev (ssz_t n, const ord_t a[n], ord_t r[n])
 {
-  assert(a && idxs);
-  ords = a;
-  for (idx_t i=0; i < n; ++i) idxs[i] = i;
-  qsort(idxs, n, sizeof *idxs, cmp);
+  assert(a && r);
+  ord_t t;
+  if (a != r)
+    for (idx_t i=0; i < n; ++i) r[i] = a[n-1-i];
+  else
+    for (idx_t i=0; i < n/2; ++i)
+      t = r[i], r[i] = r[n-1-i], r[n-1-i] = t; // swap
 }
+
 
 // -- printing
 
