@@ -44,13 +44,13 @@ The constructors for vectors and matrices are directly available from the :mod:`
               cvector(nrow)
               ivector(nrow)
 
-   Return a real, complex or integer column vector (i.e. a matrix of size :math:`[n_{\text{row}}\times 1]`) filled with zeros.
+   Return a real, complex or integer column vector (i.e. a matrix of size :math:`[n_{\text{row}}\times 1]`) filled with zeros. If :var:`nrow` is a table, it is equivalent to :expr:`vector(#nrow):fill(nrow)`. 
 
 .. function::  matrix(nrow, ncol_)
               cmatrix(nrow, ncol_)
               imatrix(nrow, ncol_)
 
-   Return a real, complex or integer matrix of size :math:`[n_{\text{row}}\times n_{\text{col}}]` filled with zeros. Default: :expr:`ncol_ = rnow`.
+   Return a real, complex or integer matrix of size :math:`[n_{\text{row}}\times n_{\text{col}}]` filled with zeros. If :var:`nrow` is a table, it is equivalent to :expr:`matrix(#nrow, #nrow[1]):fill(nrow)`. Default: :expr:`ncol_ = rnow`. 
 
 .. function:: linspace([start_,] stop, size_)
 
