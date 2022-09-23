@@ -410,8 +410,8 @@ end
 MI.eye = MR.eye
 
 function MR.seq (x, e0_)
-  local e0, n = e0_ or 0, size(x)
-  for i=0,n-1 do seti0(x,i,i+e0) end
+  local e0, n = 1+(e0_ or 0), size(x)
+  for i=0,n-1 do seti0(x,i,e0+i) end
   return x
 end
 
@@ -630,7 +630,30 @@ function MC.imag (x, r)
   return r
 end
 
--- getx, setx, swpx -----------------------------------------------------------o
+-- getx, setx, swpx, etc. -----------------------------------------------------o
+
+function MR.getdiag (x, r_)
+  assert(is_nil(r_) or is_iterable(r_), "invalid argument #2 (iterable expected)")
+  local n = min(x:sizes())
+  local r = r_ or x:same(n,1)
+  for i=1,n do r[i] = get(x,i,i) end
+  return r
+end
+
+function MR.setdiag (x, y, p_, s_) -- inplace
+  local n = min(x:sizes())
+  if is_scalar(y) then y = rep(y) end
+  if is_nil(p_) or is_nil(s_) then
+    assert(is_iterable(y), "invalid argument #2 (scalar or iterable expected)")
+    local k, nk = 1, #y
+    for i=1,n do set(x,i,i, y[k]) ; k=k%nk+1 end
+  else  -- stateless iterator
+    assert(is_callable(y), "invalid argument #2 (scalar or callable expected)")
+    local v
+    for i=1,n do s_,v = y(p_,s_) ; set(x,i,i, v) end
+  end
+  return x
+end
 
 function MR.getvec (x, ij, r_)
   if is_number(ij) then ij = {ij} end
@@ -640,8 +663,6 @@ function MR.getvec (x, ij, r_)
   for i,ii in ipairs(ij) do r[i] = geti_s(x,ii) end
   return r
 end
-
-MI.getvec = MR.getvec
 
 function MR.setvec (x, ij, y, p_, s_) -- inplace
   if is_number(ij) then ij = {ij} end
@@ -659,7 +680,12 @@ function MR.setvec (x, ij, y, p_, s_) -- inplace
   return x
 end
 
-MI.setvec = MR.setvec
+function MR.swpvec (x, ij) -- inplace
+  if is_number(ij) then ij = {ij} end
+  assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
+  for i,k in ipairs(ij) do x[i], x[k] = x[k], x[i] end
+  return x
+end
 
 function MR.remvec (x, ij) -- inplace
   if is_number(ij) then ij = {ij} end
@@ -670,8 +696,6 @@ function MR.remvec (x, ij) -- inplace
   for i=1,n do if not ik[i] then x[k] = geti_s(x,i) ; k=k+1 end end
   return x:reshape(n-#ij,1)
 end
-
-MI.remvec = MR.remvec
 
 function MR.insvec (x, ij, y) -- inplace
   if is_number(ij) then ij = {ij} end
@@ -686,197 +710,144 @@ function MR.insvec (x, ij, y) -- inplace
   return x
 end
 
-MI.insvec = MR.insvec
-
-function MR.getdiag (x, r_)
-  assert(is_nil(r_) or is_iterable(r_), "invalid argument #2 (iterable expected)")
-  local n = min(x:sizes())
-  local r = r_ or x:same(n,1)
-  for i=1,n do r[i] = get(x,i,i) end
-  return r
-end
-
-MI.getdiag = MR.getdiag
-
-function MR.setdiag (x, y, p_, s_) -- inplace
-  local n = min(x:sizes())
-  if is_scalar(y) then y = rep(y) end
-  if is_nil(p_) or is_nil(s_) then
-    assert(is_iterable(y), "invalid argument #2 (scalar or iterable expected)")
-    local k, nk = 1, #y
-    for i=1,n do set(x,i,i, y[k]) ; k=k%nk+1 end
-  else  -- stateless iterator
-    assert(is_callable(y), "invalid argument #2 (scalar or callable expected)")
-    local v
-    for i=1,n do s_,v = y(p_,s_) ; set(x,i,i, v) end
-  end
-  return x
-end
-
-MI.setdiag = MR.setdiag
-
-function MR.getrow (x, ir, r_)
-  if is_number(ir) then ir = {ir} end
-  assert(is_iterable(ir)              , "invalid argument #2 (iterable expected)")
-  assert(is_nil(r_) or is_iterable(r_), "invalid argument #3 (iterable expected)")
-  local k, nc = 1, x.ncol
-  local r = r_ or x:same(#ir,nc)
-  for _,i in ipairs(ir) do
-  for j=1,nc do r[k] = get_s(x,i,j) ; k=k+1 end end
-  return r
-end
-
-MI.getrow = MR.getrow
-
-function MR.setrow (x, ir, y, p_, s_) -- inplace
-  if is_number(ir) then ir = {ir} end
-  if is_scalar(y) then y = rep(y) end
-  assert(is_iterable(ir), "invalid argument #2 (iterable expected)")
-  if is_nil(p_) or is_nil(s_) then
-    assert(is_iterable(y), "invalid argument #3 (scalar or iterable expected)")
-    local k, nk = 1, #y
-    for _,i in ipairs(ir) do
-    for j=1,x.ncol        do set_s(x,i,j,y[k]) ; k=k%nk+1 end end
-  else  -- stateless iterator
-    assert(is_callable(y), "invalid argument #3 (scalar or callable expected)")
-    for _,i in ipairs(ir) do local v
-    for j=1,x.ncol        do s_,v = y(p_,s_) ; set_s(x,i,j,v) end end
-  end
-  return x
-end
-
-MI.setrow = MR.setrow
-
-function MR.remrow (x, ir) -- inplace
-  if is_number(ir) then ir = {ir} end
-  assert(is_iterable(ir), "invalid argument #2 (iterable expected)")
-  local nr, nc = x:sizes()
-  local k, ik = 1, {}
-  for _,i in ipairs(ir) do ik[i] = true end -- collect indexes
-  for i=1,nr do
-    if not ik[i] then for j=1,nc do x[k] = get_s(x,i,j) ; k=k+1 end end
-  end
-  return x:reshape(nr-#ir,nc)
-end
-
-MI.remrow = MR.remrow
-
-function MR.swprow (x, ir) -- inplace
-  assert(is_iterable(ir), "invalid argument #2 (iterable expected)")
-  local nc = x.ncol
-  for k,i in ipairs(ir) do
-    if k ~= i then -- swap row k and i
-      local r1, r2 = idx(k,1,nc), idx(i,1,nc)
-      for j=1,nc do x[r1+j], x[r2+j] = x[r2+j], x[r1+j] end
-    end
-  end
-  return x
-end
-
-MI.swprow = MR.swprow
-
-function MR.getcol (x, jc, r_)
-  if is_number(jc) then jc = {jc} end
-  assert(is_iterable(jc)              , "invalid argument #2 (iterable expected)")
-  assert(is_nil(r_) or is_iterable(r_), "invalid argument #3 (iterable expected)")
-  local k, nr = 1, x.nrow
-  local r = r_ or x:same(nr,#jc)
-  if isa_matrix(r) and r.ncol > 1 then
-    for i=1,nr            do
-    for _,j in ipairs(jc) do r[k] = get_s(x,i,j) ; k=k+1 end end
-  else
-    for _,j in ipairs(jc) do
-    for i=1,nr            do r[k] = get_s(x,i,j) ; k=k+1 end end
-  end
-  return r
-end
-
-MI.getcol = MR.getcol
-
-function MR.setcol (x, jc, y, p_, s_) -- inplace
-  if is_number(jc) then jc = {jc} end
-  if is_scalar(y) then y = rep(y) end
-  assert(is_iterable(jc), "invalid argument #2 (iterable expected)")
-  if isa_matrix(y) and y.ncol > 1 then
-    local k, nk = 1, #y
-    for i=1,x.nrow        do
-    for _,j in ipairs(jc) do set_s(x,i,j,y[k]) ; k=k%nk+1 end end
-  elseif is_nil(p_) or is_nil(s_) then
-    assert(is_iterable(y), "invalid argument #3 (scalar or iterable expected)")
-    local k, nk = 1, #y
-    for _,j in ipairs(jc) do
-    for i=1,x.nrow        do set_s(x,i,j,y[k]) ; k=k%nk+1 end end
-  else  -- stateless iterator
-    assert(is_callable(y), "invalid argument #3 (scalar or callable expected)")
-    for _,j in ipairs(jc) do local v
-    for i=1,x.nrow        do s_,v = y(p_,s_) ; set_s(x,i,j,v) end end
-  end
-  return x
-end
-
-MI.setcol = MR.setcol
-
-function MR.remcol (x, jc) -- inplace
-  if is_number(jc) then jc = {jc} end
-  assert(is_iterable(jc), "invalid argument #2 (iterable expected)")
-  local nr, nc = x:sizes()
-  local k, ik = 1, {}
-  for _,j in ipairs(jc) do ik[j] = true end -- collect indexes
-  for i=1,nr do
-    for j=1,nc do if not ik[j] then x[k] = get_s(x,i,j) ; k=k+1 end end
-  end
-  return x:reshape(nr,nc-#jc)
-end
-
-MI.remcol = MR.remcol
-
-function MR.swpcol (x, jc) -- inplace
-  assert(is_iterable(jc), "invalid argument #2 (iterable expected)")
-  local nr, nc = x:sizes()
-  for k,j in ipairs(jc) do
-    if k ~= j then -- swap col k and j
-      for i=0,nr-1 do x[i*nc+k], x[i*nc+j] = x[i*nc+j], x[i*nc+k] end
-    end
-  end
-  return x
-end
-
-MI.swpcol = MR.swpcol
-
-function MR.getsub (x, ir, jc, r_)
-  if is_number(ir) then ir = {ir} end
-  if is_number(jc) then jc = {jc} end
+function MR.getsub (x, ir_, jc_, r_)
+  local ir, ic = ir_, ic_
+  if is_nil(ir) then ir = 1..x.nrow elseif is_number(ir) then ir = {ir} end
+  if is_nil(jc) then jc = 1..x.ncol elseif is_number(jc) then jc = {jc} end
   assert(is_iterable(ir)              , "invalid argument #2 (iterable expected)")
   assert(is_iterable(jc)              , "invalid argument #3 (iterable expected)")
   assert(is_nil(r_) or is_iterable(r_), "invalid argument #4 (iterable expected)")
   local r, k = r_ or x:same(#ir,#jc), 1
-  for _,i in ipairs(ir) do
-  for _,j in ipairs(jc) do r[k] = get_s(x,i,j) ; k=k+1 end end
+  if is_nil(ir_) then        -- column-wise
+    for _,j in ipairs(jc) do
+    for _,i in ipairs(ir) do r[k] = get_s(x,i,j) ; k=k+1 end end
+  else                       -- row-wise
+    for _,i in ipairs(ir) do
+    for _,j in ipairs(jc) do r[k] = get_s(x,i,j) ; k=k+1 end end
+  end
   return r
 end
 
-MI.getsub = MR.getsub
-
-function MR.setsub (x, ir, jc, y, p_, s_) -- inplace
-  if is_number(ir) then ir = {ir} end
-  if is_number(jc) then jc = {jc} end
+function MR.setsub (x, ir_, jc_, y, p_, s_) -- inplace
+  local ir, ic = ir_, ic_
+  if is_nil(ir) then ir = 1..x.nrow elseif is_number(ir) then ir = {ir} end
+  if is_nil(jc) then jc = 1..x.ncol elseif is_number(jc) then jc = {jc} end
   if is_scalar(y) then y = rep(y) end
   assert(is_iterable(ir), "invalid argument #2 (iterable expected)")
   assert(is_iterable(jc), "invalid argument #3 (iterable expected)")
   if is_nil(p_) or is_nil(s_) then
     assert(is_iterable(y), "invalid argument #4 (scalar or iterable expected)")
     local k, nk = 1, #y
-    for _,i in ipairs(ir) do
-    for _,j in ipairs(jc) do set_s(x,i,j,y[k]) ; k=k%nk+1 end end
-  else  -- stateless iterator
+    if is_nil(ir_) then        -- column-wise
+      for _,j in ipairs(jc) do
+      for _,i in ipairs(ir) do set_s(x,i,j,y[k]) ; k=k%nk+1 end end
+    else                       -- row-wise
+      for _,i in ipairs(ir) do
+      for _,j in ipairs(jc) do set_s(x,i,j,y[k]) ; k=k%nk+1 end end
+    end
+  else -- stateless iterator
     assert(is_callable(y), "invalid argument #4 (scalar or callable expected)")
-    for _,i in ipairs(ir) do local v
-    for _,j in ipairs(jc) do s_,v = y(p_,s_) ; set_s(x,i,j,v) end end
+    if is_nil(ir_) then        -- col-wise
+      for _,j in ipairs(jc) do local v
+      for _,i in ipairs(ir) do s_,v = y(p_,s_) ; set_s(x,i,j,v) end end
+    else                       -- row-wise
+      for _,i in ipairs(ir) do local v
+      for _,j in ipairs(jc) do s_,v = y(p_,s_) ; set_s(x,i,j,v) end end
+    end
   end
   return x
 end
 
+function MR.swpsub (x, ir_, jc_) -- inplace
+  local ir, jc = ir_, jc_
+  if is_nil(ir) then ir = 1..x.nrow elseif is_number(ir) then ir = {ir} end
+  if is_nil(jc) then jc = 1..x.ncol elseif is_number(jc) then jc = {jc} end
+  assert(is_iterable(ir), "invalid argument #2 (iterable expected)")
+  assert(is_iterable(jc), "invalid argument #3 (iterable expected)")
+  local nc = x.ncol
+  if is_nil(ir_) then        -- column-wise
+    for j,jk in ipairs(jc) do
+    for i,ik in ipairs(ir) do
+      local ij, ijk = 1+idx(i,j,nc), 1+idx(ik,jk,nc)
+      x[ij], x[ijk] = x[ijk], x[ij]
+    end end
+  else                       -- row-wise
+    for _,i in ipairs(ir) do
+    for _,j in ipairs(jc) do
+      local ij, ijk = 1+idx(i,j,nc), 1+idx(ik,jk,nc)
+      x[ij], x[ijk] = x[ijk], x[ij]
+    end end
+  end
+  return x
+end
+
+function MR.remsub (x, ir_, jc_) -- inplace
+  local ir, jc = ir_, jc_
+  if is_nil(ir) then ir = {} elseif is_number(ir) then ir = {ir} end
+  if is_nil(jc) then jc = {} elseif is_number(jc) then jc = {jc} end
+  assert(is_iterable(ir), "invalid argument #2 (iterable expected)")
+  assert(is_iterable(jc), "invalid argument #3 (iterable expected)")
+  local k, ik, jl = 1, {}, {} -- collect indexes
+  for _,i in ipairs(ir) do ik[i] = true end
+  for _,j in ipairs(jc) do jl[j] = true end
+  local nr, nc = x:sizes()
+  for i=1,nr do
+  for j=1,nc do
+    if not (ik[i] or jl[j]) then x[k] = get_s(x,i,j) ; k=k+1 end
+  end end
+  return x:reshape(nr-#ir,nc-#jc)
+end
+
+function MR.inssub (x, ir_, jc_, y) -- inplace
+  local ir, jc = ir_, jc_
+  if is_nil(ir) then ir = 1..x.nrow elseif is_number(ir) then ir = {ir} end
+  if is_nil(jc) then jc = 1..x.ncol elseif is_number(jc) then jc = {jc} end
+  assert(is_iterable(ir), "invalid argument #2 (iterable expected)")
+  assert(is_iterable(jc), "invalid argument #3 (iterable expected)")
+  local k, ij, nc = 1, {}, x.ncol
+  for _,i in ipairs(ir) do
+  for _,j in ipairs(jc) do ij[k], k = 1+idx(i,j,nc), k+1 end end
+  return x:insvec(ij, y)
+end
+
+MR.getrow = \x,ir,r_      -> x:getsub(ir,nil,r_)
+MR.setrow = \x,ir,y,p_,s_ -> x:setsub(ir,nil,y,p_,s_)
+MR.swprow = \x,ir         -> x:swpsub(ir,nil)
+MR.remrow = \x,ir         -> x:remsub(ir,nil)
+MR.insrow = \x,ir,y       -> x:inssub(ir,nil,y)
+
+MR.getcol = \x,jc,r_      -> x:getsub(nil,jc,r_)
+MR.setcol = \x,jc,y,p_,s_ -> x:setsub(nil,jc,y,p_,s_)
+MR.swpcol = \x,jc         -> x:swpsub(nil,jc)
+MR.remcol = \x,jc         -> x:remsub(nil,jc)
+MR.inscol = \x,jc,y       -> x:inssub(nil,jc,y)
+
+MI.getvec = MR.getvec
+MI.setvec = MR.setvec
+MI.swpvec = MR.swpvec
+MI.remvec = MR.remvec
+MI.insvec = MR.insvec
+
+MI.getsub = MR.getsub
 MI.setsub = MR.setsub
+MI.swpsub = MR.swpsub
+MI.remsub = MR.remsub
+MI.inssub = MR.inssub
+
+MI.getrow = MR.getrow
+MI.setrow = MR.setrow
+MI.swprow = MR.swprow
+MI.remrow = MR.remrow
+MI.insrow = MR.insrow
+
+MI.getcol = MR.getcol
+MI.setcol = MR.setcol
+MI.swpcol = MR.swpcol
+MI.remcol = MR.remcol
+MI.inscol = MR.inscol
+
+MI.getdiag = MR.getdiag
+MI.setdiag = MR.setdiag
 
 -- foreach, map, fold, scan, filter -------------------------------------------o
 
