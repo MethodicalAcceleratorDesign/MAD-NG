@@ -118,28 +118,111 @@ Getters/Setters
 
 .. function:: mat:geti (n)
 
-   Return the value of the element at index :var:`n` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= n <= #mat`, :const:`nil` otherwise.
+   Return the value of the element at index :var:`n` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= n <= #mat`, i.e. interpreting the matrix as a vector, :const:`nil` otherwise.
 
 .. function:: mat:seti (n, v)
 
-   Assign the value :var:`v` to the element at index :var:`n` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= n <= #mat` and return the matrix, otherwise raise an *"out of bounds"* error.
+   Assign the value :var:`v` to the element at index :var:`n` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= n <= #mat` and return the matrix, i.e. interpreting the matrix as a vector, otherwise raise an *"out of bounds"* error.
 
+.. function:: mat:getvec (ij, r_)
 
-.. function:: mat::remvec (ij)
+   Return a column vector or :var:`r` containing the values at indexes given by the :type:`iterable` :var:`ij` of the real, complex or integer matrix :var:`mat`, i.e. interpreting the matrix as a vector.
 
-   Return the real, complex or integer matrix :var:`mat` after removing the elements at the indexes given by the :type:`iterable` :var:`ij` and reshaped as a column vector.
+.. function:: mat:setvec (ij, a, p_, s_)
 
-.. function:: mat::repvec (ii, v)
+   Return the real, complex or integer matrix :var:`mat` after filling it at the indexes given by the :type:`iterable` :var:`ij`, i.e. interpreting the matrix as a vector, with the values given by :var:`a` depending of its kind:
 
-   Return the real, complex or integer matrix :var:`mat` after replacing the elements at the indexes given by the :type:`iterable` :var:`ij`, i.e. interpreting the matrix as a vector, by the values given by the :type:`scalar` or the :type:`iterable` :var:`v`
+   - if :var:`a` is a :type:`scalar`, it is will be used repetitively.
 
-.. function:: mat::getvec (ij, r_)
+   - if :var:`a` is an :type:`iterable` then the matrix will be filled with values from :var:`a[n]` for :expr:`1 <= n <= #a` and recycled repetitively if :expr:`#a < #ij`.
 
-   Return in :var:`r` the values at indexes given by the :type:`iterable` :var:`ij` of the real, complex or integer matrix :var:`mat`, i.e. interpreting the matrix as a vector.
+   - if :var:`a` is a :type:`callable`, then :var:`a` is considered as a *stateless iterator*, and the matrix will be filled with the values :var:`v` returned by iterating :expr:`s, v = a(p, s)`.
 
-.. function:: mat::setvec (ij, v, p_, s_)
+.. function:: mat:insvec (ij, a)
 
-   TODO: see fill.
+   Return the real, complex or integer matrix :var:`mat` after inserting at the indexes given by the :type:`iterable` :var:`ij`, i.e. interpreting the matrix as a vector, the values given by :var:`a` depending of its kind:
+   
+   - if :var:`a` is a :type:`scalar`, it is will be used repetitively.
+
+   - if :var:`a` is an :type:`iterable` then the matrix will be filled with values from :var:`a[n]` for :expr:`1 <= n <= #a`.
+   
+   The values after the inserted indexes are pushed toward the end of the matrix and discarded if they go beyond the last index.
+
+.. function:: mat:remvec (ij)
+
+   Return the real, complex or integer matrix :var:`mat` after removing the elements at the indexes given by the :type:`iterable` :var:`ij`, i.e. interpreting the matrix as a shrinking vector, and reshaped as a column vector.
+
+.. function:: mat:getrow (ir, r_)
+
+   Return a matrix or :var:`r` containing the elements of the rows at the indexes given by the :type:`iterable` :var:`ir` of the real, complex or integer matrix :var:`mat`.
+
+.. function:: mat:setrow (ir, a, p_, s_)
+
+   Return the real, complex or integer matrix :var:`mat` after filling the rows at the indexes given by the :type:`iterable` :var:`ir` with the values given by :var:`a` depending of its kind:
+
+   - if :var:`a` is a :type:`scalar`, it is will be used repetitively.
+
+   - if :var:`a` is an :type:`iterable` then the rows will be filled with values from :var:`a[n]` for :expr:`1 <= n <= #a` and recycled repetitively if :expr:`#a < mat.ncol`.
+
+   - if :var:`a` is a :type:`callable`, then :var:`a` is considered as a *stateless iterator*, and the rows will be filled with the values :var:`v` returned by iterating :expr:`s, v = a(p, s)`.
+
+.. function:: mat:remrow (ir)
+
+   Return the real, complex or integer matrix :var:`mat` after removing the rows at the indexes given by the :type:`iterable` :var:`ir` and reshaping the matrix accordingly.
+
+.. function:: mat:swprow (ir)
+
+   Return the real, complex or integer matrix :var:`mat` after swapping the rows at the indexes :expr:`i, k = ipairs(ir)` given by the :type:`iterable` :var:`ir`.
+
+.. function:: mat:getcol (jc, r_)
+
+   Return a matrix or :var:`r` containing the elements of the columns at the indexes given by the :type:`iterable` :var:`jc` of the real, complex or integer matrix :var:`mat`.
+
+.. function:: mat:setcol (jc, a, p_, s_)
+
+   Return the real, complex or integer matrix :var:`mat` after filling the columns at the indexes given by the :type:`iterable` :var:`jc` with the values given by :var:`a` depending of its kind:
+
+   - if :var:`a` is a :type:`scalar`, it is will be used repetitively.
+
+   - if :var:`a` is an :type:`iterable` then the columns will be filled with values from :var:`a[n]` for :expr:`1 <= n <= #a` and recycled repetitively if :expr:`#a < mat.nrow`.
+
+   - if :var:`a` is a :type:`callable`, then :var:`a` is considered as a *stateless iterator*, and the columns will be filled with the values :var:`v` returned by iterating :expr:`s, v = a(p, s)`.
+
+.. function:: mat:remcol (jc)
+
+   Return the real, complex or integer matrix :var:`mat` after removing the columns at the indexes given by the :type:`iterable` :var:`ir` and reshaping the matrix accordingly.
+
+.. function:: mat:swpcol (jc)
+
+   Return the real, complex or integer matrix :var:`mat` after swapping the columns at the indexes :expr:`j, k = ipairs(jc)` given by the :type:`iterable` :var:`jc`.
+
+.. function:: mat:getsub (ir, jc, r_)
+
+   Return a matrix or :var:`r` containing the elements at the indexes given by the :type:`iterable` :var:`ir` and :var:`jc` of the real, complex or integer matrix :var:`mat`.
+
+.. function:: mat:setsub (ir, jc, a, p_, s_)
+
+   Return the real, complex or integer matrix :var:`mat` after filling it at the pairs of indexes given by the :type:`iterable` :var:`ir` and :var:`jc` with the values given by :var:`a` depending of its kind:
+
+   - if :var:`a` is a :type:`scalar`, it is will be used repetitively.
+
+   - if :var:`a` is an :type:`iterable` then the rows and columns will be filled with values from :var:`a[n]` for :expr:`1 <= n <= #a` and recycled repetitively if :expr:`#a < #ir * #ic`.
+
+   - if :var:`a` is a :type:`callable`, then :var:`a` is considered as a *stateless iterator*, and the columns will be filled with the values :var:`v` returned by iterating :expr:`s, v = a(p, s)`.
+
+.. function:: mat:getdiag (r_)
+
+   Return a column vector or :var:`r` containing the elememts of the diagonal of the real, complex or integer matrix :var:`mat`.
+
+.. function:: mat:setdiag (a, p_, s_)
+
+   Return the real, complex or integer matrix :var:`mat` after filling the diagonal with the values given by :var:`a` depending of its kind:
+
+   - if :var:`a` is a :type:`scalar`, it is will be used repetitively.
+
+   - if :var:`a` is an :type:`iterable` then the diagonal will be filled with values from :var:`a[n]` for :expr:`1 <= n <= #a` and recycled repetitively if :expr:`#a < min(mat:sizes())`.
+
+   - if :var:`a` is a :type:`callable`, then :var:`a` is considered as a *stateless iterator*, and the diagonal will be filled with the values :var:`v` returned by iterating :expr:`s, v = a(p, s)`.
 
 Copy/Shape
 ----------
