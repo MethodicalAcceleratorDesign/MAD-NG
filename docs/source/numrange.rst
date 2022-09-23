@@ -168,11 +168,11 @@ Unless specified, the object :var:`rng` that owns the methods represents either 
 
 .. function:: rng:mul(num)
 
-   Return a range with :var:`start`, :var:`stop` and :var:`step` scaled by :expr:`num`.
+   Return a range with :var:`stop` and :var:`step` scaled by :expr:`num`.
 
 .. function:: rng:div(num)
 
-   Return a range with :var:`start`, :var:`stop` and :var:`step` scaled by :expr:`1/num`.
+   Return a range with :var:`stop` and :var:`step` scaled by :expr:`1/num`.
 
 .. function:: rng:tostring()
 
