@@ -670,7 +670,7 @@ function TestMatrixGet:testGetvec()
       assertEquals( m:getvec(vi), vi )
     end
   end
-  m:getvec(1..5,'in') assertEquals( m, matrix(4):fill(1..16) ) -- same output - to documentation
+  m:getvec(1..5) assertEquals( m, matrix(4):fill(1..16) ) -- same output - to documentation
 end
 
 
@@ -685,11 +685,11 @@ end
 function TestMatrixSet:testRemvec()
   local m = matrix(6):fill(1..36)
   for n = 1, 25 do --Check single element by element removal
-    assertEquals( m:remvec(1), matrix(1,36-n):fill((n+1)..36))
+    assertEquals( m:remvec(1), matrix(36-n, 1):fill((n+1)..36)) --Now reshaped as column vector
   end
   local m = matrix(6):fill(1..36)
   for n = 1, 25 do --Check multi-element removal
-    assertEquals( m:copy():remvec(1..n), matrix(1,36-n):fill((n+1)..36)) --Always outputs 1D
+    assertEquals( m:copy():remvec(1..n), matrix(36-n, 1):fill((n+1)..36)) --Always outputs 1D
   end
 end
 
@@ -898,7 +898,7 @@ function TestMatrixSet:testSetrow()
         m:setrow(ra,r)
         for ii=1,#ra do
         for jj=1,nc  do
-          assertEquals( m:getrow(ra):get(ii,jj), idx(ii,jj,nc) )
+          assertEquals( m:getrow(ra):get(ii,jj), idx(ii,jj,nc) ) --This fails as getrow is broken, see above
         end end
         m:setrow(ra,duplicate(2))
         for ii=1,#ra do
@@ -930,11 +930,11 @@ function TestMatrixErr:testGetcol()
   assertErrorMsgContains( msg[5], mth, 'getcol', errMat, 1   , vector(1) )
 end
 
-function TestMatrixGet:testGetcol()
+function TestMatrixGet:testGetcol() --Changed based on documentation --equivalent to get sub with ir = nil
   local m = G.matidx[25]
-  assertEquals( m:getcol({1,2}          ), m:getsub(1..5,{1,2}    ) )
-  assertEquals( m:getcol(vector{1,2}    ), m:getsub(1..5,{1,2}    ) )
-  assertEquals( m:getcol(vector{1}  , {}), m:getsub(1..5,{1}  , {}) )
+  assertEquals( m:getcol({1,2}          ), m:getsub(nil,{1,2}    ) )
+  assertEquals( m:getcol(vector{1,2}    ), m:getsub(nil,{1,2}    ) )
+  assertEquals( m:getcol(vector{1}  , {}), m:getsub(nil,{1}  , {}) )
 
   for _,m in ipairs(G.matidx) do
     local nr, nc = m:sizes()
@@ -942,9 +942,19 @@ function TestMatrixGet:testGetcol()
     for b=1,j  do
       for lj = 1,j-b+1 do
         local rb = b..j..lj
-        assertEquals( m:getcol(rb) , m:getsub(1..nr,rb) )
+        assertEquals( m:getcol(rb) , m:getsub(nil,rb) )
       end
     end end
+  end
+  local m = matrix(4):fill(1..16):transpose() --Get columns of 1-4, 5-8, 9-12, 13-16
+  for i = 1,4 do 
+    assertEquals(m:getcol({i}), vector(4):fill(4*(i-1)+1..4*i) )
+  end
+  for i = 1,3 do 
+    local expected = matrix(4, 2)
+    expected:setvec({1, 3, 5, 7}, vector(4):fill(4*(i-1)+1..4*i))
+    expected:setvec({2, 4, 6, 8}, vector(4):fill(4*i+1..4*(i+1)))
+    assertEquals(m:getcol({i, i+1}), expected ) --Fails, getvec in getsub unaware that return of getidx is columnwise
   end
 end
 
@@ -1010,9 +1020,9 @@ function TestMatrixInPlaceII:testSwpcol()
       local swpMat = m:copy()
       for col1 = 1, ncol - 1 do 
         for col2 = 2, ncol do
-          local swpedM = m:copy():swpcol(columns:copy():seti(col1, col2))
-          local swpedM2= m:copy():swpcol(columns:copy():seti(col2, col1))
-          local doubleSwp = m:copy():swpcol(columns:copy():seti(col1, col2):seti(col2, col1))
+          local swpedM = m:copy():swpcol(col1, col2)
+          local swpedM2= m:copy():swpcol(col2, col1)
+          local doubleSwp = m:copy():swpcol(col1, col2):swpcol(col1, col2)
           assertEquals(swpedM, swpedM2)
           assertEquals(doubleSwp, m)
           for i = 1, nrow do
@@ -1042,9 +1052,9 @@ function TestMatrixInPlaceII:testSwprow()
       local swpMat = m:copy()
       for row1 = 1, nrow - 1 do 
         for row2 = 2, nrow do
-          local swpedM = m:copy():swprow(rows:copy():seti(row1, row2))
-          local swpedM2= m:copy():swprow(rows:copy():seti(row2, row1))
-          local doubleSwp = m:copy():swprow(rows:copy():seti(row1, row2):seti(row2, row1))
+          local swpedM = m:copy():swprow(row1, row2)
+          local swpedM2= m:copy():swprow(row2, row1)
+          local doubleSwp = m:copy():swprow(row1, row2):swprow(row1, row2)
           assertEquals(swpedM, swpedM2)
           assertEquals(doubleSwp, m)
           for i = 1, nrow do
@@ -1242,12 +1252,12 @@ function TestMatrixInPlaceII:testRemcol()
     local nrow, ncol = m:sizes()
     if ncol > 1 then
       local smallMat = m:copy()
-      local _, newNumCol = smallMat:remcol(1):sizes()
+      local newNumCol = smallMat:remcol(1).ncol
       assertEquals(ncol, newNumCol + 1)
       local smallMat2 = m:copy():remcol(ncol)
       for i = 1, nrow do
         for j = 1, newNumCol do 
-          assertEquals(m:get(i, j+1), smallMat:get(i, j))
+          assertEquals(m:get(i, j+1), smallMat:get(i, j)) --This fails as for remcol, as remvec({}) is always performed
           assertEquals(m:get(i, j  ), smallMat2:get(i, j))
         end
       end
@@ -1290,10 +1300,10 @@ end
 
 function TestMatrixInPlace:testSeq()
   for i,m in pairs(G.matidx) do --Assumes G.matidx is a sequence
-    assertEquals(m:same():seq(0), m - 1)  --m starts from 1, seq starts from 0
-    assertEquals(m:same():seq(1), m)      --m starts from 1, seq starts from 1
-    assertEquals(m:same():seq(2), m + 1)  --m starts from 1, seq starts from 2
-    assertEquals(m:same():seq(3), m + 2)  --m starts from 1, seq starts from 3
+    assertEquals(m:same():seq(0), m)      --m starts from 1, seq starts from 0 --?
+    assertEquals(m:same():seq(1), m + 1)  --m starts from 1, seq starts from 1 --?
+    assertEquals(m:same():seq(2), m + 2)  --m starts from 1, seq starts from 2 --?
+    assertEquals(m:same():seq(3), m + 3)  --m starts from 1, seq starts from 3 --?
     local testCase = m:same():seq()
     for i, e in ipairs(testCase) do --Checks all elements are 1 greater than previous
       if i > 1 then assertEquals(testCase[i] - testCase[i-1], 1) end
@@ -1777,8 +1787,8 @@ fold cases:
   7) x:fold( f, x0, nil, r ) and 7') x:fold( f, x0, r )
   8) x:fold( f, x0 , d, r )
 ]]
-local sum = \r =>local x = 0    for i=1,r:size() do x = x + r[i] end return x end
-local sub = \r =>local x = r[1] for i=2,r:size() do x = x - r[i] end return x end
+local sum = \r =>local x = 0    for i=1,#r do x = x + r[i] end return x end
+local sub = \r =>local x = r[1] for i=2,#r do x = x - r[i] end return x end
 
 function TestMatrixFun:testFoldl()
   local _ = nil
@@ -1974,10 +1984,10 @@ end
 
 function TestMatrixFun:testScanr()
   local function subR(r)
-    local s = r:size()
+    local s = #r
     local x = table.new(s,1)
     x[s] = r[s]
-    for i=r:size()-1,1,-1 do
+    for i=#r-1,1,-1 do
       if i%2 == 0 then x[i]= -(x[i+1] - r[i])
                   else x[i]= - x[i+1] + r[i]  end
     end
@@ -2460,7 +2470,7 @@ function TestMatrixSFolds:testSumabs()
 end
 
 function TestMatrixSFolds:testSumsqr()
-  local sumsqr = \r =>local x = 0 for i=1,r:size() do x = x + r[i]^2 end return x end
+  local sumsqr = \r =>local x = 0 for i=1,#r do x = x + r[i]^2 end return x end
   for _,m in ipairs(G.matidx) do
     local nr,nc,_ = m:sizes()
     assertEquals( m:sumsqr()     , sumsqr(1..#m) )
@@ -2470,7 +2480,7 @@ function TestMatrixSFolds:testSumsqr()
 end
 
 function TestMatrixSFolds:testProd()
-  local prod = \r =>local x = 1 for i=1,r:size() do x = x * r[i] end return x end
+  local prod = \r =>local x = 1 for i=1,#r do x = x * r[i] end return x end
   for _,m in ipairs(G.matidx) do
     local nr,nc,_ = m:sizes()
     assertEquals( m:prod()     , prod(1..#m) )
@@ -2614,7 +2624,7 @@ for _,m0 in ipairs(G.matidx) do
 end
 
 function TestMatrixSScans:testAccsumsqr()
-  local sumsqr = \r =>local x = 0 for i=1,r:size() do x = x + r[i]^2 end return x end
+  local sumsqr = \r =>local x = 0 for i=1,#r do x = x + r[i]^2 end return x end
   for _,m in ipairs(G.matidx) do
     local nr, nc = m:sizes()
     assertEquals( m:accsumsqr()     , m:copy():map\x sumsqr(1..x) )
@@ -2624,7 +2634,7 @@ function TestMatrixSScans:testAccsumsqr()
 end
 
 function TestMatrixSScans:testAccprod()
-  local prod = \r =>local x = 1 for i=1,r:size() do x = x * r[i] end return x end
+  local prod = \r =>local x = 1 for i=1,#r do x = x * r[i] end return x end
   for _,m in ipairs(G.matidx) do
     local nr, nc = m:sizes()
     assertEquals( m:accprod()     , m:copy():map\x prod(1..x) )
@@ -2690,7 +2700,7 @@ function TestMatrixSScans:testRaccsumabs()
 end
 
 function TestMatrixSScans:testRaccsumsqr()
-  local sumsqr = \r =>local x = 0 for i=1,r:size() do x = x + r[i]^2 end return x end
+  local sumsqr = \r =>local x = 0 for i=1,#r do x = x + r[i]^2 end return x end
   for _,m in ipairs(G.matidx) do
     local nr, nc = m:sizes()
     assertEquals( m:raccsumsqr()     , m:copy():map\x sumsqr(x..nr*nc) )
@@ -2700,7 +2710,7 @@ function TestMatrixSScans:testRaccsumsqr()
 end
 
 function TestMatrixSScans:testRaccprod()
-  local prod = \r =>local x = 1 for i=1,r:size() do x = x * r[i] end return x end
+  local prod = \r =>local x = 1 for i=1,#r do x = x * r[i] end return x end
   for _,m in ipairs(G.matidx) do
     local nr, nc = m:sizes()
     if nr*nc < 25 then
