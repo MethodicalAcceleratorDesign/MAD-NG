@@ -250,9 +250,9 @@ num_t mad_vec_knorm (const num_t x[], ssz_t n, ssz_t d)
 
 void mad_vec_shift (num_t x[], ssz_t n, ssz_t d, int nshft)
 { CHKX; CHKD;
-  if (nshft > 0) mad_vec_copy(x, x+nshft*d, n-nshft, d); // shift x down (or right)
+  if (nshft > 0) mad_vec_copy(x, x+nshft, n-nshft, d); // shift x down (or right)
   else
-  if (nshft < 0) mad_vec_copy(x-nshft*d, x, n+nshft, d); // shift x up (or left)
+  if (nshft < 0) mad_vec_copy(x-nshft, x, n+nshft, d); // shift x up (or left)
 }
 
 void mad_vec_roll (num_t x[], ssz_t n, ssz_t d, int nroll)
