@@ -99,7 +99,7 @@ num_t mad_vec_mean (const num_t x[], ssz_t n, ssz_t d)
 num_t mad_vec_var (const num_t x[], ssz_t n, ssz_t d)
 { num_t m = mad_vec_mean(x,n,d);
   num_t s=0, s2=0; for (idx_t i=0; i < n; i+=d) s += x[i]-m, s2 += SQR(x[i]-m);
-  return s2 - SQR(s)/(n/d); // corrected estimator
+  return (s2 - SQR(s)/(n/d))/(n/d-1); // Bessel's correction on centered values.
 }
 
 void mad_vec_center (const num_t x[], num_t r[], ssz_t n, ssz_t d)

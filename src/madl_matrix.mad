@@ -258,7 +258,6 @@ MI.tsizes = MR.tsizes
 function MR.__same (x, nr_, nc_, e_) -- promote to cmatrix if e_ is a complex
   if is_nil(nc_) then e_, nr_ = nr_, nil  end
   local e, nr, nc = e_ or 0, nr_ or x.nrow, nc_ or x.ncol
-  print("same", e, nr, nc)
   return is_complex(e) and cmatrix(nr, nc) or matrix(nr, nc)
 end
 
@@ -644,7 +643,7 @@ function MR.getvec (x, ij, r_)
   if is_number(ij) then ij = {ij} end
   assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
   local r = r_ or x:same(#ij,1)
-  assert(is_iterable(r_), "invalid argument #3 (iterable expected)")
+  assert(is_iterable(r ), "invalid argument #3 (iterable expected)")
   for i,ii in ipairs(ij) do r[i] = geti_s(x,ii) end
   return r
 end
@@ -702,7 +701,7 @@ function MR.getidx (x, ir_, jc_, r_)
   local ir, jc = ir_, jc_
   -- indexes
   if is_number(ir) and is_number(jc) then
-      return idx(ir, ic, x.nrow), ir, jc
+      return idx(ir, jc, x.nrow), ir, jc
   end
   -- list of indexes
   if is_nil(ir) then ir = 1..x.nrow elseif is_number(ir) then ir = {ir} end
@@ -718,7 +717,7 @@ function MR.getidx (x, ir_, jc_, r_)
 end
 
 function MR.getij (x, ij_)
-      if is_nil(ij_)   then ij_ = ivector(size(x)):seq()
+      if is_nil  (ij_) then ij_ = ivector(size(x)):seq()
   elseif is_range(ij_) then ij_ = ivector(#ij_):fill(ij_)
   end
   return idxij(ij_, x.ncol)
@@ -730,7 +729,7 @@ MI.getidx = MR.getidx
 function MR.getsub (x, ir_, jc_, r_)
   local ij, ir, jc = x:getidx(ir_,jc_)
   if is_number(ij)
-  then return x:getvec(ij)
+  then return x:getvec(ij, r_)
   else return x:getvec(ij, r_ or x:same(#ir,#jc))
   end
 end
@@ -834,14 +833,16 @@ function MR.filter (x, ij_, p, r_)
   local ij = ij_ or 1..size(x)
   assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
   assert(is_callable(p) , "invalid argument #3 (callable expected)")
-  local r, ri = r_ or x:same(), ivector(#x)
-  assert(is_iterable(r_), "invalid argument #4 (iterable expected)")
+  local r, ri = r_ or x:same(), is_table(r_) and {} or ivector(#x)
+  assert(is_iterable(r) , "invalid argument #4 (iterable expected)")
   local k = 1
   for _,ii in ipairs(ij) do
     local v = geti(x,ii)
     if p(v, ii) == true then r[k], ri[k], k = v, ii, k+1 end
   end
-  if isa_matrix(r) then r:reshape(k-1) end ; ri:reshape(k-1)
+  if k == 1 then return {}, {} end
+  if isa_matrix(r ) then r :reshape(k-1) end
+  if is_imatrix(ri) then ri:reshape(k-1) end
   return r, ri
 end
 
@@ -1006,14 +1007,14 @@ function MR.scanl (x, f, x0_, d_, r_)
     local n = min(nr,nc)    rr = geti(x,1)
     if not is_nil(x0_) then rr = f(x0_, rr) end    r[1] = rr
     for i=2,n            do rr = f(rr, get(x,i,i)) r[i] = rr end
-    if isa_matrix(r) then r:reshape(n) end
+    if isa_matrix(r) or is_imatrix(r) then r:reshape(n) end
   elseif d_ == 'row' then              -- scan x rows
     local k = 1
     for i=1,nr           do rr = get(x,i,1)
     if not is_nil(x0_) then rr = f(x0_, rr) end    r[k], k = rr, k+1
     for j=2,nc           do rr = f(rr, get(x,i,j)) r[k], k = rr, k+1 end end
   elseif d_ == 'col' then              -- scan x columns
-    if isa_matrix(r) and r.ncol > 1 then
+    if isa_matrix(r) or is_imatrix(r) and r.ncol > 1 then
       for j=1,nc           do rr = get(x,1,j)
       if not is_nil(x0_) then rr = f(x0_, rr) end    r[idx(1,j,nc)] = rr
       for i=2,nr           do rr = f(rr, get(x,i,j)) r[idx(i,j,nc)] = rr end end
@@ -1050,14 +1051,14 @@ function MR.scanr (x, f, x0_, d_, r_)
     local n = min(nr,nc)    rr = get(x,n,n)
     if not is_nil(x0_) then rr = f(rr, x0_) end    r[n] = rr
     for i=n-1,1,-1       do rr = f(get(x,i,i), rr) r[i] = rr end
-    if isa_matrix(r) then r:reshape(n) end
+    if isa_matrix(r) or is_imatrix(r) then r:reshape(n) end
   elseif d_ == 'row'  then             -- scan x rows
     local k = nr*nc
     for i=nr  ,1,-1      do rr = get(x,i,nc)
     if not is_nil(x0_) then rr = f(rr, x0_) end    r[k], k = rr, k-1
     for j=nc-1,1,-1      do rr = f(get(x,i,j), rr) r[k], k = rr, k-1 end end
   elseif d_ == 'col' then              -- scan x columns
-    if isa_matrix(r) and r.ncol > 1 then
+    if isa_matrix(r) or is_imatrix(r) and r.ncol > 1 then
       for j=nc  ,1,-1      do rr = get(x,nr,j)
       if not is_nil(x0_) then rr = f(rr, x0_) end    r[idx(nr,j,nc)] = rr
       for i=nr-1,1,-1      do rr = f(get(x,i,j), rr) r[idx(i ,j,nc)] = rr end end

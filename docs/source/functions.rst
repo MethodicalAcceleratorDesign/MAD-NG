@@ -49,7 +49,6 @@ Functions                        Return values                                  
 :func:`lgamma(x,tol_,r_)`        :math:`\ln|\Gamma(x)|`                                   :c:func:`lgamma`
 :func:`log(x,r_)`                :math:`\log x`
 :func:`log10(x,r_)`              :math:`\log_{10} x`
-:func:`pow(x,y,r_)`              :math:`x^y`
 :func:`powi(x,n,r_)`             :math:`x^n`                                              :c:func:`mad_num_powi`
 :func:`rangle(a,r)`              :math:`a + 2\pi \operatorname{round}(\frac{r-a}{2\pi})`  :c:func:`round`
 :func:`round(x,r_)`              :math:`\operatorname{round}(x)`                          :c:func:`round`
