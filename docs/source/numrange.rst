@@ -37,7 +37,7 @@ The constructors for :type:`range` and :type:`logrange` are directly available f
 
    Return a :type:`range` decoded from the string :var:`str` containing a literal numerical ranges of the form :const:`"a..b"` or :const:`"a..b..c"` where :var:`a`,  :var:`b` and :var:`c` are literal numbers.
 
-Emtpy Ranges
+Empty Ranges
 ^^^^^^^^^^^^
 
    Empty ranges of size zero can be created by fulfilling the constraints :expr:`start > stop` and :expr:`step > 0` or :expr:`start < stop` and :expr:`step < 0` in :type:`range` constructor.
@@ -128,7 +128,7 @@ Unless specified, the object :var:`rng` that owns the methods represents either 
 
    The internal quantity :var:`step` is adjusted if the computed size is close to an integer by :math:`±10^{-12}`. Then the following properties should hold even for rational binary numbers given a consistent input for :var:`start`, :var:`stop`, :var:`step` and :var:`size`:
 
-   - :expr:`range (start, stop, step):size()        == size`
+   - :expr:`#range(start, stop, step)               == size`
    - :expr:`nrange(start, stop, size):step()        == step`
    - :expr:`range (start, stop, step):value(size-1) == stop`
    
@@ -180,7 +180,7 @@ Unless specified, the object :var:`rng` that owns the methods represents either 
 
 .. function:: rng:totable()
 
-   Return a :type:`table` filled with :func:`rng:size()` values computed by :func:`rng:value()`. Note that ranges are objects with a very small memory footprint while the generated tables can be huge.
+   Return a :type:`table` filled with :expr:`#rng` values computed by :func:`rng:value()`. Note that ranges are objects with a very small memory footprint while the generated tables can be huge.
 
 Operators
 =========
