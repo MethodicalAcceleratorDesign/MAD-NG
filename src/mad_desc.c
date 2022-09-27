@@ -1234,7 +1234,11 @@ mad_desc_newv (int nv, ord_t mo)
   printf(">> nv=%d,mo=%d\n", nv, mo);
 #endif
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnonnull"
   const desc_t* ret = get_desc(nv, mo, NULL, 0, 0);
+#pragma GCC diagnostic pop
+
   DBGFUN(<-); return ret;
 }
 
@@ -1258,7 +1262,11 @@ mad_desc_newvp(int nv, int np, ord_t mo, ord_t po_)
   printf(">> nn=%d,mo=%d,np=%d,po=%d[%d]\n", nn, mo, np, po,po_);
 #endif
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wnonnull"
   const desc_t* ret = get_desc(nn, mo, NULL, np, po);
+#pragma GCC diagnostic pop
+
   DBGFUN(<-); return ret;
 }
 
