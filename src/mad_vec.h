@@ -142,6 +142,7 @@ void   mad_ivec_add   (const  idx_t x[], const  idx_t y[]      ,  idx_t  r[], ss
 void   mad_ivec_addn  (const  idx_t x[],        idx_t y        ,  idx_t  r[], ssz_t n, ssz_t d); // ivec +  idx
 void   mad_ivec_sub   (const  idx_t x[], const  idx_t y[]      ,  idx_t  r[], ssz_t n, ssz_t d); // ivec - ivec
 void   mad_ivec_subn  (const  idx_t y[],        idx_t x        ,  idx_t  r[], ssz_t n, ssz_t d); //  idx - ivec
+void   mad_ivec_mul   (const  idx_t x[], const  idx_t y[]      ,  idx_t  r[], ssz_t n, ssz_t d); // ivec * ivec
 void   mad_ivec_muln  (const  idx_t x[],        idx_t y        ,  idx_t  r[], ssz_t n, ssz_t d); // ivec *  num
 void   mad_ivec_divn  (const  idx_t x[],        idx_t y        ,  idx_t  r[], ssz_t n, ssz_t d); // ivec /  num
 void   mad_ivec_modn  (const  idx_t x[],        idx_t y        ,  idx_t  r[], ssz_t n, ssz_t d); // ivec %  num
