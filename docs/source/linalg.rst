@@ -158,7 +158,11 @@ Getters/Setters
 
 .. function:: mat:getidx (ir_, jc_, ij_)
 
-   Return a :type:`table` or :var:`ij_` containing :expr:`#ir * #jc` indexes given by the :type:`iterable` :var:`ir` and :var:`jc` of the real, complex or integer matrix :var:`mat`. The indexes are generated column-wise if :var:`ir` is :const:`nil`, row-wise otherwise. This method is useful to convert 2D matrix indexes into 1D vector indexes for this matrix. Default: :expr:`ir_ = 1..mat.nrow`, :expr:`jc_ = 1..mat.ncol`.
+   Return a :type:`ivector` or :var:`ij` containing :expr:`#ir * #jc` indexes given by the :type:`iterable` :var:`ir` and :var:`jc` of the real, complex or integer matrix :var:`mat`. The indexes are generated column-wise if :var:`ir` is :const:`nil` and :var:`jc` isn't, row-wise otherwise. This method is useful to convert 2D matrix indexes into 1D vector indexes for this matrix. Default: :expr:`ir_ = 1..mat.nrow`, :expr:`jc_ = 1..mat.ncol`.
+
+.. function:: mat:getij (ij_)
+
+   Return two indexes or :type:`ivector` containing the indexes extracted from the :type:`number` or :type:`iterable` :var:`ij` and the number of columns of the real, complex or integer matrix :var:`mat`. This method is the reverse method of :func:`mat:getidx()` to convert 1D vector indexes into 2D matrix indexes for this matrix. Default: :expr:`ij_ = 1..#mat`.
 
 .. function:: mat:getsub (ir_, jc_, r_)
 
@@ -847,6 +851,8 @@ Integer Vector
 .. c:function:: void   mad_ivec_sub   (const  idx_t x[], const  idx_t y[]      ,  idx_t  r[], ssz_t n, ssz_t d)
 
 .. c:function:: void   mad_ivec_subn  (const  idx_t y[],        idx_t x        ,  idx_t  r[], ssz_t n, ssz_t d)
+
+.. c:function:: void   mad_ivec_mul   (const  idx_t x[], const  idx_t y[]      ,  idx_t  r[], ssz_t n, ssz_t d)
 
 .. c:function:: void   mad_ivec_muln  (const  idx_t x[],        idx_t y        ,  idx_t  r[], ssz_t n, ssz_t d)
 
