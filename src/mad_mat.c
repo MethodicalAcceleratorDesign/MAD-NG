@@ -550,7 +550,7 @@ void mad_mat_center (const num_t x[], num_t r[], ssz_t m, ssz_t n, int d)
       num_t mu = 0;
       for (idx_t i=0; i < m; i++) mu += x[i*n+j];
       mu /= m;
-      for (idx_t i=0; i < n; i++) r[i*n+j] = x[i*n+j] - mu;
+      for (idx_t i=0; i < m; i++) r[i*n+j] = x[i*n+j] - mu;
     }
 }
 
