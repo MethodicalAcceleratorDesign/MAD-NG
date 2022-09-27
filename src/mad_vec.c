@@ -574,11 +574,14 @@ void mad_ivec_sub (const idx_t x[], const idx_t y[], idx_t r[], ssz_t n, ssz_t d
 void mad_ivec_subn (const idx_t y[], idx_t x, idx_t r[], ssz_t n, ssz_t d)
 { CHKYR; CHKD; for (idx_t i=0; i < n; i+=d) r[i] = x - y[i]; }
 
+void mad_ivec_mul (const idx_t x[], const idx_t y[], idx_t r[], ssz_t n, ssz_t d)
+{ CHKXYR; CHKD; for (idx_t i=0; i < n; i+=d) r[i] = x[i] * y[i]; }
+
 void mad_ivec_muln (const idx_t x[], idx_t y, idx_t r[], ssz_t n, ssz_t d)
 { CHKXR; CHKD; for (idx_t i=0; i < n; i+=d) r[i] = x[i] * y; }
 
 void mad_ivec_divn (const idx_t x[], idx_t y, idx_t r[], ssz_t n, ssz_t d)
-{ CHKXR; CHKD; for (idx_t i=0; i < n; i+=d) r[i] = x[i] + y; }
+{ CHKXR; CHKD; for (idx_t i=0; i < n; i+=d) r[i] = x[i] / y; }
 
 void mad_ivec_modn (const idx_t x[], idx_t y, idx_t r[], ssz_t n, ssz_t d)
 { CHKXR; CHKD; for (idx_t i=0; i < n; i+=d) r[i] = x[i] % y; }
