@@ -5,14 +5,23 @@
 Monomials
 *********
 
-This chapter describes `Monomial <https://en.wikipedia.org/wiki/Monomial>`_ objects useful to encode the variables powers of multivariate `Taylor Series <https://en.wikipedia.org/wiki/Taylor_series>`_ used by the differential algebra library. The module for monomials is not exposed, only the contructor is visible from the :mod:`MAD` environment and thus, monomials must be handled directly by their methods. Monomial objects do not know to which variables the stored orders belong, the relationship is only through the indexes. Note that monomials are objects with reference semantic that store variable orders as 8-bit unsigned integers, thus arithmetic on variable orders occurs in the ring :math:`\mathbb{N}/2^8\mathbb{N}`. 
+This chapter describes `Monomial <https://en.wikipedia.org/wiki/Monomial>`_ objects useful to encode the variables powers of `Multivariate <https://en.wikipedia.org/wiki/Multivariable_calculus>`_ `Taylor Series <https://en.wikipedia.org/wiki/Taylor_series>`_ used by the `Differential Algebra <https://en.wikipedia.org/wiki/Differential_algebra>`_ library of MAD-NG. The module for monomials is not exposed, only the contructor is visible from the :mod:`MAD` environment and thus, monomials must be handled directly by their methods. Monomial objects do not know to which variables the stored orders belong, the relationship is only through the indexes. Note that monomials are objects with reference semantic that store variable orders as 8-bit unsigned integers, thus arithmetic on variable orders occurs in the ring :math:`\mathbb{N}/2^8\mathbb{N}`. 
 
 Constructors
 ============
 
-.. function:: monomial(len_, ord_)
+The constructor for :type:`monomial` is directly available from the :mod:`MAD` environment.
+
+.. function:: monomial([len_,] ord_)
 
    Return a :type:`monomial` of size :var:`len` with the variable orders set to the values given by :var:`ord`, as computed by :func:`mono:fill(ord_)`. If :var:`ord` is omitted then :var:`len` must be provided. Default: :expr:`len_ = #ord`, :expr:`ord_ = 0`.
+
+Attributes
+==========
+
+.. constant:: mono.n
+
+   The number of variable orders in :var:`mono`, i.e. its size or length.
 
 Functions
 =========
@@ -34,19 +43,15 @@ The optional argument :var:`r_` represents a destination placeholder for results
 
    Return a copy of :var:`mono`.
 
-.. function:: mono:size()
-
-   Return the number of variable orders in :var:`mono`, i.e. its length.
-
 .. function:: mono:fill(ord_)
 
    Return :var:`mono` with the variable orders set to the values given by :var:`ord`. Default: :expr:`ord_ = 0`.
 
-   - If :var:`ord` is a :type:`number` then :var:`len` must be provided and all variable orders are set to the value of :var:`ord`.
+   - If :var:`ord` is a :type:`number` then all variable orders are set to the value of :var:`ord`.
    
-   - If :var:`ord` is a :type:`list` then :var:`len` can be omitted and all variable orders are set to the values given by :var:`ord`.
+   - If :var:`ord` is a :type:`list` then all variable orders are set to the values given by :var:`ord`.
    
-   - If :var:`ord` is a :type:`string` then :var:`len` can be omitted and all variable orders are set to the values given by :var:`ord`, where each character in the set :const:`[0-9A-Za-z]` is interpreted as a variable order in the basis 62, e.g. the string :const:`"Bc"` will be interpreted as a monomial with variable orders 11 and 38. Characters not in the set :const:`[0-9A-Za-z]` are not allowed and lead to an undefined behavior, meaning that orders :math:`\ge 62` cannot be safely specified through strings.
+   - If :var:`ord` is a :type:`string` then all variable orders are set to the values given by :var:`ord`, where each character in the set :const:`[0-9A-Za-z]` is interpreted as a variable order in the `Basis 62 <https://en.wikipedia.org/wiki/Base62>`_, e.g. the string :const:`"Bc"` will be interpreted as a monomial with variable orders 11 and 38. Characters not in the set :const:`[0-9A-Za-z]` are not allowed and lead to an undefined behavior, meaning that orders :math:`\ge 62` cannot be safely specified through strings.
 
 .. function:: mono:min()
 
@@ -70,15 +75,19 @@ The optional argument :var:`r_` represents a destination placeholder for results
 
 .. function:: mono:add(mono2, r_)
 
-   Return the sum of the monomials :var:`mono` and :var:`mono2`, that is the sum of the all their variable orders, i.e. :math:`o_1 + o_2 (\mod 256)` where :math:`o_1` and :math:`o_2` are two variable orders at the same index in :var:`mono` and :var:`mono2`.
+   Return the sum of the monomials :var:`mono` and :var:`mono2`, that is the sum of the all their variable orders, i.e. :math:`(o_1 + o_2) \mod 256` where :math:`o_1` and :math:`o_2` are two variable orders at the same index in :var:`mono` and :var:`mono2`.
 
 .. function:: mono:sub(mono2, r_)
 
-   Return the difference of the monomials :var:`mono` and :var:`mono2`, that is the subtraction of the all their variable orders, i.e. :math:`o_1 - o_2 (\mod 256)` where :math:`o_1` and :math:`o_2` are two variable orders at the same index in :var:`mono` and :var:`mono2`.
+   Return the difference of the monomials :var:`mono` and :var:`mono2`, that is the subtraction of the all their variable orders, i.e. :math:`(o_1 - o_2) \mod 256` where :math:`o_1` and :math:`o_2` are two variable orders at the same index in :var:`mono` and :var:`mono2`.
 
 .. function:: mono:concat(mono2, r_)
 
    Return the concatenation of the monomials :var:`mono` and :var:`mono2`.
+
+.. function:: mono:reverse(r_)
+
+   Return the reverse of the monomial :var:`mono`.
 
 .. function:: mono:totable()
 
@@ -93,7 +102,7 @@ Operators
 
 .. function:: #mono
 
-   Return the size of the monomial as computed by :func:`mono:size()`.
+   Return the number of variable orders in :var:`mono`, i.e. its length.
 
 .. function:: mono[n]
 
@@ -105,11 +114,11 @@ Operators
 
 .. function:: mono + mono2
 
-   Return the sum of the monomials :var:`mono` and :var:`mono2` as computed by :expr:`mono:add(mono2)`.
+   Equivalent to :expr:`mono:add(mono2)`.
 
 .. function:: mono - mono2
 
-   Return the difference of the monomials :var:`mono` and :var:`mono2` as computed by :expr:`mono:sub(mono2)`.
+   Equivalent to :expr:`mono:sub(mono2)`.
 
 .. function:: mono < mono2
 
@@ -125,7 +134,7 @@ Operators
 
 .. function:: mono .. mono2
 
-   Return the concatenation of the monomials :var:`mono` and :var:`mono2` as computed by :expr:`mono:concat(mono2)`.
+   Equivalent to :expr:`mono:concat(mono2)`.
 
 Iterators
 =========
@@ -158,10 +167,6 @@ C API
 
    Copy the monomial :var:`a[n]` to the monomial :var:`r[n]`.
 
-.. c:function:: void mad_mono_rcopy (ssz_t n, const ord_t a[n], ord_t r[n])
-
-   Reverse copy the monomial :var:`a[n]` to the monomial :var:`r[n]`.
-
 .. c:function:: ord_t mad_mono_min  (ssz_t n, const ord_t a[n])
 
    Return the minimum variable order of the monomial :var:`a[n]`.
@@ -176,11 +181,11 @@ C API
 
 .. c:function:: num_t mad_mono_ordp (ssz_t n, const ord_t a[n], idx_t stp)
 
-   Return the product of all variable orders of the monomial :var:`a[n]`.
+   Return the product of the variable orders of the monomial :var:`a[n]` at every :var:`stp`.
 
 .. c:function:: num_t mad_mono_ordpf (ssz_t n, const ord_t a[n], idx_t stp)
 
-   Return the product of the factorial of the variable orders of the monomial :var:`a[n]`.
+   Return the product of the factorial of the variable orders of the monomial :var:`a[n]` at every :var:`stp`.
 
 .. c:function:: log_t mad_mono_eq (ssz_t n, const ord_t a[n], const ord_t b[n])
 
@@ -213,6 +218,10 @@ C API
 .. c:function:: void mad_mono_cat (ssz_t n, const ord_t a[n], ssz_t m, const ord_t b[m], ord_t r[n+m])
 
    Put the concatenation of the monomials :var:`a[n]` and :var:`b[m]` in the monomial :var:`r[n+m]`.
+
+.. c:function:: void mad_mono_rev (ssz_t n, const ord_t a[n], ord_t r[n])
+
+   Put the reverse of the monomial :var:`a[n]` in the monomial :var:`r[n]`.
 
 .. c:function:: void mad_mono_print (ssz_t n, const ord_t a[n], FILE *fp_)
 
