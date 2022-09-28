@@ -71,23 +71,25 @@ struct cmatrix { const ssz_t nrow, ncol; cnum_t _dat[?]; };
 struct imatrix { const ssz_t nrow, ncol;  idx_t _dat[?]; };
 ]]
 
-local  matrix_ctor  = ffi.typeof 'struct  matrix'
-local cmatrix_ctor  = ffi.typeof 'struct cmatrix'
-local imatrix_ctor  = ffi.typeof 'struct imatrix'
+local  matrix_ctor = ffi.typeof 'struct  matrix'
+local cmatrix_ctor = ffi.typeof 'struct cmatrix'
+local imatrix_ctor = ffi.typeof 'struct imatrix'
 
-local  matrix_size  = ffi.offsetof( matrix_ctor, '_dat')
-local cmatrix_size  = ffi.offsetof(cmatrix_ctor, '_dat')
-local imatrix_size  = ffi.offsetof(imatrix_ctor, '_dat')
+local  matrix_size = ffi.offsetof( matrix_ctor, '_dat')
+local cmatrix_size = ffi.offsetof(cmatrix_ctor, '_dat')
+local imatrix_size = ffi.offsetof(imatrix_ctor, '_dat')
 
 local is_matrix  = \x -> istype( matrix_ctor, x)
 local is_cmatrix = \x -> istype(cmatrix_ctor, x)
 local is_imatrix = \x -> istype(imatrix_ctor, x)
 local isa_matrix = \x -> is_matrix(x) or is_cmatrix(x)
+local isy_matrix = \x -> is_matrix(x) or is_cmatrix(x) or is_imatrix(x)
 
-local is_vector  = \x -> is_matrix(x)  and (x.nrow == 1 or x.ncol == 1)
+local is_vector  = \x -> is_matrix (x) and (x.nrow == 1 or x.ncol == 1)
 local is_cvector = \x -> is_cmatrix(x) and (x.nrow == 1 or x.ncol == 1)
 local is_ivector = \x -> is_imatrix(x) and (x.nrow == 1 or x.ncol == 1)
 local isa_vector = \x -> isa_matrix(x) and (x.nrow == 1 or x.ncol == 1)
+local isy_vector = \x -> isy_matrix(x) and (x.nrow == 1 or x.ncol == 1)
 
 -- allocators -----------------------------------------------------------------o
 
@@ -735,7 +737,11 @@ function MR.getsub (x, ir_, jc_, r_)
 end
 
 function MR.setsub (x, ir_, jc_, y, p_, s_)
-  return x:setvec(x:getidx(ir_,jc_), y, p_, s_)
+  local ij, ir, jc = x:getidx(ir_,jc_)
+  if is_nil(ir_) and not is_nil(jc_) and not (isy_matrix(y) and y.ncol > 1) then
+    _C.mad_imat_trans(ij._dat, ij._dat, #ir, #jc)
+  end
+  return x:setvec(ij, y, p_, s_)
 end
 
 function MR.remsub (x, ir_, jc_)
@@ -1184,7 +1190,7 @@ MR.raccmaxabs = \x,d_,r_ -> x:scanr(compose(maxabsl,swap), 0  , d_, r_)
 
 -- special filters ------------------------------------------------------------o
 
-MR.filter_out = \x,p,r_ -> x:filter(compose(lnot,p), r_)
+MR.filter_out = \x,ij_,p,r_ -> x:filter(ij_,compose(lnot,p), r_)
 
 MI.filter_out = MR.filter_out
 
@@ -2823,11 +2829,13 @@ MAD.typeid.is_vector  = is_vector
 MAD.typeid.is_cvector = is_cvector
 MAD.typeid.is_ivector = is_ivector
 MAD.typeid.isa_vector = isa_vector
+MAD.typeid.isy_vector = isy_vector
 
 MAD.typeid.is_matrix  = is_matrix
 MAD.typeid.is_cmatrix = is_cmatrix
 MAD.typeid.is_imatrix = is_imatrix
 MAD.typeid.isa_matrix = isa_matrix
+MAD.typeid.isy_matrix = isy_matrix
 
 -- metatables -----------------------------------------------------------------o
 
