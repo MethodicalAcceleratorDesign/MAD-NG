@@ -37,11 +37,12 @@ local is_nil, is_boolean, is_number, is_integer, is_string,
       is_iterable, get_metamethod                                in MAD.typeid
 local ident, swap, compose, bind1st, opstr,
       unm, add, mul, mod, pow, lbool, lnot, land, lor            in MAD.gfunc
-local carg, real, imag, conj, norm, proj, rect, polar, ceil, floor,
-      frac, trunc, round, abs, exp, log, log10, sqrt, sin, cos, tan, cot, sinh,
-      cosh, tanh, coth, asin, acos, atan, acot, asinh, acosh, atanh, acoth, wf,
-      erf, erfc, erfi, erfcx, tgamma, lgamma, sign, sign1,
-      sumsqrl, sumabsl, minabsl, maxabsl, cabs                   in MAD.gmath
+local cabs, carg, real, imag, conj, proj, rect, polar, ceil, floor,
+      frac, trunc, round, abs, sqr, exp, log, log10, sqrt, sin, cos, tan, cot,
+      sinh, cosh, tanh, coth, asin, acos, atan, acot, asinh, acosh, atanh,
+      acoth, sinc, sinhc, asinc, asinhc, atan2, hypot, hypot3,
+      wf, erf, erfc, erfi, erfcx, dawson,
+      sign, sign1, sumsqrl, sumabsl, minabsl, maxabsl            in MAD.gmath
 local rep, errorf, assertf, openfile, strsplitall,
       int2str, num2str                                           in MAD.utility
 local inf, eps                                                   in constant
@@ -71,23 +72,25 @@ struct cmatrix { const ssz_t nrow, ncol; cnum_t _dat[?]; };
 struct imatrix { const ssz_t nrow, ncol;  idx_t _dat[?]; };
 ]]
 
-local  matrix_ctor  = ffi.typeof 'struct  matrix'
-local cmatrix_ctor  = ffi.typeof 'struct cmatrix'
-local imatrix_ctor  = ffi.typeof 'struct imatrix'
+local  matrix_ctor = ffi.typeof 'struct  matrix'
+local cmatrix_ctor = ffi.typeof 'struct cmatrix'
+local imatrix_ctor = ffi.typeof 'struct imatrix'
 
-local  matrix_size  = ffi.offsetof( matrix_ctor, '_dat')
-local cmatrix_size  = ffi.offsetof(cmatrix_ctor, '_dat')
-local imatrix_size  = ffi.offsetof(imatrix_ctor, '_dat')
+local  matrix_size = ffi.offsetof( matrix_ctor, '_dat')
+local cmatrix_size = ffi.offsetof(cmatrix_ctor, '_dat')
+local imatrix_size = ffi.offsetof(imatrix_ctor, '_dat')
 
 local is_matrix  = \x -> istype( matrix_ctor, x)
 local is_cmatrix = \x -> istype(cmatrix_ctor, x)
 local is_imatrix = \x -> istype(imatrix_ctor, x)
 local isa_matrix = \x -> is_matrix(x) or is_cmatrix(x)
+local isy_matrix = \x -> is_matrix(x) or is_cmatrix(x) or is_imatrix(x)
 
-local is_vector  = \x -> is_matrix(x)  and (x.nrow == 1 or x.ncol == 1)
+local is_vector  = \x -> is_matrix (x) and (x.nrow == 1 or x.ncol == 1)
 local is_cvector = \x -> is_cmatrix(x) and (x.nrow == 1 or x.ncol == 1)
 local is_ivector = \x -> is_imatrix(x) and (x.nrow == 1 or x.ncol == 1)
 local isa_vector = \x -> isa_matrix(x) and (x.nrow == 1 or x.ncol == 1)
+local isy_vector = \x -> isy_matrix(x) and (x.nrow == 1 or x.ncol == 1)
 
 -- allocators -----------------------------------------------------------------o
 
@@ -728,14 +731,24 @@ MI.getidx = MR.getidx
 
 function MR.getsub (x, ir_, jc_, r_)
   local ij, ir, jc = x:getidx(ir_,jc_)
-  if is_number(ij)
-  then return x:getvec(ij, r_)
-  else return x:getvec(ij, r_ or x:same(#ir,#jc))
+  if is_number(ij) then
+    return x:getvec(ij, r_)
+  elseif is_nil(r_) then
+    return x:getvec(ij, x:same(#ir,#jc))
   end
+  if not (is_nil(ir_) or is_nil(jc_) or (isy_matrix(r_) and r_.ncol > 1)) then
+    _C.mad_imat_trans(ij._dat, ij._dat, #ir, #jc)
+  end
+  return x:getvec(ij, r_)
 end
 
 function MR.setsub (x, ir_, jc_, y, p_, s_)
-  return x:setvec(x:getidx(ir_,jc_), y, p_, s_)
+  local ij, ir, jc = x:getidx(ir_,jc_)
+  if not (is_number(ij) or not is_nil(ir_) or is_nil(jc_)
+                        or (isy_matrix(y) and y.ncol > 1)) then
+    _C.mad_imat_trans(ij._dat, ij._dat, #ir, #jc)
+  end
+  return x:setvec(ij, y, p_, s_)
 end
 
 function MR.remsub (x, ir_, jc_)
@@ -753,7 +766,12 @@ function MR.remsub (x, ir_, jc_)
 end
 
 function MR.inssub (x, ir_, jc_, y)
-  return x:insvec(x:getidx(ir_,jc_), y)
+  local ij, ir, jc = x:getidx(ir_,jc_)
+  if not (is_number(ij) or not is_nil(ir_) or is_nil(jc_)
+                        or (isy_matrix(y) and y.ncol > 1)) then
+    _C.mad_imat_trans(ij._dat, ij._dat, #ir, #jc)
+  end
+  return x:insvec(ij, y)
 end
 
 function MR.swpsub (x, ir_, jc_, ir2_, jc2_) -- inplace
@@ -817,7 +835,7 @@ function MR.foreach (x, ij_, f, r_)
   assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
   assert(is_callable(f ), "invalid argument #3 (callable expected)")
   if is_nil(r_) then
-    for i,ii in ipairs(ij) do         f(geti_s(x,ii), ii) end
+    for _,ii in ipairs(ij) do         f(geti_s(x,ii), ii) end
   else
     assert(is_iterable(r_), "invalid argument #4 (iterable expected)")
     for i,ii in ipairs(ij) do r_[i] = f(geti_s(x,ii), ii) end
@@ -841,7 +859,7 @@ function MR.filter (x, ij_, p, r_)
     if p(v, ii) == true then r[k], ri[k], k = v, ii, k+1 end
   end
   if k == 1 then return {}, {} end
-  if isa_matrix(r ) then r :reshape(k-1) end
+  if isy_matrix(r ) then r :reshape(k-1) end
   if is_imatrix(ri) then ri:reshape(k-1) end
   return r, ri
 end
@@ -925,21 +943,21 @@ function MR.foldl (x, f, x0_, d_, r_)
   end
   assert(is_callable(f)               , "invalid argument #2 (callable expected)")
   assert(is_nil(r_) or is_iterable(r_), "invalid argument #5 (iterable expected)")
-  local nr, nc, rr, r = x:sizes()
-  if is_nil(d_) or d_ == 'vec' then    -- fold x as vector, r_ is discarded
+  local d, nr, nc, rr, r = d_ or 'vec', x:sizes()
+  if d == 'vec' then                  -- fold x as vector, r_ is discarded
                             r  = geti(x,1)
     if not is_nil(x0_) then r  = f(x0_, r) end
     for i=2,nr*nc        do r  = f(r, geti(x,i)) end
-  elseif d_ == 'diag' then             -- fold x diagonal
+  elseif d == 'diag' then             -- fold x diagonal
     local n = min(nr,nc)    r  = geti(x,1)
     if not is_nil(x0_) then r  = f(x0_, r) end
     for i=2,n            do r  = f(r, get(x,i,i)) end
-  elseif d_ == 'row' then              -- fold x rows
+  elseif d == 'row' then              -- fold x rows
     r = r_ or x:same(nr,1)
     for i=1,nr           do rr = get(x,i,1)
     if not is_nil(x0_) then rr = f(x0_, rr) end
     for j=2,nc           do rr = f(rr, get(x,i,j)) end r[i] = rr end
-  elseif d_ == 'col' then              -- fold x columns
+  elseif d == 'col' then              -- fold x columns
     r = r_ or x:same(1,nc)
     for j=1,nc           do rr = get(x,1,j)
     if not is_nil(x0_) then rr = f(x0_, rr) end
@@ -961,21 +979,21 @@ function MR.foldr (x, f, x0_, d_, r_)
   end
   assert(is_callable(f)               , "invalid argument #2 (callable expected)")
   assert(is_nil(r_) or is_iterable(r_), "invalid argument #5 (iterable expected)")
-  local nr, nc, rr, r = x:sizes()
-  if is_nil(d_) or d_ == 'vec' then    -- fold x as vector, r_ is discarded
+  local d, nr, nc, rr, r = d_ or 'vec', x:sizes()
+  if d == 'vec' then                  -- fold x as vector, r_ is ignored
                              r = geti(x,nr*nc)
     if not is_nil(x0_) then  r = f(r, x0_) end
     for i=nr*nc-1,1,-1   do  r = f(geti(x,i), r) end
-  elseif d_ == 'diag' then             -- fold x diagonal
+  elseif d == 'diag' then             -- fold x diagonal, r_ is ignored
     local n = min(nr,nc)     r = get(x,n,n)
     if not is_nil(x0_) then  r = f(r, x0_) end
     for i=n-1,1,-1       do  r = f(get(x,i,i), r) end
-  elseif d_ == 'row' then              -- fold x rows
+  elseif d == 'row' then              -- fold x rows
     r = r_ or x:same(nr,1)
     for i=nr  ,1,-1      do rr = get(x,i,nc)
     if not is_nil(x0_) then rr = f(rr, x0_) end
     for j=nc-1,1,-1      do rr = f(get(x,i,j), rr) end r[i] = rr end
-  elseif d_ == 'col' then              -- fold x columns
+  elseif d == 'col' then              -- fold x columns
     r = r_ or x:same(1,nc)
     for j=nc  ,1,-1      do rr = get(x,nr,j)
     if not is_nil(x0_) then rr = f(rr, x0_) end
@@ -998,23 +1016,23 @@ function MR.scanl (x, f, x0_, d_, r_)
   if is_string(r_) and r_ == 'in' then r_ = x end
   assert(is_callable(f)               , "invalid argument #2 (callable expected)")
   assert(is_nil(r_) or is_iterable(r_), "invalid argument #5 (iterable expected)")
-  local r, nr, nc, rr = r_ or x:same(), x:sizes()
-  if is_nil(d_) or d_ == 'vec' then    -- scan x as vector
+  local d, r, nr, nc, rr = d_ or 'vec', r_ or x:same(), x:sizes()
+  if d == 'vec' then                  -- scan x as vector
                             rr = geti(x,1)
     if not is_nil(x0_) then rr = f(x0_, rr) end    r[1] = rr
     for i=2,nr*nc        do rr = f(rr, geti(x,i))  r[i] = rr end
-  elseif d_ == 'diag' then             -- scan x diagonal
+  elseif d == 'diag' then             -- scan x diagonal
     local n = min(nr,nc)    rr = geti(x,1)
     if not is_nil(x0_) then rr = f(x0_, rr) end    r[1] = rr
     for i=2,n            do rr = f(rr, get(x,i,i)) r[i] = rr end
-    if isa_matrix(r) or is_imatrix(r) then r:reshape(n) end
-  elseif d_ == 'row' then              -- scan x rows
+    if isy_matrix(r) then r:reshape(n) end
+  elseif d == 'row' then              -- scan x rows
     local k = 1
     for i=1,nr           do rr = get(x,i,1)
     if not is_nil(x0_) then rr = f(x0_, rr) end    r[k], k = rr, k+1
     for j=2,nc           do rr = f(rr, get(x,i,j)) r[k], k = rr, k+1 end end
-  elseif d_ == 'col' then              -- scan x columns
-    if isa_matrix(r) or is_imatrix(r) and r.ncol > 1 then
+  elseif d == 'col' then              -- scan x columns
+    if isy_matrix(r) and r.ncol > 1 then
       for j=1,nc           do rr = get(x,1,j)
       if not is_nil(x0_) then rr = f(x0_, rr) end    r[idx(1,j,nc)] = rr
       for i=2,nr           do rr = f(rr, get(x,i,j)) r[idx(i,j,nc)] = rr end end
@@ -1042,23 +1060,23 @@ function MR.scanr (x, f, x0_, d_, r_)
   if is_string(r_) and r_ == 'in' then r_ = x end
   assert(is_callable(f)               , "invalid argument #2 (callable expected)")
   assert(is_nil(r_) or is_iterable(r_), "invalid argument #5 (iterable expected)")
-  local r, nr, nc, rr = r_ or x:same(), x:sizes()
-  if is_nil(d_) or d_ == 'vec' then    -- scan x as vector
+  local d, r, nr, nc, rr = d_ or 'vec', r_ or x:same(), x:sizes()
+  if d == 'vec' then                  -- scan x as vector
                             rr = geti(x,nr*nc)
     if not is_nil(x0_) then rr = f(rr, x0_) end    r[nr*nc] = rr
     for i=nr*nc-1,1,-1   do rr = f(geti(x,i), rr)  r[i    ] = rr end
-  elseif d_ == 'diag' then             -- scan x diagonal
+  elseif d == 'diag' then             -- scan x diagonal
     local n = min(nr,nc)    rr = get(x,n,n)
     if not is_nil(x0_) then rr = f(rr, x0_) end    r[n] = rr
     for i=n-1,1,-1       do rr = f(get(x,i,i), rr) r[i] = rr end
-    if isa_matrix(r) or is_imatrix(r) then r:reshape(n) end
-  elseif d_ == 'row'  then             -- scan x rows
+    if isy_matrix(r) then r:reshape(n) end
+  elseif d == 'row'  then             -- scan x rows
     local k = nr*nc
     for i=nr  ,1,-1      do rr = get(x,i,nc)
     if not is_nil(x0_) then rr = f(rr, x0_) end    r[k], k = rr, k-1
     for j=nc-1,1,-1      do rr = f(get(x,i,j), rr) r[k], k = rr, k-1 end end
-  elseif d_ == 'col' then              -- scan x columns
-    if isa_matrix(r) or is_imatrix(r) and r.ncol > 1 then
+  elseif d == 'col' then              -- scan x columns
+    if isy_matrix(r) and r.ncol > 1 then
       for j=nc  ,1,-1      do rr = get(x,nr,j)
       if not is_nil(x0_) then rr = f(rr, x0_) end    r[idx(nr,j,nc)] = rr
       for i=nr-1,1,-1      do rr = f(get(x,i,j), rr) r[idx(i ,j,nc)] = rr end end
@@ -1079,6 +1097,7 @@ MI.scanr = MR.scanr
 -- special maps ---------------------------------------------------------------o
 
 MR.abs   = \x,r_ -> x:map(abs  , r_)
+MR.sqr   = \x,r_ -> x:map(sqr  , r_)
 MR.ceil  = \x,r_ -> x:map(ceil , r_)
 MR.floor = \x,r_ -> x:map(floor, r_)
 MR.frac  = \x,r_ -> x:map(frac , r_)
@@ -1109,30 +1128,31 @@ MR.acosh = \x,r_ -> x:map(acosh, r_)
 MR.atanh = \x,r_ -> x:map(atanh, r_)
 MR.acoth = \x,r_ -> x:map(acoth, r_)
 
-MR.tgamma= \x,r_ -> x:map(tgamma, r_)
-MR.lgamma= \x,r_ -> x:map(lgamma, r_)
+MR.sinc  = \x,r_ -> x:map(sinc  , r_)
+MR.sinhc = \x,r_ -> x:map(sinhc , r_)
+MR.asinc = \x,r_ -> x:map(asinc , r_)
+MR.asinhc= \x,r_ -> x:map(asinhc, r_)
 
 MR.wf    = \x,r_ -> x:map(wf    , r_)
 MR.erf   = \x,r_ -> x:map(erf   , r_)
 MR.erfc  = \x,r_ -> x:map(erfc  , r_)
 MR.erfi  = \x,r_ -> x:map(erfi  , r_)
 MR.erfcx = \x,r_ -> x:map(erfcx , r_)
+MR.dawson= \x,r_ -> x:map(dawson, r_)
 
+MR.conj  = \x,r_ -> x:map(conj , r_)
+MR.cabs  = \x,r_ -> x:map(cabs , r_)
+MR.carg  = \x,r_ -> x:map(carg , r_)
 MR.proj  = \x,r_ -> x:map(proj , r_)
+MR.rect  = \x,r_ -> x:map(rect , r_)
+MR.polar = \x,r_ -> x:map(polar, r_)
 
-MC.conj  = \x,r_ -> x:map(conj , r_)
-MC.cabs  = \x,r_ -> x:map(cabs , r_)
-MC.carg  = \x,r_ -> x:map(carg , r_)
-MC.rect  = \x,r_ -> x:map(rect , r_)
-MC.polar = \x,r_ -> x:map(polar, r_)
+MR.atan2 = \x,y,r_   -> x:map2(y,    atan2 , r_)
+MR.hypot = \x,y,r_   -> x:map2(y,    hypot , r_)
+MR.hypot3= \x,y,z,r_ -> x:map3(y, z, hypot3, r_)
 
-MI.abs   = \x,r_ -> x:map(abs  , r_)
-
-MR.conj  = \ error("invalid argument #1 (cmatrix expected)")
-MR.cabs  = \ error("invalid argument #1 (cmatrix expected)")
-MR.carg  = \ error("invalid argument #1 (cmatrix expected)")
-MR.rect  = \ error("invalid argument #1 (cmatrix expected)")
-MR.polar = \ error("invalid argument #1 (cmatrix expected)")
+MI.abs   = \x,r_ -> x:map(abs, r_)
+MI.sqr   = \x,r_ -> x:map(sqr, r_)
 
 -- special folds --------------------------------------------------------------o
 
@@ -1184,7 +1204,7 @@ MR.raccmaxabs = \x,d_,r_ -> x:scanr(compose(maxabsl,swap), 0  , d_, r_)
 
 -- special filters ------------------------------------------------------------o
 
-MR.filter_out = \x,p,r_ -> x:filter(compose(lnot,p), r_)
+MR.filter_out = \x,ij_,p,r_ -> x:filter(ij_,compose(lnot,p), r_)
 
 MI.filter_out = MR.filter_out
 
@@ -2556,9 +2576,9 @@ MR.__len = size
 MI.__len = size
 
 function MR.__concat (x, y, d_, r_)
-  assert(isa_matrix(x) or is_imatrix(x), "invalid argument #1 (matrix expected)")
-  assert(isa_matrix(y) or is_imatrix(y), "invalid argument #2 (matrix expected)")
-  if (isa_matrix(d_) or is_imatrix(d_)) and is_nil(r_) then r_, d_ = d_, nil end
+  assert(isy_matrix(x), "invalid argument #1 (matrix expected)")
+  assert(isy_matrix(y), "invalid argument #2 (matrix expected)")
+  if isy_matrix(d_) and is_nil(r_) then r_, d_ = d_, nil end
   local nrx, ncx = x:sizes()
   local nry, ncy = y:sizes()
   local d = d_ or 'row'
@@ -2823,11 +2843,13 @@ MAD.typeid.is_vector  = is_vector
 MAD.typeid.is_cvector = is_cvector
 MAD.typeid.is_ivector = is_ivector
 MAD.typeid.isa_vector = isa_vector
+MAD.typeid.isy_vector = isy_vector
 
 MAD.typeid.is_matrix  = is_matrix
 MAD.typeid.is_cmatrix = is_cmatrix
 MAD.typeid.is_imatrix = is_imatrix
 MAD.typeid.isa_matrix = isa_matrix
+MAD.typeid.isy_matrix = isy_matrix
 
 -- metatables -----------------------------------------------------------------o
 
