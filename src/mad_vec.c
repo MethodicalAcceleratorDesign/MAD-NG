@@ -97,7 +97,8 @@ num_t mad_vec_mean (const num_t x[], ssz_t n, ssz_t d)
 { return mad_vec_sum(x,n,d)/(n/d); }
 
 num_t mad_vec_var (const num_t x[], ssz_t n, ssz_t d)
-{ num_t m = mad_vec_mean(x,n,d);
+{ if (n/d == 1) return 0;
+  num_t m = mad_vec_mean(x,n,d);
   num_t s=0, s2=0; for (idx_t i=0; i < n; i+=d) s += x[i]-m, s2 += SQR(x[i]-m);
   return (s2 - SQR(s)/(n/d))/(n/d-1); // Bessel's correction on centered values.
 }
@@ -371,7 +372,8 @@ void mad_cvec_mean_r (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
 { CHKXR; *r = mad_cvec_mean(x,n,d); }
 
 cnum_t mad_cvec_var (const cnum_t x[], ssz_t n, ssz_t d)
-{ cnum_t m = mad_cvec_mean(x,n,d);
+{ if (n/d == 1) return 0;
+  cnum_t m = mad_cvec_mean(x,n,d);
   cnum_t s=0, s2=0; for (idx_t i=0; i < n; i+=d) s += x[i]-m, s2 += SQR(x[i]-m);
   return s2 - SQR(s)/(n/d); // corrected estimator
 }
