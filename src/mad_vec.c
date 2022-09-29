@@ -242,10 +242,6 @@ num_t mad_vec_kdot (const num_t x[], const num_t y[], ssz_t n, ssz_t d)
   return s + c;
 }
 
-num_t mad_vec_knorm (const num_t x[], ssz_t n, ssz_t d)
-{ CHKX; CHKD;
-  return sqrt( mad_vec_kdot(x,x,n,d) );
-}
 #pragma GCC pop_options
 
 void mad_vec_shift (num_t x[], ssz_t n, ssz_t d, int nshft)
@@ -401,15 +397,15 @@ void mad_cvec_dotv_r (const cnum_t x[], const num_t y[], cnum_t *r, ssz_t n, ssz
 { CHKR; *r = mad_cvec_dotv(x,y,n,d); }
 
 num_t mad_cvec_norm (const cnum_t x[], ssz_t n, ssz_t d)
-{ return sqrt(mad_cvec_dot(x,x,n,d)); }
+{ return sqrt(creal(mad_cvec_dot(x,x,n,d))); }
 
 num_t mad_cvec_dist (const cnum_t x[], const cnum_t y[], ssz_t n, ssz_t d)
-{ CHKXY; CHKD; num_t r=0; for (idx_t i=0; i < n; i+=d) r += conj(x[i]-y[i])*(x[i]-y[i]);
+{ CHKXY; CHKD; num_t r=0; for (idx_t i=0; i < n; i+=d) r += creal(conj(x[i]-y[i])*(x[i]-y[i]));
   return sqrt(r);
 }
 
 num_t mad_cvec_distv (const cnum_t x[], const num_t y[], ssz_t n, ssz_t d)
-{ CHKXY; CHKD; num_t r=0; for (idx_t i=0; i < n; i+=d) r += conj(x[i]-y[i])*(x[i]-y[i]);
+{ CHKXY; CHKD; num_t r=0; for (idx_t i=0; i < n; i+=d) r += creal(conj(x[i]-y[i])*(x[i]-y[i]));
   return sqrt(r);
 }
 
