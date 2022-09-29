@@ -312,9 +312,9 @@ Filling/Moving
 
    Return the real, complex or integer matrix :var:`mat` filled with the value of :var:`v` on the diagonal and zeros elsewhere. Default: :expr:`v_ = 1`.
 
-.. function:: mat:seq (v0_)
+.. function:: mat:seq (v0_, d_)
 
-   Return the real, complex or integer matrix :var:`mat` filled with the indexes of the elements (i.e. starting at 1) and shifted by the value of :var:`v`. Default: :expr:`v_ = 0`.
+   Return the real, complex or integer matrix :var:`mat` filled with the indexes of the elements (i.e. starting at 1) and shifted by the value of :var:`v`. The matrix is filled in the column-major direction for :expr:`d == 'col'` and in the row-major direction otherwise. Default: :expr:`v_ = 0`, :expr:`d_ = 'row'`.
 
 .. function:: mat:random (f_, ...)
 
@@ -365,6 +365,8 @@ Filling/Moving
 Mapping/Folding
 ---------------
 
+   This section lists the high-order functions `map <https://en.wikipedia.org/wiki/Map_(higher-order_function)>`_, `fold <https://en.wikipedia.org/wiki/Fold_(higher-order_function)>`_ and their variants useful in `functional programming <https://en.wikipedia.org/wiki/Functional_programming>`_ [#f1]_, followed by sections that list their direct application.
+
 .. function:: mat:foreach ([ij_,] f, r_)
 
    Return the real, complex or integer matrix :var:`mat` after applying the :type:`callable` (or the operator string) :var:`f` to the elements at the indexes given by the :type:`iterable` :var:`ij` using :expr:`f(mat[n], n)`, i.e. interpreting the matrix as a vector. If :var:`r` is provided then it is filled with the values returned by :var:`f`. If :expr:`r = 'in'` then it is assigned :var:`mat`. Default: :expr:`ij_ = 1..#mat`.
@@ -372,6 +374,10 @@ Mapping/Folding
 .. function:: mat:filter ([ij_,] p, r_)
 
    Return a matrix or :var:`r` filled with the values of the elements of the real, complex or integer matrix :var:`mat` at the indexes given by the :type:`iterable` :var:`ij` if selected by the :type:`callable` predicate :var:`p` using :expr:`p(mat[n], n) == true`, i.e. interpreting the matrix as a vector. This method also returns a :type:`ivector` or a :type:`table` containing the indexes of the elements selected by the :type:`callable` predicate :var:`p`. If :expr:`r = 'in'` then it is assigned :var:`mat`. Default: :expr:`ij_ = 1..#mat`.
+
+.. function:: mat:filter_out ([ij_,] p, r_)
+
+   Equivalent to :expr:`map:filter(ij_, compose(lnot,p), r_)`, where the functions :func:`compose()` and :func:`lnot()` are provided by the module :mod:`MAD.gfunc`.
 
 .. function:: mat:map ([ij_,] f, r_)
 
@@ -421,100 +427,182 @@ Mapping/Folding
 
    Same as :func:`mat:scanl()` but the :type:`callable` (or the operator string) :var:`f` is applied iteratively using the folding right (backward with decreasing indexes) expression :expr:`v = f(mat[n], v)`. Default: :expr:`x0 = mat[#mat]` (or last row or column element), :expr:`d = 'vec'`.
 
-Real-like Methods
------------------
+Real-like Mapping Methods
+-------------------------
 
 The following table lists the methods built from the application of :func:`mat:map()` and variants to the functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`. Only the mehods :func:`mat:abs()` and :func:`mat:sqr()` are available for :type:`imatrix`.
 
 ==========================  ===============================
 Functions                   Equivalent Mapping
 ==========================  ===============================
-:func:`mat:abs(r_)`         :expr:`mat:map(abs, r_)`
-:func:`mat:acos(r_)`        :expr:`mat:map(acos, r_)`
-:func:`mat:acosh(r_)`       :expr:`mat:map(acosh, r_)`
-:func:`mat:acot(r_)`        :expr:`mat:map(acot, r_)`
-:func:`mat:acoth(r_)`       :expr:`mat:map(acoth, r_)`
-:func:`mat:asin(r_)`        :expr:`mat:map(asin, r_)`
-:func:`mat:asinh(r_)`       :expr:`mat:map(asinh, r_)`
-:func:`mat:asinc(r_)`       :expr:`mat:map(asinc, r_)`
-:func:`mat:asinhc(r_)`      :expr:`mat:map(asinhc, r_)`
-:func:`mat:atan(r_)`        :expr:`mat:map(atan, r_)`
-:func:`mat:atan2(y,r_)`     :expr:`mat:map2(y, atan2, r_)`
-:func:`mat:atanh(r_)`       :expr:`mat:map(atanh, r_)`
-:func:`mat:ceil(r_)`        :expr:`mat:map(ceil, r_)`
-:func:`mat:cos(r_)`         :expr:`mat:map(cos, r_)`
-:func:`mat:cosh(r_)`        :expr:`mat:map(cosh, r_)`
-:func:`mat:cot(r_)`         :expr:`mat:map(cot, r_)`
-:func:`mat:coth(r_)`        :expr:`mat:map(coth, r_)`
-:func:`mat:exp(r_)`         :expr:`mat:map(exp, r_)`
-:func:`mat:floor(r_)`       :expr:`mat:map(floor, r_)`
-:func:`mat:frac(r_)`        :expr:`mat:map(frac, r_)`
-:func:`mat:hypot(y,r_)`     :expr:`mat:map2(y, hypot, r_)`
-:func:`mat:hypot3(y,z,r_)`  :expr:`mat:map3(y, z, hypot3, r_)`
-:func:`mat:log(r_)`         :expr:`mat:map(log, r_)`
-:func:`mat:log10(r_)`       :expr:`mat:map(log10, r_)`
-:func:`mat:round(r_)`       :expr:`mat:map(round, r_)`
-:func:`mat:sign(r_)`        :expr:`mat:map(sign, r_)`
-:func:`mat:sign1(r_)`       :expr:`mat:map(sign1, r_)`
-:func:`mat:sin(r_)`         :expr:`mat:map(sin, r_)`
-:func:`mat:sinc(r_)`        :expr:`mat:map(sinc, r_)`
-:func:`mat:sinh(r_)`        :expr:`mat:map(sinh, r_)`
-:func:`mat:sinhc(r_)`       :expr:`mat:map(sinhc, r_)`
-:func:`mat:sqr(r_)`         :expr:`mat:map(sqr, r_)`
-:func:`mat:sqrt(r_)`        :expr:`mat:map(sqrt, r_)`
-:func:`mat:tan(r_)`         :expr:`mat:map(tan, r_)`
-:func:`mat:tanh(r_)`        :expr:`mat:map(tanh, r_)`
-:func:`mat:trunc(r_)`       :expr:`mat:map(trunc, r_)`
+:func:`mat:abs(r_)`         :expr:`mat:map(abs,r_)`
+:func:`mat:acos(r_)`        :expr:`mat:map(acos,r_)`
+:func:`mat:acosh(r_)`       :expr:`mat:map(acosh,r_)`
+:func:`mat:acot(r_)`        :expr:`mat:map(acot,r_)`
+:func:`mat:acoth(r_)`       :expr:`mat:map(acoth,r_)`
+:func:`mat:asin(r_)`        :expr:`mat:map(asin,r_)`
+:func:`mat:asinh(r_)`       :expr:`mat:map(asinh,r_)`
+:func:`mat:asinc(r_)`       :expr:`mat:map(asinc,r_)`
+:func:`mat:asinhc(r_)`      :expr:`mat:map(asinhc,r_)`
+:func:`mat:atan(r_)`        :expr:`mat:map(atan,r_)`
+:func:`mat:atan2(y,r_)`     :expr:`mat:map2(y,atan2,r_)`
+:func:`mat:atanh(r_)`       :expr:`mat:map(atanh,r_)`
+:func:`mat:ceil(r_)`        :expr:`mat:map(ceil,r_)`
+:func:`mat:cos(r_)`         :expr:`mat:map(cos,r_)`
+:func:`mat:cosh(r_)`        :expr:`mat:map(cosh,r_)`
+:func:`mat:cot(r_)`         :expr:`mat:map(cot,r_)`
+:func:`mat:coth(r_)`        :expr:`mat:map(coth,r_)`
+:func:`mat:exp(r_)`         :expr:`mat:map(exp,r_)`
+:func:`mat:floor(r_)`       :expr:`mat:map(floor,r_)`
+:func:`mat:frac(r_)`        :expr:`mat:map(frac,r_)`
+:func:`mat:hypot(y,r_)`     :expr:`mat:map2(y,hypot,r_)`
+:func:`mat:hypot3(y,z,r_)`  :expr:`mat:map3(y,z,hypot3,r_)`
+:func:`mat:log(r_)`         :expr:`mat:map(log,r_)`
+:func:`mat:log10(r_)`       :expr:`mat:map(log10,r_)`
+:func:`mat:round(r_)`       :expr:`mat:map(round,r_)`
+:func:`mat:sign(r_)`        :expr:`mat:map(sign,r_)`
+:func:`mat:sign1(r_)`       :expr:`mat:map(sign1,r_)`
+:func:`mat:sin(r_)`         :expr:`mat:map(sin,r_)`
+:func:`mat:sinc(r_)`        :expr:`mat:map(sinc,r_)`
+:func:`mat:sinh(r_)`        :expr:`mat:map(sinh,r_)`
+:func:`mat:sinhc(r_)`       :expr:`mat:map(sinhc,r_)`
+:func:`mat:sqr(r_)`         :expr:`mat:map(sqr,r_)`
+:func:`mat:sqrt(r_)`        :expr:`mat:map(sqrt,r_)`
+:func:`mat:tan(r_)`         :expr:`mat:map(tan,r_)`
+:func:`mat:tanh(r_)`        :expr:`mat:map(tanh,r_)`
+:func:`mat:trunc(r_)`       :expr:`mat:map(trunc,r_)`
 ==========================  ===============================
 
-Complex-like Methods
---------------------
+Complex-like Mapping Methods
+----------------------------
 
 The following table lists the methods built from the application of :func:`mat:map()` to the functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`.
 
 ==========================  ===============================
 Functions                   Equivalent Mapping
 ==========================  ===============================
-:func:`mat:cabs(r_)`        :expr:`mat:map(cabs, r_)`
-:func:`mat:carg(r_)`        :expr:`mat:map(carg, r_)`
-:func:`mat:conj(r_)`        :expr:`mat:map(conj, r_)`
-:func:`mat:imag(r_)`        :expr:`mat:map(imag, r_)`
-:func:`mat:polar(r_)`       :expr:`mat:map(polar, r_)`
-:func:`mat:proj(r_)`        :expr:`mat:map(proj, r_)`
-:func:`mat:real(r_)`        :expr:`mat:map(real, r_)`
-:func:`mat:rect(r_)`        :expr:`mat:map(rect, r_)`
+:func:`mat:cabs(r_)`        :expr:`mat:map(cabs,r_)`
+:func:`mat:carg(r_)`        :expr:`mat:map(carg,r_)`
+:func:`mat:conj(r_)`        :expr:`mat:map(conj,r_)`
+:func:`mat:cplx(y,r_)`      :expr:`mat:map2(y,cplx,r_)`
+:func:`mat:imag(r_)`        :expr:`mat:map(imag,r_)`
+:func:`mat:polar(r_)`       :expr:`mat:map(polar,r_)`
+:func:`mat:proj(r_)`        :expr:`mat:map(proj,r_)`
+:func:`mat:real(r_)`        :expr:`mat:map(real,r_)`
+:func:`mat:rect(r_)`        :expr:`mat:map(rect,r_)`
 ==========================  ===============================
 
-Error-like Methods
-------------------
+Error-like Mapping Methods
+--------------------------
 
 The following table lists the methods built from the application of :func:`mat:map()` to the functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`.
 
 ==========================  ===============================
 Functions                   Equivalent Mapping
 ==========================  ===============================
-:func:`mat:erf(r_)`         :expr:`mat:map(erf, r_)`
-:func:`mat:erfc(r_)`        :expr:`mat:map(erfc, r_)`
-:func:`mat:erfcx(r_)`       :expr:`mat:map(erfcx, r_)`
-:func:`mat:erfi(r_)`        :expr:`mat:map(erfi, r_)`
-:func:`mat:wf(r_)`          :expr:`mat:map(wf, r_)`
+:func:`mat:erf(r_)`         :expr:`mat:map(erf,r_)`
+:func:`mat:erfc(r_)`        :expr:`mat:map(erfc,r_)`
+:func:`mat:erfcx(r_)`       :expr:`mat:map(erfcx,r_)`
+:func:`mat:erfi(r_)`        :expr:`mat:map(erfi,r_)`
+:func:`mat:wf(r_)`          :expr:`mat:map(wf,r_)`
 ==========================  ===============================
 
-Fold-like Methods
------------------
+Folding Methods
+---------------
 
-Scan-like Methods
------------------
+The following table lists the methods built from the application of :func:`mat:foldl()` to the functions from the module :mod:`MAD.gmath` for :type:`matrix`, :type:`cmatrix`, and :type:`imatrix`.
+
+==========================  ===============================
+Functions                   Equivalent Folding
+==========================  ===============================
+:func:`mat:all(p,d_,r_)`    :expr:`mat:foldl(all(p),false,d_,r_)`
+:func:`mat:any(p,d_,r_)`    :expr:`mat:foldl(any(p),true,d_,r_)`
+:func:`mat:min(d_,r_)`      :expr:`mat:foldl(min,nil,d_,r_)`
+:func:`mat:max(d_,r_)`      :expr:`mat:foldl(max,nil,d_,r_)`
+:func:`mat:sum(d_,r_)`      :expr:`mat:foldl(add,nil,d_,r_)`
+:func:`mat:prod(d_,r_)`     :expr:`mat:foldl(mul,nil,d_,r_)`
+:func:`mat:sumsqr(d_,r_)`   :expr:`mat:foldl(sumsqrl,0,d_,r_)`
+:func:`mat:sumabs(d_,r_)`   :expr:`mat:foldl(sumabsl,0,d_,r_)`
+:func:`mat:minabs(d_,r_)`   :expr:`mat:foldl(minabsl,inf,d_,r_)`
+:func:`mat:maxabs(d_,r_)`   :expr:`mat:foldl(maxabsl,0,d_,r_)`
+==========================  ===============================
+
+Where :func:`any()` and :func:`all()` are functions that bind the predicate :var:`p` to the propagation of the logical AND and the logical OR, that can be implemented for example like:
+
+   - :expr:`all = \p -> \r,x -> lbool(land(r, p(x)))`
+   - :expr:`any = \p -> \r,x -> lbool(lor (r, p(x)))`
+
+Scanning Methods
+----------------
+
+The following table lists the methods built from the application of :func:`mat:scanl()` and :func:`mat:scanr()` to the functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`.
+
+=============================  ===============================
+Functions                      Equivalent Scanning
+=============================  ===============================
+:func:`mat:accmin(d_,r_)`      :expr:`mat:scanl(min,nil,d_,r_)`
+:func:`mat:accmax(d_,r_)`      :expr:`mat:scanl(max,nil,d_,r_)`
+:func:`mat:accsum(d_,r_)`      :expr:`mat:scanl(add,nil,d_,r_)`
+:func:`mat:accprod(d_,r_)`     :expr:`mat:scanl(mul,nil,d_,r_)`
+:func:`mat:accsumsqr(d_,r_)`   :expr:`mat:scanl(sumsqrl,0,d_,r_)`
+:func:`mat:accsumabs(d_,r_)`   :expr:`mat:scanl(sumabsl,0,d_,r_)`
+:func:`mat:accminabs(d_,r_)`   :expr:`mat:scanl(minabsl,inf,d_,r_)`
+:func:`mat:accmaxabs(d_,r_)`   :expr:`mat:scanl(maxabsl,0,d_,r_)`
+:func:`mat:raccmin(d_,r_)`     :expr:`mat:scanr(min,nil,d_,r_)`
+:func:`mat:raccmax(d_,r_)`     :expr:`mat:scanr(max,nil,d_,r_)`
+:func:`mat:raccsum(d_,r_)`     :expr:`mat:scanr(add,nil,d_,r_)`
+:func:`mat:raccprod(d_,r_)`    :expr:`mat:scanr(mul,nil,d_,r_)`
+:func:`mat:raccsumsqr(d_,r_)`  :expr:`mat:scanr(sumsqrr,0,d_,r_)`
+:func:`mat:raccsumabs(d_,r_)`  :expr:`mat:scanr(sumabsr,0,d_,r_)`
+:func:`mat:raccminabs(d_,r_)`  :expr:`mat:scanr(minabsr,inf,d_,r_)`
+:func:`mat:raccmaxabs(d_,r_)`  :expr:`mat:scanr(maxabsr,0,d_,r_)`
+=============================  ===============================
+
+The method :func:`mat:accumulate()` is also available as a more common name (i.e. an alias) for :func:`mat:accsum()`.
 
 Conversions
 -----------
 
 .. function:: mat:totable (v_, r_)
 
+   TODO
+
 .. function:: mat:tostring (sep_, lsep_)
+
+   TODO
 
 Operator-like Methods
 ---------------------
+
+.. function:: mat:unm (r_)
+
+.. function:: mat:eq (a, r_)
+
+.. function:: mat:inv (r_)
+
+.. function:: mat:add (a, r_)
+
+.. function:: mat:sub (a, r_)
+
+.. function:: mat:mul (a, r_)
+
+.. function:: mat:div (a, r_)
+
+.. function:: mat:mod (n, r_)
+
+.. function:: mat:pow (n, r_)
+
+.. function:: mat:emul (a, r_)
+
+.. function:: mat:ediv (a, r_)
+
+.. function:: mat:emod (a, r_)
+
+.. function:: mat:epow (a, r_)
+
+.. function:: mat:tmul (mat2, r_)
+
+.. function:: mat:mult (mat2, r_)
 
 .. function:: mat:concat (mat2, dir_, r_)
 
@@ -525,6 +613,157 @@ Operator-like Methods
    - vector-oriented (appended) for :expr:`dir = 'vec'`
    
    The type of the returned matrix is given by the type promotion between :var:`mat` and the first element of :var:`mat2` except for :type:`imatrix`. Default: :var:`dir_ = 'row'`.
+
+Special Methods
+---------------
+
+.. function:: mat:transpose (r_)
+
+.. function:: mat:conjugate (r_)
+
+.. function:: mat:sympconj (r_)
+
+.. function:: mat:symperr (r_)
+
+.. function:: mat:trace ()
+
+.. function:: mat:inner (y, r_)
+
+.. function:: mat:outer (y, r_)
+
+.. function:: mat:cross (y, r_)
+
+.. function:: mat:mixed (y, z, r_)
+
+.. function:: mat:dot (y, r_)
+
+.. function:: mat:norm ()
+
+.. function:: mat:distance (y)
+
+.. function:: mat:unit (r_)
+
+.. function:: mat:center (d_, r_)
+
+.. function:: mat:angle (y, n_)
+
+.. function:: mat:minmax (abs_)
+
+.. function:: mat:iminmax (abs_)
+
+.. function:: mat:mean ()
+
+.. function:: mat:variance ()
+
+.. function:: mat:ksum ()
+
+.. function:: mat:kdot (y)
+
+.. function:: mat:kadd (a, x)
+
+.. function:: mat:eval (x0)
+
+Solvers/Decompositions
+----------------------
+
+.. function:: mat:solve (b, rcond_)
+
+.. function:: mat:ssolve (b, rcond_)
+
+.. function:: mat:gsolve (b, c, d)
+
+.. function:: mat:gmsolve (b, d)
+
+.. function:: mat:nsolve (b, tol_, n_)
+
+.. function:: mat:pcacnd (n_, rcond_)
+
+.. function:: mat:svdcnd (n_, rcond_, tol_)
+
+.. function:: mat:svd ()
+
+.. function:: mat:det ()
+
+.. function:: mat:eigen ()
+
+FFT/Convolutions
+----------------
+
+.. function:: mat:fft (r_)
+
+.. function:: mat:ifft (r_)
+
+.. function:: mat:rfft (r_)
+
+.. function:: mat:irfft (r_)
+
+.. function:: mat:nfft (p_, r_)
+
+.. function:: mat:infft (p_, r_)
+
+.. function:: mat:conv (y, r_)
+
+.. function:: mat:corr (y, r_)
+
+.. function:: mat:covar (y, d_, r_)
+
+Rotations
+---------
+
+This section describe methods dealing with 2D and 3D rotations (see `Rotation Matrix <https://en.wikipedia.org/wiki/Rotation_matrix>`_) with angles in radians and trigonometric (counter-clockwise) direction for a right-handed frame, and where the following convention hold: :expr:`ax = -phi` is the *elevation* angle, :expr:`ay =  theta` is the *azimuthal* angle and :expr:`az =  psi` is the *roll/tilt* angle.
+
+.. function:: mat:rot (a)
+
+   Return the real :type:`matrix` :var:`mat` :math:`[2\times 2]` filled with a 2D rotation of angle :var:`a`.
+
+.. function:: mat:rotx (a)
+              mat:roty (a)
+              mat:rotz (a)
+
+   Return the real :type:`matrix` :var:`mat` :math:`[3\times 3]` filled with a 3D rotation of angle :var:`a` around the x-axis, y-axis and z-axis respectively.
+
+.. function:: mat:rotxy (ax, ay, inv_)
+              mat:rotxz (ax, az, inv_)
+              mat:rotyx (ay, ax, inv_)
+              mat:rotyz (ay, az, inv_)
+              mat:rotzx (az, ax, inv_)
+              mat:rotzy (az, ay, inv_)
+
+   Return the real :type:`matrix` :var:`mat` :math:`[3\times 3]` filled with a 3D rotation of the first angle argument :var:`ax`, :var:`ay` or :var:`az` around the x-axis, y-axis or z-axis respectively *followed* by another 3D rotation of the second angle argument :var:`ax`, :var:`ay` or :var:`az` around the x-axis, y-axis or z-axis respectively of the frame rotated by the first rotation. If :var:`inv` is true, the returned matrix is the inverse rotation, i.e. the transposed matrix.
+
+.. function:: mat:rotxyz (ax, ay, az, inv_)
+              mat:rotxzy (ax, az, ay, inv_)
+              mat:rotyxz (ay, ax, az, inv_)
+              mat:rotyzx (ay, az, ax, inv_)
+              mat:rotzxy (az, ax, ay, inv_)
+              mat:rotzyx (az, ay, ax, inv_)
+
+   Return the real :type:`matrix` :var:`mat` :math:`[3\times 3]` filled with a 3D rotation of the first angle argument :var:`ax`, :var:`ay` or :var:`az` around the x-axis, y-axis or z-axis respectively *followed* by another 3D rotation of the second angle argument :var:`ax`, :var:`ay` or :var:`az` around the x-axis, y-axis or z-axis respectively of the frame rotated by the first rotation, and *followed* by a last 3D rotation of the third angle argument :var:`ax`, :var:`ay` or :var:`az` around the x-axis, y-axis or z-axis respectively of the frame already rotated by the two first rotations. If :var:`inv` is true, the returned matrix is the inverse rotations, i.e. the transposed matrix.
+
+.. function:: mat:torotxyz (inv_)
+              mat:torotxzy (inv_)
+              mat:torotyxz (inv_)
+              mat:torotyzx (inv_)
+              mat:torotzxy (inv_)
+              mat:torotzyx (inv_)
+
+   Return three real :type:`number` representing the three angles :var:`ax`, :var:`ay` and :var:`az` (always in this order) of the 3D rotations stored in the real :type:`matrix` :var:`mat` :math:`[3\times 3]` by the methods with corresponding names. If :var:`inv` is true, the inverse rotations are returned, i.e. extracted from the transposed matrix.
+
+.. function:: mat:rotv (v, av, inv_)
+
+   Return the real :type:`matrix` :var:`mat` :math:`[3\times 3]` filled with a 3D rotation of angle :var:`av` around the axis defined by the 3D vector-like :var:`v` (see `Axis-Angle representation <https://en.wikipedia.org/wiki/Axis–angle_representation>`_). If :var:`inv` is true, the returned matrix is the inverse rotation, i.e. the transposed matrix.
+
+.. function:: mat:torotv (v_, inv_)
+
+   Return a real :type:`number` representing the angle of the 3D rotation around the axis defined by a 3D vector as stored in the real :type:`matrix` :var:`mat` :math:`[3\times 3]` by the method :func:`mat:rotv()`. If the :type:`iterable`` :var:`v` is provided, it is filled with the components of the unit vector that defines the axis of the rotation.  If :var:`inv` is true, the inverse rotation is returned, i.e. extracted from the transposed matrix.
+
+.. function:: mat:rotq (q, inv_)
+
+   Return the real :type:`matrix` :var:`mat` :math:`[3\times 3]` filled with a 3D rotation defined by the quaternion :var:`q` (see `Axis-Angle representation <https://en.wikipedia.org/wiki/Axis–angle_representation>`_). If :var:`inv` is true, the returned matrix is the inverse rotation, i.e. the transposed matrix.
+
+.. function:: mat:torotq (q_, inv_)
+
+   Return a quaternion representing the 3D rotation as stored in the real :type:`matrix` :var:`mat` :math:`[3\times 3]` by the method :func:`mat:rotq()`. If the :type:`iterable`` :var:`q` is provided, it is filled with the components of the quaternion otherwise the quaternion is returned in a :type:`list` of length 4.  If :var:`inv` is true, the inverse rotation is returned, i.e. extracted from the transposed matrix.
 
 Input/Output
 ------------
@@ -540,64 +779,6 @@ Input/Output
 .. function:: mat:read (filename_)
 
    Return the real, complex or integer matrix read from the file :var:`filename` opened with :func:`MAD.utility.openfile()`. Note that the matrix :var:`mat` is only used to call the method :func:`:read()` and has no impact on the type and sizes of the returned matrix fully characterized by the content of the file. Default: :expr:`filename_ = io.stdin`.
-
-Rotations
----------
-
-This section describe methods dealing with 2D and 3D rotations (see `Rotation Matrix <https://en.wikipedia.org/wiki/Rotation_matrix>`_) with angles in radians and trigonometric (counter-clockwise) direction for a right-handed frame, and where the following convention hold: :expr:`ax = -phi` is the *elevation* angle, :expr:`ay =  theta` is the *azimuthal* angle and :expr:`az =  psi` is the *roll/tilt* angle.
-
-.. function:: mat:rot(a)
-
-   Return the real :type:`matrix` :var:`mat` :math:`[2\times 2]` filled with a 2D rotation of angle :var:`a`.
-
-.. function:: mat:rotx(a)
-              mat:roty(a)
-              mat:rotz(a)
-
-   Return the real :type:`matrix` :var:`mat` :math:`[3\times 3]` filled with a 3D rotation of angle :var:`a` around the x-axis, y-axis and z-axis respectively.
-
-.. function:: mat:rotxy(ax, ay, inv_)
-              mat:rotxz(ax, az, inv_)
-              mat:rotyx(ay, ax, inv_)
-              mat:rotyz(ay, az, inv_)
-              mat:rotzx(az, ax, inv_)
-              mat:rotzy(az, ay, inv_)
-
-   Return the real :type:`matrix` :var:`mat` :math:`[3\times 3]` filled with a 3D rotation of the first angle argument :var:`ax`, :var:`ay` or :var:`az` around the x-axis, y-axis or z-axis respectively *followed* by another 3D rotation of the second angle argument :var:`ax`, :var:`ay` or :var:`az` around the x-axis, y-axis or z-axis respectively of the frame rotated by the first rotation. If :var:`inv` is true, the returned matrix is the inverse rotation, i.e. the transposed matrix.
-
-.. function:: mat:rotxyz(ax, ay, az, inv_)
-              mat:rotxzy(ax, az, ay, inv_)
-              mat:rotyxz(ay, ax, az, inv_)
-              mat:rotyzx(ay, az, ax, inv_)
-              mat:rotzxy(az, ax, ay, inv_)
-              mat:rotzyx(az, ay, ax, inv_)
-
-   Return the real :type:`matrix` :var:`mat` :math:`[3\times 3]` filled with a 3D rotation of the first angle argument :var:`ax`, :var:`ay` or :var:`az` around the x-axis, y-axis or z-axis respectively *followed* by another 3D rotation of the second angle argument :var:`ax`, :var:`ay` or :var:`az` around the x-axis, y-axis or z-axis respectively of the frame rotated by the first rotation, and *followed* by a last 3D rotation of the third angle argument :var:`ax`, :var:`ay` or :var:`az` around the x-axis, y-axis or z-axis respectively of the frame already rotated by the two first rotations. If :var:`inv` is true, the returned matrix is the inverse rotations, i.e. the transposed matrix.
-
-.. function:: mat:torotxyz(inv_)
-              mat:torotxzy(inv_)
-              mat:torotyxz(inv_)
-              mat:torotyzx(inv_)
-              mat:torotzxy(inv_)
-              mat:torotzyx(inv_)
-
-   Return three real :type:`number` representing the three angles :var:`ax`, :var:`ay` and :var:`az` (always in this order) of the 3D rotations stored in the real :type:`matrix` :var:`mat` :math:`[3\times 3]` by the methods with corresponding names. If :var:`inv` is true, the inverse rotations are returned, i.e. extracted from the transposed matrix.
-
-.. function:: mat:rotv(v, av, inv_)
-
-   Return the real :type:`matrix` :var:`mat` :math:`[3\times 3]` filled with a 3D rotation of angle :var:`av` around the axis defined by the 3D vector-like :var:`v` (see `Axis-Angle representation <https://en.wikipedia.org/wiki/Axis–angle_representation>`_). If :var:`inv` is true, the returned matrix is the inverse rotation, i.e. the transposed matrix.
-
-.. function:: mat:torotv(v_, inv_)
-
-   Return a real :type:`number` representing the angle of the 3D rotation around the axis defined by a 3D vector as stored in the real :type:`matrix` :var:`mat` :math:`[3\times 3]` by the method :func:`mat:rotv()`. If the :type:`iterable`` :var:`v` is provided, it is filled with the components of the unit vector that defines the axis of the rotation.  If :var:`inv` is true, the inverse rotation is returned, i.e. extracted from the transposed matrix.
-
-.. function:: mat:rotq(q, inv_)
-
-   Return the real :type:`matrix` :var:`mat` :math:`[3\times 3]` filled with a 3D rotation defined by the quaternion :var:`q` (see `Axis-Angle representation <https://en.wikipedia.org/wiki/Axis–angle_representation>`_). If :var:`inv` is true, the returned matrix is the inverse rotation, i.e. the transposed matrix.
-
-.. function:: mat:torotq(q_, inv_)
-
-   Return a quaternion representing the 3D rotation as stored in the real :type:`matrix` :var:`mat` :math:`[3\times 3]` by the method :func:`mat:rotq()`. If the :type:`iterable`` :var:`q` is provided, it is filled with the components of the quaternion otherwise the quaternion is returned in a :type:`list` of length 4.  If :var:`inv` is true, the inverse rotation is returned, i.e. extracted from the transposed matrix.
 
 Operators
 =========
@@ -1234,3 +1415,11 @@ Miscellaneous
 
 .. c:function:: void   mad_fft_cleanup (void)
 
+.. ------------------------------------------------------------
+
+References
+==========
+
+.. rubric:: Footnotes
+
+.. [#f1] For *true* Functional Programming, see the module :mod:`MAD.lfun`, a binding of the `LuaFun <https://github.com/luafun/luafun>`_  library adapted to the ecosystem of MAD-NG.
