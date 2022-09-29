@@ -312,7 +312,7 @@ Filling/Moving
 
    Return the real, complex or integer matrix :var:`mat` filled with the value of :var:`v` on the diagonal and zeros elsewhere. Default: :expr:`v_ = 1`.
 
-.. function:: mat:seq (v0_, d_)
+.. function:: mat:seq (v_, d_)
 
    Return the real, complex or integer matrix :var:`mat` filled with the indexes of the elements (i.e. starting at 1) and shifted by the value of :var:`v`. The matrix is filled in the column-major direction for :expr:`d == 'col'` and in the row-major direction otherwise. Default: :expr:`v_ = 0`, :expr:`d_ = 'row'`.
 
