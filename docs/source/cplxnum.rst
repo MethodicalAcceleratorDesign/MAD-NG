@@ -112,7 +112,6 @@ Functions                      Return values                    C functions
 :func:`z:invsqrt(v_)` [#f3]_   :math:`\frac{v}{\sqrt z}`        :c:func:`mad_cnum_invsqrt_r` [#f1]_              
 :func:`z:log()`                :math:`\log z`                   :c:func:`mad_cnum_log_r`
 :func:`z:log10()`              :math:`\log_{10} z`              :c:func:`mad_cnum_log10_r`
-:func:`z:pow(z2)`              :math:`z^{z_2}`                  :c:func:`mad_cnum_pow_r`  
 :func:`z:powi(n)`              :math:`z^n`                      :c:func:`mad_cnum_powi_r`
 :func:`z:round()`              :math:`\operatorname{round}(z)`  
 :func:`z:sin()`                :math:`\sin z`                   :c:func:`mad_cnum_sin_r`   
