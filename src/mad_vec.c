@@ -97,7 +97,8 @@ num_t mad_vec_mean (const num_t x[], ssz_t n, ssz_t d)
 { return mad_vec_sum(x,n,d)/(n/d); }
 
 num_t mad_vec_var (const num_t x[], ssz_t n, ssz_t d)
-{ num_t m = mad_vec_mean(x,n,d);
+{ if (n/d == 1) return 0;
+  num_t m = mad_vec_mean(x,n,d);
   num_t s=0, s2=0; for (idx_t i=0; i < n; i+=d) s += x[i]-m, s2 += SQR(x[i]-m);
   return (s2 - SQR(s)/(n/d))/(n/d-1); // Bessel's correction on centered values.
 }
@@ -242,10 +243,6 @@ num_t mad_vec_kdot (const num_t x[], const num_t y[], ssz_t n, ssz_t d)
   return s + c;
 }
 
-num_t mad_vec_knorm (const num_t x[], ssz_t n, ssz_t d)
-{ CHKX; CHKD;
-  return sqrt( mad_vec_kdot(x,x,n,d) );
-}
 #pragma GCC pop_options
 
 void mad_vec_shift (num_t x[], ssz_t n, ssz_t d, int nshft)
@@ -375,7 +372,8 @@ void mad_cvec_mean_r (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
 { CHKXR; *r = mad_cvec_mean(x,n,d); }
 
 cnum_t mad_cvec_var (const cnum_t x[], ssz_t n, ssz_t d)
-{ cnum_t m = mad_cvec_mean(x,n,d);
+{ if (n/d == 1) return 0;
+  cnum_t m = mad_cvec_mean(x,n,d);
   cnum_t s=0, s2=0; for (idx_t i=0; i < n; i+=d) s += x[i]-m, s2 += SQR(x[i]-m);
   return s2 - SQR(s)/(n/d); // corrected estimator
 }
@@ -401,15 +399,15 @@ void mad_cvec_dotv_r (const cnum_t x[], const num_t y[], cnum_t *r, ssz_t n, ssz
 { CHKR; *r = mad_cvec_dotv(x,y,n,d); }
 
 num_t mad_cvec_norm (const cnum_t x[], ssz_t n, ssz_t d)
-{ return sqrt(mad_cvec_dot(x,x,n,d)); }
+{ return sqrt(creal(mad_cvec_dot(x,x,n,d))); }
 
 num_t mad_cvec_dist (const cnum_t x[], const cnum_t y[], ssz_t n, ssz_t d)
-{ CHKXY; CHKD; num_t r=0; for (idx_t i=0; i < n; i+=d) r += conj(x[i]-y[i])*(x[i]-y[i]);
+{ CHKXY; CHKD; num_t r=0; for (idx_t i=0; i < n; i+=d) r += creal(conj(x[i]-y[i])*(x[i]-y[i]));
   return sqrt(r);
 }
 
 num_t mad_cvec_distv (const cnum_t x[], const num_t y[], ssz_t n, ssz_t d)
-{ CHKXY; CHKD; num_t r=0; for (idx_t i=0; i < n; i+=d) r += conj(x[i]-y[i])*(x[i]-y[i]);
+{ CHKXY; CHKD; num_t r=0; for (idx_t i=0; i < n; i+=d) r += creal(conj(x[i]-y[i])*(x[i]-y[i]));
   return sqrt(r);
 }
 

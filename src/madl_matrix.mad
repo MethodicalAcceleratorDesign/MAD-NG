@@ -419,9 +419,16 @@ end
 
 MI.eye = MR.eye
 
-function MR.seq (x, e0_)
-  local e0, n = 1+(e0_ or 0), size(x)
-  for i=0,n-1 do seti0(x,i,e0+i) end
+function MR.seq (x, e0_, d_)
+  if is_string(e0_) and is_nil(d_) then d_, e0_ = e0_ end -- right shift
+  local e0 = e0_ or 0
+  if d_ == 'col' then
+    local k, nr, nc = 1, x:sizes()
+    for i=1,nr do
+    for j=1,nc do seti(x,k,e0+idx(j,i,nr)) ; k=k+1 end end
+  else
+    for i=1,size(x) do seti(x,i,e0+i) end
+  end
   return x
 end
 
@@ -736,7 +743,7 @@ function MR.getsub (x, ir_, jc_, r_)
   elseif is_nil(r_) then
     return x:getvec(ij, x:same(#ir,#jc))
   end
-  if not (is_nil(ir_) or is_nil(jc_) or (isy_matrix(r_) and r_.ncol > 1)) then
+  if not (not is_nil(ir_) or is_nil(jc_) or (isy_matrix(r_) and r_.ncol > 1)) then
     _C.mad_imat_trans(ij._dat, ij._dat, #ir, #jc)
   end
   return x:getvec(ij, r_)
@@ -1156,8 +1163,8 @@ MI.sqr   = \x,r_ -> x:map(sqr, r_)
 
 -- special folds --------------------------------------------------------------o
 
-local all = \p,r,x -> lbool(land(r, p(x)))
-local any = \p,r,x -> lbool(lor (r, p(x)))
+local all = \p -> \r,x -> lbool(land(r, p(x)))
+local any = \p -> \r,x -> lbool(lor (r, p(x)))
 
 MR.min     = \x,d_,r_ -> x:foldl(min    , nil, d_, r_)
 MR.max     = \x,d_,r_ -> x:foldl(max    , nil, d_, r_)
@@ -1170,13 +1177,16 @@ MR.maxabs  = \x,d_,r_ -> x:foldl(maxabsl, 0  , d_, r_)
 
 MR.all   = \x,p,d_,r_ =>
               assert(is_callable(p), "invalid argument #2 (callable expected)")
-              return x:foldl(bind1st(all, p), true , d_, r_) end
+              return x:foldl(all(p), true , d_, r_) end
 MR.any   = \x,p,d_,r_ =>
               assert(is_callable(p), "invalid argument #2 (callable expected)")
-              return x:foldl(bind1st(any, p), false, d_, r_) end
+              return x:foldl(any(p), false, d_, r_) end
 
-MI.min, MI.max, MI.minabs, MI.maxabs, MI.all, MI.any =
-MR.min, MR.max, MR.minabs, MR.maxabs, MR.all, MR.any
+MI.min, MI.max, MI.sum, MI.prod =
+MR.min, MR.max, MR.sum, MR.prod
+
+MI.sumsqr, MI.sumabs, MI.minabs, MI.maxabs, MI.all, MI.any =
+MR.sumsqr, MR.sumabs, MR.minabs, MR.maxabs, MR.all, MR.any
 
 -- special scans --------------------------------------------------------------o
 
@@ -1215,13 +1225,13 @@ function MR.minmax (x, abs_)
   return x._dat[ires[0]], x._dat[ires[1]]
 end
 
-function MC.minmax (x)
-  _C.mad_cvec_minmax(x._dat, ires, size(x), 1)
+function MI.minmax (x, abs_)
+  _C.mad_ivec_minmax(x._dat, abs_ or false, ires, size(x), 1)
   return x._dat[ires[0]], x._dat[ires[1]]
 end
 
-function MI.minmax (x)
-  _C.mad_ivec_minmax(x._dat, ires, size(x), 1)
+function MC.minmax (x)
+  _C.mad_cvec_minmax(x._dat, ires, size(x), 1)
   return x._dat[ires[0]], x._dat[ires[1]]
 end
 
@@ -1230,13 +1240,13 @@ function MR.iminmax (x, abs_)
   return ires[0]+1, ires[1]+1
 end
 
-function MC.iminmax (x)
-  _C.mad_cvec_minmax(x._dat, ires, size(x), 1)
+function MI.iminmax (x, abs_)
+  _C.mad_ivec_minmax(x._dat, abs_ or false, ires, size(x), 1)
   return ires[0]+1, ires[1]+1
 end
 
-function MI.iminmax (x, abs_)
-  _C.mad_ivec_minmax(x._dat, abs_ or false, ires, size(x), 1)
+function MC.iminmax (x)
+  _C.mad_cvec_minmax(x._dat, ires, size(x), 1)
   return ires[0]+1, ires[1]+1
 end
 
@@ -1265,17 +1275,12 @@ function MR.ksum (x) -- Neumaier variant
   return _C.mad_vec_ksum(x._dat, size(x), 1)
 end
 
-function MR.knorm (x) -- Neumaier variant
-  return _C.mad_vec_knorm(x._dat, size(x), 1)
-end
-
 function MR.kdot (x, y) -- Neumaier variant
   assert(size(x) == size(y), "incompatible matrix sizes")
   return _C.mad_vec_kdot(x._dat, y._dat, size(x), 1)
 end
 
 MC.ksum  = \ error("not supported")
-MC.knorm = \ error("not supported")
 MC.kdot  = \ error("not supported")
 
 function MR.eval (x, x0)
