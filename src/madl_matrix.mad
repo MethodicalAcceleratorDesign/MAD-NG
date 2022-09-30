@@ -36,7 +36,7 @@ local is_nil, is_boolean, is_number, is_integer, is_string,
       is_range, is_table, is_complex, is_scalar, is_callable,
       is_iterable, get_metamethod                                in MAD.typeid
 local ident, swap, compose, bind1st, opstr,
-      unm, add, mul, mod, pow, lbool, lnot, land, lor            in MAD.gfunc
+      unm, add, sub, mul, div, mod, pow, lbool, lnot, land, lor  in MAD.gfunc
 local cabs, carg, real, imag, conj, proj, rect, polar, ceil, floor,
       frac, trunc, round, abs, sqr, exp, log, log10, sqrt, sin, cos, tan, cot,
       sinh, cosh, tanh, coth, asin, acos, atan, acot, asinh, acosh, atanh,
@@ -1611,12 +1611,14 @@ end
 -- operators ------------------------------------------------------------------o
 
 MR.__unm  = \x,_,r_ -> x:map (   unm, r_) -- note: _ is dummy arg, see Lua specs.
-MR.__mod  = \x,y,r_ -> x:map2(y, mod, r_) -- for now
-MR.__emod = \x,y,r_ -> x:map2(y, mod, r_) -- incomplete
-MR.__epow = \x,y,r_ -> x:map2(y, pow, r_) -- incomplete
+MR.__mod  = \x,y,r_ -> x:map2(y, mod, r_)
+MR.__emul = \x,y,r_ -> x:map2(y, mul, r_)
+MR.__ediv = \x,y,r_ -> x:map2(y, div, r_)
+MR.__emod = \x,y,r_ -> x:map2(y, mod, r_)
+MR.__epow = \x,y,r_ -> x:map2(y, pow, r_)
 
-MI.__unm, MI.__mod, MI.__emod, MI.__epow =
-MR.__unm, MR.__mod, MR.__emod, MR.__epow
+MI.__unm, MI.__mod, MI.__emul, MI.__ediv, MI.__emod, MI.__epow =
+MR.__unm, MR.__mod, MR.__emul, MR.__ediv, MR.__emod, MR.__epow
 
 --[[ TODO
   mexp, mlog, msqrt, mpow using Padé approximants or eigen systems
@@ -1919,69 +1921,9 @@ function MI.__mul (x, y, r)
   end
 end
 
--- element wise mul (.*), also known as Hadamard product.
-
-function MR.__emul (x, y, r)
-  if is_number(x) then                           -- num .* mat => num * vec
-    r = chksiz(r,y) or matrix_alloc(y:sizes())
-    _C.mad_vec_muln(y._dat, x, r._dat, size(r), 1) return r
-  elseif is_number(y) then                       -- mat .* num => vec * num
-    r = chksiz(r,x) or matrix_alloc(x:sizes())
-    _C.mad_vec_muln(x._dat, y, r._dat, size(r), 1) return r
-  elseif is_complex(y) then                      -- mat .* cpx => vec * cpx
-    r = chksiz(r,x) or cmatrix_alloc(x:sizes())
-    _C.mad_vec_mulc_r(x._dat, y.re, y.im, r._dat, size(r), 1) return r
-  elseif is_cmatrix(y) then                      -- mat .* cmat => vec * cvec
-    r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_mulv(y._dat, x._dat, r._dat, size(r), 1) return r
-  elseif is_matrix(y) and is_matrix(x) then      -- mat .* mat => vec * vec
-    r = chksiz(r,x,y) or matrix_alloc(x:sizes())
-    _C.mad_vec_mul(x._dat, y._dat, r._dat, size(r), 1) return r
-  else
-    return assert(gmm(y,'__emul_mat'), "invalid 'mat .* ?' operation")(x, y, r)
-  end
-end
-
-function MR.__emul_cpx (x, y, r)                 -- cpx .* mat => cpx * vec
-  r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_vec_mulc_r(y._dat, x.re, x.im, r._dat, size(r), 1) return r
-end
-
-function MC.__emul (x, y, r)
-  if is_number(x) then                           -- num .* cmat => num * cvec
-    r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-    _C.mad_cvec_muln(y._dat, x, r._dat, size(r), 1) return r
-  elseif is_number(y) then                       -- cmat .* num => cvec * num
-    r = chksiz(r,x) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_muln(x._dat, y, r._dat, size(r), 1) return r
-  elseif is_complex(y) then                      -- cmat .* cpx => cvec * cpx
-    r = chksiz(r,x) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_mulc_r(x._dat, y.re, y.im, r._dat, size(r), 1) return r
-  elseif is_matrix(y) then                       -- cmat .* mat => cvec * vec
-    r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_mulv(x._dat, y._dat, r._dat, size(r), 1) return r
-  elseif is_cmatrix(y) and is_cmatrix(x) then    -- cmat .* cmat => cvec * cvec
-    r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_mul(x._dat, y._dat, r._dat, size(r), 1) return r
-  else
-    return assert(gmm(y,'__emul_mat'), "invalid 'cmat .* ?' operation")(x, y, r)
-  end
-end
-
-function MC.__emul_cpx (x, y, r)                 -- cpx .* cmat => cpx * cvec
-  r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_cvec_mulc_r(y._dat, x.re, x.im, r._dat, size(r), 1) return r
-end
-
-MI.__emul = MI.__mul
-
 -- div
 
-function MR.inv (x, r, rcond_)
-  r = chksiz(r,x) or matrix_alloc(x:sizes())
-  local rank = _C.mad_mat_invn(x._dat, 1, r._dat, x.nrow, x.ncol, rcond_ or -1)
-  return r, rank
-end
+MR.inv = \x,r,rcond_ -> x.div(1,x,r,rcond_)
 
 function MR.__div (x, y, r, rcond_)
   local rank
@@ -2011,12 +1953,6 @@ end
 function MR.__div_cpx (x, y, r, rcond_)          -- cpx / mat
   r = chksiz(r,y) or cmatrix_alloc(y:sizes())
   local rank = _C.mad_mat_invc_r(y._dat, x.re, x.im, r._dat, y.nrow, y.ncol, rcond_ or -1)
-  return r, rank
-end
-
-function MC.inv (x, r, rcond_)
-  r = chksiz(r,x) or cmatrix_alloc(x:sizes())
-  local rank = _C.mad_cmat_invn(x._dat, 1, r._dat, x.nrow, x.ncol, rcond_ or -1)
   return r, rank
 end
 
@@ -2059,62 +1995,6 @@ function MI.__div (x, y, r)
     return assert(gmm(y,'__div_mat'), "invalid 'imat / ?' operation")(x, y, r)
   end
 end
-
--- element wise div (./), also known as Hadamard division.
-
-function MR.__ediv (x, y, r)
-  if is_number(x) then                           -- num ./ mat => num / vec
-    r = chksiz(r,y) or matrix_alloc(y:sizes())
-    _C.mad_vec_divn(y._dat, x, r._dat, size(r), 1) return r
-  elseif is_number(y) then                       -- mat ./ num => vec / num
-    r = chksiz(r,x) or matrix_alloc(x:sizes())
-    _C.mad_vec_muln(x._dat, 1/y, r._dat, size(r), 1) return r
-  elseif is_complex(y) then                      -- mat ./ cpx => vec / cpx
-    r = chksiz(r,x) or cmatrix_alloc(x:sizes()) ; y = 1/y
-    _C.mad_vec_mulc_r(x._dat, y.re, y.im, r._dat, size(r), 1) return r
-  elseif is_cmatrix(y) then                      -- mat ./ cmat => vec / cvec
-    r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
-    _C.mad_vec_divv(x._dat, y._dat, r._dat, size(r), 1) return r
-  elseif is_matrix(y) and is_matrix(x) then      -- mat ./ mat => vec / vec
-    r = chksiz(r,x,y) or matrix_alloc(x:sizes())
-    _C.mad_vec_div(x._dat, y._dat, r._dat, size(r), 1) return r
-  else
-    return assert(gmm(y,'__ediv_mat'), "invalid 'mat ./ ?' operation")(x, y, r)
-  end
-end
-
-function MR.__ediv_cpx (x, y, r)                 -- cpx ./ mat => cpx / vec
-  r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_vec_divc_r(y._dat, x.re, x.im, r._dat, size(r), 1) return r
-end
-
-function MC.__ediv (x, y, r)
-  if is_number(x) then                           -- num ./ cmat => num / cvec
-    r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-    _C.mad_cvec_divn(y._dat, x, r._dat, size(r), 1) return r
-  elseif is_number(y) then                       -- cmat ./ num => cvec / num
-    r = chksiz(r,x) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_muln(x._dat, 1/y, r._dat, size(r), 1) return r
-  elseif is_complex(y) then                      -- cmat ./ cpx => cvec / cpx
-    r = chksiz(r,x) or cmatrix_alloc(x:sizes()) ; y = 1/y
-    _C.mad_cvec_mulc_r(x._dat, y.re, y.im, r._dat, size(r), 1) return r
-  elseif is_matrix(y) then                       -- cmat ./ mat => cvec / vec
-    r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_divv(x._dat, y._dat, r._dat, size(r), 1) return r
-  elseif is_cmatrix(y) and is_cmatrix(x) then    -- cmat ./ cmat => cvec / cvec
-    r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_div(x._dat, y._dat, r._dat, size(r), 1) return r
-  else
-    return assert(gmm(y,'__ediv_mat'), "invalid 'cmat ./ ?' operation")(x, y, r)
-  end
-end
-
-function MC.__ediv_cpx (x, y, r)                 -- cpx ./ cmat => cpx / cvec
-  r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_cvec_divc_r(y._dat, x.re, x.im, r._dat, size(r), 1) return r
-end
-
-MI.__ediv = MI.__div
 
 -- pow (for now)
 
