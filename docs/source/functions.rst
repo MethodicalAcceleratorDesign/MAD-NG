@@ -190,14 +190,14 @@ Vector Operators
 
 Functions for element-wise operators [#f4]_ are wrappers to associated mathematical operators of vector-like objects, which themselves can be overridden by their associated metamethods.
 
-=================  =====================  ===============  ====================
-Functions          Return values          Operator string  Metamethods
-=================  =====================  ===============  ====================
-:func:`emul(x,y)`  :math:`x\,.*\,y`       :const:`".*"`    :func:`__emul(x,y)`
-:func:`ediv(x,y)`  :math:`x\,./\,y`       :const:`"./"`    :func:`__ediv(x,y)`
-:func:`emod(x,y)`  :math:`x\,.\%\,y`      :const:`".%"`    :func:`__emod(x,y)`
-:func:`epow(x,y)`  :math:`x\,.\hat\ \ y`  :const:`".^"`    :func:`__epow(x,y)`
-=================  =====================  ===============  ====================
+====================  =====================  ===============  ====================
+Functions             Return values          Operator string  Metamethods
+====================  =====================  ===============  ====================
+:func:`emul(x,y,r_)`  :math:`x\,.*\,y`       :const:`".*"`    :func:`__emul(x,y,r_)`
+:func:`ediv(x,y,r_)`  :math:`x\,./\,y`       :const:`"./"`    :func:`__ediv(x,y,r_)`
+:func:`emod(x,y,r_)`  :math:`x\,.\%\,y`      :const:`".%"`    :func:`__emod(x,y,r_)`
+:func:`epow(x,y,r_)`  :math:`x\,.\hat\ \ y`  :const:`".^"`    :func:`__epow(x,y,r_)`
+====================  =====================  ===============  ====================
 
 Logical Operators
 -----------------
