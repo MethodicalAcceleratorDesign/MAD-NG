@@ -226,9 +226,9 @@ Functions        Return values     Operator string                 Metamethods
 :func:`eq(x,y)`  :math:`x = y`     :const:`"=="`                   :func:`__eq(x,y)`
 :func:`ne(x,y)`  :math:`x \neq y`  :const:`"!="` or :const:`"~="`  :func:`__eq(x,y)`
 :func:`lt(x,y)`  :math:`x < y`     :const:`"<"`                    :func:`__lt(x,y)`
-:func:`le(x,y)`  :math:`x <= y`    :const:`"<="`                   :func:`__le(x,y)`
+:func:`le(x,y)`  :math:`x \leq y`    :const:`"<="`                   :func:`__le(x,y)`
 :func:`gt(x,y)`  :math:`x > y`     :const:`">"`                    :func:`__le(x,y)`
-:func:`ge(x,y)`  :math:`x >= y`    :const:`">="`                   :func:`__lt(x,y)`
+:func:`ge(x,y)`  :math:`x \geq y`    :const:`">="`                   :func:`__lt(x,y)`
 ===============  ================  ==============================  =================
 
 Object Operators
