@@ -91,6 +91,8 @@ cnum_t mad_cvec_eval  (const cnum_t x[],       cnum_t x0,                     ss
 void   mad_cvec_eval_r(const cnum_t x[],num_t x0_re,num_t x0_im, cnum_t *r  , ssz_t n, ssz_t d);
 cnum_t mad_cvec_sum   (const cnum_t x[],                                      ssz_t n, ssz_t d); // Sum(vec)
 void   mad_cvec_sum_r (const cnum_t x[],                         cnum_t *r  , ssz_t n, ssz_t d); // Sum(vec)
+cnum_t mad_cvec_ksum  (const cnum_t x[],                                      ssz_t n, ssz_t d); // Sum(vec)
+void   mad_cvec_ksum_r(const cnum_t x[],                         cnum_t *r  , ssz_t n, ssz_t d); // Sum(vec)
 cnum_t mad_cvec_mean  (const cnum_t x[],                                      ssz_t n, ssz_t d); // Mean(vec)
 void   mad_cvec_mean_r(const cnum_t x[],                         cnum_t *r  , ssz_t n, ssz_t d); // Mean(vec)
 cnum_t mad_cvec_var   (const cnum_t x[],                                      ssz_t n, ssz_t d); // Var(vec)
@@ -99,9 +101,13 @@ num_t  mad_cvec_norm  (const cnum_t x[]                                     , ss
 num_t  mad_cvec_dist  (const cnum_t x[], const cnum_t y[]                   , ssz_t n, ssz_t d); // |cvec - cvec|
 num_t  mad_cvec_distv (const cnum_t x[], const  num_t y[]                   , ssz_t n, ssz_t d); // |cvec -  vec|
 cnum_t mad_cvec_dot   (const cnum_t x[], const cnum_t y[]                   , ssz_t n, ssz_t d); // <cvec , cvec>
-cnum_t mad_cvec_dotv  (const cnum_t x[], const  num_t y[]                   , ssz_t n, ssz_t d); // <cvec ,  vec>
 void   mad_cvec_dot_r (const cnum_t x[], const cnum_t y[]      , cnum_t *r  , ssz_t n, ssz_t d); // <cvec , cvec>
+cnum_t mad_cvec_dotv  (const cnum_t x[], const  num_t y[]                   , ssz_t n, ssz_t d); // <cvec ,  vec>
 void   mad_cvec_dotv_r(const cnum_t x[], const  num_t y[]      , cnum_t *r  , ssz_t n, ssz_t d); // <cvec ,  vec>
+cnum_t mad_cvec_kdot  (const cnum_t x[], const cnum_t y[]                   , ssz_t n, ssz_t d); // <cvec , cvec>
+void   mad_cvec_kdot_r(const cnum_t x[], const cnum_t y[]      , cnum_t *r  , ssz_t n, ssz_t d); // <cvec , cvec>
+cnum_t mad_cvec_kdotv (const cnum_t x[], const  num_t y[]                   , ssz_t n, ssz_t d); // <cvec ,  vec>
+void   mad_cvec_kdotv_r(const cnum_t x[], const num_t y[]      , cnum_t *r  , ssz_t n, ssz_t d); // <cvec ,  vec>
 void   mad_cvec_add   (const cnum_t x[], const cnum_t y[]      , cnum_t  r[], ssz_t n, ssz_t d); //  cvec + cvec
 void   mad_cvec_addv  (const cnum_t x[], const  num_t y[]      , cnum_t  r[], ssz_t n, ssz_t d); //  cvec +  vec
 void   mad_cvec_addn  (const cnum_t x[],        num_t y        , cnum_t  r[], ssz_t n, ssz_t d); //  cvec +  num

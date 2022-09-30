@@ -210,9 +210,10 @@ void mad_vec_minmax(const num_t x[], log_t abs, idx_t r[2], ssz_t n, ssz_t d)
   }
 }
 
-#pragma GCC push_options
-#pragma GCC optimize ("O3")
 // Neumaier variants of Kahan sum
+
+#pragma GCC push_options
+#pragma GCC optimize ("no-fast-math")
 
 num_t mad_vec_ksum (const num_t x[], ssz_t n, ssz_t d)
 { CHKX; CHKD;
@@ -228,6 +229,20 @@ num_t mad_vec_ksum (const num_t x[], ssz_t n, ssz_t d)
   return s + c;
 }
 
+cnum_t mad_cvec_ksum (const cnum_t x[], ssz_t n, ssz_t d)
+{ CHKX; CHKD;
+  cnum_t s = x[0], c = 0, t;
+  for (idx_t i=d; i < n; i+=d) {
+    t = s + x[i];
+    if (cabs(s) >= cabs(t))
+      c = c + ((s-t) + x[i]);
+    else
+      c = c + ((x[i]-t) + s);
+    s = t;
+  }
+  return s + c;
+}
+
 num_t mad_vec_kdot (const num_t x[], const num_t y[], ssz_t n, ssz_t d)
 { CHKXY; CHKD;
   num_t s = x[0]*y[0], c = 0, t, v;
@@ -235,6 +250,36 @@ num_t mad_vec_kdot (const num_t x[], const num_t y[], ssz_t n, ssz_t d)
     v = x[i]*y[i];
     t = s + v;
     if (fabs(s) >= fabs(t))
+      c = c + ((s-t) + v);
+    else
+      c = c + ((v-t) + s);
+    s = t;
+  }
+  return s + c;
+}
+
+cnum_t mad_cvec_kdot (const cnum_t x[], const cnum_t y[], ssz_t n, ssz_t d)
+{ CHKXY; CHKD;
+  cnum_t s = x[0]*y[0], c = 0, t, v;
+  for (idx_t i=d; i < n; i+=d) {
+    v = x[i]*y[i];
+    t = s + v;
+    if (cabs(s) >= cabs(t))
+      c = c + ((s-t) + v);
+    else
+      c = c + ((v-t) + s);
+    s = t;
+  }
+  return s + c;
+}
+
+cnum_t mad_cvec_kdotv (const cnum_t x[], const num_t y[], ssz_t n, ssz_t d)
+{ CHKXY; CHKD;
+  cnum_t s = x[0]*y[0], c = 0, t, v;
+  for (idx_t i=d; i < n; i+=d) {
+    v = x[i]*y[i];
+    t = s + v;
+    if (cabs(s) >= cabs(t))
       c = c + ((s-t) + v);
     else
       c = c + ((v-t) + s);
@@ -365,6 +410,27 @@ cnum_t mad_cvec_sum (const cnum_t x[], ssz_t n, ssz_t d)
 void mad_cvec_sum_r (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
 { CHKXR; *r = mad_cvec_sum(x,n,d); }
 
+void mad_cvec_ksum_r (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
+{ CHKXR; *r = mad_cvec_ksum(x,n,d); }
+
+cnum_t mad_cvec_dot (const cnum_t x[], const cnum_t y[], ssz_t n, ssz_t d)
+{ CHKXY; CHKD; cnum_t r=0; for (idx_t i=0; i < n; i+=d) r += conj(x[i])*y[i]; return r; }
+
+void mad_cvec_dot_r (const cnum_t x[], const cnum_t y[], cnum_t *r, ssz_t n, ssz_t d)
+{ CHKR; *r = mad_cvec_dot(x,y,n,d); }
+
+cnum_t mad_cvec_dotv (const cnum_t x[], const num_t y[], ssz_t n, ssz_t d)
+{ CHKXY; CHKD; cnum_t r=0; for (idx_t i=0; i < n; i+=d) r += conj(x[i])*y[i]; return r; }
+
+void mad_cvec_dotv_r (const cnum_t x[], const num_t y[], cnum_t *r, ssz_t n, ssz_t d)
+{ CHKR; *r = mad_cvec_dotv(x,y,n,d); }
+
+void mad_cvec_kdot_r (const cnum_t x[], const cnum_t y[], cnum_t *r, ssz_t n, ssz_t d)
+{ CHKR; *r = mad_cvec_kdot(x,y,n,d); }
+
+void mad_cvec_kdotv_r (const cnum_t x[], const num_t y[], cnum_t *r, ssz_t n, ssz_t d)
+{ CHKR; *r = mad_cvec_kdotv(x,y,n,d); }
+
 cnum_t mad_cvec_mean (const cnum_t x[], ssz_t n, ssz_t d)
 { CHKX; return mad_cvec_sum(x,n,d)/(n/d); }
 
@@ -385,18 +451,6 @@ void mad_cvec_center (const cnum_t x[], cnum_t r[], ssz_t n, ssz_t d)
 { CHKR; cnum_t m = mad_cvec_mean(x,n,d);
   for (idx_t i=0; i < n; i+=d) r[i] = x[i] - m;
 }
-
-cnum_t mad_cvec_dot (const cnum_t x[], const cnum_t y[], ssz_t n, ssz_t d)
-{ CHKXY; CHKD; cnum_t r=0; for (idx_t i=0; i < n; i+=d) r += conj(x[i])*y[i]; return r; }
-
-void mad_cvec_dot_r (const cnum_t x[], const cnum_t y[], cnum_t *r, ssz_t n, ssz_t d)
-{ CHKR; *r = mad_cvec_dot(x,y,n,d); }
-
-cnum_t mad_cvec_dotv (const cnum_t x[], const num_t y[], ssz_t n, ssz_t d)
-{ CHKXY; CHKD; cnum_t r=0; for (idx_t i=0; i < n; i+=d) r += conj(x[i])*y[i]; return r; }
-
-void mad_cvec_dotv_r (const cnum_t x[], const num_t y[], cnum_t *r, ssz_t n, ssz_t d)
-{ CHKR; *r = mad_cvec_dotv(x,y,n,d); }
 
 num_t mad_cvec_norm (const cnum_t x[], ssz_t n, ssz_t d)
 { return sqrt(creal(mad_cvec_dot(x,x,n,d))); }
