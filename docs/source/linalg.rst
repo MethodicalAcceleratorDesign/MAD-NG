@@ -312,7 +312,7 @@ Filling/Moving
 
    Return the real, complex or integer matrix :var:`mat` filled with the value of :var:`v` on the diagonal and zeros elsewhere. Default: :expr:`v_ = 1`.
 
-.. function:: mat:seq (v_, d_)
+.. function:: mat:seq ([v_,] d_)
 
    Return the real, complex or integer matrix :var:`mat` filled with the indexes of the elements (i.e. starting at 1) and shifted by the value of :var:`v`. The matrix is filled in the column-major direction for :expr:`d == 'col'` and in the row-major direction otherwise. Default: :expr:`v_ = 0`, :expr:`d_ = 'row'`.
 
@@ -430,7 +430,7 @@ Mapping/Folding
 Real-like Mapping Methods
 -------------------------
 
-The following table lists the methods built from the application of :func:`mat:map()` and variants to the functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`. Only the mehods :func:`mat:abs()` and :func:`mat:sqr()` are available for :type:`imatrix`.
+The following table lists the methods built from the application of :func:`mat:map()` and variants to the real-like functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`. Only the mehods :func:`mat:abs()` and :func:`mat:sqr()` are available for :type:`imatrix`.
 
 ==========================  ===============================
 Functions                   Equivalent Mapping
@@ -476,7 +476,7 @@ Functions                   Equivalent Mapping
 Complex-like Mapping Methods
 ----------------------------
 
-The following table lists the methods built from the application of :func:`mat:map()` to the functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`.
+The following table lists the methods built from the application of :func:`mat:map()` to the the complex-like functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`.
 
 ==========================  ===============================
 Functions                   Equivalent Mapping
@@ -495,7 +495,7 @@ Functions                   Equivalent Mapping
 Error-like Mapping Methods
 --------------------------
 
-The following table lists the methods built from the application of :func:`mat:map()` to the functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`.
+The following table lists the methods built from the application of :func:`mat:map()` to the error-like functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`.
 
 ==========================  ===============================
 Functions                   Equivalent Mapping
@@ -505,6 +505,20 @@ Functions                   Equivalent Mapping
 :func:`mat:erfcx(r_)`       :expr:`mat:map(erfcx,r_)`
 :func:`mat:erfi(r_)`        :expr:`mat:map(erfi,r_)`
 :func:`mat:wf(r_)`          :expr:`mat:map(wf,r_)`
+==========================  ===============================
+
+Vector-like Mapping Methods
+---------------------------
+
+The following table lists the methods built from the application of :func:`mat:map()` and variants to the vector-like functions from the module :mod:`MAD.gfunc` for :type:`matrix`, :type:`cmatrix`, and :type:`imatrix`.
+
+==========================  ===============================
+Functions                   Equivalent Mapping
+==========================  ===============================
+:func:`mat:emul(mat2,r_)`   :expr:`mat:map2(mat2,mul,r_)`
+:func:`mat:ediv(mat2,r_)`   :expr:`mat:map2(mat2,div,r_)`
+:func:`mat:emod(mat2,r_)`   :expr:`mat:map2(mat2,mod,r_)`
+:func:`mat:epow(mat2,r_)`   :expr:`mat:map2(mat2,pow,r_)`
 ==========================  ===============================
 
 Folding Methods
@@ -527,7 +541,7 @@ Functions                   Equivalent Folding
 :func:`mat:maxabs(d_,r_)`   :expr:`mat:foldl(maxabsl,0,d_,r_)`
 ==========================  ===============================
 
-Where :func:`any()` and :func:`all()` are functions that bind the predicate :var:`p` to the propagation of the logical AND and the logical OR, that can be implemented for example like:
+Where :func:`any()` and :func:`all()` are functions that bind the predicate :var:`p` to the propagation of the logical AND and the logical OR respectively, that can be implemented like:
 
    - :expr:`all = \p -> \r,x -> lbool(land(r, p(x)))`
    - :expr:`any = \p -> \r,x -> lbool(lor (r, p(x)))`
@@ -560,49 +574,52 @@ Functions                      Equivalent Scanning
 
 The method :func:`mat:accumulate()` is also available as a more common name (i.e. an alias) for :func:`mat:accsum()`.
 
-Conversions
------------
-
-.. function:: mat:totable (v_, r_)
-
-   TODO
-
-.. function:: mat:tostring (sep_, lsep_)
-
-   TODO
-
 Operator-like Methods
 ---------------------
 
 .. function:: mat:unm (r_)
 
-.. function:: mat:eq (a, r_)
+   Equivalent to :expr:`mat:map(unm,r_)`, where :func:`unm()` is from module :mod:`gmath`.
 
-.. function:: mat:inv (r_)
+.. function:: mat:eq (a, tol_)
+
+   Return :const:`false` if :var:`a` is any matrix with incompatible sizes or if any element differ in a one-to-one comparison by more than :var:`tol`, :const:`true` otherwise. If one of the operand is a scalar, the operator will be applied individually to all elements of the matrix. Default: :expr:`tol_ = 0`.
 
 .. function:: mat:add (a, r_)
 
+   Equivalent to :expr:`mat + a` with the possibility to place the result in :var:`r`.
+
 .. function:: mat:sub (a, r_)
+
+   Equivalent to :expr:`mat - a` with the possibility to place the result in :var:`r`.
 
 .. function:: mat:mul (a, r_)
 
-.. function:: mat:div (a, r_)
+   Equivalent to :expr:`mat * a` with the possibility to place the result in :var:`r`.
+
+.. function:: mat:div (a, r_, rcond_)
+
+   Equivalent to :expr:`mat / a` with the possibility to place the result in :var:`r`. It allows to specify the conditional number :var:`rcond` used by the solver to determine the effective rank of non-square systems. Default: :expr:`rcond = -1`.
+
+.. function:: mat:inv (r_, rcond_)
+
+   Equivalent to :expr:`mat.div(1, mat, r_, rcond_)`. 
 
 .. function:: mat:mod (n, r_)
 
+   Equivalent to :expr:`mat.emod(1, mat, r_, rcond_)`. 
+
 .. function:: mat:pow (n, r_)
 
-.. function:: mat:emul (a, r_)
-
-.. function:: mat:ediv (a, r_)
-
-.. function:: mat:emod (a, r_)
-
-.. function:: mat:epow (a, r_)
+   Equivalent to :expr:`mat ^ n` with the possibility to place the result in :var:`r`.
 
 .. function:: mat:tmul (mat2, r_)
 
+   Return a real or complex matrix resulting from the product of the transpose of :var:`mat` by :var:`mat2`.
+   
 .. function:: mat:mult (mat2, r_)
+
+   Return a real or complex matrix resulting from the product of :var:`mat` by the transpose of :var:`mat2`.
 
 .. function:: mat:concat (mat2, dir_, r_)
 
@@ -618,8 +635,10 @@ Special Methods
 ---------------
 
 .. function:: mat:transpose (r_)
+              mat:t (r_)
 
 .. function:: mat:conjugate (r_)
+              mat:conj (r_)
 
 .. function:: mat:sympconj (r_)
 
@@ -628,14 +647,13 @@ Special Methods
 .. function:: mat:trace ()
 
 .. function:: mat:inner (y, r_)
+              mat:dot (y, r_)
 
 .. function:: mat:outer (y, r_)
 
 .. function:: mat:cross (y, r_)
 
 .. function:: mat:mixed (y, z, r_)
-
-.. function:: mat:dot (y, r_)
 
 .. function:: mat:norm ()
 
@@ -655,11 +673,10 @@ Special Methods
 
 .. function:: mat:variance ()
 
-.. function:: mat:ksum ()
-
-.. function:: mat:kdot (y)
-
 .. function:: mat:kadd (a, x)
+
+.. function:: mat:ksum ()
+              mat:kdot (y, r_)
 
 .. function:: mat:eval (x0)
 
@@ -764,6 +781,17 @@ This section describe methods dealing with 2D and 3D rotations (see `Rotation Ma
 .. function:: mat:torotq (q_, inv_)
 
    Return a quaternion representing the 3D rotation as stored in the real :type:`matrix` :var:`mat` :math:`[3\times 3]` by the method :func:`mat:rotq()`. If the :type:`iterable`` :var:`q` is provided, it is filled with the components of the quaternion otherwise the quaternion is returned in a :type:`list` of length 4.  If :var:`inv` is true, the inverse rotation is returned, i.e. extracted from the transposed matrix.
+
+Conversions
+-----------
+
+.. function:: mat:totable (v_, r_)
+
+   TODO
+
+.. function:: mat:tostring (sep_, lsep_)
+
+   TODO
 
 Input/Output
 ------------
