@@ -579,6 +579,16 @@ function TestMatrixSet:testSetsub()
   m:setsub( 1..5, 1   , 1..3    ) assertEquals( m:getsub( 1..3, 1   ), m:same(3,1):fill(1..3) )
                                   assertEquals( m:getsub( 4..5, 1   ), m:same(2,1):fill(1..2) )
                                   assertEquals( m:getsub( 1..5, 2..5), m:same(5,4)            )
+  local f = \p, s => return s + p, 0 end
+  m:setsub(1..m.nrow, 1..m.ncol, f, 1, 1)
+  assertEquals(m, m:same():fill(0))
+  f = \p, s => return s + p, s end
+  m:setsub(1..m.nrow, 1..m.ncol, f, 2, 2)
+  assertEquals(m, m:same():seq()*2)
+  m:fill(0)
+  m:setsub(1..2, 2..3, f, 3, 2) assertEquals( m:getsub(1..2, 2..3 ), m:same(2 ,2):fill(2..12..3) )
+                                assertEquals( m:getsub(3..5, 4..5), m:same(3 ,2):fill(0)        )
+  
   m:setsub( 1..5, 1..5, 1..5    )
   for i =1,5 do assertEquals( m:getsub( i, 1..5), m:same(1,5):fill(1..5) ) end
 
@@ -721,6 +731,13 @@ function TestMatrixSet:testSetvec()
                               assertEquals( m:getvec(4..6 ), m:same(3 ,1):fill(1..3) )
   m:setvec(1..6, 1..7       ) assertEquals( m:getvec(1..6 ), m:same(6 ,1):fill(1..6) )
                               assertEquals( m:getvec(7    ), m:same(1 ,1)            )
+  local f = \p, s => return s + p, 0 end
+  m:setvec(1..#m, f, 1, 1)    assertEquals(m, m:same():fill(0))
+  f = \p, s => return s + p, s end
+  m:setvec(1..#m, f, 2, 2)    assertEquals(m, m:same():seq()*2)
+  m:fill(0)
+  m:setvec(4..15, f, 3, 2)    assertEquals( m:getvec(4..15 ), m:same(12 ,1):fill(2..35..3) )
+                              assertEquals( m:getvec(16..25), m:same(10 ,1):fill(0)        )
 
   for _,m in ipairs(G.mattmp) do
     local nr, nc = m:sizes()
@@ -1006,6 +1023,32 @@ function TestMatrixInPlaceII:testSwpvec()
   end
 end
 
+function TestMatrixInPlaceII:testSwpsub() --Double check
+  for _,m in ipairs(G.matidx) do
+    for i = 1, math.floor(m.nrow/2) do
+      for j = 1, math.floor(m.ncol/2) do
+        local swpedM = m:copy():swpsub(1..i, 1..j, i+1..2*i, j+1..2*j)
+        assertEquals(totable(swpedM:copy():swpsub(1..i, 1..j, i+1..2*i, j+1..2*j)), totable(m)) --Check for identity
+        local newRow, newCol
+        for row = 1, m.ncol do
+          for col = 1, m.nrow do
+            if row > 2*i or col > 2*j or (row > i and col < j + 1) or (row < i + 1 and col > j) then newRow = row; newCol = col--The element has not been moved
+            else
+              if row <= i then newRow = row + i --Moved forwards
+              else             newRow = row - i -- Moved backwards
+              end
+              if col <= j then newCol = col + j --Moved forwards
+              else             newCol = col - j -- Moved backwards
+              end
+            end
+            assertEquals(m:get(row, col), swpedM:get(newRow, newCol))
+          end
+        end
+      end
+    end
+  end
+end
+
 function TestMatrixInPlaceII:testSwpcol() 
   for _,m in ipairs(G.matidx) do
     local nrow, ncol = m:sizes()
@@ -1218,17 +1261,44 @@ function TestMatrixInPlaceII:testCopy()
   end
 end
 
+function TestMatrixInPlaceII:testRemsub()
+  for _,m in ipairs(G.matidx) do
+    local nrow, ncol = m:sizes()
+    for startOfRemoval = 1, nrow - 1 do 
+      for i = startOfRemoval, nrow - 1 do 
+      for j = startOfRemoval, ncol - 1 do
+        local smallMat = m:copy():remsub(startOfRemoval..i, startOfRemoval..j)
+          assertEquals(nrow - (i - startOfRemoval + 1), smallMat.nrow)
+          assertEquals(ncol - (j - startOfRemoval + 1), smallMat.ncol)
+          for row = 1, smallMat.nrow do
+            for col = 1, smallMat.ncol do 
+              local rowIncrease, colIncrease = 0, 0
+              if row >= startOfRemoval and col >= startOfRemoval then 
+                rowIncrease, colIncrease = i - startOfRemoval + 1, j - startOfRemoval + 1
+              elseif row >= startOfRemoval then 
+                rowIncrease = i - startOfRemoval + 1
+              elseif col >= startOfRemoval then 
+                colIncrease = j - startOfRemoval + 1
+              end
+              assertEquals(m:get(row + rowIncrease, col + colIncrease ), smallMat:get(row, col))
+            end
+          end
+        end
+      end
+    end
+  end
+end
+
 function TestMatrixInPlaceII:testRemcol()
   for _,m in ipairs(G.matidx) do
     local nrow, ncol = m:sizes()
     if ncol > 1 then
-      local smallMat = m:copy()
-      local newNumCol = smallMat:remcol(1).ncol
-      assertEquals(ncol, newNumCol + 1)
+      local smallMat = m:copy():remcol(1)
+      assertEquals(ncol, smallMat.ncol + 1)
       local smallMat2 = m:copy():remcol(ncol)
       for i = 1, nrow do
-        for j = 1, newNumCol do 
-          assertEquals(m:get(i, j+1), smallMat:get(i, j)) --This fails as for remcol, as remvec({}) is always performed
+        for j = 1, ncol - 1 do 
+          assertEquals(m:get(i, j+1), smallMat:get(i, j)) 
           assertEquals(m:get(i, j  ), smallMat2:get(i, j))
         end
       end
@@ -1240,11 +1310,10 @@ function TestMatrixInPlaceII:testRemrow()
   for _,m in ipairs(G.matidx) do
     local nrow, ncol = m:sizes()
     if nrow > 1 then
-      local smallMat = m:copy()
-      local newNumRow, _ = smallMat:remrow(1):sizes()
-      assertEquals(nrow, newNumRow + 1)
+      local smallMat = m:copy():remrow(1)
+      assertEquals(nrow, smallMat.nrow + 1)
       local smallMat2 = m:copy():remrow(nrow)
-      for i = 1, newNumRow do
+      for i = 1, nrow - 1 do
         for j = 1, ncol do 
           assertEquals(m:get(i+1,j), smallMat:get(i, j))
           assertEquals(m:get(i  ,j), smallMat2:get(i, j))
