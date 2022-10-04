@@ -254,24 +254,16 @@ Getters/Setters
 
    Equivalent to :func:`mat:inssub()` with :expr:`ir = nil`.
 
-Copy/Shape/Convert
-------------------
+Copy/Shape
+----------
 
 .. function:: mat:same ([nrow_, ncol_,] v_)
 
-   Return a matrix with elements of the type of :var:`v` (ignored by :type:`imatrix`) and with :var:`nrow` rows and :var:`ncol` columns. Default: :expr:`v_ = mat[1]`, :expr:`nrow_ = mat.nrow`, :expr:`ncol_ = mat.ncol`.
+   Return a matrix with elements of the type of :var:`v` and with :var:`nrow` rows and :var:`ncol` columns. Default: :expr:`v_ = mat[1]`, :expr:`nrow_ = mat.nrow`, :expr:`ncol_ = mat.ncol`.
 
 .. function:: mat:copy (r_)
 
    Return a copy of the real, complex or integer matrix :var:`mat`.
-
-.. function:: mat:cplx (im_, r_)
-
-   Return the complex matrix built from the real matrix :var:`mat` and the real matrix :var:`im` representing the imaginary part with compatible sizes.
-
-.. function:: mat:rerim (re_, im_)
-
-   Return the real and the imaginary parts of the complex matrix :var:`mat`.
 
 .. function:: mat:reshape (nrow_, ncol_)
 
@@ -484,12 +476,13 @@ Functions                   Equivalent Mapping
 :func:`mat:cabs(r_)`        :expr:`mat:map(cabs,r_)`
 :func:`mat:carg(r_)`        :expr:`mat:map(carg,r_)`
 :func:`mat:conj(r_)`        :expr:`mat:map(conj,r_)`
-:func:`mat:cplx(y,r_)`      :expr:`mat:map2(y,cplx,r_)`
+:func:`mat:cplx(im_,r_)`    :expr:`mat:map2(im_ or 0, cplx, r_)`
 :func:`mat:imag(r_)`        :expr:`mat:map(imag,r_)`
 :func:`mat:polar(r_)`       :expr:`mat:map(polar,r_)`
 :func:`mat:proj(r_)`        :expr:`mat:map(proj,r_)`
 :func:`mat:real(r_)`        :expr:`mat:map(real,r_)`
 :func:`mat:rect(r_)`        :expr:`mat:map(rect,r_)`
+:func:`mat:reim(re_, im_)`  :expr:`re_ and mat:real(re_), im_ and mat:imag(im_)`
 ==========================  ===============================
 
 Error-like Mapping Methods
@@ -581,10 +574,6 @@ Operator-like Methods
 
    Equivalent to :expr:`mat:map(unm,r_)`, where :func:`unm()` is from module :mod:`gmath`.
 
-.. function:: mat:eq (a, tol_)
-
-   Return :const:`false` if :var:`a` is any matrix with incompatible sizes or if any element differ in a one-to-one comparison by more than :var:`tol`, :const:`true` otherwise. If one of the operand is a scalar, the operator will be applied individually to all elements of the matrix. Default: :expr:`tol_ = 0`.
-
 .. function:: mat:add (a, r_)
 
    Equivalent to :expr:`mat + a` with the possibility to place the result in :var:`r`.
@@ -599,15 +588,15 @@ Operator-like Methods
 
 .. function:: mat:div (a, r_, rcond_)
 
-   Equivalent to :expr:`mat / a` with the possibility to place the result in :var:`r`. It allows to specify the conditional number :var:`rcond` used by the solver to determine the effective rank of non-square systems. Default: :expr:`rcond = -1`.
+   Equivalent to :expr:`mat / a` with the possibility to place the result in :var:`r`, and to specify the conditional number :var:`rcond` used by the solver to determine the effective rank of non-square systems. Default: :expr:`rcond = -1`.
 
 .. function:: mat:inv (r_, rcond_)
 
    Equivalent to :expr:`mat.div(1, mat, r_, rcond_)`. 
 
-.. function:: mat:mod (n, r_)
+.. function:: mat:mod (a, r_)
 
-   Equivalent to :expr:`mat.emod(1, mat, r_, rcond_)`. 
+   Equivalent to :expr:`mat % a` with the possibility to place the result in :var:`r`.
 
 .. function:: mat:pow (n, r_)
 
@@ -615,11 +604,15 @@ Operator-like Methods
 
 .. function:: mat:tmul (mat2, r_)
 
-   Return a real or complex matrix resulting from the product of the transpose of :var:`mat` by :var:`mat2`.
+   Return a real or complex matrix or :var:`r` filled with the product of the transpose of :var:`mat` by :var:`mat2`, i.e. equivalent to :expr:`mat:t() * mat2`.
    
 .. function:: mat:mult (mat2, r_)
 
-   Return a real or complex matrix resulting from the product of :var:`mat` by the transpose of :var:`mat2`.
+   Return a real or complex matrix or :var:`r` filled with the product of :var:`mat` by the transpose of :var:`mat2`, i.e. equivalent to :expr:`mat * mat2:t()`.
+
+.. function:: mat:eq (a, tol_)
+
+   Return :const:`false` if :var:`a` is any matrix with incompatible sizes or if any element differ in a one-to-one comparison by more than :var:`tol`, :const:`true` otherwise. If one of the operand is a scalar, the operator will be applied individually to all elements of the matrix. Default: :expr:`tol_ = 0`.
 
 .. function:: mat:concat (mat2, dir_, r_)
 
@@ -634,51 +627,94 @@ Operator-like Methods
 Special Methods
 ---------------
 
-.. function:: mat:transpose (r_)
-              mat:t (r_)
-
 .. function:: mat:conjugate (r_)
-              mat:conj (r_)
+
+   Equivalent to :func:`mat:conj()`.
+
+.. function:: mat:transpose (r_, c_)
+              mat:t (r_, c_)
+
+   Return a real, complex or integer matrix or :var:`r` resulting from the conjugate transpose of the matrix :var:`mat` unless :expr:`c == false`. If :expr:`r = 'in'` then it is assigned :var:`mat`. Default: :expr:`c_ = true`.
 
 .. function:: mat:sympconj (r_)
+              mat:bar (r_)
+
+   Return a real or complex matrix or :var:`r` resulting from the symplectic conjugate of the matrix :var:`mat`, with :math:`\bar{M} = -S_{2n} M^* S_{2n}`, and :math:`M^{-1} = \bar{M}` if :math:`M` is symplectic. If :expr:`r = 'in'` then it is assigned :var:`mat`.
 
 .. function:: mat:symperr (r_)
 
-.. function:: mat:trace ()
+   Return the norm of the symplectic deviation matrix given by :math:`M^* S_{2n} M - S_{2n}` of the real or complex matrix :var:`mat`. If :var:`r` is provided, it is filled with the symplectic deviation matrix.
 
-.. function:: mat:inner (y, r_)
-              mat:dot (y, r_)
+.. function:: mat:trace ()
+              mat:tr()
+
+   Return the `Trace <https://en.wikipedia.org/wiki/Trace_(linear_algebra)>`_ of the real or complex :var:`mat`.
+
+.. function:: mat:inner (y)
+              mat:dot (y)
+
+   Return the `Inner Product <https://en.wikipedia.org/wiki/Dot_product>`_ of the two real or complex matrices :var:`mat` and :var:`y` with compatible sizes, i.e. return :math:`x^* . y` interpreting matrices as vectors. Note that multiple dot products, i.e. not interpreting matrices as vectors, can be achieved with :func:`mat:tmul()`.
 
 .. function:: mat:outer (y, r_)
 
+   Return the real or complex matrix resulting from the `Outer Product <https://en.wikipedia.org/wiki/Outer_product>`_ of the two real or complex matrices :var:`mat` and :var:`y`, i.e. return :math:`x . y^*` interpreting matrices as vectors.
+
 .. function:: mat:cross (y, r_)
+
+   Return the real or complex matrix resulting from the `Cross Product <https://en.wikipedia.org/wiki/Cross_product>`_ of the two real or complex matrices :var:`mat` and :var:`y` with compatible sizes, i.e. return :math:`x \times y` interpreting matrices as a list of :math:`[3 \times 1]` column vectors.
 
 .. function:: mat:mixed (y, z, r_)
 
+   Return the real or complex matrix resulting from the `Mixed Product <https://en.wikipedia.org/wiki/Triple_product>`_ of the three real or complex matrices :var:`mat`, :var:`y` and :var:`z` with compatible sizes, i.e. return :math:`x^* . (y \times z)` interpreting matrices as a list of :math:`[3 \times 1]` column vectors.
+
 .. function:: mat:norm ()
+
+   Return the `Frobenius norm <https://en.wikipedia.org/wiki/Matrix_norm#Frobenius_norm>`_ of the matrix :math:`||M||_2`. Other matrix norms :math:`L_p` can be easily calculated using other methods, e.g. :math:`L_1` :expr:`= mat:sumabs'col':max()`, :math:`L_{\infty}` :expr:`= mat:sumabs'row':max()`, and :math:`L_2` :expr:`= mat:svd():max()`.
 
 .. function:: mat:distance (y)
 
+   Equivalent to :expr:`(mat - y):norm()`.
+
 .. function:: mat:unit (r_)
+
+   Equivalent to :expr:`mat:div(mat:norm(), r_)`.
 
 .. function:: mat:center (d_, r_)
 
+   Equivalent to :expr:`mat:sub(mat:mean(), r_)`. If :expr:`d = 'vec'`, :expr:`d = 'row'` or :expr:`d = 'col'` then centering will be vector-wise, row-wise or column-wise respectively. Default: :expr:`d_ = 'vec'`.
+
 .. function:: mat:angle (y, n_)
+
+   Return the angle between the two real or complex vectors :var:`mat` and :var:`y` using the method :func:`mat:inner()`. If :var:`n` is provided, the sign of :expr:`mat:mixed(y, n)` is used to define the angle in :math:`[-\pi,\pi]`, otherwise it is defined in :math:`[0,\pi]`.
 
 .. function:: mat:minmax (abs_)
 
+   Return the minimum and maximum values of the elements of the real, complex or integer matrix :var:`mat`. If :expr:`abs == true`, it returns the minimum and maximum absolute values of the elements. Default: :expr:`abs_ = false`.
+
 .. function:: mat:iminmax (abs_)
+
+   Return the two vector-like indexes of the minimum and maximum values of the elements of the real, complex or integer matrix :var:`mat`. If :expr:`abs == true`, it returns the indexes of the minimum and maximum absolute values of the elements. Default: :expr:`abs_ = false`.
 
 .. function:: mat:mean ()
 
+   Equivalent to :expr:`mat:sum()/#mat`
+
 .. function:: mat:variance ()
+
+   Equivalent to :expr:`(mat - mat:mean()):sumsqr()/(#mat-1)`, i.e. return the unbiased estimator of the variance with second order correction.
+
+.. function:: mat:ksum ()
+              mat:kdot (y)
+
+   Same as :func:`mat:sum()` and :func:`mat:dot()` respectively, except that they use the more accurate `Kahan Babushka Neumaier <https://en.wikipedia.org/wiki/Kahan_summation_algorithm>`_ algorithm for the summation, e.g. the sum of the elements of the vector :math:`[1,10^{100},1,-10^{100}]` should return :math:`0` with :func:`sum()` and the correct answer :math:`2` with :func:`ksum()`.
 
 .. function:: mat:kadd (a, x)
 
-.. function:: mat:ksum ()
-              mat:kdot (y, r_)
+   Return the real or complex matrix :var:`mat` filled with the linear combination of the compatible matrices stored in :var:`x` times the scalars stored in :var:`a`, i.e. :expr:`mat = a[1]*x[1] + a[2]*x[2] ...`
 
 .. function:: mat:eval (x0)
+
+   Return the evaluation of the real or complex matrix :var:`mat` at the value :var:`x0`, i.e. interpreting the matrix as a vector of polynomial coefficients of increasing orders in :var:`x` evaluated at :expr:`x = x0` using `Horner's method <https://en.wikipedia.org/wiki/Horner%27s_method>`_.
 
 Solvers/Decompositions
 ----------------------
@@ -919,6 +955,23 @@ Operators
 .. function:: imat / idx
 
    Return a :type:`imatrix` resulting from the division of the left and right operands, where the operator will be applied individually to all elements of the matrix.
+
+.. function:: mat % num
+              mat % mat
+
+   Return a :type:`matrix` resulting from the modulo between the elements of the left and right operands that must have compatible sizes. If the right operand is a scalar, the operator will be applied individually to all elements of the matrix.
+
+.. function:: cmat % num
+              cmat % cpx
+              cmat % mat
+              cmat % cmat
+
+   Return a :type:`cmatrix` resulting from the modulo between the elements of the left and right operands that must have compatible sizes. If the right operand is a scalar, the operator will be applied individually to all elements of the matrix.
+
+.. function:: imat % idx
+              imat % imat
+
+   Return a :type:`imatrix` resulting from the modulo between the elements of the left and right operands that must have compatible sizes. If the right operand is a scalar, the operator will be applied individually to all elements of the matrix.
 
 .. function:: mat ^ n
               cmat ^ n
