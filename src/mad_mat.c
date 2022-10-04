@@ -381,24 +381,6 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 
 // -----
 
-// r = [m x n] <*> [m x n]
-#define DOT(C) \
-  if (n == 1) { \
-    r[0] = 0; \
-    for (idx_t i=0; i < m; i++) \
-      r[0] += C(x[i]) * y[i]; \
-  } else { \
-    for (idx_t j=0; j < n; j++) r[j] = 0; \
-    for (idx_t i=0; i < m; i++) \
-    for (idx_t j=0; j < n; j++) \
-      r[j] += C(x[i*n+j]) * y[i*n+j]; \
-  };
-
-// r = [n] <*> [n]
-#define VDOT(C) \
-  for (idx_t i=0, ix=0, iy=0; i < n; i++, ix+=xs, iy+=ys) \
-    r += C(x[ix]) * y[iy];
-
 // [m x n] transpose
 #define TRANS(T,C) \
   if (m == 1 || n == 1) { \
@@ -465,15 +447,6 @@ void mad_mat_copym (const num_t x[], cnum_t r[], ssz_t m, ssz_t n, ssz_t ldx, ss
 
 void mad_mat_trans (const num_t x[], num_t r[], ssz_t m, ssz_t n)
 { CHKXR; TRANS(num_t,); }
-
-void mad_mat_dot (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n)
-{ CHKXYR; DOT(); }
-
-void mad_mat_dotm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n)
-{ CHKXYR; DOT(); }
-
-num_t mad_mat_vdot (const num_t x[], idx_t xs, const num_t y[], idx_t ys, ssz_t n)
-{ CHKXY; num_t r=0; VDOT(); return r; }
 
 void mad_mat_mul (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_t p)
 { CHKXYR;
@@ -618,24 +591,6 @@ void mad_cmat_trans (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n)
 
 void mad_cmat_ctrans (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n)
 { CHKXR; TRANS(cnum_t,conj); }
-
-void mad_cmat_dot (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n)
-{ CHKXYR; DOT(conj); }
-
-void mad_cmat_dotm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz_t n)
-{ CHKXYR; DOT(conj); }
-
-cnum_t mad_cmat_vdot (const cnum_t x[], idx_t xs, const cnum_t y[], idx_t ys, ssz_t n)
-{ CHKXY; cnum_t r=0; VDOT(conj); return r; }
-
-cnum_t mad_cmat_vdotm (const cnum_t x[], idx_t xs, const num_t y[], idx_t ys, ssz_t n)
-{ CHKXY; cnum_t r=0; VDOT(conj); return r; }
-
-void mad_cmat_vdot_r (const cnum_t x[], idx_t xs, const cnum_t y[], idx_t ys, cnum_t *r, ssz_t n)
-{ CHKXYR; *r = mad_cmat_vdot(x, xs, y, ys, n); }
-
-void mad_cmat_vdotm_r (const cnum_t x[], idx_t xs, const num_t y[], idx_t ys, cnum_t *r, ssz_t n)
-{ CHKXYR; *r = mad_cmat_vdotm(x, xs, y, ys, n); }
 
 void mad_cmat_mul (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
 { CHKXYR;
