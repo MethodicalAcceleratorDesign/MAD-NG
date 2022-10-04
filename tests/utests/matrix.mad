@@ -356,11 +356,11 @@ function TestMatrixGet:testGetidx() --Test ranges not starting from 1?
         assertEquals(1..i, ir)
         assertEquals(1..j, jc)
         assertEquals(i*j, #res)
-        idx = 1
+        local index = 1
         for ii = 1, i do 
           for jj = 1, j do 
-            assertEquals(m:get(ii, jj), res[idx])
-            idx = idx + 1
+            assertEquals(m:get(ii, jj), res[index])
+            index = index + 1
           end
         end
       end
@@ -683,24 +683,6 @@ function TestMatrixErr:testInsvec()
   assertErrorMsgContains( msg[2], errMat.insvec, errMat, 1, ''           )
 end
 
-function TestMatrixSet:testInsvec() --size is never changed inserting from the beginning results in end being discarded
-  local m = matrix(6):fill(1)
-  for n = 1, 36 do --Check single element by element addition
-    local expected = matrix(6,6):fill(1)
-    for i = n, 1, -1 do
-      expected[i] = n-i+1
-    end
-    assertEquals( m:insvec(1, n), expected)
-  end
-  local m = matrix(6):fill(1)
-  for n = 1, 25 do --Check multi-element insertion
-    local expected = matrix(6,6):fill(1)
-    for i = n, 1, -1 do
-      expected[i] = i
-    end
-    assertEquals( m:copy():insvec(1..n, 1..n), expected) --Always outputs 1D
-  end
-end
 
 function TestMatrixErr:testSetvec()
   local msg = {
@@ -837,6 +819,7 @@ function TestMatrixGet:testGetrow()
       for li=1,i-a+1 do
         local ra = a..i..li
         assertEquals( m:getrow(ra), m:getsub(ra, 1..nc) )
+        assertEquals( m:getrow(ra), m:getsub(ra) )
       end
     end end
   end
@@ -873,7 +856,11 @@ function TestMatrixSet:testSetrow()
   m:setrow(1, 1..3)        assertEquals( m:getrow(1   ), m:same(1,5):fill({1,2,3,1,2}) )
                            assertEquals( m:getrow(2..5), m:same(4,5)                   )
   m:setrow(1, {0} )        assertEquals( m:getrow(1..5), m:same(5,5)                   )
-
+  local f = \a,s => return s+1, a*s end
+  for i = 1, 5 do --Check setsub identity
+    assertEquals(m:copy():setrow(1..i, 2..i*2..2), m:copy():setsub(1..i, nil, 2..i*2..2))
+    assertEquals(m:copy():setrow(1..i, f, 12.2, 4), m:copy():setsub(1..i, nil, f, 12.2, 4))
+  end
   for _,m in ipairs(G.mattmp) do
     local nr, nc = m:sizes()
     for i=1,nr do
@@ -929,6 +916,7 @@ function TestMatrixGet:testGetcol() --Changed based on documentation --equivalen
       for lj = 1,j-b+1 do
         local rb = b..j..lj
         assertEquals( m:getcol(rb) , m:getsub(nil,rb) )
+        assertEquals( m:getcol(rb) , m:getsub(1..m.nrow,rb) )
       end
     end end
   end
@@ -974,7 +962,11 @@ function TestMatrixSet:testSetcol()
   m:setcol(1, 1..3)        assertEquals( m:getcol(1   ), m:same(5,1):fill({1,2,3,1,2}) )
                            assertEquals( m:getcol(2..5), m:same(5,4)                   )
   m:setcol(1, {0} )        assertEquals( m:getcol(1..5), m:same(5,5)                   )
-
+  local f = \a,s => return s+1, a*s end
+  for i = 1, 5 do  --Check setsub identity
+    assertEquals(m:copy():setcol(1..i, 2..i*2..2), m:copy():setsub(nil, 1..i, 2..i*2..2))
+    assertEquals(m:copy():setcol(1..i, f, 12.2, 4), m:copy():setsub(nil, 1..i, f, 12.2, 4))
+  end
   for _,m in ipairs(G.mattmp) do 
     local nr, nc = m:sizes()
     local expected = m:same()
@@ -1004,6 +996,67 @@ function TestMatrixSet:testSetcol()
           m:setcol(colsToSet,0)
         end
       end
+    end
+  end
+end
+
+function TestMatrixInPlaceII:testInsvec() --size is never changed inserting from the beginning results in end being discarded
+  local m = matrix(6):fill(1)
+  for n = 1, 36 do --Check single element by element addition
+    local expected = matrix(6,6):fill(1)
+    for i = n, 1, -1 do
+      expected[i] = n-i+1
+    end
+    assertEquals( m:insvec(1, n), expected)
+  end
+  local m = matrix(6):fill(1)
+  for n = 1, 25 do --Check multi-element insertion
+    local expected = matrix(6,6):fill(1)
+    for i = n, 1, -1 do
+      expected[i] = i
+    end
+    assertEquals( m:copy():insvec(1..n, 1..n), expected) --Always outputs 1D
+  end
+end
+
+function TestMatrixInPlaceII:testInssub() --size is never changed inserting from the beginning results in end being discarded
+  for _,m in ipairs(G.matidx) do
+    local nrow, ncol = m:sizes()
+    for startSub = 1, nrow - 1 do 
+      for i = startSub, nrow - 1 do 
+        for j = startSub, ncol - 1 do
+          local adjMat = m:copy():inssub(startSub..i, startSub..j, 1..((i - startSub + 1)*(j - startSub + 1)))
+          local shiftedVal = 1
+          for row = 1, adjMat.nrow do
+            for col = 1, adjMat.ncol do 
+              if row >= startSub and col >= startSub and row <= i and col <= j then 
+                assertEquals(adjMat:get(row, col), matrix(i-startSub + 1, j-startSub + 1):getidx(row-startSub + 1, col-startSub + 1, j)) --matrix(..) bit finds which index that was input
+              else
+                assertEquals(adjMat:get(row, col), shiftedVal)
+                shiftedVal = shiftedVal + 1 --Shifts rows across first, so sort of unpredictable based on index
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+end
+
+function TestMatrixInPlaceII:testInsrow()
+  for _,m in ipairs(G.matidx) do
+    for i = 1, m.nrow do 
+      assertEquals(m:copy():insrow(1..i, i), m:copy():inssub(1..i, nil, i))
+      assertEquals(m:zeros():insrow(1..i, 1..i*m.ncol), m:zeros():inssub(1..i, nil, 1..i*m.ncol))
+    end
+  end
+end
+
+function TestMatrixInPlaceII:testInscol() --Fails, when inserting 4 elements to a 2x2 matrix
+  for _,m in ipairs(G.matidx) do
+    for i = 1, m.ncol do 
+      assertEquals(m:copy():inscol(1..i, i), m:copy():inssub(nil, 1..i, i))
+      assertEquals(m:zeros():inscol(1..i, 1..i*m.nrow), m:zeros():inssub(nil, 1..i, 1..i*m.nrow))
     end
   end
 end
@@ -1048,7 +1101,7 @@ function TestMatrixInPlaceII:testSwpsub() --Double check
     end
   end
 end
-
+--Below may be excessive, written before swpsub tested
 function TestMatrixInPlaceII:testSwpcol() 
   for _,m in ipairs(G.matidx) do
     local nrow, ncol = m:sizes()
@@ -1264,21 +1317,21 @@ end
 function TestMatrixInPlaceII:testRemsub()
   for _,m in ipairs(G.matidx) do
     local nrow, ncol = m:sizes()
-    for startOfRemoval = 1, nrow - 1 do 
-      for i = startOfRemoval, nrow - 1 do 
-      for j = startOfRemoval, ncol - 1 do
-        local smallMat = m:copy():remsub(startOfRemoval..i, startOfRemoval..j)
-          assertEquals(nrow - (i - startOfRemoval + 1), smallMat.nrow)
-          assertEquals(ncol - (j - startOfRemoval + 1), smallMat.ncol)
+    for startRem = 1, nrow - 1 do 
+      for i = startRem, nrow - 1 do 
+      for j = startRem, ncol - 1 do
+        local smallMat = m:copy():remsub(startRem..i, startRem..j)
+          assertEquals(nrow - (i - startRem + 1), smallMat.nrow)
+          assertEquals(ncol - (j - startRem + 1), smallMat.ncol)
           for row = 1, smallMat.nrow do
             for col = 1, smallMat.ncol do 
               local rowIncrease, colIncrease = 0, 0
-              if row >= startOfRemoval and col >= startOfRemoval then 
-                rowIncrease, colIncrease = i - startOfRemoval + 1, j - startOfRemoval + 1
-              elseif row >= startOfRemoval then 
-                rowIncrease = i - startOfRemoval + 1
-              elseif col >= startOfRemoval then 
-                colIncrease = j - startOfRemoval + 1
+              if row >= startRem and col >= startRem then 
+                rowIncrease, colIncrease = i - startRem + 1, j - startRem + 1
+              elseif row >= startRem then 
+                rowIncrease = i - startRem + 1
+              elseif col >= startRem then 
+                colIncrease = j - startRem + 1
               end
               assertEquals(m:get(row + rowIncrease, col + colIncrease ), smallMat:get(row, col))
             end
