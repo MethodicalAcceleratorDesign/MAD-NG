@@ -735,8 +735,11 @@ function MR.getidx (x, ir_, jc_, r_)
   return r, ir, jc
 end
 
-function MR.getii (x)
-  return (1..min(x:sizes()))*(x.ncol+1)
+function MR.getdidx (x, r_)
+  local nn, nc = min(x:sizes()), x.ncol
+  local r = r_ or ivector(nn)
+  for ii=1,nn do r[ii] = idx(ii,ii,nc) end
+  return r
 end
 
 function MR.getij (x, ij_)
@@ -1910,7 +1913,7 @@ function MR.__div (x, y, r, rcond_)
   local rank
   if is_number(x) then                           -- num / mat
     r = chksiz(r,y) or matrix_alloc(y:sizes())
-    rank = _C.mad_mat_invn(y._dat, x, r._dat, y.nrow, y.ncol, rcond_ or -1)
+    rank = _C.mad_mat_invn(y._dat, x, r._dat, y.nrow, y.ncol, rcond_ or eps)
     return r, rank
   elseif is_number(y) then                       -- mat / num => vec / num
     r = chksiz(r,x) or matrix_alloc(x:sizes())
@@ -1920,11 +1923,11 @@ function MR.__div (x, y, r, rcond_)
     _C.mad_vec_mulc_r(x._dat, y.re, y.im, r._dat, size(r), 1) return r
   elseif is_cmatrix(y) then                      -- mat / cmat
     r = chksizd(r,x,y) or cmatrix_alloc(x.nrow, y.nrow)
-    rank = _C.mad_mat_divm(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol, rcond_ or -1)
+    rank = _C.mad_mat_divm(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol, rcond_ or eps)
     return r, rank
   elseif is_matrix(y) and is_matrix(x) then      -- mat / mat
     r = chksizd(r,x,y) or matrix_alloc(x.nrow, y.nrow)
-    rank = _C.mad_mat_div(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol, rcond_ or -1)
+    rank = _C.mad_mat_div(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol, rcond_ or eps)
     return r, rank
   else
     return assert(gmm(y,'__div_mat'), "invalid 'mat / ?' operation")(x, y, r)
@@ -1933,7 +1936,7 @@ end
 
 function MR.__div_cpx (x, y, r, rcond_)          -- cpx / mat
   r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  local rank = _C.mad_mat_invc_r(y._dat, x.re, x.im, r._dat, y.nrow, y.ncol, rcond_ or -1)
+  local rank = _C.mad_mat_invc_r(y._dat, x.re, x.im, r._dat, y.nrow, y.ncol, rcond_ or eps)
   return r, rank
 end
 
@@ -1941,7 +1944,7 @@ function MC.__div (x, y, r, rcond_)
   local rank
   if is_number(x) then                           -- num / cmat
     r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-    rank = _C.mad_cmat_invn(y._dat, x, r._dat, y.nrow, y.ncol, rcond_ or -1)
+    rank = _C.mad_cmat_invn(y._dat, x, r._dat, y.nrow, y.ncol, rcond_ or eps)
     return r, rank
   elseif is_number(y) then                       -- cmat / num => cvec / num
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
@@ -1951,11 +1954,11 @@ function MC.__div (x, y, r, rcond_)
     _C.mad_cvec_mulc_r(x._dat, y.re, y.im, r._dat, size(r), 1) return r
   elseif is_matrix(y) then                       -- cmat / mat
     r = chksizd(r,x,y) or cmatrix_alloc(x.nrow, y.nrow)
-    rank = _C.mad_cmat_divm(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol, rcond_ or -1)
+    rank = _C.mad_cmat_divm(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol, rcond_ or eps)
     return r, rank
   elseif is_cmatrix(y) and is_cmatrix(x) then    -- cmat / cmat
     r = chksizd(r,x,y) or cmatrix_alloc(x.nrow, y.nrow)
-    rank = _C.mad_cmat_div(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol, rcond_ or -1)
+    rank = _C.mad_cmat_div(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol, rcond_ or eps)
     return r, rank
   else
     return assert(gmm(y,'__div_mat'), "invalid 'cmat / ?' operation")(x, y, r)
@@ -1964,7 +1967,7 @@ end
 
 function MC.__div_cpx (x, y, r, rcond_)          -- cpx / cmat
   r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  local rank = _C.mad_cmat_invc_r(y._dat, x.re, x.im, r._dat, y.nrow, y.ncol, rcond_ or -1)
+  local rank = _C.mad_cmat_invc_r(y._dat, x.re, x.im, r._dat, y.nrow, y.ncol, rcond_ or eps)
   return r, rank
 end
 
@@ -2109,69 +2112,99 @@ end
 -- least squares solvers ------------------------------------------------------o
 
 function MR.solve (a, b, rcond_) -- min | b - Ax | using QR or LQ
+  assert(is_matrix(b), "invalid argument #2 (matrix expected)")
   local np, nr, nc = b.ncol, a:sizes()
+  assert(nr == b.nrow, "incompatible matrix sizes")
   local rx = matrix_alloc(nc, np)
   local rnk = _C.mad_mat_solve(a._dat, b._dat, rx._dat, nr, nc, np, rcond_ or eps)
   return rx, rnk  -- x = b:t():div(a:t()):t()
 end
 
 function MC.solve (a, b, rcond_)
+  assert(is_cmatrix(b), "invalid argument #2 (cmatrix expected)")
   local np, nr, nc = b.ncol, a:sizes()
+  assert(nr == b.nrow, "incompatible cmatrix sizes")
   local rx = cmatrix_alloc(nc, np)
   local rnk = _C.mad_cmat_solve(a._dat, b._dat, rx._dat, nr, nc, np, rcond_ or eps)
   return rx, rnk
 end
 
-function MR.nsolve (a, b, tol_, n_) -- min | b - Ax | using MICADO (best kick)
-  local nr, nc = a:sizes()
-  local rx, rr = matrix_alloc(nc, 1), matrix_alloc(nr, 1) -- solutions, residues
-  local nx = _C.mad_mat_nsolve(a._dat, b._dat, rx._dat, nr, nc, n_ or 0, tol_ or eps, rr._dat)
-  return rx, nx, rr
-end
-
-MC.nsolve = \ error("unsupported complex nsolve")
-
 function MR.ssolve (a, b, rcond_) -- min | b - Ax | using SVD
+  assert(is_matrix(b), "invalid argument #2 (matrix expected)")
   local np, nr, nc = b.ncol, a:sizes()
+  assert(nr == b.nrow, "incompatible matrix sizes")
   local rx, rs = matrix_alloc(nc, np), matrix_alloc(min(nr,nc),1)
   local rnk = _C.mad_mat_ssolve(a._dat, b._dat, rx._dat, nr, nc, np, rcond_ or eps, rs._dat)
   return rx, rnk, rs
 end
 
 function MC.ssolve (a, b, rcond_)
+  assert(is_cmatrix(b), "invalid argument #2 (cmatrix expected)")
   local np, nr, nc = b.ncol, a:sizes()
+  assert(nr == b.nrow, "incompatible cmatrix sizes")
   local rx, rs = cmatrix_alloc(nc, np), matrix_alloc(min(nr,nc),1)
   local rnk = _C.mad_cmat_ssolve(a._dat, b._dat, rx._dat, nr, nc, np, rcond_ or eps, rs._dat)
   return rx, rnk, rs
 end
 
 function MR.gsolve (a, b, c, d) -- min | c - Ax | subject to Bx = d using QR or LQ
+  assert(is_matrix(b), "invalid argument #2 (matrix expected)")
+  assert(is_matrix(c), "invalid argument #3 (matrix expected)")
+  assert(is_matrix(d), "invalid argument #4 (matrix expected)")
   local np, nr, nc = b.nrow, a:sizes()
+  assert(nc == b.ncol , "incompatible matrix sizes B")
+  assert(nr == size(c), "incompatible matrix sizes C")
+  assert(np == size(d), "incompatible matrix sizes D")
   local rx = matrix_alloc(nc, 1)
   local info = _C.mad_mat_gsolve(a._dat, b._dat, c._dat, d._dat, rx._dat, nr, nc, np, res)
   return rx, res[0], info
 end
 
 function MC.gsolve (a, b, c, d)
+  assert(is_cmatrix(b), "invalid argument #2 (cmatrix expected)")
+  assert(is_cmatrix(c), "invalid argument #3 (cmatrix expected)")
+  assert(is_cmatrix(d), "invalid argument #4 (cmatrix expected)")
   local np, nr, nc = b.nrow, a:sizes()
+  assert(nc == b.ncol , "incompatible cmatrix sizes B")
+  assert(nr == size(c), "incompatible cmatrix sizes C")
+  assert(np == size(d), "incompatible cmatrix sizes D")
   local rx = cmatrix_alloc(nc, 1)
   local info = _C.mad_cmat_gsolve(a._dat, b._dat, c._dat, d._dat, rx._dat, nr, nc, np, res)
   return rx, res[0], info
 end
 
 function MR.gmsolve (a, b, d) -- min_x | y | subject to Ax + By = d using QR or LQ
+  assert(is_matrix(b), "invalid argument #2 (matrix expected)")
+  assert(is_matrix(d), "invalid argument #3 (matrix expected)")
   local np, nr, nc = b.ncol, a:sizes()
+  assert(nr == b.nrow , "incompatible matrix sizes B")
+  assert(nr == size(d), "incompatible matrix sizes D")
   local rx, ry = matrix_alloc(nc, 1), matrix_alloc(np, 1)
   local info = _C.mad_mat_gmsolve(a._dat, b._dat, d._dat, rx._dat, ry._dat, nr, nc, np)
   return rx, ry, info
 end
 
 function MC.gmsolve (a, b, d)
+  assert(is_cmatrix(b), "invalid argument #2 (cmatrix expected)")
+  assert(is_cmatrix(d), "invalid argument #3 (cmatrix expected)")
   local np, nr, nc = b.ncol, a:sizes()
+  assert(nr == b.nrow , "incompatible cmatrix sizes B")
+  assert(nr == size(d), "incompatible cmatrix sizes D")
   local rx, ry = cmatrix_alloc(nc, 1), cmatrix_alloc(np, 1)
   local info = _C.mad_cmat_gmsolve(a._dat, b._dat, d._dat, rx._dat, ry._dat, nr, nc, np)
   return rx, ry, info
 end
+
+function MR.nsolve (a, b, tol_, nc_) -- min | b - Ax | using MICADO (best kick)
+  assert(is_matrix(b), "invalid argument #2 (matrix expected)")
+  local nr, nc = a:sizes()
+  assert(nr == size(b), "incompatible matrix sizes")
+  local rx, rr = matrix_alloc(nc, 1), matrix_alloc(nr, 1) -- solutions, residues
+  local nx = _C.mad_mat_nsolve(a._dat, b._dat, rx._dat, nr, nc, nc_ or 0, tol_ or eps, rr._dat)
+  return rx, nx, rr
+end
+
+MC.nsolve = \ error("unsupported complex nsolve")
 
 -- system pre-conditionning ---------------------------------------------------o
 
@@ -2202,7 +2235,14 @@ function MR.svdcnd (a, n_, rcond_, tol_)
   return rc, rs
 end
 
-MC.svdcnd = \ error("unsupported complex svdcnd")
+function MC.svdcnd (a, n_, rcond_, tol_)
+  local nr, nc = a:sizes()
+  local rs, rc = matrix_alloc(min(nr,nc),1), imatrix_alloc(1,nc)
+  local nc = _C.mad_cmat_svdcnd(a._dat, rc, nr, nc, n_ or 5, rcond_ or eps, rs._dat, tol_ or 0.02)
+  if nc == 0 then return nil, rs end
+  _C.mad_imat_reshape(rc, 1, nc)
+  return rc, rs
+end
 
 -- svd, det, eigenvalue, eigenvector ------------------------------------------o
 
