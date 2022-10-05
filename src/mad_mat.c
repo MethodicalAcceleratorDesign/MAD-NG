@@ -2102,10 +2102,10 @@ mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
   if (N > mn || N <= 0) N = mn;
 
   // Tolerance on components similarity in V columns.
-  if (tol < DBL_EPSILON) tol = DBL_EPSILON;
+  tol = MAX(tol, DBL_EPSILON);
 
-  // rcond == 0 means keep all singular values.
-  rcond = MAX(rcond, 0);
+  // Tolerance on keeping singular values.
+  rcond = MAX(rcond, DBL_EPSILON);
 
   // Number of columns to remove.
   idx_t nc = 0;
@@ -2150,7 +2150,8 @@ finalize:
 }
 
 int // Matrix reconditionning using SVD.
-mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t rcond, num_t s_[])
+mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
+               ssz_t N, num_t rcond, num_t s_[])
 {
   assert(a);
   ssz_t mn = MIN(m,n);
@@ -2319,7 +2320,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
   if (tol < DBL_EPSILON) tol = DBL_EPSILON;
 
   // Checks if tolerance is already reached.
-  { num_t e = sqrt(mad_vec_dot(b, b, m, 1) / m);
+  { num_t e = mad_vec_norm(b, m, 1) / m;
     if (e <= tol) return 0;
   }
 
@@ -2438,7 +2439,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
     }
 
     // Box 9: Check for convergence.
-    num_t e = sqrt(mad_vec_dot(R, R, m, 1) / m);
+    num_t e = mad_vec_norm(R, m, 1) / m;
     if (e <= tol) { N=k+1; break; }
   }
 
