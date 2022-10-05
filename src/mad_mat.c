@@ -2149,11 +2149,79 @@ finalize:
   return ivec_sort(c, nc, true);
 }
 
+int // Matrix preconditionning using SVD, return indexes of columns to remove.
+mad_cmat_svdcnd(const cnum_t a[], idx_t c[], ssz_t m, ssz_t n,
+               ssz_t N, num_t rcond, num_t s_[], num_t tol)
+{
+  assert(a && c);
+  ssz_t mn = MIN(m,n);
+
+  mad_alloc_tmp(cnum_t, U, m*m);
+  mad_alloc_tmp(cnum_t, V, n*n);
+  mad_alloc_tmp( num_t, S, mn );
+
+  int info = mad_cmat_svd(a, U, S, V, m, n);
+  if (info != 0) return -1;
+
+  // Backup singular values.
+  if (s_) mad_vec_copy(S, s_, mn, 1);
+
+  // N == 0 means to check for all singular values.
+  if (N > mn || N <= 0) N = mn;
+
+  // Tolerance on components similarity in V columns.
+  tol = MAX(tol, DBL_EPSILON);
+
+  // Tolerance on keeping singular values.
+  rcond = MAX(rcond, DBL_EPSILON);
+
+  // Number of columns to remove.
+  idx_t nc = 0;
+
+#define V(i,j) V[(i)*n+(j)]
+
+  // Loop over increasing singular values.
+  for (idx_t i=mn-1; i >= mn-N; i--) {
+
+    // Singular value is large, stop checking.
+    if (S[i] > rcond*S[0]) break;
+
+    // Loop over rows of V (i.e. columns of V^T)
+    for (idx_t j=0  ; j < n-1; j++)
+    for (idx_t k=j+1; k < n  ; k++) {
+      num_t vj = cabs(V(j,i));
+
+      // Proceed only significant component for this singular value.
+      if (vj > 1e-4) {
+        num_t vk  = cabs(V(k,i));
+        num_t rat = fabs(vj-vk)/(vj+vk);
+
+        // Discard column j with similar (or opposite) effect of column k > j.
+        if (rat <= tol) {
+          c[nc++] = j; // can hold duplicated indexes...
+          if (nc == n) goto finalize; // c is full...
+        }
+      }
+    }
+  }
+
+#undef V
+
+finalize:
+
+  mad_free_tmp(U);
+  mad_free_tmp(V);
+  mad_free_tmp(S);
+
+  // Return sorted indexes of columns to remove.
+  return ivec_sort(c, nc, true);
+}
+
 int // Matrix reconditionning using SVD.
 mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
                ssz_t N, num_t rcond, num_t s_[])
 {
-  assert(a);
+  assert(a && c);
   ssz_t mn = MIN(m,n);
 
   mad_alloc_tmp(num_t, U, m*m);
@@ -2170,8 +2238,8 @@ mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
   // N <= 0 means keep all columns.
   if (N > n || N <= 0) N = n;
 
-  // rcond == 0 means keep all singular values.
-  rcond = MAX(rcond, 0);
+  // Tolerance on keeping singular values.
+  rcond = MAX(rcond, DBL_EPSILON);
 
   for (idx_t i=0; i < N; i++)
     if (S[i] <= rcond*S[0]) { N=i; break; }
@@ -2193,9 +2261,10 @@ mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
 }
 
 int // Matrix reconditionning using SVD.
-mad_cmat_pcacnd(const cnum_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t rcond, num_t s_[])
+mad_cmat_pcacnd(const cnum_t a[], idx_t c[], ssz_t m, ssz_t n,
+                ssz_t N, num_t rcond, num_t s_[])
 {
-  assert(a);
+  assert(a && c);
   ssz_t mn = MIN(m,n);
 
   mad_alloc_tmp(cnum_t, U, m*m);
@@ -2213,8 +2282,8 @@ mad_cmat_pcacnd(const cnum_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t rc
   // N <= 0 means keep all columns.
   if (N > n || N <= 0) N = n;
 
-  // rcond == 0 means keep all singular values.
-  rcond = MAX(rcond, 0);
+  // Tolerance on keeping singular values.
+  rcond = MAX(rcond, DBL_EPSILON);
 
   for (idx_t i=0; i < N; i++)
     if (S[i] <= rcond*S[0]) { N=i; break; }

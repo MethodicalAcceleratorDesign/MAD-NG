@@ -94,6 +94,7 @@ int    mad_cmat_gsolve  (const cnum_t a[], const cnum_t b[], const cnum_t  c[], 
 int    mad_cmat_gmsolve (const cnum_t a[], const cnum_t b[], const cnum_t  d[],
                                                  cnum_t x[],       cnum_t  y[], ssz_t m, ssz_t n, ssz_t p);
 int    mad_cmat_pcacnd  (const cnum_t a[],        idx_t c[],                    ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[]);
+int    mad_cmat_svdcnd  (const cnum_t a[],        idx_t c[],                    ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[], num_t tol);
 int    mad_cmat_svd     (const cnum_t x[], cnum_t u[], num_t s[],  cnum_t  v[], ssz_t m, ssz_t n);                       //  u * s * v.t
 int    mad_cmat_eigen   (const cnum_t x[], cnum_t w[], cnum_t vl[],cnum_t vr[],          ssz_t n);                       //  w, vl, vr
 void   mad_cmat_fft     (const cnum_t x[],                         cnum_t  r[], ssz_t m, ssz_t n);                       //  cmat ->cmat
