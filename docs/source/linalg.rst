@@ -168,6 +168,10 @@ Getters/Setters
 
    Return an :type:`ivector` or :var:`r` containing :expr:`#ir * #jc` row-major indexes given by the :type:`iterable` :var:`ir` and :var:`jc` of the real, complex or integer matrix :var:`mat`, followed by :var:`ir` and :var:`jc` potentially updated from defaults. If both :var:`ir` and :var:`jc` are numbers, the three returned values are also numbers. This method is useful to convert 2D matrix indexes into 1D vector indexes for this matrix. Default: :expr:`ir_ = 1..mat.nrow`, :expr:`jc_ = 1..mat.ncol`.
 
+.. function:: mat:getdidx (r_)
+
+   Return an :type:`ivector` or :var:`r` containing :expr:`min(mat.nrow, mat.ncol)` indexes of the real, complex or integer matrix :var:`mat`. This method is useful to convert the diagonal of 2D matrix indexes into 1D vector indexes for this matrix. Note that these indexes can also be produced with numerical range.
+
 .. function:: mat:getij (ij_)
 
    Return two :type:`ivector` containing the pairs :expr:`(i,j)` of indexes extracted from the :type:`iterable` :var:`ij` and the number of columns of the real, complex or integer matrix :var:`mat`. If :var:`ij` is a number, the two returned values are also numbers. This method is the reverse method of :func:`mat:getidx()` to convert 1D vector indexes into 2D matrix indexes for this matrix. Default: :expr:`ij_ = 1..#mat`.
@@ -588,7 +592,7 @@ Operator-like Methods
 
 .. function:: mat:div (a, r_, rcond_)
 
-   Equivalent to :expr:`mat / a` with the possibility to place the result in :var:`r`, and to specify the conditional number :var:`rcond` used by the solver to determine the effective rank of non-square systems. Default: :expr:`rcond = -1`.
+   Equivalent to :expr:`mat / a` with the possibility to place the result in :var:`r`, and to specify the conditional number :var:`rcond` used by the solver to determine the effective rank of non-square systems. Default: :expr:`rcond = eps`.
 
 .. function:: mat:inv (r_, rcond_)
 
@@ -669,7 +673,7 @@ Special Methods
 
 .. function:: mat:norm ()
 
-   Return the `Frobenius norm <https://en.wikipedia.org/wiki/Matrix_norm#Frobenius_norm>`_ of the matrix :math:`||M||_2`. Other matrix norms :math:`L_p` can be easily calculated using other methods, e.g. :math:`L_1` :expr:`= mat:sumabs'col':max()`, :math:`L_{\infty}` :expr:`= mat:sumabs'row':max()`, and :math:`L_2` :expr:`= mat:svd():max()`.
+   Return the `Frobenius norm <https://en.wikipedia.org/wiki/Matrix_norm#Frobenius_norm>`_ of the matrix :math:`\| M \|_2`. Other matrix norms :math:`L_p` can be easily calculated using other methods, e.g. :math:`L_1` :expr:`= mat:sumabs'col':max()`, :math:`L_{\infty}` :expr:`= mat:sumabs'row':max()`, and :math:`L_2` :expr:`= mat:svd():max()`.
 
 .. function:: mat:distance (y)
 
@@ -716,28 +720,50 @@ Special Methods
 
    Return the evaluation of the real or complex matrix :var:`mat` at the value :var:`x0`, i.e. interpreting the matrix as a vector of polynomial coefficients of increasing orders in :var:`x` evaluated at :expr:`x = x0` using `Horner's method <https://en.wikipedia.org/wiki/Horner%27s_method>`_.
 
-Solvers/Decompositions
-----------------------
+Solvers/Eigen/SVD
+-----------------
+
+   Except for :func:`nsolve()`, the solvers hereafter are wrappers around the library `Lapack <https://netlib.org/lapack/explore-html/index.html>`_ [#f2]_.
 
 .. function:: mat:solve (b, rcond_)
 
+   Return the real or complex :math:`[ n \times p ]` matrix :var:`x` as the minimum-norm solution of the linear least square problem :math:`\min \| A x - B \|` where :math:`A` is the real or complex :math:`[ m \times n ]` matrix :var:`mat` and :math:`B` is a :math:`[ m \times p ]` matrix of the same type as :math:`A`, using LU, QR or LQ factorisation depending on the shape of the system. The conditional number :var:`rcond` is used by the solver to determine the effective rank of non-square system. This method also returns the rank of the system. Default: :expr:`rcond_ = eps`.
+
 .. function:: mat:ssolve (b, rcond_)
+
+   Return the real or complex :math:`[ n \times p ]` matrix :var:`x` as the minimum-norm solution of the linear least square problem :math:`\min \| A x - B \|` where :math:`A` is the real or complex :math:`[ m \times n ]` matrix :var:`mat` and :math:`B` is a :math:`[ m \times p ]` matrix of the same type as :math:`A`, using SVD factorisation. The conditional number :var:`rcond` is used by the solver to determine the effective rank of the system. This method also returns the rank of the system followed by the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`rcond_ = eps`.
 
 .. function:: mat:gsolve (b, c, d)
 
+   Return the real or complex :math:`[ n \times 1 ]` vector :var:`x` as the minimum-norm solution of the linear least square problem :math:`\min \| A x - C \|` under the constraint :math:`B x = D` where :math:`A` is the real or complex :math:`[ m \times n ]` matrix :var:`mat`, :math:`B` is a :math:`[ p \times n ]` matrix, :math:`C` is a :math:`[ m \times 1 ]` vector and :math:`D` is a :math:`[ p \times 1 ]` vector, all of the same type as :math:`A`, using QR or LQ factorisation depending on the shape of the system.This method also returns the norm of the residues and the status :var:`info`.
+
 .. function:: mat:gmsolve (b, d)
 
-.. function:: mat:nsolve (b, tol_, n_)
+   Return the real or complex :math:`[ n \times 1 ]` vector :var:`x` and :math:`[ p \times 1 ]` matrix :var:`y` as the minimum-norm solution of the linear Gauss-Markov problem :math:`\min_x \| y \|` under the constraint :math:`A x + B y = D` where :math:`A` is the :math:`[ m \times n ]` real or complex matrix :var:`mat`, :math:`B` is a :math:`[ m \times p ]` matrix, and :math:`D` is a :math:`[ m \times 1 ]` vector, both of the same type as :math:`A`, using QR or LQ factorisation depending on the shape of the system. This method also returns the status :var:`info`.
 
-.. function:: mat:pcacnd (n_, rcond_)
+.. function:: mat:nsolve (b, tol_, nc_)
 
-.. function:: mat:svdcnd (n_, rcond_, tol_)
+   Return the real :math:`[ n \times 1 ]` vector :var:`x` (of correctors kicks) as the minimum-norm solution of the linear (best-kick) least square problem :math:`\min \| A x - B \|` where :math:`A` is the real :math:`[ m \times n ]` (response) matrix :var:`mat` and :math:`B` is a real :math:`[ m \times 1 ]` vector (of monitors readings), using the MICADO [#f3]_ algorithm based on the Householder-Golub method [MICADO]_. The argument :var:`tol` is a convergence threshold (on the residues) to stop the (orbit) correction if :math:`\| A x - B \| \leq m \times` :var:`tol`, and the argument :var:`nc` is the maximum number of correctors to use with :math:`0 < n_c \leq n`. This method also returns the updated number of correctors :math:`n_c` effectively used during the correction followed by the real :math:`[ m \times 1 ]` vector of residues. Default: :expr:`tol_ = eps`, :expr:`nc_ = mat.ncol`, i.e. use all correctors.
+
+.. function:: mat:pcacnd (ns_, rcond_)
+
+   Return the integer column vector :var:`ic` containing the indexes of the columns to remove from the real or complex :math:`[ m \times n ]` matrix :var:`mat` using the Principal Component Analysis. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. This method also returns the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`ns_ = min(mat.nrow,mat.ncol)`, :expr:`rcond_ = eps`.
+
+.. function:: mat:svdcnd (ns_, rcond_, tol_)
+
+   Return the integer column vector :var:`ic` containing the indexes of the columns to remove from the real or complex :math:`[ m \times n ]` matrix :var:`mat` based on the analysis of the right matrix :math:`V` from the SVD decomposition :math:`U S V`. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. The argument :var:`tol` is a threshold similar to :var:`rcond` used to reject components in :math:`V` that have similar or opposite effect than components already encountered. This method also returns the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`ns_ = min(mat.nrow,mat.ncol)`, :expr:`rcond_ = eps`.
 
 .. function:: mat:svd ()
 
-.. function:: mat:det ()
+   Return the real vector of the singular values and the two real or complex matrices resulting from the `SVD factorisation <https://en.wikipedia.org/wiki/Singular_value_decomposition>`_ of the real or complex matrix :var:`mat`, followed the status :var:`info`. The singular values are positive and sorted in decreasing order of values, i.e. largest first.
 
 .. function:: mat:eigen ()
+
+   Return the complex vector filled with the eigenvalues followed by the two real or complex matrices containing the left and right eigenvectors resulting from the `Eigen Decomposition <https://en.wikipedia.org/wiki/Eigendecomposition_of_a_matrix>`_ of the real or complex square matrix :var:`mat`, followed by the status :var:`info`. The eigenvectors are normalized to have unit Euclidean norm and their largest component real.
+
+.. function:: mat:det ()
+
+   Return the `Determinant <https://en.wikipedia.org/wiki/Determinant>`_ of the real or complex square matrix :var:`mat` using LU factorisation for better numerical stability, followed by the status :var:`info`.
 
 FFT/Convolutions
 ----------------
@@ -1501,6 +1527,18 @@ Miscellaneous
 References
 ==========
 
+.. [MICADO] B. Autin, Y. Marti, *"Closed Orbit Correction of Alternating Gradient Machines using a Small Number of Magnets"*, CERN ISR-MA/73-17, Mar. 1973.
+
 .. rubric:: Footnotes
 
 .. [#f1] For *true* Functional Programming, see the module :mod:`MAD.lfun`, a binding of the `LuaFun <https://github.com/luafun/luafun>`_  library adapted to the ecosystem of MAD-NG.
+
+.. [#f2] The solvers are based on the following Lapack subroutines: 
+
+   - :func:`dgesv()` and :func:`zgesv()` for LU factorization.
+   - :func:`dgelsy()` and :func:`zgelsy()` for QR or LQ factorization.
+   - :func:`dgelsd()` and :func:`zgelsd()` for SVD factorisation.
+   - :func:`dgglse()` and :func:`zgglse()` for equality-constrained linear Least Squares problems.
+   - :func:`dggglm()` and :func:`zggglm()` for general Gauss-Markov linear model problems.
+
+.. [#f3] MICADO stands for "Minimisation des CArrés des Distortions d'Orbite" in french. 
