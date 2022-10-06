@@ -1542,11 +1542,13 @@ mad_cmat_gmsolve (const cnum_t a[], const cnum_t b[], const cnum_t d[],
 // A:[n x n], U:[m x m], S:[min(m,n)], V:[n x n]
 
 int
-mad_mat_eigen (const num_t x[], cnum_t w[], num_t vl[], num_t vr[], ssz_t n)
+mad_mat_eigen (const num_t x[], cnum_t w[], num_t vl_[], num_t vr_[], ssz_t n)
 {
-  assert( x && w && vl && vr );
+  assert( x && w );
   int info=0;
   const int nn=n;
+  const str_t vls = vl_ ? "V" : "N";
+  const str_t vrs = vr_ ? "V" : "N";
 
   num_t sz;
   int lwork=-1;
@@ -1554,14 +1556,14 @@ mad_mat_eigen (const num_t x[], cnum_t w[], num_t vl[], num_t vr[], ssz_t n)
   mad_alloc_tmp(num_t, wi, n);
   mad_alloc_tmp(num_t, ra, n*n);
   mad_mat_trans(x, ra, n, n);
-  dgeev_("V", "V", &nn, ra, &nn, wr, wi, vl, &nn, vr, &nn, &sz, &lwork, &info); // query
+  dgeev_(vls, vrs, &nn, ra, &nn, wr, wi, vl_, &nn, vr_, &nn, &sz, &lwork, &info); // query
   mad_alloc_tmp(num_t, wk, lwork=sz);
-  dgeev_("V", "V", &nn, ra, &nn, wr, wi, vl, &nn, vr, &nn,  wk, &lwork, &info); // compute
+  dgeev_(vls, vrs, &nn, ra, &nn, wr, wi, vl_, &nn, vr_, &nn,  wk, &lwork, &info); // compute
   mad_vec_cvec(wr, wi, w, n, 1);
   mad_free_tmp(wk); mad_free_tmp(ra);
   mad_free_tmp(wi); mad_free_tmp(wr);
-  mad_mat_trans(vl, vl, n, n);
-  mad_mat_trans(vr, vr, n, n);
+  if (vl_) mad_mat_trans(vl_, vl_, n, n);
+  if (vr_) mad_mat_trans(vr_, vr_, n, n);
 
   if (info < 0) error("Eigen: invalid input argument");
   if (info > 0) warn ("Eigen: failed to compute all eigenvalues");
@@ -1570,23 +1572,25 @@ mad_mat_eigen (const num_t x[], cnum_t w[], num_t vl[], num_t vr[], ssz_t n)
 }
 
 int
-mad_cmat_eigen (const cnum_t x[], cnum_t w[], cnum_t vl[], cnum_t vr[], ssz_t n)
+mad_cmat_eigen (const cnum_t x[], cnum_t w[], cnum_t vl_[], cnum_t vr_[], ssz_t n)
 {
-  assert( x && w && vl && vr );
+  assert( x && w );
   int info=0;
   const int nn=n;
+  const str_t vls = vl_ ? "V" : "N";
+  const str_t vrs = vr_ ? "V" : "N";
 
   cnum_t sz;
   int lwork=-1;
   mad_alloc_tmp(num_t, rwk, 2*n);
   mad_alloc_tmp(cnum_t, ra, n*n);
   mad_cmat_trans(x, ra, n, n);
-  zgeev_("V", "V", &nn, ra, &nn, w, vl, &nn, vr, &nn, &sz, &lwork, rwk, &info); // query
+  zgeev_(vls, vrs, &nn, ra, &nn, w, vl_, &nn, vr_, &nn, &sz, &lwork, rwk, &info); // query
   mad_alloc_tmp(cnum_t, wk, lwork=creal(sz));
-  zgeev_("V", "V", &nn, ra, &nn, w, vl, &nn, vr, &nn,  wk, &lwork, rwk, &info); // compute
+  zgeev_(vls, vrs, &nn, ra, &nn, w, vl_, &nn, vr_, &nn,  wk, &lwork, rwk, &info); // compute
   mad_free_tmp(wk); mad_free_tmp(ra); mad_free_tmp(rwk);
-  mad_cmat_trans(vl, vl, n, n);
-  mad_cmat_trans(vr, vr, n, n);
+  if (vl_) mad_cmat_trans(vl_, vl_, n, n);
+  if (vr_) mad_cmat_trans(vr_, vr_, n, n);
 
   if (info < 0) error("Eigen: invalid input argument");
   if (info > 0) warn ("Eigen: failed to compute all eigenvalues");
