@@ -796,7 +796,7 @@ Solvers and Decompositions
 
 .. function:: mat:eigen (vr_, vl_)
 
-   Return the complex vector filled with the eigenvalues followed by the two optional real or complex matrices :var:`vr` and :var:`vl` containing the left and right eigenvectors resulting from the `Eigen Decomposition <https://en.wikipedia.org/wiki/Eigendecomposition_of_a_matrix>`_ of the real or complex square matrix :var:`mat`, followed by the status :var:`info`. The eigenvectors are normalized to have unit Euclidean norm and their largest component real, and satisfy :math:`A v_r = \lambda v_r` and :math:`v_l A = \lambda v_l`.
+   Return the complex vector filled with the eigenvalues followed by the by the status :var:`info` and the two optional real or complex matrices :var:`vr` and :var:`vl` containing the left and right eigenvectors resulting from the `Eigen Decomposition <https://en.wikipedia.org/wiki/Eigendecomposition_of_a_matrix>`_ of the real or complex square matrix :var:`mat`. The eigenvectors are normalized to have unit Euclidean norm and their largest component real, and satisfy :math:`A v_r = \lambda v_r` and :math:`v_l A = \lambda v_l`.
 
 .. function:: mat:det ()
 
