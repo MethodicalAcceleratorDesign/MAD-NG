@@ -105,8 +105,8 @@ Functions
 Methods
 =======
 
-Getters/Setters
----------------
+Getters and Setters
+-------------------
 
 .. function:: mat:sizes ()
 
@@ -258,8 +258,8 @@ Getters/Setters
 
    Equivalent to :func:`mat:inssub()` with :expr:`ir = nil`.
 
-Copy/Shape
-----------
+Copy and Reshaping
+------------------
 
 .. function:: mat:same ([nrow_, ncol_,] v_)
 
@@ -285,8 +285,8 @@ Copy/Shape
 
    *WARNING: This method is unsafe and may crash MAD-NG, i.e. with a* `Segmentation fault <https://en.wikipedia.org/wiki/Segmentation_fault>`__ *, if wrongly used. It is the responsibility of the user to ensure that* :var:`vec` *is effectively a vector and contains enough allocated memory to append the value* :var:`v`.
 
-Filling/Moving
---------------
+Filling and Moving
+------------------
 
 .. function:: mat:is_const (v_, tol_)
 
@@ -358,8 +358,8 @@ Filling/Moving
 
    Return the real, complex or integer matrix :var:`mat` after shifting the elements in :expr:`mat[i..]` to :expr:`mat[i+n..]` if :expr:`n > 0` and in the opposite direction if :expr:`n < 0`, i.e. it is equivalent to :expr:`mat:movev(i, #mat-n, i+n)` for :expr:`n > 0` and to :expr:`mat:movev(i-n, #mat+n, i)` for :expr:`n < 0`. Default: :expr:`n_ = 1`.
 
-Mapping/Folding
----------------
+Mapping and Folding
+-------------------
 
    This section lists the high-order functions `map <https://en.wikipedia.org/wiki/Map_(higher-order_function)>`_, `fold <https://en.wikipedia.org/wiki/Fold_(higher-order_function)>`_ and their variants useful in `functional programming <https://en.wikipedia.org/wiki/Functional_programming>`_ [#f1]_, followed by sections that list their direct application.
 
@@ -481,6 +481,7 @@ Functions                   Equivalent Mapping
 :func:`mat:carg(r_)`        :expr:`mat:map(carg,r_)`
 :func:`mat:conj(r_)`        :expr:`mat:map(conj,r_)`
 :func:`mat:cplx(im_,r_)`    :expr:`mat:map2(im_ or 0, cplx, r_)`
+:func:`mat:fabs(r_)`        :expr:`mat:map(fabs,r_)`
 :func:`mat:imag(r_)`        :expr:`mat:map(imag,r_)`
 :func:`mat:polar(r_)`       :expr:`mat:map(polar,r_)`
 :func:`mat:proj(r_)`        :expr:`mat:map(proj,r_)`
@@ -516,6 +517,42 @@ Functions                   Equivalent Mapping
 :func:`mat:ediv(mat2,r_)`   :expr:`mat:map2(mat2,div,r_)`
 :func:`mat:emod(mat2,r_)`   :expr:`mat:map2(mat2,mod,r_)`
 :func:`mat:epow(mat2,r_)`   :expr:`mat:map2(mat2,pow,r_)`
+==========================  ===============================
+
+.. _matrix-functions:
+
+Matrix Functions
+----------------
+
+The following table lists the methods built from the application of :func:`mat:mfun()` to the real-like functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`.
+
+==========================  ===============================
+Functions                   Equivalent Matrix Function
+==========================  ===============================
+:func:`mat:macos()`         :expr:`mat:mfun(acos)`
+:func:`mat:macosh()`        :expr:`mat:mfun(acosh)`
+:func:`mat:macot()`         :expr:`mat:mfun(acot)`
+:func:`mat:macoth()`        :expr:`mat:mfun(acoth)`
+:func:`mat:masin()`         :expr:`mat:mfun(asin)`
+:func:`mat:masinh()`        :expr:`mat:mfun(asinh)`
+:func:`mat:masinc()`        :expr:`mat:mfun(asinc)`
+:func:`mat:masinhc()`       :expr:`mat:mfun(asinhc)`
+:func:`mat:matan()`         :expr:`mat:mfun(atan)`
+:func:`mat:matanh()`        :expr:`mat:mfun(atanh)`
+:func:`mat:mcos()`          :expr:`mat:mfun(cos)`
+:func:`mat:mcosh()`         :expr:`mat:mfun(cosh)`
+:func:`mat:mcot()`          :expr:`mat:mfun(cot)`
+:func:`mat:mcoth()`         :expr:`mat:mfun(coth)`
+:func:`mat:mexp()`          :expr:`mat:mfun(exp)`
+:func:`mat:mlog()`          :expr:`mat:mfun(log)`
+:func:`mat:mlog10()`        :expr:`mat:mfun(log10)`
+:func:`mat:msin()`          :expr:`mat:mfun(sin)`
+:func:`mat:msinc()`         :expr:`mat:mfun(sinc)`
+:func:`mat:msinh()`         :expr:`mat:mfun(sinh)`
+:func:`mat:msinhc()`        :expr:`mat:mfun(sinhc)`
+:func:`mat:msqrt()`         :expr:`mat:mfun(sqrt)`
+:func:`mat:mtan()`          :expr:`mat:mfun(tan)`
+:func:`mat:mtanh()`         :expr:`mat:mfun(tanh)`
 ==========================  ===============================
 
 Folding Methods
@@ -673,7 +710,7 @@ Special Methods
 
 .. function:: mat:norm ()
 
-   Return the `Frobenius norm <https://en.wikipedia.org/wiki/Matrix_norm#Frobenius_norm>`_ of the matrix :math:`\| M \|_2`. Other matrix norms :math:`L_p` can be easily calculated using other methods, e.g. :math:`L_1` :expr:`= mat:sumabs'col':max()`, :math:`L_{\infty}` :expr:`= mat:sumabs'row':max()`, and :math:`L_2` :expr:`= mat:svd():max()`.
+   Return the `Frobenius norm <https://en.wikipedia.org/wiki/Matrix_norm#Frobenius_norm>`_ of the matrix :math:`\| M \|_2`. Other :math:`L_p` matrix norms and variants can be easily calculated using provided methods, e.g. :math:`L_1` :expr:`= mat:sumabs'col':max()`, :math:`L_{\infty}` :expr:`= mat:sumabs'row':max()`, and :math:`L_2` :expr:`= mat:svd():max()`.
 
 .. function:: mat:distance (y)
 
@@ -720,8 +757,8 @@ Special Methods
 
    Return the evaluation of the real or complex matrix :var:`mat` at the value :var:`x0`, i.e. interpreting the matrix as a vector of polynomial coefficients of increasing orders in :var:`x` evaluated at :expr:`x = x0` using `Horner's method <https://en.wikipedia.org/wiki/Horner%27s_method>`_.
 
-Solvers/Eigen/SVD
------------------
+Solvers and Decompositions
+--------------------------
 
    Except for :func:`nsolve()`, the solvers hereafter are wrappers around the library `Lapack <https://netlib.org/lapack/explore-html/index.html>`_ [#f2]_.
 
@@ -757,16 +794,20 @@ Solvers/Eigen/SVD
 
    Return the real vector of the singular values and the two real or complex matrices resulting from the `SVD factorisation <https://en.wikipedia.org/wiki/Singular_value_decomposition>`_ of the real or complex matrix :var:`mat`, followed the status :var:`info`. The singular values are positive and sorted in decreasing order of values, i.e. largest first.
 
-.. function:: mat:eigen ()
+.. function:: mat:eigen (vr_, vl_)
 
-   Return the complex vector filled with the eigenvalues followed by the two real or complex matrices containing the left and right eigenvectors resulting from the `Eigen Decomposition <https://en.wikipedia.org/wiki/Eigendecomposition_of_a_matrix>`_ of the real or complex square matrix :var:`mat`, followed by the status :var:`info`. The eigenvectors are normalized to have unit Euclidean norm and their largest component real.
+   Return the complex vector filled with the eigenvalues followed by the two optional real or complex matrices :var:`vr` and :var:`vl` containing the left and right eigenvectors resulting from the `Eigen Decomposition <https://en.wikipedia.org/wiki/Eigendecomposition_of_a_matrix>`_ of the real or complex square matrix :var:`mat`, followed by the status :var:`info`. The eigenvectors are normalized to have unit Euclidean norm and their largest component real, and satisfy :math:`A v_r = \lambda v_r` and :math:`v_l A = \lambda v_l`.
 
 .. function:: mat:det ()
 
    Return the `Determinant <https://en.wikipedia.org/wiki/Determinant>`_ of the real or complex square matrix :var:`mat` using LU factorisation for better numerical stability, followed by the status :var:`info`.
 
-FFT/Convolutions
-----------------
+.. function:: mat:mfun (fun, r_)
+
+   Return the real or complex matrix or :var:`r` resulting from the matrix function :var:`fun` applyied to the real or complex matrix :var:`mat`. So far, :func:`mat:mfun()` uses the eigen decomposition of the matrix :var:`mat`, which must be diagonalizable. See the section :ref:`matrix-functions` for the list of matrix functions already provided. Future versions of this method may be extended to use the more general Derivative-Free Schur-Parlett algorithm [MATFUN]_, and other specialized versions for :func:`msqrt()`, :func:`mpow`, :func:`mexp`, and :func:`mlog` may be implemented too.
+
+Fourier Transforms and Convolutions
+-----------------------------------
 
 .. function:: mat:fft (r_)
 
@@ -855,8 +896,8 @@ Conversions
 
    TODO
 
-Input/Output
-------------
+Input and Output
+----------------
 
 .. function:: mat:write (filename_, name_, eps_, line_, nl_)
 
@@ -1527,17 +1568,20 @@ Miscellaneous
 References
 ==========
 
-.. [MICADO] B. Autin, Y. Marti, *"Closed Orbit Correction of Alternating Gradient Machines using a Small Number of Magnets"*, CERN ISR-MA/73-17, Mar. 1973.
+.. [MICADO] B. Autin, and Y. Marti, *"Closed Orbit Correction of Alternating Gradient Machines using a Small Number of Magnets"*, CERN ISR-MA/73-17, Mar. 1973.
+
+.. [MATFUN] N.J. Higham, and X. Liu, *"A Multiprecision Derivative-Free Schur–Parlett Algorithm for Computing Matrix Functions"*, SIAM J. Matrix Anal. Appl., Vol. 42, No. 3, pp. 1401-1422, 2021.
 
 .. rubric:: Footnotes
 
 .. [#f1] For *true* Functional Programming, see the module :mod:`MAD.lfun`, a binding of the `LuaFun <https://github.com/luafun/luafun>`_  library adapted to the ecosystem of MAD-NG.
 
-.. [#f2] The solvers are based on the following Lapack subroutines: 
+.. [#f2] The solvers are based, among others, on the following Lapack drivers: 
 
    - :func:`dgesv()` and :func:`zgesv()` for LU factorization.
    - :func:`dgelsy()` and :func:`zgelsy()` for QR or LQ factorization.
    - :func:`dgelsd()` and :func:`zgelsd()` for SVD factorisation.
+   - :func:`dgees()` and :func:`zgees()` for Schur factorisation.
    - :func:`dgglse()` and :func:`zgglse()` for equality-constrained linear Least Squares problems.
    - :func:`dggglm()` and :func:`zggglm()` for general Gauss-Markov linear model problems.
 
