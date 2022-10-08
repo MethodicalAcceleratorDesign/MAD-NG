@@ -802,9 +802,9 @@ Solvers and Decompositions
 
    Return the `Determinant <https://en.wikipedia.org/wiki/Determinant>`_ of the real or complex square matrix :var:`mat` using LU factorisation for better numerical stability, followed by the status :var:`info`.
 
-.. function:: mat:mfun (fun, r_)
+.. function:: mat:mfun (fun)
 
-   Return the real or complex matrix or :var:`r` resulting from the matrix function :var:`fun` applyied to the real or complex matrix :var:`mat`. So far, :func:`mat:mfun()` uses the eigen decomposition of the matrix :var:`mat`, which must be diagonalizable. See the section :ref:`matrix-functions` for the list of matrix functions already provided. Future versions of this method may be extended to use the more general Derivative-Free Schur-Parlett algorithm [MATFUN]_, and other specialized versions for :func:`msqrt()`, :func:`mpow`, :func:`mexp`, and :func:`mlog` may be implemented too.
+   Return the real or complex matrix resulting from the matrix function :var:`fun` applyied to the real or complex matrix :var:`mat`. So far, :func:`mat:mfun()` uses the eigen decomposition of the matrix :var:`mat`, which must be diagonalizable. See the section :ref:`matrix-functions` for the list of matrix functions already provided. Future versions of this method may be extended to use the more general Derivative-Free Schur-Parlett algorithm [MATFUN]_, and other specialized versions for :func:`msqrt()`, :func:`mpow`, :func:`mexp`, and :func:`mlog` may be implemented too.
 
 Fourier Transforms and Convolutions
 -----------------------------------
