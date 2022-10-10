@@ -825,19 +825,19 @@ The methods described is this section are based on the `FFTW <https://fftw.org>`
 
 .. function:: mat:fft ([d_,] r_)
 
-   Return the complex vector or matrix or :var:`r` resulting from the 1D or 2D `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the real or complex vector or matrix :var:`mat` respectively.
+   Return the complex vector or matrix or :var:`r` resulting from the 1D or 2D `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the real or complex vector or matrix :var:`mat` respectively. If :expr:`d = 'vec'` the matrix is interpreted as a vector, if :expr:`d = 'row'` the matrix is interpreted as :expr:`mat.nrow` 1D vectors.
 
 .. function:: mat:ifft ([d_,] r_)
 
-   Return the complex vector or matrix or :var:`r` resulting from the 1D or 2D inverse `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the complex vector or matrix :var:`mat` respectively.
+   Return the complex vector or matrix or :var:`r` resulting from the 1D or 2D inverse `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the complex vector or matrix :var:`mat` respectively.If :expr:`d = 'vec'` the matrix is interpreted as a vector, if :expr:`d = 'row'` the matrix is interpreted as :expr:`mat.nrow` 1D vectors.
 
 .. function:: mat:rfft ([d_,] r_)
 
-   Return the complex vector or matrix or :var:`r` resulting from the 1D or 2D `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the *real* vector or matrix :var:`mat` respectively. This method used an optimized version of the FFT for real data, which is about twice as fast and compact as the method :func:`mat:fft()`.
+   Return the complex vector or matrix or :var:`r` resulting from the 1D or 2D `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the *real* vector or matrix :var:`mat` respectively. This method used an optimized version of the FFT for real data, which is about twice as fast and compact as the method :func:`mat:fft()`. If :expr:`d = 'vec'` the matrix is interpreted as a vector, if :expr:`d = 'row'` the matrix is interpreted as :expr:`mat.nrow` 1D vectors.
 
 .. function:: mat:irfft ([d_,] r)
 
-   Return the *real* vector or matrix :var:`r` resulting from the 1D or 2D inverse `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the complex vector or matrix :var:`mat` respectively as computed by the method :func:`mat:rfft()`. Note that :var:`r` must be provided to specify the correct result sizes.
+   Return the *real* vector or matrix :var:`r` resulting from the 1D or 2D inverse `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the complex vector or matrix :var:`mat` respectively as computed by the method :func:`mat:rfft()`. If :expr:`d = 'vec'` the matrix is interpreted as a vector, if :expr:`d = 'row'` the matrix is interpreted as :expr:`mat.nrow` 1D vectors. Note that :var:`r` must be provided to specify the correct result sizes.
 
 .. function:: mat:nfft (p_, r_)
 
@@ -847,18 +847,19 @@ The methods described is this section are based on the `FFTW <https://fftw.org>`
 
    Return the complex vector or matrix or :var:`r` resulting from the 1D or 2D *Nonequispaced* inverse `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the real or complex vector or matrix :var:`mat` respectively at :var:`p` frequency nodes.
 
-.. function:: mat:conv (y, r_)
+.. function:: mat:conv (y, [d_], r_)
 
-   Return the real or complex vector or matrix or :var:`r` resulting from the 1D or 2D `Convolution <https://en.wikipedia.org/wiki/Convolution>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively.
+   Return the real or complex vector or matrix or :var:`r` resulting from the 1D or 2D `Convolution <https://en.wikipedia.org/wiki/Convolution>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively. If :expr:`d = 'vec'` the matrix is interpreted as a vector, if :expr:`d = 'row'` the matrix is interpreted as :expr:`mat.nrow` 1D vectors.
 
-.. function:: mat:corr (y, r_)
+.. function:: mat:corr (y, [d_], r_)
 
-   Return the real or complex vector or matrix or :var:`r` resulting from the 1D or 2D `Correlation <https://en.wikipedia.org/wiki/Cross-correlation>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively.
+   Return the real or complex vector or matrix or :var:`r` resulting from the 1D or 2D `Correlation <https://en.wikipedia.org/wiki/Cross-correlation>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively. If :expr:`d = 'vec'` the matrix is interpreted as a vector, if :expr:`d = 'row'` the matrix is interpreted as :expr:`mat.nrow` 1D vectors.
 
-.. function:: mat:covar (y, d_, r_)
+.. function:: mat:covar (y, [d_,] r_)
 
-   Return the real or complex vector or matrix or :var:`r` resulting from the 1D or 2D `Covariance <https://en.wikipedia.org/wiki/Covariance>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively.
-   The argument :var:`d` is forwarded to the methods :func:`mat:center()` and :func:`y:center()` before calculating their correlation with :func:`mat:corr()`.
+   Return the real or complex vector or matrix or :var:`r` resulting from the 1D or 2D `Covariance <https://en.wikipedia.org/wiki/Covariance>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively. If :expr:`d = 'vec'` the matrix is interpreted as a vector, if :expr:`d = 'row'` the matrix is interpreted as :expr:`mat.nrow` 1D vectors.
+
+   TO REMOVE: The argument :var:`d` is forwarded to the methods :func:`mat:center()` and :func:`y:center()` before calculating their correlation with :func:`mat:corr()`.
 
 Rotations
 ---------
