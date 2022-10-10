@@ -2384,50 +2384,78 @@ end
 
 -- FFT, convolution, correlation, covariance ----------------------------------o
 
-function MR.fft (x, r_)
+function MR.fft (x, d_, r_)
+  if is_cmatrix(d_) and is_nil(r_) then r_, d_ = d_, nil end -- right shift
   local nr, nc = x:sizes()
   local r = chksiz(r_, x) or cmatrix_alloc(nr,nc)
-  if nr == 1 or nc == 1
-  then _C.mad_vec_fft(x._dat, r._dat, size(x))  -- 1D FFT
-  else _C.mad_mat_fft(x._dat, r._dat, x:sizes()) -- 2D FFT
+  assert(is_cmatrix(r), "invalid argument #3 (cmatrix expected)")
+  if nr == 1 or nc == 1 or d_ == 'vec' then
+    _C.mad_vec_fft(x._dat, r._dat, size(x))        -- 1D FFT
+  elseif d_ == 'row' then
+    for i=0,nr-1 do
+      _C.mad_vec_fft(x._dat+i*nc, r._dat+i*nc, nc) -- 1D FFT
+    end
+  else
+    _C.mad_mat_fft(x._dat, r._dat, x:sizes())      -- 2D FFT
   end
   return r
 end
 
-function MC.fft (x, r_)
+function MC.fft (x, d_, r_)
+  if is_cmatrix(d_) and is_nil(r_) then r_, d_ = d_, nil end -- right shift
   local nr, nc = x:sizes()
   local r = chksiz(r_, x) or cmatrix_alloc(nr,nc)
-  if nr == 1 or nc == 1
-  then _C.mad_cvec_fft(x._dat, r._dat, size(x))  -- 1D FFT
-  else _C.mad_cmat_fft(x._dat, r._dat, x:sizes()) -- 2D FFT
+  assert(is_cmatrix(r), "invalid argument #3 (cmatrix expected)")
+  if nr == 1 or nc == 1 or d_ == 'vec' then
+    _C.mad_cvec_fft(x._dat, r._dat, size(x))        -- 1D FFT
+  elseif d_ == 'row' then
+    for i=0,nr-1 do
+      _C.mad_cvec_fft(x._dat+i*nc, r._dat+i*nc, nc) -- 1D FFT
+    end
+  else
+    _C.mad_cmat_fft(x._dat, r._dat, x:sizes())      -- 2D FFT
   end
   return r
 end
 
 MR.ifft = \ error("invalid argument #1 (cmatrix expected)")
 
-function MC.ifft (x, r_)
+function MC.ifft (x, d_, r_)
+  if is_cmatrix(d_) and is_nil(r_) then r_, d_ = d_, nil end -- right shift
   local nr, nc = x:sizes()
   local r = chksiz(r_, x) or cmatrix_alloc(nr,nc)
-  if nr == 1 or nc == 1
-  then _C.mad_cvec_ifft(x._dat, r._dat, size(x))  -- 1D FFT
-  else _C.mad_cmat_ifft(x._dat, r._dat, x:sizes()) -- 2D FFT
+  assert(is_cmatrix(r), "invalid argument #3 (cmatrix expected)")
+  if nr == 1 or nc == 1 or d_ == 'vec' then
+    _C.mad_cvec_ifft(x._dat, r._dat, size(x))        -- 1D FFT
+  elseif d_ == 'row' then
+    for i=0,nr-1 do
+      _C.mad_cvec_ifft(x._dat+i*nc, r._dat+i*nc, nc) -- 1D FFT
+    end
+  else
+    _C.mad_cmat_ifft(x._dat, r._dat, x:sizes())      -- 2D FFT
   end
   return r
 end
 
-function MR.rfft (x, r_)
+function MR.rfft (x, d_, r_)
+  if is_cmatrix(d_) and is_nil(r_) then r_, d_ = d_, nil end -- right shift
   local nr, nc, r = x:sizes()
-  if nr == 1 or nc == 1 then -- 1D FFT
+  if nr == 1 or nc == 1 or d_ == 'vec' then
     nr, nc = floor(nr/2+1), floor(nc/2+1)
     r = r_ or cmatrix_alloc(nr,nc)
     assert(nr == r.nrow and nc == r.ncol, "incompatible matrix sizes")
-    _C.mad_vec_rfft(x._dat, r._dat, size(x))
-  else                       -- 2D FFT
-    nc = floor(nc/2+1)
-    r = r_ or cmatrix_alloc(nr,nc)
-    assert(nr == r.nrow and nc == r.ncol, "incompatible matrix sizes")
-    _C.mad_mat_rfft(x._dat, r._dat, x:sizes())
+    _C.mad_vec_rfft(x._dat, r._dat, size(x))           -- 1D FFT
+  else
+    local nc2 = floor(nc/2+1)
+    r = r_ or cmatrix_alloc(nr,nc2)
+    assert(nr == r.nrow and nc2 == r.ncol, "incompatible matrix sizes")
+    if d_ == 'row' then
+      for i=0,nr-1 do
+        _C.mad_vec_rfft(x._dat+i*nc, r._dat+i*nc2, nc) -- 1D FFT
+      end
+    else
+      _C.mad_mat_rfft(x._dat, r._dat, x:sizes())       -- 2D FFT
+    end
   end
   return r
 end
@@ -2436,63 +2464,75 @@ MC.rfft  = \ error("invalid argument #1 (matrix expected)")
 MR.irfft = \ error("invalid argument #1 (cmatrix expected)")
 
 function MC.irfft (x, r)
+  if is_cmatrix(d_) and is_nil(r) then r, d_ = d_, nil end -- right shift
   assert(is_matrix(r), "invalid argument #2 (matrix expected)")
   local nr, nc = r:sizes()
-  if nr == 1 or nc == 1 then -- 1D FFT
+  if nr == 1 or nc == 1 or d_ == 'vec' then
     nr, nc = floor(nr/2+1), floor(nc/2+1)
     assert(nr == x.nrow and nc == x.ncol, "incompatible matrix sizes")
-    _C.mad_cvec_irfft(x._dat, r._dat, size(r))
-  else                       -- 2D FFT
-    nc = floor(nc/2+1)
-    assert(nr == x.nrow and nc == x.ncol, "incompatible matrix sizes")
-    _C.mad_cmat_irfft(x._dat, r._dat, r:sizes())
+    _C.mad_cvec_irfft(x._dat, r._dat, size(r))           -- 1D FFT
+  else
+    local nc2 = floor(nc/2+1)
+    assert(nr == x.nrow and nc2 == x.ncol, "incompatible matrix sizes")
+    if d_ == 'row' then
+      for i=0,nr-1 do
+        _C.mad_cvec_irfft(x._dat+i*nc2, r._dat+i*nc, nc) -- 1D FFT
+      end
+    else
+      _C.mad_cmat_irfft(x._dat, r._dat, r:sizes())       -- 2D FFT
+    end
   end
   return r
 end
 
  -- convolution theorem
-function MR.conv (x, y, r_)
+function MR.conv (x, y, d_, r_)
+  if isa_matrix(d_) and is_nil(r_) then r, d_ = d_, nil end -- right shift
   local r = r_ or x:same()
-  local xf = x:rfft()
+  local xf = x:rfft(d_)
   if x._dat == y._dat
-  then return xf:emul(xf      ,xf):irfft(r)
-  else return xf:emul(y:rfft(),xf):irfft(r)
+  then return xf:emul(xf        ,xf):irfft(d_, r)
+  else return xf:emul(y:rfft(_d),xf):irfft(d_, r)
   end
 end
 
-function MC.conv (x, y, r_)
+function MC.conv (x, y, d_, r_)
+  if isa_matrix(d_) and is_nil(r_) then r, d_ = d_, nil end -- right shift
   local r = r_ or x:same()
-  local xf = x:fft()
+  local xf = x:fft(d_)
   if x._dat == y._dat
-  then return xf:emul(xf     ,xf):ifft(r)
-  else return xf:emul(y:fft(),xf):ifft(r)
+  then return xf:emul(xf       ,xf):ifft(d_, r)
+  else return xf:emul(y:fft(d_),xf):ifft(d_, r)
   end
 end
 
  -- correlation theorem
-function MR.corr (x, y, r_)
+function MR.corr (x, y, d_, r_)
+  if isa_matrix(d_) and is_nil(r_) then r, d_ = d_, nil end -- right shift
   local r = r_ or x:same()
-  local xf = x:rfft()
+  local xf = x:rfft(d_)
   if x._dat == y._dat
-  then return xf:emul(xf      :conj(    ),xf):irfft(r)
-  else return xf:emul(y:rfft():conj('in'),xf):irfft(r)
+  then return xf:emul(xf        :conj(    ),xf):irfft(d_, r)
+  else return xf:emul(y:rfft(d_):conj('in'),xf):irfft(d_, r)
   end
 end
 
-function MC.corr (x, y, r_)
+function MC.corr (x, y, d_, r_)
+  if isa_matrix(d_) and is_nil(r_) then r, d_ = d_, nil end -- right shift
   local r = r_ or x:same()
-  local xf = x:fft()
+  local xf = x:fft(d_)
   if x._dat == y._dat
-  then return xf:emul(xf     :conj(    ),xf):ifft(r)
-  else return xf:emul(y:fft():conj('in'),xf):ifft(r)
+  then return xf:emul(xf       :conj(    ),xf):ifft(d_, r)
+  else return xf:emul(y:fft(d_):conj('in'),xf):ifft(d_, r)
   end
 end
 
 function MR.covar (x, y, d_, r_)
+  if isa_matrix(d_) and is_nil(r_) then r, d_ = d_, nil end -- right shift
   local xc = x:center(x:same(), d_)
   if x._dat == y._dat
-  then return xc:corr(xc                    , r_)
-  else return xc:corr(y:center(y:same(), d_), r_)
+  then return xc:corr(xc                    , d_, r_)
+  else return xc:corr(y:center(y:same(), d_), d_, r_)
   end
 end
 
