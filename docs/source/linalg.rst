@@ -823,21 +823,21 @@ Fourier Transforms and Convolutions
 
 The methods described is this section are based on the `FFTW <https://fftw.org>`_ and `NFFT <https://www-user.tu-chemnitz.de/~potts/nfft/>`_ libraries.
 
-.. function:: mat:fft (r_)
+.. function:: mat:fft ([d_,] r_)
 
    Return the complex vector or matrix or :var:`r` resulting from the 1D or 2D `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the real or complex vector or matrix :var:`mat` respectively.
 
-.. function:: mat:ifft (r_)
+.. function:: mat:ifft ([d_,] r_)
 
    Return the complex vector or matrix or :var:`r` resulting from the 1D or 2D inverse `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the complex vector or matrix :var:`mat` respectively.
 
-.. function:: mat:rfft (r_)
+.. function:: mat:rfft ([d_,] r_)
 
    Return the complex vector or matrix or :var:`r` resulting from the 1D or 2D `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the *real* vector or matrix :var:`mat` respectively. This method used an optimized version of the FFT for real data, which is about twice as fast and compact as the method :func:`mat:fft()`.
 
-.. function:: mat:irfft (r_)
+.. function:: mat:irfft ([d_,] r)
 
-   Return the *real* vector or matrix or :var:`r` resulting from the 1D or 2D inverse `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the complex vector or matrix :var:`mat` respectively as computed by the method :func:`mat:rfft()`.
+   Return the *real* vector or matrix :var:`r` resulting from the 1D or 2D inverse `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the complex vector or matrix :var:`mat` respectively as computed by the method :func:`mat:rfft()`. Note that :var:`r` must be provided to specify the correct result sizes.
 
 .. function:: mat:nfft (p_, r_)
 
