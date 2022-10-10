@@ -52,6 +52,10 @@ The constructors for vectors and matrices are directly available from the :mod:`
 
    Return a real, complex or integer matrix of size :math:`[n_{\text{row}}\times n_{\text{col}}]` filled with zeros. If :var:`nrow` is a table, it is equivalent to :expr:`matrix(#nrow, #nrow[1] or 1):fill(nrow)`, and ignoring :var:`ncol`. Default: :expr:`ncol_ = rnow`. 
 
+.. function:: diag(x)
+
+   Return a zero square matrix of the same type as :var:`x` and with its row and column sizes equal to :expr:`#x`, and with its diagonal filled with the values of the elements of :var:`x`, i.e. interpreting the matrix as a vector.
+
 .. function:: linspace([start_,] stop, size_)
 
    Return a real or complex column vector of length :var:`size` filled with values equally spaced between :var:`start` and :var:`stop` on a linear scale. Default: :expr:`start_ = 0`, :expr:`size_ = 100`.
@@ -258,8 +262,8 @@ Getters and Setters
 
    Equivalent to :func:`mat:inssub()` with :expr:`ir = nil`.
 
-Copy and Reshaping
-------------------
+Coping and Reshaping
+--------------------
 
 .. function:: mat:same ([nrow_, ncol_,] v_)
 
@@ -295,6 +299,14 @@ Filling and Moving
 .. function:: mat:is_diag (v_, tol_)
 
    Return true if all elements on diagonal are equal to the value :var:`v` and other elements are zeros within the tolerance :var:`tol`, false otherwise. Default: :expr:`v_ = 0`, :expr:`tol_ = 0`. 
+
+.. function:: mat:is_real (v_, tol_)
+
+   Return true if the imaginary part of all elements are equal to the value :var:`v` within the tolerance :var:`tol`, false otherwise. Default: :expr:`v_ = 0`, :expr:`tol_ = 0`. 
+
+.. function:: mat:is_imag (v_, tol_)
+
+   Return true if the real part of all elements are equal to the value :var:`v` within the tolerance :var:`tol`, false otherwise. Default: :expr:`v_ = 0`, :expr:`tol_ = 0`. 
 
 .. function:: mat:zeros ()
 
@@ -655,15 +667,15 @@ Operator-like Methods
 
    Return :const:`false` if :var:`a` is any matrix with incompatible sizes or if any element differ in a one-to-one comparison by more than :var:`tol`, :const:`true` otherwise. If one of the operand is a scalar, the operator will be applied individually to all elements of the matrix. Default: :expr:`tol_ = 0`.
 
-.. function:: mat:concat (mat2, dir_, r_)
+.. function:: mat:concat (mat2, d_, r_)
 
-   Return a real, complex or integer matrix resulting from concatenation of :var:`mat` and :var:`mat2` in the direction determined by :var:`dir_`:
+   Return a real, complex or integer matrix resulting from concatenation of :var:`mat` and :var:`mat2` in the direction determined by :var:`d_`:
    
-   - row-oriented (horizontal) for :expr:`dir = 'row'`
-   - column-oriented (vectical) for :expr:`dir = 'col'`
-   - vector-oriented (appended) for :expr:`dir = 'vec'`
+   - vector-oriented (appended) for :expr:`d = 'vec'`
+   - row-oriented (horizontal) for :expr:`d = 'row'`
+   - column-oriented (vectical) for :expr:`d = 'col'`
    
-   The type of the returned matrix is given by the type promotion between :var:`mat` and the first element of :var:`mat2` except for :type:`imatrix`. Default: :var:`dir_ = 'row'`.
+   The type of the returned matrix is given by the type promotion between :var:`mat` and the first element of :var:`mat2` except for :type:`imatrix`. Default: :var:`d_ = 'row'`.
 
 Special Methods
 ---------------
@@ -710,7 +722,7 @@ Special Methods
 
 .. function:: mat:norm ()
 
-   Return the `Frobenius norm <https://en.wikipedia.org/wiki/Matrix_norm#Frobenius_norm>`_ of the matrix :math:`\| M \|_2`. Other :math:`L_p` matrix norms and variants can be easily calculated using provided methods, e.g. :math:`L_1` :expr:`= mat:sumabs'col':max()`, :math:`L_{\infty}` :expr:`= mat:sumabs'row':max()`, and :math:`L_2` :expr:`= mat:svd():max()`.
+   Return the `Frobenius norm <https://en.wikipedia.org/wiki/Matrix_norm#Frobenius_norm>`_ of the matrix :math:`\| M \|_2`. Other :math:`L_p` matrix norms and variants can be easily calculated using already provided methods, e.g. :math:`L_1` :expr:`= mat:sumabs'col':max()`, :math:`L_{\infty}` :expr:`= mat:sumabs'row':max()`, and :math:`L_2` :expr:`= mat:svd():max()`.
 
 .. function:: mat:distance (y)
 
@@ -738,11 +750,11 @@ Special Methods
 
 .. function:: mat:mean ()
 
-   Equivalent to :expr:`mat:sum()/#mat`
+   Equivalent to :expr:`mat:sum()/#mat`, i.e. interpreting the matrix as a vector.
 
 .. function:: mat:variance ()
 
-   Equivalent to :expr:`(mat - mat:mean()):sumsqr()/(#mat-1)`, i.e. return the unbiased estimator of the variance with second order correction.
+   Equivalent to :expr:`(mat - mat:mean()):sumsqr()/(#mat-1)`, i.e. return the unbiased estimator of the variance with second order correction, interpreting the matrix as a vector.
 
 .. function:: mat:ksum ()
               mat:kdot (y)
@@ -804,28 +816,49 @@ Solvers and Decompositions
 
 .. function:: mat:mfun (fun)
 
-   Return the real or complex matrix resulting from the matrix function :var:`fun` applyied to the real or complex matrix :var:`mat`. So far, :func:`mat:mfun()` uses the eigen decomposition of the matrix :var:`mat`, which must be diagonalizable. See the section :ref:`matrix-functions` for the list of matrix functions already provided. Future versions of this method may be extended to use the more general Derivative-Free Schur-Parlett algorithm [MATFUN]_, and other specialized versions for :func:`msqrt()`, :func:`mpow`, :func:`mexp`, and :func:`mlog` may be implemented too.
+   Return the real or complex matrix resulting from the matrix function :var:`fun` applyied to the real or complex matrix :var:`mat`. So far, :func:`mat:mfun()` uses the eigen decomposition of the matrix :var:`mat`, which must be `Diagonalizable <https://en.wikipedia.org/wiki/Diagonalizable_matrix>`_. See the section :ref:`matrix-functions` for the list of matrix functions already provided. Future versions of this method may be extended to use the more general Schur-Parlett algorithm [MATFUN]_, and other specialized versions for :func:`msqrt()`, :func:`mpow`, :func:`mexp`, and :func:`mlog` may be implemented too.
 
 Fourier Transforms and Convolutions
 -----------------------------------
 
+The methods described is this section are based on the `FFTW <https://fftw.org>`_ and `NFFT <https://www-user.tu-chemnitz.de/~potts/nfft/>`_ libraries.
+
 .. function:: mat:fft (r_)
+
+   Return the complex vector or matrix or :var:`r` resulting from the 1D or 2D `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the real or complex vector or matrix :var:`mat` respectively.
 
 .. function:: mat:ifft (r_)
 
+   Return the complex vector or matrix or :var:`r` resulting from the 1D or 2D inverse `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the complex vector or matrix :var:`mat` respectively.
+
 .. function:: mat:rfft (r_)
+
+   Return the complex vector or matrix or :var:`r` resulting from the 1D or 2D `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the *real* vector or matrix :var:`mat` respectively. This method used an optimized version of the FFT for real data, which is about twice as fast and compact as the method :func:`mat:fft()`.
 
 .. function:: mat:irfft (r_)
 
+   Return the *real* vector or matrix or :var:`r` resulting from the 1D or 2D inverse `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the complex vector or matrix :var:`mat` respectively as computed by the method :func:`mat:rfft()`.
+
 .. function:: mat:nfft (p_, r_)
+
+   Return the complex vector or matrix or :var:`r` resulting from the 1D or 2D *Nonequispaced* `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the real or complex vector or matrix :var:`mat` respectively at :var:`p` time nodes. 
 
 .. function:: mat:infft (p_, r_)
 
+   Return the complex vector or matrix or :var:`r` resulting from the 1D or 2D *Nonequispaced* inverse `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the real or complex vector or matrix :var:`mat` respectively at :var:`p` frequency nodes.
+
 .. function:: mat:conv (y, r_)
+
+   Return the real or complex vector or matrix or :var:`r` resulting from the 1D or 2D `Convolution <https://en.wikipedia.org/wiki/Convolution>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively.
 
 .. function:: mat:corr (y, r_)
 
+   Return the real or complex vector or matrix or :var:`r` resulting from the 1D or 2D `Correlation <https://en.wikipedia.org/wiki/Cross-correlation>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively.
+
 .. function:: mat:covar (y, d_, r_)
+
+   Return the real or complex vector or matrix or :var:`r` resulting from the 1D or 2D `Covariance <https://en.wikipedia.org/wiki/Covariance>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively.
+   The argument :var:`d` is forwarded to the methods :func:`mat:center()` and :func:`y:center()` before calculating their correlation with :func:`mat:corr()`.
 
 Rotations
 ---------
@@ -888,13 +921,13 @@ This section describe methods dealing with 2D and 3D rotations (see `Rotation Ma
 Conversions
 -----------
 
-.. function:: mat:totable (v_, r_)
-
-   TODO
-
 .. function:: mat:tostring (sep_, lsep_)
 
-   TODO
+   Return the string containing the real, complex or integer matrix converted to string. The argument :var:`sep` and :var:`lsep` are used as separator for columns and rows respectively. The elements values are formated using :func:`tostring()` that follows the :expr:`option.numfmt` string format for real numbers. Default: :expr:`sep = " "`, :expr:`lsep = "\n"`.
+
+.. function:: mat:totable ([d_,] r_)
+
+   Return the table or :var:`r` containing the real, complex or integer matrix converted to tables, i.e. one per row unless :var:`mat` is a vector or the direction :expr:`d = 'vec'`.  
 
 Input and Output
 ----------------
