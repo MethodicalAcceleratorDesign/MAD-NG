@@ -327,6 +327,27 @@ function MI.reshape (x, nr_, nc_)
   return x
 end
 
+function MR._reshapeto (x, nr, nc_)
+  -- no check, user is responsible for keeping track of the real allocated size
+  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
+  _C.mad_mat_reshape(x, nr, nc_ or 1)
+  return x
+end
+
+function MC._reshapeto (x, nr, nc_)
+  -- no check, user is responsible for keeping track of the real allocated size
+  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
+  _C.mad_cmat_reshape(x, nr, nc_ or 1)
+  return x
+end
+
+function MI._reshapeto (x, nr, nc_)
+  -- no check, user is responsible for keeping track of the real allocated size
+  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
+  _C.mad_imat_reshape(x, nr, nc_ or 1)
+  return x
+end
+
 function MR._appendto (x, v_)
   -- no check, user is responsible for keeping track of the real allocated size
   -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
@@ -349,27 +370,6 @@ function MI._appendto (x, v_)
   -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
   -- increment either nr or nc depending on the VECTOR type, UNDEFINED on matrix
   _C.mad_ivec_append(x, v_ or 0)
-  return x
-end
-
-function MR._reshapeto (x, nr_, nc_)
-  -- no check, user is responsible for keeping track of the real allocated size
-  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
-  _C.mad_mat_reshape(x, nr_ or size(x), nc_ or 1)
-  return x
-end
-
-function MC._reshapeto (x, nr_, nc_)
-  -- no check, user is responsible for keeping track of the real allocated size
-  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
-  _C.mad_cmat_reshape(x, nr_ or size(x), nc_ or 1)
-  return x
-end
-
-function MI._reshapeto (x, nr_, nc_)
-  -- no check, user is responsible for keeping track of the real allocated size
-  -- TOTALLY UNSAFE, accessing data ouside valid indexes trigs a SEGFAULT
-  _C.mad_imat_reshape(x, nr_ or size(x), nc_ or 1)
   return x
 end
 
@@ -1380,36 +1380,37 @@ MR.conjugate = MR.conj
 function MR.transpose (x, r_)
   if is_string(r_) and r_ == 'in' then r_ = x end
 
-  if r_ == x and (x.nrow == 1 or x.ncol == 1) then
-    _C.mad_mat_reshape(x, x.ncol, x.nrow)
-    return x
-  else
-    local r = chksizt(r_,x) or matrix_alloc(x:tsizes())
-    _C.mad_mat_trans(x._dat, r._dat, x:sizes())         -- transpose
-    return r
+  local nr, nc = x:sizes()
+  local r = r_ or matrix_alloc(nr, nc)
+  assert(is_matrix(r), "invalid argument #2 (matrix expected)")
+  assert(size(r) == nr*nc, "incompatible matrix sizes")
+
+  if nr ~= 1 and nc ~= 1 then
+    _C.mad_mat_trans(x._dat, r._dat, nr, nc) -- transpose
   end
+
+  _C.mad_mat_reshape(r, nc, nr)
+  return r
 end
 
 MR.t = MR.transpose -- shortcut
 
 function MC.transpose (x, r_, c_)
-  if is_string(r_) and r_ == 'in' then r_ = x end
-  if is_boolean(r_) and is_nil(c_) then r_, c_ = nil, r_ end
+      if is_boolean(r_) then c_, r_ = r_, nil -- right shift
+  elseif is_string (r_) and r_ == 'in' then r_ = x end
 
-  if r_ == x and (x.nrow == 1 or x.ncol == 1) then
-    _C.mad_cmat_reshape(x, x.ncol, x.nrow)           -- transpose (no conj.)
-    if c_ ~= false then
-      _C.mad_cmat_ctrans(x._dat, x._dat, x:sizes())  -- conjugate transpose
-    end
-    return x
-  else
-    local r = chksizt(r_,x) or cmatrix_alloc(x:tsizes())
-    if c_ == false
-    then _C.mad_cmat_trans (x._dat, r._dat, x:sizes())  -- transpose (no conj.)
-    else _C.mad_cmat_ctrans(x._dat, r._dat, x:sizes())  -- conjugate transpose
-    end
-    return r
+  local nr, nc = x:sizes()
+  local r = r_ or cmatrix_alloc(nr, nc)
+  assert(is_cmatrix(r), "invalid argument #2 (cmatrix expected)")
+  assert(size(r) == nr*nc, "incompatible cmatrix sizes")
+
+  if c_ ~= false
+  then _C.mad_cmat_ctrans(x._dat, r._dat, nr, nc)  -- conjugate transpose
+  else _C.mad_cmat_trans (x._dat, r._dat, nr, nc)  -- transpose (no conj.)
   end
+
+  _C.mad_cmat_reshape(r, nc, nr)
+  return r
 end
 
 MC.t = MC.transpose -- shortcut
@@ -1417,14 +1418,17 @@ MC.t = MC.transpose -- shortcut
 function MI.transpose (x, r_)
   if is_string(r_) and r_ == 'in' then r_ = x end
 
-  if r_ == x and (x.nrow == 1 or x.ncol == 1) then
-    _C.mad_imat_reshape(x, x.ncol, x.nrow)
-    return x
-  else
-    local r = chksizt(r_,x) or imatrix_alloc(x:tsizes())
-    _C.mad_imat_trans(x._dat, r._dat, x:sizes())        -- transpose
-    return r
+  local nr, nc = x:sizes()
+  local r = r_ or imatrix_alloc(nr, nc)
+  assert(is_imatrix(r), "invalid argument #2 (imatrix expected)")
+  assert(size(r) == nr*nc, "incompatible imatrix sizes")
+
+  if nr ~= 1 and nc ~= 1 then
+    _C.mad_imat_trans(x._dat, r._dat, nr, nc) -- transpose
   end
+
+  _C.mad_imat_reshape(r, nc, nr)
+  return r
 end
 
 MI.t = MI.transpose -- shortcut
@@ -2387,16 +2391,26 @@ end
 function MR.fft (x, d_, r_)
   if is_cmatrix(d_) and is_nil(r_) then r_, d_ = d_, nil end -- right shift
   local nr, nc = x:sizes()
-  local r = chksiz(r_, x) or cmatrix_alloc(nr,nc)
+  local r = r_ or cmatrix_alloc(nr,nc)
   assert(is_cmatrix(r), "invalid argument #3 (cmatrix expected)")
   if nr == 1 or nc == 1 or d_ == 'vec' then
-    _C.mad_vec_fft(x._dat, r._dat, size(x))        -- 1D FFT
+    assert(size(r) == nr*nc, "incompatible cmatrix sizes")
+    _C.mad_vec_fft(x._dat, r._dat, nr*nc)          -- 1D FFT
   elseif d_ == 'row' then
+    assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
     for i=0,nr-1 do
       _C.mad_vec_fft(x._dat+i*nc, r._dat+i*nc, nc) -- 1D FFT
     end
+  elseif d_ == 'col' then
+    assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
+    x = x:t()
+    for i=0,nc-1 do
+      _C.mad_vec_fft(x._dat+i*nr, r._dat+i*nr, nr) -- 1D FFT
+    end
+    r:reshape(nc, nr):t(r, false)
   else
-    _C.mad_mat_fft(x._dat, r._dat, x:sizes())      -- 2D FFT
+    assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
+    _C.mad_mat_fft(x._dat, r._dat, nr, nc)         -- 2D FFT
   end
   return r
 end
@@ -2404,16 +2418,26 @@ end
 function MC.fft (x, d_, r_)
   if is_cmatrix(d_) and is_nil(r_) then r_, d_ = d_, nil end -- right shift
   local nr, nc = x:sizes()
-  local r = chksiz(r_, x) or cmatrix_alloc(nr,nc)
+  local r = r_ or cmatrix_alloc(nr,nc)
   assert(is_cmatrix(r), "invalid argument #3 (cmatrix expected)")
   if nr == 1 or nc == 1 or d_ == 'vec' then
-    _C.mad_cvec_fft(x._dat, r._dat, size(x))        -- 1D FFT
+    assert(size(r) == nr*nc, "incompatible cmatrix sizes")
+    _C.mad_cvec_fft(x._dat, r._dat, nr*nc)          -- 1D FFT
   elseif d_ == 'row' then
+    assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
     for i=0,nr-1 do
       _C.mad_cvec_fft(x._dat+i*nc, r._dat+i*nc, nc) -- 1D FFT
     end
+  elseif d_ == 'col' then
+    assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
+    x = x:t(false)
+    for i=0,nc-1 do
+      _C.mad_cvec_fft(x._dat+i*nr, r._dat+i*nr, nr) -- 1D FFT
+    end
+    r:reshape(nc, nr):t(r, false)
   else
-    _C.mad_cmat_fft(x._dat, r._dat, x:sizes())      -- 2D FFT
+    assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
+    _C.mad_cmat_fft(x._dat, r._dat, nr, nc)         -- 2D FFT
   end
   return r
 end
@@ -2423,39 +2447,58 @@ MR.ifft = \ error("invalid argument #1 (cmatrix expected)")
 function MC.ifft (x, d_, r_)
   if is_cmatrix(d_) and is_nil(r_) then r_, d_ = d_, nil end -- right shift
   local nr, nc = x:sizes()
-  local r = chksiz(r_, x) or cmatrix_alloc(nr,nc)
+  local r = r_ or cmatrix_alloc(nr,nc)
   assert(is_cmatrix(r), "invalid argument #3 (cmatrix expected)")
   if nr == 1 or nc == 1 or d_ == 'vec' then
-    _C.mad_cvec_ifft(x._dat, r._dat, size(x))        -- 1D FFT
+    assert(size(r) == nr*nc, "incompatible cmatrix sizes")
+    _C.mad_cvec_ifft(x._dat, r._dat, nr*nc)          -- 1D FFT
   elseif d_ == 'row' then
+    assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
     for i=0,nr-1 do
       _C.mad_cvec_ifft(x._dat+i*nc, r._dat+i*nc, nc) -- 1D FFT
     end
+  elseif d_ == 'col' then
+    assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
+    x = x:t(false)
+    for i=0,nc-1 do
+      _C.mad_cvec_ifft(x._dat+i*nr, r._dat+i*nr, nr) -- 1D FFT
+    end
+    r:reshape(nc, nr):t(r, false)
   else
-    _C.mad_cmat_ifft(x._dat, r._dat, x:sizes())      -- 2D FFT
+    assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
+    _C.mad_cmat_ifft(x._dat, r._dat, nr, nc)         -- 2D FFT
   end
   return r
 end
 
 function MR.rfft (x, d_, r_)
   if is_cmatrix(d_) and is_nil(r_) then r_, d_ = d_, nil end -- right shift
+  assert(is_nil(r_) or is_cmatrix(r_), "invalid argument #3 (cmatrix expected)")
   local nr, nc, r = x:sizes()
+  local nr2 = max(1, floor(nr/2+1))
+  local nc2 = max(1, floor(nc/2+1))
   if nr == 1 or nc == 1 or d_ == 'vec' then
-    nr, nc = floor(nr/2+1), floor(nc/2+1)
-    r = r_ or cmatrix_alloc(nr,nc)
-    assert(nr == r.nrow and nc == r.ncol, "incompatible matrix sizes")
-    _C.mad_vec_rfft(x._dat, r._dat, size(x))           -- 1D FFT
-  else
-    local nc2 = floor(nc/2+1)
+    r = r_ or cmatrix_alloc(nr2,nc2)
+    assert(size(r) == nr2*nc2, "incompatible cmatrix sizes")
+    _C.mad_vec_rfft(x._dat, r._dat, nr*nc)           -- 1D FFT
+  elseif d_ == 'row' then
     r = r_ or cmatrix_alloc(nr,nc2)
-    assert(nr == r.nrow and nc2 == r.ncol, "incompatible matrix sizes")
-    if d_ == 'row' then
-      for i=0,nr-1 do
-        _C.mad_vec_rfft(x._dat+i*nc, r._dat+i*nc2, nc) -- 1D FFT
-      end
-    else
-      _C.mad_mat_rfft(x._dat, r._dat, x:sizes())       -- 2D FFT
+    assert(r.nrow == nr and r.ncol == nc2, "incompatible cmatrix sizes")
+    for i=0,nr-1 do
+      _C.mad_vec_rfft(x._dat+i*nc, r._dat+i*nc2, nc) -- 1D FFT
     end
+  elseif d_ == 'col' then
+    r = r_ or cmatrix_alloc(nr2,nc)
+    assert(r.nrow == nr2 and r.ncol == nc, "incompatible cmatrix sizes")
+    x = x:t(false)
+    for i=0,nc-1 do
+      _C.mad_vec_rfft(x._dat+i*nr, r._dat+i*nr2, nr) -- 1D FFT
+    end
+    r:reshape(nc, nr2):t(r, false)
+  else
+    r = r_ or cmatrix_alloc(nr,nc2)
+    assert(r.nrow == nr and r.ncol == nc2, "incompatible cmatrix sizes")
+    _C.mad_mat_rfft(x._dat, r._dat, nr, nc)          -- 2D FFT
   end
   return r
 end
@@ -2463,24 +2506,30 @@ end
 MC.rfft  = \ error("invalid argument #1 (matrix expected)")
 MR.irfft = \ error("invalid argument #1 (cmatrix expected)")
 
-function MC.irfft (x, r)
-  if is_cmatrix(d_) and is_nil(r) then r, d_ = d_, nil end -- right shift
-  assert(is_matrix(r), "invalid argument #2 (matrix expected)")
+function MC.irfft (x, d_, r)
+  if is_matrix(d_) and is_nil(r) then r, d_ = d_, nil end -- right shift
+  assert(is_matrix(r), "invalid argument #3 (matrix expected)")
   local nr, nc = r:sizes()
+  local nr2 = max(1, floor(nr/2+1))
+  local nc2 = max(1, floor(nc/2+1))
   if nr == 1 or nc == 1 or d_ == 'vec' then
-    nr, nc = floor(nr/2+1), floor(nc/2+1)
-    assert(nr == x.nrow and nc == x.ncol, "incompatible matrix sizes")
-    _C.mad_cvec_irfft(x._dat, r._dat, size(r))           -- 1D FFT
-  else
-    local nc2 = floor(nc/2+1)
-    assert(nr == x.nrow and nc2 == x.ncol, "incompatible matrix sizes")
-    if d_ == 'row' then
-      for i=0,nr-1 do
-        _C.mad_cvec_irfft(x._dat+i*nc2, r._dat+i*nc, nc) -- 1D FFT
-      end
-    else
-      _C.mad_cmat_irfft(x._dat, r._dat, r:sizes())       -- 2D FFT
+    assert(size(x) == nr2*nc2, "incompatible matrix sizes")
+    _C.mad_cvec_irfft(x._dat, r._dat, nr*nc)             -- 1D FFT
+  elseif d_ == 'row' then
+    assert(x.nrow == nr and x.ncol == nc2, "incompatible matrix sizes")
+    for i=0,nr-1 do
+      _C.mad_cvec_irfft(x._dat+i*nc2, r._dat+i*nc, nc) -- 1D FFT
     end
+  elseif d_ == 'col' then
+    assert(x.nrow == nr2 and x.ncol == nc, "incompatible matrix sizes")
+    x = x:t(false)
+    for i=0,nc-1 do
+      _C.mad_cvec_irfft(x._dat+i*nr2, r._dat+i*nr, nr) -- 1D FFT
+    end
+    r:reshape(nc, nr):t(r, false)
+  else
+    assert(x.nrow == nr and x.ncol == nc2, "incompatible matrix sizes")
+    _C.mad_cmat_irfft(x._dat, r._dat, nr, nc)          -- 2D FFT
   end
   return r
 end
@@ -2490,7 +2539,7 @@ function MR.conv (x, y, d_, r_)
   if is_matrix(d_) and is_nil(r_) then r, d_ = d_, nil end -- right shift
   local r = r_ or x:same()
   local xf = x:rfft(d_)
-  if x._dat == y._dat
+  if rawequal(x, y)
   then return xf:emul(xf        ,xf):irfft(d_, r)
   else return xf:emul(y:rfft(_d),xf):irfft(d_, r)
   end
@@ -2500,7 +2549,7 @@ function MC.conv (x, y, d_, r_)
   if is_cmatrix(d_) and is_nil(r_) then r, d_ = d_, nil end -- right shift
   local r = r_ or x:same()
   local xf = x:fft(d_)
-  if x._dat == y._dat
+  if rawequal(x, y)
   then return xf:emul(xf       ,xf):ifft(d_, r)
   else return xf:emul(y:fft(d_),xf):ifft(d_, r)
   end
@@ -2511,7 +2560,7 @@ function MR.corr (x, y, d_, r_)
   if is_matrix(d_) and is_nil(r_) then r, d_ = d_, nil end -- right shift
   local r = r_ or x:same()
   local xf = x:rfft(d_)
-  if x._dat == y._dat
+  if rawequal(x, y)
   then return xf:emul(xf        :conj(    ),xf):irfft(d_, r)
   else return xf:emul(y:rfft(d_):conj('in'),xf):irfft(d_, r)
   end
@@ -2521,7 +2570,7 @@ function MC.corr (x, y, d_, r_)
   if is_cmatrix(d_) and is_nil(r_) then r, d_ = d_, nil end -- right shift
   local r = r_ or x:same()
   local xf = x:fft(d_)
-  if x._dat == y._dat
+  if rawequal(x, y)
   then return xf:emul(xf       :conj(    ),xf):ifft(d_, r)
   else return xf:emul(y:fft(d_):conj('in'),xf):ifft(d_, r)
   end
@@ -2530,7 +2579,7 @@ end
 function MR.covar (x, y, d_, r_)
   if isa_matrix(d_) and is_nil(r_) then r, d_ = d_, nil end -- right shift
   local xc = x:center(x:same(), d_)
-  if x._dat == y._dat
+  if rawequal(x, y)
   then return xc:corr(xc                    , d_, r_)
   else return xc:corr(y:center(y:same(), d_), d_, r_)
   end
