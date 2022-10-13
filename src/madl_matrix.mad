@@ -159,7 +159,6 @@ end
 local  vector = \n ->  matrix(n, 1)
 local cvector = \n -> cmatrix(n, 1)
 local ivector = \n -> imatrix(n, 1)
-local    diag = \x -> x:same(#x,#x):setdiag(x)
 
 -- checkers -------------------------------------------------------------------o
 
@@ -373,34 +372,75 @@ function MI._appendto (x, v_)
   return x
 end
 
--- zeros, ones, eye, symp, circ, fill, shift, reshape (in place) --------------o
+-- properties -----------------------------------------------------------------o
 
-function MR.is_const (x, e_, tol_)
-  local e, tol = e_ or 0, tol_ or 0
-  for i=0,size(x)-1 do
+function MR.is_const (x, tol_)
+  local tol, e = tol_ or 0, geti0(x,0)
+  for i=1,size(x)-1 do
     if abs(geti0(x,i)-e) > tol then return false end
   end
   return true
 end
 
-function MR.is_diag (x, e_, tol_)
-  local e, tol, ii, nc = e_ or 0, tol_ or 0, 0, x.ncol
+function MR.is_diag (x, tol_)
+  local tol, ii, nc = tol_ or 0, 0, x.ncol
   for i=0,size(x)-1 do
-    local ee = 0
-    if i == ii then ee, ii = e, ii+nc+1 end
-    if abs(geti0(x,i)-ee) > tol then return false end
+        if i == ii               then ii = ii+nc+1
+    elseif abs(geti0(x,i)) > tol then return false end
   end
   return true
+end
+
+function MR.is_symm (x, tol_, sk_)
+  if is_boolean(tol_) then sk_, tol_ = tol_, nil end -- right shift
+  local tol, nr, nc = tol_ or 0, x:sizes()
+  local sk = sk_ ~= true and 1 or -1
+  if nr ~= nc then return false end
+  for i=1,nr  do
+  for j=1,i-1 do
+    if abs(get(x,i,j) - sk*get(x,j,i)) > tol then return false end
+  end end
+  return true
+end
+
+function MC.is_symm (x, tol_, sk_, cj_)
+  if is_boolean(tol_) then sk_, cj_, tol_ = tol_, sk_, nil end -- right shift
+  if sk_ == false then cj_, sk_ = sk_, nil end                 -- right shift
+  local tol, nr, nc = tol_ or 0, x:sizes()
+  local sk = sk_ ~= true  and 1 or -1
+  local cj = cj_ ~= false and conj or ident
+  if nr ~= nc then return false end
+  for i=1,nr  do
+  for j=1,i-1 do
+    if abs(get(x,i,j) - sk*cj(get(x,j,i))) > tol then return false end
+  end end
+  return true
+end
+
+function MR.is_symp (x, tol_) -- M' J M - J = symplectic deviation
+  local nr, nc = x:sizes()
+  if nr ~= nc or nr % 2 ~= 0 then return false end
+  res[0] = tol_ or eps
+  _C.mad_mat_symperr(x._dat, nil, nr, res)
+  return res[0] == 0
+end
+
+function MC.is_symp (x, tol_) -- M' J M - J = symplectic deviation
+  local nr, nc = x:sizes()
+  if nr ~= nc or nr % 2 ~= 0 then return false end
+  res[0] = tol_ or eps
+  _C.mad_cmat_symperr(x._dat, nil, nr, res)
+  return res[0] == 0
 end
 
 function MR.is_real (x)
   return true
 end
 
-function MC.is_real (x, e_, tol_)
-  local e, tol = e_ or 0, tol_ or 0
+function MC.is_real (x, tol_)
+  local tol = tol_ or 0
   for i=0,size(x)-1 do
-    if abs(geti0(x,i).im-e) > tol then return false end
+    if abs(geti0(x,i).im) > tol then return false end
   end
   return true
 end
@@ -409,13 +449,15 @@ function MR.is_imag (x)
   return false
 end
 
-function MC.is_imag (x, e_, tol_)
-  local e, tol = e_ or 0, tol_ or 0
+function MC.is_imag (x, tol_)
+  local tol = tol_ or 0
   for i=0,size(x)-1 do
-    if abs(geti0(x,i).re-e) > tol then return false end
+    if abs(geti0(x,i).re) > tol then return false end
   end
   return true
 end
+
+-- zeros, ones, eye, symp, circ, fill, shift, reshape (in place) --------------o
 
 function MR.zeros (x)
   ffi.fill(x._dat, dbl_sz * size(x))
@@ -826,6 +868,32 @@ function MR.swpsub (x, ir_, jc_, ir2_, jc2_) -- inplace
   return x:swpvec(x:getidx(ir_,jc_), x:getidx(ir2_,jc2_))
 end
 
+function MR.vec (x)
+  local nr, nc = x:sizes()
+  local k, r = 1, x:same(nr*nc,1)
+  for j=1,nc do
+  for i=1,nr do seti(r, k, get(x,i,j)) ; k = k+1 end end
+  return r
+end
+
+function MR.vech (x)
+  local nr, nc = x:sizes()
+  assert(nr == nc, "invalid matrix sizes (square matrix expected)")
+  local k, r = 1, x:same(nr*(nc+1)/2, 1)
+  for j=1,nc do
+  for i=j,nr do seti(r, k, get(x,i,j)) ; k = k+1 end end
+  return r
+end
+
+function MR.diag (x)
+  local nr, nc = x:sizes()
+  assert(nr == 1 or nc == 1, "invalid matrix sizes (vector expected)")
+  local nn = nr*nc
+  local r = x:same(nn,nn)
+  for i=1,nn do set(r, i, i, geti(x,i)) end
+  return r
+end
+
 function MR.getdiag (x, r_)
   return x:getvec((1..min(x:sizes()))*(x.ncol+1), r_)
 end
@@ -846,6 +914,8 @@ MR.swpcol = \x,jc,jc2     -> x:swpsub(nil,jc,nil,jc2)
 MR.remcol = \x,jc         -> x:remsub(nil,jc)
 MR.inscol = \x,jc,y       -> x:inssub(nil,jc,y)
 
+MI.vec    = MR.vec
+MI.vech   = MR.vech
 MI.getvec = MR.getvec
 MI.setvec = MR.setvec
 MI.swpvec = MR.swpvec
@@ -870,6 +940,7 @@ MI.swpcol = MR.swpcol
 MI.remcol = MR.remcol
 MI.inscol = MR.inscol
 
+MI.diag    = MR.diag
 MI.getdiag = MR.getdiag
 MI.setdiag = MR.setdiag
 
@@ -1467,10 +1538,10 @@ function MR.symperr (x, r_) -- M' J M - J = symplectic deviation
   local nr, nc = x:sizes()
   assert(nr == nc and nr % 2 == 0, "invalid argument #1 (2n matrix expected)")
   if is_nil(r_) then
-    return _C.mad_mat_symperr(x._dat, nil, nr)
+    return _C.mad_mat_symperr(x._dat, nil, nr, nil)
   else
     chksiz(r_,x)
-    return _C.mad_mat_symperr(x._dat, r_._dat, nr), r_
+    return _C.mad_mat_symperr(x._dat, r_._dat, nr, nil), r_
   end
 end
 
@@ -1478,10 +1549,10 @@ function MC.symperr (x, r_) -- M' J M - J = symplectic deviation
   local nr, nc = x:sizes()
   assert(nr == nc and nr % 2 == 0, "invalid argument #1 (2n matrix expected)")
   if is_nil(r_) then
-    return _C.mad_cmat_symperr(x._dat, nil, nr)
+    return _C.mad_cmat_symperr(x._dat, nil, nr, nil)
   else
     chksiz(r_,x)
-    return _C.mad_cmat_symperr(x._dat, r_._dat, nr), r_
+    return _C.mad_cmat_symperr(x._dat, r_._dat, nr, nil), r_
   end
 end
 
@@ -2958,7 +3029,6 @@ return {
   cmatrix  = cmatrix,
   imatrix  = imatrix,
 
-  diag     = diag,
   linspace = linspace,
   logspace = logspace,
 }
