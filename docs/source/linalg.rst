@@ -6,12 +6,12 @@
 Linear Algebra
 **************
 
-This chapter describes the real :type:`matrix`, complex :type:`cmatrix` and integer :type:`imatrix` objects as supported by MAD-NG. The module for `Matrix <https://en.wikipedia.org/wiki/Matrix_(mathematics)>`_ is not exposed, only the contructors are visible from the :mod:`MAD` environment and thus, matrices are handled directly by their methods or by the generic functions of the same name from the module :mod:`MAD.gmath`. The :type:`imatrix`, i.e. matrix of integers, are mainly used for indexing other types of matrix and therefore supports only a limited subset of the features. Column and row vectors are shortcuts for :math:`[n\times 1]` and :math:`[1\times n]` matrices respectively. Note that :type:`matrix`, :type:`cmatrix` and :type:`imatrix` are all defined as C structures for direct compliance with the C API. 
+This chapter describes the real :type:`matrix`, complex :type:`cmatrix` and integer :type:`imatrix` objects as supported by MAD-NG. The module for `Vector <https://en.wikipedia.org/wiki/Vector_(mathematics_and_physics)>`_ and `Matrix <https://en.wikipedia.org/wiki/Matrix_(mathematics)>`_ is not exposed, only the contructors are visible from the :mod:`MAD` environment and thus, matrices are handled directly by their methods or by the generic functions of the same name from the module :mod:`MAD.gmath`. The :type:`imatrix`, i.e. matrix of integers, are mainly used for indexing other types of matrix and therefore supports only a limited subset of the features. Column and row vectors are shortcuts for :math:`[n\times 1]` and :math:`[1\times n]` matrices respectively. Note that :type:`matrix`, :type:`cmatrix` and :type:`imatrix` are all defined as C structures including a row-major array for direct compliance with the C API. 
 
 Types promotion
 ===============
 
-The matrix operations may involve other data types like real and complex numbers leading to many combinations of types. In order to simplify the descriptions, the generic names :var:`num`, :var:`cpx` and :var:`idx` (indexes) are used for real, complex and integer-as-index numbers respectively, :var:`vec`, :var:`cvec` and :var:`ivec` for real, complex and integer vectors respectively, and :var:`mat`, :var:`cmat` and :var:`imat` for real, complex and integer matrices respectively. For example, the sum of a complex number :var:`cpx` and a real matrix :var:`mat` gives a complex matrix :var:`cmat`. The case of :var:`idx` means that a :type:`number` will be interpreted as an index and automatically rounded if it does not hold an integer value. The following table summarizes all valid combinations of types for binary operations involving at least one matrix type:
+The matrix operations may involve other data types like real and complex numbers leading to many combinations of types. In order to simplify the descriptions, the generic names :var:`num`, :var:`cpx` and :var:`idx` (indexes) are used for real, complex and integer numbers respectively, :var:`vec`, :var:`cvec` and :var:`ivec` for real, complex and integer vectors respectively, and :var:`mat`, :var:`cmat` and :var:`imat` for real, complex and integer matrices respectively. For example, the sum of a complex number :var:`cpx` and a real matrix :var:`mat` gives a complex matrix :var:`cmat`. The case of :var:`idx` means that a :type:`number` will be interpreted as an index and automatically rounded if it does not hold an integer value. The following table summarizes all valid combinations of types for binary operations involving at least one matrix type:
 
 =================  ==================  ===============
 Left Operand Type  Right Operand Type  Result Type
@@ -38,7 +38,7 @@ Left Operand Type  Right Operand Type  Result Type
 Constructors
 ============
 
-The constructors for vectors and matrices are directly available from the :mod:`MAD` environment. Note that real, complex or integer matrix with zero size are not allowed, i.e. the smallest allowed matrix has a size of :math:`[1\times 1]`.
+The constructors for vectors and matrices are directly available from the :mod:`MAD` environment. Note that real, complex or integer matrix with zero size are not allowed, i.e. the smallest allowed matrix has sizes of :math:`[1\times 1]`.
 
 .. function::  vector(nrow)
               cvector(nrow)
@@ -51,10 +51,6 @@ The constructors for vectors and matrices are directly available from the :mod:`
               imatrix(nrow, ncol_)
 
    Return a real, complex or integer matrix of size :math:`[n_{\text{row}}\times n_{\text{col}}]` filled with zeros. If :var:`nrow` is a table, it is equivalent to :expr:`matrix(#nrow, #nrow[1] or 1):fill(nrow)`, and ignoring :var:`ncol`. Default: :expr:`ncol_ = rnow`. 
-
-.. function:: diag(x)
-
-   Return a zero square matrix of the same type as :var:`x` and with its row and column sizes equal to :expr:`#x`, and with its diagonal filled with the values of the elements of :var:`x`, i.e. interpreting the matrix as a vector.
 
 .. function:: linspace([start_,] stop, size_)
 
@@ -114,7 +110,7 @@ Getters and Setters
 
 .. function:: mat:sizes ()
 
-   Return the number of rows and columns of the real, complex or integer matrix :var:`mat`.
+   Return the number of rows and columns of the real, complex or integer matrix :var:`mat`. Note that :expr:`#mat` returns the full size of the matrix, i.e. the product of the number of rows by the number of columns.
 
 .. function:: mat:tsizes ()
 
@@ -135,6 +131,14 @@ Getters and Setters
 .. function:: mat:seti (n, v)
 
    Assign the value :var:`v` to the element at the index :var:`n` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= n <= #mat` and return the matrix, i.e. interpreting the matrix as a vector, otherwise raise an *"out of bounds"* error.
+
+.. function:: mat:vec ()
+
+   Return a vector of the same type as :var:`mat` filled with the values of the elements of the `vectorized <https://en.wikipedia.org/wiki/Vectorization_(mathematics)>`_ real, complex or integer matrix :var:`mat` equivalent to :expr:`mat:t():reshape(#mat,1)`.
+
+.. function:: mat:vech ()
+
+   Return a vector of the same type as :var:`mat` filled with the values of the elements of the `half vectorized <https://en.wikipedia.org/wiki/Vectorization_(mathematics)#Half-vectorization>`_ real, complex or integer *symmetric* matrix :var:`mat`. The symmetric property can be pre-checked using :func:`mat:is_symm()`.
 
 .. function:: mat:getvec (ij, r_)
 
@@ -214,6 +218,10 @@ Getters and Setters
    
    The values after the inserted indexes are pushed toward the end of the matrix and discarded if they go beyond the last index. If :expr:`ir = nil`, :expr:`jc ~= nil` and :var:`y` is 1D, then the latter is filled using column-major indexes. Default: as :func:`mat:getidx()`.
 
+.. function:: mat:diag()
+
+   Return a zero square matrix of the same type as :var:`mat` and with its row and column sizes equal to :expr:`#mat`, and with its diagonal filled with the values of the elements of :var:`mat`, i.e. interpreting the matrix as a vector.
+
 .. function:: mat:getdiag (r_)
 
    Return a column vector or :var:`r` containing the elements of the diagonal of the real, complex or integer matrix :var:`mat`. Note that diagonal indexes can be easily generated for vector-like access using a :type:`range` like :expr:`(1..min(mat:sizes())) * (mat.ncol+1)`.
@@ -289,24 +297,36 @@ Coping and Reshaping
 
    *WARNING: This method is unsafe and may crash MAD-NG, i.e. with a* `Segmentation fault <https://en.wikipedia.org/wiki/Segmentation_fault>`__ *, if wrongly used. It is the responsibility of the user to ensure that* :var:`mat` *contains enough allocated memory to append the value* :var:`v`.
 
+Matrix Properties
+-----------------
+
+.. function:: mat:is_const (tol_)
+
+   Return true if all elements are equal within the tolerance :var:`tol`, false otherwise. Default: :expr:`tol_ = 0`. 
+
+.. function:: mat:is_real (tol_)
+
+   Return true if the imaginary part of all elements are equal to zero within the tolerance :var:`tol`, false otherwise. Default: :expr:`tol_ = 0`. 
+
+.. function:: mat:is_imag (tol_)
+
+   Return true if the real part of all elements are equal to zero within the tolerance :var:`tol`, false otherwise. Default: :expr:`tol_ = 0`. 
+
+.. function:: mat:is_diag (tol_)
+
+   Return true if all elements off the diagonal are equal to zero within the tolerance :var:`tol`, false otherwise. Default: :expr:`tol_ = 0`. 
+
+.. function:: mat:is_symm ([tol_,] [sk_,] c_)
+
+   Return true if :var:`mat` is a `symmetric matrix <https://en.wikipedia.org/wiki/Symplectic_matrix>`_, i.e. :math:`M = M^*` within the tolerance :var:`tol`, false otherwise. It checks for a `skew-symmetric matrix <https://en.wikipedia.org/wiki/Skew-symmetric_matrix>`_ if :expr:`sk == true`, and for a `Hermitian matrix <https://en.wikipedia.org/wiki/Hermitian_matrix>`_ if :expr:`c ~= false`, and a `skew-Hermitian matrix <https://en.wikipedia.org/wiki/Skew-Hermitian_matrix>`_ if both are combined. Default: :expr:`tol_ = 0`.
+
+.. function:: mat:is_symp (tol_)
+
+   Return true if :var:`mat` is a `symplectic matrix <https://en.wikipedia.org/wiki/Symplectic_matrix>`_, i.e. :math:`M^* S_{2n} M = S_{2n}`
+   within the tolerance :var:`tol`, false otherwise. Default: :expr:`tol_ = eps`.
+
 Filling and Moving
 ------------------
-
-.. function:: mat:is_const (v_, tol_)
-
-   Return true if all elements are equal to the value :var:`v` within the tolerance :var:`tol`, false otherwise. Default: :expr:`v_ = 0`, :expr:`tol_ = 0`. 
-
-.. function:: mat:is_diag (v_, tol_)
-
-   Return true if all elements on diagonal are equal to the value :var:`v` and other elements are zeros within the tolerance :var:`tol`, false otherwise. Default: :expr:`v_ = 0`, :expr:`tol_ = 0`. 
-
-.. function:: mat:is_real (v_, tol_)
-
-   Return true if the imaginary part of all elements are equal to the value :var:`v` within the tolerance :var:`tol`, false otherwise. Default: :expr:`v_ = 0`, :expr:`tol_ = 0`. 
-
-.. function:: mat:is_imag (v_, tol_)
-
-   Return true if the real part of all elements are equal to the value :var:`v` within the tolerance :var:`tol`, false otherwise. Default: :expr:`v_ = 0`, :expr:`tol_ = 0`. 
 
 .. function:: mat:zeros ()
 
@@ -663,7 +683,7 @@ Operator-like Methods
 
    Return a real or complex matrix or :var:`r` filled with the product of :var:`mat` by the transpose of :var:`mat2`, i.e. equivalent to :expr:`mat * mat2:t()`.
 
-.. function:: mat:eq (a, tol_)
+.. function:: mat:equal (a, tol_)
 
    Return :const:`false` if :var:`a` is any matrix with incompatible sizes or if any element differ in a one-to-one comparison by more than :var:`tol`, :const:`true` otherwise. If one of the operand is a scalar, the operator will be applied individually to all elements of the matrix. Default: :expr:`tol_ = 0`.
 
