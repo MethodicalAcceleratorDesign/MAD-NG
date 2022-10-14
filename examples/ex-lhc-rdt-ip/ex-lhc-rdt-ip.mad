@@ -1,53 +1,102 @@
 -- time ../mad -Oloopunroll=500 -Oinstunroll=100 -jp=vl ex-lhc-rdt-ip.mad
-local beam, track, twiss, option in MAD
-local assertf in MAD.utility
+local beam, track, twiss, mtable, option in MAD
+local assertf, printf in MAD.utility
+local swap in MAD.gfunc
+local normal in MAD.gphys
+local abs in MAD.gmath
+local printf in MAD.utility
 
--- load LHC B1
-MADX:load("lhcb1.seq", "lhcb1.mad") -- convert on need
+local run_twiss = false
+local run_rdt   = true
 
-local lhcb1 in MADX
+if run_twiss or run_rdt then
+  MADX:load("lhcb1.seq", "lhcb1.mad") -- convert and save on need
+  local lhcb1 in MADX
+  lhcb1.beam = beam { particle="proton", energy= 450 } -- mass=0.938272046 }
+  assertf(#lhcb1 == 6732, "invalid number of elements %d in LHCB1 (6732 expected)", #lhcb1)
 
--- attach beam
-lhcb1.beam = beam { particle="proton", energy= 450 } -- mass=0.938272046 }
+  -- octupoles setup
+  MADX:open_env()
+  ko = kmax_MO/Imax_MO * 40 / (450*3.33)
+  kof_a81b1 =\ ko
+  kof_a12b1 =\ ko
+  kof_a23b1 =\ ko
+  kof_a34b1 =\ ko
+  kof_a45b1 =\ ko
+  kof_a56b1 =\ ko
+  kof_a67b1 =\ ko
+  kof_a78b1 =\ ko
 
--- sanity checks
-assertf(#lhcb1 == 6732, "invalid number of elements %d in LHCB1 (6732 expected)", #lhcb1)
+  kod_a81b1 =\ ko
+  kod_a12b1 =\ ko
+  kod_a23b1 =\ ko
+  kod_a34b1 =\ ko
+  kod_a45b1 =\ ko
+  kod_a56b1 =\ ko
+  kod_a67b1 =\ ko
+  kod_a78b1 =\ ko
 
--- octupoles setup
-MADX:open_env()
-ko = kmax_MO/Imax_MO * 40 / (450*3.33)
-kof_a81b1 =\ ko
-kof_a12b1 =\ ko
-kof_a23b1 =\ ko
-kof_a34b1 =\ ko
-kof_a45b1 =\ ko
-kof_a56b1 =\ ko
-kof_a67b1 =\ ko
-kof_a78b1 =\ ko
+  dQx_b1_op  = -0.035
+  dQy_b1_op  = -0.025
+  dQpx_b1_op = 15
+  dQpy_b1_op = 15
+  MADX:close_env()
+end
 
-kod_a81b1 =\ ko
-kod_a12b1 =\ ko
-kod_a23b1 =\ ko
-kod_a34b1 =\ ko
-kod_a45b1 =\ ko
-kod_a56b1 =\ ko
-kod_a67b1 =\ ko
-kod_a78b1 =\ ko
+if run_twiss then
+  local lhcb1 in MADX
+  local mtbl = twiss {sequence=lhcb1, method=4, chrom=true}
+  local cols = {"name","s","beta11","beta22","mu1","mu2","dx","dy","x","y"}
+  mtbl:write("twiss_b1_ng.tfs", cols)
+end
 
-dQx_b1_op  = -0.035
-dQy_b1_op  = -0.025
-dQpx_b1_op = 15
-dQpy_b1_op = 15
-MADX:close_env()
+if run_rdt then
+  local lhcb1 in MADX
+  local observed in MAD.element.flags
+  lhcb1.IP2:select(observed)
+  local mtbl, mflw = track {sequence=lhcb1, method=6, nslice=3, mapdef=4, savemap=true}
+  mtbl:write"trk.tfs"
+  mtbl.IP2    .__map:write("otm_at_IP2", "IP2")
+  mtbl["$end"].__map:write("otm_at_END", "END")
 
-local mtbl = twiss {sequence=lhcb1, method=4, chrom=true}
+  -- ORBITS
+  mtbl.IP2    .__map:get0():print("Orbit IP2", 'line')
+  mtbl["$end"].__map:get0():print("Orbit END", 'line')
 
-local cols = {"name","s","betx","bety","mux","muy","dx","dy","x","y"}
-mtbl:write("twiss_b1_ng.tfs", cols)
+  local nf = normal(mflw[1])
+  nf.x0:print("Orbit END", 'line')
+  nf.a:print("A")
+  print(MAD.typeid.is_damap(nf.a:real()))
+
+  local mtbl, mflw = track {sequence=lhcb1, method=6, nslice=3, X0=nf.a:real(), mapdef=4, savemap=true}
+
+  MAD.option.numfmt = "%12.4f"
+
+  -- ORBITS
+  mtbl.IP2    .__map:get0():print("Orbit IP2", 'line')
+  mtbl["$end"].__map:get0():print("Orbit END", 'line')
+
+  do -- CHROMA
+    local da = mtbl["$end"].__map
+    local nf = normal(da):analyse()
+
+    local m = "100001"
+    printf("ANH[%s]= %s, %12.4f (Q1)\n"   , m, tostring(nf.anh[m]), abs(nf.anh[m]))
+    local m = "001001"
+    printf("ANH[%s]= %s, %12.4f (Q2)\n"   , m, tostring(nf.anh[m]), abs(nf.anh[m]))
+  end
+
+  do -- RDTs
+    local da = mtbl.IP2.__map
+    local nf = normal(da):analyse()
+    -- for i,m in ipairs(nf.gnf) do print(m, nf.gnf[m], abs(nf.gnf[m])) end
+    local m = "310000"
+    printf("GNF[%s]= %s, %12.4f, %12.4f\n", m, tostring(nf.gnf[m]), abs(nf.gnf[m]), abs(nf.gnf[m])/6)
+  end
+end
 
 --[[
 twiss, file=twiss_b1;
-
 
 PTC_CREATE_UNIVERSE;
 PTC_CREATE_LAYOUT, MODEL=2, METHOD=6, NST=3;
