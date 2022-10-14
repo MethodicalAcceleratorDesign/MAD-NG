@@ -270,7 +270,7 @@ Getters and Setters
 
    Equivalent to :func:`mat:inssub()` with :expr:`ir = nil`.
 
-Copying and Reshaping
+Cloning and Reshaping
 ---------------------
 
 .. function:: mat:same ([nrow_, ncol_,] v_)
@@ -283,19 +283,13 @@ Copying and Reshaping
 
 .. function:: mat:reshape (nrow_, ncol_)
 
-   Return the real, complex or integer matrix :var:`mat` reshaped to the new sizes :var:`nrow` and :var:`ncol` that must give to a smaller or an equal size, or raise an *invalid new sizes* error. Default: :expr:`nrow_ = #mat`, :expr:`ncol_ = 1`.
+   Return the real, complex or integer matrix :var:`mat` reshaped to the new sizes :var:`nrow` and :var:`ncol` that must result into an equal or smaller number of elements, or it will raise an *invalid new sizes* error. Default: :expr:`nrow_ = #mat`, :expr:`ncol_ = 1`.
 
 .. function:: mat:_reshapeto (nrow, ncol_)
 
-   Same as :func:`mat:reshape()` but :var:`nrow` must be provided and it allows for a new size larger than :var:`mat` current size.
+   Same as :func:`mat:reshape()` except that :var:`nrow` must be explicitly provided as this method allows for a larger size than :var:`mat` current size. A typical use of this method is to expand a vector after an explicit shrinkage, while keeping track of its original size, e.g. similar to :expr:`vector(100) :reshape(1):seti(1,1) :_reshapeto(2):seti(2,1)` that would raise an *"index out of bounds"* error without the call to :func:`_reshapeto()`. Default :expr:`ncol_ = 1`.
 
-   *WARNING: This method is unsafe and may crash MAD-NG, i.e. with a* `Segmentation fault <https://en.wikipedia.org/wiki/Segmentation_fault>`__ *, if wrongly used. It is the responsibility of the user to ensure that* :var:`mat` *contains enough allocated memory to fulfill the new sizes.* 
-
-.. function:: mat:_appendto (v_)
-
-   Return the real, complex or integer matrix :var:`mat` with the value :var:`v` appended at its end, i.e. interpreting the matrix as a vector, and increments its number of rows or columns depending on the kind of vector. Default: :expr:`v_ = 0`.
-
-   *WARNING: This method is unsafe and may crash MAD-NG, i.e. with a* `Segmentation fault <https://en.wikipedia.org/wiki/Segmentation_fault>`__ *, if wrongly used. It is the responsibility of the user to ensure that* :var:`mat` *contains enough allocated memory to append the value* :var:`v`.
+   *WARNING: This method is unsafe and may crash MAD-NG with, e.g. a* `Segmentation fault <https://en.wikipedia.org/wiki/Segmentation_fault>`__ *, if wrongly used. It is the responsibility of the user to ensure that* :var:`mat` *was created with a size greater than or equal to the new size.* 
 
 Matrix Properties
 -----------------
@@ -338,7 +332,7 @@ Filling and Moving
 
 .. function:: mat:eye (v_)
 
-   Return the real, complex or integer matrix :var:`mat` filled with the value of :var:`v` on the diagonal and zeros elsewhere. Default: :expr:`v_ = 1`.
+   Return the real, complex or integer matrix :var:`mat` filled with the value of :var:`v` on the diagonal and zeros elsewhere. The name of this method comes from the spelling of the `Identity matrix <https://en.wikipedia.org/wiki/Identity_matrix>`_ :math:`I`. Default: :expr:`v_ = 1`.
 
 .. function:: mat:seq ([v_,] d_)
 

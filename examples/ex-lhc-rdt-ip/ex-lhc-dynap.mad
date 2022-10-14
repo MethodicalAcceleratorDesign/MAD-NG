@@ -1,0 +1,136 @@
+-- time ../mad -Oloopunroll=500 -Oinstunroll=100 -jp=vl ex-lhc-rdt-ip.mad
+local beam, track, twiss, mtable, option in MAD
+local assertf, printf in MAD.utility
+local swap in MAD.gfunc
+
+local run_twiss = false
+local run_track = false
+local run_dynap = true
+
+
+if run_twiss or run_track then
+  MADX:load("lhcb1.seq", "lhcb1.mad") -- convert and save on need
+  local lhcb1 in MADX
+  lhcb1.beam = beam { particle="proton", energy= 450 } -- mass=0.938272046 }
+  assertf(#lhcb1 == 6732, "invalid number of elements %d in LHCB1 (6732 expected)", #lhcb1)
+
+  -- octupoles setup
+  MADX:open_env()
+  ko = kmax_MO/Imax_MO * 40 / (450*3.33)
+  kof_a81b1 =\ ko
+  kof_a12b1 =\ ko
+  kof_a23b1 =\ ko
+  kof_a34b1 =\ ko
+  kof_a45b1 =\ ko
+  kof_a56b1 =\ ko
+  kof_a67b1 =\ ko
+  kof_a78b1 =\ ko
+
+  kod_a81b1 =\ ko
+  kod_a12b1 =\ ko
+  kod_a23b1 =\ ko
+  kod_a34b1 =\ ko
+  kod_a45b1 =\ ko
+  kod_a56b1 =\ ko
+  kod_a67b1 =\ ko
+  kod_a78b1 =\ ko
+
+  dQx_b1_op  = -0.035
+  dQy_b1_op  = -0.025
+  dQpx_b1_op = 15
+  dQpy_b1_op = 15
+  MADX:close_env()
+end
+
+if run_twiss then
+  local mtbl = twiss {sequence=lhcb1, method=4, chrom=true}
+
+  local cols = {"name","s","beta11","beta22","mu1","mu2","dx","dy","x","y"}
+  mtbl:write("twiss_b1_ng.tfs", cols)
+end
+
+if run_track then
+  local np  = 64        -- number of particles
+  local nt  = 1024      -- number of turns
+  local rho = 1e-6      -- amplitude  [m]
+  local ang = 90/(np-1) -- angle step [deg]
+  local X0  = {}
+  local sin, cos, rad in math
+
+  for i=0,np-1 do
+    X0[i+1] = {x=rho*cos(rad(ang*i)),
+               y=rho*sin(rad(ang*i)),  px=0,py=0,t=0,pt=0}
+  end
+  assert(np == #X0, "expected invalid set of particles")
+  io.write("Tracking ", #X0, " particles over ", nt, " turns\n")
+  local mtbl, mflw = track {sequence=lhcb1, method=4, nturn=nt, X0=X0} -- mapdef=4}
+  mtbl:write("track_b1_ng.tfs")
+end
+
+if run_dynap then
+  io.write("Q1 Q2 checks\n")
+  local tw_x = mtable:read("twiss_b1.tfs")
+  local tw_n = mtable:read("twiss_b1_ng.tfs")
+  printf("MAD-X  Twiss: Q1 = % .6f, Q2 = % .6f\n", tw_x.Q1, tw_x.Q2)
+  printf("MAD-NG Twiss: Q1 = % .6f, Q2 = % .6f\n", tw_n.q1, tw_n.q2)
+  printf("D_Q1 = % .5e, D_Q2 = % .5e\n", tw_x.Q1-tw_n.q1, tw_x.Q2-tw_n.q2)
+
+  io.write("TFS\n")
+  local mtbl = mtable:read("track_b1_ng.tfs")
+  io.write("#mtbl = ", #mtbl, "\n")
+  assertf(mtbl.lost == 0, "unexpected %d particle(s) lost", mtbl.lost)
+
+  io.write("X Y (full scan)\n")
+  local np, nt = mtbl.id:max(), mtbl.turn:max() ; io.write("np, nt = ", np, ", ", nt, "\n")
+  local xn = mtbl.x:copy():reshape(nt, np)      ; io.write("sizes(xn) = ", xn.nrow, " x ", xn.ncol, "\t, max = ", xn:max(), "\n")
+  local yn = mtbl.y:copy():reshape(nt, np)      ; io.write("sizes(yn) = ", yn.nrow, " x ", yn.ncol, "\t, max = ", yn:max(), "\n")
+
+  io.write("FFT\n")
+  local xf = xn:rfft'col'                       ; io.write("sizes(xf) = ", xf.nrow, " x ", xf.ncol, "\t, max = ", xf:maxabs(), "\n")
+  local yf = yn:rfft'col'                       ; io.write("sizes(yf) = ", yf.nrow, " x ", yf.ncol, "\t, max = ", yf:maxabs(), "\n")
+
+  io.write("TUNES\n")
+  local qx= xf:sumabs'row':real()
+  local qy= yf:sumabs'row':real()
+  option.numfmt = "%10.5f"
+--  (qx:same():seq(-1) .. qx .. qy):print('qx, qy')
+  local _, xi = qx:iminmax()
+  local _, yi = qy:iminmax()
+  io.write("Xmax = ", qx:max(), ", Xmax_i = ", xi-1, ", Qx = ", (xi-1)*0.5/(#qx-1), "\n")
+  io.write("Ymax = ", qy:max(), ", Ymax_i = ", yi-1, ", Qy = ", (yi-1)*0.5/(#qy-1), "\n")
+
+  do -- single x and y
+    io.write("X Y (single)\n",
+             "max y[1] = "     , yn:getcol(1) :max(), "\n",
+             "max x[",np,"] = ", xn:getcol(np):max(), "\n")
+    local xn = xn:getcol(1 )                    ; io.write("sizes(xn) = ", xn.nrow, " x ", xn.ncol, "\t, max = ", xn:max(), "\n")
+    local yn = yn:getcol(np)                    ; io.write("sizes(yn) = ", yn.nrow, " x ", yn.ncol, "\t, max = ", yn:max(), "\n")
+
+    io.write("FFT\n")
+    local xf = xn:rfft()                        ; io.write("sizes(xf) = ", xf.nrow, " x ", xf.ncol, "\t, max = ", xf:maxabs(), "\n")
+    local yf = yn:rfft()                        ; io.write("sizes(yf) = ", yf.nrow, " x ", yf.ncol, "\t, max = ", yf:maxabs(), "\n")
+
+    io.write("TUNES X Y\n")
+    local qx= xf:abs():real()
+    local qy= yf:abs():real()
+    option.numfmt = "%10.5f"
+--    (qx:same():seq(-1) .. qx .. qy):print('qx, qy')
+    local _, xi = qx:iminmax()
+    local _, yi = qy:iminmax()
+    io.write("Xmax = ", qx:max(), ", Xmax_i = ", xi-1, ", Qx = ", (xi-1)*0.5/(#qx-1), "\n")
+    io.write("Ymax = ", qy:max(), ", Ymax_i = ", yi-1, ", Qy = ", (yi-1)*0.5/(#qy-1), "\n")
+  end
+end
+
+--[[
+twiss, file=twiss_b1;
+
+
+PTC_CREATE_UNIVERSE;
+PTC_CREATE_LAYOUT, MODEL=2, METHOD=6, NST=3;
+ptc_twiss, NORMAL=TRUE, TRACKRDTS=TRUE, NO=4 ;
+write, table=TWISSRDT , file=rdts;
+
+stop;
+
+--]]
