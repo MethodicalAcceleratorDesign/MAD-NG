@@ -698,11 +698,94 @@ function MC.imag (x, r)
   return r
 end
 
+-- special ctors --------------------------------------------------------------o
+
+function MR.vec (x)
+  local nr, nc = x:sizes()
+  local k, r = 1, x:same(nr*nc,1)
+  for j=1,nc do
+  for i=1,nr do seti(r, k, get(x,i,j)) ; k = k+1 end end
+  return r
+end
+
+function MR.vech (x)
+  local nr, nc = x:sizes()
+  assert(nr == nc, "invalid matrix sizes (square matrix expected)")
+  local k, r = 1, x:same(nr*(nc+1)/2, 1)
+  for j=1,nc do
+  for i=j,nr do seti(r, k, get(x,i,j)) ; k = k+1 end end
+  return r
+end
+
+function MR.diag (x, k_)
+  local k, nr, nc = k_ or 0, x:sizes()
+  assert(nr == 1 or nc == 1, "invalid matrix sizes (vector expected)")
+  assert(is_integer(k), "invalid argument #2 (integer expected)")
+  local nn = nr*nc+abs(k)
+  local r = x:same(nn,nn)
+  k = k < 0 and -k*nn or k
+  for i=1,nr*nc do seti(r, i+k, geti(x,i)) ; k = k+nn end
+  return r
+end
+
+MI.vec  = MR.vec
+MI.vech = MR.vech
+MI.diag = MR.diag
+
+-- indexing -------------------------------------------------------------------o
+
+function MR.getij (x, ij_, ri_, rj_)
+  -- single index
+  if is_number(ij_) then return idxij(ij_, x.ncol) end
+
+  -- list of indexes
+  if is_nil(ij_) then ij_ = 1..size(x) end
+  assert(is_iterable(ij_), "invalid argument #2 (index or iterable expected)")
+  local ri, rj, nc = ri_ or ivector(#ij_), rj_ or ivector(#ij_), x.ncol
+  assert(is_iterable(ri), "invalid argument #3 (iterable expected)")
+  assert(is_iterable(rj), "invalid argument #4 (iterable expected)")
+  for k=1,#ij_ do ri[k], rj[k] = idxij(ij_[k], nc) end
+  return ri, rj, ij_
+end
+
+function MR.getidx (x, ir_, jc_, rij_)
+  -- single index
+  if is_number(ir_) and is_number(jc_) then return idx(ir_, jc_, x.ncol) end
+
+  -- list of indexes
+  if is_nil(ir_) then ir_ = 1..x.nrow elseif is_number(ir_) then ir_ = {ir_} end
+  if is_nil(jc_) then jc_ = 1..x.ncol elseif is_number(jc_) then jc_ = {jc_} end
+  assert(is_iterable(ir_), "invalid argument #2 (index or iterable expected)")
+  assert(is_iterable(jc_), "invalid argument #3 (index or iterable expected)")
+  local rij = rij_ or ivector(#ir_ * #jc_)
+  assert(is_iterable(rij), "invalid argument #4 (iterable expected)")
+  local k, nc = 1, x.ncol
+  for _,i in ipairs(ir_) do
+  for _,j in ipairs(jc_) do rij[k], k = idx(i,j,nc), k+1 end end
+  return rij, ir_, jc_
+end
+
+function MR.getdidx (x, k_)
+  local k, nr, nc = k_ or 0, x:sizes()
+  assert(is_integer(k), "invalid argument #2 (integer expected)")
+  assert(k >= 0 and k <= nc or -k <= nr, "diagonal index out of range")
+  local ii, nn
+  if k < 0
+  then ii, nn = -k*nc, min(nc, nr - k)*nc
+  else ii, nn =  k   , min(nr, nc - k)*nc
+  end
+  return 1+ii..nn..nc+1
+end
+
+MI.getij   = MR.getij
+MI.getidx  = MR.getidx
+MI.getdidx = MR.getdidx
+
 -- getx, setx, swpx, insx, remx -----------------------------------------------o
 
 function MR.getvec (x, ij, r_)
   if is_number(ij) then ij = {ij} end
-  assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
+  assert(is_iterable(ij), "invalid argument #2 (non-empty iterable expected)")
   local r = r_ or x:same(#ij,1)
   assert(is_iterable(r ), "invalid argument #3 (iterable expected)")
   for i,ii in ipairs(ij) do r[i] = geti_s(x,ii) end
@@ -758,42 +841,6 @@ function MR.insvec (x, ij, y) -- inplace
   return x
 end
 
-function MR.getidx (x, ir_, jc_, r_)
-  local ir, jc = ir_, jc_
-  -- indexes
-  if is_number(ir) and is_number(jc) then
-      return idx(ir, jc, x.ncol), ir, jc
-  end
-  -- list of indexes
-  if is_nil(ir) then ir = 1..x.nrow elseif is_number(ir) then ir = {ir} end
-  if is_nil(jc) then jc = 1..x.ncol elseif is_number(jc) then jc = {jc} end
-  assert(is_iterable(ir), "invalid argument #2 (iterable expected)")
-  assert(is_iterable(jc), "invalid argument #3 (iterable expected)")
-  local r = r_ or ivector(#ir * #jc)
-  assert(is_iterable(r ), "invalid argument #4 (iterable expected)")
-  local k, nc = 1, x.ncol
-  for _,ik in ipairs(ir) do
-  for _,jk in ipairs(jc) do r[k] = idx(ik,jk,nc) ; k=k+1 end end
-  return r, ir, jc
-end
-
-function MR.getdidx (x, r_)
-  local nn, nc = min(x:sizes()), x.ncol
-  local r = r_ or ivector(nn)
-  for ii=1,nn do r[ii] = idx(ii,ii,nc) end
-  return r
-end
-
-function MR.getij (x, ij_)
-      if is_nil  (ij_) then ij_ = ivector(size(x)):seq()
-  elseif is_range(ij_) then ij_ = ivector(#ij_):fill(ij_)
-  end
-  return idxij(ij_, x.ncol)
-end
-
-MI.getij  = MR.getij
-MI.getidx = MR.getidx
-
 function MR.getsub (x, ir_, jc_, r_)
   local ij, ir, jc = x:getidx(ir_,jc_)
   if is_number(ij) then
@@ -843,38 +890,14 @@ function MR.swpsub (x, ir_, jc_, ir2_, jc2_) -- inplace
   return x:swpvec(x:getidx(ir_,jc_), x:getidx(ir2_,jc2_))
 end
 
-function MR.vec (x)
-  local nr, nc = x:sizes()
-  local k, r = 1, x:same(nr*nc,1)
-  for j=1,nc do
-  for i=1,nr do seti(r, k, get(x,i,j)) ; k = k+1 end end
-  return r
+function MR.getdiag (x, k_, r_)
+  if k_ and not is_number(k_) and is_nil(r_) then r_, k_ = k_, nil end
+  return x:getvec(x:getdidx(k_), r_)
 end
 
-function MR.vech (x)
-  local nr, nc = x:sizes()
-  assert(nr == nc, "invalid matrix sizes (square matrix expected)")
-  local k, r = 1, x:same(nr*(nc+1)/2, 1)
-  for j=1,nc do
-  for i=j,nr do seti(r, k, get(x,i,j)) ; k = k+1 end end
-  return r
-end
-
-function MR.diag (x)
-  local nr, nc = x:sizes()
-  assert(nr == 1 or nc == 1, "invalid matrix sizes (vector expected)")
-  local nn = nr*nc
-  local r = x:same(nn,nn)
-  for i=1,nn do set(r, i, i, geti(x,i)) end
-  return r
-end
-
-function MR.getdiag (x, r_)
-  return x:getvec((1..min(x:sizes()))*(x.ncol+1), r_)
-end
-
-function MR.setdiag (x, y, p_, s_) -- inplace
-  return x:setvec((1..min(x:sizes()))*(x.ncol+1), y, p_, s_)
+function MR.setdiag (x, y, k_, p_, s_) -- inplace
+  if k_ and not is_number(k_) and is_nil(s_) then p_, s_, k_ = k_, p_, nil end
+  return x:setvec(x:getdidx(k_), y, p_, s_)
 end
 
 MR.getrow = \x,ir,r_      -> x:getsub(ir,nil,r_)
@@ -889,8 +912,6 @@ MR.swpcol = \x,jc,jc2     -> x:swpsub(nil,jc,nil,jc2)
 MR.remcol = \x,jc         -> x:remsub(nil,jc)
 MR.inscol = \x,jc,y       -> x:inssub(nil,jc,y)
 
-MI.vec    = MR.vec
-MI.vech   = MR.vech
 MI.getvec = MR.getvec
 MI.setvec = MR.setvec
 MI.swpvec = MR.swpvec
@@ -915,7 +936,6 @@ MI.swpcol = MR.swpcol
 MI.remcol = MR.remcol
 MI.inscol = MR.inscol
 
-MI.diag    = MR.diag
 MI.getdiag = MR.getdiag
 MI.setdiag = MR.setdiag
 
@@ -923,8 +943,8 @@ MI.setdiag = MR.setdiag
 
 function MR.foreach (x, ij_, f, r_)
   if is_callable(ij_) or is_string(ij_) then f, r_, ij_ = ij_, f end -- right shift
-  if is_string(f ) then f = opstr[f] end
-  if is_string(r_) and r_ == 'in' then r_ = x end
+  if is_string(f ) then f = assert(opstr[f], "invalid operator string") end
+  if is_string(r_) and r_ == 'in' or ij_ and is_nil(r_) then r_ = x end
   local ij = ij_ or 1..size(x)
   assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
   assert(is_callable(f ), "invalid argument #3 (callable expected)")
@@ -941,7 +961,7 @@ MI.foreach = MR.foreach
 
 function MR.filter (x, ij_, p, r_)
   if is_callable(ij_) then p, r_, ij_ = ij_, p end -- right shift
-  if is_string(r_) and r_ == 'in' then r_ = x end
+  if is_string(r_) and r_ == 'in' or ij_ and is_nil(r_) then r_ = x end
   local ij = ij_ or 1..size(x)
   assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
   assert(is_callable(p) , "invalid argument #3 (callable expected)")
@@ -958,12 +978,15 @@ function MR.filter (x, ij_, p, r_)
   return r, ri
 end
 
-MI.filter = MR.filter
+MR.filter_out = \x,ij_,p,r_ -> x:filter(ij_,compose(lnot,p), r_)
+
+MI.filter     = MR.filter
+MI.filter_out = MR.filter_out
 
 function MR.map (x, ij_, f, r_)
   if is_callable(ij_) or is_string(ij_) then f, r_, ij_ = ij_, f end -- right shift
-  if is_string(f ) then f = opstr[f] end
-  if is_string(r_) and r_ == 'in' then r_ = x end
+  if is_string(f ) then f = assert(opstr[f], "invalid operator string") end
+  if is_string(r_) and r_ == 'in' or ij_ and is_nil(r_) then r_ = x end
   local ij = ij_ or 1..size(x)
   assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
   assert(is_callable(f ), "invalid argument #3 (callable expected)")
@@ -983,8 +1006,8 @@ MI.map = MR.map
 function MR.map2 (x, y, ij_, f, r_)
   if is_callable(ij_) or is_string(ij_) then f, r_, ij_ = ij_, f end -- right shift
   if is_scalar(y ) then y = rep(y) end
-  if is_string(f ) then f = opstr[f] end
-  if is_string(r_) and r_ == 'in' then r_ = x end
+  if is_string(f ) then f = assert(opstr[f], "invalid operator string") end
+  if is_string(r_) and r_ == 'in' or ij_ and is_nil(r_) then r_ = x end
   local ij = ij_ or 1..size(x)
   assert(is_iterable(y ), "invalid argument #2 (scalar or iterable expected)")
   assert(is_iterable(ij), "invalid argument #3 (iterable expected)")
@@ -1006,8 +1029,8 @@ function MR.map3 (x, y, z, ij_, f, r_)
   if is_callable(ij_) or is_string(ij_) then f, r_, ij_ = ij_, f end -- right shift
   if is_scalar(y ) then y = rep(y) end
   if is_scalar(z ) then z = rep(z) end
-  if is_string(f ) then f = opstr[f] end
-  if is_string(r_) and r_ == 'in' then r_ = x end
+  if is_string(f ) then f = assert(opstr[f], "invalid operator string") end
+  if is_string(r_) and r_ == 'in' or ij_ and is_nil(r_) then r_ = x end
   local ij = ij_ or 1..size(x)
   assert(is_iterable(y ), "invalid argument #2 (scalar or iterable expected)")
   assert(is_iterable(z ), "invalid argument #3 (scalar or iterable expected)")
@@ -1029,7 +1052,7 @@ MI.map3 = MR.map3
 -- errCMat:foldl('+', {})
 
 function MR.foldl (x, f, x0_, d_, r_)
-  if is_string(f) then f = opstr[f] end
+  if is_string(f  ) then f = assert(opstr[f], "invalid operator string") end
   if is_string(x0_) then                           -- case 2',4',4": shift right
     x0_, d_, r_ = nil, x0_, is_nil(r_) and d_ or r_
   elseif is_nil(r_) and not is_string(d_) then        -- case 7',3": shift right
@@ -1065,7 +1088,7 @@ end
 MI.foldl = MR.foldl
 
 function MR.foldr (x, f, x0_, d_, r_)
-  if is_string(f) then f = opstr[f] end
+  if is_string(f  ) then f = assert(opstr[f], "invalid operator string") end
   if is_string(x0_) then                           -- case 2',4',4": shift right
     x0_, d_, r_ = nil, x0_, is_nil(r_) and d_ or r_
   elseif is_nil(r_) and not is_string(d_) then        -- case 7',3": shift right
@@ -1101,7 +1124,7 @@ end
 MI.foldr = MR.foldr
 
 function MR.scanl (x, f, x0_, d_, r_)
-  if is_string(f) then f = opstr[f] end
+  if is_string(f  ) then f = assert(opstr[f], "invalid operator string") end
   if is_string(x0_) then                           -- case 2',4',4": shift right
     x0_, d_, r_ = nil, x0_, is_nil(r_) and d_ or r_
   elseif is_nil(r_) and not is_string(d_) then        -- case 7',3": shift right
@@ -1145,7 +1168,7 @@ end
 MI.scanl = MR.scanl
 
 function MR.scanr (x, f, x0_, d_, r_)
-  if is_string(f) then f = opstr[f] end
+  if is_string(f  ) then f = assert(opstr[f], "invalid operator string") end
   if is_string(x0_) then                           -- case 2',4',4": shift right
     x0_, d_, r_ = nil, x0_, is_nil(r_) and d_ or r_
   elseif is_nil(r_) and not is_string(d_) then        -- case 7',3": shift right
@@ -1328,12 +1351,6 @@ MR.raccsumsqr = \x,d_,r_ -> x:scanr(compose(sumsqrl,swap), 0  , d_, r_)
 MR.raccsumabs = \x,d_,r_ -> x:scanr(compose(sumabsl,swap), 0  , d_, r_)
 MR.raccminabs = \x,d_,r_ -> x:scanr(compose(minabsl,swap), inf, d_, r_)
 MR.raccmaxabs = \x,d_,r_ -> x:scanr(compose(maxabsl,swap), 0  , d_, r_)
-
--- special filters ------------------------------------------------------------o
-
-MR.filter_out = \x,ij_,p,r_ -> x:filter(ij_,compose(lnot,p), r_)
-
-MI.filter_out = MR.filter_out
 
 -- minmax ---------------------------------------------------------------------o
 
