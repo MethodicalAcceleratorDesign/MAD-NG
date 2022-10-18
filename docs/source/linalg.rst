@@ -105,16 +105,46 @@ Functions
 Methods
 =======
 
-Getters and Setters
--------------------
+Special Constructors
+--------------------
+
+.. function:: mat:vec ()
+
+   Return a vector of the same type as :var:`mat` filled with the values of the elements of the `vectorized <https://en.wikipedia.org/wiki/Vectorization_(mathematics)>`_ real, complex or integer matrix :var:`mat` equivalent to :expr:`mat:t():reshape(#mat,1)`.
+
+.. function:: mat:vech ()
+
+   Return a vector of the same type as :var:`mat` filled with the values of the elements of the `half vectorized <https://en.wikipedia.org/wiki/Vectorization_(mathematics)#Half-vectorization>`_ real, complex or integer *symmetric* matrix :var:`mat`. The symmetric property can be pre-checked bu the user with :func:`mat:is_symm()`.
+
+.. function:: mat:diag (k_)
+
+   Return a zero square matrix of the same type as :var:`mat` where :expr:`n = #mat + abs(k)`, and with its :math:`k`-th diagonal :expr:`-n <= k <= n` filled with the values of the elements of :var:`mat`, i.e. interpreting the matrix as the :math:`k`-th diagonal vector. Default: :expr:`k_ = 0`.
+
+Sizes and Indexing
+------------------
 
 .. function:: mat:sizes ()
 
-   Return the number of rows and columns of the real, complex or integer matrix :var:`mat`. Note that :expr:`#mat` returns the full size of the matrix, i.e. the product of the number of rows by the number of columns interpreting the matrix as a vector.
+   Return the number of rows :var:`nrow` and columns :var:`ncol` of the real, complex or integer matrix :var:`mat`. Note that :expr:`#mat` returns the full size :expr:`nrow * ncol` of the matrix.
 
 .. function:: mat:tsizes ()
 
-   Return the number of columns and rows (i.e. transposed) of the real, complex or integer matrix :var:`mat`, i.e. it is equivalent to :expr:`swap(mat:sizes())`.
+   Return the number of columns :var:`ncol` and rows :var:`nrow` (i.e. transposed sizes) of the real, complex or integer matrix :var:`mat` equivalent to :expr:`swap(mat:sizes())`.
+
+.. function:: mat:getij (ij_, ri_, rj_)
+
+   Return two :type:`ivector` or :var:`ri` and :var:`rj` containing the indexes :expr:`(i,j)` extracted from the :type:`iterable` :var:`ij` for the real, complex or integer matrix :var:`mat`. If :var:`ij` is a number, the two returned items are also numbers. This method is the reverse method of :func:`mat:getidx()` to convert 1D indexes into 2D indexes for the given matrix sizes. Default: :expr:`ij_ = 1..#mat`.
+
+.. function:: mat:getidx (ir_, jc_, rij_)
+
+   Return an :type:`ivector` or :var:`rij` containing :expr:`#ir * #jc` vector indexes in row-major order given by the :type:`iterable` :var:`ir` and :var:`jc` of the real, complex or integer matrix :var:`mat`, followed by :var:`ir` and :var:`jc` potentially set from defaults. If both :var:`ir` and :var:`jc` are numbers, it returns a single number. This method is the reverse method of :func:`mat:getij()` to convert 2D indexes into 1D indexes for the given matrix sizes. Default: :expr:`ir_ = 1..nrow`, :expr:`jc_ = 1..ncol`.
+
+.. function:: mat:getdidx (k_)
+
+   Return an :type:`iterable` describing the indexes of the :math:`k`-th diagonal of the real, complex or integer matrix :var:`mat` where :expr:`-nrow <= k <= ncol`. This method is useful to build the 1D indexes of the :math:`k`-th diagonal for the given matrix sizes.
+
+Getters and Setters
+-------------------
 
 .. function:: mat:get (i, j)
 
@@ -126,27 +156,19 @@ Getters and Setters
 
 .. function:: mat:geti (n)
 
-   Return the value of the element at the index :var:`n` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= n <= #mat`, i.e. interpreting the matrix as a vector, :const:`nil` otherwise.
+   Return the value of the element at the vector index :var:`n` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= n <= #mat`, i.e. interpreting the matrix as a vector, :const:`nil` otherwise.
 
 .. function:: mat:seti (n, v)
 
-   Assign the value :var:`v` to the element at the index :var:`n` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= n <= #mat` and return the matrix, i.e. interpreting the matrix as a vector, otherwise raise an *"index out of bounds"* error.
-
-.. function:: mat:vec ()
-
-   Return a vector of the same type as :var:`mat` filled with the values of the elements of the `vectorized <https://en.wikipedia.org/wiki/Vectorization_(mathematics)>`_ real, complex or integer matrix :var:`mat` equivalent to :expr:`mat:t():reshape(#mat,1)`.
-
-.. function:: mat:vech ()
-
-   Return a vector of the same type as :var:`mat` filled with the values of the elements of the `half vectorized <https://en.wikipedia.org/wiki/Vectorization_(mathematics)#Half-vectorization>`_ real, complex or integer *symmetric* matrix :var:`mat`. The symmetric property can be pre-checked using :func:`mat:is_symm()`.
+   Assign the value :var:`v` to the element at the vector index :var:`n` of the real, complex or integer matrix :var:`mat` for :expr:`1 <= n <= #mat` and return the matrix, i.e. interpreting the matrix as a vector, otherwise raise an *"index out of bounds"* error.
 
 .. function:: mat:getvec (ij, r_)
 
-   Return a column vector or :var:`r` containing the values of the elements at the indexes given by the :type:`iterable` :var:`ij` of the real, complex or integer matrix :var:`mat`, i.e. interpreting the matrix as a vector.
+   Return a column vector or :var:`r` containing the values of the elements at the vector indexes given by the :type:`iterable` :var:`ij` of the real, complex or integer matrix :var:`mat`, i.e. interpreting the matrix as a vector.
 
 .. function:: mat:setvec (ij, a, p_, s_)
 
-   Return the real, complex or integer matrix :var:`mat` after filling the elements at the indexes given by the :type:`iterable` :var:`ij`, i.e. interpreting the matrix as a vector, with the values given by :var:`a` depending of its kind:
+   Return the real, complex or integer matrix :var:`mat` after filling the elements at the vector indexes given by the :type:`iterable` :var:`ij`, i.e. interpreting the matrix as a vector, with the values given by :var:`a` depending of its kind:
 
    - if :var:`a` is a :type:`scalar`, it is will be used repetitively.
 
@@ -156,33 +178,21 @@ Getters and Setters
 
 .. function:: mat:swpvec (ij, ij2)
 
-   Return the real, complex or integer matrix :var:`mat` after swapping the values of the elements at the indexes given by the :type:`iterable` :var:`ij` and :var:`ij2`, i.e. interpreting the matrix as a vector.
+   Return the real, complex or integer matrix :var:`mat` after swapping the values of the elements at the vector indexes given by the :type:`iterable` :var:`ij` and :var:`ij2`, i.e. interpreting the matrix as a vector.
 
 .. function:: mat:remvec (ij)
 
-   Return the real, complex or integer matrix :var:`mat` after removing the elements at the indexes given by the :type:`iterable` :var:`ij`, i.e. interpreting the matrix as a shrinking vector, and reshaped as a *column vector* of size :expr:`#mat - #ij`.
+   Return the real, complex or integer matrix :var:`mat` after removing the elements at the vector indexes given by the :type:`iterable` :var:`ij`, i.e. interpreting the matrix as a shrinking vector, and reshaped as a *column vector* of size :expr:`#mat - #ij`.
 
 .. function:: mat:insvec (ij, a)
 
-   Return the real, complex or integer matrix :var:`mat` after inserting the elements at the indexes given by the :type:`iterable` :var:`ij`, i.e. interpreting the matrix as a vector, with the values given by :var:`a` depending of its kind:
+   Return the real, complex or integer matrix :var:`mat` after inserting the elements at the vector indexes given by the :type:`iterable` :var:`ij`, i.e. interpreting the matrix as a vector, with the values given by :var:`a` depending of its kind:
    
    - if :var:`a` is a :type:`scalar`, it is will be used repetitively.
 
    - if :var:`a` is an :type:`iterable` then the matrix will be filled with values from :var:`a[n]` for :expr:`1 <= n <= #a`.
    
    The elements after the inserted indexes are shifted toward the end of the matrix in row-major order and discarded if they go beyond the last index.
-
-.. function:: mat:getidx (ir_, jc_, r_)
-
-   Return an :type:`ivector` or :var:`r` containing :expr:`#ir * #jc` vector indexes in row-major order given by the :type:`iterable` :var:`ir` and :var:`jc` of the real, complex or integer matrix :var:`mat`, followed by :var:`ir` and :var:`jc` potentially updated from defaults. If both :var:`ir` and :var:`jc` are numbers, the three returned items are also numbers. This method is useful to convert 2D matrix indexes into 1D vector indexes for the given matrix. Default: :expr:`ir_ = 1..mat.nrow`, :expr:`jc_ = 1..mat.ncol`.
-
-.. function:: mat:getdidx (r_)
-
-   Return an :type:`ivector` or :var:`r` containing :expr:`min(mat.nrow, mat.ncol)` indexes of the real, complex or integer matrix :var:`mat`. This method is useful to convert the diagonal of 2D matrix indexes into 1D vector indexes for the given matrix. Note that diagonal indexes can be easily generated for vector-like access using a numerical :type:`range` like :expr:`(1..min(mat:sizes())) * (mat.ncol+1)`.
-
-.. function:: mat:getij (ij_)
-
-   Return two :type:`ivector` representing the pairs :expr:`(i,j)` of indexes extracted from the :type:`iterable` :var:`ij` and the number of columns of the real, complex or integer matrix :var:`mat`. If :var:`ij` is a number, the two returned items are also numbers. This method is the reverse method of :func:`mat:getidx()` to convert 1D vector indexes into 2D matrix indexes for the given matrix. Default: :expr:`ij_ = 1..#mat`.
 
 .. function:: mat:getsub (ir_, jc_, r_)
 
@@ -217,18 +227,6 @@ Getters and Setters
    - if :var:`a` is an :type:`iterable` then the matrix will be filled with values from :var:`a[n]` for :expr:`1 <= n <= #a`.
    
    The values after the inserted indexes are pushed toward the end of the matrix and discarded if they go beyond the last index. If :expr:`ir == nil`, :expr:`jc ~= nil` and :var:`a` is a 1D :type:`iterable`, then the latter is used to filled the matrix in the column-major order. Default: as :func:`mat:getidx()`.
-
-.. function:: mat:diag()
-
-   Return a zero square matrix of the same type as :var:`mat` and with its row and column sizes equal to :expr:`#mat`, and with its diagonal filled with the values of the elements of :var:`mat`, i.e. interpreting the matrix as a diagonal vector.
-
-.. function:: mat:getdiag (r_)
-
-   Return a column vector of length :expr:`min(mat.nrow, mat.ncol)` or :var:`r` containing the values of the elements of the diagonal of the real, complex or integer matrix :var:`mat`.
-
-.. function:: mat:setdiag (a, p_, s_)
-
-   Return the real, complex or integer matrix :var:`mat` after filling its diagonal elements with the values given by :var:`a` depending of its kind as described in :func:`mat:setvec()`.
 
 .. function:: mat:getrow (ir, r_)
 
@@ -270,24 +268,32 @@ Getters and Setters
 
    Equivalent to :func:`mat:inssub()` with :expr:`ir = nil`.
 
+.. function:: mat:getdiag ([k_,] r_)
+
+   Return a column vector of length :expr:`min(nrow, ncol)` or :var:`r` containing the values of the elements on the :math:`k`-th diagonal of the real, complex or integer matrix :var:`mat` using :expr:`mat:getvec()`. Default: as :func:`mat:getdidx()`.
+
+.. function:: mat:setdiag (a, [k_,] p_, s_)
+
+   Return the real, complex or integer matrix :var:`mat` after filling the elements on its :math:`k`-th diagonal with the values given by :var:`a` using :func:`mat:setvec()`. Default: as :func:`mat:getdidx()`.
+
 Cloning and Reshaping
 ---------------------
 
-.. function:: mat:same ([nrow_, ncol_,] v_)
+.. function:: mat:same ([nr_, nc_,] v_)
 
-   Return a matrix with elements of the type of :var:`v` and with :var:`nrow` rows and :var:`ncol` columns. Default: :expr:`v_ = mat[1]`, :expr:`nrow_ = mat.nrow`, :expr:`ncol_ = mat.ncol`.
+   Return a matrix with elements of the type of :var:`v` and with :var:`nr` rows and :var:`nc` columns. Default: :expr:`v_ = mat[1]`, :expr:`nr_ = nrow`, :expr:`nc_ = ncol`.
 
 .. function:: mat:copy (r_)
 
    Return a copy of the real, complex or integer matrix :var:`mat`.
 
-.. function:: mat:reshape (nrow_, ncol_)
+.. function:: mat:reshape (nr_, nc_)
 
-   Return the real, complex or integer matrix :var:`mat` reshaped to the new sizes :var:`nrow` and :var:`ncol` that must result into an equal or smaller number of elements, or it will raise an *invalid new sizes* error. Default: :expr:`nrow_ = #mat`, :expr:`ncol_ = 1`.
+   Return the real, complex or integer matrix :var:`mat` reshaped to the new sizes :var:`nr` and :var:`nc` that must result into an equal or smaller number of elements, or it will raise an *invalid new sizes* error. Default: :expr:`nr_ = #mat`, :expr:`nc_ = 1`.
 
-.. function:: mat:_reshapeto (nrow, ncol_)
+.. function:: mat:_reshapeto (nr, nc_)
 
-   Same as :func:`mat:reshape()` except that :var:`nrow` must be explicitly provided as this method allows for a larger size than :var:`mat` current size. A typical use of this method is to expand a vector after an explicit shrinkage, while keeping track of its original size, e.g. similar to :expr:`vector(100) :reshape(1):seti(1,1) :_reshapeto(2):seti(2,1)` that would raise an *"index out of bounds"* error without the call to :func:`_reshapeto()`. Default :expr:`ncol_ = 1`.
+   Same as :func:`mat:reshape()` except that :var:`nr` must be explicitly provided as this method allows for a larger size than :var:`mat` current size. A typical use of this method is to expand a vector after an explicit shrinkage, while keeping track of its original size, e.g. similar to :expr:`vector(100) :reshape(1):seti(1,1) :_reshapeto(2):seti(2,1)` that would raise an *"index out of bounds"* error without the call to :func:`_reshapeto()`. Default :expr:`nc_ = 1`.
 
    *WARNING: This method is unsafe and may crash MAD-NG with, e.g. a* `Segmentation fault <https://en.wikipedia.org/wiki/Segmentation_fault>`__ *, if wrongly used. It is the responsibility of the user to ensure that* :var:`mat` *was created with a size greater than or equal to the new size.* 
 
@@ -372,9 +378,9 @@ Filling and Moving
 
       - otherwise the matrix will be filled with values from :var:`a[n]` for :expr:`1 <= n <= #mat`, i.e. treated as a 1D container.
 
-.. function:: mat:roll (nrow_, ncol_)
+.. function:: mat:roll (nr_, nc_)
 
-   Return the real, complex or integer matrix :var:`mat` after rolling its rows and columns by :var:`nrow` and :var:`ncol` respectively. Default: :expr:`nrow_ = 0`, :expr:`ncol_ = 0`.  
+   Return the real, complex or integer matrix :var:`mat` after rolling its rows and columns by :var:`nr` and :var:`nc` respectively. Default: :expr:`nr_ = 0`, :expr:`nc_ = 0`.  
 
 .. function:: mat:movev (i, j, k, r_)
 
@@ -395,7 +401,7 @@ Mapping and Folding
 
 .. function:: mat:filter ([ij_,] p, r_)
 
-   Return a matrix or :var:`r` filled with the values of the elements of the real, complex or integer matrix :var:`mat` at the indexes given by the :type:`iterable` :var:`ij` if selected by the :type:`callable` predicate :var:`p` using :expr:`p(mat[n], n) == true`, i.e. interpreting the matrix as a vector. This method also returns a :type:`ivector` or a :type:`table` containing the indexes of the elements selected by the :type:`callable` predicate :var:`p`. If :expr:`r = 'in'` then it is assigned :var:`mat`. Default: :expr:`ij_ = 1..#mat`.
+   Return a matrix or :var:`r` filled with the values of the elements of the real, complex or integer matrix :var:`mat` at the indexes given by the :type:`iterable` :var:`ij` if they are selected by the :type:`callable` `predicate <https://en.wikipedia.org/wiki/First-order_logic>`_ :var:`p` using :expr:`p(mat[n], n) == true`, i.e. interpreting the matrix as a vector. This method returns next to the matrix, a :type:`table` if :var:`r` is a table or a :type:`ivector` otherwise, containing the indexes of the selected elements. If :expr:`r = 'in'` then it is assigned :var:`mat`. Default: :expr:`ij_ = 1..#mat`.
 
 .. function:: mat:filter_out ([ij_,] p, r_)
 
@@ -403,7 +409,7 @@ Mapping and Folding
 
 .. function:: mat:map ([ij_,] f, r_)
 
-   Return a matrix or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied to the elements of the real, complex or integer matrix :var:`mat` at the indexes given by the :type:`iterable` :var:`ij` using :expr:`f(mat[n], n)`, i.e. interpreting the matrix as a vector. If :expr:`r = nil`, the type of the returned matrix depends on the type of the first values returned by :expr:`f(mat[1], 1)`. If :expr:`r = 'in'` then it is assigned :var:`mat`. Default: :expr:`ij_ = 1..#mat`.
+   Return a matrix or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied to the elements of the real, complex or integer matrix :var:`mat` at the indexes given by the :type:`iterable` :var:`ij` using :expr:`f(mat[n], n)`, i.e. interpreting the matrix as a vector. If :expr:`r = 'in'` or :expr:`r = nil` and expr:`ij ~= nil` then it is assigned :var:`mat`, i.e. map in place. If :expr:`r = nil`, the type of the returned matrix depends on the type of the first values returned by :expr:`f(mat[1], 1)`. Default: :expr:`ij_ = 1..#mat`.
 
 .. function:: mat:map2 (y, [ij_,] f, r_)
 
@@ -807,15 +813,15 @@ Solvers and Decompositions
 
 .. function:: mat:nsolve (b, tol_, nc_)
 
-   Return the real :math:`[ n \times 1 ]` vector :var:`x` (of correctors kicks) as the minimum-norm solution of the linear (best-kick) least square problem :math:`\min \| A x - B \|` where :math:`A` is the real :math:`[ m \times n ]` (response) matrix :var:`mat` and :math:`B` is a real :math:`[ m \times 1 ]` vector (of monitors readings), using the MICADO [#f3]_ algorithm based on the Householder-Golub method [MICADO]_. The argument :var:`tol` is a convergence threshold (on the residues) to stop the (orbit) correction if :math:`\| A x - B \| \leq m \times` :var:`tol`, and the argument :var:`nc` is the maximum number of correctors to use with :math:`0 < n_c \leq n`. This method also returns the updated number of correctors :math:`n_c` effectively used during the correction followed by the real :math:`[ m \times 1 ]` vector of residues. Default: :expr:`tol_ = eps`, :expr:`nc_ = mat.ncol`, i.e. use all correctors.
+   Return the real :math:`[ n \times 1 ]` vector :var:`x` (of correctors kicks) as the minimum-norm solution of the linear (best-kick) least square problem :math:`\min \| A x - B \|` where :math:`A` is the real :math:`[ m \times n ]` (response) matrix :var:`mat` and :math:`B` is a real :math:`[ m \times 1 ]` vector (of monitors readings), using the MICADO [#f3]_ algorithm based on the Householder-Golub method [MICADO]_. The argument :var:`tol` is a convergence threshold (on the residues) to stop the (orbit) correction if :math:`\| A x - B \| \leq m \times` :var:`tol`, and the argument :var:`nc` is the maximum number of correctors to use with :math:`0 < n_c \leq n`. This method also returns the updated number of correctors :math:`n_c` effectively used during the correction followed by the real :math:`[ m \times 1 ]` vector of residues. Default: :expr:`tol_ = eps`, :expr:`nc_ = ncol`, i.e. use all correctors.
 
 .. function:: mat:pcacnd (ns_, rcond_)
 
-   Return the integer column vector :var:`ic` containing the indexes of the columns to remove from the real or complex :math:`[ m \times n ]` matrix :var:`mat` using the Principal Component Analysis. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. This method also returns the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`ns_ = min(mat.nrow,mat.ncol)`, :expr:`rcond_ = eps`.
+   Return the integer column vector :var:`ic` containing the indexes of the columns to remove from the real or complex :math:`[ m \times n ]` matrix :var:`mat` using the Principal Component Analysis. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. This method also returns the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`ns_ = min(nrow,ncol)`, :expr:`rcond_ = eps`.
 
 .. function:: mat:svdcnd (ns_, rcond_, tol_)
 
-   Return the integer column vector :var:`ic` containing the indexes of the columns to remove from the real or complex :math:`[ m \times n ]` matrix :var:`mat` based on the analysis of the right matrix :math:`V` from the SVD decomposition :math:`U S V`. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. The argument :var:`tol` is a threshold similar to :var:`rcond` used to reject components in :math:`V` that have similar or opposite effect than components already encountered. This method also returns the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`ns_ = min(mat.nrow,mat.ncol)`, :expr:`rcond_ = eps`.
+   Return the integer column vector :var:`ic` containing the indexes of the columns to remove from the real or complex :math:`[ m \times n ]` matrix :var:`mat` based on the analysis of the right matrix :math:`V` from the SVD decomposition :math:`U S V`. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. The argument :var:`tol` is a threshold similar to :var:`rcond` used to reject components in :math:`V` that have similar or opposite effect than components already encountered. This method also returns the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`ns_ = min(nrow,ncol)`, :expr:`rcond_ = eps`.
 
 .. function:: mat:svd ()
 
