@@ -1255,7 +1255,7 @@ MR.erfi    = \x,r_ -> x:map(erfi  , r_)
 MR.erfcx   = \x,r_ -> x:map(erfcx , r_)
 MR.dawson  = \x,r_ -> x:map(dawson, r_)
 
-MR.conj    = \x,r_ -> x:map(conj , r_)
+MR.conj    = \x,r_ -> x:map(conj , r_) ; MR.conjugate = MR.conj -- alias
 MR.fabs    = \x,r_ -> x:map(fabs , r_)
 MR.cabs    = \x,r_ -> x:map(cabs , r_)
 MR.carg    = \x,r_ -> x:map(carg , r_)
@@ -1436,9 +1436,7 @@ function MC.eval (x, x0)
   _C.mad_cvec_eval(x._dat, x0.re, x0.im, cres, size(x), 1) return cres[0]
 end
 
--- conjugate, transpose -------------------------------------------------------o
-
-MR.conjugate = MR.conj
+-- transpose, trace -----------------------------------------------------------o
 
 function MR.transpose (x, r_)
   if is_string(r_) and r_ == 'in' then r_ = x end
@@ -1455,11 +1453,11 @@ function MR.transpose (x, r_)
   _C.mad_mat_reshape(r, nc, nr) return r
 end
 
-MR.t = MR.transpose -- shortcut
+MR.t = MR.transpose -- alias
 
-function MC.transpose (x, r_, c_)
-      if is_boolean(r_) then c_, r_ = r_, nil -- right shift
-  elseif is_string (r_) and r_ == 'in' then r_ = x end
+function MC.transpose (x, c_, r_)
+  if not is_boolean(c_) and is_nil(r_) then r_, c_ = c_, nil end -- right shift
+  if is_string(r_) and r_ == 'in' then r_ = x end
 
   local nr, nc = x:sizes()
   local r = r_ or cmatrix_alloc(nr, nc)
@@ -1474,7 +1472,7 @@ function MC.transpose (x, r_, c_)
   _C.mad_cmat_reshape(r, nc, nr) return r
 end
 
-MC.t = MC.transpose -- shortcut
+MC.t = MC.transpose -- alias
 
 function MI.transpose (x, r_)
   if is_string(r_) and r_ == 'in' then r_ = x end
@@ -1491,16 +1489,15 @@ function MI.transpose (x, r_)
   _C.mad_imat_reshape(r, nc, nr) return r
 end
 
-MI.t = MI.transpose -- shortcut
+MI.t = MI.transpose -- alias
 
 function MR.trace (x)
   local r, nr, nc = 0, x:sizes()
-  local n = min(nr, nc)
-  for i=0,n*nc,nc+1 do r = r + geti0(x,i) end
+  for i=0,min(nr,nc)*nc,nc+1 do r = r + geti0(x,i) end
   return r
 end
 
-MR.tr = MR.trace -- shortcut
+MR.tr = MR.trace -- alias
 
 -- symplectic matrix ----------------------------------------------------------o
 
@@ -1513,7 +1510,7 @@ function MR.sympconj (x, r_) -- -J M' J = symplectic conjugate
   return r
 end
 
-MR.bar = MR.sympconj -- shortcut
+MR.bar = MR.sympconj -- alias
 
 function MC.sympconj (x, r_) -- -J M' J = symplectic conjugate
   if is_string(r_) and r_ == 'in' then r_ = x end
@@ -1524,7 +1521,7 @@ function MC.sympconj (x, r_) -- -J M' J = symplectic conjugate
   return r
 end
 
-MC.bar = MC.sympconj -- shortcut
+MC.bar = MC.sympconj -- alias
 
 function MR.symperr (x, r_) -- M' J M - J = symplectic deviation
   local nr, nc = x:sizes()
@@ -1560,7 +1557,7 @@ function MR.inner (x, y)
   end
 end
 
-MR.dot = MR.inner -- shortcut
+MR.dot = MR.inner -- alias
 
 function MC.inner (x, y)
   assert(isa_matrix(y), "invalid argument #2 (matrix expected)")
@@ -1573,7 +1570,7 @@ function MC.inner (x, y)
   return cres[0]
 end
 
-MC.dot = MC.inner -- shortcut
+MC.dot = MC.inner -- alias
 
 function MR.outer (x, y, r_)
   assert(isa_matrix(y), "invalid argument #2 (matrix expected)")
@@ -1688,9 +1685,7 @@ function MR.center (x, d_, r_) -- center vector or matrix row or col on mean
 end
 
 function MC.center (x, d_, r_) -- center vector or matrix row or col on mean
-  if is_nil(r_) and not is_string(d_) then
-    d_, r_ = nil, d_ -- shift right
-  end
+  if d_ and not is_string(d_) and is_nil(r_) then r_, d_ = d_, nil end
   if is_string(r_) and r_ == 'in' then r_ = x end
   local r = chksiz(r_,x) or x:same()
   if is_nil(d_) or d_ == 'vec'
@@ -2023,6 +2018,7 @@ end
 MR.inv = \x,r,rcond_ -> x.div(1,x,r,rcond_)
 
 function MR.__div (x, y, r, rcond_)
+  if is_number(r) and is_nil(rcond_) then rcond_, r = r, nil end -- right shift
   local rank
   if is_number(x) then                           -- num / mat
     r = chksiz(r,y) or matrix_alloc(y:sizes())
@@ -2043,17 +2039,19 @@ function MR.__div (x, y, r, rcond_)
     rank = _C.mad_mat_div(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol, rcond_ or eps)
     return r, rank
   else
-    return assert(gmm(y,'__div_mat'), "invalid 'mat / ?' operation")(x, y, r)
+    return assert(gmm(y,'__div_mat'), "invalid 'mat / ?' operation")(x, y, r, rcond_)
   end
 end
 
 function MR.__div_cpx (x, y, r, rcond_)          -- cpx / mat
+  if is_number(r) and is_nil(rcond_) then rcond_, r = r, nil end -- right shift
   r = chksiz(r,y) or cmatrix_alloc(y:sizes())
   local rank = _C.mad_mat_invc_r(y._dat, x.re, x.im, r._dat, y.nrow, y.ncol, rcond_ or eps)
   return r, rank
 end
 
 function MC.__div (x, y, r, rcond_)
+  if is_number(r) and is_nil(rcond_) then rcond_, r = r, nil end -- right shift
   local rank
   if is_number(x) then                           -- num / cmat
     r = chksiz(r,y) or cmatrix_alloc(y:sizes())
@@ -2074,11 +2072,12 @@ function MC.__div (x, y, r, rcond_)
     rank = _C.mad_cmat_div(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol, rcond_ or eps)
     return r, rank
   else
-    return assert(gmm(y,'__div_mat'), "invalid 'cmat / ?' operation")(x, y, r)
+    return assert(gmm(y,'__div_mat'), "invalid 'cmat / ?' operation")(x, y, r, rcond_)
   end
 end
 
 function MC.__div_cpx (x, y, r, rcond_)          -- cpx / cmat
+  if is_number(r) and is_nil(rcond_) then rcond_, r = r, nil end -- right shift
   r = chksiz(r,y) or cmatrix_alloc(y:sizes())
   local rank = _C.mad_cmat_invc_r(y._dat, x.re, x.im, r._dat, y.nrow, y.ncol, rcond_ or eps)
   return r, rank
@@ -2360,7 +2359,7 @@ function MC.gmsolve (a, b, d)
   return rx, ry, info
 end
 
-function MR.nsolve (a, b, tol_, nc_) -- min | b - Ax | using MICADO (best kick)
+function MR.nsolve (a, b, nc_, tol_) -- min | b - Ax | using MICADO (best kick)
   assert(is_matrix(b), "invalid argument #2 (matrix expected)")
   local nr, nc = a:sizes()
   assert(nr == size(b), "incompatible matrix sizes")
@@ -2519,7 +2518,7 @@ function MR.fft (x, d_, r_)
     for i=0,nc-1 do
       _C.mad_vec_fft(x._dat+i*nr, r._dat+i*nr, nr) -- 1D FFT
     end
-    r:reshape(nc, nr):t(r, false)
+    r:reshape(nc, nr):t(false, r)
   else
     assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
     _C.mad_mat_fft(x._dat, r._dat, nr, nc)         -- 2D FFT
@@ -2546,7 +2545,7 @@ function MC.fft (x, d_, r_)
     for i=0,nc-1 do
       _C.mad_cvec_fft(x._dat+i*nr, r._dat+i*nr, nr) -- 1D FFT
     end
-    r:reshape(nc, nr):t(r, false)
+    r:reshape(nc, nr):t(false, r)
   else
     assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
     _C.mad_cmat_fft(x._dat, r._dat, nr, nc)         -- 2D FFT
@@ -2575,7 +2574,7 @@ function MC.ifft (x, d_, r_)
     for i=0,nc-1 do
       _C.mad_cvec_ifft(x._dat+i*nr, r._dat+i*nr, nr) -- 1D FFT
     end
-    r:reshape(nc, nr):t(r, false)
+    r:reshape(nc, nr):t(false, r)
   else
     assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
     _C.mad_cmat_ifft(x._dat, r._dat, nr, nc)         -- 2D FFT
@@ -2606,7 +2605,7 @@ function MR.rfft (x, d_, r_)
     for i=0,nc-1 do
       _C.mad_vec_rfft(x._dat+i*nr, r._dat+i*nr2, nr) -- 1D FFT
     end
-    r:reshape(nc, nr2):t(r, false)
+    r:reshape(nc, nr2):t(false, r)
   else
     r = r_ or cmatrix_alloc(nr,nc2)
     assert(r.nrow == nr and r.ncol == nc2, "incompatible cmatrix sizes")
@@ -2638,7 +2637,7 @@ function MC.irfft (x, d_, r)
     for i=0,nc-1 do
       _C.mad_cvec_irfft(x._dat+i*nr2, r._dat+i*nr, nr) -- 1D FFT
     end
-    r:reshape(nc, nr):t(r, false)
+    r:reshape(nc, nr):t(false, r)
   else
     assert(x.nrow == nr and x.ncol == nc2, "incompatible matrix sizes")
     _C.mad_cmat_irfft(x._dat, r._dat, nr, nc)          -- 2D FFT
@@ -2778,9 +2777,9 @@ MR.__len = size
 MI.__len = size
 
 function MR.__concat (x, y, d_, r_)
+  if not is_string(d_) and is_nil(r_) then r_, d_ = d_, nil end
   assert(isy_matrix(x), "invalid argument #1 (matrix expected)")
   assert(isy_matrix(y), "invalid argument #2 (matrix expected)")
-  if isy_matrix(d_) and is_nil(r_) then r_, d_ = d_, nil end
   local nrx, ncx = x:sizes()
   local nry, ncy = y:sizes()
   local d = d_ or 'row'
@@ -2825,9 +2824,7 @@ end
 MI.tostring = MR.tostring
 
 function MR.totable (x, d_, r_)
-  if is_nil(r_) and is_table(d_) then
-    r_, d_ = d_, nil -- right shift
-  end
+  if not is_string(d_) and is_nil(r_) then r_, d_ = d_, nil end
   local d = d_ or 'vec'
   assert(is_string(d), "invalid argument #2 (string expected)")
   assert(is_nil(r_) or is_table(r_), "invalid argument #3 (table expected)")
