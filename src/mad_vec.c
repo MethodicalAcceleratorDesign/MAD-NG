@@ -172,10 +172,10 @@ num_t mad_vec_eval (const num_t x[], num_t x0, ssz_t n, ssz_t d) // Horner schem
   return v;
 }
 
-void mad_vec_minmax(const num_t x[], log_t abs, idx_t r[2], ssz_t n, ssz_t d)
+void mad_vec_minmax(const num_t x[], log_t absf, idx_t r[2], ssz_t n, ssz_t d)
 { CHKXR; CHKD; num_t v[2];
   r[0] = r[1] = 0;
-  if (abs) {
+  if (absf) {
     v[0] = v[1] = fabs(x[0]);
     for (idx_t i=d; i < n; i+=d) {
       num_t a = fabs(x[i]);
