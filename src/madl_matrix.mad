@@ -258,7 +258,6 @@ MI.tsizes = MR.tsizes
 -- x:same(nr,nc)
 -- x:same(nr,nc,e)
 
-
 -- promote to matrix if e_ is not an integer and to cmatrix if e_ is a complex
 function MI.__same (x, nr_, nc_, e_)
   if is_nil(nc_) then e_, nr_ = nr_, nil end
@@ -496,6 +495,8 @@ function MC.random (x, f_, ...) -- random
   return x
 end
 
+MI.random = MR.random
+
 function MR.shuffle (x) -- random permutation (Knuth shuffle)
   local n = size(x)
   for i=0,n-2 do
@@ -570,6 +571,33 @@ end
 
 MI.fill = MR.fill
 
+function MR.roll (x, ns_, ms_)
+  local nr, nc = x:sizes()
+  if is_nil(ms_) and (nr == 1 or nc == 1)
+  then _C.mad_vec_roll(x._dat, nr*nc, 1, ns_ or 0)
+  else _C.mad_mat_roll(x._dat, nr, nc, ns_ or 0, ms_ or 0)
+  end
+  return x
+end
+
+function MC.roll (x, ns_, ms_)
+  local nr, nc = x:sizes()
+  if is_nil(ms_) and (nr == 1 or nc == 1)
+  then _C.mad_cvec_roll(x._dat, nr*nc, 1, ns_ or 0)
+  else _C.mad_cmat_roll(x._dat, nr, nc, ns_ or 0, ms_ or 0)
+  end
+  return x
+end
+
+function MI.roll (x, ns_, ms_)
+  local nr, nc = x:sizes()
+  if is_nil(ms_) and (nr == 1 or nc == 1)
+  then _C.mad_ivec_roll(x._dat, nr*nc, 1, ns_ or 0)
+  else _C.mad_imat_roll(x._dat, nr, nc, ns_ or 0, ms_ or 0)
+  end
+  return x
+end
+
 function MR.movev (x, i, j, yi, y_) -- move x[i..j] to y[yi,yi+j-i]
   local y, yj = y_ or x, yi+j-i
   assert(i  >= 1 and j  <= size(x) and i <= j, "source indexes out of bounds")
@@ -621,39 +649,12 @@ function MI.shiftv (x, ni, ns_)
   return x
 end
 
-function MR.roll (x, ns_, ms_)
-  local nr, nc = x:sizes()
-  if is_nil(ms_) and (nr == 1 or nc == 1)
-  then _C.mad_vec_roll(x._dat, nr*nc, 1, ns_ or 0)
-  else _C.mad_mat_roll(x._dat, nr, nc, ns_ or 0, ms_ or 0)
-  end
-  return x
-end
-
-function MC.roll (x, ns_, ms_)
-  local nr, nc = x:sizes()
-  if is_nil(ms_) and (nr == 1 or nc == 1)
-  then _C.mad_cvec_roll(x._dat, nr*nc, 1, ns_ or 0)
-  else _C.mad_cmat_roll(x._dat, nr, nc, ns_ or 0, ms_ or 0)
-  end
-  return x
-end
-
-function MI.roll (x, ns_, ms_)
-  local nr, nc = x:sizes()
-  if is_nil(ms_) and (nr == 1 or nc == 1)
-  then _C.mad_ivec_roll(x._dat, nr*nc, 1, ns_ or 0)
-  else _C.mad_imat_roll(x._dat, nr, nc, ns_ or 0, ms_ or 0)
-  end
-  return x
-end
-
 -- conversion -----------------------------------------------------------------o
 
-function MR.cplx (re_, im_, r) -- (re,im) -> r
-  local re, im = re_ or im_, im_ or re_ -- trick for next checks
+function MR.cplx (re_, im_, r_) -- (re,im) -> r
+  local re, im = re_ or im_, im_ or re_ -- trick for checks with at least one
   assert(is_matrix(re) and is_matrix(im), "invalid argument #1 or #2 (matrix expected)")
-  r = chksiz(r,re,im) or cmatrix_alloc((re_ or im_):sizes())
+  local r = r_ or cmatrix_alloc(re:sizes()) ; chksiz(r,re,im)
   _C.mad_vec_cvec(re_ and re_._dat, im_ and im_._dat, r._dat, size(r), 1)
   return r
 end
@@ -2218,6 +2219,58 @@ function MC.mult (x, y, r)
     _C.mad_cmat_mult(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol) return r
   else                                          -- cmat * ?'
     return assert(gmm(y,'__mult_mat'), "invalid 'cmat * ?^t' operation")(x, y, r)
+  end
+end
+
+-- dmul
+
+function MR.dmul (x, y, r)
+  if is_cmatrix(y) then                         -- diag(mat) * cmat
+    r = chksizm(r,x,y) or cmatrix_alloc(x.ncol, y.ncol)
+    _C.mad_mat_dmulm(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.nrow) return r
+  elseif is_matrix(y) and is_matrix(x) then     -- diag(mat) * mat
+    r = chksizm(r,x,y) or matrix_alloc(x.ncol, y.ncol)
+    _C.mad_mat_dmul(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.nrow) return r
+  else                                          -- diag(mat) * ?
+    return assert(gmm(y,'__dmul_mat'), "invalid 'diag(mat) * ?' operation")(x, y, r)
+  end
+end
+
+function MC.dmul (x, y, r)
+  if is_matrix(y) then                          -- cmat' * mat
+    r = chksizm(r,x,y) or cmatrix_alloc(x.ncol, y.ncol)
+    _C.mad_cmat_dmulm(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.nrow) return r
+  elseif is_cmatrix(x) and is_cmatrix(y) then   -- cmat' * cmat
+    r = chksizm(r,x,y) or cmatrix_alloc(x.ncol, y.ncol)
+    _C.mad_cmat_dmul(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.nrow) return r
+  else                                          -- cmat' * ?
+    return assert(gmm(y,'__dmul_mat'), "invalid 'diag(cmat) * ?' operation")(x, y, r)
+  end
+end
+
+-- muld
+
+function MR.muld (x, y, r)
+  if is_cmatrix(y) then                         -- mat * cmat'
+    r = chksizm(r,x,y) or cmatrix_alloc(x.nrow, y.nrow)
+    _C.mad_mat_muldm(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol) return r
+  elseif is_matrix(y) and is_matrix(x) then     -- mat * mat'
+    r = chksizm(r,x,y) or matrix_alloc(x.nrow, y.nrow)
+    _C.mad_mat_muld(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol) return r
+  else                                          -- mat * ?
+    return assert(gmm(y,'__muld_mat'), "invalid 'mat * diag(?)' operation")(x, y, r)
+  end
+end
+
+function MC.muld (x, y, r)
+  if is_matrix(y) then                          -- cmat * mat'
+    r = chksizm(r,x,y) or cmatrix_alloc(x.nrow, y.nrow)
+    _C.mad_cmat_muldm(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol) return r
+  elseif is_cmatrix(x) and is_cmatrix(y) then   -- cmat * cmat'
+    r = chksizm(r,x,y) or cmatrix_alloc(x.nrow, y.nrow)
+    _C.mad_cmat_muld(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol) return r
+  else                                          -- cmat * ?'
+    return assert(gmm(y,'__muld_mat'), "invalid 'cmat * diag(?)' operation")(x, y, r)
   end
 end
 
