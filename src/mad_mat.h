@@ -39,8 +39,12 @@ void   mad_mat_mul      (const  num_t x[], const  num_t y[],        num_t  r[], 
 void   mad_mat_mulm     (const  num_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  mat * cmat
 void   mad_mat_tmul     (const  num_t x[], const  num_t y[],        num_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  mat'*  mat
 void   mad_mat_tmulm    (const  num_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  mat'* cmat
-void   mad_mat_mult     (const  num_t x[], const  num_t y[],        num_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  mat'*  mat
-void   mad_mat_multm    (const  num_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  mat'* cmat
+void   mad_mat_mult     (const  num_t x[], const  num_t y[],        num_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  mat *  mat'
+void   mad_mat_multm    (const  num_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  mat * cmat'
+void   mad_mat_dmul     (const  num_t x[], const  num_t y[],        num_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  diag(mat) *  mat
+void   mad_mat_dmulm    (const  num_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  diag(mat) * cmat
+void   mad_mat_muld     (const  num_t x[], const  num_t y[],        num_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  mat * diag( mat)
+void   mad_mat_muldm    (const  num_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  mat * diag(cmat)
 int    mad_mat_det      (const  num_t x[],                          num_t *r  ,          ssz_t n);                       //  det(mat)
 int    mad_mat_invn     (const  num_t y[],        num_t x  ,        num_t  r[], ssz_t m, ssz_t n,          num_t rcond); //  num /  mat
 int    mad_mat_invc     (const  num_t y[],       cnum_t x  ,       cnum_t  r[], ssz_t m, ssz_t n,          num_t rcond); // cnum /  mat
@@ -79,8 +83,12 @@ void   mad_cmat_mul     (const cnum_t x[], const cnum_t y[],       cnum_t  r[], 
 void   mad_cmat_mulm    (const cnum_t x[], const  num_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  cmat *  mat
 void   mad_cmat_tmul    (const cnum_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  cmat'* cmat
 void   mad_cmat_tmulm   (const cnum_t x[], const  num_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  cmat'*  mat
-void   mad_cmat_mult    (const cnum_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  cmat'* cmat
-void   mad_cmat_multm   (const cnum_t x[], const  num_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  cmat'*  mat
+void   mad_cmat_mult    (const cnum_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  cmat * cmat'
+void   mad_cmat_multm   (const cnum_t x[], const  num_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  cmat *  mat'
+void   mad_cmat_dmul    (const cnum_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  diag(cmat) * cmat
+void   mad_cmat_dmulm   (const cnum_t x[], const  num_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  diag(cmat) *  mat
+void   mad_cmat_muld    (const cnum_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  cmat * diag(cmat)
+void   mad_cmat_muldm   (const cnum_t x[], const  num_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p);              //  cmat * diag( mat)
 int    mad_cmat_det     (const cnum_t x[],                         cnum_t *r  ,          ssz_t n);                       //  det(cmat)
 int    mad_cmat_invn    (const cnum_t y[],        num_t x  ,       cnum_t  r[], ssz_t m, ssz_t n,          num_t rcond); //   num / cmat
 int    mad_cmat_invc    (const cnum_t y[],       cnum_t x  ,       cnum_t  r[], ssz_t m, ssz_t n,          num_t rcond); //  cnum / cmat

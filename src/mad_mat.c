@@ -381,6 +381,24 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 
 // -----
 
+// r[m x n] = diag(x[m x p]) * y[p x n]
+// naive implementation (more efficient on recent superscalar arch!)
+#define DMUL() /* diag(mat) * mat */ \
+  for (idx_t i=0; i < m*n; i++) r[i] = 0; \
+  for (idx_t i=0; i < MIN(m,p); i++) \
+  for (idx_t j=0; j < n; j++) \
+    r[i*n+j] = x[i*p+i] * y[i*n+j];
+
+// r[m x n] = x[m x p] * diag(y[p x n])
+// naive implementation (more efficient on recent superscalar arch!)
+#define MULD() /* mat * diag(mat) */ \
+  for (idx_t i=0; i < m*n; i++) r[i] = 0; \
+  for (idx_t i=0; i < m  ; i++)      \
+  for (idx_t j=0; j < MIN(n,p); j++) \
+    r[i*n+j] = x[i*p+j] * y[j*n+j];
+
+// -----
+
 // [m x n] transpose
 #define TRANS(T,C) \
   if (m == 1 || n == 1) { \
@@ -504,6 +522,46 @@ void mad_mat_multm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_
   mad_alloc_tmp(cnum_t, r_, m*n);
   cnum_t *t = r; r = r_;
   MULT(conj);
+  mad_cvec_copy(r_, t, m*n, 1);
+  mad_free_tmp(r_);
+}
+
+void mad_mat_dmul (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_t p)
+{ CHKXYR;
+  if (x != r && y != r) { DMUL(); return; }
+  mad_alloc_tmp(num_t, r_, m*n);
+  num_t *t = r; r = r_;
+  DMUL();
+  mad_vec_copy(r_, t, m*n, 1);
+  mad_free_tmp(r_);
+}
+
+void mad_mat_dmulm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+{ CHKXYR;
+  if (y != r) { DMUL(); return; }
+  mad_alloc_tmp(cnum_t, r_, m*n);
+  cnum_t *t = r; r = r_;
+  DMUL();
+  mad_cvec_copy(r_, t, m*n, 1);
+  mad_free_tmp(r_);
+}
+
+void mad_mat_muld (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_t p)
+{ CHKXYR;
+  if (x != r && y != r) { MULD(); return; }
+  mad_alloc_tmp(num_t, r_, m*n);
+  num_t *t = r; r = r_;
+  MULD();
+  mad_vec_copy(r_, t, m*n, 1);
+  mad_free_tmp(r_);
+}
+
+void mad_mat_muldm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+{ CHKXYR;
+  if (y != r) { MULD(); return; }
+  mad_alloc_tmp(cnum_t, r_, m*n);
+  cnum_t *t = r; r = r_;
+  MULD();
   mad_cvec_copy(r_, t, m*n, 1);
   mad_free_tmp(r_);
 }

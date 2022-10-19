@@ -176,14 +176,6 @@ Getters and Setters
 
    - if :var:`a` is a :type:`callable`, then :var:`a` is considered as a *stateless iterator*, and the matrix will be filled with the values :var:`v` returned by iterating :expr:`s, v = a(p, s)`.
 
-.. function:: mat:swpvec (ij, ij2)
-
-   Return the real, complex or integer matrix :var:`mat` after swapping the values of the elements at the vector indexes given by the :type:`iterable` :var:`ij` and :var:`ij2`, i.e. interpreting the matrix as a vector.
-
-.. function:: mat:remvec (ij)
-
-   Return the real, complex or integer matrix :var:`mat` after removing the elements at the vector indexes given by the :type:`iterable` :var:`ij`, i.e. interpreting the matrix as a shrinking vector, and reshaped as a *column vector* of size :expr:`#mat - #ij`.
-
 .. function:: mat:insvec (ij, a)
 
    Return the real, complex or integer matrix :var:`mat` after inserting the elements at the vector indexes given by the :type:`iterable` :var:`ij`, i.e. interpreting the matrix as a vector, with the values given by :var:`a` depending of its kind:
@@ -193,6 +185,14 @@ Getters and Setters
    - if :var:`a` is an :type:`iterable` then the matrix will be filled with values from :var:`a[n]` for :expr:`1 <= n <= #a`.
    
    The elements after the inserted indexes are shifted toward the end of the matrix in row-major order and discarded if they go beyond the last index.
+
+.. function:: mat:remvec (ij)
+
+   Return the real, complex or integer matrix :var:`mat` after removing the elements at the vector indexes given by the :type:`iterable` :var:`ij`, i.e. interpreting the matrix as a shrinking vector, and reshaped as a *column vector* of size :expr:`#mat - #ij`.
+
+.. function:: mat:swpvec (ij, ij2)
+
+   Return the real, complex or integer matrix :var:`mat` after swapping the values of the elements at the vector indexes given by the :type:`iterable` :var:`ij` and :var:`ij2`, i.e. interpreting the matrix as a vector.
 
 .. function:: mat:getsub (ir_, jc_, r_)
 
@@ -210,14 +210,6 @@ Getters and Setters
 
    If :expr:`ir == nil`, :expr:`jc ~= nil` and :var:`a` is a 1D :type:`iterable`, then the latter is used to filled the matrix in the column-major order. Default: as :func:`mat:getidx()`.
 
-.. function:: mat:swpsub (ir_, jc_, ir2_, jc2_)
-
-   Return the real, complex or integer matrix :var:`mat` after swapping the elements at indexes given by the iterable :type:`iterable` :var:`ir` and :var:`jc` with the elements at indexes given by :type:`iterable` :var:`ir2` and :var:`jc2`. Default: as :func:`mat:getidx()`.
-
-.. function:: mat:remsub (ir_, jc_)
-
-   Return the real, complex or integer matrix :var:`mat` after removing the rows and columns at the indexes given by the :type:`iterable` :var:`ir` and :var:`jc` and reshaping the matrix accordingly. Default: as :func:`mat:getidx()`.
-  
 .. function:: mat:inssub (ir_, jc_, a)
 
    Return the real, complex or integer matrix :var:`mat` after inserting elements at the indexes :expr:`(i,j)` given by the :type:`iterable` :var:`ir` and :var:`jc` with the values given by :var:`a` depending of its kind:
@@ -228,6 +220,14 @@ Getters and Setters
    
    The values after the inserted indexes are pushed toward the end of the matrix and discarded if they go beyond the last index. If :expr:`ir == nil`, :expr:`jc ~= nil` and :var:`a` is a 1D :type:`iterable`, then the latter is used to filled the matrix in the column-major order. Default: as :func:`mat:getidx()`.
 
+.. function:: mat:remsub (ir_, jc_)
+
+   Return the real, complex or integer matrix :var:`mat` after removing the rows and columns at the indexes given by the :type:`iterable` :var:`ir` and :var:`jc` and reshaping the matrix accordingly. Default: as :func:`mat:getidx()`.
+  
+.. function:: mat:swpsub (ir_, jc_, ir2_, jc2_)
+
+   Return the real, complex or integer matrix :var:`mat` after swapping the elements at indexes given by the iterable :type:`iterable` :var:`ir` and :var:`jc` with the elements at indexes given by :type:`iterable` :var:`ir2` and :var:`jc2`. Default: as :func:`mat:getidx()`.
+
 .. function:: mat:getrow (ir, r_)
 
     Equivalent to :func:`mat:getsub()` with :expr:`jc = nil`.
@@ -236,17 +236,17 @@ Getters and Setters
 
    Equivalent to :func:`mat:setsub()` with :expr:`jc = nil`.
 
-.. function:: mat:swprow (ir, ir2)
+.. function:: mat:insrow (ir, a)
 
-   Equivalent to :func:`mat:swpsub()` with :expr:`jc = nil` and :expr:`jc2 = nil`.
+   Equivalent to :func:`mat:inssub()` with :expr:`jc = nil`.
 
 .. function:: mat:remrow (ir)
 
    Equivalent to :func:`mat:remsub()` with :expr:`jc = nil`.
 
-.. function:: mat:insrow (ir, a)
+.. function:: mat:swprow (ir, ir2)
 
-   Equivalent to :func:`mat:inssub()` with :expr:`jc = nil`.
+   Equivalent to :func:`mat:swpsub()` with :expr:`jc = nil` and :expr:`jc2 = nil`.
 
 .. function:: mat:getcol (jc, r_)
 
@@ -256,17 +256,17 @@ Getters and Setters
 
    Equivalent to :func:`mat:setsub()` with :expr:`ir = nil`.
 
-.. function:: mat:swpcol (jc, jc2)
+.. function:: mat:inscol (jc, a)
 
-   Equivalent to :func:`mat:swpsub()` with :expr:`ir = nil` and :expr:`ir2 = nil`.
+   Equivalent to :func:`mat:inssub()` with :expr:`ir = nil`.
 
 .. function:: mat:remcol (jc)
 
    Equivalent to :func:`mat:remsub()` with :expr:`ir = nil`.
 
-.. function:: mat:inscol (jc, a)
+.. function:: mat:swpcol (jc, jc2)
 
-   Equivalent to :func:`mat:inssub()` with :expr:`ir = nil`.
+   Equivalent to :func:`mat:swpsub()` with :expr:`ir = nil` and :expr:`ir2 = nil`.
 
 .. function:: mat:getdiag ([k_,] r_)
 
@@ -342,11 +342,11 @@ Filling and Moving
 
 .. function:: mat:seq ([v_,] d_)
 
-   Return the real, complex or integer matrix :var:`mat` filled with the indexes of the elements (i.e. starting at 1) and shifted by the value of :var:`v`. The matrix is filled in the column-major direction for :expr:`d == 'col'` and in the row-major direction otherwise. Default: :expr:`v_ = 0`, :expr:`d_ = 'row'`.
+   Return the real, complex or integer matrix :var:`mat` filled with the indexes of the elements (i.e. starting at 1) and shifted by the value of :var:`v`. The matrix is filled in the row-major order unless :expr:`d = 'col'`. Default: :expr:`v_ = 0`.
 
 .. function:: mat:random (f_, ...)
 
-   Return the real or complex matrix :var:`mat` filled with random values generated by :var:`f(...)`, and called twice for each element of :type:`cmatrix`. Default: :expr:`f_ = math.random`.
+   Return the real, complex or integer matrix :var:`mat` filled with random values generated by :var:`f(...)`, and called twice for each element for a :type:`cmatrix`. Default: :expr:`f_ = math.random`.
 
 .. function:: mat:shuffle ()
 
@@ -358,7 +358,7 @@ Filling and Moving
 
 .. function:: mat:circ (v)
 
-   Return the real or complex matrix :var:`mat` filled as a `Circulant matrix <https://en.wikipedia.org/wiki/Circulant_matrix>`_ using the values from the :type:`iterable` :var:`v`, and rotating elements after each row or column depending on the shape of :var:`v`.
+   Return the real or complex matrix :var:`mat` filled as a `Circulant matrix <https://en.wikipedia.org/wiki/Circulant_matrix>`_ using the values from the :type:`iterable` :var:`v`, and rotating elements for each row or column depending on the shape of :var:`v`.
 
 .. function:: mat:fill (a, p_, s_)
 
@@ -380,7 +380,7 @@ Filling and Moving
 
 .. function:: mat:roll (nr_, nc_)
 
-   Return the real, complex or integer matrix :var:`mat` after rolling its rows and columns by :var:`nr` and :var:`nc` respectively. Default: :expr:`nr_ = 0`, :expr:`nc_ = 0`.  
+   Return the real, complex or integer matrix :var:`mat` after rolling its rows by :var:`nr` :math:`\in \mathbb{Z}` and columns by :var:`nc` :math:`\in \mathbb{Z}`. Default: :expr:`nr_ = 0`, :expr:`nc_ = 0`.  
 
 .. function:: mat:movev (i, j, k, r_)
 
@@ -512,15 +512,17 @@ Functions                   Equivalent Mapping
 :func:`mat:cabs(r_)`        :expr:`mat:map(cabs,r_)`
 :func:`mat:carg(r_)`        :expr:`mat:map(carg,r_)`
 :func:`mat:conj(r_)`        :expr:`mat:map(conj,r_)`
-:func:`mat:cplx(im_,r_)`    :expr:`mat:map2(im_ or 0, cplx, r_)`
+:func:`mat:cplx(im_,r_)`    :expr:`mat:map2(im_, cplx, r_)`
 :func:`mat:fabs(r_)`        :expr:`mat:map(fabs,r_)`
 :func:`mat:imag(r_)`        :expr:`mat:map(imag,r_)`
 :func:`mat:polar(r_)`       :expr:`mat:map(polar,r_)`
 :func:`mat:proj(r_)`        :expr:`mat:map(proj,r_)`
 :func:`mat:real(r_)`        :expr:`mat:map(real,r_)`
 :func:`mat:rect(r_)`        :expr:`mat:map(rect,r_)`
-:func:`mat:reim(re_, im_)`  :expr:`re_ and mat:real(re_), im_ and mat:imag(im_)`
+:func:`mat:reim(re_, im_)`  :expr:`mat:real(re_), mat:imag(im_)`
 ==========================  ===============================
+
+The method :func:`mat:cplx()` has a special implementation that allows to used it without a real part, e.g. :expr:`im.cplx(nil, im, r_)`. 
 
 Mapping Error-like Methods
 --------------------------
@@ -677,11 +679,19 @@ Operator-like Methods
 
 .. function:: mat:tmul (mat2, r_)
 
-   Return a real or complex matrix or :var:`r` filled with the product of the transpose of :var:`mat` by :var:`mat2`, i.e. equivalent to :expr:`mat:t() * mat2`.
+   Return a real or complex matrix or :var:`r` filled with the product of the transpose of :var:`mat` by :var:`mat2` equivalent to :expr:`mat:t() * mat2`.
    
 .. function:: mat:mult (mat2, r_)
 
-   Return a real or complex matrix or :var:`r` filled with the product of :var:`mat` by the transpose of :var:`mat2`, i.e. equivalent to :expr:`mat * mat2:t()`.
+   Return a real or complex matrix or :var:`r` filled with the product of :var:`mat` by the transpose of :var:`mat2` equivalent to :expr:`mat * mat2:t()`.
+
+.. function:: mat:dmul (mat2, r_)
+
+   Return a real or complex matrix or :var:`r` filled with the product of the diagonal of :var:`mat` by :var:`mat2` equivalent to :expr:`mat:getdiag():diag() * mat2`.
+   
+.. function:: mat:muld (mat2, r_)
+
+   Return a real or complex matrix or :var:`r` filled with the product of :var:`mat` by the diagonal of :var:`mat2` equivalent to :expr:`mat * mat2:getdiag():diag()`.
 
 .. function:: mat:eq (a, tol_)
 
