@@ -1354,7 +1354,7 @@ mad_mat_solve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ss
   int lwork=-1, rank;
   int pvt[nn]; memset(pvt, 0, sizeof pvt);
   mad_alloc_tmp(num_t, ta, m*n);
-  mad_alloc_tmp(num_t, tb, mn*p); mad_vec_zero(tb+m*p, (mn-m)*p, 1);
+  mad_alloc_tmp(num_t, tb, mn*p); mad_vec_fill(0, tb+m*p, (mn-m)*p, 1);
   mad_vec_copy (b , tb, m*p, 1);
   mad_mat_trans(tb, tb, mn, p);
   mad_mat_trans(a , ta, m , n);
@@ -1384,7 +1384,7 @@ mad_cmat_solve (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t n
   int lwork=-1, rank;
   int pvt[nn]; memset(pvt, 0, sizeof pvt);
   mad_alloc_tmp(cnum_t, ta, m*n);
-  mad_alloc_tmp(cnum_t, tb, mn*p); mad_cvec_zero(tb+m*p, (mn-m)*p, 1);
+  mad_alloc_tmp(cnum_t, tb, mn*p); mad_cvec_fill(0, tb+m*p, (mn-m)*p, 1);
   mad_cvec_copy (b , tb, m*p, 1);
   mad_cmat_trans(tb, tb, mn, p);
   mad_cmat_trans(a , ta, m , n);
@@ -1415,7 +1415,7 @@ mad_mat_ssolve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, s
   mad_alloc_tmp(num_t, tb, mn*p);
   mad_alloc_tmp(num_t, ts, MIN(m,n));
   mad_vec_copy (b , tb, m*p,1);
-  mad_vec_zero (tb+m*p, (mn-m)*p, 1);
+  mad_vec_fill (0 , tb +m*p, (mn-m)*p, 1);
   mad_mat_trans(tb, tb, mn, p);
   mad_mat_trans(a , ta, m , n);
   dgelsd_(&nm, &nn, &np, ta, &nm, tb, &mn, ts, &rcond, &rank, &sz, &lwork, &isz, &info); // query
@@ -1450,7 +1450,7 @@ mad_cmat_ssolve (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t 
   mad_alloc_tmp(cnum_t, tb, mn*p);
   mad_alloc_tmp( num_t, ts, MIN(m,n));
   mad_cvec_copy (b , tb, m*p, 1);
-  mad_cvec_zero (tb+m*p, (mn-m)*p, 1);
+  mad_cvec_fill (0 , tb +m*p, (mn-m)*p, 1);
   mad_cmat_trans(tb, tb, mn, p);
   mad_cmat_trans(a , ta, m , n);
   zgelsd_(&nm, &nn, &np, ta, &nm, tb, &mn, ts, &rcond, &rank, &sz, &lwork, &rsz, &isz, &info); // query
@@ -1625,7 +1625,7 @@ mad_mat_eigen (const num_t x[], cnum_t w[], num_t vl_[], num_t vr_[], ssz_t n)
   dgeev_(vls, vrs, &nn, ra, &nn, wr, wi, vl_, &nn, vr_, &nn, &sz, &lwork, &info); // query
   mad_alloc_tmp(num_t, wk, lwork=sz);
   dgeev_(vls, vrs, &nn, ra, &nn, wr, wi, vl_, &nn, vr_, &nn,  wk, &lwork, &info); // compute
-  mad_vec_cvec(wr, wi, w, n, 1);
+  mad_vec_cplx(wr, wi, w, n, 1);
   mad_free_tmp(wk); mad_free_tmp(ra);
   mad_free_tmp(wi); mad_free_tmp(wr);
 //if (vl_) mad_mat_trans(vl_, vl_, n, n);
@@ -2398,7 +2398,7 @@ madx_micado (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
 
   mad_mat_trans(a, ax  , m, n);
   mad_vec_copy (b, xinx, m, 1);
-  mad_vec_zero (x,       n, 1);
+  mad_vec_fill (0, x   , n, 1);
 
   int im=m, ic=n, iter=N, ifail=0;
   num_t rms=tol;
@@ -2451,7 +2451,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
   // r: residues             [m] (out)
   // N: number of correctors to use 0 < N <= n (out: actually used)
 
-  mad_vec_zero(x, n, 1);
+  mad_vec_fill(0, x, n, 1);
 
   // No correctors.
   if (n == 0) return 0;
@@ -2481,8 +2481,8 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
 
   mad_vec_copy(a, A, m*n, 1);
   mad_vec_copy(b, B, m, 1);
-  mad_vec_zero(X, n, 1);
-  mad_vec_zero(R, m, 1);
+  mad_vec_fill(0, X, n, 1);
+  mad_vec_fill(0, R, m, 1);
 
 #define A(i,j) A[(i)*n+(j)]
 
