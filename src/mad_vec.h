@@ -45,8 +45,8 @@ num_t  mad_vec_dist   (const  num_t x[], const  num_t y[]                   , ss
 num_t  mad_vec_distv  (const  num_t x[], const cnum_t y[]                   , ssz_t n, ssz_t d); // |vec - cvec|
 num_t  mad_vec_dot    (const  num_t x[], const  num_t y[]                   , ssz_t n, ssz_t d); // <vec ,  vec>
 num_t  mad_vec_kdot   (const  num_t x[], const  num_t y[]                   , ssz_t n, ssz_t d); // <vec ,  vec> (Kahan)
-void   mad_vec_abs    (const  num_t x[],                          num_t  r[], ssz_t n, ssz_t d); // |vec_i|
 void   mad_vec_cplx   (const  num_t x[], const  num_t im[],      cnum_t  r[], ssz_t n, ssz_t d); // vr,vi->cvec
+void   mad_vec_abs    (const  num_t x[],                          num_t  r[], ssz_t n, ssz_t d); // |vec_i|
 void   mad_vec_add    (const  num_t x[], const  num_t y[]      ,  num_t  r[], ssz_t n, ssz_t d); //  vec +  vec
 void   mad_vec_addn   (const  num_t x[],        num_t y        ,  num_t  r[], ssz_t n, ssz_t d); //  vec +  num
 void   mad_vec_addc   (const  num_t x[],       cnum_t y        , cnum_t  r[], ssz_t n, ssz_t d); //  vec +  cpx
@@ -65,10 +65,10 @@ void   mad_vec_divv   (const  num_t x[], const cnum_t y[]      , cnum_t  r[], ss
 void   mad_vec_divn   (const  num_t y[],        num_t x        ,  num_t  r[], ssz_t n, ssz_t d); //  num /  vec
 void   mad_vec_divc   (const  num_t y[],       cnum_t x        , cnum_t  r[], ssz_t n, ssz_t d); //  cpx /  vec
 void   mad_vec_divc_r (const  num_t y[], num_t x_re, num_t x_im, cnum_t  r[], ssz_t n, ssz_t d); //  cpx /  vec
-void   mad_vec_kadd   (int k, const num_t a[], const num_t *x[],  num_t  r[], ssz_t n, ssz_t d); //  sum_k ax
 void   mad_vec_fft    (const  num_t x[],                         cnum_t  r[], ssz_t n);          //  vec ->cvec
 void   mad_vec_rfft   (const  num_t x[],                         cnum_t  r[], ssz_t n);          //  vec ->cvec
 void   mad_vec_nfft   (const  num_t x[], const  num_t x_node[] , cnum_t  r[], ssz_t n, ssz_t nr);
+void   mad_vec_kadd   (int k, const num_t a[], const num_t *x[],  num_t  r[], ssz_t n, ssz_t d); //  sum_k ax
 
 void   mad_cvec_fill  (      cnum_t x                          , cnum_t  r[], ssz_t n, ssz_t d); //  cnum ->cvec
 void   mad_cvec_fill_r(       num_t x_re,       num_t x_im     , cnum_t  r[], ssz_t n, ssz_t d); //  cnum ->cvec
@@ -121,18 +121,17 @@ void   mad_cvec_divv  (const cnum_t x[], const  num_t y[]      , cnum_t  r[], ss
 void   mad_cvec_divn  (const cnum_t y[],        num_t x        , cnum_t  r[], ssz_t n, ssz_t d); //  num  / cvec
 void   mad_cvec_divc  (const cnum_t y[],       cnum_t x        , cnum_t  r[], ssz_t n, ssz_t d); //  cpx  / cvec
 void   mad_cvec_divc_r(const cnum_t y[], num_t x_re, num_t x_im, cnum_t  r[], ssz_t n, ssz_t d); //  cpx  / cvec
-void   mad_cvec_kadd  (int k, const cnum_t a[],const cnum_t *x[],cnum_t  r[], ssz_t n, ssz_t d); //  sum_k ax
 void   mad_cvec_fft   (const cnum_t x[],                         cnum_t  r[], ssz_t n);          //  cvec ->cvec
 void   mad_cvec_nfft  (const cnum_t x[], const num_t x_node[]  , cnum_t  r[], ssz_t n, ssz_t nr);
 void   mad_cvec_ifft  (const cnum_t x[],                         cnum_t  r[], ssz_t n);          //  cvec ->cvec
 void   mad_cvec_irfft (const cnum_t x[],                          num_t  r[], ssz_t n);          //  cvec -> vec
 void   mad_cvec_infft (const cnum_t x[], const num_t r_node[]  , cnum_t  r[], ssz_t n, ssz_t nx);
+void   mad_cvec_kadd  (int k, const cnum_t a[],const cnum_t *x[],cnum_t  r[], ssz_t n, ssz_t d); //  sum_k ax
 
 void   mad_ivec_fill  (       idx_t x                          ,  idx_t  r[], ssz_t n, ssz_t d); //  idx ->ivec
 void   mad_ivec_shift (       idx_t x[],                                      ssz_t n, ssz_t d, int nshft);
 void   mad_ivec_roll  (       idx_t x[],                                      ssz_t n, ssz_t d, int nroll);
 void   mad_ivec_copy  (const  idx_t x[],                          idx_t  r[], ssz_t n, ssz_t d); // ivec ->ivec
-void   mad_ivec_copyv (const  idx_t x[],                          num_t  r[], ssz_t n, ssz_t d); // ivec -> vec
 void   mad_ivec_minmax(const  idx_t x[],        log_t absf     ,  idx_t r[2], ssz_t n, ssz_t d); // MinMax(ivec)
 void   mad_ivec_add   (const  idx_t x[], const  idx_t y[]      ,  idx_t  r[], ssz_t n, ssz_t d); // ivec + ivec
 void   mad_ivec_addn  (const  idx_t x[],        idx_t y        ,  idx_t  r[], ssz_t n, ssz_t d); // ivec +  idx

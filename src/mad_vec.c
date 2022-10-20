@@ -580,10 +580,6 @@ void mad_ivec_copy (const idx_t x[], idx_t r[], ssz_t n, ssz_t d)
 { CHKXR; CHKD; if (x > r) for (idx_t i=0; i <  n; i+=d) r[  i] = x[  i];
           else if (x < r) for (idx_t i=d; i <= n; i+=d) r[n-i] = x[n-i]; }
 
-void mad_ivec_copyv (const idx_t x[], num_t r[], ssz_t n, ssz_t d)
-{ CHKXR; CHKD; if (x > (idx_t*)r) for (idx_t i=0; i <  n; i+=d) r[  i] = x[  i];
-          else if (x < (idx_t*)r) for (idx_t i=d; i <= n; i+=d) r[n-i] = x[n-i]; }
-
 void mad_ivec_add (const idx_t x[], const idx_t y[], idx_t r[], ssz_t n, ssz_t d)
 { CHKXYR; CHKD; for (idx_t i=0; i < n; i+=d) r[i] = x[i] + y[i]; }
 
