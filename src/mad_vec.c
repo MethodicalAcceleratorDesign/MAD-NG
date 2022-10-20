@@ -41,12 +41,6 @@
 
 // --- vec
 
-void mad_vec_zero (num_t r[], ssz_t n, ssz_t d)
-{ CHKR; CHKD; for (idx_t i=0; i < n; i+=d) r[i] = 0; }
-
-void mad_vec_seq (num_t x, num_t r[], ssz_t n, ssz_t d)
-{ CHKR; CHKD; for (idx_t i=0; i < n; i+=d) r[i] = i+x; }
-
 void mad_vec_fill (num_t x, num_t r[], ssz_t n, ssz_t d)
 { CHKR; CHKD; for (idx_t i=0; i < n; i+=d) r[i] = x; }
 
@@ -58,18 +52,16 @@ void mad_vec_copyv (const num_t x[], cnum_t r[], ssz_t n, ssz_t d)
 { CHKXR; CHKD; if (x > (num_t*)r) for (idx_t i=0; i <  n; i+=d) r[  i] = x[  i];
           else if (x < (num_t*)r) for (idx_t i=d; i <= n; i+=d) r[n-i] = x[n-i]; }
 
-void mad_vec_cvec (const num_t x[], const num_t y[], cnum_t r[], ssz_t n, ssz_t d)
-{ assert( r && (x || y) ); CHKD;
-  if (x && y) for (idx_t i=0; i < n; i+=d) r[i] = CNUM(x[i],y[i]);
-  else if (x) for (idx_t i=0; i < n; i+=d) r[i] =      x[i]      ;
-  else        for (idx_t i=0; i < n; i+=d) r[i] = CNUM(0   ,y[i]);
+void mad_vec_cplx (const num_t re[], const num_t im[], cnum_t r[], ssz_t n, ssz_t d)
+{ assert( r && (re || im) ); CHKD;
+  if (re && im) for (idx_t i=0; i < n; i+=d) r[i] = CNUM(re[i],im[i]);
+  else if  (re) for (idx_t i=0; i < n; i+=d) r[i] =      re[i]       ;
+  else          for (idx_t i=0; i < n; i+=d) r[i] = CNUM(0    ,im[i]);
 }
 
-num_t mad_vec_abs (const num_t x[], num_t r_[], ssz_t n, ssz_t d)
-{ CHKX; CHKD; num_t s=0;
-  if (r_) for (idx_t i=0; i < n; i+=d) r_[i] = fabs(x[i]), s += r_[i];
-  else    for (idx_t i=0; i < n; i+=d) s    += fabs(x[i]);
-  return s;
+void mad_vec_abs (const num_t x[], num_t r[], ssz_t n, ssz_t d)
+{ CHKXR; CHKD;
+  for (idx_t i=0; i < n; i+=d) r[i] = fabs(x[i]);
 }
 
 num_t mad_vec_sum (const num_t x[], ssz_t n, ssz_t d)
@@ -92,12 +84,6 @@ void mad_vec_center (const num_t x[], num_t r[], ssz_t n, ssz_t d)
 
 num_t mad_vec_dot (const num_t x[], const num_t y[], ssz_t n, ssz_t d)
 { CHKXY; CHKD; num_t r=0; for (idx_t i=0; i < n; i+=d) r += x[i] * y[i]; return r; }
-
-cnum_t mad_vec_dotv (const num_t x[], const cnum_t y[], ssz_t n, ssz_t d)
-{ CHKXY; CHKD; cnum_t r=0; for (idx_t i=0; i < n; i+=d) r += x[i] * y[i]; return r; }
-
-void mad_vec_dotv_r (const num_t x[], const cnum_t y[], cnum_t *r, ssz_t n, ssz_t d)
-{ CHKR; *r = mad_vec_dotv(x,y,n,d); }
 
 num_t mad_vec_norm (const num_t x[], ssz_t n, ssz_t d)
 { return sqrt(mad_vec_dot(x,x,n,d)); }
@@ -302,38 +288,47 @@ void mad_vec_kadd (int k, const num_t a[], const num_t *x[], num_t r[], ssz_t n,
   CHKD; int j = k%8;
 
   switch(j) {
-  case 0: j = 8;
+  case 0:
+    assert(x[j] && x[j+1] && x[j+2] && x[j+3] && x[j+4] && x[j+5] && x[j+6] && x[j+7]);
+    j = 8;
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i]
            + a[4]*x[4][i] + a[5]*x[5][i] + a[6]*x[6][i] + a[7]*x[7][i];
     break;
   case 1:
+    assert(x[j]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i];
     break;
   case 2:
+    assert(x[j] && x[j+1]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i];
     break;
   case 3:
+    assert(x[j] && x[j+1] && x[j+2]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i];
     break;
   case 4:
+    assert(x[j] && x[j+1] && x[j+2] && x[j+3]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i];
     break;
   case 5:
+    assert(x[j] && x[j+1] && x[j+2] && x[j+3] && x[j+4]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i]
            + a[4]*x[4][i];
     break;
   case 6:
+    assert(x[j] && x[j+1] && x[j+2] && x[j+3] && x[j+4] && x[j+5]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i]
            + a[4]*x[4][i] + a[5]*x[5][i];
     break;
   case 7:
+    assert(x[j] && x[j+1] && x[j+2] && x[j+3] && x[j+4] && x[j+5] && x[j+6]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i]
            + a[4]*x[4][i] + a[5]*x[5][i] + a[6]*x[6][i];
@@ -341,6 +336,7 @@ void mad_vec_kadd (int k, const num_t a[], const num_t *x[], num_t r[], ssz_t n,
   }
 
   for(; j < k; j+=8) {
+    assert(x[j] && x[j+1] && x[j+2] && x[j+3] && x[j+4] && x[j+5] && x[j+6] && x[j+7]);
     for (idx_t i=0; i < n; i+=d)
       r[i] += a[j+0]*x[j+0][i] + a[j+1]*x[j+1][i] + a[j+2]*x[j+2][i] + a[j+3]*x[j+3][i]
             + a[j+4]*x[j+4][i] + a[j+5]*x[j+5][i] + a[j+6]*x[j+6][i] + a[j+7]*x[j+7][i];
@@ -348,15 +344,6 @@ void mad_vec_kadd (int k, const num_t a[], const num_t *x[], num_t r[], ssz_t n,
 }
 
 // --- cvec
-
-void mad_cvec_zero (cnum_t r[], ssz_t n, ssz_t d)
-{ CHKR; CHKD; for (idx_t i=0; i < n; i+=d) r[i] = 0; }
-
-void mad_cvec_seq (cnum_t x, cnum_t r[], ssz_t n, ssz_t d)
-{ CHKR; CHKD; for (idx_t i=0; i < n; i+=d) r[i] = i+x; }
-
-void mad_cvec_seq_r (num_t x_re, num_t x_im, cnum_t r[], ssz_t n, ssz_t d)
-{ mad_cvec_seq(CNUM(x_re,x_im), r, n, d); }
 
 void mad_cvec_fill (cnum_t x, cnum_t r[], ssz_t n, ssz_t d)
 { CHKR; CHKD; for (idx_t i=0; i < n; i+=d) r[i] = x; }
@@ -368,7 +355,7 @@ void mad_cvec_copy (const cnum_t x[], cnum_t r[], ssz_t n, ssz_t d)
 { CHKXR; CHKD; if (x > r) for (idx_t i=0; i <  n; i+=d) r[  i] = x[  i];
           else if (x < r) for (idx_t i=d; i <= n; i+=d) r[n-i] = x[n-i]; }
 
-void mad_cvec_vec (const cnum_t x[], num_t re[], num_t ri[], ssz_t n, ssz_t d)
+void mad_cvec_reim (const cnum_t x[], num_t re[], num_t ri[], ssz_t n, ssz_t d)
 { assert( x && (re || ri) ); CHKD;
   if (re && ri) for (idx_t i=0; i < n; i+=d) re[i]=creal(x[i]),
                                              ri[i]=cimag(x[i]);
@@ -376,11 +363,9 @@ void mad_cvec_vec (const cnum_t x[], num_t re[], num_t ri[], ssz_t n, ssz_t d)
   else          for (idx_t i=0; i < n; i+=d) ri[i]=cimag(x[i]);
 }
 
-num_t mad_cvec_abs (const cnum_t x[], num_t r_[], ssz_t n, ssz_t d)
-{ CHKX; CHKD; num_t s=0;
-  if (r_) for (idx_t i=0; i < n; i+=d) r_[i] = cabs(x[i]), s += r_[i];
-  else    for (idx_t i=0; i < n; i+=d) s    += cabs(x[i]);
-  return s;
+void mad_cvec_abs (const cnum_t x[], num_t r[], ssz_t n, ssz_t d)
+{ CHKXR; CHKD;
+  for (idx_t i=0; i < n; i+=d) r[i] = cabs(x[i]);
 }
 
 void mad_cvec_conj (const cnum_t x[], cnum_t r[], ssz_t n, ssz_t d)
@@ -554,36 +539,39 @@ void mad_cvec_kadd (int k, const cnum_t a[], const cnum_t *x[], cnum_t r[], ssz_
 { assert(a && x && r);
   if (k == 0) return;
   CHKD; int j = k%4;
+
   switch(j) {
+  case 0:
+    assert(x[j] && x[j+1] && x[j+2] && x[j+3] && x[j+4]);
+    j = 4;
+    for (idx_t i=0; i < n; i+=d)
+      r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i];
+    break;
   case 1:
+    assert(x[j]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i];
     break;
   case 2:
+    assert(x[j] && x[j+1]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i];
     break;
   case 3:
+    assert(x[j] && x[j+1] && x[j+2]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i];
     break;
-  case 0: j = 4;
-    for (idx_t i=0; i < n; i+=d)
-      r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i];
   }
+
   for(; j < k; j+=4) {
+    assert(x[j] && x[j+1] && x[j+2] && x[j+3]);
     for (idx_t i=0; i < n; i+=d)
       r[i] += a[j+0]*x[j+0][i] + a[j+1]*x[j+1][i] + a[j+2]*x[j+2][i] + a[j+3]*x[j+3][i];
   }
 }
 
 // --- ivec
-
-void mad_ivec_zero (idx_t r[], ssz_t n, ssz_t d)
-{ CHKR; CHKD; for (idx_t i=0; i < n; i+=d) r[i] = 0; }
-
-void mad_ivec_seq (idx_t x, idx_t r[], ssz_t n, ssz_t d)
-{ CHKR; CHKD; for (idx_t i=0; i < n; i+=d) r[i] = i+x; }
 
 void mad_ivec_fill (idx_t x, idx_t r[], ssz_t n, ssz_t d)
 { CHKR; CHKD; for (idx_t i=0; i < n; i+=d) r[i] = x; }
