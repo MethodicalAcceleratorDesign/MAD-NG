@@ -28,6 +28,7 @@
 
 // --- interface --------------------------------------------------------------o
 
+void   mad_mat_eye      (       num_t v,                            num_t  r[], ssz_t m, ssz_t n, ssz_t ldr);            //  mat -> mat
 void   mad_mat_roll     (       num_t x[],                                      ssz_t m, ssz_t n, int mroll, int nroll); //  mat -> mat
 void   mad_mat_copy     (const  num_t x[],                          num_t  r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr); //  mat -> mat
 void   mad_mat_copym    (const  num_t x[],                         cnum_t  r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr); //  mat ->cmat
@@ -66,6 +67,8 @@ void   mad_mat_center   (const  num_t x[],                          num_t  r[], 
 void   mad_mat_sympconj (const  num_t x[],                          num_t  r[],          ssz_t n);                       //  -J M' J
 num_t  mad_mat_symperr  (const  num_t x[],                          num_t  r[],          ssz_t n, num_t *tol_);          //  M' J M - J
 
+void   mad_cmat_eye     (      cnum_t v,                           cnum_t  r[], ssz_t m, ssz_t n, ssz_t ldr);            //  cmat ->cmat
+void   mad_cmat_eye_r   (       num_t v_re,       num_t v_im,      cnum_t  r[], ssz_t m, ssz_t n, ssz_t ldr);            //  cmat ->cmat
 void   mad_cmat_roll    (      cnum_t x[],                                      ssz_t m, ssz_t n, int mroll, int nroll); //  cmat ->cmat
 void   mad_cmat_copy    (const cnum_t x[],                         cnum_t  r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr); //  cmat ->cmat
 void   mad_cmat_trans   (const cnum_t x[],                         cnum_t  r[], ssz_t m, ssz_t n);                       //  cmat.t()
@@ -105,6 +108,7 @@ void   mad_cmat_center  (const cnum_t x[],                         cnum_t  r[], 
 void   mad_cmat_sympconj(const cnum_t x[],                         cnum_t  r[],          ssz_t n);                       //  -J M' J
 num_t  mad_cmat_symperr (const cnum_t x[],                         cnum_t  r[],          ssz_t n, num_t *tol_);          //  M' J M - J
 
+void   mad_imat_eye     (       idx_t v,                             idx_t r[], ssz_t m, ssz_t n, ssz_t ldr);            //  imat ->imat
 void   mad_imat_roll    (       idx_t x[],                                      ssz_t m, ssz_t n, int mroll, int nroll); //  imat ->imat
 void   mad_imat_copy    (const  idx_t x[],                           idx_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr); //  imat ->imat
 void   mad_imat_copym   (const  idx_t x[],                           num_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr); //  imat -> mat

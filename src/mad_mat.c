@@ -67,7 +67,7 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 #define CHKXYR   assert( x && y && r )
 #define CHKXRX   assert( x && r && x != r)
 
-#define CNUM(a) cnum_t a = (* (cnum_t*) & (num_t[2]) { MKNAME(a,_re), MKNAME(a,_im) })
+#define CNUM(re,im) (* (cnum_t*) & (num_t[2]) { re, im })
 
 // --- matrix, cmatrix, imatrix
 
@@ -385,16 +385,16 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 // naive implementation (more efficient on recent superscalar arch!)
 #define DMUL() /* diag(mat) * mat */ \
   for (idx_t i=0; i < m*n; i++) r[i] = 0; \
-  for (idx_t i=0; i < MIN(m,p); i++) \
+  for (idx_t i=0, mp=MIN(m,p); i < mp; i++) \
   for (idx_t j=0; j < n; j++) \
     r[i*n+j] = x[i*p+i] * y[i*n+j];
 
 // r[m x n] = x[m x p] * diag(y[p x n])
 // naive implementation (more efficient on recent superscalar arch!)
 #define MULD() /* mat * diag(mat) */ \
-  for (idx_t i=0; i < m*n; i++) r[i] = 0; \
-  for (idx_t i=0; i < m  ; i++)      \
-  for (idx_t j=0; j < MIN(n,p); j++) \
+  for (idx_t i=0, mn=m*n; i < mn; i++) r[i] = 0; \
+  for (idx_t i=0, np=MIN(n,p); i < m; i++) \
+  for (idx_t j=0; j < np; j++) \
     r[i*n+j] = x[i*p+j] * y[j*n+j];
 
 // -----
@@ -435,7 +435,27 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
   for (idx_t j=0; j<n; j++) \
     r[i*ldr+j] OP##= x[i*ldx+j];
 
+// [m x n] set [+ op]
+#define SET(OP) \
+  for (idx_t i=0; i<m; i++) \
+  for (idx_t j=0; j<n; j++) \
+    r[i*ldr+j] OP##= x;
+
+// [m x n] sequence [+ op]
+#define SEQ(OP) \
+  for (idx_t i=0; i<m; i++) \
+  for (idx_t j=0; j<n; j++) \
+    r[i*ldr+j] OP##= (i*ldr+j)+x;
+
+// [m x n] diagonal [+ op]
+#define DIAG(OP) \
+  for (idx_t i=0, mn=MIN(m,n); i<mn; i++) \
+    r[i*ldr+i] OP##= x;
+
 // --- mat
+
+void mad_mat_eye (num_t v, num_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+{ CHKR; num_t x = 0; SET(); x = v; DIAG(); }
 
 void mad_mat_copy (const num_t x[], num_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
 { CHKXRX; CPY(); }
@@ -600,6 +620,12 @@ mad_mat_roll (num_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
 
 // -- cmat
 
+void mad_cmat_eye (cnum_t v, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+{ CHKR; cnum_t x = 0; SET(); x = v; DIAG(); }
+
+void mad_cmat_eye_r (num_t v_re, num_t v_im, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+{ CHKR; mad_cmat_eye(CNUM(v_re,v_im), r, m, n, ldr); }
+
 void mad_cmat_roll (cnum_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
 { mad_mat_roll((num_t*)x, m, 2*n, mroll, 2*nroll); }
 
@@ -692,6 +718,9 @@ void mad_cmat_center (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, int d)
 }
 
 // --- imat
+
+void mad_imat_eye (idx_t v, idx_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+{ CHKR; idx_t x = 0; SET(); x = v; DIAG(); }
 
 void mad_imat_copy (const idx_t x[], idx_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
 { CHKXRX; CPY(); }
@@ -1024,7 +1053,7 @@ mad_mat_invn (const num_t y[], num_t x, num_t r[], ssz_t m, ssz_t n, num_t rcond
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(num_t, u, n*n);
-  mad_vec_fill(1, u, n*n, n+1);
+  mad_mat_eye(1, u, n, n, n);
 #pragma GCC diagnostic push // remove false-positive
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
   int rank = mad_mat_div(u, y, r, n, m, n, rcond);
@@ -1036,7 +1065,7 @@ mad_mat_invn (const num_t y[], num_t x, num_t r[], ssz_t m, ssz_t n, num_t rcond
 
 int // without complex-by-value version
 mad_mat_invc_r (const num_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
-{ CNUM(x); return mad_mat_invc(y, x, r, m, n, rcond); }
+{ return mad_mat_invc(y, CNUM(x_re,x_im), r, m, n, rcond); }
 
 int
 mad_mat_invc (const num_t y[], cnum_t x, cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
@@ -1044,7 +1073,7 @@ mad_mat_invc (const num_t y[], cnum_t x, cnum_t r[], ssz_t m, ssz_t n, num_t rco
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(num_t, t, m*n);
   mad_alloc_tmp(num_t, u, n*n);
-  mad_vec_fill(1, u, n*n, n+1);
+  mad_mat_eye(1, u, n, n, n);
   int rank = mad_mat_div(u, y, t, n, m, n, rcond);
   mad_free_tmp(u);
   if (x != 1) mad_vec_mulc(t, x, r, m*n, 1);
@@ -1057,7 +1086,7 @@ mad_cmat_invn (const cnum_t y[], num_t x, cnum_t r[], ssz_t m, ssz_t n, num_t rc
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(cnum_t, u, n*n);
-  mad_cvec_fill(1, u, n*n, n+1);
+  mad_cmat_eye(1, u, n, n, n);
 #pragma GCC diagnostic push // remove false-positive
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
   int rank = mad_cmat_div(u, y, r, n, m, n, rcond);
@@ -1072,7 +1101,7 @@ mad_cmat_invc (const cnum_t y[], cnum_t x, cnum_t r[], ssz_t m, ssz_t n, num_t r
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(cnum_t, u, n*n);
-  mad_cvec_fill(1, u, n*n, n+1);
+  mad_cmat_eye(1, u, n, n, n);
 #pragma GCC diagnostic push // remove false-positive
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
   int rank = mad_cmat_div(u, y, r, n, m, n, rcond);
@@ -1084,7 +1113,7 @@ mad_cmat_invc (const cnum_t y[], cnum_t x, cnum_t r[], ssz_t m, ssz_t n, num_t r
 
 int
 mad_cmat_invc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
-{ CNUM(x); return mad_cmat_invc(y, x, r, m, n, rcond); }
+{ return mad_cmat_invc(y, CNUM(x_re,x_im), r, m, n, rcond); }
 
 // -- divide ------------------------------------------------------------------o
 
@@ -1852,7 +1881,7 @@ void mad_mat_rotv (num_t x[NN], const num_t v[N], num_t a, log_t inv)
   num_t n = vx*vx + vy*vy + vz*vz;
 
   if (n == 0) {
-    mad_vec_fill(1, x, N*N, N+1);
+    mad_mat_eye(1, x, N, N, N);
     return;
   }
 
@@ -2577,8 +2606,8 @@ mad_mat_rtbar (num_t Rb[NN],       num_t Tb[N], num_t el, num_t ang, num_t tlt,
       mad_vec_copy(R_,     Rb, NN, 1);        // Rb = R
     } else { // R = I
       mad_vec_copy(T, Tb, N, 1);              // Tb = T
-      mad_vec_fill(1, Rb, N*N, N+1);          // Rb = I
-    }
+      mad_mat_eye (1, Rb, N, N, N);           // Rb = I
+     }
 
   } else {                                    // -- curved --------------------o
     num_t rho = el/ang;
@@ -2604,8 +2633,8 @@ mad_mat_rtbar (num_t Rb[NN],       num_t Tb[N], num_t el, num_t ang, num_t tlt,
       mad_mat_mul (Wt, We, Rb, N, N, N);      // Rb = We:t()*R*We
     } else { // R = I
       mad_mat_tmul(We, T , Tb, N, 1, N);      // Tb = We:t()*T
-      mad_vec_fill(1, Rb, N*N, N+1);          // Rb = I
-    }
+      mad_mat_eye (    1 , Rb, N, N, N);      // Rb = I
+     }
   }
 }
 
