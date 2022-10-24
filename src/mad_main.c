@@ -552,8 +552,7 @@ static void laction(int i)
   signal(i, laction);
   if (sigint_count++)     // 2nd SIGINT, sethook was called but not efficient
     lstop(globalL, NULL); // so we are certainly in compiled code, call lstop
-
-  lua_sethook(globalL, lstop, LUA_MASKCALL | LUA_MASKRET | LUA_MASKCOUNT, 1);
+  lua_sethook(globalL, lstop, LUA_MASKLINE | LUA_MASKCALL | LUA_MASKRET | LUA_MASKCOUNT, 1);
 }
 #endif
 
@@ -621,6 +620,7 @@ static int docall(lua_State *L, int narg, int clear)
 #endif
   status = lua_pcall(L, narg, (clear ? 0 : LUA_MULTRET), base);
 #if !LJ_TARGET_CONSOLE
+  signal(SIGINT, laction);
 //  signal(SIGINT, SIG_DFL);
 #endif
   lua_remove(L, base);  /* remove traceback function */
