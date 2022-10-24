@@ -427,35 +427,15 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
     mad_free_tmp(t); \
   };
 
+// -----
+
+// [m x n] copy [+ op]
 #define CPY(OP) \
   for (idx_t i=0; i<m; i++) \
   for (idx_t j=0; j<n; j++) \
     r[i*ldr+j] OP##= x[i*ldx+j];
 
-#define SET(OP) \
-  for (idx_t i=0; i<m; i++) \
-  for (idx_t j=0; j<n; j++) \
-    r[i*ldr+j] OP##= x;
-
-#define SEQ(OP) \
-  for (idx_t i=0; i<m; i++) \
-  for (idx_t j=0; j<n; j++) \
-    r[i*ldr+j] OP##= (i*ldr+j)+x;
-
-#define DIAG(OP) \
-  for (idx_t i=0; i<MIN(m,n); i++) \
-    r[i*ldr+i] OP##= x;
-
 // --- mat
-
-void mad_mat_eye (num_t v, num_t r[], ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; num_t x = 0; SET(); x = v; DIAG(); }
-
-void mad_mat_seq (num_t x, num_t r[], ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; SEQ(); }
-
-void mad_mat_fill (num_t x, num_t r[], ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; SET(); }
 
 void mad_mat_copy (const num_t x[], num_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
 { CHKXRX; CPY(); }
@@ -620,24 +600,6 @@ mad_mat_roll (num_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
 
 // -- cmat
 
-void mad_cmat_eye (cnum_t v, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; cnum_t x = 0; SET(); x = v; DIAG(); }
-
-void mad_cmat_eye_r (num_t v_re, num_t v_im, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; CNUM(v); cnum_t x = 0; SET(); x = v; DIAG(); }
-
-void mad_cmat_seq (cnum_t x, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; SEQ(); }
-
-void mad_cmat_seq_r (num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; CNUM(x); SEQ(); }
-
-void mad_cmat_fill (cnum_t x, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; SET(); }
-
-void mad_cmat_fill_r (num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; CNUM(x); SET(); }
-
 void mad_cmat_roll (cnum_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
 { mad_mat_roll((num_t*)x, m, 2*n, mroll, 2*nroll); }
 
@@ -730,15 +692,6 @@ void mad_cmat_center (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, int d)
 }
 
 // --- imat
-
-void mad_imat_eye (idx_t v, idx_t r[], ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; idx_t x = 0; SET(); x = v; DIAG(); }
-
-void mad_imat_seq (idx_t x, idx_t r[], ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; SEQ(); }
-
-void mad_imat_fill (idx_t x, idx_t r[], ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; SET(); }
 
 void mad_imat_copy (const idx_t x[], idx_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
 { CHKXRX; CPY(); }
@@ -1071,7 +1024,7 @@ mad_mat_invn (const num_t y[], num_t x, num_t r[], ssz_t m, ssz_t n, num_t rcond
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(num_t, u, n*n);
-  mad_mat_eye(1, u, n, n, n);
+  mad_vec_fill(1, u, n*n, n+1);
 #pragma GCC diagnostic push // remove false-positive
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
   int rank = mad_mat_div(u, y, r, n, m, n, rcond);
@@ -1091,7 +1044,7 @@ mad_mat_invc (const num_t y[], cnum_t x, cnum_t r[], ssz_t m, ssz_t n, num_t rco
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(num_t, t, m*n);
   mad_alloc_tmp(num_t, u, n*n);
-  mad_mat_eye(1, u, n, n, n);
+  mad_vec_fill(1, u, n*n, n+1);
   int rank = mad_mat_div(u, y, t, n, m, n, rcond);
   mad_free_tmp(u);
   if (x != 1) mad_vec_mulc(t, x, r, m*n, 1);
@@ -1104,7 +1057,7 @@ mad_cmat_invn (const cnum_t y[], num_t x, cnum_t r[], ssz_t m, ssz_t n, num_t rc
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(cnum_t, u, n*n);
-  mad_cmat_eye(1, u, n, n, n);
+  mad_cvec_fill(1, u, n*n, n+1);
 #pragma GCC diagnostic push // remove false-positive
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
   int rank = mad_cmat_div(u, y, r, n, m, n, rcond);
@@ -1119,7 +1072,7 @@ mad_cmat_invc (const cnum_t y[], cnum_t x, cnum_t r[], ssz_t m, ssz_t n, num_t r
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(cnum_t, u, n*n);
-  mad_cmat_eye(1, u, n, n, n);
+  mad_cvec_fill(1, u, n*n, n+1);
 #pragma GCC diagnostic push // remove false-positive
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
   int rank = mad_cmat_div(u, y, r, n, m, n, rcond);
@@ -1899,7 +1852,7 @@ void mad_mat_rotv (num_t x[NN], num_t v[N], num_t av, log_t inv)
   num_t n = vx*vx + vy*vy + vz*vz;
 
   if (n == 0) {
-    mad_mat_eye(1, x, N, N, N);
+    mad_vec_fill(1, x, N*N, N+1);
     return;
   }
 
@@ -2624,7 +2577,7 @@ mad_mat_rtbar (num_t Rb[NN],       num_t Tb[N], num_t el, num_t ang, num_t tlt,
       mad_vec_copy(R_,     Rb, NN, 1);        // Rb = R
     } else { // R = I
       mad_vec_copy(T, Tb, N, 1);              // Tb = T
-      mad_mat_eye (1, Rb, N, N, N);           // Rb = I
+      mad_vec_fill(1, Rb, N*N, N+1);          // Rb = I
     }
 
   } else {                                    // -- curved --------------------o
@@ -2651,7 +2604,7 @@ mad_mat_rtbar (num_t Rb[NN],       num_t Tb[N], num_t el, num_t ang, num_t tlt,
       mad_mat_mul (Wt, We, Rb, N, N, N);      // Rb = We:t()*R*We
     } else { // R = I
       mad_mat_tmul(We, T , Tb, N, 1, N);      // Tb = We:t()*T
-      mad_mat_eye (    1 , Rb, N, N, N);      // Rb = I
+      mad_vec_fill(1, Rb, N*N, N+1);          // Rb = I
     }
   }
 }
