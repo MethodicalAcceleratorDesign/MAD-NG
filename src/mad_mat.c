@@ -1844,7 +1844,7 @@ void mad_mat_torotyxz (const num_t x[NN], num_t r[N], log_t inv)
 
 // 3D vector rotation
 
-void mad_mat_rotv (num_t x[NN], num_t v[N], num_t av, log_t inv)
+void mad_mat_rotv (num_t x[NN], const num_t v[N], num_t a, log_t inv)
 {
   assert(x && v);
 
@@ -1861,9 +1861,9 @@ void mad_mat_rotv (num_t x[NN], num_t v[N], num_t av, log_t inv)
     vx *= n, vy *= n, vz *= n;
   }
 
-  num_t xx = vx*vx,   yy = vy*vy,   zz = vz*vz;
-  num_t xy = vx*vy,   xz = vx*vz,   yz = vy*vz;
-  num_t ca = cos(av), sa = sin(av), C  = 1-ca;
+  num_t xx = vx*vx,  yy = vy*vy,  zz = vz*vz;
+  num_t xy = vx*vy,  xz = vx*vz,  yz = vy*vz;
+  num_t ca = cos(a), sa = sin(a), C  = 1-ca;
 
   if (!inv) {  // normal
     num_t r[NN] = {xx*C +    ca, xy*C - vz*sa, xz*C + vy*sa,
@@ -1906,7 +1906,7 @@ num_t mad_mat_torotv (const num_t x[NN], num_t v_[N], log_t inv)
 
 // Quaternion
 
-void mad_mat_rotq (num_t x[NN], num_t q[4], log_t inv)
+void mad_mat_rotq (num_t x[NN], const num_t q[4], log_t inv)
 {
   assert(x && q);
 

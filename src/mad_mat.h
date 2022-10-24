@@ -126,15 +126,17 @@ void   mad_mat_rotyz    (      num_t x[3*3], num_t ay, num_t az, log_t inv); // 
 void   mad_mat_rotxyz   (      num_t x[3*3], num_t ax, num_t ay, num_t az, log_t inv); // Rx.Ry.Rz
 void   mad_mat_rotxzy   (      num_t x[3*3], num_t ax, num_t ay, num_t az, log_t inv); // Rx.Rz.Ry
 void   mad_mat_rotyxz   (      num_t x[3*3], num_t ax, num_t ay, num_t az, log_t inv); // Ry.Rx.Rz
-void   mad_mat_rotv     (      num_t x[3*3], num_t v[3],         num_t av, log_t inv); // Rv
 void   mad_mat_torotxyz (const num_t x[3*3], num_t r[3]                  , log_t inv); // ax, ay, az from rotxyz
 void   mad_mat_torotxzy (const num_t x[3*3], num_t r[3]                  , log_t inv); // ax, ay, az from rotxzy
 void   mad_mat_torotyxz (const num_t x[3*3], num_t r[3]                  , log_t inv); // ax, ay, az from rotyxz
-num_t  mad_mat_torotv   (const num_t x[3*3], num_t v_[3]                 , log_t inv); // av from rotv
+
+// vector
+void   mad_mat_rotv     (      num_t x[3*3], const num_t v [3], num_t a, log_t inv); // Rv
+num_t  mad_mat_torotv   (const num_t x[3*3],       num_t v_[3]         , log_t inv); // av from rotv
 
 // quaternion
-void   mad_mat_rotq   (      num_t x[3*3], num_t q[4], log_t inv);
-void   mad_mat_torotq (const num_t x[3*3], num_t q[4], log_t inv);
+void   mad_mat_rotq   (      num_t x[3*3], const num_t q[4], log_t inv);
+void   mad_mat_torotq (const num_t x[3*3],       num_t q[4], log_t inv);
 
 // misalignments
 void   mad_mat_rtbar    (      num_t Rb[3*3],       num_t Tb[3], num_t el, num_t ang, num_t tlt,
