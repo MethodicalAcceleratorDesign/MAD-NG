@@ -820,7 +820,7 @@ Solvers and Decompositions
 
 .. function:: mat:gsolve (b, c, d)
 
-   Return the real or complex :math:`[ n \times 1 ]` vector :var:`x` as the minimum-norm solution of the linear least square problem :math:`\min \| A x - C \|` under the constraint :math:`B x = D` where :math:`A` is the real or complex :math:`[ m \times n ]` matrix :var:`mat`, :math:`B` is a :math:`[ p \times n ]` matrix, :math:`C` is a :math:`[ m \times 1 ]` vector and :math:`D` is a :math:`[ p \times 1 ]` vector, all of the same type as :math:`A`, using QR or LQ factorisation depending on the shape of the system.This method also returns the norm of the residues and the status :var:`info`.
+   Return the real or complex :math:`[ n \times 1 ]` vector :var:`x` as the minimum-norm solution of the linear least square problem :math:`\min \| A x - C \|` under the constraint :math:`B x = D` where :math:`A` is the real or complex :math:`[ m \times n ]` matrix :var:`mat`, :math:`B` is a :math:`[ p \times n ]` matrix, :math:`C` is a :math:`[ m \times 1 ]` vector and :math:`D` is a :math:`[ p \times 1 ]` vector, all of the same type as :math:`A`, using QR or LQ factorisation depending on the shape of the system. This method also returns the norm of the residues and the status :var:`info`.
 
 .. function:: mat:gmsolve (b, d)
 
@@ -832,7 +832,7 @@ Solvers and Decompositions
 
 .. function:: mat:pcacnd (ns_, rcond_)
 
-   Return the integer column vector :var:`ic` containing the indexes of the columns to remove from the real or complex :math:`[ m \times n ]` matrix :var:`mat` using the Principal Component Analysis. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. This method also returns the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`ns_ = min(nrow,ncol)`, :expr:`rcond_ = eps`.
+   Return the integer column vector :var:`ic` containing the indexes of the columns to remove from the real or complex :math:`[ m \times n ]` matrix :var:`mat` using the Principal Component Analysis. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. This method also returns the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`ns_ = ncol`, :expr:`rcond_ = eps`.
 
 .. function:: mat:svdcnd (ns_, rcond_, tol_)
 
@@ -1160,7 +1160,7 @@ Iterators
 .. function:: ipairs(mat)
    :noindex:
 
-   Return an :type:`ipairs` iterator suitable for generic :const:`for` loops. The generated values are those returned by :func:`mat[i]`. 
+   Return an :type:`ipairs` iterator suitable for generic :const:`for` loops. The returned values are those given by :func:`mat[i]`. 
 
 C API
 =====
@@ -1174,71 +1174,71 @@ Vector
                 void mad_cvec_fill (cnum_t x, cnum_t r[], ssz_t n, ssz_t d)
                 void mad_ivec_fill ( idx_t x, idx_t  r[], ssz_t n, ssz_t d)
 
-   Return the real, complex or integer vector :var:`r` of size :var:`n` filled with the value of :var:`x` every :var:`d` steps.
+   Return the vector :var:`r` of size :var:`n` filled with the value of :var:`x` every :var:`d` steps.
 
 .. c:function:: void mad_vec_shift  ( num_t x[], ssz_t n, ssz_t d, int nshft)
                 void mad_cvec_shift (cnum_t x[], ssz_t n, ssz_t d, int nshft)
                 void mad_ivec_shift ( idx_t x[], ssz_t n, ssz_t d, int nshft)
 
-   Shift in place the values of the elements of the real, complex or interger vector :var:`x` of size :var:`n` by :var:`nshft`.
+   Shift in place the values of the elements of the vector :var:`x` of size :var:`n` by :var:`nshft`.
 
 .. c:function:: void mad_vec_roll  ( num_t x[], ssz_t n, ssz_t d, int nroll)
                 void mad_cvec_roll (cnum_t x[], ssz_t n, ssz_t d, int nroll)
                 void mad_ivec_roll ( idx_t x[], ssz_t n, ssz_t d, int nroll)
 
-   Roll in place the values of the elements of the real, complex or interger vector :var:`x` of size :var:`n` by :var:`nroll`.
+   Roll in place the values of the elements of the vector :var:`x` of size :var:`n` by :var:`nroll`.
 
 .. c:function:: void mad_vec_copy  (const  num_t x[],  num_t r[], ssz_t n, ssz_t d)
                 void mad_vec_copyv (const  num_t x[], cnum_t r[], ssz_t n, ssz_t d)
                 void mad_cvec_copy (const cnum_t x[], cnum_t r[], ssz_t n, ssz_t d)
                 void mad_ivec_copy (const  idx_t x[],  idx_t r[], ssz_t n, ssz_t d)
 
-   Fill the real, complex or integer vector :var:`r` of size :var:`n` with the containt of the real, complex or integer vector :var:`x` every :var:`d` steps.
+   Fill the vector :var:`r` of size :var:`n` with the content of the vector :var:`x` every :var:`d` steps.
 
 .. c:function:: void mad_vec_minmax  (const  num_t x[], log_t absf, idx_t r[2], ssz_t n, ssz_t d)
                 void mad_cvec_minmax (const cnum_t x[],             idx_t r[2], ssz_t n, ssz_t d)
                 void mad_ivec_minmax (const  idx_t x[], log_t absf, idx_t r[2], ssz_t n, ssz_t d)
 
-   Return in :var:`r` the indexes of the minimum and maximum values of the elements of the real, complex or interger vector :var:`x` of size :var:`n` every :var:`d` steps. If :expr:`absf = TRUE`, the function :func:`abs()` is applied to the elements before comparison.
+   Return in :var:`r` the indexes of the minimum and maximum values of the elements of the vector :var:`x` of size :var:`n` every :var:`d` steps. If :expr:`absf = TRUE`, the function :func:`abs()` is applied to the elements before comparison.
 
 .. c:function:: num_t mad_vec_eval    (const  num_t x[], num_t x0,                            ssz_t n, ssz_t d)
                 void  mad_cvec_eval_r (const cnum_t x[], num_t x0_re, num_t x0_im, cnum_t *r, ssz_t n, ssz_t d)
 
-   Return in :var:`r` or directly the evaluation of the real or complex vector :var:`x` of size :var:`n` every :var:`d` steps at the point :var:`x0` using Honer's scheme.
+   Return in :var:`r` or directly the evaluation of the vector :var:`x` of size :var:`n` every :var:`d` steps at the point :var:`x0` using Honer's scheme.
 
 .. c:function:: num_t mad_vec_sum     (const  num_t x[],            ssz_t n, ssz_t d)
                 void  mad_cvec_sum_r  (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
                 num_t mad_vec_ksum    (const  num_t x[],            ssz_t n, ssz_t d)
                 void  mad_cvec_ksum_r (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
 
-   Return in :var:`r` or directly the sum of the values of the elements of the real or complex vector :var:`x` of size :var:`n` every :var:`d` steps. The *k* versions use the Neumaier variants of the Kahan sum.
+   Return in :var:`r` or directly the sum of the values of the elements of the vector :var:`x` of size :var:`n` every :var:`d` steps. The *k* versions use the Neumaier variants of the Kahan sum.
 
 .. c:function:: num_t mad_vec_mean    (const  num_t x[],            ssz_t n, ssz_t d)
                 void  mad_cvec_mean_r (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
 
-   Return in :var:`r` or directly the mean of the real or complex vector :var:`x` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` or directly the mean of the vector :var:`x` of size :var:`n` every :var:`d` steps.
 
 .. c:function:: num_t mad_vec_var    (const  num_t x[],            ssz_t n, ssz_t d)
                 void  mad_cvec_var_r (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
 
-   Return in :var:`r` or directly the unbiased variance with 2nd order correction of the real or complex vector :var:`x` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` or directly the unbiased variance with 2nd order correction of the vector :var:`x` of size :var:`n` every :var:`d` steps.
 
 .. c:function:: void mad_vec_center  (const  num_t x[],  num_t r[], ssz_t n, ssz_t d)
                 void mad_cvec_center (const cnum_t x[], cnum_t r[], ssz_t n, ssz_t d)
 
-   Return in :var:`r` the centered, i.e. :expr:`x[i] - mean(x)`, real or complex vector :var:`x` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` the centered, vector :var:`x` of size :var:`n` every :var:`d` steps equivalent to :expr:`x[i] - mean(x)`.
 
 .. c:function:: num_t mad_vec_norm  (const  num_t x[], ssz_t n, ssz_t d) 
                 num_t mad_cvec_norm (const cnum_t x[], ssz_t n, ssz_t d)
 
-   Return the norm of the real or complex vector :var:`x` of size :var:`n` every :var:`d` steps.
+   Return the norm of the vector :var:`x` of size :var:`n` every :var:`d` steps.
 
 .. c:function:: num_t mad_vec_dist   (const  num_t x[], const  num_t y[], ssz_t n, ssz_t d)
                 num_t mad_vec_distv  (const  num_t x[], const cnum_t y[], ssz_t n, ssz_t d)
                 num_t mad_cvec_dist  (const cnum_t x[], const cnum_t y[], ssz_t n, ssz_t d)
                 num_t mad_cvec_distv (const cnum_t x[], const  num_t y[], ssz_t n, ssz_t d)
 
-   Return the distance, i.e. :expr:`norm(x - y)`, between the real or complex vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps.
+   Return the distance between the vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps equivalent to :expr:`norm(x - y)`.
 
 .. c:function:: num_t mad_vec_dot      (const  num_t x[], const  num_t y[]           , ssz_t n, ssz_t d)
                 void  mad_cvec_dot_r   (const cnum_t x[], const cnum_t y[], cnum_t *r, ssz_t n, ssz_t d)
@@ -1247,15 +1247,15 @@ Vector
                 void  mad_cvec_kdot_r  (const cnum_t x[], const cnum_t y[], cnum_t *r, ssz_t n, ssz_t d)
                 void  mad_cvec_kdotv_r (const cnum_t x[], const  num_t y[], cnum_t *r, ssz_t n, ssz_t d)
 
-   Return in :var:`r` or directly the dot product between the real or complex vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps. The *k* versions use the Neumaier variants of the Kahan sum.
+   Return in :var:`r` or directly the dot product between the vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps. The *k* versions use the Neumaier variants of the Kahan sum.
 
 .. c:function:: void mad_vec_cplx (const num_t re_[], const num_t im_[], cnum_t r[], ssz_t n, ssz_t d)
 
-   Convert the two real vector :var:`re` and :var:`im` of size :var:`n` into the complex vector :var:`r` every :var:`d` steps.
+   Convert the real and imaginary vectors :var:`re` and :var:`im` of size :var:`n` into the complex vector :var:`r` every :var:`d` steps.
 
 .. c:function:: void mad_cvec_reim (const cnum_t x[], num_t re_[], num_t ri_[], ssz_t n, ssz_t d)
 
-   Split the complex vector :var:`x` of size :var:`n` into the two real vector :var:`re` and :var:`ri` every :var:`d` steps.
+   Split the complex vector :var:`x` of size :var:`n` into the real vector :var:`re` and the imaginary vector :var:`ri` every :var:`d` steps.
 
 .. c:function:: void mad_cvec_conj (const cnum_t x[], cnum_t r[], ssz_t n, ssz_t d)
 
@@ -1264,7 +1264,7 @@ Vector
 .. c:function:: void mad_vec_abs  (const  num_t x[], num_t r[], ssz_t n, ssz_t d)
                 void mad_cvec_abs (const cnum_t x[], num_t r[], ssz_t n, ssz_t d)
 
-   Return in :var:`r` the absolute value of the real or complex vector :var:`x` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` the absolute value of the vector :var:`x` of size :var:`n` every :var:`d` steps.
 
 .. c:function:: void mad_vec_add     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n, ssz_t d)
                 void mad_vec_addn    (const  num_t x[],        num_t y        ,  num_t r[], ssz_t n, ssz_t d)
@@ -1276,7 +1276,7 @@ Vector
                 void mad_ivec_add    (const  idx_t x[], const  idx_t y[]      ,  idx_t r[], ssz_t n, ssz_t d)
                 void mad_ivec_addn   (const  idx_t x[],        idx_t y        ,  idx_t r[], ssz_t n, ssz_t d)
 
-   Return in :var:`r` the sum of the two real, complex or integer scalar or vector :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` the sum of the scalar or vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps.
 
 .. c:function:: void mad_vec_sub     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n, ssz_t d)
                 void mad_vec_subv    (const  num_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
@@ -1289,7 +1289,7 @@ Vector
                 void mad_ivec_sub    (const  idx_t x[], const  idx_t y[]      ,  idx_t r[], ssz_t n, ssz_t d)
                 void mad_ivec_subn   (const  idx_t y[],        idx_t x        ,  idx_t r[], ssz_t n, ssz_t d)
 
-   Return in :var:`r` the difference between the two real, complex or integer scalar or vector :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` the difference between the scalar or vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps.
 
 .. c:function:: void mad_vec_mul     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n, ssz_t d)
                 void mad_vec_muln    (const  num_t x[],        num_t y        ,  num_t r[], ssz_t n, ssz_t d)
@@ -1301,7 +1301,7 @@ Vector
                 void mad_ivec_mul    (const  idx_t x[], const  idx_t y[]      ,  idx_t r[], ssz_t n, ssz_t d)
                 void mad_ivec_muln   (const  idx_t x[],        idx_t y        ,  idx_t r[], ssz_t n, ssz_t d)
 
-   Return in :var:`r` the product of the two real, complex or integer scalar or vector :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` the product of the scalar or vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps.
 
 .. c:function:: void mad_vec_div     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n, ssz_t d)
                 void mad_vec_divv    (const  num_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
@@ -1313,7 +1313,7 @@ Vector
                 void mad_cvec_divc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n, ssz_t d)
                 void mad_ivec_divn   (const  idx_t x[],        idx_t y        ,  idx_t r[], ssz_t n, ssz_t d)
 
-   Return in :var:`r` the division of the two real, complex or integer scalar or vector :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` the division of the scalar or vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps.
 
 .. c:function:: void mad_ivec_modn (const idx_t x[], idx_t y, idx_t r[], ssz_t n, ssz_t d)
 
@@ -1322,37 +1322,45 @@ Vector
 .. c:function:: void mad_vec_kadd  (int k, const num_t  a[], const num_t  *x[],  num_t r[], ssz_t n, ssz_t d)
                 void mad_cvec_kadd (int k, const cnum_t a[], const cnum_t *x[], cnum_t r[], ssz_t n, ssz_t d)
 
-   Return in :var:`r` the linear combination of the :var:`k` real or complex vectors in :var:`x` of size :var:`n` scaled by the :var:`k` scalars in :var:`a` every :var:`d` steps.
+   Return in :var:`r` the linear combination of the :var:`k` vectors in :var:`x` of size :var:`n` scaled by the :var:`k` scalars in :var:`a` every :var:`d` steps.
 
 .. c:function:: void mad_vec_fft   (const  num_t x[], cnum_t r[], ssz_t n)        
                 void mad_cvec_fft  (const cnum_t x[], cnum_t r[], ssz_t n)        
                 void mad_cvec_ifft (const cnum_t x[], cnum_t r[], ssz_t n)          
 
-   Return in the complex vector :var:`r` the 1D FFT and inverse of the real or complex vector :var:`x` of size :var:`n`.
+   Return in the vector :var:`r` the 1D FFT and inverse of the vector :var:`x` of size :var:`n`.
 
 .. c:function:: void mad_vec_rfft (const num_t x[], cnum_t r[], ssz_t n)        
 
-   Return in the complex vector :var:`r` of size :expr:`n/2+1` the 1D *real* FFT of the real vector :var:`x` of size :var:`n`.
+   Return in the vector :var:`r` of size :expr:`n/2+1` the 1D *real* FFT of the vector :var:`x` of size :var:`n`.
 
 .. c:function:: void mad_cvec_irfft (const cnum_t x[], num_t r[], ssz_t n)       
 
-   Return in the complex vector :var:`r` of size :var:`n` the 1D *real* FFT inverse of the complex vector :var:`x` of size :expr:`n/2+1`.
+   Return in the vector :var:`r` of size :var:`n` the 1D *real* FFT inverse of the vector :var:`x` of size :expr:`n/2+1`.
 
 .. c:function:: void mad_vec_nfft  (const  num_t x[], const num_t x_node[], cnum_t r[], ssz_t n, ssz_t nr)
                 void mad_cvec_nfft (const cnum_t x[], const num_t x_node[], cnum_t r[], ssz_t n, ssz_t nr)
 
-   Return in the complex vector :var:`r` of size :var:`nr` the 1D non-equispaced FFT of the real or complex vectors :var:`x` and :var:`x_node` of size :var:`n`.
+   Return in the vector :var:`r` of size :var:`nr` the 1D non-equispaced FFT of the vectors :var:`x` and :var:`x_node` of size :var:`n`.
 
 .. c:function:: void mad_cvec_infft (const cnum_t x[], const num_t r_node[], cnum_t r[], ssz_t n, ssz_t nx)
 
-   Return in the complex vector :var:`r` of size :var:`n` the 1D non-equispaced FFT inverse of the complex vector :var:`x` of size :var:`nx` and the real vector :var:`r_node` of size :var:`n`. Note that :var:`r_node` here is the same vector as :var:`x_node` in the 1D non-equispaced forward FFT.
+   Return in the vector :var:`r` of size :var:`n` the 1D non-equispaced FFT inverse of the vector :var:`x` of size :var:`nx` and the vector :var:`r_node` of size :var:`n`. Note that :var:`r_node` here is the same vector as :var:`x_node` in the 1D non-equispaced forward FFT.
 
 Matrix
 ------
 
+.. c:function:: void mad_mat_eye    (num_t v,                 num_t  r[], ssz_t m, ssz_t n, ssz_t ldr)
+                void mad_cmat_eye_r (num_t v_re, num_t v_im, cnum_t  r[], ssz_t m, ssz_t n, ssz_t ldr)
+                void mad_imat_eye   (idx_t v,                  idx_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+
+   Fill in place the matrix :var:`x` of sizes :expr:`[m, n]` with zeros and :var:`v` on the diagonal.
+
 .. c:function:: void mad_mat_roll  ( num_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
                 void mad_cmat_roll (cnum_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
                 void mad_imat_roll ( idx_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
+
+   Roll in place the values of the elements of the matrix :var:`x` of sizes :expr:`[m, n]` by :var:`mroll` and :var:`nroll`.
 
 .. c:function:: void mad_mat_copy   (const  num_t x[],  num_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
                 void mad_mat_copym  (const  num_t x[], cnum_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
@@ -1360,97 +1368,135 @@ Matrix
                 void mad_imat_copy  (const idx_t  x[], idx_t  r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
                 void mad_imat_copym (const idx_t  x[], num_t  r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
 
+   Fill the matrix :var:`r` of sizes :var:`[m, n]` and leading dimension :var:`ldr` with the content of the matrix :var:`x` of sizes :var:`[m, n]` and leading dimension :var:`ldx`.
+
 .. c:function:: void mad_mat_trans   (const  num_t x[], num_t  r[], ssz_t m, ssz_t n)
                 void mad_cmat_trans  (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n)
                 void mad_cmat_ctrans (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n)
                 void mad_imat_trans  (const  idx_t x[],  idx_t r[], ssz_t m, ssz_t n)
+
+   Fill the matrix :var:`r` of sizes :var:`[n, m]` with the (conjugate) transpose of the matrix :var:`x` of sizes :var:`[m, n]`.
 
 .. c:function:: void mad_mat_mul   (const  num_t x[], const  num_t y[],  num_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_mat_mulm  (const  num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_cmat_mul  (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_cmat_mulm (const cnum_t x[], const  num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
 
+   Fill the matrix :var:`r` of sizes :var:`[m, n]` with the product of the matrix :var:`x` of sizes :var:`[m, p]` by the matrix :var:`y` of sizes :var:`[p, n]`.
+
 .. c:function:: void mad_mat_tmul   (const  num_t x[], const  num_t y[],  num_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_mat_tmulm  (const  num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_cmat_tmul  (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_cmat_tmulm (const cnum_t x[], const  num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+
+   Fill the matrix :var:`r` of sizes :var:`[m, n]` with the product of the transposed matrix :var:`x` of sizes :var:`[p, m]` by the matrix :var:`y` of sizes :var:`[p, n]`.
 
 .. c:function:: void mad_mat_mult   (const  num_t x[], const  num_t y[],  num_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_mat_multm  (const  num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_cmat_mult  (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_cmat_multm (const cnum_t x[], const  num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
 
+   Fill the matrix :var:`r` of sizes :var:`[m, n]` with the product of the matrix :var:`x` of sizes :var:`[m, p]` and the transposed matrix :var:`y` of sizes :var:`[n, p]`.
+
 .. c:function:: void mad_mat_dmul   (const  num_t x[], const  num_t y[],  num_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_mat_dmulm  (const  num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_cmat_dmul  (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_cmat_dmulm (const cnum_t x[], const  num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+
+   Fill the matrix :var:`r` of size :var:`[m, n]` with the product of the diagonal of the matrix :var:`x` of sizes :var:`[m, p]` by the matrix :var:`y` of sizes :var:`[p, n]`.
 
 .. c:function:: void mad_mat_muld   (const  num_t x[], const  num_t y[],  num_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_mat_muldm  (const  num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_cmat_muld  (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_cmat_muldm (const cnum_t x[], const  num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
 
-.. c:function:: int mad_mat_invn    (const  num_t y[],        num_t x  ,        num_t r[], ssz_t m, ssz_t n, num_t rcond)
-                int mad_mat_invc_r  (const  num_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
-                int mad_cmat_invn   (const cnum_t y[],        num_t x  ,       cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
-                int mad_cmat_invc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
+   Fill the matrix :var:`r` of sizes :var:`[m, n]` with the product of the matrix :var:`x` of sizes :var:`[m, p]` by the diagonal of the matrix :var:`y` of sizes :var:`[p, n]`.
 
 .. c:function:: int mad_mat_div   (const  num_t x[], const  num_t y[],  num_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
                 int mad_mat_divm  (const  num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
                 int mad_cmat_div  (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
                 int mad_cmat_divm (const cnum_t x[], const  num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
 
+   Fill the matrix :var:`r` of sizes :var:`[m, n]` with the division of the matrx :var:`x` of sizes :var:`[m, p]` by the matrix :var:`y` of sizes :var:`[n, p]`. The conditional number :var:`rcond` is used by the solver to determine the effective rank of non-square systems. It returns the rank of the system.
+
+.. c:function:: int mad_mat_invn    (const  num_t y[],        num_t x  ,        num_t r[], ssz_t m, ssz_t n, num_t rcond)
+                int mad_mat_invc_r  (const  num_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
+                int mad_cmat_invn   (const cnum_t y[],        num_t x  ,       cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
+                int mad_cmat_invc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
+
+   Fill the matrix :var:`r` of sizes :var:`[m, n]` with the inverse of the matrix :var:`y` of sizes :var:`[m, n]` scaled by the scalar :var:`x`. The conditional number :var:`rcond` is used by the solver to determine the effective rank of non-square systems. It returns the rank of the system.
+
 .. c:function:: int mad_mat_solve  (const  num_t a[], const  num_t b[],  num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
                 int mad_cmat_solve (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
 
-.. c:function:: int mad_mat_nsolve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ssz_t N, num_t rcond, num_t r_[])
+   Fill the matrix :var:`x` of sizes :var:`[n, p]` with the minimum-norm solution of the linear least square problem :math:`\min \| A x - B \|` where :math:`A` is the matrix :var:`a` of sizes :expr:`[m, n]` and :math:`B` is the matrix :var:`b` of sizes :expr:`[m, p]`, using LU, QR or LQ factorisation depending on the shape of the system. The conditional number :var:`rcond` is used by the solver to determine the effective rank of non-square system. It returns the rank of the system.
 
 .. c:function:: int mad_mat_ssolve  (const  num_t a[], const  num_t b[],  num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, num_t s_[])
                 int mad_cmat_ssolve (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, num_t s_[])
 
+   Fill in the matrix :var:`x` of sizes :var:`[n, p]` with the minimum-norm solution of the linear least square problem :math:`\min \| A x - B \|` where :math:`A` is the matrix :var:`a` of sizes :expr:`[m, n]` and :math:`B` is the matrix :var:`b` of sizes :expr:`[m, p]`, using SVD factorisation. The conditional number :var:`rcond` is used by the solver to determine the effective rank of non-square system. It returns the rank of the system and fill the optional column vector :var:`s` of size :expr:`min(m,n)` with the singular values.
+
 .. c:function:: int mad_mat_gsolve  (const  num_t a[], const  num_t b[], const  num_t  c[], const num_t d[],   num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t *nrm_)
                 int mad_cmat_gsolve (const cnum_t a[], const cnum_t b[], const cnum_t  c[], const cnum_t d[], cnum_t x[], ssz_t m, ssz_t n, ssz_t p, num_t *nrm_)
+
+   Fill the column vector :var:`x` of size :var:`n` with the minimum-norm solution of the linear least square problem :math:`\min \| A x - C \|` under the constraint :math:`B x = D` where :math:`A` is a matrix :var:`a` of sizes :expr:`[m, n]`, :math:`B` is a matrix :var:`b` of sizes :expr:`[p, n]`, :math:`C` is a column vector of size :var:`m` and :math:`D` is a column vector of size :var:`p`, using QR or LQ factorisation depending on the shape of the system. This function also returns the status :var:`info` and optionally the norm of the residues in the :var:`nrm`.
 
 .. c:function:: int mad_mat_gmsolve  (const  num_t a[], const  num_t b[], const  num_t d[],  num_t x[],  num_t y[], ssz_t m, ssz_t n, ssz_t p)
                 int mad_cmat_gmsolve (const cnum_t a[], const cnum_t b[], const cnum_t d[], cnum_t x[], cnum_t y[], ssz_t m, ssz_t n, ssz_t p)
 
-.. c:function:: int mad_mat_pcacnd  (const  num_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[])
-                int mad_cmat_pcacnd (const cnum_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[])
+   Fill the column vector :var:`x` of size :var:`n` and column vector :var:`y` of size :var:`p` with the minimum-norm solution of the linear Gauss-Markov problem :math:`\min_x \| y \|` under the constraint :math:`A x + B y = D` where :math:`A` is a matrix :var:`a` of sizes :expr:`[m, n]`, :math:`B` is a matrix :var:`b` of sizes :expr:`[m, p]`, and :math:`D` is a column vector of size :var:`m`, using QR or LQ factorisation depending on the shape of the system. This function also returns the status :var:`info`.
 
-.. c:function:: int mad_mat_svdcnd  (const  num_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[], num_t tol)
-                int mad_cmat_svdcnd (const cnum_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[], num_t tol)
+.. c:function:: int mad_mat_nsolve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ssz_t nc, num_t rcond, num_t r_[])
+
+   Fill the column vector :var:`x` (of correctors kicks) of size :var:`n` with the minimum-norm solution of the linear (best-kick) least square problem :math:`\min \| A x - B \|` where :math:`A` is the (response) matrix :var:`a` of sizes :expr:`[m, n]` and :math:`B` is a column vector (of monitors readings) of size :var:`m`, using the MICADO [#f3]_ algorithm based on the Householder-Golub method [MICADO]_. The argument :var:`nc` is the maximum number of correctors to use with :math:`0 < n_c \leq n` and the argument :var:`tol` is a convergence threshold (on the residues) to stop the (orbit) correction if :math:`\| A x - B \| \leq m \times` :var:`tol`. This function also returns the updated number of correctors :var:`nc` effectively used during the correction and the residues in the optional column vector :var:`r` of size :var:`m`.
+
+.. c:function:: int mad_mat_pcacnd  (const  num_t a[], idx_t ic[], ssz_t m, ssz_t n, ssz_t ns, num_t cut, num_t s_[])
+                int mad_cmat_pcacnd (const cnum_t a[], idx_t ic[], ssz_t m, ssz_t n, ssz_t ns, num_t cut, num_t s_[])
+
+   Fill the column vector :var:`ic` of size :var:`n` with the indexes of the columns to remove from the matrix :var:`a` of sizes :expr:`[m, n]` using the Principal Component Analysis. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. This function also returns the column vector of size :expr:`min(m,n)` filled with the singluar values. Default: :expr:`ns_ = ncol`, :expr:`rcond_ = eps`.
+
+.. c:function:: int mad_mat_svdcnd  (const  num_t a[], idx_t ic[], ssz_t m, ssz_t n, ssz_t ns, num_t cut, num_t s_[], num_t tol)
+                int mad_cmat_svdcnd (const cnum_t a[], idx_t ic[], ssz_t m, ssz_t n, ssz_t ns, num_t cut, num_t s_[], num_t tol)
+
+   Fill the column vector :var:`ic` of size :var:`n` with the indexes of the columns to remove from the matrix :var:`a` of sizes :expr:`[m, n]` based on the analysis of the right matrix :math:`V` from the SVD decomposition :math:`U S V`. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. The argument :var:`tol` is a threshold similar to :var:`rcond` used to reject components in :math:`V` that have similar or opposite effect than components already encountered. This function also returns the real column vector of size :expr:`min(m,n)` filled with the singluar values. Default: :expr:`ns_ = min(m,n)`, :expr:`rcond_ = eps`.
 
 .. c:function:: int mad_mat_svd  (const  num_t x[],  num_t u[], num_t s[],   num_t v[], ssz_t m, ssz_t n)
                 int mad_cmat_svd (const cnum_t x[], cnum_t u[], num_t s[],  cnum_t v[], ssz_t m, ssz_t n)
 
+   Fill the column vector :var:`s` of size :expr:`min(m,n)` with the singular values, and the two matrices :var:`u` of sizes :expr:`[m, m]` and :var:`v` of sizes :expr:`[n, n]` with the `SVD factorisation <https://en.wikipedia.org/wiki/Singular_value_decomposition>`_ of the matrix :var:`x` of sizes :expr:`[m,n]`, and returns the status :var:`info`. The singular values are positive and sorted in decreasing order of values, i.e. largest first.
+
 .. c:function:: int mad_mat_eigen  (const  num_t x[], cnum_t w[],  num_t vl[],  num_t vr[], ssz_t n)
                 int mad_cmat_eigen (const cnum_t x[], cnum_t w[], cnum_t vl[], cnum_t vr[], ssz_t n)
 
+   Fill the column vector :var:`w` of size :var:`n` with the eigenvalues followed by the status :var:`info` and the two optional matrices :var:`vr` and :var:`vl` of sizes :expr:`[n, n]` containing the left and right eigenvectors resulting from the `Eigen Decomposition <https://en.wikipedia.org/wiki/Eigendecomposition_of_a_matrix>`_ of the square matrix :var:`x` of sizes :expr:`[n, n]`. The eigenvectors are normalized to have unit Euclidean norm and their largest component real, and satisfy :math:`X v_r = \lambda v_r` and :math:`v_l X = \lambda v_l`.
+
 .. c:function:: int mad_mat_det  (const  num_t x[],  num_t *r, ssz_t n)                     
                 int mad_cmat_det (const cnum_t x[], cnum_t *r, ssz_t n)
+
+   Return in :expr:`r`, the `Determinant <https://en.wikipedia.org/wiki/Determinant>`_ of the square matrix :var:`mat` of sizes :expr:`[n, n]` using LU factorisation for better numerical stability, and return the status :var:`info`.
 
 .. c:function:: void mad_mat_fft   (const  num_t x[], cnum_t r[], ssz_t m, ssz_t n)
                 void mad_cmat_fft  (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n)
                 void mad_cmat_ifft (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n)
 
-   Return in the complex matrix :var:`r` the 2D FFT and inverse of the real or complex matrix :var:`x` of sizes :expr:`[m, n]`.
+   Fill the matrix :var:`r` with the 2D FFT and inverse of the matrix :var:`x` of sizes :expr:`[m, n]`.
 
 .. c:function:: void mad_mat_rfft (const num_t x[], cnum_t r[], ssz_t m, ssz_t n)
 
-   Return in the complex matrix :var:`r` of sizes :expr:`[m, n/2+1]` the 2D *real* FFT of the real matrix :var:`x` of sizes :expr:`[m, n]`.
+   Fill the matrix :var:`r` of sizes :expr:`[m, n/2+1]` with the 2D *real* FFT of the matrix :var:`x` of sizes :expr:`[m, n]`.
 
 .. c:function:: void mad_cmat_irfft (const cnum_t x[], num_t r[], ssz_t m, ssz_t n)
 
-   Return in the complex matrix :var:`r` of sizes :expr:`[m, n]` the 1D *real* FFT inverse of the complex matrix :var:`x` of sizes :expr:`[m, n/2+1]`.
+   Fill the matrix :var:`r` of sizes :expr:`[m, n]` with the 1D *real* FFT inverse of the matrix :var:`x` of sizes :expr:`[m, n/2+1]`.
 
 .. c:function:: void mad_mat_nfft  (const  num_t x[], const num_t x_node[], cnum_t r[], ssz_t m, ssz_t n, ssz_t nr)
                 void mad_cmat_nfft (const cnum_t x[], const num_t x_node[], cnum_t r[], ssz_t m, ssz_t n, ssz_t nr)
 
-   Return in the complex matrix :var:`r` of sizes :expr:`[m, nr]` the 2D non-equispaced FFT of the real or complex matrices :var:`x` and :var:`x_node` of sizes :expr:`[m, n]`.
+   Fill the matrix :var:`r` of sizes :expr:`[m, nr]` with the 2D non-equispaced FFT of the matrices :var:`x` and :var:`x_node` of sizes :expr:`[m, n]`.
 
 .. c:function:: void mad_cmat_infft (const cnum_t x[], const num_t r_node[], cnum_t r[], ssz_t m, ssz_t n, ssz_t nx)
 
-   Return in the complex matrix :var:`r` of sizes :expr:`[m, n]` the 2D non-equispaced FFT inverse of the complex matrix :var:`x` of sizes :expr:`[m, nx]` and the real matrix :var:`r_node` of sizes :expr:`[m, n]`. Note that :var:`r_node` here is the same matrix as :var:`x_node` in the 2D non-equispaced forward FFT.
+   Fill the matrix :var:`r` of sizes :expr:`[m, n]` with the 2D non-equispaced FFT inverse of the matrix :var:`x` of sizes :expr:`[m, nx]` and the matrix :var:`r_node` of sizes :expr:`[m, n]`. Note that :var:`r_node` here is the same matrix as :var:`x_node` in the 2D non-equispaced forward FFT.
 
 .. c:function:: void mad_mat_center  (const  num_t x[],  num_t r[], ssz_t m, ssz_t n, int d)
                 void mad_cmat_center (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, int d)
