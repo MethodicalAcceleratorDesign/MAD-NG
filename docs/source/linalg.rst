@@ -123,6 +123,14 @@ Special Constructors
 Sizes and Indexing
 ------------------
 
+.. function:: mat:size ()
+
+   Return the number of elements :expr:`nrow * ncol` of the real, complex or integer matrix :var:`mat` equivalent to :expr:`#mat`.
+
+.. function:: mat:bytesize ()
+
+   Return the number of *bytes* used by the data storage of the real, complex or integer matrix :var:`mat` equivalent to :expr:`#mat * sizeof(mat[1])`.
+
 .. function:: mat:sizes ()
 
    Return the number of rows :var:`nrow` and columns :var:`ncol` of the real, complex or integer matrix :var:`mat`. Note that :expr:`#mat` returns the full size :expr:`nrow * ncol` of the matrix.
@@ -1339,235 +1347,186 @@ Vector
 
    Return in the complex vector :var:`r` of size :var:`n` the 1D non-equispaced FFT inverse of the complex vector :var:`x` of size :var:`nx` and the real vector :var:`r_node` of size :var:`n`. Note that :var:`r_node` here is the same vector as :var:`x_node` in the 1D non-equispaced forward FFT.
 
-Real Matrix
------------
+Matrix
+------
 
-.. c:function:: void   mad_mat_eye      (                         num_t x  ,        num_t  r[], ssz_t m, ssz_t n,            ssz_t ldr)
+.. c:function:: void mad_mat_roll  ( num_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
+.. c:function:: void mad_cmat_roll (cnum_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
+.. c:function:: void mad_imat_roll ( idx_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
 
-.. c:function:: void   mad_mat_seq      (                         num_t x  ,        num_t  r[], ssz_t m, ssz_t n,            ssz_t ldr)
+.. c:function:: void mad_mat_copy   (const  num_t x[],  num_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
+.. c:function:: void mad_mat_copym  (const  num_t x[], cnum_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
+.. c:function:: void mad_cmat_copy  (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
+.. c:function:: void mad_imat_copy  (const idx_t  x[], idx_t  r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
+.. c:function:: void mad_imat_copym (const idx_t  x[], num_t  r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
 
-.. c:function:: void   mad_mat_fill     (                         num_t x  ,        num_t  r[], ssz_t m, ssz_t n,            ssz_t ldr)
+.. c:function:: void mad_mat_trans   (const  num_t x[], num_t  r[], ssz_t m, ssz_t n)
+.. c:function:: void mad_cmat_trans  (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n)
+.. c:function:: void mad_cmat_ctrans (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n)
+.. c:function:: void mad_imat_trans  (const  idx_t x[],  idx_t r[], ssz_t m, ssz_t n)
 
-.. c:function:: void   mad_mat_roll     (       num_t x[],                                      ssz_t m, ssz_t n, int mroll, int nroll)
+.. c:function:: void mad_mat_mul   (const  num_t x[], const  num_t y[],  num_t r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: void mad_mat_mulm  (const  num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: void mad_cmat_mul  (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: void mad_cmat_mulm (const cnum_t x[], const  num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
 
-.. c:function:: void   mad_mat_copy     (const  num_t x[],                          num_t  r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
+.. c:function:: void mad_mat_tmul   (const  num_t x[], const  num_t y[],  num_t r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: void mad_mat_tmulm  (const  num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: void mad_cmat_tmul  (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: void mad_cmat_tmulm (const cnum_t x[], const  num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
 
-.. c:function:: void   mad_mat_copym    (const  num_t x[],                         cnum_t  r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
+.. c:function:: void mad_mat_mult   (const  num_t x[], const  num_t y[],  num_t r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: void mad_mat_multm  (const  num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: void mad_cmat_mult  (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: void mad_cmat_multm (const cnum_t x[], const  num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
 
-.. c:function:: void   mad_mat_trans    (const  num_t x[],                          num_t  r[], ssz_t m, ssz_t n)
+.. c:function:: void mad_mat_dmul   (const  num_t x[], const  num_t y[],  num_t r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: void mad_mat_dmulm  (const  num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: void mad_cmat_dmul  (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: void mad_cmat_dmulm (const cnum_t x[], const  num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
 
-.. c:function:: void   mad_mat_dot      (const  num_t x[], const  num_t y[],        num_t  r[], ssz_t m, ssz_t n)
+.. c:function:: void mad_mat_muld   (const  num_t x[], const  num_t y[],  num_t r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: void mad_mat_muldm  (const  num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: void mad_cmat_muld  (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: void mad_cmat_muldm (const cnum_t x[], const  num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
 
-.. c:function:: void   mad_mat_dotm     (const  num_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n)
+.. c:function:: int mad_mat_invn    (const  num_t y[],        num_t x  ,        num_t r[], ssz_t m, ssz_t n, num_t rcond)
+.. c:function:: int mad_mat_invc_r  (const  num_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
+.. c:function:: int mad_cmat_invn   (const cnum_t y[],        num_t x  ,       cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
+.. c:function:: int mad_cmat_invc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
 
-.. c:function:: void   mad_mat_mul      (const  num_t x[], const  num_t y[],        num_t  r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: int mad_mat_div   (const  num_t x[], const  num_t y[],  num_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
+.. c:function:: int mad_mat_divm  (const  num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
+.. c:function:: int mad_cmat_div  (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
+.. c:function:: int mad_cmat_divm (const cnum_t x[], const  num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
 
-.. c:function:: void   mad_mat_mulm     (const  num_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: int mad_mat_solve  (const  num_t a[], const  num_t b[],  num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
+.. c:function:: int mad_cmat_solve (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
 
-.. c:function:: void   mad_mat_tmul     (const  num_t x[], const  num_t y[],        num_t  r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: int mad_mat_nsolve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ssz_t N, num_t rcond, num_t r_[])
 
-.. c:function:: void   mad_mat_tmulm    (const  num_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: int mad_mat_ssolve  (const  num_t a[], const  num_t b[],  num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, num_t s_[])
+.. c:function:: int mad_cmat_ssolve (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, num_t s_[])
 
-.. c:function:: void   mad_mat_mult     (const  num_t x[], const  num_t y[],        num_t  r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: int mad_mat_gsolve  (const  num_t a[], const  num_t b[], const  num_t  c[], const num_t d[],   num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t *nrm_)
+.. c:function:: int mad_cmat_gsolve (const cnum_t a[], const cnum_t b[], const cnum_t  c[], const cnum_t d[], cnum_t x[], ssz_t m, ssz_t n, ssz_t p, num_t *nrm_)
 
-.. c:function:: void   mad_mat_multm    (const  num_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: int mad_mat_gmsolve  (const  num_t a[], const  num_t b[], const  num_t d[],  num_t x[],  num_t y[], ssz_t m, ssz_t n, ssz_t p)
+.. c:function:: int mad_cmat_gmsolve (const cnum_t a[], const cnum_t b[], const cnum_t d[], cnum_t x[], cnum_t y[], ssz_t m, ssz_t n, ssz_t p)
 
-.. c:function:: int    mad_mat_det      (const  num_t x[],                          num_t *r  ,          ssz_t n)                     
+.. c:function:: int mad_mat_pcacnd  (const  num_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[])
+.. c:function:: int mad_cmat_pcacnd (const cnum_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[])
 
-.. c:function:: int    mad_mat_invn     (const  num_t y[],        num_t x  ,        num_t  r[], ssz_t m, ssz_t n,          num_t rcond)
+.. c:function:: int mad_mat_svdcnd  (const  num_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[], num_t tol)
+.. c:function:: int mad_cmat_svdcnd (const cnum_t a[], idx_t c[], ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[], num_t tol)
 
-.. c:function:: int    mad_mat_invc     (const  num_t y[],       cnum_t x  ,       cnum_t  r[], ssz_t m, ssz_t n,          num_t rcond)
+.. c:function:: int mad_mat_svd  (const  num_t x[],  num_t u[], num_t s[],   num_t v[], ssz_t m, ssz_t n)
+.. c:function:: int mad_cmat_svd (const cnum_t x[], cnum_t u[], num_t s[],  cnum_t v[], ssz_t m, ssz_t n)
 
-.. c:function:: int    mad_mat_invc_r   (const  num_t y[], num_t x_re, num_t x_im, cnum_t  r[], ssz_t m, ssz_t n,          num_t rcond)
+.. c:function:: int mad_mat_eigen  (const  num_t x[], cnum_t w[],  num_t vl[],  num_t vr[], ssz_t n)
+.. c:function:: int mad_cmat_eigen (const cnum_t x[], cnum_t w[], cnum_t vl[], cnum_t vr[], ssz_t n)
 
-.. c:function:: int    mad_mat_div      (const  num_t x[], const  num_t y[],        num_t  r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
+.. c:function:: int mad_mat_det  (const  num_t x[],  num_t *r, ssz_t n)                     
+.. c:function:: int mad_cmat_det (const cnum_t x[], cnum_t *r, ssz_t n)
 
-.. c:function:: int    mad_mat_divm     (const  num_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
+.. c:function:: void mad_mat_fft   (const  num_t x[], cnum_t r[], ssz_t m, ssz_t n)
+.. c:function:: void mad_cmat_fft  (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n)
+.. c:function:: void mad_cmat_ifft (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n)
 
-.. c:function:: int    mad_mat_solve    (const  num_t a[], const  num_t b[],        num_t  x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
+   Return in the complex matrix :var:`r` the 2D FFT and inverse of the real or complex matrix :var:`x` of sizes :expr:`[m, n]`.
 
-.. c:function:: int    mad_mat_nsolve   (const  num_t a[], const  num_t b[],        num_t  x[], ssz_t m, ssz_t n, ssz_t N, num_t rcond, num_t r_[])
+.. c:function:: void mad_mat_rfft (const num_t x[], cnum_t r[], ssz_t m, ssz_t n)
 
-.. c:function:: int    mad_mat_ssolve   (const  num_t a[], const  num_t b[],        num_t  x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, num_t s_[])
+   Return in the complex matrix :var:`r` of sizes :expr:`[m, n/2+1]` the 2D *real* FFT of the real matrix :var:`x` of size :expr:`[m, n]`.
 
-.. c:function:: int    mad_mat_gsolve   (const  num_t a[], const  num_t b[], const  num_t  c[], const num_t d[], num_t  x[], ssz_t m, ssz_t n, ssz_t p, num_t *nrm_)
+.. c:function:: void mad_cmat_irfft (const cnum_t x[], num_t r[], ssz_t m, ssz_t n)
 
-.. c:function:: int    mad_mat_gmsolve  (const  num_t a[], const  num_t b[], const  num_t  d[], num_t x[],        num_t  y[], ssz_t m, ssz_t n, ssz_t p)
+   Return in the complex matrix :var:`r` of size :expr:`[m, n]` the 1D *real* FFT inverse of the complex matrix :var:`x` of size :expr:`[m, n/2+1]`.
 
-.. c:function:: int    mad_mat_pcacnd   (const  num_t a[],        idx_t c[],                    ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[])
+.. c:function:: void mad_mat_nfft  (const  num_t x[], const num_t x_node[], cnum_t r[], ssz_t m, ssz_t n, ssz_t nr)
+.. c:function:: void mad_cmat_nfft (const cnum_t x[], const num_t x_node[], cnum_t r[], ssz_t m, ssz_t n, ssz_t nr)
 
-.. c:function:: int    mad_mat_svdcnd   (const  num_t a[],        idx_t c[],                    ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[], num_t tol)
+   Return in the complex matrix :var:`r` of sizes :expr:`[m, nr]` the 2D non-equispaced FFT of the real or complex matrices :var:`x` and :var:`x_node` of size :expr:`[m, n]`.
 
-.. c:function:: int    mad_mat_svd      (const  num_t x[], num_t u[], num_t s[],    num_t  v[], ssz_t m, ssz_t n)
+.. c:function:: void mad_cmat_infft (const cnum_t x[], const num_t r_node[], cnum_t r[], ssz_t m, ssz_t n, ssz_t nx)
 
-.. c:function:: int    mad_mat_eigen    (const  num_t x[], cnum_t w[], num_t vl[],  num_t vr[],          ssz_t n)
+   Return in the complex matrix :var:`r` of size :expr:`[m, n]` the 2D non-equispaced FFT inverse of the complex matrix :var:`x` of size :expr:`[m, nx]` and the real matrix :var:`r_node` of size :expr:`[m, n]`. Note that :var:`r_node` here is the same matrix as :var:`x_node` in the 2D non-equispaced forward FFT.
 
-.. c:function:: void   mad_mat_fft      (const  num_t x[],                         cnum_t  r[], ssz_t m, ssz_t n)
+.. c:function:: void mad_mat_center  (const  num_t x[],  num_t r[], ssz_t m, ssz_t n, int d)
+.. c:function:: void mad_cmat_center (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, int d)
 
-.. c:function:: void   mad_mat_rfft     (const  num_t x[],                         cnum_t  r[], ssz_t m, ssz_t n)
+   Return in :var:`r` the centered matrix :var:`x` along the rows for :expr:`d = 1` and the columns for :expr:`d = 2`.  
 
-.. c:function:: void   mad_mat_nfft     (const  num_t x[], const num_t x_node[]  , cnum_t  r[], ssz_t m, ssz_t n, ssz_t nr)
+.. c:function:: void mad_mat_sympconj (const  num_t x[],  num_t r[], ssz_t n)
+.. c:function:: void mad_cmat_sympconj(const cnum_t x[], cnum_t r[], ssz_t n)
 
-.. c:function:: void   mad_mat_center   (const  num_t x[],                          num_t  r[], ssz_t m, ssz_t n, int d)
+   Return in :var:`r` the symplectic 'conjugate' of the vector :var:`x` of size :var:`n` every :var:`d` steps. 
 
-.. c:function:: void   mad_mat_sympconj (const  num_t x[],                          num_t  r[],          ssz_t n)
+.. c:function:: num_t mad_mat_symperr  (const  num_t x[],  num_t r_[], ssz_t n, num_t *tol_)
+.. c:function:: num_t mad_cmat_symperr (const cnum_t x[], cnum_t r_[], ssz_t n, num_t *tol_)
 
-.. c:function:: num_t  mad_mat_symperr  (const  num_t x[],                          num_t  r[],          ssz_t n)
-
-.. c:function:: num_t  mad_mat_vdot     (const  num_t x[], idx_t xs, const  num_t y[], idx_t ys,         ssz_t n)
-
-Complex Matrix
---------------
-
-.. c:function:: void   mad_cmat_eye     (                        cnum_t x  ,       cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr)
-
-.. c:function:: void   mad_cmat_eye_r   (                  num_t x_re, num_t x_im, cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr)
-
-.. c:function:: void   mad_cmat_seq     (                        cnum_t x  ,       cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr)
-
-.. c:function:: void   mad_cmat_seq_r   (                  num_t x_re, num_t x_im, cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr)
-
-.. c:function:: void   mad_cmat_fill    (                        cnum_t x  ,       cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr)
-
-.. c:function:: void   mad_cmat_fill_r  (                  num_t x_re, num_t x_im, cnum_t  r[], ssz_t m, ssz_t n,            ssz_t ldr)
-
-.. c:function:: void   mad_cmat_roll    (      cnum_t x[],                                      ssz_t m, ssz_t n, int mroll, int nroll)
-
-.. c:function:: void   mad_cmat_copy    (const cnum_t x[],                         cnum_t  r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
-
-.. c:function:: void   mad_cmat_trans   (const cnum_t x[],                         cnum_t  r[], ssz_t m, ssz_t n)
-
-.. c:function:: void   mad_cmat_ctrans  (const cnum_t x[],                         cnum_t  r[], ssz_t m, ssz_t n)
-
-.. c:function:: void   mad_cmat_dot     (const cnum_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n)
-
-.. c:function:: void   mad_cmat_dotm    (const cnum_t x[], const  num_t y[],       cnum_t  r[], ssz_t m, ssz_t n)
-
-.. c:function:: void   mad_cmat_mul     (const cnum_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p)
-
-.. c:function:: void   mad_cmat_mulm    (const cnum_t x[], const  num_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p)
-
-.. c:function:: void   mad_cmat_tmul    (const cnum_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p)
-
-.. c:function:: void   mad_cmat_tmulm   (const cnum_t x[], const  num_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p)
-
-.. c:function:: void   mad_cmat_mult    (const cnum_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p)
-
-.. c:function:: void   mad_cmat_multm   (const cnum_t x[], const  num_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p)
-
-.. c:function:: int    mad_cmat_det     (const cnum_t x[],                         cnum_t *r  ,          ssz_t n)
-
-.. c:function:: int    mad_cmat_invn    (const cnum_t y[],        num_t x  ,       cnum_t  r[], ssz_t m, ssz_t n,          num_t rcond)
-
-.. c:function:: int    mad_cmat_invc    (const cnum_t y[],       cnum_t x  ,       cnum_t  r[], ssz_t m, ssz_t n,          num_t rcond)
-
-.. c:function:: int    mad_cmat_invc_r  (const cnum_t y[], num_t x_re, num_t x_im, cnum_t  r[], ssz_t m, ssz_t n,          num_t rcond)
-
-.. c:function:: int    mad_cmat_div     (const cnum_t x[], const cnum_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
-
-.. c:function:: int    mad_cmat_divm    (const cnum_t x[], const  num_t y[],       cnum_t  r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
-
-.. c:function:: int    mad_cmat_solve   (const cnum_t a[], const cnum_t b[],       cnum_t  x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
-
-.. c:function:: int    mad_cmat_ssolve  (const cnum_t a[], const cnum_t b[],       cnum_t  x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, num_t s_[])
-
-.. c:function:: int    mad_cmat_gsolve  (const cnum_t a[], const cnum_t b[], const cnum_t  c[], const cnum_t d[], cnum_t  x[], ssz_t m, ssz_t n, ssz_t p, num_t *nrm_)
-
-.. c:function:: int    mad_cmat_gmsolve (const cnum_t a[], const cnum_t b[], const cnum_t  d[], cnum_t x[],       cnum_t  y[], ssz_t m, ssz_t n, ssz_t p)
-
-.. c:function:: int    mad_cmat_pcacnd  (const cnum_t a[],        idx_t c[],                    ssz_t m, ssz_t n, ssz_t N, num_t cut, num_t s_[])
-
-.. c:function:: int    mad_cmat_svd     (const cnum_t x[], cnum_t u[], num_t s[],  cnum_t  v[], ssz_t m, ssz_t n)
-
-.. c:function:: int    mad_cmat_eigen   (const cnum_t x[], cnum_t w[], cnum_t vl[],cnum_t vr[],          ssz_t n)
-
-.. c:function:: void   mad_cmat_fft     (const cnum_t x[],                         cnum_t  r[], ssz_t m, ssz_t n)
-
-.. c:function:: void   mad_cmat_nfft    (const cnum_t x[], const num_t x_node[]   ,cnum_t  r[], ssz_t m, ssz_t n, ssz_t nr)
-
-.. c:function:: void   mad_cmat_ifft    (const cnum_t x[],                         cnum_t  r[], ssz_t m, ssz_t n)
-
-.. c:function:: void   mad_cmat_irfft   (const cnum_t x[],                          num_t  r[], ssz_t m, ssz_t n)
-
-.. c:function:: void   mad_cmat_infft   (const cnum_t x[], const num_t r_node[]   ,cnum_t  r[], ssz_t m, ssz_t n, ssz_t nx)
-
-.. c:function:: void   mad_cmat_center  (const cnum_t x[],                         cnum_t  r[], ssz_t m, ssz_t n, int d)
-
-.. c:function:: void   mad_cmat_sympconj(const cnum_t x[],                         cnum_t  r[],          ssz_t n)
-
-.. c:function:: num_t  mad_cmat_symperr (const cnum_t x[],                         cnum_t  r[],          ssz_t n)
-
-.. c:function:: cnum_t mad_cmat_vdot    (const cnum_t x[], idx_t xs, const cnum_t y[], idx_t ys,         ssz_t n)
-
-.. c:function:: cnum_t mad_cmat_vdotm   (const cnum_t x[], idx_t xs, const  num_t y[], idx_t ys,         ssz_t n)
-
-.. c:function:: void   mad_cmat_vdot_r  (const cnum_t x[], idx_t xs, const cnum_t y[], idx_t ys, cnum_t *r, ssz_t n)
-
-.. c:function:: void   mad_cmat_vdotm_r (const cnum_t x[], idx_t xs, const  num_t y[], idx_t ys, cnum_t *r, ssz_t n)
-
-Integer Matrix
---------------
-
-.. c:function:: void   mad_imat_eye     (       idx_t x  ,                           idx_t r[], ssz_t m, ssz_t n,            ssz_t ldr)
-
-.. c:function:: void   mad_imat_seq     (       idx_t x  ,                           idx_t r[], ssz_t m, ssz_t n,            ssz_t ldr)
-
-.. c:function:: void   mad_imat_fill    (       idx_t x  ,                           idx_t r[], ssz_t m, ssz_t n,            ssz_t ldr)
-
-.. c:function:: void   mad_imat_roll    (       idx_t x[],                                      ssz_t m, ssz_t n, int mroll, int nroll)
-
-.. c:function:: void   mad_imat_copy    (const  idx_t x[],                           idx_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
-
-.. c:function:: void   mad_imat_copym   (const  idx_t x[],                           num_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
-
-.. c:function:: void   mad_imat_trans   (const  idx_t x[],                           idx_t r[], ssz_t m, ssz_t n)
+   Return the norm of the symplectic error and fill the optional matrix :var:`r` with the symplectic deviation of the matrix :var:`x`. The optional argument :var:`tol` is used as the tolerance to check if the matrix :var:`x` is symplectic or not, and saves the result as :const:`0` (non-symplectic) or :const:`1` (symplectic) within tol for output. 
 
 Rotations
 ---------
 
-.. c:function:: void   mad_mat_rot      (      num_t x[2*2], num_t a)
+.. c:function:: void mad_mat_rot (num_t x[2*2], num_t a)
 
-.. c:function:: void   mad_mat_rotx     (      num_t x[3*3], num_t ax)
+   Fill the matrix :var:`x` with a 2D rotation of angle :var:`a`.
 
-.. c:function:: void   mad_mat_roty     (      num_t x[3*3], num_t ay)
+.. c:function:: void mad_mat_rotx (num_t x[3*3], num_t ax)
+                void mad_mat_roty (num_t x[3*3], num_t ay)
+                void mad_mat_rotz (num_t x[3*3], num_t az)
 
-.. c:function:: void   mad_mat_rotz     (      num_t x[3*3], num_t az)
+   Fill the matrix :var:`x` with the 3D rotation of angle :var:`a?` around the axis given by the suffix :expr:`? in {x,y,z}`.
 
-.. c:function:: void   mad_mat_rotxy    (      num_t x[3*3], num_t ax, num_t ay, log_t inv)
+.. c:function:: void mad_mat_rotxy (num_t x[3*3], num_t ax, num_t ay, log_t inv)
+                void mad_mat_rotxz (num_t x[3*3], num_t ax, num_t az, log_t inv)
+                void mad_mat_rotyz (num_t x[3*3], num_t ay, num_t az, log_t inv)
 
-.. c:function:: void   mad_mat_rotxz    (      num_t x[3*3], num_t ax, num_t az, log_t inv)
+   Fill the matrix :var:`x` with the two successive 3D rotations of angles :var:`a?` around the two axis given by the suffixes :expr:`? in {x,y,z}`. If :expr:`inv = 1` returns the inverse rotations, i.e. the transpose of the matrix :var:`x`. Note that the first rotation changes the axis orientation of the second rotation.
 
-.. c:function:: void   mad_mat_rotyz    (      num_t x[3*3], num_t ay, num_t az, log_t inv)
+.. c:function:: void mad_mat_rotxyz (num_t x[3*3], num_t ax, num_t ay, num_t az, log_t inv)
+                void mad_mat_rotxzy (num_t x[3*3], num_t ax, num_t ay, num_t az, log_t inv)
+                void mad_mat_rotyxz (num_t x[3*3], num_t ax, num_t ay, num_t az, log_t inv)
 
-.. c:function:: void   mad_mat_rotxyz   (      num_t x[3*3], num_t ax, num_t ay, num_t az, log_t inv)
+   Fill the matrix :var:`x` with the three successive 3D rotations of angles :var:`a?` around the three axis given by the suffixes :expr:`? in {x,y,z}`. If :expr:`inv = 1` returns the inverse rotations, i.e. the transpose of the matrix :var:`x`. Note that the first rotation changes the axis orientation of the second rotation, which changes the axis orientation of the third rotation.
 
-.. c:function:: void   mad_mat_rotxzy   (      num_t x[3*3], num_t ax, num_t ay, num_t az, log_t inv)
+.. c:function:: void mad_mat_torotxyz (const num_t x[3*3], num_t r[3], log_t inv)
+                void mad_mat_torotxzy (const num_t x[3*3], num_t r[3], log_t inv)
+                void mad_mat_torotyxz (const num_t x[3*3], num_t r[3], log_t inv)
 
-.. c:function:: void   mad_mat_rotyxz   (      num_t x[3*3], num_t ax, num_t ay, num_t az, log_t inv)
+   Fill the vector of the three angles :var:`r` around the axis :var:`{x,y,z}`, :var:`{x,z,y}` and :var:`{y,x,z}` from the matrix :var:`x`. If :expr:`inv = 1`, it takes the inverse rotations, i.e. the transpose of the matrix :var:`x`.
 
-.. c:function:: void   mad_mat_torotxyz (const num_t x[3*3], num_t r[3]                  , log_t inv)
+.. c:function:: void mad_mat_rotv (num_t x[3*3], const num_t v[3], num_t a, log_t inv)
 
-.. c:function:: void   mad_mat_torotxzy (const num_t x[3*3], num_t r[3]                  , log_t inv)
+   Fill the matrix :var:`x` with the 3D rotation of angle :var:`a` around the vector :var:`v`. If :expr:`inv = 1` returns the inverse rotations, i.e. the transpose of the matrix.
 
-.. c:function:: void   mad_mat_torotyxz (const num_t x[3*3], num_t r[3]                  , log_t inv)
+.. c:function:: num_t mad_mat_torotv (const num_t x[3*3], num_t v_[3], log_t inv)
 
-.. c:function:: void   mad_mat_rotv     (      num_t x[3*3], num_t v[3],         num_t av, log_t inv)
+   Return the angle and fill the optional vector :var:`v` with the 3D rotations in :var:`x`. If :expr:`inv = 1`, it takes the inverse rotations, i.e. the transpose of the matrix :var:`x`.
 
-.. c:function:: num_t  mad_mat_torotv   (const num_t x[3*3], num_t v_[3]                 , log_t inv)
+.. c:function:: void mad_mat_rotq (num_t x[3*3], const num_t q[4], log_t inv)
 
-.. c:function:: void   mad_mat_rotq   (      num_t x[3*3], num_t q[4], log_t inv)
+   Fill the matrix :var:`x` with the 3D rotation given by the quaternion :var:`q`. If :expr:`inv = 1` returns the inverse rotations, i.e. the transpose of the matrix.
 
-.. c:function:: void   mad_mat_torotq (const num_t x[3*3], num_t q[4], log_t inv)
+.. c:function:: void mad_mat_torotq (const num_t x[3*3], num_t q[4], log_t inv)
+
+   Fill the quaternion :var:`q` with the 3D rotations in :var:`x`. If :expr:`inv = 1`, it takes the inverse rotations, i.e. the transpose of the matrix :var:`x`.
 
 Misalignments
 -------------
 
 .. c:function:: void mad_mat_rtbar (num_t Rb[3*3], num_t Tb[3], num_t el, num_t ang, num_t tlt, const num_t R_[3*3], const num_t T [3])
 
+   Compute as output the rotation matrix :var:`Rb`, i.e. :math:`\bar{R}`, and the translation vector :var:`Tb`, i.e. :math:`\bar{T}`, used to restore the global frame at exit of a misaligned element in survey, given as input the element length :var:`el`, angle :var:`ang`, tilt :var:`tlt`, and the rotation matrix :var:`R` and the translation vector :var:`T` at entry.
+
 Miscellaneous
 -------------
 
 .. c:function:: void mad_fft_cleanup (void)
+
+   Cleanup data allocated by the FFTW library.
 
 .. ------------------------------------------------------------
 
