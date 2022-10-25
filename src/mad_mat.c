@@ -1277,11 +1277,11 @@ mad_mat_svd (const num_t x[], num_t u[], num_t s[], num_t v[], ssz_t m, ssz_t n)
 {
   assert( x && u && s && v );
   int info=0;
-  const int nm=m, nn=n;
+  const int nm=m, nn=n, mn=MIN(m,n);
 
   num_t sz;
   int lwork=-1;
-  int iwk[8*MIN(m,n)];
+  int iwk[8*mn];
   mad_alloc_tmp(num_t, ra, m*n);
   mad_mat_trans(x, ra, m, n);
   dgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn, &sz, &lwork, iwk, &info); // query
@@ -1301,12 +1301,12 @@ mad_cmat_svd (const cnum_t x[], cnum_t u[], num_t s[], cnum_t v[], ssz_t m, ssz_
 {
   assert( x && u && s && v );
   int info=0;
-  const int nm=m, nn=n;
+  const int nm=m, nn=n, mn=MIN(m,n);
 
   cnum_t sz;
   int lwork=-1;
-  int iwk[8*MIN(m,n)];
-  ssz_t rwk_sz = MIN(m,n) * MAX(5*MIN(m,n)+7, 2*MAX(m,n)+2*MIN(m,n)+1);
+  int iwk[8*mn];
+  ssz_t rwk_sz = mn * MAX(5*mn+7, 2*MAX(m,n)+2*mn+1);
   mad_alloc_tmp(num_t, rwk, rwk_sz);
   mad_alloc_tmp(cnum_t, ra, m*n);
   mad_cmat_trans(x, ra, m, n);
