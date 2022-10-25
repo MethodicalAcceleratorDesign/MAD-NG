@@ -589,8 +589,9 @@ function TestMatrixGet:testGetsub()
   assertEquals( m:getsub(2,2,{}       )[1]      , m:get(2,2) )
   assertEquals( m:getsub(2,2,vector(2)):get(1,1), m:get(2,2) )
   assertEquals( m:getsub(2,2,vector(2)):get(2,1), 0          )
-  r = m:getsub( 1..2, 1..3) for i=1,2 do for j=1,3 do assertEquals( r:get(i,j), idx(i,j,5) ) end end
-  r = m:getsub({1}  ,{1,2}) for i=1,1 do for j=1,2 do assertEquals( r:get(i,j), idx(i,j,5) ) end end
+  r = m:getsub( 1..2, 1..3)     for i=1,2 do for j=1,3 do assertEquals( r:get(i,j), idx(i,j,5) ) end end
+  r = m:getsub( nil, 1..5, {})  for j=1,5 do assertEquals( r[j], idx(j,1,5) ) end  --Test ir = nil and jc ~= nil for column-major idxs
+  r = m:getsub({1}  ,{1,2})     for i=1,1 do for j=1,2 do assertEquals( r:get(i,j), idx(i,j,5) ) end end
 
   for _,m in ipairs(G.matidx) do    -- 25  (all shapes over 5x5)
     local nr, nc = m:sizes()
@@ -736,6 +737,7 @@ function TestMatrixSet:testRemvec()
   local m = matrix(6):fill(1..36)
   for n = 1, 25 do --Check multi-element removal
     assertEquals( m:copy():remvec(1..n), matrix(36-n, 1):fill((n+1)..36)) --Always outputs 1D
+    assertEquals( #m:copy():remvec(1..n), #m - #(1..n) )
   end
 end
 
@@ -849,13 +851,17 @@ function TestMatrixSet:testSetdiag()
       assertEquals( {m:getdiag():sizes()}, {n,1} )
       for i=1,n do assertEquals( d[i], m:get(i,i) ) end
     end
-    m:setdiag(duplicate(2))
+    m:setdiag(2)
     assertEquals( m:getdiag(), vector(n):fill(2) )
   end
   local m = G.mattmp[25]
   m:setdiag(1..3)                 assertEquals( m:getdiag(), vector{1,2,3,1,2} ) -- recycling
   m:setdiag(1..6)                 assertEquals( m:getdiag(), vector{1,2,3,4,5} ) -- recycling
   m:setdiag(chain({3,1},{5,4,3})) assertEquals( m:getdiag(), vector{3,1,5,4,3} )
+  local f = \p, s => return s + p, 0 end
+  m:setdiag(f, 0, 1, 1)    assertEquals(m, m:same():setdiag(0)) --k required!
+  f = \p, s => return s + p, s end
+  m:zeros():setdiag(f, 1, 2, 2)    assertEquals(m, m:same():setdiag(vector(5):seq()*2, 1))
 end
 
 function TestMatrixErr:testGetrow()
@@ -1067,7 +1073,7 @@ function TestMatrixSet:testSetcol()
   end
 end
 
-function TestMatrixInPlaceII:testInsvec() --size is never changed inserting from the beginning results in end being discarded
+function TestMatrixInPlaceII:testInsvec()
   local m = matrix(6):fill(1)
   for n = 1, 36 do --Check single element by element addition
     local expected = matrix(6,6):fill(1)
@@ -1082,11 +1088,11 @@ function TestMatrixInPlaceII:testInsvec() --size is never changed inserting from
     for i = n, 1, -1 do
       expected[i] = i
     end
-    assertEquals( m:copy():insvec(1..n, 1..n), expected) --Always outputs 1D
+    assertEquals( m:copy():insvec(1..n, 1..n), expected)
   end
 end
 
-function TestMatrixInPlaceII:testInssub() --size is never changed inserting from the beginning results in end being discarded
+function TestMatrixInPlaceII:testInssub()
   for _,m in ipairs(G.matidx) do
     local nrow, ncol = m:sizes()
     for startSub = 1, nrow - 1 do 
@@ -1096,9 +1102,9 @@ function TestMatrixInPlaceII:testInssub() --size is never changed inserting from
           local shiftedVal = 1
           for row = 1, adjMat.nrow do
             for col = 1, adjMat.ncol do 
-              if row >= startSub and col >= startSub and row <= i and col <= j then 
+              if row >= startSub and col >= startSub and row <= i and col <= j then --Bit that has been inserted
                 assertEquals(adjMat:get(row, col), matrix(i-startSub + 1, j-startSub + 1):getidx(row-startSub + 1, col-startSub + 1, j)) --matrix(..) bit finds which index that was input
-              else
+              else --shifted values
                 assertEquals(adjMat:get(row, col), shiftedVal)
                 shiftedVal = shiftedVal + 1 --Shifts rows across first, so sort of unpredictable based on index
               end
@@ -1114,16 +1120,18 @@ function TestMatrixInPlaceII:testInsrow()
   for _,m in ipairs(G.matidx) do
     for i = 1, m.nrow do 
       assertEquals(m:copy():insrow(1..i, i), m:copy():inssub(1..i, nil, i))
+      assertEquals(m:copy():insrow(1..i, 1..i*m.ncol):getrow(1..i), matrix(i, m.ncol):fill(1..i*m.ncol)) --check for rowwise fill
       assertEquals(m:zeros():insrow(1..i, 1..i*m.ncol), m:zeros():inssub(1..i, nil, 1..i*m.ncol))
     end
   end
 end
 
-function TestMatrixInPlaceII:testInscol() --Fails, when inserting 4 elements to a 2x2 matrix
+function TestMatrixInPlaceII:testInscol() --Fails, when inserting 4 elements to a 2x2 matrix (insvec cannot handle ij of [1 3 2 4])
   for _,m in ipairs(G.matidx) do
     for i = 1, m.ncol do 
       assertEquals(m:copy():inscol(1..i, i), m:copy():inssub(nil, 1..i, i))
-      assertEquals(m:zeros():inscol(1..i, 1..i*m.nrow), m:zeros():inssub(nil, 1..i, 1..i*m.nrow))
+      assertEquals(m:copy():inscol(1..i, 1..i*m.nrow):getcol(1..i), matrix(i, m.nrow):fill(1..i*m.nrow):t()) --check for columnwise fill
+      assertEquals(m:copy():zeros():inscol(1..i, 1..i*m.nrow), m:copy():zeros():inssub(nil, 1..i, 1..i*m.nrow))
     end
   end
 end
