@@ -38,6 +38,7 @@ local rep                                                        in MAD.utility
 local min, randomseed, random                                    in math
 
 local eps, tiny, huge, inf, nan, pi                              in MAD.constant
+local swap                                                       in MAD.gfunc
 
 local infi = complex(0,inf)
 
@@ -341,7 +342,8 @@ function TestMatrix:testDiag()
       local diag_mat = vec:diag(k)
       for i = 1, #vec do 
         if k >= 0 then assertEquals(vec[i], diag_mat:get(i, i + k)) 
-        else           assertEquals(vec[i], diag_mat:get(i + k, i)) end
+        else           assertEquals(vec[i], diag_mat:get(i + k, i)) 
+        end
       end
     end
   end
@@ -404,8 +406,9 @@ function TestMatrixGet:testGetidx() --Test ranges not starting from 1?
         local res = m:getidx(i, j) --Check numbers work
         assertTrue(MAD.typeid.is_number(res))
         assertEquals(res, m:get(i, j))
-        local res = m:getidx(1..i, 1..j) --Check ranges work
+        local res = m:getidx(1..i, 1..j, {}) --Check ranges work (and casting to table)
         assertEquals(i*j, #res)
+        assertTrue(is_table(res))
         local index = 1
         for ii = 1, i do 
           for jj = 1, j do 
@@ -418,27 +421,41 @@ function TestMatrixGet:testGetidx() --Test ranges not starting from 1?
   end
 end
 
-function TestMatrixGet:testGetij()
+function TestMatrixGet:testGetij() --Relies on test above
   for _, m in ipairs(G.matidx) do 
-    local ij, _, _ = m:getidx() --Check inverse works
-    local ir, jc, _ = m:getij(ij)
+    local ij = m:getidx() --Check inverse works
+    local ir, jc = m:getij(ij)
     for idx = 1, #ij do 
         assertEquals(m:get(ir[idx], jc[idx]), m:geti(ij[idx]))
     end 
-    local ir, jc, nc = m:getij() --check default works
-    -- assertEquals(nc, m.ncol)
+    local ir, jc = m:getij() --check default works
     for idx = 1, #m do 
         assertEquals(m:get(ir[idx], jc[idx]), m:geti(idx))
     end 
     for i = 1, m.nrow do 
       for j = 1, m.ncol do 
-        local ir, jc, _ = m:getij(m:getidx(i, j)) --Check numbers work
+        local ir, jc = m:getij(m:getidx(i, j)) --Check numbers work
         assertEquals(i, ir)
         assertEquals(j, jc)
         local ij = m:getidx(1..i, 1..j)
-        local ir, jc, _ = m:getij(ij) --Check ranges work
+        local ir, jc = m:getij(ij, {}, {}) --Check ranges work (and casting to table)
+        assertTrue(is_table(ir))
+        assertTrue(is_table(jc))
         for idx = 1, #ij do 
             assertEquals(m:get(ir[idx], jc[idx]), m[ij[idx]])
+        end
+      end
+    end
+  end
+end
+
+function TestMatrixGet:testGetdidx()
+  for _, mat in ipairs(G.matidx) do 
+    for k = -mat.nrow, mat.ncol do 
+      local idxs = mat:getdidx(k)
+      for i = 1, #idxs do 
+        if k >= 0 then assertEquals(idxs[i], idx(i, i + k, mat.ncol))
+        else           assertEquals(idxs[i], idx(i - k, i, mat.ncol)) -- -k means left diag
         end
       end
     end
@@ -1228,7 +1245,15 @@ end
 function TestMatrix:testSize()
   for i,m in ipairs(G.matidx) do
     assertEquals( #m, G.size[i][1]*G.size[i][2] )
+    assertEquals( m:size(), G.size[i][1]*G.size[i][2] )
   end
+end
+
+function TestMatrix:testBytesize()
+  for i,m in ipairs(G.matidx) do
+    assertEquals( m:bytesize(), #m*require("ffi").sizeof('num_t') )
+  end
+  assertEquals(require("ffi").sizeof('num_t'), 8) --An assert to check if double size is 64 bit (necessary?)
 end
 
 function TestMatrix:testSizes()
@@ -1250,6 +1275,7 @@ function TestMatrix:testTsizes()
   end
   for i,m in ipairs(G.matidx) do
     assertEquals( {m:tsizes()}, {G.size[i][2], G.size[i][1]} )
+    assertEquals( {m:tsizes()}, {swap(m:sizes())} )
   end
 end
 
