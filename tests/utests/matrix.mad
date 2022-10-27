@@ -1371,8 +1371,6 @@ function TestMatrix:testIs_Symp()
   end
 end
 
-
-
 -- in place -------------------------------------------------------------------o
 
 function TestMatrixInPlace:setUp()
@@ -1408,9 +1406,11 @@ function TestMatrixInPlace:testRandom()
       oldVal[i] = val[i]
     end
     m:random(nil,1,mn)
+    local f = \a, b, c -> a*b + c
     for i = 1,mn do
       assertTrue ( m:geti(i) <= mn )
       assertTrue ( m:geti(i) >= 1  )
+      assertEquals(m:copy():random(f, i, 3, i/4), m:copy():fill(f(i, 3, i/4))) --Check ability to change function
     end
   end
 end
@@ -1453,6 +1453,8 @@ function TestMatrixInPlace:testFill()
     --generator
     m:fill(1..mn)             for i=1,mn do assertEquals( m:geti(i), i   ) end
     m:fill\x x^2              for i=1,mn do assertEquals( m:geti(i), i^2 ) end
+    local f =\p,s -> (s+p, 0) m:fill(f, 1, 1) assertEquals(m, m:same():zeros())
+          f =\p,s -> (s+p, s) m:fill(f, 2, 2) assertEquals(m, m:same():seq()*2)
     --2D container
     m:fill( m:same() )        for i=1,mn do assertEquals( m:geti(i), 0   ) end
     --1D container
@@ -1567,9 +1569,11 @@ end
 function TestMatrixInPlace:testSeq()
   for i,m in pairs(G.matidx) do --Assumes G.matidx is a sequence
     assertEquals(m:same():seq(0), m)      --m starts from 1, seq starts from 0 --?
+    assertEquals(m:same():seq("col"), matrix(m.ncol, m.nrow):seq():t()) --check for columnwise fill
     assertEquals(m:same():seq(1), m + 1)  --m starts from 1, seq starts from 1 --?
     assertEquals(m:same():seq(2), m + 2)  --m starts from 1, seq starts from 2 --?
     assertEquals(m:same():seq(3), m + 3)  --m starts from 1, seq starts from 3 --?
+    assertEquals(m:same():seq(3, "col"), matrix(m.ncol, m.nrow):seq():t() + 3) --check for columnwise fill
     local testCase = m:same():seq()
     for i, e in ipairs(testCase) do --Checks all elements are 1 greater than previous
       if i > 1 then assertEquals(testCase[i] - testCase[i-1], 1) end
@@ -1605,7 +1609,7 @@ end
 function TestMatrixInPlaceII:testSymp()
   for i=2,6,2 do
     local m = matrix(i):symp()
-    assertTrue( m:t() == -m )
+    assertEquals( m:t(),  -m )
     for ii=1,m.ncol do
     for jj=1,m.nrow do
       if     ii==2 and jj==1 then assertEquals( m:get(ii,jj),-1 )
@@ -1661,8 +1665,24 @@ function TestMatrixInPlaceII:testCirc()
   end
 end
 
---function TestMatrixInPlaceII:testMovev(); Not sure about this
---Would like to understand concept rather than understand what the code does to test
+function TestMatrixInPlaceII:testMovev()
+  for _, m in ipairs(G.matidx) do 
+    for i = 1, #m do 
+      for j = i, #m do
+        for k = 1, #m - j + 1 do
+          local moved_mat = m:copy():movev(i, j, k)
+          assertEquals(moved_mat:getvec(k..k+j-i), m:getvec(i..j)) --Does what it says on the tin
+          assertEquals(m:movev(i, j, k, matrix(m:sizes())):getvec(k..k+j-i), m:getvec(i..j)) --Does what it says on the tin (with r)
+          if k > 1 then assertEquals(moved_mat:getvec(1..k-1), m:getvec(1..k-1)) end --Other values are unaffected
+          if k + j - 1 < #m then assertEquals(moved_mat:getvec(k+j-i+1..#m), m:getvec(k+j-i+1..#m)) end ---Other values are unaffected
+          if not (i == k and j == k+j-i) then --Not identity
+            assertNotEquals(moved_mat, m) --The matrix isn't the same
+          end
+        end
+      end
+    end
+  end
+end
 
 function TestMatrixErr:testShiftv()
   local msg = {
@@ -1683,12 +1703,16 @@ function TestMatrixInPlaceII:testShiftv()
         -- left shift
         local v = vector(n):fill(1..n)
         local w = vector(n):fill(1..n)
+        assertEquals(v:copy():shiftv(i, -j), v:copy():movev(i+j, #v, i))  --identity
+        assertEquals(w:copy():shiftv(i, -j), w:copy():movev(i+j, #w, i))  --identity
         v:shiftv(i,-j)
         w:setvec(i..n-j, w:getvec(i+j..n) )
         assertAllAlmostEquals(totable(v), totable(w))
         -- right shift
         local v = vector(n):fill(1..n)
         local w = vector(n):fill(1..n)
+        assertEquals(v:copy():shiftv(i, j), v:copy():movev(i, #v-j, i+j))  --identity
+        assertEquals(w:copy():shiftv(i, j), w:copy():movev(i, #w-j, i+j))  --identity
         v:shiftv(i,+j)
         w:setvec(i+j..n, w:getvec(i..n-j) )
         assertAllAlmostEquals(totable(v), totable(w))
@@ -1700,6 +1724,7 @@ end
 function TestMatrixInPlaceII:testRoll()
   local m = vector(4):fill(1..4)
   assertEquals( m:roll( 0  , 0  ), m )
+  assertEquals( m:roll(         ), m )
   assertEquals( m:roll( 4  , 0  ), m )
   assertEquals( m:roll( 0  , 1  ), m )
   assertEquals( m:roll( 0  , 2  ), m )
@@ -1709,6 +1734,7 @@ function TestMatrixInPlaceII:testRoll()
 
   m = matrix(2):fill(1..4)
   assertEquals( m:roll( 0  , 0  ), m )
+  assertEquals( m:roll(         ), m )
   assertEquals( m:roll( 3  , 0  ), m )
   assertEquals( m:roll(-3  , 0  ), m )
 
@@ -1781,14 +1807,29 @@ function TestMatrixErr:testForeach()
   assertErrorMsgContains( msg[1], mth, 'foreach', errMat, { }       )
 end
 
-function TestMatrixFun:testForeach()
+function TestMatrixFun:testForeach() --Not 
   for _,m in ipairs(G.matidx) do
     local nr, nc = m:sizes()
-    local t = table.new(nr,nc)
-    local f = \x,i,j => t[i][j] = x  end
-    for i=0,nr-1 do local c = t[i+1] or table.new(nc,0); t[i+1] = c end
+    local t = {}
+    local f = \x, ij => t[ij] = x  end
     m:foreach(f)
-    for i=1,nr do for j=1,nc do assertEquals( t[i][j], idx(i,j,nc) ) end end
+    assertEquals(t, m:totable())                          --Check function call
+
+    m:foreach("+", t)
+    assertEquals(t, m:mul(2):totable())                   --Check function call w/ r and f is opstring
+    
+    f = \x, ij -> x + 2*ij
+    t = matrix(math.ceil(#m/2), 1)
+    m:foreach(1..math.ceil(#m/2), f, t)   
+    assertEquals(#t, math.ceil(#m/2))
+    assertEquals(t, m:mul(3):getvec(1..math.ceil(#m/2)))  --Check function call w/ ij and r as mat
+
+    f = \x, ij -> x * x
+    m:foreach(f, "in")                                    
+    assertEquals(m:copy():foreach(f, "in"), m:epow(2))    --Check function call w/ r = "in"
+
+    m:foreach(1..#m, "*", "in")                                    
+    assertEquals(m:copy():foreach(f, "in"), m:epow(2))    --Check function call w/ r = "in" and ij and f is opstring
   end
 end
 
@@ -2312,15 +2353,23 @@ end
 function TestMatrixFun:testFilter()
  for _,m in ipairs(G.matidx) do
     local mn = #m
-    assertEquals( m:filter(\x x==1    )         , vector(1) :fill(1)     )
-    assertEquals( m:filter(\x x~=0    )         , vector(mn):fill(1..mn) )
-    assertEquals( m:filter(\x x> 1, {})         , totable(2..mn)         )
+    assertEquals( m:filter(\x x==1      )     , vector(1) :fill(1)     )
+    assertEquals( m:filter(\x,n x^2 == n)     , vector(1) :fill(1)     )
+    assertEquals( m:filter(\x x~=0      )     , vector(mn):fill(1..mn) )
+    assertEquals( m:filter(\x,n x == n  )     , vector(mn):fill(1..mn) )
+    assertEquals( m:filter(\x x> 1, {}  )     , totable(2..mn)         )
+    assertEquals( m:filter(2..#m, \x x == 1, {}), {}                     )
+    assertEquals( m:filter(3..#m, \x x ~= 1, {}), totable(3..#m)         )
     assertEquals( m:filter(\x x==1, {})         , {1}                    )
     assertEquals( m:filter(\x x==1, vector(25)) , vector(1):seti(1,1)    )
     if mn>=5 then assertEquals( m:filter(\x x<6), m:same(5 ,1):fill(1..idx(5 ,1,1)) )
              else assertEquals( m:filter(\x x<6), m:same(mn,1):fill(1..idx(mn,1,1)) )  end
     local mc = m:copy()
-    mc:filter(\x x==1, 'in' ) assertEquals( mc  , vector(1) :fill(1)     )
+    mc:filter(\x x==1, 'in' ) assertEquals( mc  , vector(1)    :fill(1)  )
+    mc = m:copy()
+    if #mc > 4 then
+      mc:filter(\x x>4, 'in' ) assertEquals( mc  , vector(#mc):seq(4))
+    end
   end
 end
 
@@ -2344,6 +2393,12 @@ function TestMatrixFun:testFilter_out()
     assertEquals( m:filter_out(\x x>=6    ), m:filter(\x x< 6    ) )
     assertEquals( m:filter_out(\x x<=1, {}), m:filter(\x x> 1, {}) )
     assertEquals( m:filter_out(\x x~=1, {}), m:filter(\x x==1, {}) )
+    assertEquals( m:filter_out(\x,n   x==n), m:filter(\x,n   x~=n) )
+    assertEquals( m:filter_out(\x,n x^2==n), m:filter(\x,n x^2~=n) )
+    assertEquals( m:filter_out(2..#m, \x x == 1, {}), totable(2..#m))
+    assertEquals( m:filter_out(3..#m, \x x ~= 1, {}), {}         )
+    --identity ->
+    assertEquals( m:filter_out(\x x>=6    ), m:filter(1..#m, MAD.gfunc.compose(MAD.gfunc.lnot, \x x>=6)) )
   end
 end
 
