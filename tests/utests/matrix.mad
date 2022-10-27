@@ -49,12 +49,24 @@ local dat = assert(loadfile('data/matrix.dat'))()
 local mth = \f,s,... s[f](s,...)
 local idx = \i,j,nc ( (i-1)*nc+j )
 local sym_func = \v, i,j -> i*j
+local function sympTransferMatrix(a, b, nr) --Create a known symplectic matrix 
+  local sinm = sin(0.5)
+  local cosm = cos(0.5)
+  local c = (1+a^2)/b 
+  local twoByTwo = matrix({{cosm + a*sinm, b*sinm}, {-c*sinm, cosm - a*sinm}})
+  local transfer_mat = matrix(nr*2, nr*2)
+  for i = 0, nr-1 do
+    transfer_mat:setsub((i * 2 + 1)..(i * 2 + 2), (i * 2 + 1)..(i * 2 + 2), twoByTwo)
+  end
+  return transfer_mat
+end
 
 local errMat = matrix(2)
 
 local G  = {}
 G.matidx = {}
 G.matsym = {}
+G.matsymp= {}
 G.mattmp = {}
 G.size   = {}
 G.vi     = {}
@@ -66,6 +78,7 @@ for nr=1,5 do
   G.matsym[#G.matsym+1] = matrix(nr,nr):fill(sym_func)
   for nc=1,5 do
     G.matidx[#G.matidx+1] = matrix(nr,nc):fill(1..nr*nc)
+    G.matsymp[#G.matsymp+1] = sympTransferMatrix(nr, nc, nr)
     G.mattmp[#G.mattmp+1] = matrix(nr,nc)
     G.size  [#G.size+1]   = {nr,nc}
   end
@@ -533,6 +546,7 @@ function TestMatrixSet:testSame()
   assertEquals( m:same( nan), matrix(m:sizes()) )
   assertEquals( m:same( inf), matrix(m:sizes()) )
   assertEquals( m:same( 0  ), matrix(m:sizes()) )
+
   for i,m in ipairs(G.matidx) do
     --                   e ,nr,nc
     assertEquals( m:same(        ),  matrix(m:sizes())          ) -- 1) x:same(               )
@@ -1287,6 +1301,78 @@ function TestMatrix:testTsizes()
   end
 end
 
+-- Properties -----------------------------------------------------------------o
+function TestMatrix:testIs_Const()
+  for i,m in ipairs(G.matidx) do
+    local rNum = random(-1,1)
+    local mat = m:copy()
+    mat:fill(i)      assertTrue(mat:is_const())
+    mat:fill(rNum)   assertTrue(mat:is_const())
+    mat:zeros()      assertTrue(mat:is_const())
+    if #mat > 1 then
+      mat[1] = eps     assertFalse(mat:is_const())
+      assertTrue(mat:is_const(eps))
+    end
+  end
+end
+
+function TestMatrix:testIs_Real() --In cmatrix?
+  for i,m in ipairs(G.matidx) do
+    local mat = m:copy()
+    assertTrue(mat:is_real())
+    if #mat > 1 then
+      local cm = cmatrix(mat:sizes())
+      assertTrue(cm:is_real())
+      cm[1] = cm[1] + eps*1i
+      assertFalse(cm:is_real())
+      assertTrue (cm:is_real(eps))
+    end
+  end
+end
+
+function TestMatrix:testIs_Diag()
+  for i,m in ipairs(G.matidx) do
+    local mat = m:copy()
+    local diag_mat = mat:zeros() + i * mat:eye()
+    assertTrue(diag_mat:is_diag())
+    mat:zeros()      assertTrue(mat:is_diag())
+    if mat.ncol > 1 then
+      diag_mat[2] = diag_mat[2] + eps
+      assertFalse(diag_mat:is_diag())
+      assertTrue (diag_mat:is_diag(eps))
+    end
+  end
+end
+
+function TestMatrix:testIs_Symm()
+  for _, m in ipairs(G.matsym) do 
+    assertTrue(m:is_symm())
+    assertFalse(m:is_symm(true))
+    local mat = m:copy()
+    if mat.nrow > 1 and mat.ncol > 1 then
+      mat[2] = mat[2] + 0.000001
+      assertFalse(mat:is_symm())
+      assertTrue (mat:is_symm(0.000001+eps))
+    end
+  end
+  for _, m in ipairs(G.matidx) do
+    if #m > 1 and m.nrow == m.ncol then 
+      local antiSymmMat = m - m:copy():t()
+      assertTrue(antiSymmMat:is_symm(true))
+      assertFalse(antiSymmMat:is_symm())
+    end
+  end
+end
+
+function TestMatrix:testIs_Symp()
+  for _, m in ipairs(G.matsymp) do 
+    assertTrue(m:same():symp():is_symp())
+    assertTrue(m:is_symp(4*eps))
+  end
+end
+
+
+
 -- in place -------------------------------------------------------------------o
 
 function TestMatrixInPlace:setUp()
@@ -1395,6 +1481,9 @@ function TestMatrixInPlaceII:testCopy()
     m:copy(mcopy)
     assertEquals( m       , mcopy )
     assertEquals( m:copy(), m     )
+    local copiedM = m:copy()
+    copiedM = copiedM + 1
+    assertNotEquals(m, copiedM) --Check actually a copy, not a reference
   end
 end
 
@@ -1668,7 +1757,7 @@ function TestMatrixInPlaceII:testReshape()
   end end
 end
 
---Should I test the unsafe functions; Appendto, reshapeto and reshapeby
+--Should I test the unsafe functions; Appendto, reshapeto and reshapeby?
 
 -- foreach, filter, map, fold, scan -------------------------------------------o
 
@@ -3841,7 +3930,7 @@ function TestMatrixLapack:testSvd()
     local refU = dat.svdU[i]
     local refS = dat.svdS[i]:getdiag()
     local refV = dat.svdV[i]
-    local ru, rs, rv, info = m:svd()
+    local rs, ru, rv, info = m:svd()
     local m1   = ru * m:same():setdiag(rs) * rv:t() -- M = U*S*V'
     assertTrue( ru:eq(refU,  4*eps) )
     assertTrue( rs:eq(refS, 64*eps) )
