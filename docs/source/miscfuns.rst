@@ -86,8 +86,6 @@ Iterable Functions
 
 .. function:: monotonic (tbl, [strict_,] [cmp_,] low_, high_)
 
-.. function:: is_ordered (tbl, [strict_,] [cmp_,] low_, high_)
-
 Mappable Functions
 ==================
 
