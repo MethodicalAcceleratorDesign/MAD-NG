@@ -47,7 +47,7 @@ local fabs, cabs, carg, real, imag, conj, proj, rect, polar, ceil, floor,
       wf, erf, erfc, erfi, erfcx, dawson,
       sign, sign1, sumsqrl, sumabsl, minabsl, maxabsl            in MAD.gmath
 local rep, errorf, assertf, openfile, strsplitall,
-      int2str, num2str                                           in MAD.utility
+      int2str, num2str, monotonic                                in MAD.utility
 local inf, eps                                                   in constant
 local min, max, random                                           in math
 
@@ -811,8 +811,8 @@ function MR.setvec (x, ij, y, p_, s_) -- inplace
   assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
   if is_nil(p_) then
     assert(is_iterable(y), "invalid argument #3 (scalar or iterable expected)")
-    local k, nk = 1, #y
-    for _,ii in ipairs(ij) do seti_s(x,ii,y[k]) ; k=k%nk+1 end
+    local ny = #y
+    for i,ii in ipairs(ij) do seti_s(x,ii,y[(i-1)%ny+1]) end
   else  -- stateless iterator
     assert(is_callable(y), "invalid argument #3 (scalar or callable expected)")
     local v
@@ -846,10 +846,32 @@ function MR.insvec (x, ij, y) -- inplace
   if is_scalar(y) then y = rep(y) end
   assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
   assert(is_iterable(y) , "invalid argument #3 (scalar or iterable expected)")
-  local i, j = #x, #ij
-  while i >= 1 and j >= 1 do
-    for k=i,ij[j]+1,-1 do x[k] = x[k-j] end
-    i, j, x[ij[j]] = ij[j]-1, j-1, y[j]
+
+  -- check if ij is monotonic
+  local nx, nij, ny, incr = #x, #ij, #y, monotonic(ij)
+
+  -- increasing indexes, linear insertion
+  if incr == 1 then
+    local i, j = nx, nij
+    while i >= 1 and j >= 1 do
+      for k=i,ij[j]+1,-1 do x[k] = x[k-j] end
+      i, j, x[ij[j]] = ij[j]-1, j-1, y[(j-1)%ny+1]
+    end
+
+  -- decreasing indexes, linear insertion
+  elseif incr == -1 then
+    local i, j, k = nx, 1, 1
+    while i >= 1 and j <= nij do
+      for k=i,ij[j]+1,-1 do x[k] = x[k-j] end
+      i, j, x[ij[j]] = ij[j]-1, j+1, y[(j-1)%ny+1]
+    end
+
+  -- random indexes, quadratic insertion
+  else
+    for j,i in ipairs(ij) do
+      for k=nx,i+1,-1 do x[k] = x[k-1] end
+      x[i] = y[(j-1)%ny+1]
+    end
   end
   return x
 end
@@ -874,12 +896,10 @@ function MR.setsub (x, ir_, jc_, y, p_, s_)
 end
 
 function MR.inssub (x, ir_, jc_, y)
-  local ij, ir, jc = x:getidx(ir_,jc_)
-  if not (is_number(ij) or
-          not is_nil(ir_) or is_nil(jc_) or (isy_matrix(y) and y.ncol > 1)) then
-    _C.mad_imat_trans(ij._dat, ij._dat, #ir, #jc)
+  if not (not is_nil(ir_) or is_nil(jc_) or (isy_matrix(y) and y.ncol > 1)) and not is_number(jc_) then
+    return x:t'in':insvec(x:getidx(jc_,ir_), y):t'in'
   end
-  return x:insvec(ij, y)
+  return x:insvec(x:getidx(ir_,jc_), y)
 end
 
 function MR.remsub (x, ir_, jc_)
