@@ -80,13 +80,13 @@ Iterable Functions
 
 .. function:: setidxs (a, k_, i_, j_)
 
-.. function:: bsearch (tbl, val, cmp_, low_, high_)
+.. function:: bsearch (tbl, val, [cmp_,] low_, high_)
 
-.. function:: lsearch (tbl, val, cmp_, low_, high_)
+.. function:: lsearch (tbl, val, [cmp_,] low_, high_)
 
-.. function:: ordered (tbl, cmp_, low_, high_)
+.. function:: monotonic (tbl, [strict_,] [cmp_,] low_, high_)
 
-.. function:: monotonic (tbl, strict_, low_, high_)
+.. function:: is_ordered (tbl, [strict_,] [cmp_,] low_, high_)
 
 Mappable Functions
 ==================
