@@ -1491,7 +1491,7 @@ function TestMatrixInPlaceII:testCopy()
   end
 end
 
-function TestMatrixInPlaceII:testRemsub()
+function TestMatrixInPlaceII:testRemsub() --Need to test for ir or jc = nil
   for _,m in ipairs(G.matidx) do
     local nrow, ncol = m:sizes()
     for startRem = 1, nrow - 1 do 
@@ -3482,6 +3482,11 @@ function TestMatrixSympl:testSympconj()
     local R = -J*M:t()*J
     assertEquals( M:sympconj(), R )
     assertEquals( M:bar()     , R )
+    local Rcpy = R:same()
+    M:bar(Rcpy) --Test r_
+    assertEquals( Rcpy, R )
+    M:bar("in") --Test in
+    assertEquals( M, R )
   end
 
   for i=2,10,2 do
@@ -3511,6 +3516,9 @@ function TestMatrixSympl:testSymperr()
     local M = matrix(i):fill(1..i*i)
     local R = M:t()*J*M - J
     assertEquals( M:symperr(), R:norm() ) -- M' J M - J
+    local rcpy = R:same()
+    M:symperr(rcpy)
+    assertEquals( rcpy, R)
   end
   local smat = { matrix{{1,0},{0,1}},
                  matrix{{1,0},{1,1}},
@@ -3525,10 +3533,12 @@ function TestMatrixSympl:testSymplectify() end
 
 -- conjugate, transpose -------------------------------------------------------o
 
-function TestMatrixLinAlg:testTranspose()
+function TestMatrixLinAlg:testTranspose() --Fails, test for c_ -> doesn't exist
   for _,m in ipairs(G.matidx) do
     local nr, nc = m:sizes()
     local mc = m:copy()
+    assertEquals(  m:t()         , m:transpose()  )
+    assertEquals(  m:t(true)     , m:t()          ) --Real mat
     assertEquals( {m:t():sizes()}, {nc,nr}        )
     assertEquals(  m:t()  :t()   , m              )
     assertEquals( (m + mc):t()   , m:t() + mc:t() )
@@ -3561,28 +3571,47 @@ function TestMatrix:testVariance() --This fails as the function variance uses a 
     for _, val in ipairs(m) do 
       sum = sum + (val - mean)^2
     end
-    assertEquals( m:variance(), sum / #m )
+    local sz = #m > 1 and #m - 1 or #m
+    assertEquals( m:variance(), sum / sz) 
+    assertEquals( m:variance(), (m - m:mean()):sumsqr()/ sz )
   end
 end
 
 -- Kahan's summation, Horner's evaluation -------------------------------------o
---Algorthm below taken from https://www.geeksforgeeks.org/kahan-summation-algorithm/ by https://auth.geeksforgeeks.org/user/Bishal%20Kumar%20Dubey/articles
 function TestMatrix:testKsum() 
   for _,m in ipairs(G.matidx) do
+    local mpi = m:copy() * 10000
+    mpi[1] = pi
     local sum = 0
     local c = 0 -- error 
-    for _, val in ipairs(m) do 
-      local y = val - c
-      local t = sum + y
-      c = (t - sum) - y
+    for _, val in ipairs(mpi) do 
+      local t = sum + val
+      c = c - ((t - sum) - val)
       sum = t
     end
-    assertEquals(m:ksum(), sum)
+    local res = mpi:ksum()
+    if sum + c ~= sum then --Check that sum is small enough to have the effect from c
+      assertNotEquals(res, sum)   --Check that ksum is not just the sum
+      if abs(res - sum) > c then assertTrue(abs(res - sum) < 2*c) --from C, if c is greater than the min float of sum, then it will become 2* the min float
+      else                       assertTrue(abs(res - sum) <=  c) --In this case, the c in C is the min float of sum 
+      end
+    end
   end
+  local m = matrix({1, 10^100, 1, -10^100})
+  assertEquals(m:ksum(), 2)
+  assertNotEquals(m:sum(), 2) --checking sum is better than ksum
 end
---Not sure what knorm and kdot does, therefore would only be testing my interpretation of the code
-function TestMatrix:testKnorm() end 
-function TestMatrix:testKdot() end
+
+function TestMatrix:testKdot() --using dot for final test also works?
+  for _,m in ipairs(G.matidx) do
+    local mpi = m:copy() * 10000
+    mpi[1] = pi
+    assertEquals(mpi:emul(mpi):ksum(), mpi:kdot(mpi))
+  end
+  local m1 = matrix({1, 10^50, 1, -10^50})
+  local m2 = matrix({1, 10^50, 1,  10^50})
+  assertEquals(m1:kdot(m2), 2)
+end
 --------------------------------------------------------------------------------------------------
 function TestMatrix:testEval() --Algorthm adapted from www.geeksforgeeks.org/horners-method-algorithm/
   for _,m in ipairs(G.matidx) do
@@ -3614,15 +3643,9 @@ end
 function TestMatrixLinAlg:testInner()
   -- inner prod:  u'.v = |u|.|v| cos(u^v)
   for _,m in ipairs(G.matidx) do
-    local mres, mref
     local mc = m:copy()
-    mres =  m:inner(mc)
-    mref = (m:t() * mc):getdiag():t()
-    if #mref == 1 then assertEquals( mres, mref:geti(1) )
-    else                     assertEquals( mres, mref         ) end
-    mres =  m:inner(mc,'tr')
-    mref = (m:t() * mc):tr()
-    assertEquals( mres, mref )
+    assertEquals( m:inner(mc), (m:t() * mc):tr() )
+    assertEquals( m:dot  (mc), (m:t() * mc):tr() )
   end
 end
 
@@ -3646,6 +3669,7 @@ function TestMatrixLinAlg:testOuter()
     local m1 = vector(nr):fill(1..2*nr..2)
     local m2 = vector(nr):fill(1..  nr)
     assertEquals( m1:outer(m2), m1*m2:t() )
+    assertTrue(is_cmatrix(m1:outer(m2, cmatrix(nr)))) --test r_
   end
 end
 
@@ -3680,6 +3704,7 @@ function TestMatrixLinAlg:testCross()
     assertEquals( (2*m1):cross(m2)   , 2*m1:cross(  m2)              )
     if nc == 3 then
       assertEquals( m1:cross( m2:cross(m3) ), m2*(m1*m3)-m3*(m1*m2)  )
+      assertTrue  ( is_cmatrix(m1:cross(m2, cmatrix(3)))             ) --test r_
     end
   end
 end
@@ -3716,7 +3741,9 @@ function TestMatrixLinAlg:testMixed()
     local m1 = matrix(3,nc):fill(1   ..3*nc  )
     local m2 = m1:same()   :fill(3*nc..1.. -1)
     local m3 = m1:same()   :fill(1)
-    assertEquals( m1:mixed(m2,m3), m1:cross(m2):inner(m3) )
+    local res= m1:cross(m2):inner(m3)
+    if nc > 1 then  assertEquals( m1:mixed(m2,m3):sum(), res)
+    else            assertEquals( m1:mixed(m2,m3)      , res) end
   end
 end
 
@@ -3728,24 +3755,24 @@ function TestMatrixLinAlg:testNorm() --|u| = sqrt(u'.u), forbidius norm
   end
 end
 
-function TestMatrixErr:testDistance()
+function TestMatrixErr:testDist()
   local msg = {
     "invalid argument #2 (matrix expected)",
   }
-  assertErrorMsgContains( msg[1], mth, 'distance', errMat, nil  )
-  assertErrorMsgContains( msg[1], mth, 'distance', errMat, 1..2 )
-  assertErrorMsgContains( msg[1], mth, 'distance', errMat, ''   )
-  assertErrorMsgContains( msg[1], mth, 'distance', errMat, {}   )
+  assertErrorMsgContains( msg[1], mth, 'dist', errMat, nil  )
+  assertErrorMsgContains( msg[1], mth, 'dist', errMat, 1..2 )
+  assertErrorMsgContains( msg[1], mth, 'dist', errMat, ''   )
+  assertErrorMsgContains( msg[1], mth, 'dist', errMat, {}   )
 end
 
-function TestMatrixLinAlg:testDistance()
+function TestMatrixLinAlg:testDist()
   --sqrt( trace((A-B) * (A-B)') )
   for _,m in ipairs(G.matidx) do
     local mn = #m
     local mc = m:copy()
     local m2 = m:same():fill(mn..1..-1)
-    assertEquals( m:distance(mc), sqrt( ( (m-mc)*(m-mc):t() ):tr()) )
-    assertEquals( m:distance(m2), sqrt( ( (m-m2)*(m-m2):t() ):tr()) )
+    assertEquals( m:dist(mc), sqrt( ( (m-mc)*(m-mc):t() ):tr()) )
+    assertEquals( m:dist(m2), sqrt( ( (m-m2)*(m-m2):t() ):tr()) )
   end
 end
 
@@ -3759,13 +3786,30 @@ end
 function TestMatrixLinAlg:testUnit()  --  unit :  u / |u|
   for _,m in ipairs(G.matidx) do
     assertEquals( m:unit(), m / m:norm() )
+    local mc = m:same()
+    m:unit(mc)
+    assertEquals( m:unit(), mc)
   end
 end
 
-function TestMatrixLinAlg:testCenter()
+function TestMatrixLinAlg:testCenter() --Is there a better way testing centering rows and column
   for _,m in ipairs(G.matidx) do
     local mid = m:sum() / #m
     assertEquals( m:center(),  m:map(\x x-mid) )
+    assertEquals( m:center("vec"),  m:map(\x x-mid) )
+    local centeredrow, centeredcol, mc = m:copy(), m:copy(), m:same()
+    for i = 1, m.nrow do 
+      local row = centeredrow:getsub(i)
+      centeredrow:setsub(i, nil, row - row:mean())
+    end
+    for i = 1, m.ncol do 
+      local col = centeredcol:getsub(nil, i)
+      centeredcol:setsub(nil, i, col - col:mean())
+    end
+    assertEquals( m:center("row"), centeredrow)
+    assertEquals( m:center("col"), centeredcol)
+    m:center(mc)
+    assertEquals( m:center(), mc) --check r_
   end
 end
 
@@ -3811,6 +3855,10 @@ function TestMatrixLinAlg:testAngle()
   assertEquals      ( vector{1,0,0}:angle(vector{-1, 0, 0}), pi          )
   assertEquals      ( vector{0,0,1}:angle(vector{ 0, 0, 1}), 0           )
   assertEquals      ( vector{0,0,1}:angle(vector{ 0, 0,-1}), pi          )
+  assertAlmostEquals( vector{1,0,0}:angle(vector{ 1, 1, 0}, vector{0, 0, -1}), -pi/4 , eps ) --test change of sign depending on n_
+  assertAlmostEquals( vector{1,0,0}:angle(vector{ 1, 1, 0}, vector{0, 0,  1}),  pi/4 , eps ) --               ''
+  assertEquals      ( vector{1,0,0}:angle(vector{-1,-1, 0}, vector{0, 0,  1}), -3*pi/4     ) --               ''
+  assertEquals      ( vector{1,0,0}:angle(vector{-1,-1, 0}, vector{0, 0, -1}),  3*pi/4     ) --               ''
 end
 
 -- operators ------------------------------------------------------------------o
