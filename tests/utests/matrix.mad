@@ -1981,10 +1981,10 @@ end
 function TestMatrixFun:testMap3()
   for _,m1 in ipairs(G.matidx) do
     local mn, nr, nc = #m1, m1:sizes()
-    assertEquals( m1:map3(m1, m1, '~'             ), m1:same():fill(-1.. -mn..-1) )
-    assertEquals( m1:map3(m1, m1, '+'             ), m1:same():fill( 2..2*mn.. 2) )
+    assertEquals( m1:map3(m1, m1, \x,y,z -x        ), m1:same():fill(-1.. -mn..-1) )
+    assertEquals( m1:map3(m1, m1, \x,y,z x+y       ), m1:same():fill( 2..2*mn.. 2) )
     assertEquals( m1:map3(m1, m1, \x,y,z x+y+z    ), m1:same():fill( 3..3*mn.. 3) )
-    assertEquals( m1:map3(m1, m1, '<'         , {}), rep(false, mn)               )
+    assertEquals( m1:map3(m1, m1, \x,y,z x<y        , {}), rep(false, mn)               )
 
     local m2 = { m1, 1..mn, totable(1..mn) }
     local m3 = { m1, 1..mn, totable(1..mn) }
@@ -1994,7 +1994,7 @@ function TestMatrixFun:testMap3()
       assertEquals( m1:map3(m2[i], m3[j], \x,y,z x+y+z, {}),        totable(3..3*mn..3) ) -- totable test
     end end
     --'in' place test
-    m1:map3(m1, m1, '~'         , 'in') assertEquals( m1, m1:copy():fill(-1..  -mn..-1) )
+    m1:map3(m1, m1, \x,y,z -x   , 'in') assertEquals( m1, m1:copy():fill(-1..  -mn..-1) )
     m1:map3(m1, m1, \x,y,z x+y+z, 'in') assertEquals( m1, m1:same():fill(-3..-3*mn..-3) )
     --ij test
     for j = 1, mn do 
@@ -4379,9 +4379,9 @@ function TestMatrixLapack:testNSolve() -- reuse data of Solve --I have left thes
       local x, n, r = m1:nsolve(m2)
       local e = (m2-m1*x):norm()
       assertTrue( n == rn )              -- mad_use_madx_micado = 1
-      assertTrue( x:eq(m3, 2*eps) )      -- 3e3*eps (1708*eps linux)
-      assertTrue( r:eq(m4, 2*eps) )      --   8*eps (6*eps linux)
-      assertAlmostEquals( e, re, 2*eps ) --   5*eps (10*eps linux)
+      assertTrue( x:eq(m3, 2*eps) )      -- 3e3*eps (Currently fails at 1708*eps linux)
+      assertTrue( r:eq(m4, 2*eps) )      --   8*eps (Currently fails at 6*eps linux)
+      assertAlmostEquals( e, re, 2*eps ) --   5*eps (Currently fails at 10*eps linux)
   end
 end
 
@@ -4415,15 +4415,15 @@ function TestMatrixErr:testGSolve() -- TODO
 end
 
 function TestMatrixLapack:testGSolve()
-  for i,m1 in ipairs(dat.gsolveIn1) do
-    local m2 = dat.gsolveIn2[i]
-    local m3 = dat.gsolveIn3[i]
-    local m4 = dat.gsolveIn4[i]
-    local m5 = dat.gsolveOut[i]
+  for i,A in ipairs(dat.gsolveIn1) do
+    local B = dat.gsolveIn2[i]
+    local C = dat.gsolveIn3[i]
+    local D = dat.gsolveIn4[i]
+    local xres = dat.gsolveOut[i]
     local er = dat.gsolveRes[i]
-    local x, e = m1:gsolve(m2, m3, m4)
+    local x, e = A:gsolve(B, C, D)
     assertAlmostEquals( e, er, eps )
-    assertTrue( x:eq(m5, 2*eps) )
+    assertTrue( x:eq(xres, 2*eps) )
   end
 end
 
@@ -4455,6 +4455,30 @@ function TestMatrixErr:testSvd() --TODO
     "invalid input argument",
     "SVD failed to converge",
   }
+end
+
+function TestMatrixLapack:testPcacnd() --TO IMPROVE
+  --Final matrix random numbers so should have lowest dependancy
+  local ingredients = matrix{{ 7,26, 6,60, 0.142},
+                             { 1,29,15,52, 0.025},
+                             {11,56, 8,20, 0.421},
+                             {11,31, 8,47, 0.184},
+                             { 7,52, 6,33, 0.726},
+                             {11,55, 9,22, 0.370},
+                             { 3,71,17, 6, 0.841},
+                             { 1,31,22,44, 0.734},
+                             { 2,54,18,22, 0.571},
+                             {21,47, 4,26, 0.177},
+                             { 1,40,23,34, 0.957},
+                             {11,66, 9,12, 0.265},
+                             {10,68, 8,12, 0.925}}
+local rs = ingredients:svd()
+local dependancyLimits = {0.01, 0.1, 0.2, 0.4, 1} --calculated from matlab
+  for i, limit in ipairs(dependancyLimits) do 
+    local pcs, sv = ingredients:pcacnd(nil, limit)
+    assertEquals(rs, sv)
+    assertEquals(#pcs, i)
+  end
 end
 
 function TestMatrixLapack:testSvd()
