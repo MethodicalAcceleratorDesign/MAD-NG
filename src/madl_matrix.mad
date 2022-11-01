@@ -35,9 +35,9 @@ local type, assert, error, ipairs, tonumber, tostring_, table, string, rawequal 
 
 local _C, warn, tostring, complex, tocomplex, constant in MAD
 
-local is_nil, is_boolean, is_number, is_integer, is_string,
-      is_range, is_table, is_complex, is_scalar, is_callable,
-      is_iterable, get_metamethod                                in MAD.typeid
+local is_nil, is_boolean, is_logical, is_number, is_integer,
+      is_string, is_range, is_table, is_complex, is_scalar,
+      is_callable, is_iterable, get_metamethod                   in MAD.typeid
 local ident, swap, compose, bind1st, opstr,
       unm, add, sub, mul, div, mod, pow, lbool, lnot, land, lor  in MAD.gfunc
 local fabs, cabs, carg, real, imag, conj, proj, rect, polar, ceil, floor,
@@ -400,8 +400,8 @@ function MR.is_symm (x, tol_, sk_)
   local tol, nr, nc = tol_ or 0, x:sizes()
   local sk = sk_ ~= true and 1 or -1
   if nr ~= nc then return false end
-  for i=1,nr  do
-  for j=1,i-1 do
+  for i=1,nr do
+  for j=1,i  do
     if abs(get(x,i,j) - sk*get(x,j,i)) > tol then return false end
   end end
   return true
@@ -414,8 +414,8 @@ function MC.is_symm (x, tol_, sk_, cj_)
   local sk = sk_ ~= true  and 1 or -1
   local cj = cj_ ~= false and conj or ident
   if nr ~= nc then return false end
-  for i=1,nr  do
-  for j=1,i-1 do
+  for i=1,nr do
+  for j=1,i  do
     if abs(get(x,i,j) - sk*cj(get(x,j,i))) > tol then return false end
   end end
   return true
@@ -609,7 +609,7 @@ function MR.movev (x, i, j, yi, y_) -- move x[i..j] to y[yi,yi+j-i]
   assert(i  >= 1 and j  <= size(x) and i <= j, "source indexes out of bounds")
   assert(yi >= 1 and yj <= size(y),       "destination indexes out of bounds")
   _C.mad_vec_copy(x._dat+i-1, y._dat+yi-1, j-i+1, 1)
-  return x
+  return y
 end
 
 function MC.movev (x, i, j, yi, y_)
@@ -617,7 +617,7 @@ function MC.movev (x, i, j, yi, y_)
   assert(i  >= 1 and j  <= size(x) and i <= j, "source indexes out of bounds")
   assert(yi >= 1 and yj <= size(y),       "destination indexes out of bounds")
   _C.mad_cvec_copy(x._dat+i-1, y._dat+yi-1, j-i+1, 1)
-  return x
+  return y
 end
 
 function MI.movev (x, i, j, yi, y_)
@@ -625,7 +625,7 @@ function MI.movev (x, i, j, yi, y_)
   assert(i  >= 1 and j  <= size(x) and i <= j, "source indexes out of bounds")
   assert(yi >= 1 and yj <= size(y),       "destination indexes out of bounds")
   _C.mad_ivec_copy(x._dat+i-1, y._dat+yi-1, j-i+1, 1)
-  return x
+  return y
 end
 
 function MR.shiftv (x, ni, ns_) -- shift data >= ni by +/-ns
@@ -725,13 +725,20 @@ end
 
 function MR.diag (x, k_)
   local k, nr, nc = k_ or 0, x:sizes()
-  assert(nr == 1 or nc == 1, "invalid matrix sizes (vector expected)")
   assert(is_integer(k), "invalid argument #2 (integer expected)")
-  local nn = nr*nc+abs(k)
-  local r = x:same(nn,nn)
-  k = k < 0 and -k*nn or k
-  for i=1,nr*nc do seti(r, i+k, geti(x,i)) ; k = k+nn end
-  return r
+  if nr == 1 or nc == 1 then
+    local nn = nr*nc+abs(k)
+    local r = x:same(nn,nn)
+    k = k < 0 and -k*nn or k
+    for i=1,nr*nc do seti(r, i+k, geti(x,i)) ; k = k+nn end
+    return r
+  else
+    local nn = min(nr,nc)-abs(k)
+    local r = x:same(nn,1)
+    k = k < 0 and -k*nn or k
+    for i=1,nn do seti(r, i, geti(x,i+k)) ; k = k+nc end
+    return r
+  end
 end
 
 MI.vec  = MR.vec
@@ -972,7 +979,7 @@ function MR.filter (x, ij_, p, r_)
   assert(is_iterable(r) , "invalid argument #4 (iterable expected)")
   local k = 1
   for _,ii in ipairs(ij) do
-    local v = geti(x,ii)
+    local v = geti_s(x,ii)
     if p(v, ii) == true then r[k], ri[k], k = v, ii, k+1 end
   end
   if k == 1 then return {}, {} end
@@ -981,7 +988,10 @@ function MR.filter (x, ij_, p, r_)
   return r, ri
 end
 
-MR.filter_out = \x,ij_,p,r_ -> x:filter(ij_,compose(lnot,p), r_)
+function MR.filter_out (x, ij_, p, r_)
+  if is_callable(ij_) then p, r_, ij_ = ij_, p end -- right shift
+  return x:filter(ij_,compose(lnot,p), r_)
+end
 
 MI.filter     = MR.filter
 MI.filter_out = MR.filter_out
@@ -1017,7 +1027,7 @@ function MR.map2 (x, y, ij_, f, r_)
   assert(is_callable(f ), "invalid argument #4 (callable expected)")
   if is_nil(r_) then
     local iter, s, i, ii = ipairs(ij) ; i, ii = iter(s, i)
-    local r0 = f(geti(x,ii), y[ii], ii) ; r_ = x:same(r0) ; r_[ii] = r0
+    local r0 = f(geti_s(x,ii), y[ii], ii) ; r_ = x:same(r0) ; r_[ii] = r0
     for _,ii in iter, s, i do r_[ii] = f(geti_s(x,ii), y[ii], ii) end
   else
     assert(is_iterable(r_), "invalid argument #5 (iterable expected)")
@@ -1032,7 +1042,6 @@ function MR.map3 (x, y, z, ij_, f, r_)
   if is_callable(ij_) or is_string(ij_) then f, r_, ij_ = ij_, f end -- right shift
   if is_scalar(y ) then y = rep(y) end
   if is_scalar(z ) then z = rep(z) end
-  if is_string(f ) then f = assert(opstr[f], "invalid operator string") end
   if is_string(r_) and r_ == 'in' or ij_ and is_nil(r_) then r_ = x end
   local ij = ij_ or 1..size(x)
   assert(is_iterable(y ), "invalid argument #2 (scalar or iterable expected)")
@@ -1041,7 +1050,7 @@ function MR.map3 (x, y, z, ij_, f, r_)
   assert(is_callable(f ), "invalid argument #5 (callable expected)")
   if is_nil(r_) then
     local iter, s, i, ii = ipairs(ij) ; i, ii = iter(s, i)
-    local r0 = f(geti(x,ii), y[ii], z[ii], ii) ; r_ = x:same(r0) ; r_[ii] = r0
+    local r0 = f(geti_s(x,ii), y[ii], z[ii], ii) ; r_ = x:same(r0) ; r_[ii] = r0
     for _,ii in iter, s, i do r_[ii] = f(geti_s(x,ii), y[ii], z[ii], ii) end
   else
     assert(is_iterable(r_), "invalid argument #6 (iterable expected)")
@@ -1068,7 +1077,7 @@ function MR.foldl (x, f, x0_, d_, r_)
                             r  = geti(x,1)
     if not is_nil(x0_) then r  = f(x0_, r) end
     for i=2,nr*nc        do r  = f(r, geti(x,i)) end
-  elseif d == 'diag' then             -- fold x diagonal
+  elseif d == 'diag' then             -- fold x diagonal, r_ is discarded
     local n = min(nr,nc)    r  = geti(x,1)
     if not is_nil(x0_) then r  = f(x0_, r) end
     for i=2,n            do r  = f(r, get(x,i,i)) end
@@ -1253,12 +1262,12 @@ MR.sinhc   = \x,r_ -> x:map(sinhc , r_)
 MR.asinc   = \x,r_ -> x:map(asinc , r_)
 MR.asinhc  = \x,r_ -> x:map(asinhc, r_)
 
-MR.wf      = \x,r_ -> x:map(wf    , r_)
-MR.erf     = \x,r_ -> x:map(erf   , r_)
-MR.erfc    = \x,r_ -> x:map(erfc  , r_)
-MR.erfi    = \x,r_ -> x:map(erfi  , r_)
-MR.erfcx   = \x,r_ -> x:map(erfcx , r_)
-MR.dawson  = \x,r_ -> x:map(dawson, r_)
+MR.wf      = \x,rtol_,r_ -> x:map2(rtol_ or 0, wf    , r_)
+MR.erf     = \x,rtol_,r_ -> x:map2(rtol_ or 0, erf   , r_)
+MR.erfc    = \x,rtol_,r_ -> x:map2(rtol_ or 0, erfc  , r_)
+MR.erfi    = \x,rtol_,r_ -> x:map2(rtol_ or 0, erfi  , r_)
+MR.erfcx   = \x,rtol_,r_ -> x:map2(rtol_ or 0, erfcx , r_)
+MR.dawson  = \x,rtol_,r_ -> x:map2(rtol_ or 0, dawson, r_)
 
 MR.conj    = \x,r_ -> x:map(conj , r_) ; MR.conjugate = MR.conj -- alias
 MR.fabs    = \x,r_ -> x:map(fabs , r_)
@@ -1279,30 +1288,30 @@ MI.sign1   = \x,r_ -> x:map(sign1, r_)
 
 -- matrix function as special mfun --------------------------------------------o
 
-MR.sqrt    = \x,r_ -> x:mfun(sqrt  , r_)
-MR.exp     = \x,r_ -> x:mfun(exp   , r_)
-MR.log     = \x,r_ -> x:mfun(log   , r_)
-MR.log10   = \x,r_ -> x:mfun(log10 , r_)
-MR.sin     = \x,r_ -> x:mfun(sin   , r_)
-MR.cos     = \x,r_ -> x:mfun(cos   , r_)
-MR.tan     = \x,r_ -> x:mfun(tan   , r_)
-MR.cot     = \x,r_ -> x:mfun(cot   , r_)
-MR.sinh    = \x,r_ -> x:mfun(sinh  , r_)
-MR.cosh    = \x,r_ -> x:mfun(cosh  , r_)
-MR.tanh    = \x,r_ -> x:mfun(tanh  , r_)
-MR.coth    = \x,r_ -> x:mfun(coth  , r_)
-MR.asin    = \x,r_ -> x:mfun(asin  , r_)
-MR.acos    = \x,r_ -> x:mfun(acos  , r_)
-MR.atan    = \x,r_ -> x:mfun(atan  , r_)
-MR.acot    = \x,r_ -> x:mfun(acot  , r_)
-MR.asinh   = \x,r_ -> x:mfun(asinh , r_)
-MR.acosh   = \x,r_ -> x:mfun(acosh , r_)
-MR.atanh   = \x,r_ -> x:mfun(atanh , r_)
-MR.acoth   = \x,r_ -> x:mfun(acoth , r_)
-MR.sinc    = \x,r_ -> x:mfun(sinc  , r_)
-MR.sinhc   = \x,r_ -> x:mfun(sinhc , r_)
-MR.asinc   = \x,r_ -> x:mfun(asinc , r_)
-MR.asinhc  = \x,r_ -> x:mfun(asinhc, r_)
+MR.msqrt    = \x,r_ -> x:mfun(sqrt  , r_)
+MR.mexp     = \x,r_ -> x:mfun(exp   , r_)
+MR.mlog     = \x,r_ -> x:mfun(log   , r_)
+MR.mlog10   = \x,r_ -> x:mfun(log10 , r_)
+MR.msin     = \x,r_ -> x:mfun(sin   , r_)
+MR.mcos     = \x,r_ -> x:mfun(cos   , r_)
+MR.mtan     = \x,r_ -> x:mfun(tan   , r_)
+MR.mcot     = \x,r_ -> x:mfun(cot   , r_)
+MR.msinh    = \x,r_ -> x:mfun(sinh  , r_)
+MR.mcosh    = \x,r_ -> x:mfun(cosh  , r_)
+MR.mtanh    = \x,r_ -> x:mfun(tanh  , r_)
+MR.mcoth    = \x,r_ -> x:mfun(coth  , r_)
+MR.masin    = \x,r_ -> x:mfun(asin  , r_)
+MR.macos    = \x,r_ -> x:mfun(acos  , r_)
+MR.matan    = \x,r_ -> x:mfun(atan  , r_)
+MR.macot    = \x,r_ -> x:mfun(acot  , r_)
+MR.masinh   = \x,r_ -> x:mfun(asinh , r_)
+MR.macosh   = \x,r_ -> x:mfun(acosh , r_)
+MR.matanh   = \x,r_ -> x:mfun(atanh , r_)
+MR.macoth   = \x,r_ -> x:mfun(acoth , r_)
+MR.msinc    = \x,r_ -> x:mfun(sinc  , r_)
+MR.msinhc   = \x,r_ -> x:mfun(sinhc , r_)
+MR.masinc   = \x,r_ -> x:mfun(asinc , r_)
+MR.masinhc  = \x,r_ -> x:mfun(asinhc, r_)
 
 -- special folds --------------------------------------------------------------o
 
@@ -1443,7 +1452,8 @@ end
 
 -- transpose, trace -----------------------------------------------------------o
 
-function MR.transpose (x, r_)
+function MR.transpose (x, c_, r_)
+  if not is_logical(c_) and is_nil(r_) then r_, c_ = c_, nil end
   if is_string(r_) and r_ == 'in' then r_ = x end
 
   local nr, nc = x:sizes()
@@ -1461,8 +1471,8 @@ end
 MR.t = MR.transpose -- alias
 
 function MC.transpose (x, c_, r_)
-  if (is_cmatrix(c_) or c_ == 'in') and is_nil(r_) then r_, c_ = c_, nil end
-  if  is_string(r_) and r_ == 'in' then r_ = x end
+  if not is_logical(c_) and is_nil(r_) then r_, c_ = c_, nil end
+  if is_string(r_) and r_ == 'in' then r_ = x end
 
   local nr, nc = x:sizes()
   local r = r_ or cmatrix_alloc(nr, nc)
@@ -2497,7 +2507,7 @@ function MR.mfun (x, fun)
      vr:maxabs'col':min() <= 10 * eps then
     warn("ill-formed input matrix (rank deficient eigenvectors)")
   end
-  local y = (vr * diag(w:map(fun, w))) / vr
+  local y = (vr * w:map(fun, w):diag()) / vr
   -- convert result to real matrix if input was real
   if is_matrix(x) then
     local yr, yi = y:reim()
