@@ -118,7 +118,8 @@ Special Constructors
 
 .. function:: mat:diag (k_)
 
-   Return a zero square matrix of the same type as :var:`mat` where :expr:`n = #mat + abs(k)`, and with its :math:`k`-th diagonal :expr:`-n <= k <= n` filled with the values of the elements of :var:`mat`, i.e. interpreting the matrix as the :math:`k`-th diagonal vector. Default: :expr:`k_ = 0`.
+   If :var:`mat` is a matrix, return a column vector containing its :math:`k`-th diagonal equivalent to :expr:`mat:getdiag(k_)`. If :var:`mat` is a vector, return a square matrix with its :math:`k`-th diagonal set to the values of the elements of :var:`mat` equivalent to
+   :expr:`mat:same(#mat, #mat):setdiag(mat, k_)`.
 
 Sizes and Indexing
 ------------------
@@ -278,7 +279,7 @@ Getters and Setters
 
 .. function:: mat:getdiag ([k_,] r_)
 
-   Return a column vector of length :expr:`min(nrow, ncol)` or :var:`r` containing the values of the elements on the :math:`k`-th diagonal of the real, complex or integer matrix :var:`mat` using :expr:`mat:getvec()`. Default: as :func:`mat:getdidx()`.
+   Return a column vector of length :expr:`min(nrow, ncol)-abs(k)` or :var:`r` containing the values of the elements on the :math:`k`-th diagonal of the real, complex or integer matrix :var:`mat` using :expr:`mat:getvec()`. Default: as :func:`mat:getdidx()`.
 
 .. function:: mat:setdiag (a, [k_,] p_, s_)
 
@@ -326,7 +327,7 @@ Matrix Properties
 
 .. function:: mat:is_symm ([tol_,] [sk_,] c_)
 
-   Return true if :var:`mat` is a `symmetric matrix <https://en.wikipedia.org/wiki/Symplectic_matrix>`_, i.e. :math:`M = M^*` within the tolerance :var:`tol`, false otherwise. It checks for a `skew-symmetric matrix <https://en.wikipedia.org/wiki/Skew-symmetric_matrix>`_ if :expr:`sk = true`, and for a `Hermitian matrix <https://en.wikipedia.org/wiki/Hermitian_matrix>`_ if :expr:`c ~= false`, and a `skew-Hermitian matrix <https://en.wikipedia.org/wiki/Skew-Hermitian_matrix>`_ if both are combined. Default: :expr:`tol_ = 0`.
+   Return true if :var:`mat` is a `symmetric matrix <https://en.wikipedia.org/wiki/Symmetric_matrix>`_, i.e. :math:`M = M^*` within the tolerance :var:`tol`, false otherwise. It checks for a `skew-symmetric matrix <https://en.wikipedia.org/wiki/Skew-symmetric_matrix>`_ if :expr:`sk = true`, and for a `Hermitian matrix <https://en.wikipedia.org/wiki/Hermitian_matrix>`_ if :expr:`c ~= false`, and a `skew-Hermitian matrix <https://en.wikipedia.org/wiki/Skew-Hermitian_matrix>`_ if both are combined. Default: :expr:`tol_ = 0`.
 
 .. function:: mat:is_symp (tol_)
 
@@ -425,7 +426,7 @@ Mapping and Folding
 
 .. function:: mat:map3 (y, z, [ij_,] f, r_)
 
-   Equivalent to :func:`mat:map()` but with three arguments passed to :var:`f`, i.e. using :expr:`f(mat[n], y[n], z[n], n)`.
+   Equivalent to :func:`mat:map()` but with three arguments passed to :var:`f`, i.e. using :expr:`f(mat[n], y[n], z[n], n)`. Note that :var:`f` cannot be an operator string, as only unary and binary operators are avalaible in such form. 
 
 .. function:: mat:foldl (f, [x0_,] [d_,] r_)
 
@@ -439,6 +440,7 @@ Mapping and Folding
 
    - If :expr:`d = 'col'`, the folding left iteration runs on the columns of the matrix :var:`mat` and a row vector is returned.
 
+   Note that ommitting both :var:`x0` and :var:`d` implies to not specify :var:`r` as well, otherwise the latter will be interpreted as :var:`x0`.
    Default: :expr:`x0 = mat[1]` (or first row or column element), :expr:`d = 'vec'`.
 
 .. function:: mat:foldr (f, [x0_,] [d_,] r_)
@@ -457,6 +459,7 @@ Mapping and Folding
 
    - If :expr:`d = 'col'`, the sanning left iteration runs on the columns of the matrix :var:`mat` and a matrix is returned.
 
+   Note that ommitting both :var:`x0` and :var:`d` implies to not specify :var:`r` as well, otherwise the latter will be interpreted as :var:`x0`.
    Default: :expr:`x0 = mat[1]` (or first row or column element), :expr:`d = 'vec'`.
 
 .. function:: mat:scanr (f, [x0_,] [d_,] r_)
@@ -539,15 +542,15 @@ Mapping Error-like Methods
 
 The following table lists the methods built from the application of :func:`mat:map()` to the error-like functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`.
 
-==========================  ===============================
-Functions                   Equivalent Mapping
-==========================  ===============================
-:func:`mat:erf(r_)`         :expr:`mat:map(erf,r_)`
-:func:`mat:erfc(r_)`        :expr:`mat:map(erfc,r_)`
-:func:`mat:erfcx(r_)`       :expr:`mat:map(erfcx,r_)`
-:func:`mat:erfi(r_)`        :expr:`mat:map(erfi,r_)`
-:func:`mat:wf(r_)`          :expr:`mat:map(wf,r_)`
-==========================  ===============================
+===========================  ===============================
+Functions                    Equivalent Mapping
+===========================  ===============================
+:func:`mat:erf(rtol_,r_)`    :expr:`mat:map2(rtol_,erf,r_)`
+:func:`mat:erfc(rtol_,r_)`   :expr:`mat:map2(rtol_,erfc,r_)`
+:func:`mat:erfcx(rtol_,r_)`  :expr:`mat:map2(rtol_,erfcx,r_)`
+:func:`mat:erfi(rtol_,r_)`   :expr:`mat:map2(rtol_,erfi,r_)`
+:func:`mat:wf(rtol_,r_)`     :expr:`mat:map2(rtol_,wf,r_)`
+===========================  ===============================
 
 Mapping Vector-like Methods
 ---------------------------
