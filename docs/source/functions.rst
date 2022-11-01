@@ -223,16 +223,19 @@ Relational Operators
 
 Functions for relational operators are wrappers to associated logical operators, which themselves can be overridden by their associated metamethods. Relational ordering operators are available only for objects that are ordered.
 
-===============  ================  ==============================  =================
-Functions        Return values     Operator string                 Metamethods
-===============  ================  ==============================  =================
-:func:`eq(x,y)`  :math:`x = y`     :const:`"=="`                   :func:`__eq(x,y)`
-:func:`ne(x,y)`  :math:`x \neq y`  :const:`"!="` or :const:`"~="`  :func:`__eq(x,y)`
-:func:`lt(x,y)`  :math:`x < y`     :const:`"<"`                    :func:`__lt(x,y)`
-:func:`le(x,y)`  :math:`x \leq y`    :const:`"<="`                   :func:`__le(x,y)`
-:func:`gt(x,y)`  :math:`x > y`     :const:`">"`                    :func:`__le(x,y)`
-:func:`ge(x,y)`  :math:`x \geq y`    :const:`">="`                   :func:`__lt(x,y)`
-===============  ================  ==============================  =================
+================  ================  ==============================  =================
+Functions         Return values     Operator string                 Metamethods
+================  ================  ==============================  =================
+:func:`eq(x,y)`   :math:`x = y`     :const:`"=="`                   :func:`__eq(x,y)`
+:func:`ne(x,y)`   :math:`x \neq y`  :const:`"!="` or :const:`"~="`  :func:`__eq(x,y)`
+:func:`lt(x,y)`   :math:`x < y`     :const:`"<"`                    :func:`__lt(x,y)`
+:func:`le(x,y)`   :math:`x \leq y`  :const:`"<="`                   :func:`__le(x,y)`
+:func:`gt(x,y)`   :math:`x > y`     :const:`">"`                    :func:`__le(y,x)`
+:func:`ge(x,y)`   :math:`x \geq y`  :const:`">="`                   :func:`__lt(y,x)`
+:func:`cmp(x,y)`  :math:`[-1,0,1]`  :const:`"?="`
+================  ================  ==============================  =================
+
+The special relational operator :func:`cmp()` returns the number :const:`1` for :math:`x<y`, :const:`-1` for :math:`x>y`, and :const:`0` otherwise.
 
 Object Operators
 ----------------
