@@ -84,6 +84,10 @@ Iterable Functions
 
 .. function:: lsearch (tbl, val, cmp_, low_, high_)
 
+.. function:: ordered (tbl, cmp_, low_, high_)
+
+.. function:: monotonic (tbl, strict_, low_, high_)
+
 Mappable Functions
 ==================
 
