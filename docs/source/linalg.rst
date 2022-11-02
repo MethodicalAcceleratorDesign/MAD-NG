@@ -225,9 +225,9 @@ Getters and Setters
    
    - if :var:`a` is a :type:`scalar`, it is will be used repetitively.
 
-   - if :var:`a` is an :type:`iterable` then the matrix will be filled with values from :var:`a[n]` for :expr:`1 <= n <= #a`.
-   
-   The values after the inserted indexes are pushed toward the end of the matrix and discarded if they go beyond the last index. If :expr:`ir = nil`, :expr:`jc ~= nil` and :var:`a` is a 1D :type:`iterable`, then the latter is used to filled the matrix in the column-major order. Default: as :func:`mat:getidx()`.
+   - if :var:`a` is an :type:`iterable` then the rows and columns will be filled with values from :var:`a[n]` for :expr:`1 <= n <= #a` and recycled repetitively if :expr:`#a < #ir * #ic`.
+ 
+   The values after the inserted indexes are pushed toward the end of the matrix, i.e. interpreting the matrix as a vector, and discarded if they go beyond the last index. If :expr:`ir = nil`, :expr:`jc ~= nil` and :var:`a` is a 1D :type:`iterable`, then the latter is used to filled the matrix in the column-major order. Default: as :func:`mat:getidx()`.
 
 .. function:: mat:remsub (ir_, jc_)
 
@@ -267,7 +267,7 @@ Getters and Setters
 
 .. function:: mat:inscol (jc, a)
 
-   Equivalent to :func:`mat:inssub()` with :expr:`ir = nil`.
+   Equivalent to :func:`mat:inssub()` with :expr:`ir = nil`. If :var:`a` is a matrix with :expr:`ncol > 1` then :expr:`a = 0` and it is followed by :func:`mat:setsub()` with :expr:`ir = nil` to obtain the expected result.
 
 .. function:: mat:remcol (jc)
 
