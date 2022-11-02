@@ -4602,10 +4602,17 @@ function TestMatrixFFT:testFFT()
   for i ,s1 in ipairs(dat.sm) do -- 2D
   for ii,s2 in ipairs(dat.sm) do
     local ref = dat.fftMOut[idx(i,ii,3)]
-    local res = dat.fftMIn:getsub(1..s1, 1..s2):fft()
+    local res = cmatrix(s1, s2)
+    dat.fftMIn:getsub(1..s1, 1..s2):fft(res) --test r_
     assertTrue( res:real():eq( ref:real(), 16*eps ) )
     assertTrue( res:imag():eq( ref:imag(), 16*eps ) )
   end end
+  local m = dat.fftMIn
+  assertTrue  (dat.fftMOutVec:eq(m:fft("vec"), 3*eps))
+  assertEquals(dat.fftMOutRow,   m:fft("row")        )
+  local res = cmatrix(m:sizes())
+  m:fft("col", res) --test d_ and r_
+  assertEquals(dat.fftMOutCol, res)
 end
 
 function TestMatrixErr:testIFFT()
@@ -4614,6 +4621,28 @@ function TestMatrixErr:testIFFT()
   }
   assertErrorMsgContains( msg[1], mth, 'ifft',  vector(1), cmatrix(2) )
 end
+
+function TestMatrixFFT:testIFFT() --Only tests m:fft():ifft() == m
+  for i,s in ipairs(dat.sv) do -- 1D
+    local ref = dat.fftVIn:getsub(1..s, 1)
+    local res = dat.fftVIn:getsub(1..s, 1):fft():ifft()
+    assertTrue( res:eq( ref, 2*eps ) )
+  end
+  for i ,s1 in ipairs(dat.sm) do -- 2D
+  for ii,s2 in ipairs(dat.sm) do
+    local ref = dat.fftMIn:getsub(1..s1, 1..s2)
+    local res = cmatrix(s1, s2)
+    dat.fftMIn:getsub(1..s1, 1..s2):fft():ifft(res) --test r_
+    assertTrue( res:real():eq( ref:real(), 2*eps ) )
+  end end
+  local m = dat.fftMIn
+  assertTrue(m:reshape(1, #m):eq(m:fft("vec"):reshape(m:sizes()):ifft("vec"), 2*eps))
+  assertTrue(m               :eq(m:fft("row")                   :ifft("row"), 2*eps))
+  local res = cmatrix(m:sizes())
+  m:fft("col"):ifft("col", res) --test d_ and r_
+  assertTrue(m:eq(res, 2*eps))
+end
+  
 
 function TestMatrixErr:testRFFT()
   local msg = {
@@ -4639,6 +4668,12 @@ function TestMatrixFFT:testRFFT()
     assertTrue( res:imag():eq(ref:getsub(1..nc,1..nr):imag(), 16*eps) )
     assertTrue( res:real():eq(ref:getsub(1..nc,1..nr):real(), 16*eps) )
   end end
+  local m = dat.fftMIn
+  assertTrue  (dat.fftMOutVec:getvec(1..math.floor(m.nrow * m.ncol/2+1)):eq(m:rfft("vec"), 3*eps))
+  assertEquals(dat.fftMOutRow:getsub(1..m.nrow, 1..math.floor(m.ncol/2+1)), m:rfft("row")        )
+  local res = cmatrix(math.floor(m.nrow/2+1), m.ncol)
+  m:rfft("col", res) --test d_ and r_
+  assertEquals(dat.fftMOutCol:getsub(1..math.floor(m.nrow/2+1), 1..m.ncol), res)
 end
 
 function TestMatrixErr:testIRFFT()
@@ -4646,6 +4681,30 @@ function TestMatrixErr:testIRFFT()
     "invalid argument #1 (cmatrix expected)",
   }
   assertErrorMsgContains( msg[1], mth, 'irfft',  vector(1), cmatrix(2) )
+end
+
+function TestMatrixFFT:testIRFFT() --Only tests m:fft():ifft() == m
+  for i,s in ipairs(dat.sv) do -- 1D
+    local ref = dat.fftVIn:getsub(1..s, 1)
+    local res = matrix(s, 1)
+    dat.fftVIn:getsub(1..s, 1):rfft():irfft(res)
+    assertTrue( res:eq( ref, 2*eps ) )
+  end
+  for i ,s1 in ipairs(dat.sm) do -- 2D
+  for ii,s2 in ipairs(dat.sm) do
+    local ref = dat.fftMIn:getsub(1..s1, 1..s2)
+    local res = matrix(s1, s2)
+    dat.fftMIn:getsub(1..s1, 1..s2):rfft():irfft(res)
+    assertTrue( res:real():eq( ref:real(), 2*eps ) )
+  end end
+  local m = dat.fftMIn
+  local res = m:same()
+  m:rfft("vec"):irfft("vec", res)
+  assertTrue(m:eq(res, 2*eps))
+  m:rfft("row"):irfft("row", res)
+  assertTrue(m:eq(res, 2*eps))
+  m:rfft("col"):irfft("col", res)
+  assertTrue(m:eq(res, 2*eps))
 end
 
 function TestMatrixFFT:testNFFT()
