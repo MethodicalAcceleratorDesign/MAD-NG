@@ -418,7 +418,7 @@ Mapping and Folding
 
 .. function:: mat:map ([ij_,] f, r_)
 
-   Return a matrix or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied to the elements of the real, complex or integer matrix :var:`mat` at the indexes given by the :type:`iterable` :var:`ij` using :expr:`f(mat[n], n)`, i.e. interpreting the matrix as a vector. If :expr:`r = 'in'` or :expr:`r = nil` and expr:`ij ~= nil` then it is assigned :var:`mat`, i.e. map in place. If :expr:`r = nil`, the type of the returned matrix depends on the type of the first values returned by :expr:`f(mat[1], 1)`. Default: :expr:`ij_ = 1..#mat`.
+   Return a matrix or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied to the elements of the real, complex or integer matrix :var:`mat` at the indexes given by the :type:`iterable` :var:`ij` using :expr:`f(mat[n], n)`, i.e. interpreting the matrix as a vector. If :expr:`r = 'in'` or :expr:`r = nil` and expr:`ij ~= nil` then it is assigned :var:`mat`, i.e. map in place. If :expr:`r = nil` still, then the type of the returned matrix is determined by the type of the value returned by :func:`f()` called once before mapping. Default: :expr:`ij_ = 1..#mat`.
 
 .. function:: mat:map2 (y, [ij_,] f, r_)
 
@@ -441,7 +441,7 @@ Mapping and Folding
    - If :expr:`d = 'col'`, the folding left iteration runs on the columns of the matrix :var:`mat` and a row vector is returned.
 
    Note that ommitting both :var:`x0` and :var:`d` implies to not specify :var:`r` as well, otherwise the latter will be interpreted as :var:`x0`.
-   Default: :expr:`x0 = mat[1]` (or first row or column element), :expr:`d = 'vec'`.
+   If :expr:`r = nil` and :expr:`d = 'row'` or :expr:`d = 'col'`, then the type of the returned vector is determined by the type of the value returned by :func:`f()` called once before folding. Default: :expr:`x0 = mat[1]` (or first row or column element), :expr:`d = 'vec'`.
 
 .. function:: mat:foldr (f, [x0_,] [d_,] r_)
 
@@ -460,7 +460,7 @@ Mapping and Folding
    - If :expr:`d = 'col'`, the sanning left iteration runs on the columns of the matrix :var:`mat` and a matrix is returned.
 
    Note that ommitting both :var:`x0` and :var:`d` implies to not specify :var:`r` as well, otherwise the latter will be interpreted as :var:`x0`.
-   Default: :expr:`x0 = mat[1]` (or first row or column element), :expr:`d = 'vec'`.
+   If :expr:`r = nil`, then the type of the returned matrix is determined by the type of the value returned by :func:`f()` called once before scanning. Default: :expr:`x0 = mat[1]` (or first row or column element), :expr:`d = 'vec'`.
 
 .. function:: mat:scanr (f, [x0_,] [d_,] r_)
 
