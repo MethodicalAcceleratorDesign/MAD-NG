@@ -1026,14 +1026,9 @@ function MR.map (x, ij_, f, r_)
   local ij = ij_ or 1..size(x)
   assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
   assert(is_callable(f ), "invalid argument #3 (callable expected)")
-  if is_nil(r_) then
-    local iter, s, i, ii = ipairs(ij) ; i, ii = iter(s, i)
-    local r0 = f(geti_s(x,ii), ii) ; r_ = x:same(r0) ; r_[ii] = r0
-    for _,ii in iter, s, i do r_[ii] = f(geti_s(x,ii), ii) end
-  else
-    assert(is_iterable(r_), "invalid argument #4 (iterable expected)")
-    for _,ii in ipairs(ij) do r_[ii] = f(geti_s(x,ii), ii) end
-  end
+  if is_nil(r_) then r_ = x:same(f(x[ij[1]], ij[1])) end
+  assert(is_iterable(r_), "invalid argument #4 (iterable expected)")
+  for _,ii in ipairs(ij) do r_[ii] = f(geti_s(x,ii), ii) end
   return r_
 end
 
@@ -1048,14 +1043,9 @@ function MR.map2 (x, y, ij_, f, r_)
   assert(is_iterable(y ), "invalid argument #2 (scalar or iterable expected)")
   assert(is_iterable(ij), "invalid argument #3 (iterable expected)")
   assert(is_callable(f ), "invalid argument #4 (callable expected)")
-  if is_nil(r_) then
-    local iter, s, i, ii = ipairs(ij) ; i, ii = iter(s, i)
-    local r0 = f(geti_s(x,ii), y[ii], ii) ; r_ = x:same(r0) ; r_[ii] = r0
-    for _,ii in iter, s, i do r_[ii] = f(geti_s(x,ii), y[ii], ii) end
-  else
-    assert(is_iterable(r_), "invalid argument #5 (iterable expected)")
-    for _,ii in ipairs(ij) do r_[ii] = f(geti_s(x,ii), y[ii], ii) end
-  end
+  if is_nil(r_) then r_ = x:same(f(x[ij[1]], y[ij[1]], ij[1])) end
+  assert(is_iterable(r_), "invalid argument #5 (iterable expected)")
+  for _,ii in ipairs(ij) do r_[ii] = f(geti_s(x,ii), y[ii], ii) end
   return r_
 end
 
@@ -1071,14 +1061,9 @@ function MR.map3 (x, y, z, ij_, f, r_)
   assert(is_iterable(z ), "invalid argument #3 (scalar or iterable expected)")
   assert(is_iterable(ij), "invalid argument #4 (iterable expected)")
   assert(is_callable(f ), "invalid argument #5 (callable expected)")
-  if is_nil(r_) then
-    local iter, s, i, ii = ipairs(ij) ; i, ii = iter(s, i)
-    local r0 = f(geti_s(x,ii), y[ii], z[ii], ii) ; r_ = x:same(r0) ; r_[ii] = r0
-    for _,ii in iter, s, i do r_[ii] = f(geti_s(x,ii), y[ii], z[ii], ii) end
-  else
-    assert(is_iterable(r_), "invalid argument #6 (iterable expected)")
-    for _,ii in ipairs(ij) do r_[ii] = f(geti_s(x,ii), y[ii], z[ii], ii) end
-  end
+  if is_nil(r_) then r_ = x:same(f(x[ij[1]], y[ij[1]], z[ij[1]], ij[1])) end
+  assert(is_iterable(r_), "invalid argument #6 (iterable expected)")
+  for _,ii in ipairs(ij) do r_[ii] = f(geti_s(x,ii), y[ii], z[ii], ii) end
   return r_
 end
 
@@ -1096,21 +1081,21 @@ function MR.foldl (x, f, x0_, d_, r_)
   assert(is_callable(f)               , "invalid argument #2 (callable expected)")
   assert(is_nil(r_) or is_iterable(r_), "invalid argument #5 (iterable expected)")
   local d, nr, nc, rr, r = d_ or 'vec', x:sizes()
-  if d == 'vec' then                  -- fold x as vector, r_ is discarded
+  if d == 'vec' or nr == 1 or nc == 1 then -- fold x as vector, r_ is discarded
                             r  = geti(x,1)
     if not is_nil(x0_) then r  = f(x0_, r) end
     for i=2,nr*nc        do r  = f(r, geti(x,i)) end
-  elseif d == 'diag' then             -- fold x diagonal, r_ is discarded
+  elseif d == 'diag' then                  -- fold x diagonal, r_ is discarded
     local n = min(nr,nc)    r  = geti(x,1)
     if not is_nil(x0_) then r  = f(x0_, r) end
     for i=2,n            do r  = f(r, get(x,i,i)) end
-  elseif d == 'row' then              -- fold x rows
-    r = r_ or x:same(nr,1)
+  elseif d == 'row' then                   -- fold x rows
+    r = r_ or x:same(nr,1,is_nil(x0_) and f(x[1],x[1]) or f(x0_,x[1]))
     for i=1,nr           do rr = get(x,i,1)
     if not is_nil(x0_) then rr = f(x0_, rr) end
     for j=2,nc           do rr = f(rr, get(x,i,j)) end r[i] = rr end
-  elseif d == 'col' then              -- fold x columns
-    r = r_ or x:same(1,nc)
+  elseif d == 'col' then                   -- fold x columns
+    r = r_ or x:same(1,nc,is_nil(x0_) and f(x[1],x[1]) or f(x0_,x[1]))
     for j=1,nc           do rr = get(x,1,j)
     if not is_nil(x0_) then rr = f(x0_, rr) end
     for i=2,nr           do rr = f(rr, get(x,i,j)) end r[j] = rr end
@@ -1132,21 +1117,21 @@ function MR.foldr (x, f, x0_, d_, r_)
   assert(is_callable(f)               , "invalid argument #2 (callable expected)")
   assert(is_nil(r_) or is_iterable(r_), "invalid argument #5 (iterable expected)")
   local d, nr, nc, rr, r = d_ or 'vec', x:sizes()
-  if d == 'vec' then                  -- fold x as vector, r_ is ignored
+  if d == 'vec' or nr == 1 or nc == 1 then -- fold x as vector, r_ is ignored
                              r = geti(x,nr*nc)
     if not is_nil(x0_) then  r = f(r, x0_) end
     for i=nr*nc-1,1,-1   do  r = f(geti(x,i), r) end
-  elseif d == 'diag' then             -- fold x diagonal, r_ is ignored
+  elseif d == 'diag' then                  -- fold x diagonal, r_ is ignored
     local n = min(nr,nc)     r = get(x,n,n)
     if not is_nil(x0_) then  r = f(r, x0_) end
     for i=n-1,1,-1       do  r = f(get(x,i,i), r) end
-  elseif d == 'row' then              -- fold x rows
-    r = r_ or x:same(nr,1)
+  elseif d == 'row' then                   -- fold x rows
+    r = r_ or x:same(nr,1,is_nil(x0_) and f(x[1],x[1]) or f(x[1],x0_))
     for i=nr  ,1,-1      do rr = get(x,i,nc)
     if not is_nil(x0_) then rr = f(rr, x0_) end
     for j=nc-1,1,-1      do rr = f(get(x,i,j), rr) end r[i] = rr end
-  elseif d == 'col' then              -- fold x columns
-    r = r_ or x:same(1,nc)
+  elseif d == 'col' then                   -- fold x columns
+    r = r_ or x:same(1,nc,is_nil(x0_) and f(x[1],x[1]) or f(x[1],x0_))
     for j=nc  ,1,-1      do rr = get(x,nr,j)
     if not is_nil(x0_) then rr = f(rr, x0_) end
     for i=nr-1,1,-1      do rr = f(get(x,i,j), rr) end r[j] = rr end
@@ -1168,22 +1153,23 @@ function MR.scanl (x, f, x0_, d_, r_)
   if is_string(r_) and r_ == 'in' then r_ = x end
   assert(is_callable(f)               , "invalid argument #2 (callable expected)")
   assert(is_nil(r_) or is_iterable(r_), "invalid argument #5 (iterable expected)")
-  local d, r, nr, nc, rr = d_ or 'vec', r_ or x:same(), x:sizes()
-  if d == 'vec' then                  -- scan x as vector
+  local d, nr, nc, rr, r = d_ or 'vec', x:sizes()
+  r = r_ or x:same(is_nil(x0_) and f(x[1],x[1]) or f(x0_,x[1]))
+  if d == 'vec' or nr == 1 or nc == 1 then -- scan x as vector
                             rr = geti(x,1)
     if not is_nil(x0_) then rr = f(x0_, rr) end    r[1] = rr
     for i=2,nr*nc        do rr = f(rr, geti(x,i))  r[i] = rr end
-  elseif d == 'diag' then             -- scan x diagonal
+  elseif d == 'diag' then                  -- scan x diagonal
     local n = min(nr,nc)    rr = geti(x,1)
     if not is_nil(x0_) then rr = f(x0_, rr) end    r[1] = rr
     for i=2,n            do rr = f(rr, get(x,i,i)) r[i] = rr end
     if isy_matrix(r) then r:reshape(n) end
-  elseif d == 'row' then              -- scan x rows
+  elseif d == 'row' then                   -- scan x rows
     local k = 1
     for i=1,nr           do rr = get(x,i,1)
     if not is_nil(x0_) then rr = f(x0_, rr) end    r[k], k = rr, k+1
     for j=2,nc           do rr = f(rr, get(x,i,j)) r[k], k = rr, k+1 end end
-  elseif d == 'col' then              -- scan x columns
+  elseif d == 'col' then                   -- scan x columns
     if isy_matrix(r) and r.ncol > 1 then
       for j=1,nc           do rr = get(x,1,j)
       if not is_nil(x0_) then rr = f(x0_, rr) end    r[idx(1,j,nc)] = rr
@@ -1212,22 +1198,23 @@ function MR.scanr (x, f, x0_, d_, r_)
   if is_string(r_) and r_ == 'in' then r_ = x end
   assert(is_callable(f)               , "invalid argument #2 (callable expected)")
   assert(is_nil(r_) or is_iterable(r_), "invalid argument #5 (iterable expected)")
-  local d, r, nr, nc, rr = d_ or 'vec', r_ or x:same(), x:sizes()
-  if d == 'vec' then                  -- scan x as vector
+  local d, nr, nc, rr, r = d_ or 'vec', x:sizes()
+  r = r_ or x:same(is_nil(x0_) and f(x[1],x[1]) or f(x[1],x0_))
+  if d == 'vec' or nr == 1 or nc == 1 then -- scan x as vector
                             rr = geti(x,nr*nc)
     if not is_nil(x0_) then rr = f(rr, x0_) end    r[nr*nc] = rr
     for i=nr*nc-1,1,-1   do rr = f(geti(x,i), rr)  r[i    ] = rr end
-  elseif d == 'diag' then             -- scan x diagonal
+  elseif d == 'diag' then                  -- scan x diagonal
     local n = min(nr,nc)    rr = get(x,n,n)
     if not is_nil(x0_) then rr = f(rr, x0_) end    r[n] = rr
     for i=n-1,1,-1       do rr = f(get(x,i,i), rr) r[i] = rr end
     if isy_matrix(r) then r:reshape(n) end
-  elseif d == 'row'  then             -- scan x rows
+  elseif d == 'row'  then                  -- scan x rows
     local k = nr*nc
     for i=nr  ,1,-1      do rr = get(x,i,nc)
     if not is_nil(x0_) then rr = f(rr, x0_) end    r[k], k = rr, k-1
     for j=nc-1,1,-1      do rr = f(get(x,i,j), rr) r[k], k = rr, k-1 end end
-  elseif d == 'col' then              -- scan x columns
+  elseif d == 'col' then                   -- scan x columns
     if isy_matrix(r) and r.ncol > 1 then
       for j=nc  ,1,-1      do rr = get(x,nr,j)
       if not is_nil(x0_) then rr = f(rr, x0_) end    r[idx(nr,j,nc)] = rr
