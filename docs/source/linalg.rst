@@ -225,9 +225,9 @@ Getters and Setters
    
    - if :var:`a` is a :type:`scalar`, it is will be used repetitively.
 
-   - if :var:`a` is an :type:`iterable` then the matrix will be filled with values from :var:`a[n]` for :expr:`1 <= n <= #a`.
-   
-   The values after the inserted indexes are pushed toward the end of the matrix and discarded if they go beyond the last index. If :expr:`ir = nil`, :expr:`jc ~= nil` and :var:`a` is a 1D :type:`iterable`, then the latter is used to filled the matrix in the column-major order. Default: as :func:`mat:getidx()`.
+   - if :var:`a` is an :type:`iterable` then the rows and columns will be filled with values from :var:`a[n]` for :expr:`1 <= n <= #a` and recycled repetitively if :expr:`#a < #ir * #ic`.
+ 
+   The values after the inserted indexes are pushed toward the end of the matrix, i.e. interpreting the matrix as a vector, and discarded if they go beyond the last index. If :expr:`ir = nil`, :expr:`jc ~= nil` and :var:`a` is a 1D :type:`iterable`, then the latter is used to filled the matrix in the column-major order. Default: as :func:`mat:getidx()`.
 
 .. function:: mat:remsub (ir_, jc_)
 
@@ -267,7 +267,7 @@ Getters and Setters
 
 .. function:: mat:inscol (jc, a)
 
-   Equivalent to :func:`mat:inssub()` with :expr:`ir = nil`.
+   Equivalent to :func:`mat:inssub()` with :expr:`ir = nil`. If :var:`a` is a matrix with :expr:`ncol > 1` then :expr:`a = 0` and it is followed by :func:`mat:setsub()` with :expr:`ir = nil` to obtain the expected result.
 
 .. function:: mat:remcol (jc)
 
@@ -418,7 +418,7 @@ Mapping and Folding
 
 .. function:: mat:map ([ij_,] f, r_)
 
-   Return a matrix or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied to the elements of the real, complex or integer matrix :var:`mat` at the indexes given by the :type:`iterable` :var:`ij` using :expr:`f(mat[n], n)`, i.e. interpreting the matrix as a vector. If :expr:`r = 'in'` or :expr:`r = nil` and expr:`ij ~= nil` then it is assigned :var:`mat`, i.e. map in place. If :expr:`r = nil`, the type of the returned matrix depends on the type of the first values returned by :expr:`f(mat[1], 1)`. Default: :expr:`ij_ = 1..#mat`.
+   Return a matrix or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied to the elements of the real, complex or integer matrix :var:`mat` at the indexes given by the :type:`iterable` :var:`ij` using :expr:`f(mat[n], n)`, i.e. interpreting the matrix as a vector. If :expr:`r = 'in'` or :expr:`r = nil` and expr:`ij ~= nil` then it is assigned :var:`mat`, i.e. map in place. If :expr:`r = nil` still, then the type of the returned matrix is determined by the type of the value returned by :func:`f()` called once before mapping. Default: :expr:`ij_ = 1..#mat`.
 
 .. function:: mat:map2 (y, [ij_,] f, r_)
 
@@ -441,7 +441,7 @@ Mapping and Folding
    - If :expr:`d = 'col'`, the folding left iteration runs on the columns of the matrix :var:`mat` and a row vector is returned.
 
    Note that ommitting both :var:`x0` and :var:`d` implies to not specify :var:`r` as well, otherwise the latter will be interpreted as :var:`x0`.
-   Default: :expr:`x0 = mat[1]` (or first row or column element), :expr:`d = 'vec'`.
+   If :expr:`r = nil` and :expr:`d = 'row'` or :expr:`d = 'col'`, then the type of the returned vector is determined by the type of the value returned by :func:`f()` called once before folding. Default: :expr:`x0 = mat[1]` (or first row or column element), :expr:`d = 'vec'`.
 
 .. function:: mat:foldr (f, [x0_,] [d_,] r_)
 
@@ -460,7 +460,7 @@ Mapping and Folding
    - If :expr:`d = 'col'`, the sanning left iteration runs on the columns of the matrix :var:`mat` and a matrix is returned.
 
    Note that ommitting both :var:`x0` and :var:`d` implies to not specify :var:`r` as well, otherwise the latter will be interpreted as :var:`x0`.
-   Default: :expr:`x0 = mat[1]` (or first row or column element), :expr:`d = 'vec'`.
+   If :expr:`r = nil`, then the type of the returned matrix is determined by the type of the value returned by :func:`f()` called once before scanning. Default: :expr:`x0 = mat[1]` (or first row or column element), :expr:`d = 'vec'`.
 
 .. function:: mat:scanr (f, [x0_,] [d_,] r_)
 
