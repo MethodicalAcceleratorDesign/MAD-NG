@@ -207,33 +207,34 @@ Logical Operators
 
 Functions for logical operators are wrappers to associated logical operators.
 
-=================  ====================  ===============
-Functions          Return values         Operator string
-=================  ====================  ===============
-:func:`lfalse()`   :const:`true`                                         
-:func:`ltrue()`    :const:`false`                                        
-:func:`lnot(x)`    :math:`\lnot x`       :const:`"!"`                      
-:func:`lbool(x)`   :math:`\lnot\lnot x`  :const:`"!!"`                       
-:func:`land(x,y)`  :math:`x \land y`     :const:`"&&"`                       
-:func:`lor(x,y)`   :math:`x \lor y`      :const:`"||"`                       
-=================  ====================  ===============
+=================  ===============================================================  ===============
+Functions          Return values                                                    Operator string
+=================  ===============================================================  ===============
+:func:`lfalse()`   :const:`true`                                                    :const:`"T"`                                
+:func:`ltrue()`    :const:`false`                                                   :const:`"F"`                          
+:func:`lnot(x)`    :math:`\lnot x`                                                  :const:`"!"`                      
+:func:`lbool(x)`   :math:`\lnot\lnot x`                                             :const:`"!!"`                       
+:func:`land(x,y)`  :math:`x \land y`                                                :const:`"&&"`                       
+:func:`lor(x,y)`   :math:`x \lor y`                                                 :const:`"||"`                       
+:func:`lnum(x)`    :math:`\lnot x\rightarrow 0`, :math:`\lnot\lnot x\rightarrow 1`  :const:`"!#"`
+=================  ===============================================================  ===============
 
 Relational Operators
 --------------------
 
 Functions for relational operators are wrappers to associated logical operators, which themselves can be overridden by their associated metamethods. Relational ordering operators are available only for objects that are ordered.
 
-================  ================  ==============================  =================
-Functions         Return values     Operator string                 Metamethods
-================  ================  ==============================  =================
-:func:`eq(x,y)`   :math:`x = y`     :const:`"=="`                   :func:`__eq(x,y)`
-:func:`ne(x,y)`   :math:`x \neq y`  :const:`"!="` or :const:`"~="`  :func:`__eq(x,y)`
-:func:`lt(x,y)`   :math:`x < y`     :const:`"<"`                    :func:`__lt(x,y)`
-:func:`le(x,y)`   :math:`x \leq y`  :const:`"<="`                   :func:`__le(x,y)`
-:func:`gt(x,y)`   :math:`x > y`     :const:`">"`                    :func:`__le(y,x)`
-:func:`ge(x,y)`   :math:`x \geq y`  :const:`">="`                   :func:`__lt(y,x)`
-:func:`cmp(x,y)`  :math:`[-1,0,1]`  :const:`"?="`
-================  ================  ==============================  =================
+================  =========================  ==============================  =================
+Functions         Return values              Operator string                 Metamethods
+================  =========================  ==============================  =================
+:func:`eq(x,y)`   :math:`x = y`              :const:`"=="`                   :func:`__eq(x,y)`
+:func:`ne(x,y)`   :math:`x \neq y`           :const:`"!="` or :const:`"~="`  :func:`__eq(x,y)`
+:func:`lt(x,y)`   :math:`x < y`              :const:`"<"`                    :func:`__lt(x,y)`
+:func:`le(x,y)`   :math:`x \leq y`           :const:`"<="`                   :func:`__le(x,y)`
+:func:`gt(x,y)`   :math:`x > y`              :const:`">"`                    :func:`__le(y,x)`
+:func:`ge(x,y)`   :math:`x \geq y`           :const:`">="`                   :func:`__lt(y,x)`
+:func:`cmp(x,y)`  :math:`(x > y) - (x < y)`  :const:`"?="`
+================  =========================  ==============================  =================
 
 The special relational operator :func:`cmp()` returns the number :const:`1` for :math:`x<y`, :const:`-1` for :math:`x>y`, and :const:`0` otherwise.
 
