@@ -4481,6 +4481,36 @@ local dependancyLimits = {0.01, 0.1, 0.2, 0.4, 1} --calculated from matlab
   end
 end
 
+-- function TestMatrixLapack:testSvdcnd() --DOESN'T WORK
+--   --Final matrix random numbers so should have lowest dependancy
+--   local ingredients = matrix{{ 7,26, 6,60, 0.142},
+--                              { 1,29,15,52, 0.025},
+--                              {11,56, 8,20, 0.421},
+--                              {11,31, 8,47, 0.184},
+--                              { 7,52, 6,33, 0.726},
+--                              {11,55, 9,22, 0.370},
+--                              { 3,71,17, 6, 0.841},
+--                              { 1,31,22,44, 0.734},
+--                              { 2,54,18,22, 0.571},
+--                              {21,47, 4,26, 0.177},
+--                              { 1,40,23,34, 0.957},
+--                              {11,66, 9,12, 0.265},
+--                              {10,68, 8,12, 0.925}}
+-- local rs, ru, rv = ingredients:svd()
+-- local stdevs = {}
+-- for i = 1,rv.ncol do  
+--   stdevs[i] = sqrt(rv:getcol(i):variance())
+--   print(stdevs[i])
+-- end
+-- table.sort(stdevs)
+-- local limits = matrix(stdevs) / stdevs[#stdevs]
+--   for i, limit in ipairs(limits) do 
+--     local pcs, sv = ingredients:svdcnd(nil, limit)
+--     assertEquals(rs, sv)
+--     assertEquals(#pcs, i)
+--   end
+-- end
+
 function TestMatrixLapack:testSvd()
   for i,m in ipairs(dat.svdIn) do
     local refU = dat.svdU[i]
@@ -4490,8 +4520,14 @@ function TestMatrixLapack:testSvd()
     local m1   = ru * m:same():setdiag(rs) * rv:t() -- M = U*S*V'
     assertTrue( ru:eq(refU,  4*eps) )
     assertTrue( rs:eq(refS, 64*eps) )
-    assertTrue( rv:eq(refV,  3*eps) ) --This fails as the matrix that comes out is V = {{1/√2, 0, 1/√2}, {0, 1, 0}, {1/√2, 0, -1/√2}} not  V = {{1/√2, 0, -1/√2}, {0, 1, 0}, {1/√2, 0, 1/√2}} which are both valid (Change input?)
     assertTrue( m1:eq(m   , 32*eps) )
+    local sortedTable = totable(rs)
+    table.sort( sortedTable, \x,y x>y)
+    assertEquals(totable(rs), sortedTable) --Check svd values are sorted (maybe unnecessary)
+    assertEquals( info, 0)                 --Check that info = 0 for valid svd 
+    --This test below may fail as I am testing for V = {{1/√2, 0, 1/√2}, {0, 1, 0}, {1/√2, 0, -1/√2}} but V = {{1/√2, 0, -1/√2}, {0, 1, 0}, {1/√2, 0, 1/√2}} is also valid
+    assertTrue( rv:eq(refV,  3*eps) )
+
   end
 end
 
@@ -4536,15 +4572,15 @@ function TestMatrixLapack:testEigen()
   end
   for i,m in ipairs(dat.eigenIn) do
     local w, info, vr, vl = m:eigen(m:same(), m:same())
-    local refD  = dat.eigenD[i]:getdiag()
-    local refW  = dat.eigenW[i]
-    local refV  = dat.eigenV[i]
+    local refW  = dat.eigenW [i]:getdiag()
+    local refVl = dat.eigenVl[i]
+    local refVr = dat.eigenVr[i]
     local diagW = m:same():setdiag(w)
-    assertTrue( w         :eq( refD               , 16*eps) )
-    assertTrue( vr        :eq( refV               ,  4*eps) )
-    assertTrue( vl        :eq( refW               ,  5*eps) )
+    assertTrue( w         :eq( refW               , 16*eps) )
+    assertTrue( vr        :eq( refVr              ,  4*eps) )
+    assertTrue( vl        :eq( refVl              ,  5*eps) )
     assertTrue( (m * vr)  :eq( vr    * diagW      , 64*eps) ) -- A * V - V * D
-    assertTrue( (vl * m):eq( diagW * vl           , 64*eps) ) -- W'* A - D * W'
+    assertTrue( (vl:t()*m):eq( diagW * vl:t()     , 64*eps) ) -- W'* A - D * W' <- Changed to match this formula (from matlab)
     assertAlmostEquals( w:sum():real() - m:tr(), 0, 64*eps  )
   end
 end
