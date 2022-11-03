@@ -37,7 +37,7 @@ The constructors for :type:`range` and :type:`logrange` are directly available f
 
    Return a :type:`range` decoded from the string :var:`str` containing a literal numerical ranges of the form :const:`"a..b"` or :const:`"a..b..c"` where :var:`a`,  :var:`b` and :var:`c` are literal numbers.
 
-Emtpy Ranges
+Empty Ranges
 ^^^^^^^^^^^^
 
    Empty ranges of size zero can be created by fulfilling the constraints :expr:`start > stop` and :expr:`step > 0` or :expr:`start < stop` and :expr:`step < 0` in :type:`range` constructor.
@@ -98,10 +98,6 @@ Unless specified, the object :var:`rng` that owns the methods represents either 
 
    Return :var:`rng` itself. This method is the identity for objects with value semantic.
 
-.. function:: rng:size()
-
-   Return the number of values, i.e. number of steps plus one, contained by the range :var:`rng`.
-
 .. function:: rng:start()
 
    Return the start value of the range :var:`rng`.
@@ -132,7 +128,7 @@ Unless specified, the object :var:`rng` that owns the methods represents either 
 
    The internal quantity :var:`step` is adjusted if the computed size is close to an integer by :math:`±10^{-12}`. Then the following properties should hold even for rational binary numbers given a consistent input for :var:`start`, :var:`stop`, :var:`step` and :var:`size`:
 
-   - :expr:`range (start, stop, step):size()        == size`
+   - :expr:`#range(start, stop, step)               == size`
    - :expr:`nrange(start, stop, size):step()        == step`
    - :expr:`range (start, stop, step):value(size-1) == stop`
    
@@ -172,11 +168,11 @@ Unless specified, the object :var:`rng` that owns the methods represents either 
 
 .. function:: rng:mul(num)
 
-   Return a range with :var:`start`, :var:`stop` and :var:`step` scaled by :expr:`num`.
+   Return a range with :var:`stop` and :var:`step` scaled by :expr:`num`.
 
 .. function:: rng:div(num)
 
-   Return a range with :var:`start`, :var:`stop` and :var:`step` scaled by :expr:`1/num`.
+   Return a range with :var:`stop` and :var:`step` scaled by :expr:`1/num`.
 
 .. function:: rng:tostring()
 
@@ -184,18 +180,18 @@ Unless specified, the object :var:`rng` that owns the methods represents either 
 
 .. function:: rng:totable()
 
-   Return a :type:`table` filled with :func:`rng:size()` values computed by :func:`rng:value()`. Note that ranges are objects with a very small memory footprint while the generated tables can be huge.
+   Return a :type:`table` filled with :expr:`#rng` values computed by :func:`rng:value()`. Note that ranges are objects with a very small memory footprint while the generated tables can be huge.
 
 Operators
 =========
 
 .. function:: #rng
 
-   Equivalent to :func:`rng:size()`.
+   Return the number of values contained by the range :var:`rng`, i.e. its size that is the number of steps plus one.
 
 .. function:: rng[n]
 
-   Equivalent to :expr:`rng:get(round(n-1))`.
+   Return the value at index :var:`n` contained by the range :var:`rng`, i.e. its is equivalent to :expr:`rng:get(round(n-1))`.
 
 .. function:: -rng
 
