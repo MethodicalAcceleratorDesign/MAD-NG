@@ -912,6 +912,169 @@ function TestCMatrixSet:testSetcol()
   end
 end
 
+function TestCMatrixInPlaceII:testInsvec()
+  local cm = cmatrix(6):fill(1)
+  for n = 1, 36 do --Check single element by element addition
+    local expected = cmatrix(6,6):fill(1)
+    for i = n, 1, -1 do
+      expected[i] = n-i+1
+    end
+    assertEquals( cm:insvec(1, n), expected)
+  end
+  local cm = cmatrix(6):fill(1)
+  for n = 1, 25 do --Check multi-element insertion
+    local expected = cmatrix(6,6):fill(1)
+    for i = n, 1, -1 do
+      expected[i] = i
+    end
+    assertEquals( cm:copy():insvec(1..n, 1..n), expected)
+  end
+end
+
+function TestCMatrixInPlaceII:testInssub()
+  for _,cm in ipairs(G.cmatidx) do
+    local nrow, ncol = cm:sizes()
+    for startSub = 1, nrow - 1 do 
+      for i = startSub, nrow - 1 do 
+        for j = startSub, ncol - 1 do
+          local adjMat = cm:copy():inssub(startSub..i, startSub..j, 1..((i - startSub + 1)*(j - startSub + 1)))
+          local shiftedVal = 1
+          for row = 1, adjMat.nrow do
+            for col = 1, adjMat.ncol do 
+              if row >= startSub and col >= startSub and row <= i and col <= j then --Bit that has been inserted
+                assertEquals(adjMat:real():get(row, col), cmatrix(i-startSub + 1, j-startSub + 1):getidx(row-startSub + 1, col-startSub + 1, j)) --cmatrix(..) bit finds which index that was input
+              else --shifted values
+                assertEquals(adjMat:real():get(row, col), shiftedVal)
+                shiftedVal = shiftedVal + 1 --Shifts rows across first, so sort of unpredictable based on index
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+end
+
+function TestCMatrixInPlaceII:testInsrow()
+  for _,cm in ipairs(G.cmatidx) do
+    for i = 1, cm.nrow do 
+      assertEquals(cm:copy():insrow(1..i, i), cm:copy():inssub(1..i, nil, i))
+      assertEquals(cm:copy():insrow(1..i, 1..i*cm.ncol):getrow(1..i), cmatrix(i, cm.ncol):fill(1..i*cm.ncol)) --check for rowwise fill
+      assertEquals(cm:zeros():insrow(1..i, 1..i*cm.ncol), cm:zeros():inssub(1..i, nil, 1..i*cm.ncol))
+    end
+  end
+end
+
+function TestCMatrixInPlaceII:testInscol() --Fails, when inserting 4 elements to a 2x2 cmatrix (insvec cannot handle ij of [1 3 2 4])
+  for _,cm in ipairs(G.cmatidx) do
+    for i = 1, cm.ncol do 
+      assertEquals(cm:copy():inscol(1..i, i), cm:copy():inssub(nil, 1..i, i))
+      assertEquals(cm:copy():inscol(1..i, 1..i*cm.nrow):getcol(1..i), cmatrix(i, cm.nrow):fill(1..i*cm.nrow):t()) --check for columnwise fill
+      assertEquals(cm:copy():zeros():inscol(1..i, 1..i*cm.nrow), cm:copy():zeros():inssub(nil, 1..i, 1..i*cm.nrow))
+    end
+  end
+end
+
+function TestCMatrixInPlaceII:testSwpvec() 
+  for _,cm in ipairs(G.cmatidx) do
+    for i = 1, math.floor(#cm/2) do
+      local swpedM = cm:copy():swpvec(1..i, i+1..2*i)
+      assertEquals(totable(swpedM:copy():swpvec(i+1..2*i, 1..i)), totable(cm)) --Check for identity
+      for idx = 1, #cm do
+        if idx > 2*i then assertEquals(cm:geti(idx), swpedM:geti(idx))
+        elseif idx <= i then assertEquals(cm:geti(idx), swpedM:geti(idx + i))
+        elseif idx >  i then assertEquals(cm:geti(idx), swpedM:geti(idx - i))
+        end
+      end
+    end
+  end
+end
+
+function TestCMatrixInPlaceII:testSwpsub() --Double check
+  for _,cm in ipairs(G.cmatidx) do
+    for i = 1, math.floor(cm.nrow/2) do
+      for j = 1, math.floor(cm.ncol/2) do
+        local swpedM = cm:copy():swpsub(1..i, 1..j, i+1..2*i, j+1..2*j)
+        assertEquals(totable(swpedM:copy():swpsub(1..i, 1..j, i+1..2*i, j+1..2*j)), totable(cm)) --Check for identity
+        local newRow, newCol
+        for row = 1, cm.ncol do
+          for col = 1, cm.nrow do
+            if row > 2*i or col > 2*j or (row > i and col < j + 1) or (row < i + 1 and col > j) then newRow = row; newCol = col--The element has not been moved
+            else
+              if row <= i then newRow = row + i --Moved forwards
+              else             newRow = row - i -- Moved backwards
+              end
+              if col <= j then newCol = col + j --Moved forwards
+              else             newCol = col - j -- Moved backwards
+              end
+            end
+            assertEquals(cm:get(row, col), swpedM:get(newRow, newCol))
+          end
+        end
+      end
+    end
+  end
+end
+--Below may be excessive, written before swpsub tested
+function TestCMatrixInPlaceII:testSwpcol() 
+  for _,cm in ipairs(G.cmatidx) do
+    local nrow, ncol = cm:sizes()
+    local columns = linspace(1, ncol, ncol)
+    if ncol > 1 then--and ncol < 3 then
+      local swpMat = cm:copy()
+      for col1 = 1, ncol - 1 do 
+        for col2 = 2, ncol do
+          local swpedM = cm:copy():swpcol(col1, col2)
+          local swpedM2= cm:copy():swpcol(col2, col1)
+          local doubleSwp = cm:copy():swpcol(col1, col2):swpcol(col1, col2)
+          assertEquals(swpedM, swpedM2)
+          assertEquals(doubleSwp, cm)
+          for i = 1, nrow do
+            for j = 1, ncol do 
+              if j == col1  then
+                assertEquals(cm:get(i, col2), swpedM:get(i, j))
+              elseif j == col2 then 
+                assertEquals(cm:get(i, col1), swpedM:get(i, j))
+              else
+                assertEquals(cm:get(i, j), swpedM:get(i, j))
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+end
+
+function TestCMatrixInPlaceII:testSwprow() 
+  for _,cm in ipairs(G.cmatidx) do
+    local nrow, ncol = cm:sizes()
+    local rows = linspace(1, nrow, nrow)
+    if nrow > 1 then--and ncol < 3 then
+      local swpMat = cm:copy()
+      for row1 = 1, nrow - 1 do 
+        for row2 = 2, nrow do
+          local swpedM = cm:copy():swprow(row1, row2)
+          local swpedM2= cm:copy():swprow(row2, row1)
+          local doubleSwp = cm:copy():swprow(row1, row2):swprow(row1, row2)
+          assertEquals(swpedM, swpedM2)
+          assertEquals(doubleSwp, cm)
+          for i = 1, nrow do
+            for j = 1, ncol do 
+              if i == row1  then
+                assertEquals(cm:get(row2, j), swpedM:get(i, j))
+              elseif i == row2 then 
+                assertEquals(cm:get(row1, j), swpedM:get(i, j))
+              else
+                assertEquals(cm:get(i, j), swpedM:get(i, j))
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+end
 -- size -----------------------------------------------------------------------o
 
 function TestCMatrix:testNrow()
