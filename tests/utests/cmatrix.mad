@@ -62,8 +62,8 @@ G.vi      = {}
 G.vj      = {}
 
 for nr=1,5 do
-  G.vi[nr] = cvector(nr):fill(1..nr)
-  G.vj[nr] = cvector(nr):fill(1..nr)
+  G.vi[nr] = vector(nr):fill(1..nr)
+  G.vj[nr] = vector(nr):fill(1..nr)
   G.cmatsym[#G.cmatsym+1] = matrix(nr,nr):fill(sym_func):fill(toC)
   for nc=1,5 do
     G.cmatidx[#G.cmatidx+1] = cmatrix(nr,nc):fill(1..nr*nc):map( toC )
@@ -286,6 +286,75 @@ function TestCMatrixGet:testGet()
   end
 end
 
+function TestCMatrixGet:testGetidx() 
+  for _, cm in ipairs(G.cmatidx) do 
+    local res, ir, jc = cm:getidx() --Check default works
+    assertEquals(1..cm.nrow, ir )
+    assertEquals(1..cm.ncol, jc)
+    assertEquals(#cm, #res)
+    assertEquals(totable(cm:real()), totable(res))
+    for i = 1, cm.nrow do 
+      for j = 1, cm.ncol do 
+        local res = cm:getidx(i, j) --Check numbers work
+        assertTrue(MAD.typeid.is_number(res))
+        assertEquals(res, cm:real():get(i, j))
+        local res = cm:getidx(1..i, 1..j, {}) --Check ranges work (and casting to table)
+        assertEquals(i*j, #res)
+        assertTrue(is_table(res))
+        local index = 1
+        for ii = 1, i do 
+          for jj = 1, j do 
+            assertEquals(cm:real():get(ii, jj), res[index])
+            index = index + 1
+          end
+        end
+      end
+    end
+  end
+end
+
+function TestCMatrixGet:testGetij() --Relies on test above
+  for _, cm in ipairs(G.cmatidx) do 
+    local ij = cm:getidx() --Check inverse works
+    local ir, jc = cm:getij(ij)
+    for idx = 1, #ij do 
+        assertEquals(cm:get(ir[idx], jc[idx]), cm:geti(ij[idx]))
+    end 
+    local ir, jc = cm:getij() --check default works
+    for idx = 1, #cm do 
+        assertEquals(cm:get(ir[idx], jc[idx]), cm:geti(idx))
+    end 
+    for i = 1, cm.nrow do 
+      for j = 1, cm.ncol do 
+        local ir, jc = cm:getij(cm:getidx(i, j)) --Check numbers work
+        assertEquals(i, ir)
+        assertEquals(j, jc)
+        local ij = cm:getidx(1..i, 1..j)
+        local ir, jc = cm:getij(ij, {}, {}) --Check ranges work (and casting to table)
+        assertTrue(is_table(ir))
+        assertTrue(is_table(jc))
+        for idx = 1, #ij do 
+            assertEquals(cm:get(ir[idx], jc[idx]), cm[ij[idx]])
+        end
+      end
+    end
+  end
+end
+
+function TestCMatrixGet:testGetdidx()
+  for _, cmat in ipairs(G.matidx) do 
+    for k = -cmat.nrow, cmat.ncol do 
+      local idxs = cmat:getdidx(k)
+      for i = 1, #idxs do 
+        if k >= 0 then assertEquals(idxs[i], idx(i, i + k, cmat.ncol))
+        else           assertEquals(idxs[i], idx(i - k, i, cmat.ncol)) -- -k means left diag
+        end
+      end
+    end
+  end
+end
+
+
 function TestCMatrixErr:testSeti()
   local msg = {
     "index out of bounds"               ,
@@ -360,8 +429,8 @@ function TestCMatrixSet:testSame()
     assertEquals( cm:same(2, 2,  1), cmatrix(2)                    )
     -- one sizse define
     assertEquals( cm:same(1, cm.ncol  ), cmatrix(1        , cm.ncol) ) -- 2) x:same( nil, nr       )
-    assertEquals( cm:same( 1), cmatrix(cm.nrow, 1        ) ) -- 3) x:same( nil, nil, nc  )
-    assertEquals( cm:same( 1, 0i), cmatrix(cm.nrow, 1        ) ) -- 7) x:same(   e, nil, nc  )
+    assertEquals( cm:same( nil, 1), cmatrix(cm.nrow, 1        ) ) -- 3) x:same( nil, nil, nc  )
+    assertEquals( cm:same( nil, 1, 0i), cmatrix(cm.nrow, 1        ) ) -- 7) x:same(  nil, nc , e )
   end
 end
 
@@ -461,6 +530,15 @@ function TestCMatrixSet:testSetsub()
   cm:setsub( 1..5, 1   , 1..3 ) assertEquals( cm:getsub( 1..3, 1   ), cm:same(3,1):fill(1..3) )
                                 assertEquals( cm:getsub( 4..5, 1   ), cm:same(2,1):fill(1..2) )
                                 assertEquals( cm:getsub( 1..5, 2..5), cm:same(5,4)            )
+  local f = \p, s => return s + p, 0 + 0i end
+  cm:setsub(1..cm.nrow, 1..cm.ncol, f, 1, 1)
+  assertEquals(cm, cm:same():fill(0+0i))
+  f = \p, s => return s + p, s end
+  cm:setsub(1..cm.nrow, 1..cm.ncol, f, 2+2i, 2+2i)
+  assertEquals(cm, cm:same():seq()*2 + cm:same():seq()*2i)
+  cm:fill(0)
+  cm:setsub(1..2, 2..3, f, 3, 2) assertEquals( cm:getsub(1..2, 2..3 ), cm:same(2 ,2):fill(2..12..3) )
+                                assertEquals( cm:getsub(3..5, 4..5), cm:same(3 ,2):fill(0)        )
   cm:setsub( 1..5, 1..5, 1..5 )
   for i =1,5 do assertEquals( cm:getsub( i, 1..5), cm:same(1,5):fill(1..5) ) end
 
@@ -523,7 +601,19 @@ function TestCMatrixGet:testGetvec()
       assertEquals( cm:getvec(vi), vi:map(toC) )
     end
   end
-  cm:getvec(1..5,'in') assertEquals( cm, cmatrix(4):fill(1..16) ) -- same output - to documentation
+  cm:getvec(1..5) assertEquals( cm, cmatrix(4):fill(1..16) ) -- same output - to documentation
+end
+
+function TestCMatrixSet:testRemvec()
+  local cm = cmatrix(6):fill(1..36) + 1i
+  for n = 1, 25 do --Check single element by element removal
+    assertEquals( cm:remvec(1), matrix(36-n, 1):fill((n+1)..36) + 1i) --Now reshaped as column vector
+  end
+  local cm = cmatrix(6):fill(1..36) + 1i
+  for n = 1, 25 do --Check multi-element removal
+    assertEquals( cm:copy():remvec(1..n), matrix(36-n, 1):fill((n+1)..36) + 1i) --Always outputs 1D
+    assertEquals( #cm:copy():remvec(1..n), #cm - #(1..n) )
+  end
 end
 
 function TestCMatrixErr:testSetvec()
@@ -553,6 +643,13 @@ function TestCMatrixSet:testSetvec()
                                assertEquals( cm:getvec(4..6 ), cm:same(3 ,1):fill(1..3) )
   cm:setvec(1..6, 1..7       ) assertEquals( cm:getvec(1..6 ), cm:same(6 ,1):fill(1..6) )
                                assertEquals( cm:getvec(7    ), cm:same(1 ,1)            )
+  local f = \p, s => return s + p, 1i end
+  cm:setvec(1..#cm, f, 1, 1)    assertEquals(cm, cm:same():fill(1i))
+  f = \p, s => return s + p, s end
+  cm:setvec(1..#cm, f, 2i, 2i)    assertEquals(cm, cm:same():seq()*2i)
+  cm:fill(0)
+  cm:setvec(4..15, f, 3, 2)    assertEquals( cm:getvec(4..15 ), cm:same(12 ,1):fill(2..35..3) )
+                              assertEquals( cm:getvec(16..25), cm:same(10 ,1):fill(0)        )
   cm:zeros()
 
   for _,c in ipairs(G.cmattmp) do
@@ -613,13 +710,17 @@ function TestCMatrixSet:testSetdiag()
       local d = cm:getdiag()
       assertEquals( {cm:getdiag():sizes()}, {n,1} )
       for i=1,n do assertEquals( d[i], cm:get(i,i) ) end
-      cm:setdiag(duplicate(2))
-      assertEquals( cm:getdiag(), cvector(n):fill(2):map\x x*1 )
+      cm:setdiag(2)
+      assertEquals( cm:getdiag(), cvector(n):fill(2) )
      end
   end
   local cm = G.cmattmp[25]
   cm:setdiag(1..3) assertEquals( cm:getdiag(), cvector{1,2,3,1,2} )
   cm:setdiag(1..6) assertEquals( cm:getdiag(), cvector{1,2,3,4,5} )
+  local f = \p, s => return s + p, 2i end
+  cm:setdiag(f, 0, 1, 1)    assertEquals(cm, cm:same():setdiag(2i)) --k required!
+  f = \p, s => return s + p, s end
+  cm:zeros():setdiag(f, 1, 2i, 2i)    assertEquals(cm, cm:same():setdiag(vector(5):seq()*2i, 1))
 end
 
 function TestCMatrixErr:testGetrow()
@@ -739,9 +840,20 @@ function TestCMatrixGet:testGetcol()
     for b=1,j  do
       for lj = 1,j-b+1 do
         local rb = b..j..lj
+        assertEquals( cm:getcol(rb) , cm:getsub(nil  ,rb) )
         assertEquals( cm:getcol(rb) , cm:getsub(1..nr,rb) )
       end
     end end
+  end
+  local cm = cmatrix(4):fill(1..16):fill(toC):transpose(false) --Get columns of 1-4, 5-8, 9-12, 13-16
+  for i = 1,4 do 
+    assertEquals(cm:getcol({i}), cvector(4):fill(4*(i-1)+1..4*i):fill(toC) )
+  end
+  for i = 1,3 do 
+    local expected = cmatrix(4, 2)
+    expected:setvec({1, 3, 5, 7}, cvector(4):fill(4*(i-1)+1..4*i):fill(toC))
+    expected:setvec({2, 4, 6, 8}, cvector(4):fill(4*i+1..4*(i+1)):fill(toC))
+    assertEquals(cm:getcol({i, i+1}), expected )
   end
 end
 
@@ -773,6 +885,11 @@ function TestCMatrixSet:testSetcol()
   cm:setcol(1, 1..3)        assertEquals( cm:getcol(1   ), cm:same(5,1):fill({1,2,3,1,2}) )
                             assertEquals( cm:getcol(2..5), cm:same(5,4)                   )
   cm:setcol(1, {0} )        assertEquals( cm:getcol(1..5), cm:same(5,5)                   )
+  local f = \a,s => return s+1, a*s end
+  for i = 1, 5 do  --Check setsub identity
+    assertEquals(cm:copy():setcol(1..i, 2..i*2..2) , cm:copy():setsub(nil, 1..i, 2..i*2..2) )
+    assertEquals(cm:copy():setcol(1..i, f, 12.2, 4), cm:copy():setsub(nil, 1..i, f, 12.2, 4))
+  end
   for _,cm in ipairs(G.cmattmp) do
     local nr, nc = cm:sizes()
     for j=1,nc do
