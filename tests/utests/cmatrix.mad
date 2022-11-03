@@ -1669,14 +1669,29 @@ function TestCMatrixErr:testForeach()
   assertErrorMsgContains( msg[1], mth, 'foreach', errCMat, { }       )
 end
 
-function TestCMatrixFun:testForeach()
+function TestCMatrixFun:testForeach() 
   for _,cm in ipairs(G.cmatidx) do
     local nr, nc = cm:sizes()
-    local t = table.new(nr,nc)
-    local f = \x,i,j => t[i][j] = x  end
-    for i=0,nr-1 do local c = t[i+1] or table.new(nc,0); t[i+1] = c end
+    local t = {}
+    local f = \x, ij => t[ij] = x  end
     cm:foreach(f)
-    for i=1,nr do for j=1,nc do assertEquals( t[i][j], idxC(i,j,nc) ) end end
+    assertEquals(t, cm:totable())                          --Check function call
+
+    cm:foreach("+", t)
+    assertEquals(t, cm:add(cm:same():seq()):totable())                   --Check function call w/ r and f is opstring
+    
+    f = \x, ij -> x + 2*ij
+    t = cmatrix(math.ceil(#cm/2), 1)
+    cm:foreach(1..math.ceil(#cm/2), f, t)   
+    assertEquals(#t, math.ceil(#cm/2))
+    assertEquals(t, cm:add(cm:same():seq()*2):getvec(1..math.ceil(#cm/2)))  --Check function call w/ ij and r as mat
+
+    f = \x, ij -> x * x
+    cm:foreach(f, "in")                                    
+    assertEquals(cm:copy():foreach(f, "in"), cm:epow(2))    --Check function call w/ r = "in"
+
+    cm:foreach(1..#cm, "*", "in")                                    
+    assertEquals(cm:copy():foreach(f, "in"), cm:epow(2))    --Check function call w/ r = "in" and ij and f is opstring
   end
 end
 
@@ -1715,6 +1730,21 @@ function TestCMatrixFun:testMap()
     --'in' place test
     cm:map('~'   , 'in') assertEquals( cm, cm:same():fill(-1..-mn..-1):fill(toC) )
     cm:map(\x x-x, 'in') assertEquals( cm, cm:same()                             )
+    --ij test
+    for j = 1, mn do 
+      local r = {}
+      cm:seq():add(cm:same():seq()*1i):map(j..mn, "+", r)
+      cm:map(j..mn, '~' )        
+      for ij = 1, mn do
+        if ij < j then 
+          assertEquals(cm[ij],  ij + 0i) 
+          assertEquals(r [ij],  nil) 
+        else 
+          assertEquals(cm[ij], -ij + 0i) 
+          assertEquals(r [ij], 2*ij + ij*1i) 
+        end
+      end
+    end
   end
 end
 
@@ -1767,6 +1797,20 @@ function TestCMatrixFun:testMap2()
       cm:map2(ir[d], '~'     , 'in') for j=1,mn do assertEquals( cm:geti(j), j*((-1)^d)*(1+1i) ) end
     end
       cm:map2(cm   , \x,y x-y, 'in') assertEquals( cm, cm:same() )
+    for j = 1, mn do 
+      local r = {}
+      cm:seq():add(cm:same():seq()*1i):map2(4, j..mn, "+", r)
+      cm:map2(j, j..mn, \x, y x-y*2 )        
+      for ij = 1, mn do
+        if ij < j then 
+          assertEquals(cm[ij],  ij + 0i) 
+          assertEquals(r [ij],  nil) 
+        else 
+          assertEquals(cm[ij], ij-j*2 + 0i ) 
+          assertEquals(r [ij], ij+4 + ij*1i) 
+        end
+      end
+    end
   end
 end
 
@@ -1806,8 +1850,8 @@ function TestCMatrixFun:testMap3()
   for _,cm1 in ipairs(G.cmatidx) do
     local mn, nr, nc = #cm1, cm1:sizes()
     local m = matrix(nr,nc):fill(1..mn)
-    assertEquals( cm1:map3(cm1, cm1, '~'             ), cm1:same():fill(-1.. -mn..-1):map(toC       ) )
-    assertEquals( cm1:map3(cm1, cm1, '+'             ), cm1:same():fill( 2..2*mn.. 2):map(toC       ) )
+    assertEquals( cm1:map3(cm1, cm1, \x,y,z -x       ), cm1:same():fill(-1.. -mn..-1):map(toC       ) )
+    assertEquals( cm1:map3(cm1, cm1, \x,y,z x+y      ), cm1:same():fill( 2..2*mn.. 2):map(toC       ) )
     assertEquals( cm1:map3(cm1, cm1, \x,y,z x+y+z    ), cm1:copy()                   :map(\x 3*x    ) )
     assertEquals( cm1:map3(cm1, cm1, \x,y,z x+y+z, {}), cm1:copy()                   :map(\x 3*x, {}) ) -- totable test
 
@@ -1819,104 +1863,24 @@ function TestCMatrixFun:testMap3()
       assertEquals( cm1:map3(cm2[i], cm3[j], \x,y,z x+y+z, {}), cm1:same():fill(1..mn):map(\x x*3+x*1i, {}) ) -- totable test
     end end
     --'in' place test
-    cm1:map3(cm1, cm1, '~'         , 'in') assertEquals( cm1, cm1:copy():fill(-1..  -mn..-1):map(toC) )
+    cm1:map3(cm1, cm1, \x,y,z -x   , 'in') assertEquals( cm1, cm1:copy():fill(-1..  -mn..-1):map(toC) )
     cm1:map3(cm1, cm1, \x,y,z x+y+z, 'in') assertEquals( cm1, cm1:same():fill(-3..-3*mn..-3):map(toC) )
-  end
-end
-
-function TestCMatrixErr:testMapij()
-  local msg = {
-    "invalid argument #2 (callable expected)"    ,
-    "invalid argument #3 (iterable expected)"    ,
-    "attempt to compare 'complex' with 'number'" ,
-    "attempt to compare 'complex' with 'complex'",
-  }
-  assertErrorMsgContains( msg[1], mth, 'mapij', errCMat, nil             )
-  assertErrorMsgContains( msg[1], mth, 'mapij', errCMat, ''              )
-  assertErrorMsgContains( msg[1], mth, 'mapij', errCMat, 1..2            )
-  assertErrorMsgContains( msg[1], mth, 'mapij', errCMat, 1               )
-  assertErrorMsgContains( msg[1], mth, 'mapij', errCMat, cmatrix(1)      )
-  assertErrorMsgContains( msg[1], mth, 'mapij', errCMat, { }             )
-  assertErrorMsgContains( msg[2], mth, 'mapij', errCMat, \x x+1   , ''   )
-  assertErrorMsgContains( msg[2], mth, 'mapij', errCMat, \x x+1   , \x x )
-  assertErrorMsgContains( msg[3], mth, 'mapij', errCMat, \x x<2          )
-  assertErrorMsgContains( msg[4], mth, 'mapij', errCMat, \x x<2+2i       )
-end
-
-function TestCMatrixFun:testMapij()
-  for i,cm in ipairs(G.cmatidx) do
-    local mn, nr, nc = #cm, cm:sizes()
-    assertEquals( cm:mapij('~'        ), cm:copy():map(\x -1*x) )
-    assertEquals( cm:mapij(\x x-x     ), cm:same()              )
-    assertEquals( cm:mapij('!'    , {}), rep(false, mn)         ) --totable test
-    assertEquals( cm:mapij(\x x-x , {}), rep(0+0i , mn)         ) --totable test
-    --'in' place test
-    cm:mapij('~'          , 'in') assertEquals( cm, cm:same():fill(-1..-mn..-1):map(toC) )
-    cm:mapij(\x x-x       , 'in') assertEquals( cm, cm:same()                            )
-    cm:mapij(\x,i,j i+j   , 'in') for i=1,nr do for j=1,nc do assertEquals( cm:get(i,j), i+j+0i ) end end
-    cm:fill(1..mn):map(toC, 'in'):mapij(\x,i,j i+j+x, 'in')
-    for i=1,nr do for j=1,nc do assertEquals( cm:get(i,j), i+j+idxC(i,j,nc) ) end end
-
-    cm:fill(1..mn):map(toC, 'in')
-    cm = cm:mapij( \x,i,j => if j>3 then x=3 end return x end, {} )
-    for i=1,nr do
-    for j=1,nc do
-      if j > 3 then assertEquals( cm[idx(i,j,nc)], 3            )
-               else assertEquals( cm[idx(i,j,nc)], idxC(i,j,nc) ) end
-    end end
-  end
-end
-
-function TestCMatrixErr:testMapat()
-  local msg = {
-    "invalid argument #2 (callable expected)",
-    "invalid argument #3 (iterable expected)",
-    "invalid argument #4 (iterable expected)",
-    "invalid range member '1'",
-    "invalid 'cpx + ?' operation",
-    "attempt to perform arithmetic on local 'x' (a nil value)",
-    "attempt to compare 'complex' with 'number'",
-    "attempt to compare 'complex' with 'complex'",
-    "cannot convert 'bool' to 'complex'",
-  }
-  assertErrorMsgContains( msg[1], mth, 'mapat', errCMat, nil                     )
-  assertErrorMsgContains( msg[1], mth, 'mapat', errCMat, ''                      )
-  assertErrorMsgContains( msg[1], mth, 'mapat', errCMat, 1..2                    )
-  assertErrorMsgContains( msg[1], mth, 'mapat', errCMat, 1                       )
-  assertErrorMsgContains( msg[1], mth, 'mapat', errCMat, cmatrix(1)              )
-  assertErrorMsgContains( msg[1], mth, 'mapat', errCMat, { }                     )
-  assertErrorMsgContains( msg[2], mth, 'mapat', errCMat, \x x+1    , ''          )
-  assertErrorMsgContains( msg[2], mth, 'mapat', errCMat, \x x+1    , nil         )
-  assertErrorMsgContains( msg[2], mth, 'mapat', errCMat, \x x+1    , \x x        )
-  assertErrorMsgContains( msg[3], mth, 'mapat', errCMat, \x x+1    , 1    , ''   )
-  assertErrorMsgContains( msg[3], mth, 'mapat', errCMat, \x x+1    , 1    , \x x )
-  assertErrorMsgContains( msg[4], mth, 'mapat', errCMat, \x x+1    , 1    , 1..2 )
-  assertErrorMsgContains( msg[5], mth, 'mapat', errCMat, '+'       , 1           )
-  assertErrorMsgContains( msg[6], mth, 'mapat', errCMat, \x x+1    , nan         )
-  assertErrorMsgContains( msg[6], mth, 'mapat', errCMat, \x x+1    , 0           )
-  assertErrorMsgContains( msg[6], mth, 'mapat', errCMat, \x x+1    , 5           )
-  assertErrorMsgContains( msg[7], mth, 'mapat', errCMat, \x x<2    , 1           )
-  assertErrorMsgContains( msg[8], mth, 'mapat', errCMat, \x x<2+2i , 1           )
-  assertErrorMsgContains( msg[9], mth, 'mapat', errCMat, '!'       , 1           )
-end
-
-function TestCMatrixFun:testMapat()
-  for _,cm in ipairs(G.cmatidx) do
-    local mn, nr, nc = #cm, cm:sizes()
-    for li=1,nr do
-      local vi = G.vi[li]:copy()
-      for j=1,li do vi[j] = random(1,mn) end
-      vi:shuffle()
-      assertEquals( cm:mapat('~',vi):getvec(vi), cvector(#vi):fill(-vi):map(toC) )
+    --ij test
+    for j = 1, mn do 
+      local r = {}
+      cm1:seq():add(cm1:same():seq()*1i):map3(4,-2, j..mn, \x,y,z x+y+z, r)
+      cm1:map3(j, 3, j..mn, \x,y,z x-y*z )        
+      for ij = 1, mn do
+        if ij < j then 
+          assertEquals(cm1[ij],  ij + 0i) 
+          assertEquals(r  [ij],  nil) 
+        else 
+          assertEquals(cm1[ij], ij-j*3 + 0i) 
+          assertEquals(r  [ij], ij+2 + ij * 1i) 
+        end
+      end
     end
   end
-  local cm  = G.cmatidx[5]
-  local res = {-1,-2,-3, 4, 5}
-  assertEquals         ( cm:mapat('~',vector{1,2,3}    )  , cvector(res):t():map( toC    ) )
-  assertEquals         ( cm:mapat('~',      {1,2,3}    )  , cvector(res):t():map( toC    ) )
-  assertAllAlmostEquals( cm:mapat('~',vector{1,2,3}, {})  , cvector(res):t():map( toC, {}) )
-  res = { 2, 3, 4, 4, 5}
-  cm:mapat(\x x+1+1i,vector{1,2,3}, 'in') assertEquals( cm,  vector(res):t():map( toC    ) )
 end
 
 function TestCMatrixErr:testFoldl()
