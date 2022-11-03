@@ -189,6 +189,14 @@ function TestMatrix:testCdataType()
   assertTrue ( isa_matrix( v ) )
 end
 
+function TestMatrix:testIpairs()
+  for _, m in ipairs(G.matidx) do 
+    for i, v in ipairs(m) do 
+      assertEquals(i, v) 
+    end
+  end
+end
+
 function TestMatrixErr:testLinspace()
   local msg = {
     "invalid argument #1 (finite scalar expected)"  ,
@@ -384,8 +392,9 @@ end
 
 function TestMatrixGet:testGeti()
   for _,m in ipairs(G.matidx) do
-    for i=1,#m do assertEquals( m:geti(i), i ) end
-    for i=-3, 0      do assertNil   ( m:geti(i)      ) end
+    for i=1,#m        do assertEquals( m:geti(i), i ) end
+    for i=1,#m        do assertEquals( m[i]     , i ) end
+    for i=-3, 0       do assertNil   ( m:geti(i)      ) end
     for i= #m+1,#m+4  do assertNil( m:geti(i)) end
   end
 end
@@ -1268,7 +1277,7 @@ end
 
 function TestMatrix:testSize()
   for i,m in ipairs(G.matidx) do
-    assertEquals( #m, G.size[i][1]*G.size[i][2] )
+    assertEquals(       #m, G.size[i][1]*G.size[i][2] )
     assertEquals( m:size(), G.size[i][1]*G.size[i][2] )
   end
 end
@@ -5431,12 +5440,56 @@ end
 function TestMatrixConv:testTotable()
   for i,m in ipairs(G.matidx) do
     local nr, nc = m:sizes()
-    local tref   = m:totable()
+    local tref   = m:totable("row")
     if nc ~=1 then for i=1,nr do for j=1,nc do assertEquals( tref[i][j], idx(i,j,nc) ) end end
               else for i=1,nr do               assertEquals( tref[i]   , idx(i,1,nc) ) end end
+    local tref   = m:totable("col")
+    if nc ~=1 then for i=1,nr do for j=1,nc do assertEquals( tref[i][j], idx(i,j,nc) ) end end
+              else for i=1,nr do               assertEquals( tref[i]   , idx(i,1,nc) ) end end
+    m:totable("vec", tref)
+    if nc ~=1 then for i=1,nr do for j=1,nc do assertEquals( tref[idx(i,j,nc)], idx(i,j,nc) ) end end
+              else for i=1,nr do               assertEquals( tref[i]   , idx(i,1,nc) ) end end
+    assertEquals(m:totable(), tref)
     assertTrue  ( is_table(m:totable())    )
-    assertEquals( matrix  (m:totable()), m )
+    assertEquals( matrix  (m:totable("row")), m )
+    assertEquals( matrix  (m:totable("col")), m )
+    assertEquals( matrix  (m:totable("vec")), m:reshape(#m, 1) )
+    assertEquals( matrix  (m:totable(     )), m:reshape(#m, 1) )
   end
+end
+
+-- local function returnLines(fileLines)
+
+function TestMatrix:testReadWrite()
+  local fnam = "test.dat"
+  local file = MAD.utility.openfile("test", "w", ".dat")
+  for i = 1, 10 do 
+    local m1 = matrix(i):seq()
+    m1:write(fnam)
+    assertEquals(m1:read(fnam), m1)
+    m1:write(fnam, "m1")
+    local rfile = MAD.utility.openfile(fnam, "r")
+    assertEquals(rfile:read(), "m1["..m1.nrow.."x"..m1.ncol.."] =")
+    assertEquals(rfile:read("*a"), "   "..m1:tostring("   ", "\n   ") .. "\n")
+    io.close(rfile)
+    m1:write(fnam, "m1", nil, "line")
+    local rfile = MAD.utility.openfile(fnam, "r")
+    assertEquals(rfile:read(), "m1["..m1.nrow.."x"..m1.ncol.."] =  " .. m1:tostring("  ", " ;  "))
+    io.close(rfile)
+    m1:write(fnam, "m1", nil, nil, ";")
+    local rfile = MAD.utility.openfile(fnam, "r")
+    assertEquals(rfile:read(), "m1["..m1.nrow.."x"..m1.ncol.."] =   " .. m1:tostring("   ", ";   ") .. ";")
+    io.close(rfile)
+  end
+  local m2 = matrix(15) + eps
+  local fmt = MAD.option.numfmt
+  MAD.option.numfmt = "%.16g"
+  m2:write(fnam, "m2", eps)
+  assertEquals(m2:read(fnam), m2)
+  m2:write(fnam, "m2", 2*eps)
+  assertEquals(m2:read(fnam), m2:same())
+  MAD.option.numfmt = fmt
+  os.remove(fnam)
 end
 
 TestMatrixZ = {}
