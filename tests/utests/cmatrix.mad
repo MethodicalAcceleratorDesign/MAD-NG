@@ -49,6 +49,18 @@ local idx  = \i,j,nc ( (i-1)*nc+j )
 local toC  = \x complex(x,x)
 local idxC = \i,j,nc toC(idx(i,j,nc))
 local sym_func = \v, i,j -> i*j
+local function sympTransferMatrix(a, b, nr) --Create a known symplectic matrix 
+  local sinm = sin(0.5)
+  local cosm = cos(0.5)
+  local c = (1+a^2)/b 
+  local twoByTwo = cmatrix({{cosm + a*sinm, b*sinm}, {-c*sinm, cosm - a*sinm}})
+  local transfer_mat = cmatrix(nr*2, nr*2)
+  for i = 0, nr-1 do
+    transfer_mat:setsub((i * 2 + 1)..(i * 2 + 2), (i * 2 + 1)..(i * 2 + 2), twoByTwo)
+  end
+  transfer_mat:mul(sqrt(2)/2 + sqrt(2)/2 * 1i) --(wikipedia)
+  return transfer_mat
+end
 
 local errCMat = cmatrix(2)
 
@@ -56,6 +68,7 @@ local G   = {}
 G.cmatidx = {}
 G.cmattmp = {}
 G.cmatsym = {}
+G.cmatsymp= {}
 G.matidx  = {}
 G.size    = {}
 G.vi      = {}
@@ -64,12 +77,13 @@ G.vj      = {}
 for nr=1,5 do
   G.vi[nr] = vector(nr):fill(1..nr)
   G.vj[nr] = vector(nr):fill(1..nr)
-  G.cmatsym[#G.cmatsym+1] = matrix(nr,nr):fill(sym_func):fill(toC)
+  G.cmatsym[#G.cmatsym+1] = cmatrix(nr,nr):fill(sym_func):fill(toC)
   for nc=1,5 do
-    G.cmatidx[#G.cmatidx+1] = cmatrix(nr,nc):fill(1..nr*nc):map( toC )
-    G.cmattmp[#G.cmattmp+1] = cmatrix(nr,nc)
-    G.matidx [#G.matidx+1]  =  matrix(nr,nc):fill(1..nr*nc)
-    G.size   [#G.size+1]    = {nr,nc}
+    G.cmatidx [#G.cmatidx+1 ] = cmatrix(nr,nc):fill(1..nr*nc):map( toC )
+    G.cmatsymp[#G.cmatsymp+1] = sympTransferMatrix(nr, nc, nr)
+    G.cmattmp [#G.cmattmp+1 ] = cmatrix(nr,nc)
+    G.matidx  [#G.matidx+1  ] =  matrix(nr,nc):fill(1..nr*nc)
+    G.size    [#G.size+1    ] = {nr,nc}
   end
 end
 
@@ -1124,6 +1138,94 @@ function TestCMatrix:testTsizes()
   for i,cm in ipairs(G.cmatidx) do
     assertEquals( {cm:tsizes()}, {G.size[i][2], G.size[i][1]} )
     assertEquals( {cm:tsizes()}, {MAD.gfunc.swap(cm:sizes())}           )
+  end
+end
+
+-- Properties -----------------------------------------------------------------o
+function TestCMatrix:testIs_Const()
+  for i,cm in ipairs(G.cmatidx) do
+    local rNum = random(-1,1)
+    local cmat = cm:copy()
+    cmat:fill(i + i*1i)      assertTrue(cmat:is_const())
+    cmat:fill(rNum)   assertTrue(cmat:is_const())
+    cmat:zeros()      assertTrue(cmat:is_const())
+    if #cmat > 1 then
+      cmat[1] = eps     assertFalse(cmat:is_const())
+      assertTrue(cmat:is_const(eps))
+    end
+  end
+end
+
+function TestCMatrix:testIs_Real() 
+  for i,cm in ipairs(G.cmatidx) do
+    local cmat = cm:real():copy()
+    assertTrue(cmat:is_real())
+    if #cmat > 1 then
+      local cm = cmatrix(cmat:sizes())
+      assertTrue(cm:is_real())
+      cm[1] = cm[1] + eps*1i
+      assertFalse(cm:is_real())
+      assertTrue (cm:is_real(eps))
+    end
+  end
+end
+
+function TestCMatrix:testIs_Imag() 
+  for i,cm in ipairs(G.cmatidx) do
+    local cmat = cm:real():copy() * 1i
+    assertTrue(cmat:is_imag())
+    if #cmat > 1 then
+      local cm = cmatrix(cmat:sizes())
+      assertTrue(cm:is_imag())
+      cm[1] = cm[1] + eps
+      assertFalse(cm:is_imag(   ))
+      assertTrue (cm:is_imag(eps))
+    end
+  end
+end
+
+function TestCMatrix:testIs_Diag()
+  for i,cm in ipairs(G.cmatidx) do
+    local cmat = cm:copy()
+    local diag_mat = cmat:zeros() + i * cmat:eye()
+    assertTrue(diag_mat:is_diag())
+    cmat:zeros()      assertTrue(cmat:is_diag())
+    if cmat.ncol > 1 then
+      diag_mat[2] = diag_mat[2] + eps
+      assertFalse(diag_mat:is_diag())
+      assertTrue (diag_mat:is_diag(eps))
+    end
+  end
+end
+
+function TestCMatrix:testIs_Symm()
+  for _, cm in ipairs(G.cmatsym) do 
+    assertTrue(cm:is_symm(false))   --Not hermitian
+    assertTrue(cm:real():is_symm()) --Real matrix is hermitian
+    assertFalse(cm:is_symm())       --complex matrix is not hermitian
+    local cmat = cm:copy()
+    if cmat.nrow > 1 and cmat.ncol > 1 then
+      cmat[2] = cmat[2] + 0.000001
+      assertFalse(cmat:is_symm())
+      assertTrue (cmat:is_symm(0.000001+eps, nil, false))
+    end
+  end
+  for _, cm in ipairs(G.cmatidx) do
+    if #cm > 1 and cm.nrow == cm.ncol then 
+      local antiSymmMat = cm - cm:copy():t()
+      assertTrue(antiSymmMat:is_symm(true))
+      assertTrue(antiSymmMat:is_symm(true, true)) --skew hermitian
+      assertTrue(antiSymmMat:real():is_symm(true, false))--real part is skew symmetric
+      assertFalse(antiSymmMat:is_symm())          --skew not symmetric
+      assertFalse(antiSymmMat:is_symm(true, false))  --Skew hermitian is not skew symmetric
+    end
+  end
+end
+
+function TestCMatrix:testIs_Symp()
+  for _, cm in ipairs(G.cmatsymp) do 
+    assertTrue(cm:same():symp():is_symp())
+    assertTrue(cm:is_symp(100*eps))
   end
 end
 
