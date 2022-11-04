@@ -2962,85 +2962,256 @@ function TestCMatrixSScans:tearDown()
 end
 
 -- left accumulation
+function TestCMatrixSScans:testAccmin()
+  for _,cm in ipairs(G.cmatidx) do
+    local nr, nc = cm:sizes()
+    local cmref   = cm:same()
+    assertEquals( cm:accmin()     , cm:same():fill(1) )
+    for i=1,nr do cmref:setrow(i, 1..nc      ) end
+    assertEquals( cm:accmin('col'), cmref )
+    for i=1,nr do cmref:setrow(i, idx(i,1,nc)) end
+    assertEquals( cm:accmin('row'), cmref )
+    assertEquals( cm:accmin('diag'), vector(min(nr, nc)):fill(1) )
+  end
+end
+
+function TestCMatrixSScans:testAccminabs() --Good enough?
+  for _,cm in ipairs(G.cmatidx) do
+    local r = nrange(-3, 3, #cm)
+    local m2 = cm:copy():fill(r)
+    local nr,nc,_ = m2:sizes()
+    --Just tests identity, fails if accmin or abs fail
+    assertEquals( m2:accminabs()     , m2:abs():accmin())
+    assertEquals( m2:accminabs("row")     , m2:abs():accmin("row"))
+    assertEquals( m2:accminabs("col")     , m2:abs():accmin("col"))
+    assertEquals( m2:accminabs("diag")    , m2:abs():accmin("diag"))
+  end
+end
+
+function TestCMatrixSScans:testAccmax()
+  for _,cm in ipairs(G.cmatidx) do
+    assertEquals( cm:accmax()      , cm:same():fill(1..#cm) )
+    assertEquals( cm:accmax('col') , cm:copy() )
+    assertEquals( cm:accmax('row') , cm:copy() )
+    assertEquals( cm:accmax('diag'), cm:getdiag() )
+  end
+end
+
+function TestCMatrixSScans:testAccmaxabs() --Good enough?
+  for _,cm in ipairs(G.cmatidx) do
+    local r = nrange(-3, 3, #cm)
+    local m2 = cm:copy():fill(r)
+    local nr,nc,_ = m2:sizes()
+    assertEquals( m2:accmaxabs()          , m2:abs():accmax())
+    assertEquals( m2:accmaxabs("row")     , m2:abs():accmax("row"))
+    assertEquals( m2:accmaxabs("col")     , m2:abs():accmax("col"))
+    assertEquals( m2:accmaxabs("diag")    , m2:abs():accmax("diag"))
+  end
+end
+
 function TestCMatrixSScans:testAccsum()
   for _,cm in ipairs(G.cmatidx) do
     local nr, nc = cm:sizes()
-    assertEquals( cm:accsum()     , cm:copy():map(\x sum(1..x:real()))                       :map(toC) )
-    assertEquals( cm:accsum('col'), cm:copy():mapij(\x,i,j sum(idx(1,j,nc)..idx(i,j,nc)..nc)):map(toC) )
-    assertEquals( cm:accsum('row'), cm:copy():mapij(\x,i,j sum(idx(i,1,nc)..idx(i,j,nc)..1 )):map(toC) )
+    assertEquals( cm:accsum()     , cm:copy():map\x sum(vector(x:real()):seq():map(toC)) )
+    local cmref, cmref2, cmref3 = cm:copy(), cm:copy(), cm:getdiag()
+    for i = 1, nr do
+      for j = 1, nc do 
+        if i ~= 1 then cmref [cmref :getidx(i, j)] = cmref [cmref :getidx(i-1, j)] + cmref [cmref :getidx(i, j)] end
+        if j ~= 1 then cmref2[cmref2:getidx(i, j)] = cmref2[cmref2:getidx(i, j-1)] + cmref2[cmref2:getidx(i, j)] end
+        if i == j and i ~= 1 then cmref3[i] = cmref3[i-1] + cmref3[i] end
+      end
+    end
+    assertEquals( cm:accsum('col') , cmref  )
+    assertEquals( cm:accsum('row') , cmref2 )
+    assertEquals( cm:accsum('diag'), cmref3 )
+    assertEquals( cm:accsum()     , cm:accumulate()     )
+    assertEquals( cm:accsum('col'), cm:accumulate('col'))
+    assertEquals( cm:accsum('row'), cm:accumulate('row'))
+    assertEquals( cm:accsum('diag'), cm:accumulate('diag'))
   end
 end
 
 function TestCMatrixSScans:testAccsumabs()
-  local sumabs = \r =>local x = 0 for i=1,#r do x = x + abs(r[i] + r[i]*1i) end return x end
-  for _,cm in ipairs(G.cmatidx) do
-    local nr, nc = cm:sizes()
-    assertEquals( cm:accsumabs()     , cm:copy():map(\x sumabs(1..x:real())) )
-    assertEquals( cm:accsumabs('col'), cm:copy():mapij(\x,i,j sumabs(idx(1,j,nc)..idx(i,j,nc)..nc)) )
-    assertEquals( cm:accsumabs('row'), cm:copy():mapij(\x,i,j sumabs(idx(i,1,nc)..idx(i,j,nc)..1 )) )
+for _,cm0 in ipairs(G.cmatidx) do
+    local nr, nc = cm0:sizes()
+    local cm = cm0:copy():map(\x -x)
+    local cmref, cmref2, cmref3, cmref4 = cm:copy():abs(), cm:copy():abs(), cm:getdiag():abs(), cm0:copy():abs()
+    for i = 1, nr do
+      for j = 1, nc do 
+        if i ~= 1 then cmref [cmref :getidx(i, j)] = cmref [cmref :getidx(i-1, j)] + cmref [cmref :getidx(i, j)] end
+        if j ~= 1 then cmref2[cmref2:getidx(i, j)] = cmref2[cmref2:getidx(i, j-1)] + cmref2[cmref2:getidx(i, j)] end
+        if i == j and i ~= 1 then cmref3[i] = cmref3[i-1] + cmref3[i] end
+        if idx(i, j, nc) ~= 1 then cmref4[idx(i, j, nc)] = cmref4[idx(i, j-1, nc)] + cmref4[idx(i, j, nc)] end
+      end
+    end
+    assertEquals( cm:accsumabs('col' ) , cmref  )
+    assertEquals( cm:accsumabs('row' ) , cmref2 )
+    assertEquals( cm:accsumabs('diag'), cmref3 )
+    assertEquals( cm:accsumabs(      ) , cmref4 )
+    assertEquals( cm:accsumabs("vec" ) , cmref4 )
   end
 end
 
 function TestCMatrixSScans:testAccsumsqr()
-  local sumsqr = \r =>local x = 0 for i=1,#r do x = x + (r[i]+r[i]*1i)^2 end return x end
+  local sumsqr = \r =>local x = 0 for i=1,#r do x = x + r[i]^2 end return x end
   for _,cm in ipairs(G.cmatidx) do
     local nr, nc = cm:sizes()
-    assertEquals( cm:accsumsqr()     , cm:copy():map(\x sumsqr(1..x:real())) )
-    assertEquals( cm:accsumsqr('col'), cm:copy():mapij(\x,i,j sumsqr(idx(1,j,nc)..idx(i,j,nc)..nc)) )
-    assertEquals( cm:accsumsqr('row'), cm:copy():mapij(\x,i,j sumsqr(idx(i,1,nc)..idx(i,j,nc)..1 )) )
+    assertEquals( cm:accsumsqr()     , cm:copy():map\x sumsqr(vector(x:real()):seq():map(toC)) )
+    local cmref, cmref2, cmref3 = cm:copy():map(\x x*x), cm:copy():map(\x x*x), cm:getdiag():map(\x x*x)
+    for i = 1, nr do
+      for j = 1, nc do 
+        if i ~= 1 then cmref [cmref :getidx(i, j)] = cmref [cmref :getidx(i-1, j)] + cmref [cmref :getidx(i, j)] end
+        if j ~= 1 then cmref2[cmref2:getidx(i, j)] = cmref2[cmref2:getidx(i, j-1)] + cmref2[cmref2:getidx(i, j)] end
+        if i == j and i ~= 1 then cmref3[i] = cmref3[i-1] + cmref3[i] end
+      end
+    end
+    assertEquals( cm:accsumsqr('col') , cmref  )
+    assertEquals( cm:accsumsqr('row') , cmref2 )
+    assertEquals( cm:accsumsqr('diag'), cmref3 )
   end
 end
 
 function TestCMatrixSScans:testAccprod()
-  local prod = \r =>local x = 1 for i=1,#r do x = x * (r[i]+r[i]*1i) end return x end
+  local prod = \r =>local x = 1 for i=1,#r do x = x * r[i] end return x end
   for _,cm in ipairs(G.cmatidx) do
     local nr, nc = cm:sizes()
-    assertEquals( cm:accprod()     , cm:copy():map(\x prod(1..x:real())) )
-    assertEquals( cm:accprod('col'), cm:copy():mapij(\x,i,j prod(idx(1,j,nc)..idx(i,j,nc)..nc)) )
-    assertEquals( cm:accprod('row'), cm:copy():mapij(\x,i,j prod(idx(i,1,nc)..idx(i,j,nc)..1 )) )
+    assertEquals( cm:accprod()     , cm:copy():map(\x prod(vector(x:real()):seq():map(toC))) )
+    local cmref, cmref2, cmref3 = cm:copy(), cm:copy(), cm:getdiag()
+    for i = 1, nr do
+      for j = 1, nc do 
+        if i ~= 1 then cmref [cmref :getidx(i, j)] = cmref [cmref :getidx(i-1, j)] * cmref [cmref :getidx(i, j)] end
+        if j ~= 1 then cmref2[cmref2:getidx(i, j)] = cmref2[cmref2:getidx(i, j-1)] * cmref2[cmref2:getidx(i, j)] end
+        if i == j and i ~= 1 then cmref3[i] = cmref3[i-1] * cmref3[i] end
+      end
+    end
+    assertEquals( cm:accprod('col') , cmref  )
+    assertEquals( cm:accprod('row') , cmref2 )
+    assertEquals( cm:accprod('diag'), cmref3 )
   end
 end
 
 -- right accumulation
+function TestCMatrixSScans:testRaccmin()
+  for _,cm in ipairs(G.cmatidx) do
+    local nr, nc = cm:sizes()
+    assertEquals( cm:raccmin()      , cm:copy() )
+    assertEquals( cm:raccmin('col') , cm:copy():map\x,ij ij )
+    assertEquals( cm:raccmin('row') , cm:copy():map\x,ij ij )
+    assertEquals( cm:raccmin('diag'), cm:getdiag() )
+  end
+end
+
+function TestCMatrixSScans:testRaccminabs() --Good enough?
+  for _,cm in ipairs(G.cmatidx) do
+    local r = nrange(-3, 3, #cm)
+    local m2 = cm:copy():fill(r)
+    local nr,nc,_ = m2:sizes()
+    assertEquals( m2:raccminabs()          , m2:abs():raccmin())
+    assertEquals( m2:raccminabs("row")     , m2:abs():raccmin("row"))
+    assertEquals( m2:raccminabs("col")     , m2:abs():raccmin("col"))
+    assertEquals( m2:raccminabs("diag")    , m2:abs():raccmin("diag"))
+  end
+end
+
+function TestCMatrixSScans:testRaccmax()
+  for _,cm in ipairs(G.cmatidx) do
+    local nr, nc = cm:sizes()
+    assertEquals( cm:raccmax()     , cm:same():fill(cm:geti(#cm)) )
+    assertEquals( cm:raccmax('col'), cm:copy():map\x,ij -> ((ij-1)%nc + (nr-1)*nc + 1)) --get max of each column
+    assertEquals( cm:raccmax('row'), cm:copy():map\x,ij -> ((math.ceil(ij/nc) * nc)))     --get max of each row
+    local diagidx = min(nr, nc)
+    assertEquals( cm:raccmax('diag'),vector(diagidx):fill(cm:get(diagidx, diagidx)) )
+  end
+end
+
+function TestCMatrixSScans:testRaccmaxabs() --Good enough?
+  for _,cm in ipairs(G.cmatidx) do
+    local r = nrange(-3, 3, #cm)
+    local m2 = cm:copy():fill(r)
+    local nr,nc,_ = m2:sizes()
+    assertEquals( m2:raccmaxabs()      , m2:abs():raccmax())
+    assertEquals( m2:raccmaxabs("row") , m2:abs():raccmax("row"))
+    assertEquals( m2:raccmaxabs("col") , m2:abs():raccmax("col"))
+    assertEquals( m2:raccmaxabs("diag"), m2:abs():raccmax("diag"))
+  end
+end
+
 function TestCMatrixSScans:testRaccsum()
   for _,cm in ipairs(G.cmatidx) do
     local nr, nc = cm:sizes()
-    assertEquals( cm:raccsum()     , cm:copy():mapij(\x sum(x:real()..nr*nc))                    :map(toC) )
-    assertEquals( cm:raccsum('col'), cm:copy():mapij(\x,i,j sum(idx(nr,j,nc)..idx(i,j ,nc)..-nc)):map(toC) )
-    assertEquals( cm:raccsum('row'), cm:copy():mapij(\x,i,j sum(idx(i ,j,nc)..idx(i,nc,nc))     ):map(toC) )
+    assertEquals( cm:raccsum()     , cm:copy():map\x sum(vector((x:real()..nr*nc):totable()):map(toC)) )
+    local cmref, cmref2, cmref3 = cm:copy(), cm:copy(), cm:getdiag()
+    for i = nr, 1, -1 do
+      for j = nc, 1, -1 do 
+        if i ~= nr then cmref [cmref :getidx(i, j)] = cmref [cmref :getidx(i, j)] + cmref [cmref :getidx(i+1, j)] end
+        if j ~= nc then cmref2[cmref2:getidx(i, j)] = cmref2[cmref2:getidx(i, j)] + cmref2[cmref2:getidx(i, j+1)] end
+        if i == j and i ~= min(nr, nc) then cmref3[i] = cmref3[i] + cmref3[i+1] end
+      end
+    end
+    assertEquals( cm:raccsum('col') , cmref  )
+    assertEquals( cm:raccsum('row') , cmref2 )
+    assertEquals( cm:raccsum('diag'), cmref3 )
   end
 end
 
 function TestCMatrixSScans:testRaccsumabs()
-  local sumabs = \r =>local x = 0 for i=1,#r do x = x + abs(r[i]*1i) end return x end
-  for _,cm in ipairs(G.cmatidx) do
-    local nr, nc = cm:sizes()
-    cm:map(\x x:imag()*1i, 'in' )
-    assertEquals( cm:raccsumabs()     , cm:copy():mapij\x sumabs(x:imag()..nr*nc) )
-    assertEquals( cm:raccsumabs('col'), cm:copy():mapij\x,i,j sumabs(idx(nr,j,nc)..idx(i,j ,nc)..-nc) )
-    assertEquals( cm:raccsumabs('row'), cm:copy():mapij\x,i,j sumabs(idx(i ,j,nc)..idx(i,nc,nc)     ) )
+  for _,cm0 in ipairs(G.cmatidx) do
+    local nr, nc = cm0:sizes()
+    local cm = cm0:copy():map(\x -x)
+    local cmref, cmref2, cmref3, cmref4 = cm0:copy():abs(), cm0:copy():abs(), cm0:getdiag():abs(), cm0:copy():abs()
+    for i = nr, 1, -1 do
+      for j = nc, 1, -1 do 
+        if i ~= nr then cmref [cmref :getidx(i, j)] = cmref [cmref :getidx(i, j)] + cmref [cmref :getidx(i+1, j)] end
+        if j ~= nc then cmref2[cmref2:getidx(i, j)] = cmref2[cmref2:getidx(i, j)] + cmref2[cmref2:getidx(i, j+1)] end
+        if i == j and i ~= min(nr, nc) then cmref3[i] = cmref3[i] + cmref3[i+1] end
+        if idx(i, j, nc) ~= #cm0 then cmref4[idx(i, j, nc)] = cmref4[idx(i, j, nc)] + cmref4[idx(i, j+1, nc)] end
+      end
+    end
+    assertEquals( cm:raccsumabs('col' ) , cmref  )
+    assertEquals( cm:raccsumabs('row' ) , cmref2 )
+    assertEquals( cm:raccsumabs('diag') , cmref3 )
+    assertEquals( cm:raccsumabs(      ) , cmref4 )
+    assertEquals( cm:raccsumabs("vec" ) , cmref4 )
   end
 end
 
 function TestCMatrixSScans:testRaccsumsqr()
-  local sumsqr = \r =>local x = 0 for i=1,#r do x = x + (r[i]+r[i]*1i)^2 end return x end
+  local sumsqr = \r =>local x = 0 for i=1,#r do x = x + r[i]^2 end return x end
   for _,cm in ipairs(G.cmatidx) do
     local nr, nc = cm:sizes()
-    assertEquals( cm:raccsumsqr()     , cm:copy():map\x sumsqr(x:real()..nr*nc) )
-    assertEquals( cm:raccsumsqr('col'), cm:copy():mapij\x,i,j sumsqr(idx(nr,j,nc)..idx(i,j ,nc)..-nc) )
-    assertEquals( cm:raccsumsqr('row'), cm:copy():mapij\x,i,j sumsqr(idx(i ,j,nc)..idx(i,nc,nc)     ) )
+    assertEquals( cm:raccsumsqr()     , cm:copy():map\x sumsqr(vector((x:real()..nr*nc):totable()):map(toC)) )
+    local cmref, cmref2, cmref3 = cm:copy():map(\x x*x), cm:copy():map(\x x*x), cm:getdiag():map(\x x*x)
+    for i = nr, 1, -1 do
+      for j = nc, 1, -1 do 
+        if i ~= nr then cmref [cmref :getidx(i, j)] = cmref [cmref :getidx(i, j)] + cmref [cmref :getidx(i+1, j)] end
+        if j ~= nc then cmref2[cmref2:getidx(i, j)] = cmref2[cmref2:getidx(i, j)] + cmref2[cmref2:getidx(i, j+1)] end
+        if i == j and i ~= min(nr, nc) then cmref3[i] = cmref3[i] + cmref3[i+1] end
+      end
+    end
+    assertEquals( cm:raccsumsqr('col') , cmref  )
+    assertEquals( cm:raccsumsqr('row') , cmref2 )
+    assertEquals( cm:raccsumsqr('diag'), cmref3 )
   end
 end
 
 function TestCMatrixSScans:testRaccprod()
-  local prod = \r =>local x = 1 for i=1,#r do x = x * (r[i]+r[i]*1i) end return x end
+  local prod = \r =>local x = 1 for i=1,#r do x = x * r[i] end return x end
   for _,cm in ipairs(G.cmatidx) do
     local nr, nc = cm:sizes()
     if nr*nc < 25 then
-      assertTrue( cm:raccprod()   :eq( cm:copy():map\x prod(x:real()..nr*nc) ) )
+      assertTrue( cm:raccprod()   :eq( cm:copy():map\x prod(vector((x:real()..nr*nc):totable()):map(toC)) ) )
     end
-    assertTrue( cm:raccprod('col'):eq( cm:copy():mapij\x,i,j prod(idx(nr,j,nc)..idx(i,j ,nc)..-nc), eps) )
-    assertTrue( cm:raccprod('row'):eq( cm:copy():mapij\x,i,j prod(idx(i ,j,nc)..idx(i,nc,nc))     , eps) )
+    local cmref, cmref2, cmref3 = cm:copy(), cm:copy(), cm:getdiag()
+    for i = nr, 1, -1 do
+      for j = nc, 1, -1 do 
+        if i ~= nr then cmref [cmref :getidx(i, j)] = cmref [cmref :getidx(i, j)] * cmref [cmref :getidx(i+1, j)] end
+        if j ~= nc then cmref2[cmref2:getidx(i, j)] = cmref2[cmref2:getidx(i, j)] * cmref2[cmref2:getidx(i, j+1)] end
+        if i == j and i ~= min(nr, nc) then cmref3[i] = cmref3[i] * cmref3[i+1] end
+      end
+    end
+    assertEquals( cm:raccprod('col') , cmref  )
+    assertEquals( cm:raccprod('row') , cmref2 )
+    assertEquals( cm:raccprod('diag'), cmref3 )
   end
 end
 
