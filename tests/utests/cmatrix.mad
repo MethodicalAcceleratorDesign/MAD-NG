@@ -2752,10 +2752,10 @@ end
 -- special folds --------------------------------------------------------------o
 
 function TestCMatrixSFolds:testMin()
-  for _,cm in ipairs(G.matidx) do
+  for _,cm in ipairs(G.cmatidx) do
     local nr,nc = cm:sizes()
-    assertEquals( cm:min()     , 1                                       )
-    assertEquals( cm:min('col'), cm:same(1 ,nc):fill(1..nc)               )
+    assertEquals( cm:min()     , 1 + 1i                                   )
+    assertEquals( cm:min('col'), cm:same(1 ,nc):fill(1..nc):map(toC)      )
     assertEquals( cm:min('row'), cm:same(nr,1 ):fill(1..idx(nr,1,nc)..nc) )
     local m2 = cm:copy():map(\x x*x) - 10*cm
     assertEquals( m2:min('diag'), m2:getdiag():min()) --Just test fold gets diag
@@ -2763,14 +2763,14 @@ function TestCMatrixSFolds:testMin()
 end
 
 function TestCMatrixSFolds:testMinabs() --Good enough?
-  for _,cm in ipairs(G.matidx) do
+  for _,cm in ipairs(G.cmatidx) do
     local r = nrange(-3, 3, #cm)
-    local m2 = cm:copy():fill(r)
-    local nr,nc,_ = m2:sizes()
-    assertEquals( m2:minabs()     , m2:abs():min()) --identity
-    assertEquals( cm :minabs('col'), cm:same(1 ,nc):fill(1..nc)               )
-    assertEquals( cm: minabs('row'), cm:same(nr,1 ):fill(1..idx(nr,1,nc)..nc) )
-    local m2 = cm:seq():map(\x x*x) - 10*cm
+    local cm2 = cm:copy():fill(r):map(toC)
+    local nr,nc,_ = cm2:sizes()
+    assertEquals( cm2:minabs()     , cm2:abs():min()) --identity
+    assertEquals( cm :minabs('col'), cm:same(1 ,nc):fill(1..nc):map(toC):abs()               )
+    assertEquals( cm :minabs('row'), cm:same(nr,1 ):fill(1..idx(nr,1,nc)..nc):map(toC):abs() )
+    local m2 = cm:copy():seq():map(\x x*x) - 10*cm
     local minval = inf
     for ij = 1, min(nr, nc) do minval = minval > abs(m2:get(ij, ij)) and abs(m2:get(ij, ij)) or minval end
     assertEquals( m2:minabs('diag'), minval)
@@ -2778,9 +2778,9 @@ function TestCMatrixSFolds:testMinabs() --Good enough?
 end
 
 function TestCMatrixSFolds:testMax()
-  for _,cm in ipairs(G.matidx) do
+  for _,cm in ipairs(G.cmatidx) do
     local nr,nc,_ = cm:sizes()
-    assertEquals( cm:max()     , #cm )
+    assertEquals( cm:max()     , #cm + #cm * 1i )
     assertEquals( cm:max('col'), cm:same(1 ,nc):fill(idx(nr,1,nc)..idx(nr,nc,nc)..1 ) )
     assertEquals( cm:max('row'), cm:same(nr,1 ):fill(idx(1,nc,nc)..idx(nr,nc,nc)..nc) )
     local m2 = cm:copy():map(\x x*x) - 10*cm
@@ -2789,14 +2789,14 @@ function TestCMatrixSFolds:testMax()
 end
 
 function TestCMatrixSFolds:testMaxabs() --Good enough?
-  for _,cm in ipairs(G.matidx) do
+  for _,cm in ipairs(G.cmatidx) do
     local r = nrange(-3, 3, #cm)
-    local m2 = cm:copy():fill(r)
-    local nr,nc,_ = m2:sizes()
-    assertEquals( m2:maxabs()     , m2:abs():max()) --identity
-    assertEquals( cm :maxabs('col'), cm:same(1 ,nc):fill(idx(nr,1,nc)..idx(nr,nc,nc)..1 ) )
-    assertEquals( cm :maxabs('row'), cm:same(nr,1 ):fill(idx(1,nc,nc)..idx(nr,nc,nc)..nc) )
-    local m2 = cm:seq():map(\x x*x) - 10*cm
+    local cm2 = cm:copy():fill(r):map(toC)
+    local nr,nc = cm2:sizes()
+    assertEquals( cm2:maxabs()     , cm2:abs():max()) --identity
+    assertEquals( cm :maxabs('col'), cm:same(1 ,nc):fill(idx(nr,1,nc)..idx(nr,nc,nc)..1 ):map(toC):abs() )
+    assertEquals( cm :maxabs('row'), cm:same(nr,1 ):fill(idx(1,nc,nc)..idx(nr,nc,nc)..nc):map(toC):abs() )
+    local m2 = cm:copy():seq():map(\x x*x) - 10*cm
     local minval = inf
     for ij = 1, min(nr, nc) do minval = minval > abs(m2:get(ij, ij)) and abs(m2:get(ij, ij)) or minval end
     assertEquals( m2:minabs('diag'), minval)
@@ -2972,7 +2972,7 @@ function TestCMatrixSScans:testAccsum()
 end
 
 function TestCMatrixSScans:testAccsumabs()
-  local sumabs = \r =>local x = 0 for i=1,r:size() do x = x + abs(r[i] + r[i]*1i) end return x end
+  local sumabs = \r =>local x = 0 for i=1,#r do x = x + abs(r[i] + r[i]*1i) end return x end
   for _,cm in ipairs(G.cmatidx) do
     local nr, nc = cm:sizes()
     assertEquals( cm:accsumabs()     , cm:copy():map(\x sumabs(1..x:real())) )
@@ -2982,7 +2982,7 @@ function TestCMatrixSScans:testAccsumabs()
 end
 
 function TestCMatrixSScans:testAccsumsqr()
-  local sumsqr = \r =>local x = 0 for i=1,r:size() do x = x + (r[i]+r[i]*1i)^2 end return x end
+  local sumsqr = \r =>local x = 0 for i=1,#r do x = x + (r[i]+r[i]*1i)^2 end return x end
   for _,cm in ipairs(G.cmatidx) do
     local nr, nc = cm:sizes()
     assertEquals( cm:accsumsqr()     , cm:copy():map(\x sumsqr(1..x:real())) )
@@ -2992,7 +2992,7 @@ function TestCMatrixSScans:testAccsumsqr()
 end
 
 function TestCMatrixSScans:testAccprod()
-  local prod = \r =>local x = 1 for i=1,r:size() do x = x * (r[i]+r[i]*1i) end return x end
+  local prod = \r =>local x = 1 for i=1,#r do x = x * (r[i]+r[i]*1i) end return x end
   for _,cm in ipairs(G.cmatidx) do
     local nr, nc = cm:sizes()
     assertEquals( cm:accprod()     , cm:copy():map(\x prod(1..x:real())) )
@@ -3012,7 +3012,7 @@ function TestCMatrixSScans:testRaccsum()
 end
 
 function TestCMatrixSScans:testRaccsumabs()
-  local sumabs = \r =>local x = 0 for i=1,r:size() do x = x + abs(r[i]*1i) end return x end
+  local sumabs = \r =>local x = 0 for i=1,#r do x = x + abs(r[i]*1i) end return x end
   for _,cm in ipairs(G.cmatidx) do
     local nr, nc = cm:sizes()
     cm:map(\x x:imag()*1i, 'in' )
@@ -3023,7 +3023,7 @@ function TestCMatrixSScans:testRaccsumabs()
 end
 
 function TestCMatrixSScans:testRaccsumsqr()
-  local sumsqr = \r =>local x = 0 for i=1,r:size() do x = x + (r[i]+r[i]*1i)^2 end return x end
+  local sumsqr = \r =>local x = 0 for i=1,#r do x = x + (r[i]+r[i]*1i)^2 end return x end
   for _,cm in ipairs(G.cmatidx) do
     local nr, nc = cm:sizes()
     assertEquals( cm:raccsumsqr()     , cm:copy():map\x sumsqr(x:real()..nr*nc) )
@@ -3033,7 +3033,7 @@ function TestCMatrixSScans:testRaccsumsqr()
 end
 
 function TestCMatrixSScans:testRaccprod()
-  local prod = \r =>local x = 1 for i=1,r:size() do x = x * (r[i]+r[i]*1i) end return x end
+  local prod = \r =>local x = 1 for i=1,#r do x = x * (r[i]+r[i]*1i) end return x end
   for _,cm in ipairs(G.cmatidx) do
     local nr, nc = cm:sizes()
     if nr*nc < 25 then
