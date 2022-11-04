@@ -31,7 +31,7 @@ local is_vector, is_matrix, is_cvector, is_cmatrix, isa_vector,
       is_nil, isa_matrix, is_table, is_cdata, is_string          in MAD.typeid
 local sqrt, abs, log, exp, floor, round,
       sin, cos, tan, sinh, cosh, tanh, asin, acos, atan, asinh,
-      acosh, atanh, atan2, hypot                                 in MAD.gmath
+      acosh, atanh, atan2, hypot, erfc, erf, hypot3              in MAD.gmath
 local chain, duplicate                                           in MAD.fun
 local rep                                                        in MAD.utility
 local eps, tiny, huge, inf, nan, pi                              in MAD.constant
@@ -2228,8 +2228,18 @@ function TestCMatrixFun:testFilter()
     assertEquals( cm:filter(\x x~=0+0i             ), cvector(mn):fill(1..mn):map(toC) )
     assertEquals( cm:filter(\x x==1+1i, {}         ), {1+1i}                           )
     assertEquals( cm:filter(\x x==1+1i, cvector(25)), cvector(1):seti(1,1+1i)          )
+    assertEquals( cm:filter(2..#cm, \x x == 1 + 1i, {}), {}                     )
+    if #cm >= 3 then 
+      assertEquals( cm:filter(3..#cm, \x x ~= 1 + 1i, {}), cvector(#cm - 2):seq(2):map(toC):totable()         )
+    else
+      assertEquals( cm:filter(3..#cm, \x x ~= 1 + 1i, {}), {}         )
+    end
     local cmc = cm:copy()
     cmc:filter(\x x==1+1i, 'in' ) assertEquals( cmc , cvector(1) :fill(1+1i)           )
+    cmc = cm:copy()
+    if #cmc > 4 then
+      cmc:filter(\x x:real()>4, 'in' ) assertEquals( cmc  , cvector(#cmc):seq(4) + cvector(#cmc):seq(4)*1i)
+    end
   end
 end
 
@@ -2255,6 +2265,12 @@ function TestCMatrixFun:testFilter_out()
     assertEquals( cm:filter_out(\x x~=1+1i    ), cm:filter(\x x==1+1i    ) )
     assertEquals( cm:filter_out(\x x==0+0i    ), cm:filter(\x x~=0+0i    ) )
     assertEquals( cm:filter_out(\x x~=1+1i, {}), cm:filter(\x x==1+1i, {}) )
+    assertEquals( cm:filter_out(2..#cm, \x x ~= 1, {}), {}                     )
+    if #cm >= 3 then 
+      assertEquals( cm:filter_out(3..#cm, \x x == 1 + 1i, {}), cvector(#cm - 2):seq(2):map(toC):totable()         )
+    else
+      assertEquals( cm:filter_out(3..#cm, \x x == 1 + 1i, {}), {}         )
+    end
   end
 end
 
@@ -2337,11 +2353,35 @@ function TestCMatrixSMaps:testAbs()
   end
 end
 
+function TestCMatrixSMaps:testSign() --fails due to complex
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(-3, 3, #cm)
+    cm:fill(r):sign('in')
+    local res = cm:copy():map(\x => return (x > 0 and 1 or 0) - (x < 0 and 1 or 0) end, cm:same())
+    assertEquals( cm, res)
+  end
+end
+
+function TestCMatrixSMaps:testSign1() --fails due to complex
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(-3, 3, #cm)
+    cm:fill(r):sign1('in')
+    local res = cm:copy():map(\x => return (x >= 0 and 1 or 0) - (x <= -0 and 1 or 0) end, cm:same())
+    assertEquals( cm, res)
+  end
+end
+
 function TestCMatrixSMaps:testSqrt()
   for _,cm in ipairs(G.cmatidx) do
     local mn = #cm
     cm:map(\x x*x):map(toC,'in'):sqrt('in')
     assertEquals( cm, cm:same():fill(1..mn):map(toC) )
+  end
+end
+
+function TestCMatrixSMaps:testSqr()
+  for _,cm in ipairs(G.cmatidx) do
+    assertEquals( cm:sqr(), cm:copy():map(\x x*x) )
   end
 end
 
@@ -2396,6 +2436,22 @@ function TestCMatrixSMaps:testTan()
   end
 end
 
+function TestCMatrixSMaps:testCot()
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,#cm)
+    cm:fill(r):map(toC)
+    assertTrue( cm:cot():eq( cm:copy():map(\x cos(x)/sin(x)), eps ) )
+  end
+end
+
+function TestCMatrixSMaps:testSinc()
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,#cm)
+    cm:fill(r):map(toC)
+    assertEquals( cm:sinc(), cm:copy():map(\x MAD.gmath.sinc(x)) )
+  end
+end
+
 function TestCMatrixSMaps:testSinh()
   for _,cm in ipairs(G.cmattmp) do
     local r = nrange(1,pi/2,#cm)
@@ -2417,6 +2473,22 @@ function TestCMatrixSMaps:testTanh()
     local r = nrange(1,pi/2,#cm)
     cm:fill(r):map(toC,'in')
     assertTrue( cm:tanh():eq( cm:copy():map(\x sinh(x)/cosh(x)), 3*eps) )
+  end
+end
+
+function TestCMatrixSMaps:testCoth()
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,#cm)
+    cm:fill(r):map(toC)
+    assertTrue( cm:coth():eq( cm:copy():map(\x cosh(x)/sinh(x)), 3*eps) )
+  end
+end
+
+function TestCMatrixSMaps:testSinhc()
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,#cm)
+    cm:fill(r):map(toC)
+    assertEquals( cm:sinhc(), cm:copy():map(\x MAD.gmath.sinhc(x)) )
   end
 end
 
@@ -2447,6 +2519,24 @@ function TestCMatrixSMaps:testAtan()
   end
 end
 
+function TestCMatrixSMaps:testAtan2() -- fails due to complex
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,#cm)
+    cm:fill(r):map(toC)
+    local r2 = nrange(-pi/2,pi/2,#cm)
+    local res = cm:copy():map(\x, ij atan2(x, r2[ij]))
+    assertEquals( cm:atan2(r2), res )
+  end
+end
+
+function TestCMatrixSMaps:testAcot()
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,#cm)
+    cm:fill(r)
+    assertTrue( cm:cot():acot('in'):eq( cm:same():fill(r), eps ) )
+  end
+end
+
 function TestCMatrixSMaps:testAsinh()
   for _,cm in ipairs(G.cmattmp) do
     local r = nrange(1,pi/2,#cm)
@@ -2474,9 +2564,74 @@ function TestCMatrixSMaps:testAtanh()
   end
 end
 
---function TestCMatrixSMaps:testErf()    end
---function TestCMatrixSMaps:testTgamma() end
---function TestCMatrixSMaps:testLgamma() end
+function TestCMatrixSMaps:testAcoth()
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,#cm)
+    cm:fill(r)
+    assertTrue( cm:coth():acoth('in'):eq( cm:copy(), 7*eps ) )
+  end
+end
+
+function TestCMatrixSMaps:testAsinc()
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,#cm)
+    cm:fill(r)
+    local res = (cm:copy():map(\x MAD.gmath.asinc(x)))
+    assertEquals( cm:asinc(), res )
+  end
+end
+
+function TestCMatrixSMaps:testAsinhc()
+  for _,cm in ipairs(G.cmattmp) do
+    local r = nrange(1,pi/2,#cm)
+    cm:fill(r)
+    local res = (cm:copy():map(\x MAD.gmath.asinhc(x)))
+    assertEquals( cm:asinhc(), res )
+  end
+end
+
+function TestCMatrixSMaps:testErf() --Is this suitable? Literally just tests the map and the fact erf is odd
+  for _,cm in ipairs(G.cmatidx) do
+    local erfM = cm:copy():erf()
+    local res = (cm:copy():map(\x erf(x)))
+    assertEquals( res, erfM)
+    assertEquals( cm:erf(), -1*((-1*cm):erf()))
+  end
+end
+
+function TestCMatrixSMaps:testErfc()
+  for _,cm in ipairs(G.cmatidx) do
+    local res = cm:copy():map(\x 1 - erf(x))
+    assertTrue( res:eq(cm:erfc(), eps) ) 
+  end
+end
+
+function TestCMatrixSMaps:testWf()
+  for _,cm in ipairs(G.cmatidx) do
+    cm = cm:map(\x complex(x, 0)) --purely real input returns im(w(z))
+    local res = (cm:copy():map(\x exp(-(x^2))*erfc(-1i * x)))
+    assertTrue( res:real():eq(cm:wf():real(), eps) ) 
+    assertTrue( res:imag():eq(cm:wf():imag(), eps) ) 
+  end
+end
+
+function TestCMatrixSMaps:testErfi()
+  for _,cm in ipairs(G.cmatidx) do
+    local res = cm:copy():map(\x -1i*erf(1i*x))
+    local res2 = cm:copy():map(\x -1i+ 1i*erfc(1i*x))
+    assertEquals( res:real(), cm:erfi():real()) 
+    assertEquals( res:imag(), cm:erfi():imag())
+    assertEquals( res2:real(), cm:erfi():real()) 
+    assertTrue( res2:imag():eq(cm:erfi():imag(), 2*eps) ) 
+  end
+end
+
+function TestCMatrixSMaps:testErfcx()
+  for _,cm in ipairs(G.cmatidx) do
+    local res = cm:copy():map(\x exp(x^2)*erfc(x))
+    assertTrue( res:eq(cm:erfcx(), eps) ) 
+  end
+end
 
 function TestCMatrixSMaps:testCarg()
   for _,cm in ipairs(G.cmatidx) do
@@ -2531,6 +2686,28 @@ function TestCMatrixSMaps:testCabs()
   for _,cm in ipairs(G.cmatidx) do
     local cref = cm:copy():map(\x hypot(x:real(),x:imag()))
     assertEquals( cm:cabs(), cref )
+  end
+end
+
+function TestCMatrixSMaps:testHypot()
+  for _,cm in ipairs(G.matidx) do
+    local y = 1..#cm
+    assertEquals( cm:hypot(y), cm:copy():map(\x, ij hypot(x, y[ij])) )
+  end
+end
+
+function TestCMatrixSMaps:testHypot3()
+  for _,cm in ipairs(G.matidx) do
+    local y = 1..#cm
+    local z = #cm..1..-1
+    assertEquals( cm:hypot3(y, z), cm:copy():map(\x, ij hypot3(x, y[ij], z[ij])) )
+  end
+end
+
+function TestCMatrixSMaps:testFabs()
+  for _,cm in ipairs(G.matidx) do
+    local cm2 = cm:map(\x x*x) - 10*cm --Acheives +/-
+    assertEquals( cm2:fabs(), cm2:real():abs() + cm2:imag():abs()*1i ) --No cplx
   end
 end
 
