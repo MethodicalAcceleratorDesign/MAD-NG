@@ -3989,7 +3989,7 @@ function TestCMatrixOps:testDiv()
     if nr == nc then
       assertTrue( (cmc * (1/cmc)):eq( cmc:copy():eye(), 8*eps) )  -- num / cmat
     else
-      local ru, rs, rv, info = cmc:svd()
+      local rs, ru, rv, info = cmc:svd()
       rs = cmc:same():setdiag( rs:map(\x 1/x) ):t(false)
       local ref = rv * rs * ru:t() -- M = V*S: reciprocal():t()*U'
       local res = 1/cmc
@@ -4093,6 +4093,27 @@ function TestCMatrixOps:testEdiv()
    end
 end
 
+function TestCMatrixOps:testEmod()
+  for _,cm in ipairs(G.cmatidx) do
+    local mn = #cm
+    local cmc = cm:copy()
+    local cm2 = cm:same(0i):fill(1..mn):map(\x x+x*1i)
+    assertEquals( cm:emod(cmc), cm:map2(cmc, '%') )
+    assertEquals( cm:emod(cm2), cm:map2(cm2, '%') )
+    assertTrue  ( is_cmatrix(cm:ediv(cm2)) )
+   end
+end
+
+function TestCMatrixOps:testEpow()
+  for _,cm in ipairs(G.cmatidx) do
+    local mn = #cm
+    local cmc = cm:copy()
+    local cm2 = cm:same(0i):fill(1..mn):map(\x x+x*1i)
+    assertEquals( cm:epow(cmc), cm:map2(cmc, '^') )
+    assertEquals( cm:epow(cm2), cm:map2(cm2, '^') )
+    assertTrue  ( is_cmatrix(cm:ediv(cm2)) )
+   end
+end
 -- linear algebra -------------------------------------------------------------o
 
 function TestCMatrixErr:testSolve() -- TODO
@@ -4191,12 +4212,16 @@ function TestCMatrixLapack:testSvd()
     local refU = datC.svdU[i]
     local refS = datC.svdS[i]:getdiag()
     local refV = datC.svdV[i]
-    local ru, rs, rv, info = cm:svd()
+    local rs, ru, rv, info = cm:svd()
     local cm1 = ru * cm:same():setdiag(rs) * rv:t() -- M = U*S*V'
     assertTrue( ru :eq(refU,   6*eps) )
     assertTrue( rs :eq(refS, 112*eps) )
     assertTrue( rv :eq(refV,   3*eps) )
     assertTrue( cm1:eq(cm  ,  32*eps) )
+    local sortedTable = totable(rs)
+    table.sort( sortedTable, \x,y x>y)
+    assertEquals(totable(rs), sortedTable) --Check svd values are sorted (maybe unnecessary)
+    assertEquals( info, 0)                 --Check that info = 0 for valid svd 
   end
 end
 
@@ -4220,6 +4245,8 @@ function TestCMatrixLapack:testDet()
     assertAlmostEquals( ((2*cm)      :det() - cm:det()*(2^i)    ):imag(), 0,   eps )
     assertAlmostEquals( ( cm:t(false):det() - cm:det()          ):real(), 0,16*eps )
     assertAlmostEquals( ( cm:t(false):det() - cm:det()          ):imag(), 0,16*eps )
+    local det, info = cm:det()
+    assertEquals(info, 0)
   end
 end
 
@@ -4252,7 +4279,7 @@ function TestCMatrixLapack:testEigen()
     assertTrue( vr         :eq( refV                      ,  4*eps) )
     assertTrue( vl         :eq( refW                      ,  4*eps) )
     assertTrue( (cm * vr)  :eq( vr    * diagW             , 64*eps) ) -- A * V - V * D
-    assertTrue( (vl * cm):eq( diagW * vl                  , 64*eps) ) -- W'* A - D * W'
+    assertTrue( (vl:t()*cm):eq( diagW * vl:t()            , 64*eps) ) -- W'* A - D * W'  <- Changed to match this formula (from matlab)
     assertAlmostEquals( w:sum():real() - cm:tr():real(), 0, 64*eps  )
     assertAlmostEquals( w:sum():imag() - cm:tr():imag(), 0, 64*eps  )
   end
