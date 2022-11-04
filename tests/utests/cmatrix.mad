@@ -3315,6 +3315,11 @@ function TestCMatrixSympl:testSympconj()
     local R = -J*M:t()*J
     assertEquals( M:sympconj(), R )
     assertEquals( M:bar     (), R )
+    local Rcpy = R:same()
+    M:bar(Rcpy) --Test r_
+    assertEquals( Rcpy, R )
+    M:bar("in") --Test in
+    assertEquals( M, R )
   end
 
   for i=2,10,2 do
@@ -3363,15 +3368,52 @@ function TestCMatrix:testMean()
   end
 end
 
-function TestCMatrix:testVariance() --This fails as the function variance actually returns the standard deviation, is this intentional? See line 102 in mad_vec.c
+function TestMatrix:testVariance()
   for _,cm in ipairs(G.cmatidx) do
     local mean = cm:mean()
     local sum = 0
     for _, val in ipairs(cm) do 
       sum = sum + (val - mean)^2
     end
-    assertEquals( cm:variance(), sum / #cm )
+    local sz = #cm > 1 and #cm - 1 or #cm
+    assertEquals( cm:variance(), sum / sz) 
+    assertEquals( cm:variance(), (cm - cm:mean()):sumsqr()/ sz )
   end
+end
+
+function TestCMatrix:testKsum() 
+  for _,cm in ipairs(G.cmatidx) do
+    local cmpi = cm:copy() * 10000
+    cmpi[1] = pi
+    local sum = 0
+    local c = 0 -- error 
+    for _, val in ipairs(cmpi) do 
+      local t = sum + val
+      c = c - ((t - sum) - val)
+      sum = t
+    end
+    local res = cmpi:ksum()
+    if sum + c ~= sum then --Check that sum is small enough to have the effect from c
+      assertNotEquals(res, sum)   --Check that ksum is not just the sum
+      if abs(res - sum) > abs(c) then assertTrue(abs(res - sum) < 2*abs(c)) --from C, if c is greater than the min float of sum, then it will become 2* the min float
+      else                       assertTrue(abs(res - sum) <=  abs(c)) --In this case, the c in C is the min float of sum 
+      end
+    end
+  end
+  local cm = matrix({1, 10^100, 1, -10^100})
+  assertEquals(cm:ksum(), 2)
+  assertNotEquals(cm:sum(), 2) --checking sum is better than ksum
+end
+
+function TestCMatrix:testKdot() --using dot for final test also works?
+  for _,cm in ipairs(G.cmatidx) do
+    local cmpi = cm:copy() * 10000
+    cmpi[1] = pi
+    assertEquals(cmpi:emul(cmpi):ksum(), cmpi:kdot(cmpi))
+  end
+  local cm1 = cmatrix({1, 10^50, 1, -10^50}):map(toC)
+  local cm2 = cmatrix({1, 10^50, 1,  10^50}):map(toC)
+  assertEquals(cm1:kdot(cm2), 4i) --(1+1i)^2 = 2i
 end
 
 function TestCMatrix:testEval() --Algorthm adapted from www.geeksforgeeks.org/horners-method-algorithm/
