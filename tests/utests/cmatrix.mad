@@ -31,7 +31,8 @@ local is_vector, is_matrix, is_cvector, is_cmatrix, isa_vector,
       is_nil, isa_matrix, is_table, is_cdata, is_string          in MAD.typeid
 local sqrt, abs, log, exp, floor, round,
       sin, cos, tan, sinh, cosh, tanh, asin, acos, atan, asinh,
-      acosh, atanh, atan2, hypot, erfc, erf, hypot3              in MAD.gmath
+      acosh, atanh, atan2, hypot, erfc, erf, hypot3, acot, acoth,
+      asinc, asinhc, acot, cot, coth, log10, sinc, sinhc         in MAD.gmath
 local chain, duplicate                                           in MAD.fun
 local rep                                                        in MAD.utility
 local eps, tiny, huge, inf, nan, pi                              in MAD.constant
@@ -100,6 +101,7 @@ TestCMatrixSet = {}
 TestCMatrixInPlace   = {}
 TestCMatrixInPlaceII = {}
 TestCMatrixFun       = {}
+TestCMatrixFunctions = {}
 
 TestCMatrixSMaps  = {}
 TestCMatrixSFolds = {}
@@ -2756,7 +2758,7 @@ function TestCMatrixSFolds:testMin()
     local nr,nc = cm:sizes()
     assertEquals( cm:min()     , 1 + 1i                                   )
     assertEquals( cm:min('col'), cm:same(1 ,nc):fill(1..nc):map(toC)      )
-    assertEquals( cm:min('row'), cm:same(nr,1 ):fill(1..idx(nr,1,nc)..nc) )
+    assertEquals( cm:min('row'), cm:same(nr,1 ):fill(1..idx(nr,1,nc)..nc):map(toC) )
     local m2 = cm:copy():map(\x x*x) - 10*cm
     assertEquals( m2:min('diag'), m2:getdiag():min()) --Just test fold gets diag
   end
@@ -2781,8 +2783,8 @@ function TestCMatrixSFolds:testMax()
   for _,cm in ipairs(G.cmatidx) do
     local nr,nc,_ = cm:sizes()
     assertEquals( cm:max()     , #cm + #cm * 1i )
-    assertEquals( cm:max('col'), cm:same(1 ,nc):fill(idx(nr,1,nc)..idx(nr,nc,nc)..1 ) )
-    assertEquals( cm:max('row'), cm:same(nr,1 ):fill(idx(1,nc,nc)..idx(nr,nc,nc)..nc) )
+    assertEquals( cm:max('col'), cm:same(1 ,nc):fill(idx(nr,1,nc)..idx(nr,nc,nc)..1 ):map(toC) )
+    assertEquals( cm:max('row'), cm:same(nr,1 ):fill(idx(1,nc,nc)..idx(nr,nc,nc)..nc):map(toC) )
     local m2 = cm:copy():map(\x x*x) - 10*cm
     assertEquals( m2:max('diag'), m2:getdiag():max()) --Just test fold gets diag
   end
@@ -2962,16 +2964,16 @@ function TestCMatrixSScans:tearDown()
 end
 
 -- left accumulation
-function TestCMatrixSScans:testAccmin()
+function TestCMatrixSScans:testAccmin() --Errors as max on complex fails
   for _,cm in ipairs(G.cmatidx) do
     local nr, nc = cm:sizes()
     local cmref   = cm:same()
-    assertEquals( cm:accmin()     , cm:same():fill(1) )
-    for i=1,nr do cmref:setrow(i, 1..nc      ) end
+    assertEquals( cm:accmin()     , cm:same():fill(1):map(toC) )
+    for i=1,nr do cmref:setrow(i, 1..nc      ):map(toC, "in") end
     assertEquals( cm:accmin('col'), cmref )
-    for i=1,nr do cmref:setrow(i, idx(i,1,nc)) end
+    for i=1,nr do cmref:setrow(i, idx(i,1,nc)):map(toC, "in") end
     assertEquals( cm:accmin('row'), cmref )
-    assertEquals( cm:accmin('diag'), vector(min(nr, nc)):fill(1) )
+    assertEquals( cm:accmin('diag'), vector(min(nr, nc)):fill(1):map(toC) )
   end
 end
 
@@ -2988,9 +2990,9 @@ function TestCMatrixSScans:testAccminabs() --Good enough?
   end
 end
 
-function TestCMatrixSScans:testAccmax()
+function TestCMatrixSScans:testAccmax() --Errors as max on complex fails
   for _,cm in ipairs(G.cmatidx) do
-    assertEquals( cm:accmax()      , cm:same():fill(1..#cm) )
+    assertEquals( cm:accmax()      , cm:same():fill(1..#cm):map(toC) )
     assertEquals( cm:accmax('col') , cm:copy() )
     assertEquals( cm:accmax('row') , cm:copy() )
     assertEquals( cm:accmax('diag'), cm:getdiag() )
@@ -3095,8 +3097,8 @@ function TestCMatrixSScans:testRaccmin()
   for _,cm in ipairs(G.cmatidx) do
     local nr, nc = cm:sizes()
     assertEquals( cm:raccmin()      , cm:copy() )
-    assertEquals( cm:raccmin('col') , cm:copy():map\x,ij ij )
-    assertEquals( cm:raccmin('row') , cm:copy():map\x,ij ij )
+    assertEquals( cm:raccmin('col') , cm:copy():map\x,ij ij + ij*1i )
+    assertEquals( cm:raccmin('row') , cm:copy():map\x,ij ij + ij*1i)
     assertEquals( cm:raccmin('diag'), cm:getdiag() )
   end
 end
@@ -3117,10 +3119,10 @@ function TestCMatrixSScans:testRaccmax()
   for _,cm in ipairs(G.cmatidx) do
     local nr, nc = cm:sizes()
     assertEquals( cm:raccmax()     , cm:same():fill(cm:geti(#cm)) )
-    assertEquals( cm:raccmax('col'), cm:copy():map\x,ij -> ((ij-1)%nc + (nr-1)*nc + 1)) --get max of each column
-    assertEquals( cm:raccmax('row'), cm:copy():map\x,ij -> ((math.ceil(ij/nc) * nc)))     --get max of each row
+    assertEquals( cm:raccmax('col'), cm:copy():map(\x,ij -> ((ij-1)%nc + (nr-1)*nc + 1)):map(toC)) --get max of each column
+    assertEquals( cm:raccmax('row'), cm:copy():map(\x,ij -> ((math.ceil(ij/nc) * nc))):map(toC))     --get max of each row
     local diagidx = min(nr, nc)
-    assertEquals( cm:raccmax('diag'),vector(diagidx):fill(cm:get(diagidx, diagidx)) )
+    assertEquals( cm:raccmax('diag'),vector(diagidx):fill(cm:get(diagidx, diagidx)):map(toC) )
   end
 end
 
