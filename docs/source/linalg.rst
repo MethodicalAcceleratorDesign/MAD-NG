@@ -469,7 +469,7 @@ Mapping and Folding
 Mapping Real-like Methods
 -------------------------
 
-The following table lists the methods built from the application of :func:`mat:map()` and variants to the real-like functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`. The methods :func:`mat:sign()`, :func:`mat:sign1()` and :func:`mat:atan2()` are not available for :type:`cmatrix`, and only the mehods :func:`mat:abs()`, :func:`mat:sqr()` and :func:`mat:sign()` are available for :type:`imatrix`.
+The following table lists the methods built from the application of :func:`mat:map()` and variants to the real-like functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`. The methods :func:`mat:sign()`, :func:`mat:sign1()` and :func:`mat:atan2()` are not available for :type:`cmatrix`, and only the methods :func:`mat:abs()`, :func:`mat:sqr()` and :func:`mat:sign()` are available for :type:`imatrix`.
 
 ============================  ===============================
 Functions                     Equivalent Mapping
