@@ -289,46 +289,46 @@ void mad_vec_kadd (int k, const num_t a[], const num_t *x[], num_t r[], ssz_t n,
 
   switch(j) {
   case 0:
-    assert(x[j] && x[j+1] && x[j+2] && x[j+3] && x[j+4] && x[j+5] && x[j+6] && x[j+7]);
+    assert(x[0] && x[1] && x[2] && x[3] && x[4] && x[5] && x[6] && x[7]);
     j = 8;
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i]
            + a[4]*x[4][i] + a[5]*x[5][i] + a[6]*x[6][i] + a[7]*x[7][i];
     break;
   case 1:
-    assert(x[j]);
+    assert(x[0]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i];
     break;
   case 2:
-    assert(x[j] && x[j+1]);
+    assert(x[0] && x[1]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i];
     break;
   case 3:
-    assert(x[j] && x[j+1] && x[j+2]);
+    assert(x[0] && x[1] && x[2]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i];
     break;
   case 4:
-    assert(x[j] && x[j+1] && x[j+2] && x[j+3]);
+    assert(x[0] && x[1] && x[2] && x[3]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i];
     break;
   case 5:
-    assert(x[j] && x[j+1] && x[j+2] && x[j+3] && x[j+4]);
+    assert(x[0] && x[1] && x[2] && x[3] && x[4]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i]
            + a[4]*x[4][i];
     break;
   case 6:
-    assert(x[j] && x[j+1] && x[j+2] && x[j+3] && x[j+4] && x[j+5]);
+    assert(x[0] && x[1] && x[2] && x[3] && x[4] && x[5]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i]
            + a[4]*x[4][i] + a[5]*x[5][i];
     break;
   case 7:
-    assert(x[j] && x[j+1] && x[j+2] && x[j+3] && x[j+4] && x[j+5] && x[j+6]);
+    assert(x[0] && x[1] && x[2] && x[3] && x[4] && x[5] && x[6]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i]
            + a[4]*x[4][i] + a[5]*x[5][i] + a[6]*x[6][i];
@@ -542,23 +542,23 @@ void mad_cvec_kadd (int k, const cnum_t a[], const cnum_t *x[], cnum_t r[], ssz_
 
   switch(j) {
   case 0:
-    assert(x[j] && x[j+1] && x[j+2] && x[j+3] && x[j+4]);
+    assert(x[0] && x[1] && x[2] && x[3]);
     j = 4;
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i] + a[3]*x[3][i];
     break;
   case 1:
-    assert(x[j]);
+    assert(x[0]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i];
     break;
   case 2:
-    assert(x[j] && x[j+1]);
+    assert(x[0] && x[1]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i];
     break;
   case 3:
-    assert(x[j] && x[j+1] && x[j+2]);
+    assert(x[0] && x[1] && x[2]);
     for (idx_t i=0; i < n; i+=d)
       r[i] = a[0]*x[0][i] + a[1]*x[1][i] + a[2]*x[2][i];
     break;

@@ -69,8 +69,6 @@ Operator-like Methods
 Functions          Return values         Metamethods          C functions                         
 =================  ===================   ===================  =============================
 :func:`z:unm()`    :math:`-z`            :func:`__unm(z,_)`                                
-:func:`z:sqr()`    :math:`z \cdot z`     :func:`__mul(z,z)`                                
-:func:`z:inv()`    :math:`1 / z`                              :c:func:`mad_cnum_inv_r` [#f1]_                            
 :func:`z:add(z2)`  :math:`z + z_2`       :func:`__add(z,z2)`                               
 :func:`z:sub(z2)`  :math:`z - z_2`       :func:`__sub(z,z2)`                               
 :func:`z:mul(z2)`  :math:`z \cdot z_2`   :func:`__mul(z,z2)`                               
@@ -96,7 +94,6 @@ Functions                      Return values                                    
 :func:`z:asinh()`              :math:`\sinh^{-1} x`                                                  :c:func:`mad_cnum_asinh_r`
 :func:`z:asinhc()`             :math:`\frac{\sinh^{-1} z}{z}`                                        :c:func:`mad_cnum_asinhc_r`
 :func:`z:atan()`               :math:`\tan^{-1} z`                                                   :c:func:`mad_cnum_atan_r`        
-:func:`z:atan2(z2)`            :math:`\tan^{-1} \frac{z}{z_2}`                                       :c:func:`mad_cnum_atan2_r`
 :func:`z:atanh()`              :math:`\tanh^{-1} z`                                                  :c:func:`mad_cnum_atanh_r`
 :func:`z:ceil()`               :math:`\lceil\Re(z)\rceil+i\,\lceil\Im(z)\rceil`        
 :func:`z:cos()`                :math:`\cos z`                                                        :c:func:`mad_cnum_cos_r`   
@@ -108,8 +105,8 @@ Functions                      Return values                                    
 :func:`z:frac()`               :math:`z - \operatorname{trunc}(z)`           
 :func:`z:hypot(z2)`            :math:`\sqrt{z^2+z_2^2}`                                              [#f2]_         
 :func:`z:hypot3(z2,z3)`        :math:`\sqrt{z^2+z_2^2+z_3^2}`                                        [#f2]_  
-:func:`z:inv(v_)` [#f3]_       :math:`\frac{v}{z}`                                                   :c:func:`mad_cnum_inv_r` [#f1]_             
-:func:`z:invsqrt(v_)` [#f3]_   :math:`\frac{v}{\sqrt z}`                                             :c:func:`mad_cnum_invsqrt_r` [#f1]_              
+:func:`z:inv(v_)`              :math:`\frac{v}{z}`                                                   :c:func:`mad_cnum_inv_r` [#f1]_             
+:func:`z:invsqrt(v_)`          :math:`\frac{v}{\sqrt z}`                                             :c:func:`mad_cnum_invsqrt_r` [#f1]_              
 :func:`z:log()`                :math:`\log z`                                                        :c:func:`mad_cnum_log_r`
 :func:`z:log10()`              :math:`\log_{10} z`                                                   :c:func:`mad_cnum_log10_r`
 :func:`z:powi(n)`              :math:`z^n`                                                           :c:func:`mad_cnum_powi_r`
@@ -118,12 +115,15 @@ Functions                      Return values                                    
 :func:`z:sinc()`               :math:`\frac{\sin z}{z}`                                              :c:func:`mad_cnum_sinc_r`
 :func:`z:sinh()`               :math:`\sinh z`                                                       :c:func:`mad_cnum_sinh_r`    
 :func:`z:sinhc()`              :math:`\frac{\sinh z}{z}`                                             :c:func:`mad_cnum_sinhc_r`
+:func:`z:sqr()`                :math:`z \cdot z`                                                                                     
 :func:`z:sqrt()`               :math:`\sqrt{z}`                                                      :c:func:`mad_cnum_sqrt_r`     
 :func:`z:tan()`                :math:`\tan z`                                                        :c:func:`mad_cnum_tan_r`
 :func:`z:tanh()`               :math:`\tanh z`                                                       :c:func:`mad_cnum_tanh_r`
 :func:`z:trunc()`              :math:`\operatorname{trunc} \Re(z)+i\,\operatorname{trunc} \Im(z)`                                
 :func:`z:unit()`               :math:`\frac{z}{|z|}`                                                 :c:func:`mad_cnum_unit_r`
 =============================  ====================================================================  ============================
+
+In methods :func:`inv()` and :func:`invsqrt()`, default is :expr:`v_ = 1`.
 
 Complex-like Methods
 --------------------
@@ -397,5 +397,4 @@ References
 
 .. [#f1] Division and inverse use a robust and fast complex division algorithm, see [CPXDIV]_ and [CPXDIV2]_ for details. 
 .. [#f2] Hypot and hypot3 methods use a trivial implementation that may lead to numerical overflow/underflow.
-.. [#f3] Default: :expr:`v_ = 1`. 
 
