@@ -38,13 +38,14 @@ local option, gfunc, fun, _C in MAD
 local totable, iter   in fun
 local abs, min, max   in math
 
-local is_nil, is_boolean, is_number, is_string, is_table,
+local is_nil, is_logical, is_number, is_string, is_table,
       is_emptytable, is_value, is_integer, is_natural, is_iterable,
       is_mappable, is_callable, is_stringable, is_tablable,
       is_copiable, is_sameable, get_metatable, get_metamethod,
       is_openfile, wprotect, set_concept, concept                 in MAD.typeid
 local attributes                                                  in MAD.filesys
 local opstr                                                       in MAD.gfunc
+local sign                                                        in MAD.gmath
 
 local not_mappable, not_extendable, not_mutable                   in concept
 
@@ -121,7 +122,8 @@ local rep_mt = set_concept({
 }, not_mappable + not_extendable + not_mutable)
 
 function utility.rep (x, n_) -- repeater
-  return setmetatable({[_repx]=x, [_repn]=n_ or 2^30}, rep_mt)
+  return setmetatable({[_repx]=assert(not is_nil(x), "invalid 'nil' in repeater"),
+                       [_repn]=n_ or 2^30}, rep_mt)
 end
 
 -- run once
@@ -787,12 +789,14 @@ end
 function utility.bsearch (tbl, val, cmp_, low_, high_)
   assert(is_iterable(tbl), "invalid argument #1 (iterable expected)")
   if is_number(cmp_) and is_nil(high_) then
-    cmp_, low_, high_ = nil, cmp_, low_ -- right shift
+    low_, high_, cmp_ = cmp_, low_, nil -- right shift
   end
-  local low  = max(low_  or    1,    1)
-  local high = min(high_ or #tbl, #tbl)
-  local cmp = is_string(cmp_) and opstr[cmp_] or cmp_ or
-              tbl[low] <= tbl[high] and gfunc.le or gfunc.ge
+  local nel  = #tbl
+  local low  = max(low_  or   1,   1)
+  local high = min(high_ or nel, nel)
+  assert(low <= high, "invalid boundaries (low > high)")
+  local cmp  = is_string(cmp_) and opstr[cmp_] or cmp_ or
+               tbl[low] <= tbl[high] and gfunc.le or gfunc.ge
   assert(is_callable(cmp), "invalid argument #3 (callable expected)")
 
   local len, mid, stp, tst = high-low+1
@@ -810,17 +814,59 @@ end
 function utility.lsearch (tbl, val, cmp_, low_, high_)
   assert(is_iterable(tbl), "invalid argument #1 (iterable expected)")
   if is_number(cmp_) and is_nil(high_) then
-    cmp_, low_, high_ = nil, cmp_, low_ -- right shift
+    low_, high_, cmp_ = cmp_, low_, nil -- right shift
   end
-  local cmp = is_string(cmp_) and gfunc[cmp_] or cmp_ or gfunc.eq
+  local nel  = #tbl
+  local low  = max(low_  or   1,   1)
+  local high = min(high_ or nel, nel)
+  assert(low <= high, "invalid boundaries (low > high)")
+  local cmp  = is_string(cmp_) and gfunc[cmp_] or cmp_ or gfunc.eq
   assert(is_callable(cmp), "invalid argument #3 (callable expected)")
 
-  local low  = max(low_  or    1,    1)
-  local high = min(high_ or #tbl, #tbl)
   for idx=low,high do
     if cmp(val, tbl[idx]) then return idx end
   end
   return high+1
+end
+
+-- detect ordering, descending=-1, ascending=1, constant=0, otherwise=nil
+
+function utility.monotonic (tbl, strict_, cmp_, low_, high_)
+  assert(is_iterable(tbl), "invalid argument #1 (iterable expected)")
+  local nel = #tbl
+  if nel <= 0 then return nil end
+
+  if not is_logical(strict_) and is_nil(high_) then
+    cmp_, low_, high_, strict_ = strict_, cmp_, low_, nil -- right shift
+  end
+  if is_number(cmp_) and is_nil(high_) then
+    low_, high_, cmp_ = cmp_, low_, nil -- right shift
+  end
+
+  local low  = max(low_  or   1,   1)
+  local high = min(high_ or nel, nel)
+  assert(low <= high, "invalid boundaries (low > high)")
+
+  local cmp = cmp_ or gfunc.cmp
+  assert(is_callable(cmp), "invalid argument #2 (callable expected)")
+
+  local ord = cmp(tbl[high],tbl[low])
+  assert(ord == 0 or ord == 1 or ord == -1,
+         "invalid argument #3 (cmp must return -1,0,1)")
+
+  if strict_ then
+    if ord == 0 then return nil end
+    for k=low+1,high do
+      if cmp(tbl[k],tbl[k-1]) ~= ord then return nil end
+    end
+  else
+    for k=low+1,high do
+      local c = cmp(tbl[k],tbl[k-1])
+      if c ~= ord and c ~= 0 then return nil end
+    end
+  end
+
+  return ord
 end
 
 -- env ------------------------------------------------------------------------o
