@@ -1424,7 +1424,7 @@ Matrix
                 int mad_cmat_invn   (const cnum_t y[],        num_t x  ,       cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
                 int mad_cmat_invc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
 
-   Fill the matrix :var:`r` of sizes :var:`[m, n]` with the inverse of the matrix :var:`y` of sizes :var:`[m, n]` scaled by the scalar :var:`x`. The conditional number :var:`rcond` is used by the solver to determine the effective rank of non-square systems. It returns the rank of the system.
+   Fill the matrix :var:`r` of sizes :var:`[n, m]` with the inverse of the matrix :var:`y` of sizes :var:`[m, n]` scaled by the scalar :var:`x`. The conditional number :var:`rcond` is used by the solver to determine the effective rank of non-square systems. It returns the rank of the system.
 
 .. c:function:: int mad_mat_solve  (const  num_t a[], const  num_t b[],  num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
                 int mad_cmat_solve (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)

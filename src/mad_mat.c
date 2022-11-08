@@ -1139,6 +1139,7 @@ mad_mat_div (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_
     mad_vec_copy(x, r, m*p, 1);
     dgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
     if (!info) return mad_free_tmp(a), n;
+    if (info > 0) warn("Div: singular matrix, no solution found");
   }
 
   // non-square system or singular square system, use QR or LQ factorization
@@ -1174,6 +1175,7 @@ mad_mat_divm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, s
     mad_vec_copyv(x, r, m*p, 1);
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
     if (!info) return mad_free_tmp(a), n;
+    if (info > 0) warn("Div: singular matrix, no solution found");
   }
 
   // non-square system or singular square system, use QR or LQ factorization
@@ -1210,6 +1212,7 @@ mad_cmat_div (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, 
     mad_cvec_copy(x, r, m*p, 1);
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
     if (!info) return mad_free_tmp(a), n;
+    if (info > 0) warn("Div: singular matrix, no solution found");
   }
 
   // non-square system or singular square system, use QR or LQ factorization
@@ -1246,6 +1249,7 @@ mad_cmat_divm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz_t n, 
     mad_cvec_copy(x, r, m*p, 1);
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
     if (!info) return mad_free_tmp(a), n;
+    if (info > 0) warn("Div: singular matrix, no solution found");
   }
 
   // non-square system or singular square system, use QR or LQ factorization
