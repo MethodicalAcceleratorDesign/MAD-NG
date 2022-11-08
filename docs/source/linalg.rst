@@ -469,48 +469,49 @@ Mapping and Folding
 Mapping Real-like Methods
 -------------------------
 
-The following table lists the methods built from the application of :func:`mat:map()` and variants to the real-like functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`. Only the methods :func:`mat:abs()`, :func:`mat:sqr()` and :func:`mat:sign()` are available for :type:`imatrix`.
+The following table lists the methods built from the application of :func:`mat:map()` and variants to the real-like functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`. The methods :func:`mat:sign()`, :func:`mat:sign1()` and :func:`mat:atan2()` are not available for :type:`cmatrix`, and only the mehods :func:`mat:abs()`, :func:`mat:sqr()` and :func:`mat:sign()` are available for :type:`imatrix`.
 
-==========================  ===============================
-Functions                   Equivalent Mapping
-==========================  ===============================
-:func:`mat:abs(r_)`         :expr:`mat:map(abs,r_)`
-:func:`mat:acos(r_)`        :expr:`mat:map(acos,r_)`
-:func:`mat:acosh(r_)`       :expr:`mat:map(acosh,r_)`
-:func:`mat:acot(r_)`        :expr:`mat:map(acot,r_)`
-:func:`mat:acoth(r_)`       :expr:`mat:map(acoth,r_)`
-:func:`mat:asin(r_)`        :expr:`mat:map(asin,r_)`
-:func:`mat:asinh(r_)`       :expr:`mat:map(asinh,r_)`
-:func:`mat:asinc(r_)`       :expr:`mat:map(asinc,r_)`
-:func:`mat:asinhc(r_)`      :expr:`mat:map(asinhc,r_)`
-:func:`mat:atan(r_)`        :expr:`mat:map(atan,r_)`
-:func:`mat:atan2(y,r_)`     :expr:`mat:map2(y,atan2,r_)`
-:func:`mat:atanh(r_)`       :expr:`mat:map(atanh,r_)`
-:func:`mat:ceil(r_)`        :expr:`mat:map(ceil,r_)`
-:func:`mat:cos(r_)`         :expr:`mat:map(cos,r_)`
-:func:`mat:cosh(r_)`        :expr:`mat:map(cosh,r_)`
-:func:`mat:cot(r_)`         :expr:`mat:map(cot,r_)`
-:func:`mat:coth(r_)`        :expr:`mat:map(coth,r_)`
-:func:`mat:exp(r_)`         :expr:`mat:map(exp,r_)`
-:func:`mat:floor(r_)`       :expr:`mat:map(floor,r_)`
-:func:`mat:frac(r_)`        :expr:`mat:map(frac,r_)`
-:func:`mat:hypot(y,r_)`     :expr:`mat:map2(y,hypot,r_)`
-:func:`mat:hypot3(y,z,r_)`  :expr:`mat:map3(y,z,hypot3,r_)`
-:func:`mat:log(r_)`         :expr:`mat:map(log,r_)`
-:func:`mat:log10(r_)`       :expr:`mat:map(log10,r_)`
-:func:`mat:round(r_)`       :expr:`mat:map(round,r_)`
-:func:`mat:sign(r_)`        :expr:`mat:map(sign,r_)`
-:func:`mat:sign1(r_)`       :expr:`mat:map(sign1,r_)`
-:func:`mat:sin(r_)`         :expr:`mat:map(sin,r_)`
-:func:`mat:sinc(r_)`        :expr:`mat:map(sinc,r_)`
-:func:`mat:sinh(r_)`        :expr:`mat:map(sinh,r_)`
-:func:`mat:sinhc(r_)`       :expr:`mat:map(sinhc,r_)`
-:func:`mat:sqr(r_)`         :expr:`mat:map(sqr,r_)`
-:func:`mat:sqrt(r_)`        :expr:`mat:map(sqrt,r_)`
-:func:`mat:tan(r_)`         :expr:`mat:map(tan,r_)`
-:func:`mat:tanh(r_)`        :expr:`mat:map(tanh,r_)`
-:func:`mat:trunc(r_)`       :expr:`mat:map(trunc,r_)`
-==========================  ===============================
+============================  ===============================
+Functions                     Equivalent Mapping
+============================  ===============================
+:func:`mat:abs(r_)`           :expr:`mat:map(abs,r_)`
+:func:`mat:acos(r_)`          :expr:`mat:map(acos,r_)`
+:func:`mat:acosh(r_)`         :expr:`mat:map(acosh,r_)`
+:func:`mat:acot(r_)`          :expr:`mat:map(acot,r_)`
+:func:`mat:acoth(r_)`         :expr:`mat:map(acoth,r_)`
+:func:`mat:asin(r_)`          :expr:`mat:map(asin,r_)`
+:func:`mat:asinh(r_)`         :expr:`mat:map(asinh,r_)`
+:func:`mat:asinc(r_)`         :expr:`mat:map(asinc,r_)`
+:func:`mat:asinhc(r_)`        :expr:`mat:map(asinhc,r_)`
+:func:`mat:atan(r_)`          :expr:`mat:map(atan,r_)`
+:func:`mat:atan2(y,r_)`       :expr:`mat:map2(y,atan2,r_)`
+:func:`mat:atanh(r_)`         :expr:`mat:map(atanh,r_)`
+:func:`mat:ceil(r_)`          :expr:`mat:map(ceil,r_)`
+:func:`mat:cos(r_)`           :expr:`mat:map(cos,r_)`
+:func:`mat:cosh(r_)`          :expr:`mat:map(cosh,r_)`
+:func:`mat:cot(r_)`           :expr:`mat:map(cot,r_)`
+:func:`mat:coth(r_)`          :expr:`mat:map(coth,r_)`
+:func:`mat:exp(r_)`           :expr:`mat:map(exp,r_)`
+:func:`mat:floor(r_)`         :expr:`mat:map(floor,r_)`
+:func:`mat:frac(r_)`          :expr:`mat:map(frac,r_)`
+:func:`mat:hypot(y,r_)`       :expr:`mat:map2(y,hypot,r_)`
+:func:`mat:hypot3(y,z,r_)`    :expr:`mat:map3(y,z,hypot3,r_)`
+:func:`mat:invsqrt([v_,]r_)`  :expr:`mat:map2(v_ or 1,invsqrt,r_)`
+:func:`mat:log(r_)`           :expr:`mat:map(log,r_)`
+:func:`mat:log10(r_)`         :expr:`mat:map(log10,r_)`
+:func:`mat:round(r_)`         :expr:`mat:map(round,r_)`
+:func:`mat:sign(r_)`          :expr:`mat:map(sign,r_)`
+:func:`mat:sign1(r_)`         :expr:`mat:map(sign1,r_)`
+:func:`mat:sin(r_)`           :expr:`mat:map(sin,r_)`
+:func:`mat:sinc(r_)`          :expr:`mat:map(sinc,r_)`
+:func:`mat:sinh(r_)`          :expr:`mat:map(sinh,r_)`
+:func:`mat:sinhc(r_)`         :expr:`mat:map(sinhc,r_)`
+:func:`mat:sqr(r_)`           :expr:`mat:map(sqr,r_)`
+:func:`mat:sqrt(r_)`          :expr:`mat:map(sqrt,r_)`
+:func:`mat:tan(r_)`           :expr:`mat:map(tan,r_)`
+:func:`mat:tanh(r_)`          :expr:`mat:map(tanh,r_)`
+:func:`mat:trunc(r_)`         :expr:`mat:map(trunc,r_)`
+============================  ===============================
 
 Mapping Complex-like Methods
 ----------------------------
@@ -542,15 +543,15 @@ Mapping Error-like Methods
 
 The following table lists the methods built from the application of :func:`mat:map()` to the error-like functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`.
 
-===========================  ===============================
-Functions                    Equivalent Mapping
-===========================  ===============================
-:func:`mat:erf(rtol_,r_)`    :expr:`mat:map2(rtol_,erf,r_)`
-:func:`mat:erfc(rtol_,r_)`   :expr:`mat:map2(rtol_,erfc,r_)`
-:func:`mat:erfcx(rtol_,r_)`  :expr:`mat:map2(rtol_,erfcx,r_)`
-:func:`mat:erfi(rtol_,r_)`   :expr:`mat:map2(rtol_,erfi,r_)`
-:func:`mat:wf(rtol_,r_)`     :expr:`mat:map2(rtol_,wf,r_)`
-===========================  ===============================
+=============================  ===============================
+Functions                      Equivalent Mapping
+=============================  ===============================
+:func:`mat:erf([rtol_,]r_)`    :expr:`mat:map2(rtol_,erf,r_)`
+:func:`mat:erfc([rtol_,]r_)`   :expr:`mat:map2(rtol_,erfc,r_)`
+:func:`mat:erfcx([rtol_,]r_)`  :expr:`mat:map2(rtol_,erfcx,r_)`
+:func:`mat:erfi([rtol_,]r_)`   :expr:`mat:map2(rtol_,erfi,r_)`
+:func:`mat:wf([rtol_,]r_)`     :expr:`mat:map2(rtol_,wf,r_)`
+=============================  ===============================
 
 Mapping Vector-like Methods
 ---------------------------
@@ -569,7 +570,7 @@ Functions                   Equivalent Mapping
 Folding Methods
 ---------------
 
-The following table lists the methods built from the application of :func:`mat:foldl()` to the functions from the module :mod:`MAD.gmath` for :type:`matrix`, :type:`cmatrix`, and :type:`imatrix`.
+The following table lists the methods built from the application of :func:`mat:foldl()` to the functions from the module :mod:`MAD.gmath` for :type:`matrix`, :type:`cmatrix`, and :type:`imatrix`. The methods :func:`mat:min()` and :func:`mat:max()` are not available for :type:`cmatrix`.
 
 ==========================  ===============================
 Functions                   Equivalent Folding
@@ -594,7 +595,7 @@ Where :func:`any()` and :func:`all()` are functions that bind the predicate :var
 Scanning Methods
 ----------------
 
-The following table lists the methods built from the application of :func:`mat:scanl()` and :func:`mat:scanr()` to the functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`.
+The following table lists the methods built from the application of :func:`mat:scanl()` and :func:`mat:scanr()` to the functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`. The methods :func:`mat:accmin()`, :func:`mat:raccmin()`, :func:`mat:accmax()` and :func:`mat:raccmax()` are not available for :type:`cmatrix`.
 
 =============================  ===============================
 Functions                      Equivalent Scanning
@@ -698,10 +699,6 @@ Operator-like Methods
 
    Equivalent to :expr:`mat.div(1, mat, r_, rcond_)`. 
 
-.. function:: mat:mod (a, r_)
-
-   Equivalent to :expr:`mat % a` with the possibility to place the result in :var:`r`.
-
 .. function:: mat:pow (n, r_)
 
    Equivalent to :expr:`mat ^ n` with the possibility to place the result in :var:`r`.
@@ -726,7 +723,7 @@ Special Methods
 .. function:: mat:transpose ([c_,] r_)
               mat:t ([c_,] r_)
 
-   Return a real, complex or integer matrix or :var:`r` resulting from the conjugate transpose of the matrix :var:`mat` unless :expr:`c = false` which disables the conjugate. If :expr:`r = 'in'` then it is assigned :var:`mat`.
+   Return a real, complex or integer matrix or :var:`r` resulting from the conjugate transpose :math:`M^*` of the matrix :var:`mat` unless :expr:`c = false` which disables the conjugate to get :math:`M^\tau`. If :expr:`r = 'in'` then it is assigned :var:`mat`.
 
 .. function:: mat:trace ()
               mat:tr()
@@ -847,7 +844,7 @@ Solvers and Decompositions
 
 .. function:: mat:eigen (vr_, vl_)
 
-   Return the complex vector filled with the eigenvalues followed by the by the status :var:`info` and the two optional real or complex matrices :var:`vr` and :var:`vl` containing the left and right eigenvectors resulting from the `Eigen Decomposition <https://en.wikipedia.org/wiki/Eigendecomposition_of_a_matrix>`_ of the real or complex square matrix :var:`mat`. The eigenvectors are normalized to have unit Euclidean norm and their largest component real, and satisfy :math:`A v_r = \lambda v_r` and :math:`v_l A = \lambda v_l`.
+   Return the complex vector filled with the eigenvalues followed by the by the status :var:`info` and the two optional real or complex matrices :var:`vr` and :var:`vl` containing the right and the *transposed* left eigenvectors resulting from the `Eigen Decomposition <https://en.wikipedia.org/wiki/Eigendecomposition_of_a_matrix>`_ of the real or complex square matrix :var:`mat`. The eigenvectors are normalized to have unit Euclidean norm and their largest component real, and satisfy :math:`A v_r = \lambda v_r` and :math:`v_l^\tau A = \lambda v_l^\tau`.
 
 .. function:: mat:det ()
 
