@@ -397,7 +397,7 @@ Filling and Moving
 
 .. function:: mat:shiftv (i, n_)
 
-   Return the real, complex or integer matrix :var:`mat` after shifting the elements in :expr:`mat[i..]` to :expr:`mat[i+n..]` if :expr:`n > 0` and in the opposite direction if :expr:`n < 0`, i.e. it is equivalent to :expr:`mat:movev(i, #mat-n, i+n)` for :expr:`n > 0` and to :expr:`mat:movev(i-n, #mat+n, i)` for :expr:`n < 0`. Default: :expr:`n_ = 1`.
+   Return the real, complex or integer matrix :var:`mat` after shifting the elements in :expr:`mat[i..]` to :expr:`mat[i+n..]` if :expr:`n > 0` and in the opposite direction if :expr:`n < 0`, i.e. it is equivalent to :expr:`mat:movev(i, #mat-n, i+n)` for :expr:`n > 0` and to :expr:`mat:movev(i, #mat, i+n)` for :expr:`n < 0`. Default: :expr:`n_ = 1`.
 
 Mapping and Folding
 -------------------
