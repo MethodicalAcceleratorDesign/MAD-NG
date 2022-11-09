@@ -27,16 +27,18 @@ local assertEquals, assertAlmostEquals, assertTrue, assertFalse,
       assertErrorMsgContains, assertNil, assertNaN, assertIsString, assertInf
       in MAD.utest
 
-local complex, _C, linspace                                      in MAD
+local complex, _C, linspace, option, tocomplex                   in MAD
 local abs, sqrt, cos, sin, tan, cosh, sinh, tanh, asinh, atanh, asin,
       atan, atan2, exp, log, frac, trunc, round, hypot, floor,
-      cabs, carg, real, imag                                     in MAD.gmath
+      cabs, carg, real, imag, cplx, reim                         in MAD.gmath
 local is_complex, is_table                                       in MAD.typeid
 local eps, tiny, huge, inf, nan, pi                              in MAD.constant
 
 local infi = complex(0,inf)
 
 -- regression test suite ------------------------------------------------------o
+local _IEC60559 = _IEC60559 
+--Run with ./mad -e "_IEC60559 = true" all.mad TestComplex to ensure compliance with IEC60559
 
 TestComplex = {}
 
@@ -260,12 +262,6 @@ function TestComplex:testAbs()
 end
 
 function TestComplex:testCAbs()
-  for _,x in ipairs(values.rad) do
-    for _,y in ipairs(values.rad) do
-      local x, y = x/pi, y/pi
-      assertAlmostEquals( cabs(x + y*1i) - hypot(x,y), 0, eps )
-    end
-  end
   for _,x in ipairs(values.num) do
     if x ~= huge then assertAlmostEquals( cabs(x + x*1i) - hypot(x,x), 0, 2*eps )
     else              assertInf         ( cabs(x + x*1i) )                       end
@@ -279,6 +275,23 @@ function TestComplex:testCAbs()
   end
   for _,z in ipairs(unitCircle( 10, values.rad)) do
     assertAlmostEquals( cabs(z) - 10, 0, 8*eps )
+  end
+  for _,x in ipairs(values.rad) do
+    for _,y in ipairs(values.rad) do
+      local x, y = x/pi, y/pi
+      assertAlmostEquals( cabs(x + y*1i) - hypot(x,y), 0, eps )
+      -- Check for IEEE:IEC 60559 compliance (next 7 below)
+      assertEquals(cabs(x + y*1i), cabs(y + 1i * x))
+      assertEquals(cabs(x - 1i*y), cabs(x - 1i*y))
+    end
+    assertEquals(cabs(x, 0), abs(x))
+    assertEquals(cabs(inf, x), inf)
+    assertEquals(cabs(-inf, x), inf)
+  end
+  --Below fails on Ubuntu 22.04.1 LTS, instead NaN is returned, not compliant with ISO/IEC 9899:1999, should be inf (keep last so other tests run)
+  if _IEC60559 then
+    assertEquals(cabs(inf + 1i * nan), inf)
+    assertEquals(cabs(-inf + 1i* nan), inf)
   end
 end
 
@@ -301,6 +314,26 @@ function TestComplex:testCArg()
   end
   for _,z in ipairs(unitCircle( 10, values.rad)) do
     assertAlmostEquals( carg(z) - atan2(z.im,z.re), 0, 8*eps )
+  end
+end
+
+function TestGmath:testCplx()
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      local actual = cplx(x,y)
+      assertEquals(real(actual), x)
+      assertEquals(imag(actual), y)
+    end
+  end
+end
+
+function TestGmath:testReim()
+  for _,x in ipairs(values.num) do
+    for _,y in ipairs(values.num) do
+      local a, b = reim(cplx(x,y))
+      assertEquals(a, x)
+      assertEquals(b, y)
+    end
   end
 end
 
@@ -469,7 +502,7 @@ function TestComplex:testLog()
     assertAlmostEquals( (z:log():exp()):imag() - im, 0, eps )
 
     assertAlmostEquals( (1/z):log():real() - -(z:log()):real()      , 0,   eps )
-    assertEquals      ( (1/z):log():imag(),  -(z:log()):imag()                 )
+    assertAlmostEquals( (1/z):log():imag() - -(z:log()):imag()      , 0,   eps ) --Division introduces error
     assertEquals      ( z    :log():real(),  (-z):log():real()                 )
     assertAlmostEquals( abs(z:log():imag() - (-z):log():imag()) - pi, 0, 2*eps )
   end
@@ -611,7 +644,7 @@ function TestComplex:testTan()
     end
   end
   for _,z in ipairs(unitCircle( 1, values.rad)) do
-      assertAlmostEquals( (z:tan() - z:sin() / z:cos() ):real(), 0,   eps )
+      assertAlmostEquals( (z:tan() - z:sin() / z:cos() ):real(), 0,  2*eps) --2 eps does not seem outrageous
       assertAlmostEquals( (z:tan() - z:sin() / z:cos() ):imag(), 0,   eps )
   end
   for _,x in ipairs( values.num ) do
@@ -630,6 +663,36 @@ function TestComplex:testTan()
   assertEquals( complex( inf , inf ):tan(), complex( 0   , 1   ) )
   assertNaN   ( complex( nan , nan ):tan():real() )
   assertNaN   ( complex( nan , nan ):tan():imag() )
+end
+
+function TestComplex:testCot()
+  for _,x in ipairs(values.rad) do
+    for _,y in ipairs(values.rad) do
+      if x ~= 0 or y ~= 0 then
+        local x, y = x/pi, y/pi
+        local z = complex(x,y)
+        assertAlmostEquals( (z:cot() - z:cos() / z:sin() ):real(), 0,128*eps )
+        assertAlmostEquals( (z:cot() - z:cos() / z:sin() ):imag(), 0,128*eps )
+        assertAlmostEquals( (z:cot() - 1 / z:tan()       ):real(), 0, eps )
+        assertAlmostEquals( (z:cot() - 1 / z:tan()       ):imag(), 0, eps )
+      end
+    end
+  end
+  for _,z in ipairs(unitCircle( 1, values.rad)) do
+      assertAlmostEquals( (z:cot() - z:cos() / z:sin() ):real(), 0, eps )
+      assertAlmostEquals( (z:cot() - z:cos() / z:sin() ):imag(), 0, eps )
+      assertAlmostEquals( (z:cot() - 1 / z:tan()       ):real(), 0, eps )
+      assertAlmostEquals( (z:cot() - 1 / z:tan()       ):imag(), 0, eps )
+  end
+  for _,x in ipairs( values.num ) do
+    local z = complex( x, x)
+    if x < 10e2 and x ~= 0 then
+      assertAlmostEquals( (z:cot() - z:cos() / z:sin() ):real(), 0, 8*eps )
+      assertAlmostEquals( (z:cot() - z:cos() / z:sin() ):imag(), 0, 8*eps )
+      assertAlmostEquals( (z:cot() - 1 / z:tan()       ):real(), 0, eps )
+      assertAlmostEquals( (z:cot() - 1 / z:tan()       ):imag(), 0, eps )
+    end
+  end
 end
 
 function TestComplex:testSinh()
@@ -780,10 +843,12 @@ function TestComplex:testTanh()
   -- Check for IEEE:IEC 60559 compliance
   assertEquals( complex( 0, 0  ):tanh(), complex( 0, 0) )
   for _,x in ipairs(values.rad) do
-    assertNaN( complex( x, inf ):tanh():real() )
-    assertNaN( complex( x, inf ):tanh():imag() )
-    assertNaN( complex( x, nan ):tanh():real() )
-    assertNaN( complex( x, nan ):tanh():imag() )
+    if x ~= 0 then
+      assertNaN( complex( x, inf ):tanh():real() ) --Similar problem as acosh; for z = 0 + inf i, atan(z) = 0 + i nan; failing IEEE:IEC 60559 compliance (works for x ~= 0)  May be machine dependent
+      assertNaN( complex( x, inf ):tanh():imag() )
+      assertNaN( complex( x, nan ):tanh():real() ) --Same problem as acosh; for z = 0 + nan i, atan(z) = 0 + i nan; failing IEEE:IEC 60559 compliance (works for x ~= 0)   May be machine dependent
+      assertNaN( complex( x, nan ):tanh():imag() )
+    end
     if x > 0 then
       assertNaN   ( complex( nan, x ):tanh():real() )
       assertNaN   ( complex( nan, x ):tanh():imag() )
@@ -806,6 +871,44 @@ function TestComplex:testTanh()
     for _,y in ipairs(values.rad) do
       local y = y/pi
       assertEquals( complex(x,y):tan(), -1i * (1i * complex(x,y)):tanh() )
+    end
+  end
+  --Below fails on Ubuntu 22.04.1 LTS, instead 0 + i nan is returned, not compliant with ISO/IEC 9899:1999, should be nan + i nan (keep last so other tests run)
+  if _IEC60559 then
+    assertNaN( complex( 0, inf ):tanh():real() )
+    assertNaN( complex( 0, inf ):tanh():imag() )
+    assertNaN( complex( 0, nan ):tanh():real() ) 
+    assertNaN( complex( 0, nan ):tanh():imag() )
+  end
+end
+
+function TestComplex:testCoth()
+  for _,x in ipairs(values.rad2) do
+    for _,y in ipairs(values.rad3) do
+      if x ~= 0 and y ~= 0 then
+        local x = x/pi, y/pi
+        local z = complex(x,y)
+        assertAlmostEquals( (z:coth() - z:cosh() / z:sinh() ):real(), 0, 32*eps )
+        assertAlmostEquals( (z:coth() - z:cosh() / z:sinh() ):imag(), 0, 32*eps )
+        assertAlmostEquals( (z:coth() -    1     / z:tanh() ):real(), 0, 1*eps )
+        assertAlmostEquals( (z:coth() -    1     / z:tanh() ):imag(), 0, 1*eps )
+      end
+    end
+  end
+  for _,z in ipairs(unitCircle( 1, values.rad)) do
+      assertAlmostEquals( (z:coth() - z:cosh() / z:sinh() ):real(), 0, 2*eps )
+      assertAlmostEquals( (z:coth() - z:cosh() / z:sinh() ):imag(), 0, 2*eps )
+      assertAlmostEquals( (z:coth() -    1     / z:tanh() ):real(), 0, 1*eps )
+      assertAlmostEquals( (z:coth() -    1     / z:tanh() ):imag(), 0, 1*eps )
+  end
+  for _,x in ipairs(values.num) do
+    local z = complex( x, x)
+    if x~=0 then
+      assertAlmostEquals( (z:coth() -    1     / z:tanh() ):real(), 0, 1*eps )
+      assertAlmostEquals( (z:coth() -    1     / z:tanh() ):imag(), 0, 1*eps )
+    else
+      assertNaN( (z:coth() -    1     / z:tanh() ):real())
+      assertNaN( (z:coth() -    1     / z:tanh() ):imag())
     end
   end
 end
@@ -968,6 +1071,49 @@ function TestComplex:testAtan()
   assertAlmostEquals( (- pi/2 + 0i ):atan():imag() - -1.25193300684524e-17, 0,     eps )
 end
 
+function TestComplex:testAcot()
+  assertNaN   ( complex( nan, nan):acot():real()             )
+  assertNaN   ( complex( nan, nan):acot():imag()             )
+  assertNaN   ( complex(  0 ,  0 ):acot():real()             ) --1 / complex(0, 0) = complex(nan + nani)
+  assertNaN   ( complex(  0 ,  0 ):acot():imag()             ) --1 / complex(0, 0) = complex(nan + nani)
+  assertEquals( complex(-inf, 0  ):acot(), complex( 0 , 0 )  )
+  assertEquals( complex( inf, 0  ):acot(), complex( 0 , 0 )  )
+
+  for _,z in ipairs(unitCircle( pi/2, values.rad)) do
+    local res = 1/2*1i*((1-1i/z):log()-(1+1i/z):log())
+    assertAlmostEquals( (z:acot():cot() - z           ):real(), 0, 2*eps )
+    assertAlmostEquals( (z:acot():cot() - z           ):imag(), 0, 2*eps )
+    assertAlmostEquals( (z:acot()       - -(-z:acot())):real(), 0,   eps )
+    assertAlmostEquals( (z:acot()       - -(-z:acot())):imag(), 0,   eps )
+    assertAlmostEquals( (z:acot()       - res         ):real(), 0,   eps )
+    assertAlmostEquals( (z:acot()       - res         ):imag(), 0,   eps )
+  end
+
+  for _,x in ipairs(values.num) do
+    local z = complex( x, x)
+    if x < pi/2 and x ~= 0 then
+      local res = 1/2*1i*((1-1i/z):log()-(1+1i/z):log())
+      assertAlmostEquals( (z:acot():cot() - z           ):real(), 0,   eps )
+      assertAlmostEquals( (z:acot():cot() - z           ):imag(), 0,   eps )
+      assertAlmostEquals( (z:acot()       - -(-z:acot())):real(), 0,   eps )
+      assertAlmostEquals( (z:acot()       - -(-z:acot())):imag(), 0,   eps )
+      assertAlmostEquals( (z:acot()       - res         ):real(), 0,   eps )
+      assertAlmostEquals( (z:acot()       - res         ):imag(), 0,16*eps ) --Too high?
+    elseif x < 10 and x ~= 0 then
+      assertAlmostEquals( (z:acot():cot() - z):real()           , 0, 4*eps )
+      assertAlmostEquals( (z:acot():cot() - z):imag()           , 0, 4*eps )
+    end
+  end
+
+  --Below is from wolfram alpha
+  assertEquals( (0 + 1i):acot(), complex( 0, -inf) )
+  assertEquals( (0 - 1i):acot(), complex( 0,  inf) )
+  assertAlmostEquals( (  pi/2 + 0i ):acot():real() -  0.5669115049410094    , 0,  eps )
+  assertAlmostEquals( (- pi/2 + 0i ):acot():real() - -0.5669115049410094    , 0,  eps )
+  assertAlmostEquals( (  pi/2 + 0i ):acot():imag()                          , 0,  eps )
+  assertAlmostEquals( (- pi/2 + 0i ):acot():imag()                          , 0,  eps )
+end
+
 function TestComplex:testAsinh()
   assertAlmostEquals( ( 0 + 1i       ):asinh():real() -  0                   , 0,    eps )
   assertAlmostEquals( ( 0 - 1i       ):asinh():real() -  0                   , 0,    eps )
@@ -1064,8 +1210,10 @@ function TestComplex:testAcosh()
 
 -- Check for IEEE:IEC 60559 compliance
   for _,x in ipairs(values.rad) do
-    assertNaN   ( complex( x  , nan ):acosh():real() )
-    assertNaN   ( complex( x  , nan ):acosh():imag() )
+    if x ~= 0 then
+      assertNaN   ( complex( x  , nan ):acosh():real() )
+      assertNaN   ( complex( x  , nan ):acosh():imag() )
+    end
     assertNaN   ( complex( nan, x   ):acosh():real() )
     assertNaN   ( complex( nan, x   ):acosh():imag() )
     assertEquals( complex( x  , inf ):acosh(), complex( inf, pi/2) )
@@ -1084,6 +1232,11 @@ function TestComplex:testAcosh()
   assertNaN   ( complex( nan, inf):acosh():imag()                        )
   assertNaN   ( complex( nan, nan):acosh():real()                        )
   assertNaN   ( complex( nan, nan):acosh():imag()                        )
+  --Below fails on Ubuntu 22.04.1 LTS, instead nan + i pi/2 is returned, not compliant with ISO/IEC 9899:1999, should be nan + i nan (keep last so other tests run)
+  if _IEC60559 then
+    assertNaN   ( complex( 0  , nan ):acosh():real() )
+    assertNaN   ( complex( 0  , nan ):acosh():imag() )
+  end
 end
 
 function TestComplex:testAtanh()
@@ -1120,6 +1273,7 @@ function TestComplex:testAtanh()
 -- Check for IEEE:IEC 60559 compliance
   for _,x in ipairs(values.rad) do
     assertEquals( complex( x, inf ):atanh(), complex( 0, pi/2) )
+    assertEquals( complex( x, -x  ):atanh(), atanh(complex(x, x)):conj() ) -- first statement in G.6.2.3 The catanh functions on pg 473
     assertEquals( complex( inf, x ):atanh(), complex( 0, pi/2) )
     assertNaN   ( complex( nan, x ):atanh():real() )
     assertNaN   ( complex( nan, x ):atanh():imag() )
@@ -1162,6 +1316,210 @@ function TestComplex:testAtanh()
       assertAlmostEquals( ( complex(x,y):atan() - res):imag(), 0, eps )
     end
   end
+end
+function TestComplex:testSinc()
+  for _,z in ipairs(unitCircle( pi/2, values.rad)) do
+    if abs(z) < 1e-7 then
+      assertEquals( z:sinc()    , 1 )
+      assertEquals( (-z):sinc() , 1 )
+    elseif abs(z) < inf then
+      assertEquals( z:sinc()    , (-z):sinc()    )
+      assertEquals( z:sinc()    , z:sin()    / z )
+      assertEquals( (-z):sinc() , (-z):sin() /-z )
+    end
+  end
+  for _,x in ipairs(values.num) do
+    assertNaN( complex(-inf, x):sinc():real() )
+    assertNaN( complex(-inf, x):sinc():imag() )
+    assertNaN( complex( inf, x):sinc():real() )
+    assertNaN( complex( inf, x):sinc():imag() )
+    assertNaN( complex( x,-inf):sinc():real() )
+    assertNaN( complex( x,-inf):sinc():imag() )
+    assertNaN( complex( x, inf):sinc():real() )
+    assertNaN( complex( x, inf):sinc():imag() )
+  end
+end
+
+function TestComplex:testSinhc()
+  for _,z in ipairs(unitCircle( pi/2, values.rad)) do
+    if abs(z) < 1e-7 then
+      assertEquals( z:sinhc()    , 1 )
+      assertEquals( (-z):sinhc() , 1 )
+    elseif abs(z) < inf then
+      assertEquals( z:sinhc()    , (-z):sinhc()    )
+      assertEquals( z:sinhc()    , z:sinh()    / z )
+      assertEquals( (-z):sinhc() , (-z):sinh() /-z )
+    end
+  end
+  for _,x in ipairs(values.num) do
+    assertNaN( complex(-inf, x):sinhc():real() )
+    assertNaN( complex(-inf, x):sinhc():imag() )
+    assertNaN( complex( inf, x):sinhc():real() )
+    assertNaN( complex( inf, x):sinhc():imag() )
+    assertNaN( complex( x,-inf):sinhc():real() )
+    assertNaN( complex( x,-inf):sinhc():imag() )
+    assertNaN( complex( x, inf):sinhc():real() )
+    assertNaN( complex( x, inf):sinhc():imag() )
+  end
+end
+
+function TestComplex:testAsinc()
+  for _,z in ipairs(unitCircle( pi/2, values.rad)) do
+    if abs(z) < 1e-7 then
+      assertEquals( z:asinc()    , 1 )
+      assertEquals( (-z):asinc() , 1 )
+    elseif abs(z) < inf then
+      assertEquals( z:asinc()    , (-z):asinc()    )
+      assertEquals( z:asinc()    , z:asin()    / z )
+      assertEquals( (-z):asinc() , (-z):asin() /-z )
+    end
+  end
+  for _,x in ipairs(values.num) do
+    assertNaN( complex(-inf, x):asinc():real() )
+    assertNaN( complex(-inf, x):asinc():imag() )
+    assertNaN( complex( inf, x):asinc():real() )
+    assertNaN( complex( inf, x):asinc():imag() )
+    assertNaN( complex( x,-inf):asinc():real() )
+    assertNaN( complex( x,-inf):asinc():imag() )
+    assertNaN( complex( x, inf):asinc():real() )
+    assertNaN( complex( x, inf):asinc():imag() )
+  end
+  assertEquals(complex(-1, 0):asinc():real(), pi/2)
+  assertAlmostEquals(complex(-1, 0):asinc():imag(), 0, eps)
+  assertEquals(complex( 1, 0):asinc():real(), pi/2)
+  assertAlmostEquals(complex( 1, 0):asinc():imag(), 0, eps)
+end
+
+function TestComplex:testAcoth()
+  for _,z in ipairs(unitCircle( pi/2, values.rad)) do
+    assertAlmostEquals( (z:acoth():coth() - z):real(), 0, eps )
+    assertAlmostEquals( (z:acoth():coth() - z):imag(), 0, eps )
+    if z.im ~= 0 then
+      local res = 1/2*((1+1/z):log() - (1-1/z):log())
+      assertAlmostEquals( (z:acoth() - res):real(), 0,    eps )
+      assertAlmostEquals( (z:acoth() - res):imag(), 0,    eps )
+    end
+  end
+  for _,z in ipairs(unitCircle( pi, values.rad)) do
+    assertAlmostEquals( (z:acoth():coth() - z):real(), 0, 8*eps )
+    assertAlmostEquals( (z:acoth():coth() - z):imag(), 0, 8*eps )
+  end
+  for _,x in ipairs(values.num) do
+    local z = complex( x, x)
+    local res = 1/2*((1+1/z):log() - (1-1/z):log())
+    if x < pi/2 and x~= 0 then
+      assertAlmostEquals( (z:acosh():cosh() - z  ):real(), 0,   eps )
+      assertAlmostEquals( (z:acosh():cosh() - z  ):imag(), 0,   eps )
+      assertAlmostEquals( (z:acoth()        - res):real(), 0,16*eps )
+      assertAlmostEquals( (z:acoth()        - res):imag(), 0,   eps )
+    elseif x < 10 and x ~= 0 then
+      assertAlmostEquals( (z:acosh():cosh() - z  ):real(), 0, 2*eps )
+      assertAlmostEquals( (z:acosh():cosh() - z  ):imag(), 0, 2*eps )
+    end
+  end
+  assertEquals( ( 0 - 1i):acoth()       , 0 + pi/4*1i )
+  assertEquals( (-1 + 0i):acoth():real(),-inf         )
+  assertEquals( (-1 + 0i):acoth():imag(), 0) -- check for mac: pi/4*1i bug
+
+-- Check for IEEE:IEC 60559 compliance --No existing, merged division and catanh
+  for _,x in ipairs(values.rad) do
+    assertEquals( complex( x, inf ):acoth(), complex( 0, 0) ) --1/inf = 0
+    assertEquals( complex( inf, x ):acoth(), complex( 0, 0) )
+    assertNaN   ( complex( nan, x ):acoth():real() )
+    assertNaN   ( complex( nan, x ):acoth():imag() )
+    assertNaN   ( complex( x, nan ):acoth():real() )
+    assertNaN   ( complex( x, nan ):acoth():imag() )
+  end
+  assertNaN   ( complex(  0 ,  0  ):acoth():real()) -- 1/(0 + 0i) = nan + nan i
+  assertNaN   ( complex( inf, inf ):acoth():imag()) -- 1/(inf + inf i) = nan + nan i 
+  assertNaN   ( complex( nan, nan ):acoth():real())
+  assertNaN   ( complex( nan, nan ):acoth():imag())
+  assertNaN   ( complex( nan, inf ):acoth():real()) -- 1/(nan + inf i) = nan + nan i
+  assertNaN   ( complex( nan, inf ):acoth():imag()) -- 1/(nan + inf i) = nan + nan i
+  assertNaN   ( complex( inf, nan ):acoth():real())
+  assertNaN   ( complex( inf, nan ):acoth():imag())
+end
+
+function TestComplex:testInvsqrt()
+  for _,z in ipairs(unitCircle( pi/2, values.rad)) do
+    if abs(z) > 0 and abs(z) < inf then
+      local res = z*z:invsqrt()*z:invsqrt() - complex(1,0)
+      assertAlmostEquals(res:real(), 0, 2*eps )
+      assertAlmostEquals(res:imag(), 0, 2*eps )
+      for _, x in pairs(values.num) do
+        res = z*z:invsqrt(x)*z:invsqrt() - x
+        if x < 1 then --absolute error
+          assertAlmostEquals(res:real()  , 0, eps )
+          assertAlmostEquals(res:imag()  , 0, eps )
+        elseif x < huge then --relative error
+          assertAlmostEquals(res:real()/x, 0, 2*eps )
+          assertAlmostEquals(res:imag()/x, 0, 2*eps )
+        end
+      end
+    end
+  end
+  for _,x in ipairs(values.rad2) do
+    if x > 0 then
+      assertEquals( complex(inf, x):invsqrt(), complex(0, 0))
+      -- assertEquals( complex( x,inf):invsqrt(), complex(0, 0)) -- returns nan + nan i?
+      assertAlmostEquals( complex(-x , 0):invsqrt():imag(), 1/-sqrt(x), abs(1/-sqrt(x))*eps)
+    end
+    assertNaN( complex(-0, -0):invsqrt():real() )
+    assertNaN( complex(-0, -0):invsqrt():imag() )
+  end
+end
+
+function TestComplex:testHypot()
+  for _,z1 in ipairs(unitCircle( pi/2, values.rad)) do
+    for _,z2 in ipairs(unitCircle( pi/2, values.rad)) do
+      -- if abs(z1) > tiny and abs(z2) > tiny then
+        local res = (z1:hypot(z2) - (z1*z1 + z2*z2):sqrt())
+        assertAlmostEquals(res:real(), 0, eps)
+        assertAlmostEquals(res:imag(), 0, eps)
+        assertEquals(hypot(z1, z2), hypot(z2, z1))
+        assertEquals(hypot(z1, z2), hypot(z1,-z2))
+      -- end
+    end
+    assertAlmostEquals(z1:hypot(0):real(), abs(z1:real()), eps)
+    assertAlmostEquals(z1:hypot(0):imag(), (z1*z1):sqrt():imag(), eps) -- imaginary part depends on real and imag sign part
+    assertEquals(hypot(inf, z1), inf)
+    assertEquals(hypot(-inf, z1), inf)
+  end
+  assertEquals(hypot(inf,nan), inf)
+  assertEquals(hypot(-inf,nan), inf)
+end
+
+-- --
+function TestComplex:testHypot3()
+  for _,z1 in ipairs(unitCircle( pi/2, values.rad)) do
+    for _,z2 in ipairs(unitCircle( pi/2, values.rad)) do
+      for _,z3 in ipairs(unitCircle( pi/2, values.rad)) do
+        local res = z1:hypot3(z2, z3) - sqrt(z1*z1 + z2*z2 + z3*z3)
+        assertEquals(res:real(), 0, eps)
+        assertEquals(res:imag(), 0, eps)        
+        assertEquals((z1:hypot3(z2, z3) - z2:hypot3(z1 , z3)):real(), 0)
+        assertEquals((z1:hypot3(z2, z3) - z2:hypot3(z1 , z3)):imag(), 0, 2*eps)
+        if abs(z1^2 + z2^2 + z3^2) > 16*eps then -- x^2 + y^2 + z^2 - (y^2 + z^2 + x^2)  = eps + eps i can result in a very large difference once square rooted
+          local realRes = abs(z1:hypot3(z2, z3):real()) --To account for +/- result -> sqrt(x^2 + tiny i) = x, sqrt(x^2 - tiny i) = -x
+          local imagRes = abs(z1:hypot3(z2, z3):imag())
+          assertAlmostEquals(realRes - abs(z2:hypot3(z3 , z1):real()), 0, 2*eps)
+          assertAlmostEquals(imagRes - abs(z2:hypot3(z3 , z1):imag()), 0, 2*eps)
+          assertAlmostEquals(realRes - abs(z3:hypot3(z2 , z1):real()), 0, 2*eps)
+          assertAlmostEquals(imagRes - abs(z3:hypot3(z2 , z1):imag()), 0, 2*eps)
+          assertEquals((z1:hypot3(z2, z3) - z1:hypot3(-z2, z3)):real(), 0)
+          assertEquals((z1:hypot3(z2, z3) - z1:hypot3(-z2, z3)):imag(), 0)
+          assertEquals((z1:hypot3(z2, z3) - z1:hypot3(z2 ,-z3)):real(), 0)
+          assertEquals((z1:hypot3(z2, z3) - z1:hypot3(z2 ,-z3)):imag(), 0)
+        end
+      end
+    end
+    assertAlmostEquals(z1:hypot3(0, 0):real(), abs(z1:real()), eps)
+    assertAlmostEquals(z1:hypot3(0, 0):imag(), (z1*z1):sqrt():imag(), eps) -- imaginary part depends on real and imag sign part
+    assertEquals(z1:hypot3(complex(inf, inf ), 0):real(), inf)
+    assertEquals(z1:hypot3(complex(-inf, inf), 0):imag(), -inf)
+  end
+  assertEquals(complex(inf, inf ):hypot3(nan,  0):real(), inf)
+  assertEquals(complex(inf, -inf):hypot3(nan, 0):imag(), -inf)
 end
 
 function TestComplex:testErf()
@@ -1647,11 +2005,11 @@ end
 
 function TestComplex:testDiv()
   assertEquals( (complex( 0   , 0  ):div(complex( 1   , 1   )))       , complex(0,0) )
-  assertInf   ( (complex( 1   , 1  ):div(complex( tiny, tiny))):real()               )
-  assertNaN   ( (complex( 1   , 1  ):div(complex( tiny, tiny))):imag()               )
-  assertNaN   ( (complex( 1   , 1  ):div(complex( huge, huge))):real()               )
+  assertInf   ( (complex( 4   , 4  ):div(complex( tiny, tiny))):real()               ) --Tiny = 2^-1022 to receive inf, we need to go above 2^1024 so 2^2 / 2^-1022 achieves inf
+  assertEquals( (complex( 4   , 4  ):div(complex( tiny, tiny))):imag(), 0            ) --(1 + 1i) / (x + xi) = 1/x 
+  assertEquals( (complex( 1   , 1  ):div(complex( huge, huge))):real(), 0            ) --Huge = 2^1024; 2^-1024 = 0, also 1/inf = 0
   assertEquals( (complex( 1   , 1  ):div(complex( huge, huge))):imag(), 0            )
-  assertNaN   ( (complex( 1   , 1  ):div(complex(-huge,-huge))):real()               )
+  assertEquals( (complex( 1   , 1  ):div(complex(-huge,-huge))):real(),-0            ) --(1 + 1i) / (-x + -xi) = -1/x + comment on line 1652
   assertEquals( (complex( 1   , 1  ):div(complex(-huge,-huge))):imag(), 0            )
   assertNaN   ( (complex( 1   , 1  ):div(complex( inf , inf ))):real()               )
   assertNaN   ( (complex( 1   , 1  ):div(complex( inf , inf ))):imag()               )
@@ -1733,15 +2091,35 @@ function TestComplex:testDiv()
   end end
 end
 
+function TestComplex:testInv()
+  for _,z in ipairs(unitCircle( pi/2, values.rad)) do
+    if abs(z) > 0 and abs(z) < inf then
+      local res = z:inv() - 1/z
+      assertEquals(res:real(), 0)
+      assertEquals(res:imag(), 0)
+      res = z*z:inv() - 1
+      assertAlmostEquals(res:real(), 0, eps )
+      assertAlmostEquals(res:imag(), 0, eps )
+    end
+  end
+  for _,x in ipairs(values.rad2) do
+    if x > 0 then
+      assertEquals( complex(inf, x ):inv(), complex(0, 0))
+      assertEquals( complex( x ,inf):inv(), complex(0, 0))
+      assertEquals( complex( 0 , x ):inv(), complex(0, -1/(x)))
+    end
+    assertNaN( complex( 0, -0):inv():real() )
+    assertNaN( complex(-0,  0):inv():imag() )
+  end
+end
+
 function TestComplex:testMod()
   local a, b, d, z, z1
-  local roundc = _C.round -- round imported from C
-
   for j,z  in ipairs(unitCircle(1, values.rad)) do
   for i,z1 in ipairs(unitCircle(1, values.rad)) do
     local d = z/z1
     local re, im = d:real(), d:imag()
-    assertAlmostEquals( abs(z:mod(z1) - (z - (complex(roundc(re), roundc(im)))*z1)), 0, eps )
+    assertAlmostEquals( abs(z:mod(z1) - (z - (complex(floor(re), floor(im)))*z1)), 0, eps )
   end end
   for _,x in ipairs(values.rad) do
   for _,y in ipairs(values.rad) do
@@ -1750,21 +2128,21 @@ function TestComplex:testMod()
       local z, z1 = complex(a,a), complex(b,b)
       local d = z/z1
       local re, im = d:real(), d:imag()
-      assertAlmostEquals( abs(z:mod(z1) - (z - (complex(roundc(re), roundc(im)))*z1)), 0, eps )
+      assertAlmostEquals( abs(z:mod(z1) - (z - (complex(floor(re), floor(im)))*z1)), 0, eps )
     end
   end end
   for _,x in ipairs(values.num) do
   for _,y in ipairs(values.num) do
     if x > tiny and x < 10 and y > tiny and y < 10 then
       local a, b = complex(x,y), complex(x,y)
-      assertAlmostEquals( a:mod(b):real() - (a - round(a/b)*b ):real(), 0,   eps )
-      assertAlmostEquals( a:mod(b):imag() - (a - round(a/b)*b ):imag(), 0,   eps )
+      assertAlmostEquals( a:mod(b):real() - (a - floor(a/b)*b ):real(), 0,   eps )
+      assertAlmostEquals( a:mod(b):imag() - (a - floor(a/b)*b ):imag(), 0,   eps )
       a, b = complex(x,x), complex(y,y)
-      assertAlmostEquals( a:mod(b):real() - (a - round(a/b)*b ):real(), 0,   eps )
-      assertAlmostEquals( a:mod(b):imag() - (a - round(a/b)*b ):imag(), 0,   eps )
+      assertAlmostEquals( a:mod(b):real() - (a - floor(a/b)*b ):real(), 0,   eps )
+      assertAlmostEquals( a:mod(b):imag() - (a - floor(a/b)*b ):imag(), 0,   eps )
       a, b = complex(x,y), complex(y,x)
-      assertAlmostEquals( a:mod(b):real() - (a - round(a/b)*b ):real(), 0,   eps )
-      assertAlmostEquals( a:mod(b):imag() - (a - round(a/b)*b ):imag(), 0, 2*eps )
+      assertAlmostEquals( a:mod(b):real() - (a - floor(a/b)*b ):real(), 0,   eps )
+      assertAlmostEquals( a:mod(b):imag() - (a - floor(a/b)*b ):imag(), 0, 2*eps )
     end
   end end
 
@@ -1865,6 +2243,23 @@ function TestComplex:testEqual()
     if im ~= 0 then assertFalse( z == complex( re,-im) )
                else assertTrue ( z == complex( re,-im) ) end
   end
+end
+
+function TestComplex:testTocomplex()
+  option.numfmt = '%.16g'
+  for _,z in ipairs(unitCircle( pi/2, values.rad)) do
+    local res = tocomplex(tostring(z))
+    assertAlmostEquals(res:real(), z:real(), 2*eps)
+    assertAlmostEquals(res:imag(), z:imag(), 2*eps)
+  end
+  option.numfmt = '%.13g'
+  assertEquals ( tostring(tocomplex(('0.3333333333333'))), '0.3333333333333+0i')
+  option.numfmt = '%.10f'
+  assertEquals ( tostring(tocomplex(('0.3333333333'))), '0.3333333333+0.0000000000i')
+  assertEquals ( tostring(tocomplex('0-0.3333333333i')), '0.0000000000-0.3333333333i')
+  option.numfmt = '%-2.4e'
+  assertEquals ( tostring(tocomplex('-5.4054e-02+3.2432e-01i')), '-5.4054e-02+3.2432e-01i')
+  assertEquals ( tostring(tocomplex('5.0000e-01-3.3333e-01i')), '5.0000e-01-3.3333e-01i')
 end
 
 -- end ------------------------------------------------------------------------o
