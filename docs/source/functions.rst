@@ -34,14 +34,14 @@ Functions                        Return values                                  
 :func:`atan(x,r_)`               :math:`\tan^{-1} x`
 :func:`atan2(x,y,r_)`            :math:`\tan^{-1} \frac{x}{y}`
 :func:`atanh(x,r_)`              :math:`\tanh^{-1} x`                                     :c:func:`atanh`
-:func:`ceil(x,r_)`               :math:`\operatorname{ceil}(x)`
+:func:`ceil(x,r_)`               :math:`\lceil x \rceil`                                  
 :func:`cos(x,r_)`                :math:`\cos x`
 :func:`cosh(x,r_)`               :math:`\cosh x`
 :func:`cot(x,r_)`                :math:`\cot x`
 :func:`coth(x,r_)`               :math:`\coth x`
 :func:`exp(x,r_)`                :math:`\exp x`
-:func:`floor(x,r_)`              :math:`\operatorname{floor}(x)`
-:func:`frac(x,r_)`               :math:`\operatorname{frac}(x)`
+:func:`floor(x,r_)`              :math:`\lfloor x \rfloor`
+:func:`frac(x,r_)`               :math:`x - \operatorname{trunc}(x)`
 :func:`hypot(x,y,r_)`            :math:`\sqrt{x^2+y^2}`                                   :c:func:`hypot`
 :func:`hypot3(x,y,z,r_)`         :math:`\sqrt{x^2+y^2+z^2}`                               :c:func:`hypot`
 :func:`inv(x,v_,r_)` [#f2]_      :math:`\frac{v}{x}`
@@ -49,10 +49,8 @@ Functions                        Return values                                  
 :func:`lgamma(x,tol_,r_)`        :math:`\ln|\Gamma(x)|`                                   :c:func:`lgamma`
 :func:`log(x,r_)`                :math:`\log x`
 :func:`log10(x,r_)`              :math:`\log_{10} x`
-:func:`pow(x,y,r_)`              :math:`x^y`
 :func:`powi(x,n,r_)`             :math:`x^n`                                              :c:func:`mad_num_powi`
-:func:`rangle(a,r)`              :math:`a + 2\pi \operatorname{round}(\frac{r-a}{2\pi})`  :c:func:`round`
-:func:`round(x,r_)`              :math:`\operatorname{round}(x)`                          :c:func:`round`
+:func:`round(x,r_)`              :math:`\lfloor x \rceil`                                 :c:func:`round`
 :func:`sign(x)`                  :math:`-1, 0\text{ or }1`                                :c:func:`mad_num_sign`  [#f3]_
 :func:`sign1(x)`                 :math:`-1\text{ or }1`                                   :c:func:`mad_num_sign1` [#f3]_
 :func:`sin(x,r_)`                :math:`\sin x`
@@ -63,7 +61,7 @@ Functions                        Return values                                  
 :func:`tan(x,r_)`                :math:`\tan x`
 :func:`tanh(x,r_)`               :math:`\tanh x`
 :func:`tgamma(x,tol_,r_)`        :math:`\Gamma(x)`                                        :c:func:`tgamma`
-:func:`trunc(x,r_)`              :math:`\operatorname{trunc}(x)`
+:func:`trunc(x,r_)`              :math:`\lfloor x \rfloor, x\geq 0;\lceil x \rceil, x<0`
 :func:`unit(x,r_)`               :math:`\frac{x}{|x|}`
 ===============================  =======================================================  =============
 
@@ -79,6 +77,7 @@ Functions                Return values
 :func:`carg(z,r_)`       :math:`\arg z`
 :func:`conj(z,r_)`       :math:`z^*`
 :func:`cplx(x,y,r_)`     :math:`x+i\,y`
+:func:`fabs(z,r_)`       :math:`|\Re(z)|+i\,|\Im(z)|`
 :func:`imag(z,r_)`       :math:`\Im(z)`
 :func:`polar(z,r_)`      :math:`|z|\,e^{i \arg z}`
 :func:`proj(z,r_)`       :math:`\operatorname{proj}(z)`
@@ -128,13 +127,16 @@ Functions                   Return values                                       
 Special Functions
 -----------------
 
-The special function factorial support negative integers as input as it uses extended factorial definition. The values are cached making the complexity of these functions in :math:`O(1)` after warmup. 
+The special function :func:`fact()` supports negative integers as input as it uses extended factorial definition, and the values are cached to make its complexity in :math:`O(1)` after warmup.
 
-==================  ====================  =========================
-Functions           Return values         C functions
-==================  ====================  =========================
-:func:`fact(n)`     :math:`n!`            :c:func:`mad_num_fact`
-==================  ====================  =========================
+The special function :func:`rangle()` adjust the angle :var:`a` versus the *previous* right angle :var:`r`, e.g. during phase advance accumulation, to ensure proper value when passing through the :math:`±2k\pi` boundaries.
+
+===================  ================================================  =========================
+Functions            Return values                                     C functions
+===================  ================================================  =========================
+:func:`fact(n)`      :math:`n!`                                        :c:func:`mad_num_fact`
+:func:`rangle(a,r)`  :math:`a + 2\pi \lfloor \frac{r-a}{2\pi} \rceil`  :c:func:`round`
+===================  ================================================  =========================
 
 Functions for Circular Sector
 -----------------------------
@@ -186,51 +188,55 @@ Functions         Return values      Operator string  Metamethods
 :func:`pow(x,y)`  :math:`x ^ y`      :const:`"^"`     :func:`__pow(x,y)`
 ================  =================  ===============  ===================
 
-Vector Operators
-----------------
+Element Operators
+-----------------
 
 Functions for element-wise operators [#f4]_ are wrappers to associated mathematical operators of vector-like objects, which themselves can be overridden by their associated metamethods.
 
-=================  =====================  ===============  ====================
-Functions          Return values          Operator string  Metamethods
-=================  =====================  ===============  ====================
-:func:`emul(x,y)`  :math:`x\,.*\,y`       :const:`".*"`    :func:`__emul(x,y)`
-:func:`ediv(x,y)`  :math:`x\,./\,y`       :const:`"./"`    :func:`__ediv(x,y)`
-:func:`emod(x,y)`  :math:`x\,.\%\,y`      :const:`".%"`    :func:`__emod(x,y)`
-:func:`epow(x,y)`  :math:`x\,.\hat\ \ y`  :const:`".^"`    :func:`__epow(x,y)`
-=================  =====================  ===============  ====================
+====================  =====================  ===============  ====================
+Functions             Return values          Operator string  Metamethods
+====================  =====================  ===============  ====================
+:func:`emul(x,y,r_)`  :math:`x\,.*\,y`       :const:`".*"`    :func:`__emul(x,y,r_)`
+:func:`ediv(x,y,r_)`  :math:`x\,./\,y`       :const:`"./"`    :func:`__ediv(x,y,r_)`
+:func:`emod(x,y,r_)`  :math:`x\,.\%\,y`      :const:`".%"`    :func:`__emod(x,y,r_)`
+:func:`epow(x,y,r_)`  :math:`x\,.\hat\ \ y`  :const:`".^"`    :func:`__epow(x,y,r_)`
+====================  =====================  ===============  ====================
 
 Logical Operators
 -----------------
 
 Functions for logical operators are wrappers to associated logical operators.
 
-=================  ====================  ===============
-Functions          Return values         Operator string
-=================  ====================  ===============
-:func:`lfalse()`   :const:`true`                                         
-:func:`ltrue()`    :const:`false`                                        
-:func:`lnot(x)`    :math:`\lnot x`       :const:`"!"`                      
-:func:`lbool(x)`   :math:`\lnot\lnot x`  :const:`"!!"`                       
-:func:`land(x,y)`  :math:`x \land y`     :const:`"&&"`                       
-:func:`lor(x,y)`   :math:`x \lor y`      :const:`"||"`                       
-=================  ====================  ===============
+=================  ===============================================================  ===============
+Functions          Return values                                                    Operator string
+=================  ===============================================================  ===============
+:func:`lfalse()`   :const:`true`                                                    :const:`"T"`                                
+:func:`ltrue()`    :const:`false`                                                   :const:`"F"`                          
+:func:`lnot(x)`    :math:`\lnot x`                                                  :const:`"!"`                      
+:func:`lbool(x)`   :math:`\lnot\lnot x`                                             :const:`"!!"`                       
+:func:`land(x,y)`  :math:`x \land y`                                                :const:`"&&"`                       
+:func:`lor(x,y)`   :math:`x \lor y`                                                 :const:`"||"`                       
+:func:`lnum(x)`    :math:`\lnot x\rightarrow 0`, :math:`\lnot\lnot x\rightarrow 1`  :const:`"!#"`
+=================  ===============================================================  ===============
 
 Relational Operators
 --------------------
 
 Functions for relational operators are wrappers to associated logical operators, which themselves can be overridden by their associated metamethods. Relational ordering operators are available only for objects that are ordered.
 
-===============  ================  ==============================  =================
-Functions        Return values     Operator string                 Metamethods
-===============  ================  ==============================  =================
-:func:`eq(x,y)`  :math:`x = y`     :const:`"=="`                   :func:`__eq(x,y)`
-:func:`ne(x,y)`  :math:`x \neq y`  :const:`"!="` or :const:`"~="`  :func:`__eq(x,y)`
-:func:`lt(x,y)`  :math:`x < y`     :const:`"<"`                    :func:`__lt(x,y)`
-:func:`le(x,y)`  :math:`x <= y`    :const:`"<="`                   :func:`__le(x,y)`
-:func:`gt(x,y)`  :math:`x > y`     :const:`">"`                    :func:`__le(x,y)`
-:func:`ge(x,y)`  :math:`x >= y`    :const:`">="`                   :func:`__lt(x,y)`
-===============  ================  ==============================  =================
+================  =========================  ==============================  =================
+Functions         Return values              Operator string                 Metamethods
+================  =========================  ==============================  =================
+:func:`eq(x,y)`   :math:`x = y`              :const:`"=="`                   :func:`__eq(x,y)`
+:func:`ne(x,y)`   :math:`x \neq y`           :const:`"!="` or :const:`"~="`  :func:`__eq(x,y)`
+:func:`lt(x,y)`   :math:`x < y`              :const:`"<"`                    :func:`__lt(x,y)`
+:func:`le(x,y)`   :math:`x \leq y`           :const:`"<="`                   :func:`__le(x,y)`
+:func:`gt(x,y)`   :math:`x > y`              :const:`">"`                    :func:`__le(y,x)`
+:func:`ge(x,y)`   :math:`x \geq y`           :const:`">="`                   :func:`__lt(y,x)`
+:func:`cmp(x,y)`  :math:`(x > y) - (x < y)`  :const:`"?="`
+================  =========================  ==============================  =================
+
+The special relational operator :func:`cmp()` returns the number :const:`1` for :math:`x<y`, :const:`-1` for :math:`x>y`, and :const:`0` otherwise.
 
 Object Operators
 ----------------

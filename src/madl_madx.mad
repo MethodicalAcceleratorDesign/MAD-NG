@@ -44,8 +44,10 @@ local MINSZCHUNK = 1000
 
 local cmt = { ['//'] = '--', ['/*'] = '--[[', ['*/'] = '--]]' }
 
+-- BUG: "." -> "_" AFTER "->" -> "." !
+
 local function convert_ident (str)
-  return string.lower(str) -- string.gsub(str, '([.$])', '_'))
+  return string.lower(string.gsub(str, '([.$])', '_'))
 end
 
 local function convert_comments (line)
@@ -316,14 +318,20 @@ local function load2madx (madx, src, dst, reload_)
 
 ::compile::
   -- compile in memory by chunk or sequence
-  local li, lj, eoc = 0, 0, false
+  local li, eocc, eoc = 0, 0, false
   local loadchunk = \ =>
     if eoc then eoc=false ; return nil end
-    li = li+1 ; eoc = out[li] == ENDOFCHUNK
+    li = li+1 ; eoc = out[li] == ENDOFCHUNK ; eocc = eocc + (eoc and 1 or 0)
     return out[li] and out[li]..'\n' or nil
   end
   while li < out.n do
-    object.load_env(madx, assert( load(loadchunk) ))
+    local fct, err = load(loadchunk)
+    if fct == nil and err ~= nil then
+      local fil = is_string(src) and src or "?"
+      io.stderr:write("MADX parse error:", fil, ":", li-2*eocc-1, ": ",
+                      out[li] or '', '\n')
+    end
+    object.load_env(madx, assert( fct, err ))
   end
   -- madx:load_env(assert( load( table.concat(out,'\n') ) ))
 

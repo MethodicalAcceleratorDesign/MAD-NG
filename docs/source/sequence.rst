@@ -21,7 +21,7 @@ The ``sequence`` object provides the following attributes:
    A *number* holding one of ``1`` (forward) or ``-1`` (backward) and specifying the direction of the sequence. [#f1]_ (default:~ ``1``)
 
 **refer** 
-   A *string* holding one of ``"entry"``, ``"centre"`` or    return true ``"exit"`` to specify the default reference position in the elements to use for their placement. An element can override it with its ``refpos`` attribute, see `element positions`_ details. (default: ``nil`` :math:`\equiv` ``"centre"``).
+   A *string* holding one of ``"entry"``, ``"centre"`` or    return true ``"exit"`` to specify the default reference position in the elements to use for their placement. An element can override it with its ``refpos`` attribute, see `element positions`_ for details. (default: ``nil`` :math:`\equiv` ``"centre"``).
 
 **owner**
    A *logical* specifying if an *empty* sequence is a view with no data ``(owner ~= true)``, or a sequence holding data ``(owner == true)``. (default: ``nil``)
