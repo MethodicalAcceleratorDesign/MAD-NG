@@ -602,7 +602,7 @@ function MR.movev (x, i, j, yi, y_) -- move x[i..j] to y[yi,yi+j-i]
   local y, yj = y_ or x, yi+j-i
   assert(i  >= 1 and j  <= size(x) and i <= j, "source indexes out of bounds")
   assert(yi >= 1 and yj <= size(y),       "destination indexes out of bounds")
-  _C.mad_vec_copy(x._dat+i-1, y._dat+yi-1, j-i+1, 1)
+  _C.mad_vec_copy(x._dat+i-1, y._dat+yi-1, j-i+1)
   return y
 end
 
@@ -625,8 +625,8 @@ end
 function MR.shiftv (x, ni, ns_) -- shift data >= ni by +/-ns
   local n, ns = size(x), ns_ or 1
   assert(ni >= 1 and ni <= n, "index out of bounds")
-  if ns ~= 0 and ni+ns <= n and ni-ns <= n then
-    _C.mad_vec_shift(x._dat+ni-1, n-ni+1, 1, ns)
+  if ns ~= 0 and ni+ns >= 1 and ni+ns <= n then
+    _C.mad_vec_copy(x._dat+(ni-1), x._dat+(ni-1)+ns, n-(ni-1)-max(0,ns))
   end
   return x
 end
@@ -634,8 +634,8 @@ end
 function MC.shiftv (x, ni, ns_)
   local n, ns = size(x), ns_ or 1
   assert(ni >= 1 and ni <= n, "index out of bounds")
-  if ns ~= 0 and ni+ns <= n and ni-ns <= n then
-    _C.mad_cvec_shift(x._dat+ni-1, n-ni+1, 1, ns)
+  if ns ~= 0 and ni+ns >= 1 and ni+ns <= n then
+    _C.mad_cvec_copy(x._dat+(ni-1), x._dat+(ni-1)+ns, n-(ni-1)-max(0,ns))
   end
   return x
 end
@@ -643,8 +643,8 @@ end
 function MI.shiftv (x, ni, ns_)
   local n, ns = size(x), ns_ or 1
   assert(ni >= 1 and ni <= n, "index out of bounds")
-  if ns ~= 0 and ni+ns <= n and ni-ns <= n then
-    _C.mad_ivec_shift(x._dat+ni-1, n-ni+1, 1, ns)
+  if ns ~= 0 and ni+ns >= 1 and ni+ns <= n then
+    _C.mad_ivec_copy(x._dat+(ni-1), x._dat+(ni-1)+ns, n-(ni-1)-max(0,ns))
   end
   return x
 end
@@ -655,7 +655,7 @@ function MR.cplx (re_, im_, r_) -- (re,im) -> r
   local re, im = re_ or im_, im_ or re_ -- trick for checks with at least one
   assert(is_matrix(re) and is_matrix(im), "invalid argument #1 or #2 (matrix expected)")
   local r = r_ or cmatrix_alloc(re:sizes()) ; chksiz(r,re,im)
-  _C.mad_vec_cplx(re_ and re_._dat, im_ and im_._dat, r._dat, size(r), 1)
+  _C.mad_vec_cplx(re_ and re_._dat, im_ and im_._dat, r._dat, size(r))
   return r
 end
 
@@ -667,21 +667,21 @@ function MC.reim (x, re_, im_) -- x -> (re,im)
   assert(is_nil(im_) or is_matrix(im_), "invalid argument #3 (matrix expected)")
   re_ = chksiz(re_,x) or matrix_alloc(x:sizes())
   im_ = chksiz(im_,x) or matrix_alloc(x:sizes())
-  _C.mad_cvec_reim(x._dat, re_._dat, im_._dat, size(x), 1)
+  _C.mad_cvec_reim(x._dat, re_._dat, im_._dat, size(x))
   return re_, im_
 end
 
 function MR.real (x, r)
   assert(is_nil(r) or is_matrix(r), "invalid argument #2 (matrix expected)")
   r = chksiz(r,x) or matrix_alloc(x:sizes())
-  _C.mad_vec_copy(x._dat, r._dat, size(x), 1)
+  _C.mad_vec_copy(x._dat, r._dat, size(x))
   return r
 end
 
 function MC.real (x, r)
   assert(is_nil(r) or is_matrix(r), "invalid argument #2 (matrix expected)")
   r = chksiz(r,x) or matrix_alloc(x:sizes())
-  _C.mad_cvec_reim(x._dat, r._dat, nil, size(x), 1)
+  _C.mad_cvec_reim(x._dat, r._dat, nil, size(x))
   return r
 end
 
@@ -694,7 +694,7 @@ end
 function MC.imag (x, r)
   assert(is_nil(r) or is_matrix(r), "invalid argument #2 (matrix expected)")
   r = chksiz(r,x) or matrix_alloc(x:sizes())
-  _C.mad_cvec_reim(x._dat, nil, r._dat, size(x), 1)
+  _C.mad_cvec_reim(x._dat, nil, r._dat, size(x))
   return r
 end
 
@@ -711,7 +711,7 @@ end
 function MR.vech (x)
   local nr, nc = x:sizes()
   assert(nr == nc, "invalid matrix sizes (square matrix expected)")
-  local k, r = 1, x:same(nr*(nc+1)/2, 1)
+  local k, r = 1, x:same(nr*(nc+1)/2,1)
   for j=1,nc do
   for i=j,nr do seti(r, k, get(x,i,j)) ; k = k+1 end end
   return r
@@ -1380,87 +1380,87 @@ MC.raccmax    = \ error("raccmax not defined for cmatrix")
 -- minmax ---------------------------------------------------------------------o
 
 function MR.minmax (x, abs_)
-  _C.mad_vec_minmax(x._dat, abs_ or false, ires, size(x), 1)
+  _C.mad_vec_minmax(x._dat, abs_ or false, ires, size(x))
   return x._dat[ires[0]], x._dat[ires[1]]
 end
 
 function MI.minmax (x, abs_)
-  _C.mad_ivec_minmax(x._dat, abs_ or false, ires, size(x), 1)
+  _C.mad_ivec_minmax(x._dat, abs_ or false, ires, size(x))
   return x._dat[ires[0]], x._dat[ires[1]]
 end
 
 function MC.minmax (x)
-  _C.mad_cvec_minmax(x._dat, ires, size(x), 1)
+  _C.mad_cvec_minmax(x._dat, ires, size(x))
   return x._dat[ires[0]], x._dat[ires[1]]
 end
 
 function MR.iminmax (x, abs_)
-  _C.mad_vec_minmax(x._dat, abs_ or false, ires, size(x), 1)
+  _C.mad_vec_minmax(x._dat, abs_ or false, ires, size(x))
   return ires[0]+1, ires[1]+1
 end
 
 function MI.iminmax (x, abs_)
-  _C.mad_ivec_minmax(x._dat, abs_ or false, ires, size(x), 1)
+  _C.mad_ivec_minmax(x._dat, abs_ or false, ires, size(x))
   return ires[0]+1, ires[1]+1
 end
 
 function MC.iminmax (x)
-  _C.mad_cvec_minmax(x._dat, ires, size(x), 1)
+  _C.mad_cvec_minmax(x._dat, ires, size(x))
   return ires[0]+1, ires[1]+1
 end
 
 -- mean, variance -------------------------------------------------------------o
 
 function MR.mean (x)
-  return _C.mad_vec_mean(x._dat, size(x), 1)
+  return _C.mad_vec_mean(x._dat, size(x))
 end
 
 function MC.mean (x)
-  _C.mad_cvec_mean(x._dat, cres, size(x), 1) ; return cres[0]
+  _C.mad_cvec_mean_r(x._dat, cres, size(x)) ; return cres[0]
 end
 
 function MR.variance (x)
-  return _C.mad_vec_var(x._dat, size(x), 1)
+  return _C.mad_vec_var(x._dat, size(x))
 end
 
 function MC.variance (x)
-  _C.mad_cvec_var(x._dat, cres, size(x), 1) ; return cres[0]
+  _C.mad_cvec_var_r(x._dat, cres, size(x)) ; return cres[0]
 end
 
 -- Kahan's summation, Horner's evaluation -------------------------------------o
 
 function MR.ksum (x) -- Neumaier variant
-  return _C.mad_vec_ksum(x._dat, size(x), 1)
+  return _C.mad_vec_ksum(x._dat, size(x))
 end
 
 function MC.ksum (x) -- Neumaier variant
-  _C.mad_cvec_ksum_r(x._dat, cres, size(x), 1) return cres[0]
+  _C.mad_cvec_ksum_r(x._dat, cres, size(x)) return cres[0]
 end
 
 function MR.kdot (x, y) -- Neumaier variant
   assert(size(x) == size(y), "incompatible matrix sizes")
   if is_cmatrix(y) then
-    _C.mad_cvec_kdotv_r(y._dat, x._dat, cres, size(x), 1) return cres[0]
+    _C.mad_cvec_kdotv_r(y._dat, x._dat, cres, size(x)) return cres[0]
   else
-    return _C.mad_vec_kdot(x._dat, y._dat, size(x), 1)
+    return _C.mad_vec_kdot(x._dat, y._dat, size(x))
   end
 end
 
 function MC.kdot (x, y) -- Neumaier variant
   assert(size(x) == size(y), "incompatible matrix sizes")
   if is_matrix(y) then
-    _C.mad_cvec_kdotv_r(x._dat, y._dat, cres, size(x), 1) return cres[0]
+    _C.mad_cvec_kdotv_r(x._dat, y._dat, cres, size(x)) return cres[0]
   else
-    _C.mad_cvec_kdot_r (x._dat, y._dat, cres, size(x), 1) return cres[0]
+    _C.mad_cvec_kdot_r (x._dat, y._dat, cres, size(x)) return cres[0]
   end
 end
 
 function MR.eval (x, x0)
-  return _C.mad_vec_eval(x._dat, x0, size(x), 1)
+  return _C.mad_vec_eval(x._dat, x0, size(x))
 end
 
 function MC.eval (x, x0)
-  _C.mad_cvec_eval(x._dat, x0.re, x0.im, cres, size(x), 1) return cres[0]
+  _C.mad_cvec_eval_r(x._dat, x0.re, x0.im, cres, size(x)) return cres[0]
 end
 
 -- transpose, trace -----------------------------------------------------------o
@@ -1580,8 +1580,8 @@ function MR.inner (x, y)
   local nx, ny = size(x), size(y)
   assert(nx == ny, "incompatible vector sizes")
   if is_matrix(y)
-  then return _C.mad_vec_dot   (x._dat, y._dat,       nx, 1)
-  else        _C.mad_vec_dotv_r(x._dat, y._dat, cres, nx, 1) return cres[0]
+  then return _C.mad_vec_dot   (x._dat, y._dat,       nx)
+  else        _C.mad_vec_dotv_r(x._dat, y._dat, cres, nx) return cres[0]
   end
 end
 
@@ -1592,8 +1592,8 @@ function MC.inner (x, y)
   local nx, ny = size(x), size(y)
   assert(nx == ny, "incompatible vector sizes")
   if is_matrix(y)
-  then _C.mad_cvec_dotv_r(x._dat, y._dat, cres, nx, 1)
-  else _C.mad_cvec_dot_r (x._dat, y._dat, cres, nx, 1)
+  then _C.mad_cvec_dotv_r(x._dat, y._dat, cres, nx)
+  else _C.mad_cvec_dot_r (x._dat, y._dat, cres, nx)
   end
   return cres[0]
 end
@@ -1646,9 +1646,10 @@ function MR.mixed (x, y, z, r_)
   end
   -- multiple mixed products
   assert(x.nrow == 3 and y.nrow == 3 and z.nrow == 3, "invalid matrix sizes")
-  local r = r_ or x:same(1, x.ncol, x[1]+y[1]+z[1])
+  local nc = x.ncol
+  local r = r_ or x:same(1, nc, x[1]+y[1]+z[1])
   assert(isa_matrix(r), "invalid argument #4 (matrix expected)")
-  assert(size(r) == x.ncol, "incompatible result matrix sizes")
+  assert(size(r) == nc, "incompatible result matrix sizes")
   local i0, i1, i2 = 0, nc, 2*nc -- 1st, 2nd and 3rd rows
   for i=0,nc-1 do
     r0 = conj(geti0(x,i0)) * (geti0(y,i1) * geti0(z,i2) - geti0(y,i2) * geti0(z,i1))
@@ -1663,26 +1664,26 @@ end
 -- norm, unit, center, angle (in place) ---------------------------------------o
 
 function MR.norm (x)
-  return _C.mad_vec_norm(x._dat, size(x), 1)
+  return _C.mad_vec_norm(x._dat, size(x))
 end
 
 function MC.norm (x)
-  return _C.mad_cvec_norm(x._dat, size(x), 1)
+  return _C.mad_cvec_norm(x._dat, size(x))
 end
 
 function MR.dist (x, y)
   assert(isa_matrix(y), "invalid argument #2 (matrix expected)")
   if is_matrix(y)
-  then return _C.mad_vec_dist (x._dat, y._dat, size(x), 1)
-  else return _C.mad_vec_distv(x._dat, y._dat, size(x), 1)
+  then return _C.mad_vec_dist (x._dat, y._dat, size(x))
+  else return _C.mad_vec_distv(x._dat, y._dat, size(x))
   end
 end
 
 function MC.dist (x, y)
-  assert(isa_cmatrix(y), "invalid argument #2 (cmatrix expected)")
+  assert(isa_matrix(y), "invalid argument #2 (cmatrix expected)")
   if is_cmatrix(y)
-  then return _C.mad_cvec_dist (x._dat, y._dat, size(x), 1)
-  else return _C.mad_cvec_distv(x._dat, y._dat, size(x), 1)
+  then return _C.mad_cvec_dist (x._dat, y._dat, size(x))
+  else return _C.mad_cvec_distv(x._dat, y._dat, size(x))
   end
 end
 
@@ -1691,7 +1692,7 @@ function MR.unit (x, r_)
   local n = x:norm()
   assert(n ~= 0, "null matrix norm")
   local r = chksiz(r_,x) or x:same()
-  _C.mad_vec_muln(x._dat, 1/n, r._dat, size(r), 1)
+  _C.mad_vec_muln(x._dat, 1/n, r._dat, size(r))
   return r
 end
 
@@ -1700,7 +1701,7 @@ function MC.unit (x, r_)
   local n = x:norm()
   assert(n ~= 0, "null matrix norm")
   local r = chksiz(r_,x) or x:same()
-  _C.mad_cvec_muln(x._dat, 1/n, r._dat, size(r), 1)
+  _C.mad_cvec_muln(x._dat, 1/n, r._dat, size(r))
   return r
 end
 
@@ -1710,7 +1711,7 @@ function MR.center (x, d_, r_) -- center vector or matrix row or col on mean
   local r = chksiz(r_,x) or x:same()
   local d = d_ or 'vec'
   if d == 'vec'
-  then _C.mad_vec_center(x._dat, r._dat, size(x), 1)
+  then _C.mad_vec_center(x._dat, r._dat, size(x))
   else _C.mad_mat_center(x._dat, r._dat, x.nrow, x.ncol, d=='col' and 2 or 1)
   end
   return r
@@ -1721,7 +1722,7 @@ function MC.center (x, d_, r_) -- center vector or matrix row or col on mean
   if  is_string (r_) and r_ == 'in' then r_ = x end
   local r = chksiz(r_,x) or x:same()
   if is_nil(d_) or d_ == 'vec'
-  then _C.mad_cvec_center(x._dat, r._dat, size(x), 1)
+  then _C.mad_cvec_center(x._dat, r._dat, size(x))
   else _C.mad_cmat_center(x._dat, r._dat, x.nrow, x.ncol, d_=='col' and 2 or 1)
   end
   return r
@@ -1860,19 +1861,19 @@ MC.__eq_cpx = MC.__eq
 function MR.__add (x, y, r)
   if is_number(x) then                           -- num + mat => num + vec
     r = chksiz(r,y) or matrix_alloc(y:sizes())
-    _C.mad_vec_addn(y._dat, x, r._dat, size(r), 1) return r
+    _C.mad_vec_addn(y._dat, x, r._dat, size(r)) return r
   elseif is_number(y) then                       -- mat + num => vec + num
     r = chksiz(r,x) or matrix_alloc(x:sizes())
-    _C.mad_vec_addn(x._dat, y, r._dat, size(r), 1) return r
+    _C.mad_vec_addn(x._dat, y, r._dat, size(r)) return r
   elseif is_complex(y) then                      -- mat + cpx => vec + cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
-    _C.mad_vec_addc_r(x._dat, y.re, y.im, r._dat, size(r), 1) return r
+    _C.mad_vec_addc_r(x._dat, y.re, y.im, r._dat, size(r)) return r
   elseif is_cmatrix(y) then                      -- mat + cmat => vec + cvec
     r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_addv(y._dat, x._dat, r._dat, size(r), 1) return r
+    _C.mad_cvec_addv(y._dat, x._dat, r._dat, size(r)) return r
   elseif is_matrix(y) and is_matrix(x) then      -- mat + mat => vec + vec
     r = chksiz(r,x,y) or matrix_alloc(x:sizes())
-    _C.mad_vec_add(x._dat, y._dat, r._dat, size(r), 1) return r
+    _C.mad_vec_add(x._dat, y._dat, r._dat, size(r)) return r
   else
     return assert(gmm(y,'__add_mat'), "invalid 'mat + ?' operation")(x, y, r)
   end
@@ -1880,25 +1881,25 @@ end
 
 function MR.__add_cpx (x, y, r)                  -- cpx + mat => cpx + vec
   r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_vec_addc_r(y._dat, x.re, x.im, r._dat, size(r), 1) return r
+  _C.mad_vec_addc_r(y._dat, x.re, x.im, r._dat, size(r)) return r
 end
 
 function MC.__add (x, y, r)
   if is_number(x) then                           -- num + cmat => num + cvec
     r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-    _C.mad_cvec_addn(y._dat, x, r._dat, size(r), 1) return r
+    _C.mad_cvec_addn(y._dat, x, r._dat, size(r)) return r
   elseif is_number(y) then                       -- cmat + num => cvec + num
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_addn(x._dat, y, r._dat, size(r), 1) return r
+    _C.mad_cvec_addn(x._dat, y, r._dat, size(r)) return r
   elseif is_complex(y) then                      -- cmat + cpx => cvec + cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_addc_r(x._dat, y.re, y.im, r._dat, size(r), 1) return r
+    _C.mad_cvec_addc_r(x._dat, y.re, y.im, r._dat, size(r)) return r
   elseif is_matrix(y) then                       -- cmat + mat => cvec + vec
     r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_addv(x._dat, y._dat, r._dat, size(r), 1) return r
+    _C.mad_cvec_addv(x._dat, y._dat, r._dat, size(r)) return r
   elseif is_cmatrix(y) and is_cmatrix(x) then    -- cmat + cmat => cvec + cvec
     r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_add(x._dat, y._dat, r._dat, size(r), 1) return r
+    _C.mad_cvec_add(x._dat, y._dat, r._dat, size(r)) return r
   else
     return assert(gmm(y,'__add_mat'), "invalid 'cmat + ?' operation")(x, y, r)
   end
@@ -1906,19 +1907,19 @@ end
 
 function MC.__add_cpx (x, y, r)                  -- cpx + cmat => cpx + cvec
   r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_cvec_addc_r(y._dat, x.re, x.im, r._dat, size(r), 1) return r
+  _C.mad_cvec_addc_r(y._dat, x.re, x.im, r._dat, size(r)) return r
 end
 
 function MI.__add (x, y, r)
   if is_number(x) then                           -- idx + imat => idx + ivec
     r = chksiz(r,y) or imatrix_alloc(y:sizes())
-    _C.mad_ivec_addn(y._dat, x, r._dat, size(r), 1) return r
+    _C.mad_ivec_addn(y._dat, x, r._dat, size(r)) return r
   elseif is_number(y) then                       -- imat + idx => ivec + idx
     r = chksiz(r,x) or imatrix_alloc(x:sizes())
-    _C.mad_ivec_addn(x._dat, y, r._dat, size(r), 1) return r
+    _C.mad_ivec_addn(x._dat, y, r._dat, size(r)) return r
   elseif is_matrix(y) and is_matrix(x) then      -- imat + imat => ivec + ivec
     r = chksiz(r,x,y) or imatrix_alloc(x:sizes())
-    _C.mad_ivec_add(x._dat, y._dat, r._dat, size(r), 1) return r
+    _C.mad_ivec_add(x._dat, y._dat, r._dat, size(r)) return r
   else
     return assert(gmm(y,'__add_mat'), "invalid 'imat + ?' operation")(x, y, r)
   end
@@ -1929,19 +1930,19 @@ end
 function MR.__sub (x, y, r)
   if is_number(x) then                           -- num - mat => num - vec
     r = chksiz(r,y) or matrix_alloc(y:sizes())
-    _C.mad_vec_subn(y._dat, x, r._dat, size(r), 1) return r
+    _C.mad_vec_subn(y._dat, x, r._dat, size(r)) return r
   elseif is_number(y) then                       -- mat - num => vec + -num
     r = chksiz(r,x) or matrix_alloc(x:sizes())
-    _C.mad_vec_addn(x._dat, -y, r._dat, size(r), 1) return r
+    _C.mad_vec_addn(x._dat, -y, r._dat, size(r)) return r
   elseif is_complex(y) then                      -- mat - cpx => vec + -cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
-    _C.mad_vec_addc_r(x._dat, -y.re, -y.im, r._dat, size(r), 1) return r
+    _C.mad_vec_addc_r(x._dat, -y.re, -y.im, r._dat, size(r)) return r
   elseif is_cmatrix(y) then                      -- mat - cmat => vec - cvec
     r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_subv(y._dat, x._dat, r._dat, size(r), 1) return r
+    _C.mad_cvec_subv(y._dat, x._dat, r._dat, size(r)) return r
   elseif is_matrix(y) and is_matrix(x) then      -- mat - mat => vec - vec
     r = chksiz(r,x,y) or matrix_alloc(x:sizes())
-    _C.mad_vec_sub(x._dat, y._dat, r._dat, size(r), 1) return r
+    _C.mad_vec_sub(x._dat, y._dat, r._dat, size(r)) return r
   else
     return assert(gmm(y,'__sub_mat'), "invalid 'mat - ?' operation")(x, y, r)
   end
@@ -1949,25 +1950,25 @@ end
 
 function MR.__sub_cpx (x, y, r)                  -- cpx - mat => cpx - vec
   r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_vec_subc_r(y._dat, x.re, x.im, r._dat, size(r), 1) return r
+  _C.mad_vec_subc_r(y._dat, x.re, x.im, r._dat, size(r)) return r
 end
 
 function MC.__sub (x, y, r)
   if is_number(x) then                           -- num - cmat => num - cvec
     r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-    _C.mad_cvec_subn(y._dat, x, r._dat, size(r), 1) return r
+    _C.mad_cvec_subn(y._dat, x, r._dat, size(r)) return r
   elseif is_number(y) then                       -- cmat - num => cvec + -num
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_addn(x._dat, -y, r._dat, size(r), 1) return r
+    _C.mad_cvec_addn(x._dat, -y, r._dat, size(r)) return r
   elseif is_complex(y) then                      -- cmat - cpx => cvec + -cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_addc_r(x._dat, -y.re, -y.im, r._dat, size(r), 1) return r
+    _C.mad_cvec_addc_r(x._dat, -y.re, -y.im, r._dat, size(r)) return r
   elseif is_matrix(y) then                       -- cmat - mat => cvec - vec
     r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_subv(x._dat, y._dat, r._dat, size(r), 1) return r
+    _C.mad_cvec_subv(x._dat, y._dat, r._dat, size(r)) return r
   elseif is_cmatrix(y) and is_cmatrix(x) then    -- cmat - cmat => cvec - cvec
     r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_sub(x._dat, y._dat, r._dat, size(r), 1) return r
+    _C.mad_cvec_sub(x._dat, y._dat, r._dat, size(r)) return r
   else
     return assert(gmm(y,'__sub_mat'), "invalid 'cmat - ?' operation")(x, y, r)
   end
@@ -1975,19 +1976,19 @@ end
 
 function MC.__sub_cpx (x, y, r)                  -- cpx - cmat => cpx - cvec
   r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_cvec_subc_r(y._dat, x.re, x.im, r._dat, size(r), 1) return r
+  _C.mad_cvec_subc_r(y._dat, x.re, x.im, r._dat, size(r)) return r
 end
 
 function MI.__sub (x, y, r)
   if is_number(x) then                           -- idx - imat => idx - ivec
     r = chksiz(r,y) or imatrix_alloc(y:sizes())
-    _C.mad_ivec_subn(y._dat, x, r._dat, size(r), 1) return r
+    _C.mad_ivec_subn(y._dat, x, r._dat, size(r)) return r
   elseif is_number(y) then                       -- imat - idx => ivec + -idx
     r = chksiz(r,x) or imatrix_alloc(x:sizes())
-    _C.mad_ivec_addn(x._dat, -y, r._dat, size(r), 1) return r
+    _C.mad_ivec_addn(x._dat, -y, r._dat, size(r)) return r
   elseif is_imatrix(y) and is_imatrix(x) then    -- imat - imat => ivec - ivec
     r = chksiz(r,x,y) or imatrix_alloc(x:sizes())
-    _C.mad_ivec_sub(x._dat, y._dat, r._dat, size(r), 1) return r
+    _C.mad_ivec_sub(x._dat, y._dat, r._dat, size(r)) return r
   else
     return assert(gmm(y,'__sub_mat'), "invalid 'imat - ?' operation")(x, y, r)
   end
@@ -1998,13 +1999,13 @@ end
 function MR.__mul (x, y, r)
   if is_number(x) then                           -- num * mat => num * vec
     r = chksiz(r,y) or matrix_alloc(y:sizes())
-    _C.mad_vec_muln(y._dat, x, r._dat, size(r), 1) return r
+    _C.mad_vec_muln(y._dat, x, r._dat, size(r)) return r
   elseif is_number(y) then                       -- mat * num => vec * num
     r = chksiz(r,x) or matrix_alloc(x:sizes())
-    _C.mad_vec_muln(x._dat, y, r._dat, size(r), 1) return r
+    _C.mad_vec_muln(x._dat, y, r._dat, size(r)) return r
   elseif is_complex(y) then                      -- mat * cpx => vec * cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
-    _C.mad_vec_mulc_r(x._dat, y.re, y.im, r._dat, size(r), 1) return r
+    _C.mad_vec_mulc_r(x._dat, y.re, y.im, r._dat, size(r)) return r
   elseif is_cmatrix(y) then                      -- mat * cmat
     r = chksizm(r,x,y) or cmatrix_alloc(x.nrow, y.ncol)
     _C.mad_mat_mulm(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol) return r
@@ -2018,19 +2019,19 @@ end
 
 function MR.__mul_cpx (x, y, r)                  -- cpx * mat => cpx * vec
   r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_vec_mulc_r(y._dat, x.re, x.im, r._dat, size(r), 1) return r
+  _C.mad_vec_mulc_r(y._dat, x.re, x.im, r._dat, size(r)) return r
 end
 
 function MC.__mul (x, y, r)
   if is_number(x) then                           -- num * cmat => num * cvec
     r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-    _C.mad_cvec_muln(y._dat, x, r._dat, size(r), 1) return r
+    _C.mad_cvec_muln(y._dat, x, r._dat, size(r)) return r
   elseif is_number(y) then                       -- cmat * num => cvec * num
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_muln(x._dat, y, r._dat, size(r), 1) return r
+    _C.mad_cvec_muln(x._dat, y, r._dat, size(r)) return r
   elseif is_complex(y) then                      -- cmat * cpx => cvec * cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_mulc_r(x._dat, y.re, y.im, r._dat, size(r), 1) return r
+    _C.mad_cvec_mulc_r(x._dat, y.re, y.im, r._dat, size(r)) return r
   elseif is_matrix(y) then                       -- cmat * mat
     r = chksizm(r,x,y) or cmatrix_alloc(x.nrow, y.ncol)
     _C.mad_cmat_mulm(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol) return r
@@ -2044,16 +2045,16 @@ end
 
 function MC.__mul_cpx (x, y, r)                  -- cpx * cmat => cpx * cvec
   r = chksiz(r,y) or cmatrix_alloc(y:sizes())
-  _C.mad_cvec_mulc_r(y._dat, x.re, x.im, r._dat, size(r), 1) return r
+  _C.mad_cvec_mulc_r(y._dat, x.re, x.im, r._dat, size(r)) return r
 end
 
 function MI.__mul (x, y, r)
   if is_number(x) then                           -- idx * imat => idx * ivec
     r = chksiz(r,y) or imatrix_alloc(y:sizes())
-    _C.mad_ivec_muln(y._dat, x, r._dat, size(r), 1) return r
+    _C.mad_ivec_muln(y._dat, x, r._dat, size(r)) return r
   elseif is_number(y) then                       -- imat * idx => ivec * idx
     r = chksiz(r,x) or imatrix_alloc(x:sizes())
-    _C.mad_ivec_muln(x._dat, y, r._dat, size(r), 1) return r
+    _C.mad_ivec_muln(x._dat, y, r._dat, size(r)) return r
   else
     return assert(gmm(y,'__mul_mat'), "invalid 'imat * ?' operation")(x, y, r)
   end
@@ -2072,10 +2073,10 @@ function MR.__div (x, y, r, rcond_)
     return r, rank
   elseif is_number(y) then                       -- mat / num => vec / num
     r = chksiz(r,x) or matrix_alloc(x:sizes())
-    _C.mad_vec_muln(x._dat, 1/y, r._dat, size(r), 1) return r
+    _C.mad_vec_muln(x._dat, 1/y, r._dat, size(r)) return r
   elseif is_complex(y) then                      -- mat / cpx => vec / cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes()) ; y = 1/y
-    _C.mad_vec_mulc_r(x._dat, y.re, y.im, r._dat, size(r), 1) return r
+    _C.mad_vec_mulc_r(x._dat, y.re, y.im, r._dat, size(r)) return r
   elseif is_cmatrix(y) then                      -- mat / cmat
     r = chksizmt(r,x,y) or cmatrix_alloc(x.nrow, y.nrow)
     rank = _C.mad_mat_divm(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol, rcond_ or eps)
@@ -2105,10 +2106,10 @@ function MC.__div (x, y, r, rcond_)
     return r, rank
   elseif is_number(y) then                       -- cmat / num => cvec / num
     r = chksiz(r,x) or cmatrix_alloc(x:sizes())
-    _C.mad_cvec_muln(x._dat, 1/y, r._dat, size(r), 1) return r
+    _C.mad_cvec_muln(x._dat, 1/y, r._dat, size(r)) return r
   elseif is_complex(y) then                      -- cmat / cpx => cvec / cpx
     r = chksiz(r,x) or cmatrix_alloc(x:sizes()) ; y = 1/y
-    _C.mad_cvec_mulc_r(x._dat, y.re, y.im, r._dat, size(r), 1) return r
+    _C.mad_cvec_mulc_r(x._dat, y.re, y.im, r._dat, size(r)) return r
   elseif is_matrix(y) then                       -- cmat / mat
     r = chksizmt(r,x,y) or cmatrix_alloc(x.nrow, y.nrow)
     rank = _C.mad_cmat_divm(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol, rcond_ or eps)
@@ -2132,7 +2133,7 @@ end
 function MI.__div (x, y, r)
   if is_number(y) then                           -- imat / idx => ivec / idx
     r = chksiz(r,x) or imatrix_alloc(x:sizes())
-    _C.mad_ivec_divn(x._dat, y, r._dat, size(r), 1) return r
+    _C.mad_ivec_divn(x._dat, y, r._dat, size(r)) return r
   else
     return assert(gmm(y,'__div_mat'), "invalid 'imat / ?' operation")(x, y, r)
   end
@@ -2193,7 +2194,7 @@ function MR.kadd (r, a, x)
     kr[i-1], krd[i-1] = a[i], x[i]._dat
   end
   kr[k-1], krd[k-1] = a[k], x[k]._dat
-  _C.mad_vec_kadd(k, kr, krd, r._dat, size(r), 1) return r
+  _C.mad_vec_kadd(k, kr, krd, r._dat, size(r)) return r
 end
 
 function MC.kadd (r, a, x)
@@ -2212,7 +2213,7 @@ function MC.kadd (r, a, x)
     kc[i-1], kcd[i-1] = a[i], x[i]._dat
   end
   kc[k-1], kcd[k-1] = a[k], x[k]._dat
-  _C.mad_cvec_kadd(k, kc, kcd, r._dat, size(r), 1) return r
+  _C.mad_cvec_kadd(k, kc, kcd, r._dat, size(r)) return r
 end
 
 -- tmul
@@ -2270,24 +2271,42 @@ end
 -- dmul
 
 function MR.dmul (x, y, r)
+  local nr, nc = x:sizes()
+  if (nr == 1 or nc == 1) and isa_matrix(y) then
+    nr, nc = nr*nc, 1
+    assert(nr == y.nrow, "incompatible matrix sizes")
+    r = chksiz(r,y)
+  elseif isa_matrix(y) then
+    r = chksizm(r,x,y)
+  end
+
   if is_cmatrix(y) then                         -- diag(mat) * cmat
-    r = chksizm(r,x,y) or cmatrix_alloc(x.nrow, y.ncol)
-    _C.mad_mat_dmulm(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol) return r
+    r = r or cmatrix_alloc(nr, y.ncol)
+    _C.mad_mat_dmulm(x._dat, y._dat, r._dat, r.nrow, r.ncol, nc) return r
   elseif is_matrix(y) and is_matrix(x) then     -- diag(mat) * mat
-    r = chksizm(r,x,y) or  matrix_alloc(x.nrow, y.ncol)
-    _C.mad_mat_dmul (x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol) return r
+    r = r or  matrix_alloc(nr, y.ncol)
+    _C.mad_mat_dmul (x._dat, y._dat, r._dat, r.nrow, r.ncol, nc) return r
   else                                          -- diag(mat) * ?
     return assert(gmm(y,'__dmul_mat'), "invalid 'diag(mat) * ?' operation")(x, y, r)
   end
 end
 
 function MC.dmul (x, y, r)
+  local nr, nc = x:sizes()
+  if (nr == 1 or nc == 1) and isa_matrix(y) then
+    nr, nc = nr*nc, 1
+    assert(nr == y.nrow, "incompatible matrix sizes")
+    r = chksiz(r,y)
+  elseif isa_matrix(y) then
+    r = chksizm(r,x,y)
+  end
+
   if is_matrix(y) then                          -- diag(cmat) * mat
-    r = chksizm(r,x,y) or cmatrix_alloc(x.nrow, y.ncol)
-    _C.mad_cmat_dmulm(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol) return r
+    r = r or cmatrix_alloc(nr, y.ncol)
+    _C.mad_cmat_dmulm(x._dat, y._dat, r._dat, r.nrow, r.ncol, nc) return r
   elseif is_cmatrix(x) and is_cmatrix(y) then   -- diag(cmat) * cmat
-    r = chksizm(r,x,y) or cmatrix_alloc(x.nrow, y.ncol)
-    _C.mad_cmat_dmul (x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol) return r
+    r = r or cmatrix_alloc(nr, y.ncol)
+    _C.mad_cmat_dmul (x._dat, y._dat, r._dat, r.nrow, r.ncol, nc) return r
   else                                          -- diag(cmat) * ?
     return assert(gmm(y,'__dmul_mat'), "invalid 'diag(cmat) * ?' operation")(x, y, r)
   end
@@ -2296,24 +2315,44 @@ end
 -- muld
 
 function MR.muld (x, y, r)
+  local nr, nc
+  if isa_vector(y) then
+    nr, nc = 1, y:size()
+    assert(nc == x.ncol, "incompatible matrix sizes")
+    r = chksiz(r,x)
+  elseif isa_matrix(y) then
+    nr, nc = y:sizes()
+    r = chksizm(r,x,y)
+  end
+
   if is_cmatrix(y) then                         -- mat * diag(mat)
-    r = chksizm(r,x,y) or cmatrix_alloc(x.nrow, y.ncol)
-    _C.mad_mat_muldm(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol) return r
+    r = r or cmatrix_alloc(x.nrow, nc)
+    _C.mad_mat_muldm(x._dat, y._dat, r._dat, r.nrow, r.ncol, nr) return r
   elseif is_matrix(y) and is_matrix(x) then     -- mat * diag(mat)
-    r = chksizm(r,x,y) or  matrix_alloc(x.nrow, y.ncol)
-    _C.mad_mat_muld (x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol) return r
+    r = r or  matrix_alloc(x.nrow, nc)
+    _C.mad_mat_muld (x._dat, y._dat, r._dat, r.nrow, r.ncol, nr) return r
   else                                          -- mat * ?
     return assert(gmm(y,'__muld_mat'), "invalid 'mat * diag(?)' operation")(x, y, r)
   end
 end
 
 function MC.muld (x, y, r)
+  local nr, nc
+  if isa_vector(y) then
+    nr, nc = 1, y:size()
+    assert(nc == x.ncol, "incompatible matrix sizes")
+    r = chksiz(r,x)
+  elseif isa_matrix(y) then
+    nr, nc = y:sizes()
+    r = chksizm(r,x,y)
+  end
+
   if is_matrix(y) then                          -- cmat * diag(mat)
-    r = chksizm(r,x,y) or cmatrix_alloc(x.nrow, y.ncol)
-    _C.mad_cmat_muldm(x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol) return r
+    r = r or cmatrix_alloc(x.nrow, nc)
+    _C.mad_cmat_muldm(x._dat, y._dat, r._dat, r.nrow, r.ncol, nr) return r
   elseif is_cmatrix(x) and is_cmatrix(y) then   -- cmat * diag(cmat)
-    r = chksizm(r,x,y) or cmatrix_alloc(x.nrow, y.ncol)
-    _C.mad_cmat_muld (x._dat, y._dat, r._dat, r.nrow, r.ncol, x.ncol) return r
+    r = r or cmatrix_alloc(x.nrow, nc)
+    _C.mad_cmat_muld (x._dat, y._dat, r._dat, r.nrow, r.ncol, nr) return r
   else                                          -- cmat * ?'
     return assert(gmm(y,'__muld_mat'), "invalid 'cmat * diag(?)' operation")(x, y, r)
   end
@@ -2701,7 +2740,7 @@ function MR.conv (x, y, d_, r_)
   local xf = x:rfft(d_)
   if rawequal(x, y)
   then return xf:emul(xf        ,xf):irfft(d_, r)
-  else return xf:emul(y:rfft(_d),xf):irfft(d_, r)
+  else return xf:emul(y:rfft(d_),xf):irfft(d_, r)
   end
 end
 
@@ -2738,10 +2777,10 @@ end
 
 function MR.covar (x, y, d_, r_)
   if isa_matrix(d_) and is_nil(r_) then r, d_ = d_, nil end -- right shift
-  local xc = x:center(x:same(), d_)
+  local xc = x:center(d_, x:same())
   if rawequal(x, y)
   then return xc:corr(xc                    , d_, r_)
-  else return xc:corr(y:center(y:same(), d_), d_, r_)
+  else return xc:corr(y:center(d_, y:same()), d_, r_)
   end
 end
 
@@ -2954,7 +2993,7 @@ function MR.read (_, filnam_)
 
   local _, _, nrs, ncs, cpx = string.find(def, "^[^[]*%[(%d+)x(%d+)(i?)%]%s*=")
   local nr, nc = tonumber(nrs), tonumber(ncs)
-  local i, x, v, to, row, ncol = 0, nil
+  local i, x, v, to, row, ncol, toval = 0, nil
 
       if cpx == 'i' or cpx == 'I' then x, toval = cmatrix(nr, nc), tocomplex
   elseif cpx == 'n' or cpx == 'N' then x, toval = imatrix(nr, nc), tonumber

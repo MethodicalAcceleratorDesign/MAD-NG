@@ -397,7 +397,7 @@ Filling and Moving
 
 .. function:: mat:shiftv (i, n_)
 
-   Return the real, complex or integer matrix :var:`mat` after shifting the elements in :expr:`mat[i..]` to :expr:`mat[i+n..]` if :expr:`n > 0` and in the opposite direction if :expr:`n < 0`, i.e. it is equivalent to :expr:`mat:movev(i, #mat-n, i+n)` for :expr:`n > 0` and to :expr:`mat:movev(i-n, #mat+n, i)` for :expr:`n < 0`. Default: :expr:`n_ = 1`.
+   Return the real, complex or integer matrix :var:`mat` after shifting the elements in :expr:`mat[i..]` to :expr:`mat[i+n..]` if :expr:`n > 0` and in the opposite direction if :expr:`n < 0`, i.e. it is equivalent to :expr:`mat:movev(i, #mat-n, i+n)` for :expr:`n > 0` and to :expr:`mat:movev(i, #mat, i+n)` for :expr:`n < 0`. Default: :expr:`n_ = 1`.
 
 Mapping and Folding
 -------------------
@@ -685,11 +685,11 @@ Operator-like Methods
 
 .. function:: mat:dmul (mat2, r_)
 
-   Equivalent to :expr:`mat:getdiag():diag() * mat2` with the possibility to place the result in :var:`r`.
+   Equivalent to :expr:`mat:getdiag():diag() * mat2` with the possibility to place the result in :var:`r`. If :var:`mat` is a vector, it will be interpreted as the diagonal of a square matrix like in :func:`mat:diag()`, i.e. omitting :func:`mat:getdiag()` is the previous expression.
    
 .. function:: mat:muld (mat2, r_)
 
-   Equivalent to :expr:`mat * mat2:getdiag():diag()` with the possibility to place the result in :var:`r`.
+   Equivalent to :expr:`mat * mat2:getdiag():diag()` with the possibility to place the result in :var:`r`. If :var:`mat2` is a vector, it will be interpreted as the diagonal of a square matrix like in :func:`mat2:diag()`, i.e. omitting :func:`mat2:getdiag()` is the previous expression.
 
 .. function:: mat:div (a, [r_,] rcond_)
 
@@ -1403,14 +1403,14 @@ Matrix
                 void mad_cmat_dmul  (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_cmat_dmulm (const cnum_t x[], const  num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
 
-   Fill the matrix :var:`r` of size :var:`[m, n]` with the product of the diagonal of the matrix :var:`x` of sizes :var:`[m, p]` by the matrix :var:`y` of sizes :var:`[p, n]`.
+   Fill the matrix :var:`r` of size :var:`[m, n]` with the product of the diagonal of the matrix :var:`x` of sizes :var:`[m, p]` by the matrix :var:`y` of sizes :var:`[p, n]`. If :expr:`p = 1` then :var:`x` will be interpreted as the diagonal of a square matrix.
 
 .. c:function:: void mad_mat_muld   (const  num_t x[], const  num_t y[],  num_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_mat_muldm  (const  num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_cmat_muld  (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_cmat_muldm (const cnum_t x[], const  num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
 
-   Fill the matrix :var:`r` of sizes :var:`[m, n]` with the product of the matrix :var:`x` of sizes :var:`[m, p]` by the diagonal of the matrix :var:`y` of sizes :var:`[p, n]`.
+   Fill the matrix :var:`r` of sizes :var:`[m, n]` with the product of the matrix :var:`x` of sizes :var:`[m, p]` by the diagonal of the matrix :var:`y` of sizes :var:`[p, n]`. If :expr:`p = 1` then :var:`y` will be interpreted as the diagonal of a square matrix.
 
 .. c:function:: int mad_mat_div   (const  num_t x[], const  num_t y[],  num_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
                 int mad_mat_divm  (const  num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
