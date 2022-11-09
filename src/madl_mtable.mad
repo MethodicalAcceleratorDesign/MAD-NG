@@ -762,16 +762,17 @@ end
 local function expand (data, tbl, extra)
   local rmax = ceil(max(tbl.reserve, data.rmax*1.5, data.rmax+extra))
   assert(rmax <= 2e8, "too big mtable") -- should see 'out of memory' first
-  local nr, nc, cvec = data.nr, data.nc-data.ng
+  local nr, nc, cvec = data.nr, data.nc-data.ng, false
 
   -- nth expand, expand only vectors
   if data.rmax > 1 then
     for i=1,nc do
       local col = data[i]
       if isa_matrix(col) then
-        data[i], data.rmax = col:copy(col:same(rmax,1):_reshapeto(nr)), rmax
+        data[i], cvec = col:copy(col:same(rmax,1):reshape(nr)), true
       end
     end
+    data.rmax = cvec and rmax or 1e8
     return
   end
 
@@ -779,9 +780,9 @@ local function expand (data, tbl, extra)
   for i=0,nc do
     local col = data[i]
         if is_number (col[1]) and not data.nvec[i] then
-      data[i], cvec =  vector(rmax):_reshapeto(1), true
+      data[i], cvec =  vector(rmax):reshape(1), true
     elseif is_complex(col[1]) and not data.nvec[i] then
-      data[i], cvec = cvector(rmax):_reshapeto(1), true
+      data[i], cvec = cvector(rmax):reshape(1), true
     else
       data[i] = table.new(rmax,0)
     end
@@ -916,9 +917,9 @@ local function ins_col (tbl, key_, kval, val, nvec_)
     local nr = data.nr
     if ci > cg then ci = cg end
     if is_vector(val) or is_number(val[1]) and not nvec_ and data.nvec ~= data.cidx then
-      table.insert(data, ci,  vector(data.rmax):_reshapeto(nr):fill(val))
+      table.insert(data, ci,  vector(data.rmax):reshape(nr):fill(val))
     elseif is_cvector(val) or is_complex(val[1]) and not nvec_ and data.nvec ~= data.cidx then
-      table.insert(data, ci, cvector(data.rmax):_reshapeto(nr):fill(val))
+      table.insert(data, ci, cvector(data.rmax):reshape(nr):fill(val))
     else
       table.insert(data, ci, table.new(nr,0))
       for ri=1,nr do data[ci][ri] = val[ri] end
@@ -1036,7 +1037,7 @@ local function add_row (tbl, val)
     local v = val[ci]
     if is_nil(v) then v = val[data.cidx[ci]] end
     if isa_matrix(data[ci])
-    then data[ci]:_appendto(v) -- was :_reshapeto(nr):seti(nr, v or 0)
+    then data[ci]:_reshapeto(nr):seti(nr, v or 0) -- warning: increase size by 1
     else data[ci][nr] = v
   end end
   data[0][nr] = nil
@@ -1062,7 +1063,7 @@ local function ins_row (tbl, key, val, ref_)
     local v = val[ci]
     if is_nil(v) then v = val[data.cidx[ci]] end
     if isa_matrix(data[ci])
-    then data[ci]:_reshapeto(nr):shiftv(ri, 1):seti(ri, v or 0)
+    then data[ci]:_reshapeto(nr):shiftv(ri, 1):seti(ri, v or 0) -- warning: increase size by 1
     else table.insert(data[ci], ri, v)
   end end
   data[0][ri] = nil
@@ -1082,7 +1083,7 @@ local function rem_row (tbl, key, ref_)
   shf_idx(data, ri, -1)
   for ci=0,data.nc-data.ng do
     if isa_matrix(data[ci])
-    then data[ci]:shiftv(ri, -1):seti(nr, 0):_reshapeto(nr-1)
+    then data[ci]:shiftv(ri, -1):seti(nr, 0):reshape(nr-1)
     else table.move(data[ci], ri+1, nr, ri)[nr] = nil
   end end
   data.nr = nr-1
@@ -1238,7 +1239,7 @@ local function remove (tbl, rng_, sel_)
 
   -- reshape vectors and clear tables
   for i=1,nc do
-    if isa_matrix(data[i]) then data[i]:_reshapeto(ni) end
+    if isa_matrix(data[i]) then data[i]:reshape(ni) end
   end
   data.nr = ni
 
@@ -1290,7 +1291,7 @@ local function insert (tbl, rows, rng_, sel_)
   data.nr = data.nr+nrs
   local nc = data.nc-data.ng
   for i=1,nc do
-    if isa_matrix(data[i]) then data[i]:_reshapeto(data.nr) end
+    if isa_matrix(data[i]) then data[i]:_reshapeto(data.nr) end -- warning: increase size by nrs
   end
 
   -- insert rows by decreasing indexes
