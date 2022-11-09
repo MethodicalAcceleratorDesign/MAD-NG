@@ -384,18 +384,30 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 // r[m x n] = diag(x[m x p]) * y[p x n]
 // naive implementation (more efficient on recent superscalar arch!)
 #define DMUL() /* diag(mat) * mat */ \
-  for (idx_t i=0; i < m*n; i++) r[i] = 0; \
-  for (idx_t i=0, mp=MIN(m,p); i < mp; i++) \
-  for (idx_t j=0; j < n; j++) \
-    r[i*n+j] = x[i*p+i] * y[i*n+j];
+  if (p == 1) { \
+    for (idx_t i=0, mn=MIN(m,n); i < mn; i++) \
+    for (idx_t j=0; j < n; j++) \
+      r[i*n+j] = x[i] * y[i*n+j]; \
+  } else { \
+    for (idx_t i=0; i < m*n; i++) r[i] = 0; \
+    for (idx_t i=0, mp=MIN(m,p); i < mp; i++) \
+    for (idx_t j=0; j < n; j++) \
+      r[i*n+j] = x[i*p+i] * y[i*n+j]; \
+  }
 
 // r[m x n] = x[m x p] * diag(y[p x n])
 // naive implementation (more efficient on recent superscalar arch!)
 #define MULD() /* mat * diag(mat) */ \
-  for (idx_t i=0, mn=m*n; i < mn; i++) r[i] = 0; \
-  for (idx_t i=0, np=MIN(n,p); i < m; i++) \
-  for (idx_t j=0; j < np; j++) \
-    r[i*n+j] = x[i*p+j] * y[j*n+j];
+  if (p == 1) { \
+    for (idx_t i=0, mn=MIN(m,n); i < m; i++) \
+    for (idx_t j=0; j < mn; j++) \
+      r[i*n+j] = x[i] * y[j*n+j]; \
+  } else { \
+    for (idx_t i=0, mn=m*n; i < mn; i++) r[i] = 0; \
+    for (idx_t i=0, np=MIN(n,p); i < m; i++) \
+    for (idx_t j=0; j < np; j++) \
+      r[i*n+j] = x[i*p+j] * y[j*n+j]; \
+  }
 
 // -----
 
