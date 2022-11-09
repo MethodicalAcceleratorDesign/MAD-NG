@@ -89,14 +89,14 @@ split_and_inv(const D *d, const T *ma[], T *lininv[], T *nonlin[])
   if (np != 0) {
     // mat_pari = - mat_vari * mat_par
     mad_mat_mul(mat_vari, mat_par, mat_pari, nv, np, nv);
-    mad_vec_muln(mat_pari, -1, mat_pari, nv*np, 1);
+    mad_vec_muln(mat_pari, -1, mat_pari, nv*np);
   }
 # else
   mad_cmat_invn(mat_var, 1, mat_vari, nv, nv, -1);
   if (np != 0) {
     // mat_pari = - mat_vari * mat_par
     mad_cmat_mul(mat_vari, mat_par, mat_pari, nv, np, nv);
-    mad_cvec_muln(mat_pari, -1, mat_pari, nv*np, 1);
+    mad_cvec_muln(mat_pari, -1, mat_pari, nv*np);
   }
 # endif
 
