@@ -118,8 +118,8 @@ Special Constructors
 
 .. function:: mat:diag (k_)
 
-   If :var:`mat` is a matrix, return a column vector containing its :math:`k`-th diagonal equivalent to :expr:`mat:getdiag(k_)`. If :var:`mat` is a vector, return a square matrix with its :math:`k`-th diagonal set to the values of the elements of :var:`mat` equivalent to
-   :expr:`mat:same(#mat, #mat):setdiag(mat, k_)`.
+   If :var:`mat` is a matrix, return a column vector containing its :math:`k`-th diagonal equivalent to :expr:`mat:getdiag(k)`. If :var:`mat` is a vector, return a square matrix with its :math:`k`-th diagonal set to the values of the elements of :var:`mat` equivalent to
+   :expr:`mat:same(n,n):setdiag(mat,k)` where :expr:`n = #mat+abs(k)`. Default: :expr:`k_ = 0`.
 
 Sizes and Indexing
 ------------------
@@ -1424,7 +1424,7 @@ Matrix
                 int mad_cmat_invn   (const cnum_t y[],        num_t x  ,       cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
                 int mad_cmat_invc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
 
-   Fill the matrix :var:`r` of sizes :var:`[m, n]` with the inverse of the matrix :var:`y` of sizes :var:`[m, n]` scaled by the scalar :var:`x`. The conditional number :var:`rcond` is used by the solver to determine the effective rank of non-square systems. It returns the rank of the system.
+   Fill the matrix :var:`r` of sizes :var:`[n, m]` with the inverse of the matrix :var:`y` of sizes :var:`[m, n]` scaled by the scalar :var:`x`. The conditional number :var:`rcond` is used by the solver to determine the effective rank of non-square systems. It returns the rank of the system.
 
 .. c:function:: int mad_mat_solve  (const  num_t a[], const  num_t b[],  num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
                 int mad_cmat_solve (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
