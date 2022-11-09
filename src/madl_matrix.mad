@@ -1416,7 +1416,7 @@ function MR.mean (x)
 end
 
 function MC.mean (x)
-  _C.mad_cvec_mean(x._dat, cres, size(x), 1) ; return cres[0]
+  _C.mad_cvec_mean_r(x._dat, cres, size(x), 1) ; return cres[0]
 end
 
 function MR.variance (x)
@@ -1424,7 +1424,7 @@ function MR.variance (x)
 end
 
 function MC.variance (x)
-  _C.mad_cvec_var(x._dat, cres, size(x), 1) ; return cres[0]
+  _C.mad_cvec_var_r(x._dat, cres, size(x), 1) ; return cres[0]
 end
 
 -- Kahan's summation, Horner's evaluation -------------------------------------o
@@ -1460,7 +1460,7 @@ function MR.eval (x, x0)
 end
 
 function MC.eval (x, x0)
-  _C.mad_cvec_eval(x._dat, x0.re, x0.im, cres, size(x), 1) return cres[0]
+  _C.mad_cvec_eval_r(x._dat, x0.re, x0.im, cres, size(x), 1) return cres[0]
 end
 
 -- transpose, trace -----------------------------------------------------------o
@@ -1646,9 +1646,10 @@ function MR.mixed (x, y, z, r_)
   end
   -- multiple mixed products
   assert(x.nrow == 3 and y.nrow == 3 and z.nrow == 3, "invalid matrix sizes")
-  local r = r_ or x:same(1, x.ncol, x[1]+y[1]+z[1])
+  local nc = x.ncol
+  local r = r_ or x:same(1, nc, x[1]+y[1]+z[1])
   assert(isa_matrix(r), "invalid argument #4 (matrix expected)")
-  assert(size(r) == x.ncol, "incompatible result matrix sizes")
+  assert(size(r) == nc, "incompatible result matrix sizes")
   local i0, i1, i2 = 0, nc, 2*nc -- 1st, 2nd and 3rd rows
   for i=0,nc-1 do
     r0 = conj(geti0(x,i0)) * (geti0(y,i1) * geti0(z,i2) - geti0(y,i2) * geti0(z,i1))
@@ -1679,7 +1680,7 @@ function MR.dist (x, y)
 end
 
 function MC.dist (x, y)
-  assert(isa_cmatrix(y), "invalid argument #2 (cmatrix expected)")
+  assert(isa_matrix(y), "invalid argument #2 (cmatrix expected)")
   if is_cmatrix(y)
   then return _C.mad_cvec_dist (x._dat, y._dat, size(x), 1)
   else return _C.mad_cvec_distv(x._dat, y._dat, size(x), 1)
@@ -2739,7 +2740,7 @@ function MR.conv (x, y, d_, r_)
   local xf = x:rfft(d_)
   if rawequal(x, y)
   then return xf:emul(xf        ,xf):irfft(d_, r)
-  else return xf:emul(y:rfft(_d),xf):irfft(d_, r)
+  else return xf:emul(y:rfft(d_),xf):irfft(d_, r)
   end
 end
 
@@ -2776,10 +2777,10 @@ end
 
 function MR.covar (x, y, d_, r_)
   if isa_matrix(d_) and is_nil(r_) then r, d_ = d_, nil end -- right shift
-  local xc = x:center(x:same(), d_)
+  local xc = x:center(d_, x:same())
   if rawequal(x, y)
   then return xc:corr(xc                    , d_, r_)
-  else return xc:corr(y:center(y:same(), d_), d_, r_)
+  else return xc:corr(y:center(d_, y:same()), d_, r_)
   end
 end
 
@@ -2992,7 +2993,7 @@ function MR.read (_, filnam_)
 
   local _, _, nrs, ncs, cpx = string.find(def, "^[^[]*%[(%d+)x(%d+)(i?)%]%s*=")
   local nr, nc = tonumber(nrs), tonumber(ncs)
-  local i, x, v, to, row, ncol = 0, nil
+  local i, x, v, to, row, ncol, toval = 0, nil
 
       if cpx == 'i' or cpx == 'I' then x, toval = cmatrix(nr, nc), tocomplex
   elseif cpx == 'n' or cpx == 'N' then x, toval = imatrix(nr, nc), tonumber
