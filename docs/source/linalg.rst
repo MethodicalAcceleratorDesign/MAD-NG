@@ -118,8 +118,8 @@ Special Constructors
 
 .. function:: mat:diag (k_)
 
-   If :var:`mat` is a matrix, return a column vector containing its :math:`k`-th diagonal equivalent to :expr:`mat:getdiag(k_)`. If :var:`mat` is a vector, return a square matrix with its :math:`k`-th diagonal set to the values of the elements of :var:`mat` equivalent to
-   :expr:`mat:same(#mat, #mat):setdiag(mat, k_)`.
+   If :var:`mat` is a matrix, return a column vector containing its :math:`k`-th diagonal equivalent to :expr:`mat:getdiag(k)`. If :var:`mat` is a vector, return a square matrix with its :math:`k`-th diagonal set to the values of the elements of :var:`mat` equivalent to
+   :expr:`mat:same(n,n):setdiag(mat,k)` where :expr:`n = #mat+abs(k)`. Default: :expr:`k_ = 0`.
 
 Sizes and Indexing
 ------------------
@@ -397,7 +397,7 @@ Filling and Moving
 
 .. function:: mat:shiftv (i, n_)
 
-   Return the real, complex or integer matrix :var:`mat` after shifting the elements in :expr:`mat[i..]` to :expr:`mat[i+n..]` if :expr:`n > 0` and in the opposite direction if :expr:`n < 0`, i.e. it is equivalent to :expr:`mat:movev(i, #mat-n, i+n)` for :expr:`n > 0` and to :expr:`mat:movev(i-n, #mat, i)` for :expr:`n < 0`. Default: :expr:`n_ = 1`.
+   Return the real, complex or integer matrix :var:`mat` after shifting the elements in :expr:`mat[i..]` to :expr:`mat[i+n..]` if :expr:`n > 0` and in the opposite direction if :expr:`n < 0`, i.e. it is equivalent to :expr:`mat:movev(i, #mat-n, i+n)` for :expr:`n > 0` and to :expr:`mat:movev(i, #mat, i+n)` for :expr:`n < 0`. Default: :expr:`n_ = 1`.
 
 Mapping and Folding
 -------------------
@@ -685,11 +685,11 @@ Operator-like Methods
 
 .. function:: mat:dmul (mat2, r_)
 
-   Equivalent to :expr:`mat:getdiag():diag() * mat2` with the possibility to place the result in :var:`r`.
+   Equivalent to :expr:`mat:getdiag():diag() * mat2` with the possibility to place the result in :var:`r`. If :var:`mat` is a vector, it will be interpreted as the diagonal of a square matrix like in :func:`mat:diag()`, i.e. omitting :func:`mat:getdiag()` is the previous expression.
    
 .. function:: mat:muld (mat2, r_)
 
-   Equivalent to :expr:`mat * mat2:getdiag():diag()` with the possibility to place the result in :var:`r`.
+   Equivalent to :expr:`mat * mat2:getdiag():diag()` with the possibility to place the result in :var:`r`. If :var:`mat2` is a vector, it will be interpreted as the diagonal of a square matrix like in :func:`mat2:diag()`, i.e. omitting :func:`mat2:getdiag()` is the previous expression.
 
 .. function:: mat:div (a, [r_,] rcond_)
 
@@ -1170,159 +1170,153 @@ This C Application Programming Interface describes only the C functions declared
 Vector
 ------
 
-.. c:function:: void mad_vec_fill  ( num_t x, num_t  r[], ssz_t n, ssz_t d)
-                void mad_cvec_fill (cnum_t x, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_fill ( idx_t x, idx_t  r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_fill  ( num_t x, num_t  r[], ssz_t n)
+                void mad_cvec_fill (cnum_t x, cnum_t r[], ssz_t n)
+                void mad_ivec_fill ( idx_t x, idx_t  r[], ssz_t n)
 
-   Return the vector :var:`r` of size :var:`n` filled with the value of :var:`x` every :var:`d` steps.
+   Return the vector :var:`r` of size :var:`n` filled with the value of :var:`x`.
 
-.. c:function:: void mad_vec_shift  ( num_t x[], ssz_t n, ssz_t d, int nshft)
-                void mad_cvec_shift (cnum_t x[], ssz_t n, ssz_t d, int nshft)
-                void mad_ivec_shift ( idx_t x[], ssz_t n, ssz_t d, int nshft)
-
-   Shift in place the values of the elements of the vector :var:`x` of size :var:`n` by :var:`nshft`.
-
-.. c:function:: void mad_vec_roll  ( num_t x[], ssz_t n, ssz_t d, int nroll)
-                void mad_cvec_roll (cnum_t x[], ssz_t n, ssz_t d, int nroll)
-                void mad_ivec_roll ( idx_t x[], ssz_t n, ssz_t d, int nroll)
+.. c:function:: void mad_vec_roll  ( num_t x[], ssz_t n, int nroll)
+                void mad_cvec_roll (cnum_t x[], ssz_t n, int nroll)
+                void mad_ivec_roll ( idx_t x[], ssz_t n, int nroll)
 
    Roll in place the values of the elements of the vector :var:`x` of size :var:`n` by :var:`nroll`.
 
-.. c:function:: void mad_vec_copy  (const  num_t x[],  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_copyv (const  num_t x[], cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_copy (const cnum_t x[], cnum_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_copy (const  idx_t x[],  idx_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_copy  (const  num_t x[],  num_t r[], ssz_t n)
+                void mad_vec_copyv (const  num_t x[], cnum_t r[], ssz_t n)
+                void mad_cvec_copy (const cnum_t x[], cnum_t r[], ssz_t n)
+                void mad_ivec_copy (const  idx_t x[],  idx_t r[], ssz_t n)
 
-   Fill the vector :var:`r` of size :var:`n` with the content of the vector :var:`x` every :var:`d` steps.
+   Fill the vector :var:`r` of size :var:`n` with the content of the vector :var:`x`.
 
-.. c:function:: void mad_vec_minmax  (const  num_t x[], log_t absf, idx_t r[2], ssz_t n, ssz_t d)
-                void mad_cvec_minmax (const cnum_t x[],             idx_t r[2], ssz_t n, ssz_t d)
-                void mad_ivec_minmax (const  idx_t x[], log_t absf, idx_t r[2], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_minmax  (const  num_t x[], log_t absf, idx_t r[2], ssz_t n)
+                void mad_cvec_minmax (const cnum_t x[],             idx_t r[2], ssz_t n)
+                void mad_ivec_minmax (const  idx_t x[], log_t absf, idx_t r[2], ssz_t n)
 
-   Return in :var:`r` the indexes of the minimum and maximum values of the elements of the vector :var:`x` of size :var:`n` every :var:`d` steps. If :expr:`absf = TRUE`, the function :func:`abs()` is applied to the elements before comparison.
+   Return in :var:`r` the indexes of the minimum and maximum values of the elements of the vector :var:`x` of size :var:`n`. If :expr:`absf = TRUE`, the function :func:`abs()` is applied to the elements before comparison.
 
-.. c:function:: num_t mad_vec_eval    (const  num_t x[], num_t x0,                            ssz_t n, ssz_t d)
-                void  mad_cvec_eval_r (const cnum_t x[], num_t x0_re, num_t x0_im, cnum_t *r, ssz_t n, ssz_t d)
+.. c:function:: num_t mad_vec_eval    (const  num_t x[], num_t x0,                            ssz_t n)
+                void  mad_cvec_eval_r (const cnum_t x[], num_t x0_re, num_t x0_im, cnum_t *r, ssz_t n)
 
-   Return in :var:`r` or directly the evaluation of the vector :var:`x` of size :var:`n` every :var:`d` steps at the point :var:`x0` using Honer's scheme.
+   Return in :var:`r` or directly the evaluation of the vector :var:`x` of size :var:`n` at the point :var:`x0` using Honer's scheme.
 
-.. c:function:: num_t mad_vec_sum     (const  num_t x[],            ssz_t n, ssz_t d)
-                void  mad_cvec_sum_r  (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
-                num_t mad_vec_ksum    (const  num_t x[],            ssz_t n, ssz_t d)
-                void  mad_cvec_ksum_r (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
+.. c:function:: num_t mad_vec_sum     (const  num_t x[],            ssz_t n)
+                void  mad_cvec_sum_r  (const cnum_t x[], cnum_t *r, ssz_t n)
+                num_t mad_vec_ksum    (const  num_t x[],            ssz_t n)
+                void  mad_cvec_ksum_r (const cnum_t x[], cnum_t *r, ssz_t n)
 
-   Return in :var:`r` or directly the sum of the values of the elements of the vector :var:`x` of size :var:`n` every :var:`d` steps. The *k* versions use the Neumaier variants of the Kahan sum.
+   Return in :var:`r` or directly the sum of the values of the elements of the vector :var:`x` of size :var:`n`. The *k* versions use the Neumaier variants of the Kahan sum.
 
-.. c:function:: num_t mad_vec_mean    (const  num_t x[],            ssz_t n, ssz_t d)
-                void  mad_cvec_mean_r (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
+.. c:function:: num_t mad_vec_mean    (const  num_t x[],            ssz_t n)
+                void  mad_cvec_mean_r (const cnum_t x[], cnum_t *r, ssz_t n)
 
-   Return in :var:`r` or directly the mean of the vector :var:`x` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` or directly the mean of the vector :var:`x` of size :var:`n`.
 
-.. c:function:: num_t mad_vec_var    (const  num_t x[],            ssz_t n, ssz_t d)
-                void  mad_cvec_var_r (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
+.. c:function:: num_t mad_vec_var    (const  num_t x[],            ssz_t n)
+                void  mad_cvec_var_r (const cnum_t x[], cnum_t *r, ssz_t n)
 
-   Return in :var:`r` or directly the unbiased variance with 2nd order correction of the vector :var:`x` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` or directly the unbiased variance with 2nd order correction of the vector :var:`x` of size :var:`n`.
 
-.. c:function:: void mad_vec_center  (const  num_t x[],  num_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_center (const cnum_t x[], cnum_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_center  (const  num_t x[],  num_t r[], ssz_t n)
+                void mad_cvec_center (const cnum_t x[], cnum_t r[], ssz_t n)
 
-   Return in :var:`r` the centered, vector :var:`x` of size :var:`n` every :var:`d` steps equivalent to :expr:`x[i] - mean(x)`.
+   Return in :var:`r` the centered, vector :var:`x` of size :var:`n` equivalent to :expr:`x[i] - mean(x)`.
 
-.. c:function:: num_t mad_vec_norm  (const  num_t x[], ssz_t n, ssz_t d) 
-                num_t mad_cvec_norm (const cnum_t x[], ssz_t n, ssz_t d)
+.. c:function:: num_t mad_vec_norm  (const  num_t x[], ssz_t n) 
+                num_t mad_cvec_norm (const cnum_t x[], ssz_t n)
 
-   Return the norm of the vector :var:`x` of size :var:`n` every :var:`d` steps.
+   Return the norm of the vector :var:`x` of size :var:`n`.
 
-.. c:function:: num_t mad_vec_dist   (const  num_t x[], const  num_t y[], ssz_t n, ssz_t d)
-                num_t mad_vec_distv  (const  num_t x[], const cnum_t y[], ssz_t n, ssz_t d)
-                num_t mad_cvec_dist  (const cnum_t x[], const cnum_t y[], ssz_t n, ssz_t d)
-                num_t mad_cvec_distv (const cnum_t x[], const  num_t y[], ssz_t n, ssz_t d)
+.. c:function:: num_t mad_vec_dist   (const  num_t x[], const  num_t y[], ssz_t n)
+                num_t mad_vec_distv  (const  num_t x[], const cnum_t y[], ssz_t n)
+                num_t mad_cvec_dist  (const cnum_t x[], const cnum_t y[], ssz_t n)
+                num_t mad_cvec_distv (const cnum_t x[], const  num_t y[], ssz_t n)
 
-   Return the distance between the vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps equivalent to :expr:`norm(x - y)`.
+   Return the distance between the vectors :var:`x` and :var:`y` of size :var:`n` equivalent to :expr:`norm(x - y)`.
 
-.. c:function:: num_t mad_vec_dot      (const  num_t x[], const  num_t y[]           , ssz_t n, ssz_t d)
-                void  mad_cvec_dot_r   (const cnum_t x[], const cnum_t y[], cnum_t *r, ssz_t n, ssz_t d)
-                void  mad_cvec_dotv_r  (const cnum_t x[], const  num_t y[], cnum_t *r, ssz_t n, ssz_t d)
-                num_t mad_vec_kdot     (const  num_t x[], const  num_t y[]           , ssz_t n, ssz_t d)
-                void  mad_cvec_kdot_r  (const cnum_t x[], const cnum_t y[], cnum_t *r, ssz_t n, ssz_t d)
-                void  mad_cvec_kdotv_r (const cnum_t x[], const  num_t y[], cnum_t *r, ssz_t n, ssz_t d)
+.. c:function:: num_t mad_vec_dot      (const  num_t x[], const  num_t y[]           , ssz_t n)
+                void  mad_cvec_dot_r   (const cnum_t x[], const cnum_t y[], cnum_t *r, ssz_t n)
+                void  mad_cvec_dotv_r  (const cnum_t x[], const  num_t y[], cnum_t *r, ssz_t n)
+                num_t mad_vec_kdot     (const  num_t x[], const  num_t y[]           , ssz_t n)
+                void  mad_cvec_kdot_r  (const cnum_t x[], const cnum_t y[], cnum_t *r, ssz_t n)
+                void  mad_cvec_kdotv_r (const cnum_t x[], const  num_t y[], cnum_t *r, ssz_t n)
 
-   Return in :var:`r` or directly the dot product between the vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps. The *k* versions use the Neumaier variants of the Kahan sum.
+   Return in :var:`r` or directly the dot product between the vectors :var:`x` and :var:`y` of size :var:`n`. The *k* versions use the Neumaier variants of the Kahan sum.
 
-.. c:function:: void mad_vec_cplx (const num_t re_[], const num_t im_[], cnum_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_cplx (const num_t re_[], const num_t im_[], cnum_t r[], ssz_t n)
 
-   Convert the real and imaginary vectors :var:`re` and :var:`im` of size :var:`n` into the complex vector :var:`r` every :var:`d` steps.
+   Convert the real and imaginary vectors :var:`re` and :var:`im` of size :var:`n` into the complex vector :var:`r`.
 
-.. c:function:: void mad_cvec_reim (const cnum_t x[], num_t re_[], num_t ri_[], ssz_t n, ssz_t d)
+.. c:function:: void mad_cvec_reim (const cnum_t x[], num_t re_[], num_t ri_[], ssz_t n)
 
-   Split the complex vector :var:`x` of size :var:`n` into the real vector :var:`re` and the imaginary vector :var:`ri` every :var:`d` steps.
+   Split the complex vector :var:`x` of size :var:`n` into the real vector :var:`re` and the imaginary vector :var:`ri`.
 
-.. c:function:: void mad_cvec_conj (const cnum_t x[], cnum_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_cvec_conj (const cnum_t x[], cnum_t r[], ssz_t n)
 
-   Return in :var:`r` the conjugate of the complex vector :var:`x` of size :var:`n` every :var:`d` steps. 
+   Return in :var:`r` the conjugate of the complex vector :var:`x` of size :var:`n`. 
 
-.. c:function:: void mad_vec_abs  (const  num_t x[], num_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_abs (const cnum_t x[], num_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_abs  (const  num_t x[], num_t r[], ssz_t n)
+                void mad_cvec_abs (const cnum_t x[], num_t r[], ssz_t n)
 
-   Return in :var:`r` the absolute value of the vector :var:`x` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` the absolute value of the vector :var:`x` of size :var:`n`.
 
-.. c:function:: void mad_vec_add     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_addn    (const  num_t x[],        num_t y        ,  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_addc_r  (const  num_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_add    (const cnum_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_addv   (const cnum_t x[], const  num_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_addn   (const cnum_t x[],        num_t y        , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_addc_r (const cnum_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_add    (const  idx_t x[], const  idx_t y[]      ,  idx_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_addn   (const  idx_t x[],        idx_t y        ,  idx_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_add     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n)
+                void mad_vec_addn    (const  num_t x[],        num_t y        ,  num_t r[], ssz_t n)
+                void mad_vec_addc_r  (const  num_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n)
+                void mad_cvec_add    (const cnum_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n)
+                void mad_cvec_addv   (const cnum_t x[], const  num_t y[]      , cnum_t r[], ssz_t n)
+                void mad_cvec_addn   (const cnum_t x[],        num_t y        , cnum_t r[], ssz_t n)
+                void mad_cvec_addc_r (const cnum_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n)
+                void mad_ivec_add    (const  idx_t x[], const  idx_t y[]      ,  idx_t r[], ssz_t n)
+                void mad_ivec_addn   (const  idx_t x[],        idx_t y        ,  idx_t r[], ssz_t n)
 
-   Return in :var:`r` the sum of the scalar or vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` the sum of the scalar or vectors :var:`x` and :var:`y` of size :var:`n`.
 
-.. c:function:: void mad_vec_sub     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_subv    (const  num_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_vec_subn    (const  num_t y[],        num_t x        ,  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_subc_r  (const  num_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_sub    (const cnum_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_subv   (const cnum_t x[], const  num_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_subn   (const cnum_t y[],        num_t x        , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_subc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_sub    (const  idx_t x[], const  idx_t y[]      ,  idx_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_subn   (const  idx_t y[],        idx_t x        ,  idx_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_sub     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n)
+                void mad_vec_subv    (const  num_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n)
+                void mad_vec_subn    (const  num_t y[],        num_t x        ,  num_t r[], ssz_t n)
+                void mad_vec_subc_r  (const  num_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
+                void mad_cvec_sub    (const cnum_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n)
+                void mad_cvec_subv   (const cnum_t x[], const  num_t y[]      , cnum_t r[], ssz_t n)
+                void mad_cvec_subn   (const cnum_t y[],        num_t x        , cnum_t r[], ssz_t n)
+                void mad_cvec_subc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
+                void mad_ivec_sub    (const  idx_t x[], const  idx_t y[]      ,  idx_t r[], ssz_t n)
+                void mad_ivec_subn   (const  idx_t y[],        idx_t x        ,  idx_t r[], ssz_t n)
 
-   Return in :var:`r` the difference between the scalar or vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` the difference between the scalar or vectors :var:`x` and :var:`y` of size :var:`n`.
 
-.. c:function:: void mad_vec_mul     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_muln    (const  num_t x[],        num_t y        ,  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_mulc_r  (const  num_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_mul    (const cnum_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_mulv   (const cnum_t x[], const  num_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_muln   (const cnum_t x[],        num_t y        , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_mulc_r (const cnum_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_mul    (const  idx_t x[], const  idx_t y[]      ,  idx_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_muln   (const  idx_t x[],        idx_t y        ,  idx_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_mul     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n)
+                void mad_vec_muln    (const  num_t x[],        num_t y        ,  num_t r[], ssz_t n)
+                void mad_vec_mulc_r  (const  num_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n)
+                void mad_cvec_mul    (const cnum_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n)
+                void mad_cvec_mulv   (const cnum_t x[], const  num_t y[]      , cnum_t r[], ssz_t n)
+                void mad_cvec_muln   (const cnum_t x[],        num_t y        , cnum_t r[], ssz_t n)
+                void mad_cvec_mulc_r (const cnum_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n)
+                void mad_ivec_mul    (const  idx_t x[], const  idx_t y[]      ,  idx_t r[], ssz_t n)
+                void mad_ivec_muln   (const  idx_t x[],        idx_t y        ,  idx_t r[], ssz_t n)
 
-   Return in :var:`r` the product of the scalar or vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` the product of the scalar or vectors :var:`x` and :var:`y` of size :var:`n`.
 
-.. c:function:: void mad_vec_div     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_divv    (const  num_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_vec_divn    (const  num_t y[],        num_t x        ,  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_divc_r  (const  num_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_div    (const cnum_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_divv   (const cnum_t x[], const  num_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_divn   (const cnum_t y[],        num_t x        , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_divc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_divn   (const  idx_t x[],        idx_t y        ,  idx_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_div     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n)
+                void mad_vec_divv    (const  num_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n)
+                void mad_vec_divn    (const  num_t y[],        num_t x        ,  num_t r[], ssz_t n)
+                void mad_vec_divc_r  (const  num_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
+                void mad_cvec_div    (const cnum_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n)
+                void mad_cvec_divv   (const cnum_t x[], const  num_t y[]      , cnum_t r[], ssz_t n)
+                void mad_cvec_divn   (const cnum_t y[],        num_t x        , cnum_t r[], ssz_t n)
+                void mad_cvec_divc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
+                void mad_ivec_divn   (const  idx_t x[],        idx_t y        ,  idx_t r[], ssz_t n)
 
-   Return in :var:`r` the division of the scalar or vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` the division of the scalar or vectors :var:`x` and :var:`y` of size :var:`n`.
 
-.. c:function:: void mad_ivec_modn (const idx_t x[], idx_t y, idx_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_ivec_modn (const idx_t x[], idx_t y, idx_t r[], ssz_t n)
 
-   Return in :var:`r` the modulo of the integer vector :var:`x` of size :var:`n` by the integer :var:`y` every :var:`d` steps.
+   Return in :var:`r` the modulo of the integer vector :var:`x` of size :var:`n` by the integer :var:`y`.
 
-.. c:function:: void mad_vec_kadd  (int k, const num_t  a[], const num_t  *x[],  num_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_kadd (int k, const cnum_t a[], const cnum_t *x[], cnum_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_kadd  (int k, const num_t  a[], const num_t  *x[],  num_t r[], ssz_t n)
+                void mad_cvec_kadd (int k, const cnum_t a[], const cnum_t *x[], cnum_t r[], ssz_t n)
 
-   Return in :var:`r` the linear combination of the :var:`k` vectors in :var:`x` of size :var:`n` scaled by the :var:`k` scalars in :var:`a` every :var:`d` steps.
+   Return in :var:`r` the linear combination of the :var:`k` vectors in :var:`x` of size :var:`n` scaled by the :var:`k` scalars in :var:`a`.
 
 .. c:function:: void mad_vec_fft   (const  num_t x[], cnum_t r[], ssz_t n)        
                 void mad_cvec_fft  (const cnum_t x[], cnum_t r[], ssz_t n)        
@@ -1403,14 +1397,14 @@ Matrix
                 void mad_cmat_dmul  (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_cmat_dmulm (const cnum_t x[], const  num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
 
-   Fill the matrix :var:`r` of size :var:`[m, n]` with the product of the diagonal of the matrix :var:`x` of sizes :var:`[m, p]` by the matrix :var:`y` of sizes :var:`[p, n]`.
+   Fill the matrix :var:`r` of size :var:`[m, n]` with the product of the diagonal of the matrix :var:`x` of sizes :var:`[m, p]` by the matrix :var:`y` of sizes :var:`[p, n]`. If :expr:`p = 1` then :var:`x` will be interpreted as the diagonal of a square matrix.
 
 .. c:function:: void mad_mat_muld   (const  num_t x[], const  num_t y[],  num_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_mat_muldm  (const  num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_cmat_muld  (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
                 void mad_cmat_muldm (const cnum_t x[], const  num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
 
-   Fill the matrix :var:`r` of sizes :var:`[m, n]` with the product of the matrix :var:`x` of sizes :var:`[m, p]` by the diagonal of the matrix :var:`y` of sizes :var:`[p, n]`.
+   Fill the matrix :var:`r` of sizes :var:`[m, n]` with the product of the matrix :var:`x` of sizes :var:`[m, p]` by the diagonal of the matrix :var:`y` of sizes :var:`[p, n]`. If :expr:`p = 1` then :var:`y` will be interpreted as the diagonal of a square matrix.
 
 .. c:function:: int mad_mat_div   (const  num_t x[], const  num_t y[],  num_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
                 int mad_mat_divm  (const  num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
@@ -1424,7 +1418,7 @@ Matrix
                 int mad_cmat_invn   (const cnum_t y[],        num_t x  ,       cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
                 int mad_cmat_invc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t m, ssz_t n, num_t rcond)
 
-   Fill the matrix :var:`r` of sizes :var:`[m, n]` with the inverse of the matrix :var:`y` of sizes :var:`[m, n]` scaled by the scalar :var:`x`. The conditional number :var:`rcond` is used by the solver to determine the effective rank of non-square systems. It returns the rank of the system.
+   Fill the matrix :var:`r` of sizes :var:`[n, m]` with the inverse of the matrix :var:`y` of sizes :var:`[m, n]` scaled by the scalar :var:`x`. The conditional number :var:`rcond` is used by the solver to determine the effective rank of non-square systems. It returns the rank of the system.
 
 .. c:function:: int mad_mat_solve  (const  num_t a[], const  num_t b[],  num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
                 int mad_cmat_solve (const cnum_t a[], const cnum_t b[], cnum_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
@@ -1506,7 +1500,7 @@ Matrix
 .. c:function:: void mad_mat_sympconj (const  num_t x[],  num_t r[], ssz_t n)
                 void mad_cmat_sympconj(const cnum_t x[], cnum_t r[], ssz_t n)
 
-   Return in :var:`r` the symplectic 'conjugate' of the vector :var:`x` of size :var:`n` every :var:`d` steps. 
+   Return in :var:`r` the symplectic 'conjugate' of the vector :var:`x` of size :var:`n`. 
 
 .. c:function:: num_t mad_mat_symperr  (const  num_t x[],  num_t r_[], ssz_t n, num_t *tol_)
                 num_t mad_cmat_symperr (const cnum_t x[], cnum_t r_[], ssz_t n, num_t *tol_)
