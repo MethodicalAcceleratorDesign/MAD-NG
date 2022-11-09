@@ -28,11 +28,24 @@ local assertNil, assertNotNil, assertTrue, assertFalse, assertEquals,
 
 local rep in MAD.utility
 local nan in MAD.gmath
-local ident, fnil, first, second, swap, compose, bottom in MAD.gfunc
+local ident, fnil, first, second, swap, compose, bottom,
+      ftrue, ffalse, fzero, fone, swapv, third, narg, 
+      bind1st, bind2nd, bind3rd, bind2st, bind3st, 
+      chain, achain, ochain in MAD.gfunc
 
 -- regression test suite ------------------------------------------------------o
 
 TestGfunc = {}
+
+function TestGfunc:testNarg()
+  local f=\ (1,2,3)
+  assertEquals( narg(1)     , 1   )
+  assertEquals( narg(1,nil) , 2   )
+  assertEquals({narg(nil,1)}, {2} )
+  assertEquals( narg(1,2)   , 2   )
+  assertEquals( narg(1,2,3) , 3   )
+  assertEquals( narg(f())   , 3   )
+end
 
 function TestGfunc:testIdent()
   local f=\ (1,2,3)
@@ -52,6 +65,46 @@ function TestGfunc:testFnil()
   assertNil( fnil(1,2)   )
   assertNil( fnil(1,2,3) )
   assertNil( fnil(f())   )
+end
+
+function TestGfunc:testFtrue()
+  local f=\ (1,2,3)
+  assertTrue( ftrue(1)     )
+  assertTrue( ftrue(1,nil) )
+  assertTrue( ftrue(nil,1) )
+  assertTrue( ftrue(1,2)   )
+  assertTrue( ftrue(1,2,3) )
+  assertTrue( ftrue(f())   )
+end
+
+function TestGfunc:testFfalse()
+  local f=\ (1,2,3)
+  assertFalse( ffalse(1)     )
+  assertFalse( ffalse(1,nil) )
+  assertFalse( ffalse(nil,1) )
+  assertFalse( ffalse(1,2)   )
+  assertFalse( ffalse(1,2,3) )
+  assertFalse( ffalse(f())   )
+end
+
+function TestGfunc:testFzero()
+  local f=\ (1,2,3)
+  assertEquals( fzero(1)    , 0 )
+  assertEquals( fzero(1,nil), 0 )
+  assertEquals( fzero(nil,1), 0 )
+  assertEquals( fzero(1,2)  , 0 )
+  assertEquals( fzero(1,2,3), 0 )
+  assertEquals( fzero(f())  , 0 )
+end
+
+function TestGfunc:testFone()
+  local f=\ (0,1,2,3)
+  assertEquals( fone(0)    , 1 )
+  assertEquals( fone(1,nil), 1 )
+  assertEquals( fone(nil,1), 1 )
+  assertEquals( fone(1,2)  , 1 )
+  assertEquals( fone(1,2,3), 1 )
+  assertEquals( fone(f())  , 1 )
 end
 
 function TestGfunc:testFirst()
@@ -74,6 +127,17 @@ function TestGfunc:testSecond()
   assertEquals( second(f())  , 2   )
 end
 
+function TestGfunc:testThird()
+  local f=\ (1,2,3)
+  assertEquals( third(1)        , nil )
+  assertEquals( third(1,2)      , nil )
+  assertEquals( third(1,2,nil)  , nil )
+  assertEquals( third(nil,nil,1), 1   )
+  assertEquals( third(1,2,3)    , 3   )
+  assertEquals( third(4,3,2,1)  , 2   )
+  assertEquals( third(f())      , 3   )
+end
+
 function TestGfunc:testSwap()
   local f=\ (1,2,3)
   assertEquals( {swap(1)}    , {nil,1} )
@@ -81,6 +145,16 @@ function TestGfunc:testSwap()
   assertEquals( {swap(1,2)}  , {2,1} )
   assertEquals( {swap(1,2,3)}, {2,1} )
   assertEquals( {swap(f())}  , {2,1} )
+end
+
+function TestGfunc:testSwapv()
+  local f=\ (1,2,3,4,5)
+  assertEquals( {swapv(1)}    , {nil,1} )
+  assertEquals( {swapv(nil,1)}, {1,nil} )
+  assertEquals( {swapv(1,2)}  , {2,1} )
+  assertEquals( {swapv(1,2,3)}, {2,1,3} )
+  assertEquals( {swapv(3,1,2,4)}, {1,3,2,4} )
+  assertEquals( {swapv(f())}  , {2,1,3,4,5} )
 end
 
 --[[
@@ -132,6 +206,58 @@ function TestGfunc:testCompose()
   assertEquals ( f(nil), 4 )
 end
 
+function TestGfunc:testChain()
+  local tbl = {}
+  local f  = \n => tbl[1] = n return 1 end
+  local g =  \n => if n < 4 then tbl[2] = tbl[1]*3 return 1 else return nil end end 
+  local functor = chain(f, g)
+  assertEquals( functor(1), 1)
+  assertEquals(tbl, {1, 3}) --Does f then g
+  assertEquals( functor(3), 1)
+  assertEquals(tbl, {3, 9}) --Does f then g
+  assertNil   ( functor(4)    ) --returns g
+  assertEquals(tbl, {4, 9}) --Does f and g, even if g is nil
+  functor = chain(g, f)
+  assertEquals( functor(1), 1)
+  assertEquals(tbl, {1, 12}) --Does g then f
+  assertEquals( functor(4), 1)  --returns f
+  assertEquals(tbl, {4, 12}) --Does g then f
+end
+
+function TestGfunc:testAchain()
+  local tbl = {}
+  local f  = \n => tbl[1] = n return 1 end
+  local g =  \n => if n < 4 then tbl[2] = tbl[1]*3 return 1 else return nil end end 
+  local functor = achain(f, g)
+  assertEquals( functor(1), 1)
+  assertEquals(tbl, {1, 3}) --Does f then g
+  assertEquals( functor(3), 1)
+  assertEquals(tbl, {3, 9}) --Does f then g
+  assertNil   ( functor(4)    )
+  assertEquals(tbl, {4, 9}) --Does f and g, even if g is nil
+  functor = achain(g, f)
+  assertEquals( functor(1), 1)
+  assertEquals(tbl, {1, 12}) --Does g then f
+  assertNil   ( functor(4)    ) 
+  assertEquals(tbl, {1, 12}) --Does not do f if g nil
+end
+
+function TestGfunc:testOchain() --for ochain(f, g) return f(...), unless nil, then return g(...)
+  local tbl = {}
+  local f  = \n => tbl[1] = n return 1 end
+  local g =  \n => if n < 4 then tbl[2] = tbl[1]*3 return 1 else return nil end end 
+  local functor = ochain(f, g)
+  assertEquals( functor(1), 1)
+  assertEquals(tbl, {1}) --Does f not g
+  assertEquals( functor(3), 1)
+  assertEquals(tbl, {3}) --Does f not g
+  functor = ochain(g, f)
+  assertEquals( functor(1), 1)
+  assertEquals(tbl, {3, 9}) --Does g not f
+  assertEquals( functor(4), 1) 
+  assertEquals(tbl, {4, 9}) --Does f if g nil
+end
+
 function TestGfunc:testComposeBottom()
   local id, id1, id4, _ = \n,...(n+1,...), \...(1,...), \n n, bottom
   local f = id4^id^id^id^id1^_
@@ -139,6 +265,57 @@ function TestGfunc:testComposeBottom()
   assertEquals ( f(1  ), 4 )
   assertEquals ( f(nan), 4 )
   assertEquals ( f(nil), 4 )
+end
+
+function TestGfunc:testBind1st()
+  local f=\a,b,c -> a * b + c - b
+  local functor = bind1st(f,2)
+  assertEquals( functor(3, 4, 4), 7  )
+  assertEquals( functor(2, 9, 5), 11 )
+  functor = bind1st(f, 6)
+  assertEquals( functor(2, 3, 8), 13 )
+  assertEquals( functor(1, 1, 4), 6  )
+end
+
+function TestGfunc:testBind2nd()
+  local f=\a,b,c -> a * b + c - b
+  local functor = bind2nd(f,2)
+  assertEquals( functor(3, 4, 7), 8  )
+  assertEquals( functor(2, 9, 7), 11 )
+  functor = bind2nd(f, 6)
+  assertEquals( functor(2, 3, 4), 9  )
+  assertEquals( functor(1, 1, 1), 1  )
+end
+
+
+function TestGfunc:testBind3rd()
+  local f=\a,b,c -> a * b + c - b
+  local functor = bind3rd(f,2)
+  assertEquals( functor(3, 4, 4), 10  )
+  assertEquals( functor(2, 9, 1), 11 )
+  functor = bind3rd(f, 6)
+  assertEquals( functor(2, 3, 1), 9  )
+  assertEquals( functor(1, 1, 1), 6  )
+end
+
+function TestGfunc:testBind2st()
+  local f=\a,b,c -> a * b + c - b
+  local functor = bind2st(f,2,3)
+  assertEquals( functor(10, 6, 1), 13 )
+  assertEquals( functor(5, 6, 1) , 8  )
+  functor = bind2st(f, 4, 9)
+  assertEquals( functor(8, 5, 3) , 35 )
+  assertEquals( functor(2, 5, 8) , 29 )
+end
+
+function TestGfunc:testBind3st()
+  local f=\a,b,c -> a * b + c - b
+  local functor = bind3st(f,1,5,10)
+  assertEquals( functor(9, 3, 10), 10 )
+  assertEquals( functor(1, 10, 8), 10 )
+  functor = bind3st(f, 3, 1, 7)
+  assertEquals( functor(7, 8, 9) , 9 )
+  assertEquals( functor(4, 1, 1) , 9 )
 end
 
 -- performance test suite -----------------------------------------------------o

@@ -17,7 +17,7 @@ Mathematical Functions
 Generic Real-like Functions
 ---------------------------
 
-Real-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`. The optional argument :var:`r_` represents a destination placeholder for results with reference semantic, i.e. avoiding memory allocation, which is ignored by results with value semantic. The C functions column lists the C implementation used when the argument is a :type:`number` and the implementation does not rely on the standard :code:`math` module.
+Real-like generic functions forward the call to the method of the same name from the first argument when the latter is not a :type:`number`. The optional argument :var:`r_` represents a destination placeholder for results with reference semantic, i.e. avoiding memory allocation, which is ignored by results with value semantic. The C functions column lists the C implementation used when the argument is a :type:`number` and the implementation does not rely on the standard :code:`math` module but on functions provided with MAD-NG or by the standard math library described in the C Programming Language Standard [ISOC99]_.
 
 ===============================  =======================================================  =============
 Functions                        Return values                                            C functions
@@ -34,14 +34,14 @@ Functions                        Return values                                  
 :func:`atan(x,r_)`               :math:`\tan^{-1} x`
 :func:`atan2(x,y,r_)`            :math:`\tan^{-1} \frac{x}{y}`
 :func:`atanh(x,r_)`              :math:`\tanh^{-1} x`                                     :c:func:`atanh`
-:func:`ceil(x,r_)`               :math:`\operatorname{ceil}(x)`
+:func:`ceil(x,r_)`               :math:`\lceil x \rceil`                                  
 :func:`cos(x,r_)`                :math:`\cos x`
 :func:`cosh(x,r_)`               :math:`\cosh x`
 :func:`cot(x,r_)`                :math:`\cot x`
 :func:`coth(x,r_)`               :math:`\coth x`
 :func:`exp(x,r_)`                :math:`\exp x`
-:func:`floor(x,r_)`              :math:`\operatorname{floor}(x)`
-:func:`frac(x,r_)`               :math:`\operatorname{frac}(x)`
+:func:`floor(x,r_)`              :math:`\lfloor x \rfloor`
+:func:`frac(x,r_)`               :math:`x - \operatorname{trunc}(x)`
 :func:`hypot(x,y,r_)`            :math:`\sqrt{x^2+y^2}`                                   :c:func:`hypot`
 :func:`hypot3(x,y,z,r_)`         :math:`\sqrt{x^2+y^2+z^2}`                               :c:func:`hypot`
 :func:`inv(x,v_,r_)` [#f2]_      :math:`\frac{v}{x}`
@@ -49,10 +49,8 @@ Functions                        Return values                                  
 :func:`lgamma(x,tol_,r_)`        :math:`\ln|\Gamma(x)|`                                   :c:func:`lgamma`
 :func:`log(x,r_)`                :math:`\log x`
 :func:`log10(x,r_)`              :math:`\log_{10} x`
-:func:`pow(x,y,r_)`              :math:`x^y`
 :func:`powi(x,n,r_)`             :math:`x^n`                                              :c:func:`mad_num_powi`
-:func:`rangle(a,r)`              :math:`a + 2\pi \operatorname{round}(\frac{r-a}{2\pi})`  :c:func:`round`
-:func:`round(x,r_)`              :math:`\operatorname{round}(x)`                          :c:func:`round`
+:func:`round(x,r_)`              :math:`\lfloor x \rceil`                                 :c:func:`round`
 :func:`sign(x)`                  :math:`-1, 0\text{ or }1`                                :c:func:`mad_num_sign`  [#f3]_
 :func:`sign1(x)`                 :math:`-1\text{ or }1`                                   :c:func:`mad_num_sign1` [#f3]_
 :func:`sin(x,r_)`                :math:`\sin x`
@@ -63,7 +61,7 @@ Functions                        Return values                                  
 :func:`tan(x,r_)`                :math:`\tan x`
 :func:`tanh(x,r_)`               :math:`\tanh x`
 :func:`tgamma(x,tol_,r_)`        :math:`\Gamma(x)`                                        :c:func:`tgamma`
-:func:`trunc(x,r_)`              :math:`\operatorname{trunc}(x)`
+:func:`trunc(x,r_)`              :math:`\lfloor x \rfloor, x\geq 0;\lceil x \rceil, x<0`
 :func:`unit(x,r_)`               :math:`\frac{x}{|x|}`
 ===============================  =======================================================  =============
 
@@ -79,6 +77,7 @@ Functions                Return values
 :func:`carg(z,r_)`       :math:`\arg z`
 :func:`conj(z,r_)`       :math:`z^*`
 :func:`cplx(x,y,r_)`     :math:`x+i\,y`
+:func:`fabs(z,r_)`       :math:`|\Re(z)|+i\,|\Im(z)|`
 :func:`imag(z,r_)`       :math:`\Im(z)`
 :func:`polar(z,r_)`      :math:`|z|\,e^{i \arg z}`
 :func:`proj(z,r_)`       :math:`\operatorname{proj}(z)`
@@ -128,13 +127,16 @@ Functions                   Return values                                       
 Special Functions
 -----------------
 
-The special function factorial support negative integers as input as it uses extended factorial definition. The values are cached making the complexity of these functions in :math:`O(1)` after warmup. 
+The special function :func:`fact()` supports negative integers as input as it uses extended factorial definition, and the values are cached to make its complexity in :math:`O(1)` after warmup.
 
-==================  ====================  =========================
-Functions           Return values         C functions
-==================  ====================  =========================
-:func:`fact(n)`     :math:`n!`            :c:func:`mad_num_fact`
-==================  ====================  =========================
+The special function :func:`rangle()` adjust the angle :var:`a` versus the *previous* right angle :var:`r`, e.g. during phase advance accumulation, to ensure proper value when passing through the :math:`±2k\pi` boundaries.
+
+===================  ================================================  =========================
+Functions            Return values                                     C functions
+===================  ================================================  =========================
+:func:`fact(n)`      :math:`n!`                                        :c:func:`mad_num_fact`
+:func:`rangle(a,r)`  :math:`a + 2\pi \lfloor \frac{r-a}{2\pi} \rceil`  :c:func:`round`
+===================  ================================================  =========================
 
 Functions for Circular Sector
 -----------------------------
@@ -186,51 +188,55 @@ Functions         Return values      Operator string  Metamethods
 :func:`pow(x,y)`  :math:`x ^ y`      :const:`"^"`     :func:`__pow(x,y)`
 ================  =================  ===============  ===================
 
-Vector Operators
-----------------
+Element Operators
+-----------------
 
 Functions for element-wise operators [#f4]_ are wrappers to associated mathematical operators of vector-like objects, which themselves can be overridden by their associated metamethods.
 
-=================  =====================  ===============  ====================
-Functions          Return values          Operator string  Metamethods
-=================  =====================  ===============  ====================
-:func:`emul(x,y)`  :math:`x\,.*\,y`       :const:`".*"`    :func:`__emul(x,y)`
-:func:`ediv(x,y)`  :math:`x\,./\,y`       :const:`"./"`    :func:`__ediv(x,y)`
-:func:`emod(x,y)`  :math:`x\,.\%\,y`      :const:`".%"`    :func:`__emod(x,y)`
-:func:`epow(x,y)`  :math:`x\,.\hat\ \ y`  :const:`".^"`    :func:`__epow(x,y)`
-=================  =====================  ===============  ====================
+====================  =====================  ===============  ====================
+Functions             Return values          Operator string  Metamethods
+====================  =====================  ===============  ====================
+:func:`emul(x,y,r_)`  :math:`x\,.*\,y`       :const:`".*"`    :func:`__emul(x,y,r_)`
+:func:`ediv(x,y,r_)`  :math:`x\,./\,y`       :const:`"./"`    :func:`__ediv(x,y,r_)`
+:func:`emod(x,y,r_)`  :math:`x\,.\%\,y`      :const:`".%"`    :func:`__emod(x,y,r_)`
+:func:`epow(x,y,r_)`  :math:`x\,.\hat\ \ y`  :const:`".^"`    :func:`__epow(x,y,r_)`
+====================  =====================  ===============  ====================
 
 Logical Operators
 -----------------
 
 Functions for logical operators are wrappers to associated logical operators.
 
-=================  ====================  ===============
-Functions          Return values         Operator string
-=================  ====================  ===============
-:func:`lfalse()`   :const:`true`                                         
-:func:`ltrue()`    :const:`false`                                        
-:func:`lnot(x)`    :math:`\lnot x`       :const:`"!"`                      
-:func:`lbool(x)`   :math:`\lnot\lnot x`  :const:`"!!"`                       
-:func:`land(x,y)`  :math:`x \land y`     :const:`"&&"`                       
-:func:`lor(x,y)`   :math:`x \lor y`      :const:`"||"`                       
-=================  ====================  ===============
+=================  ===============================================================  ===============
+Functions          Return values                                                    Operator string
+=================  ===============================================================  ===============
+:func:`lfalse()`   :const:`true`                                                    :const:`"T"`                                
+:func:`ltrue()`    :const:`false`                                                   :const:`"F"`                          
+:func:`lnot(x)`    :math:`\lnot x`                                                  :const:`"!"`                      
+:func:`lbool(x)`   :math:`\lnot\lnot x`                                             :const:`"!!"`                       
+:func:`land(x,y)`  :math:`x \land y`                                                :const:`"&&"`                       
+:func:`lor(x,y)`   :math:`x \lor y`                                                 :const:`"||"`                       
+:func:`lnum(x)`    :math:`\lnot x\rightarrow 0`, :math:`\lnot\lnot x\rightarrow 1`  :const:`"!#"`
+=================  ===============================================================  ===============
 
 Relational Operators
 --------------------
 
 Functions for relational operators are wrappers to associated logical operators, which themselves can be overridden by their associated metamethods. Relational ordering operators are available only for objects that are ordered.
 
-===============  ================  ==============================  =================
-Functions        Return values     Operator string                 Metamethods
-===============  ================  ==============================  =================
-:func:`eq(x,y)`  :math:`x = y`     :const:`"=="`                   :func:`__eq(x,y)`
-:func:`ne(x,y)`  :math:`x \neq y`  :const:`"!="` or :const:`"~="`  :func:`__eq(x,y)`
-:func:`lt(x,y)`  :math:`x < y`     :const:`"<"`                    :func:`__lt(x,y)`
-:func:`le(x,y)`  :math:`x <= y`    :const:`"<="`                   :func:`__le(x,y)`
-:func:`gt(x,y)`  :math:`x > y`     :const:`">"`                    :func:`__le(x,y)`
-:func:`ge(x,y)`  :math:`x >= y`    :const:`">="`                   :func:`__lt(x,y)`
-===============  ================  ==============================  =================
+================  =========================  ==============================  =================
+Functions         Return values              Operator string                 Metamethods
+================  =========================  ==============================  =================
+:func:`eq(x,y)`   :math:`x = y`              :const:`"=="`                   :func:`__eq(x,y)`
+:func:`ne(x,y)`   :math:`x \neq y`           :const:`"!="` or :const:`"~="`  :func:`__eq(x,y)`
+:func:`lt(x,y)`   :math:`x < y`              :const:`"<"`                    :func:`__lt(x,y)`
+:func:`le(x,y)`   :math:`x \leq y`           :const:`"<="`                   :func:`__le(x,y)`
+:func:`gt(x,y)`   :math:`x > y`              :const:`">"`                    :func:`__le(y,x)`
+:func:`ge(x,y)`   :math:`x \geq y`           :const:`">="`                   :func:`__lt(y,x)`
+:func:`cmp(x,y)`  :math:`(x > y) - (x < y)`  :const:`"?="`
+================  =========================  ==============================  =================
+
+The special relational operator :func:`cmp()` returns the number :const:`1` for :math:`x<y`, :const:`-1` for :math:`x>y`, and :const:`0` otherwise.
 
 Object Operators
 ----------------
@@ -313,7 +319,73 @@ Functions               Return values
 :func:`echo(...)`       Return all arguments unchanged after echoing them on stdout       
 ======================  ====================================================
 
+C API
+=====
+
+These functions are provided for performance reason and compliance with the C API of other modules.
+
+.. c:function:: int mad_num_sign (num_t x)
+
+   Return an integer amongst :const:`{-1, 0, 1}` representing the sign of the :type:`number` :var:`x`.
+
+.. c:function:: int mad_num_sign1 (num_t x)
+
+   Return an integer amongst :const:`{-1, 1}` representing the sign of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_fact (int n)
+
+   Return the extended factorial the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_powi (num_t x, int n)
+
+   Return the :type:`number` :var:`x` raised to the power of the :type:`integer` :var:`n` using a fast algorithm.
+
+.. c:function:: num_t mad_num_sinc (num_t x)
+
+   Return the sine cardinal of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_sinhc (num_t x)
+
+   Return the hyperbolic sine cardinal of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_asinc (num_t x)
+
+   Return the arc sine cardinal of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_asinhc (num_t x)
+
+   Return the hyperbolic arc sine cardinal of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_wf (num_t x, num_t relerr)
+
+   Return the Faddeeva function of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_erf (num_t x, num_t relerr)
+
+   Return the error function of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_erfc (num_t x, num_t relerr) 
+
+   Return the complementary error function of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_erfcx (num_t x, num_t relerr)
+
+   Return the scaled complementary error function of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_erfi (num_t x, num_t relerr)
+
+   Return the imaginary error function of the :type:`number` :var:`x`.
+
+.. c:function:: num_t mad_num_dawson (num_t x, num_t relerr)
+
+   Return the Dawson integral for the :type:`number` :var:`x`.
+
 .. ------------------------------------------------------------
+
+References
+==========
+
+.. [ISOC99] ISO/IEC 9899:1999 Programming Languages - C. https://www.iso.org/standard/29237.html.
 
 .. rubric:: Footnotes
 

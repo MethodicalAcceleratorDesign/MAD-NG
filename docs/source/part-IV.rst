@@ -14,6 +14,7 @@ MODULES
    /cplxnum.rst
    /linalg.rst
    /diffalg.rst
+   /diffmap.rst
    /miscfuns.rst
 
 

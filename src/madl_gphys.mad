@@ -570,7 +570,7 @@ function gphys.is_normal1 (A, R, nrmtol_)
   local tol = nrmtol_ or nrm_tol
   local get, set, n = A.get, A.set, A.nrow
 
-  -- use 'true' inverse in case of strong symplectic deviation
+  -- use 'true' inverse in case of large symplectic deviation
   local N = A:inv() * R * A
 
   for i = 1,n-1,2 do
@@ -616,8 +616,8 @@ function gphys.normal1 (R, nocheck_) -- matrix combining normal_a0 and normal_a1
   -- symplectifiy R if needed
   make_symp(R)
 
-  -- get eigenvalues (W) and eigenvectors (Vl, Vr) of R
-  local W, _, A, info = R:eigen()
+  -- get eigenvalues (W) and right eigenvectors A of R
+  local W, info, A = R:eigen(R:same())
 
   -- check that system is eigen
   if not nocheck_ then gphys.is_eigsys(A, W, R) end
@@ -678,8 +678,8 @@ local function nfana (nf, k_, m_)
         s = s +       abs(mono[j-1]-mono[j])
         p = p * lam[j-1]^(mono[j-1]-mono[j])
       end
-      gnf[#gnf+1], gnf[ms] = ms, v                    -- gnf terms
-      ham[#ham+1], ham[ms] = ms, v * (1-p)            -- ham terms
+      gnf[#gnf+1], gnf[ms] = ms, v                                  -- gnf terms
+      ham[#ham+1], ham[ms] = ms, v * (1-p)                          -- ham terms
     end
   end
 
@@ -692,8 +692,8 @@ local function nfana (nf, k_, m_)
           i, v = k:cycle(i, mono)
           if i == 0 then break; end
           local ms = mono:tostring()
-          local v = k:get(mono)
-          anh[#anh+1], anh[ms] = ms, -v:imag()/twopi -- anh terms
+          local v, fp = k:get(mono), mono:ordpf(2)
+          anh[#anh+1], anh[ms] = ms, -v:imag()*fp/twopi             -- anh terms
         end
       end
     end
@@ -735,9 +735,9 @@ local function normal_init (m, urdt_)
   -- | x px y py |       | params |  4D  (nv==4 and ndpt==true  -> nt=0, npt=0)
 
   local nf = {
-   __id     = nf_id,                        -- is_nf
-    sav     = sav,                          -- dump (c)damap/matrix in fort_n.N
-    analyse = nfana,                        -- compute rdt, fill ham, gnf, anh
+   __id     = nf_id,                     -- is_nf
+    sav     = sav,                       -- dump (c)damap/matrix in fort_n.N
+    analyse = nfana,                     -- compute rdt, fill ham, gnf, anh
 
     nn   = m.__td.nn,                    -- #(variables + parameters)
     nv   = m.__td.nv,                    -- #(variables)
@@ -846,8 +846,8 @@ local function normal_a1 (nf)
 
   make_stable(M)                  -- stabilise    M if needed
   make_symp  (M)                  -- symplectifiy M if needed
-
-  local W, _, A, info = M:eigen() -- eigenvalues (W) and right eigenvectors (A)
+                                  -- eigenvalues (W) and right eigenvectors (A)
+  local W, info, A = M:eigen(M:same())
 
   norml_eigen(A)                  -- normalize eigen system
   order_eigen(A, W)               -- order eigval and eigvec by planes
