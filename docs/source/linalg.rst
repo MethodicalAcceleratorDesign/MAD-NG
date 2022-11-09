@@ -118,8 +118,8 @@ Special Constructors
 
 .. function:: mat:diag (k_)
 
-   If :var:`mat` is a matrix, return a column vector containing its :math:`k`-th diagonal equivalent to :expr:`mat:getdiag(k_)`. If :var:`mat` is a vector, return a square matrix with its :math:`k`-th diagonal set to the values of the elements of :var:`mat` equivalent to
-   :expr:`mat:same(#mat, #mat):setdiag(mat, k_)`.
+   If :var:`mat` is a matrix, return a column vector containing its :math:`k`-th diagonal equivalent to :expr:`mat:getdiag(k)`. If :var:`mat` is a vector, return a square matrix with its :math:`k`-th diagonal set to the values of the elements of :var:`mat` equivalent to
+   :expr:`mat:same(n,n):setdiag(mat,k)` where :expr:`n = #mat+abs(k)`. Default: :expr:`k_ = 0`.
 
 Sizes and Indexing
 ------------------
