@@ -487,16 +487,20 @@ static void mad_openlibs (lua_State *L)
 /* Handle signals */
 static const int   sig_i[] = { SIGSEGV , SIGFPE , SIGPIPE , SIGBUS , SIGILL , SIGABRT };
 static const str_t sig_s[] = {"SIGSEGV","SIGFPE","SIGPIPE","SIGBUS","SIGILL","SIGABRT"};
-enum { sig_n = sizeof sig_i / sizeof *sig_i };
+static const str_t sig_m[] = {"segmentation fault!", "floating-point exception!",
+                              "broken pipe!", "bus error!", "illegal instruction!",
+                              "abort!"};
+enum { sig_ni = sizeof sig_i / sizeof *sig_i,
+       sig_ns = sizeof sig_s / sizeof *sig_s,
+       sig_nm = sizeof sig_m / sizeof *sig_m,
+       static_assert__sig_s_len = 1/(sig_ni == sig_ns),
+       static_assert__sig_m_len = 1/(sig_ni == sig_nm) };
 
 static void mad_signal(int sig)
 {
-  static const str_t sig_m[sig_n] = {
-    "segmentation fault!","floating-point exception!","broken pipe!",
-    "bus error!","illegal instruction!","abort!"};
 
   int i = 0;
-  while (i < sig_n && sig_i[i] != sig) ++i;
+  while (i < sig_ni && sig_i[i] != sig) ++i;
 
   // NOT SAFE! (but let's try...)
   fflush(stdout);
@@ -506,9 +510,15 @@ static void mad_signal(int sig)
   exit(EXIT_FAILURE); /* never reached */
 }
 
+// SIGINT forward decl
+static void laction(int i);
+
 static void mad_setsignal (void)
 {
-  for (int i=0; i < sig_n; i++)
+  ensure(signal(SIGINT, laction) != SIG_ERR,
+         "unable to set signal hanlder %s", "SIGINT");
+
+  for (int i=0; i < sig_ni; i++)
     ensure(signal(sig_i[i], mad_signal) != SIG_ERR,
            "unable to set signal hanlder %s", sig_s[i]);
 }
@@ -523,13 +533,12 @@ static void mad_regfunvar (void)
 /* --- MAD (end) -------------------------------------------------------------*/
 
 #if !LJ_TARGET_CONSOLE
-static clock_t sigint_t0;
-static int     sigint_count;
+static int sigint_count = 0;
 
 static void lstop(lua_State *L, lua_Debug *ar)
 {
-  sigint_count = 0;
   (void)ar;  /* unused arg. */
+  sigint_count = 0;
   lua_sethook(L, NULL, 0, 0);
   /* Avoid luaL_error -- a C hook doesn't add an extra frame. */
   luaL_where(L, 0);
@@ -540,26 +549,10 @@ static void lstop(lua_State *L, lua_Debug *ar)
 static void laction(int i)
 {
   /* protect against multiple Ctrl-C in interactive mode */
-  signal(i, mad_is_interactive ? laction : SIG_DFL);
-
-  if (!sigint_count++) {
-    sigint_t0 = clock();
-    lua_sethook(globalL, lstop, LUA_MASKCALL | LUA_MASKRET | LUA_MASKCOUNT, 1);
-    return;
-  }
-
-  /* prevent multiple Ctrl-C within 0.2-0.5 sec */
-  double sigint_delay = (clock()-sigint_t0)/(double)CLOCKS_PER_SEC;
-
-  fflush(stdout);
-
-  if (!mad_is_interactive || sigint_count > 2 || sigint_delay > 0.5) {
-    /* too many SIGINT or timeout happened before lstop, terminate process */
-    fprintf(stderr, "interrupted!\n"); // signal(i, SIG_DFL);
-    exit(EXIT_FAILURE); // give a chance to C for cleanup
-  }
-
-  fprintf(stderr,"pending interruption in VM! (next will exit)\n");
+  signal(i, laction);
+  if (sigint_count++)     // 2nd SIGINT, sethook was called but not efficient
+    lstop(globalL, NULL); // so we are certainly in compiled code, call lstop
+  lua_sethook(globalL, lstop, LUA_MASKLINE | LUA_MASKCALL | LUA_MASKRET | LUA_MASKCOUNT, 1);
 }
 #endif
 
@@ -623,11 +616,12 @@ static int docall(lua_State *L, int narg, int clear)
   lua_pushcfunction(L, traceback);  /* push traceback function */
   lua_insert(L, base);  /* put it under chunk and args */
 #if !LJ_TARGET_CONSOLE
-  signal(SIGINT, laction);
+//  signal(SIGINT, laction);
 #endif
   status = lua_pcall(L, narg, (clear ? 0 : LUA_MULTRET), base);
 #if !LJ_TARGET_CONSOLE
-  signal(SIGINT, SIG_DFL);
+  signal(SIGINT, laction);
+//  signal(SIGINT, SIG_DFL);
 #endif
   lua_remove(L, base);  /* remove traceback function */
   /* force a complete garbage collection in case of errors */
