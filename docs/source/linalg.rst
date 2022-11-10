@@ -114,7 +114,7 @@ Special Constructors
 
 .. function:: mat:vech ()
 
-   Return a vector of the same type as :var:`mat` filled with the values of the elements of the `half vectorized <https://en.wikipedia.org/wiki/Vectorization_(mathematics)#Half-vectorization>`_ real, complex or integer *symmetric* matrix :var:`mat`. The symmetric property can be pre-checked bu the user with :func:`mat:is_symm()`.
+   Return a vector of the same type as :var:`mat` filled with the values of the elements of the `half vectorized <https://en.wikipedia.org/wiki/Vectorization_(mathematics)#Half-vectorization>`_ real, complex or integer *symmetric* matrix :var:`mat`. The symmetric property can be pre-checked by the user with :func:`mat:is_symm()`.
 
 .. function:: mat:diag (k_)
 
@@ -150,7 +150,7 @@ Sizes and Indexing
 
 .. function:: mat:getdidx (k_)
 
-   Return an :type:`iterable` describing the indexes of the :math:`k`-th diagonal of the real, complex or integer matrix :var:`mat` where :expr:`-nrow <= k <= ncol`. This method is useful to build the 1D indexes of the :math:`k`-th diagonal for the given matrix sizes.
+   Return an :type:`iterable` describing the indexes of the :math:`k`-th diagonal of the real, complex or integer matrix :var:`mat` where :expr:`-nrow <= k <= ncol`. This method is useful to build the 1D indexes of the :math:`k`-th diagonal for the given matrix sizes. Default :expr:`k_ = 0`
 
 Getters and Setters
 -------------------
@@ -359,7 +359,7 @@ Filling and Moving
 
 .. function:: mat:shuffle ()
 
-   Return the real, complex or integer matrix :var:`mat` with its elements randomly swapped using the `Fisher–Yates or Knuth shuffle <https://en.wikipedia.org/wiki/Fisher–Yates_shuffle>`_ algorithm and :func:`math.random` as PRNG.
+   Return the real, complex or integer matrix :var:`mat` with its elements randomly swapped using the `Fisher–Yates or Knuth shuffle <https://en.wikipedia.org/wiki/Fisher–Yates_shuffle>`_ algorithm and :func:`math.random` as the PRNG.
 
 .. function:: mat:symp ()
 
@@ -373,7 +373,7 @@ Filling and Moving
 
    Return the real, complex or integer matrix :var:`mat` filled with values provided by :var:`a` depending of its kind:
 
-   - if :var:`a` is a :type:`scalar`, it is equivalent to :func:`mat:ones()`.
+   - if :var:`a` is a :type:`scalar`, it is equivalent to :func:`mat:ones(a)`.
 
    - if :var:`a` is a :type:`callable`, then:
 
@@ -389,7 +389,7 @@ Filling and Moving
 
 .. function:: mat:roll (nr_, nc_)
 
-   Return the real, complex or integer matrix :var:`mat` after rolling its rows by :var:`nr` :math:`\in \mathbb{Z}` and columns by :var:`nc` :math:`\in \mathbb{Z}`. Default: :expr:`nr_ = 0`, :expr:`nc_ = 0`.  
+   Return the real, complex or integer matrix :var:`mat` after rolling its rows by :var:`nr` :math:`\in \mathbb{Z}` and then columns by :var:`nc` :math:`\in \mathbb{Z}`. Default: :expr:`nr_ = 0`, :expr:`nc_ = 0`.  
 
 .. function:: mat:movev (i, j, k, r_)
 
@@ -418,7 +418,7 @@ Mapping and Folding
 
 .. function:: mat:map ([ij_,] f, r_)
 
-   Return a matrix or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied to the elements of the real, complex or integer matrix :var:`mat` at the indexes given by the :type:`iterable` :var:`ij` using :expr:`f(mat[n], n)`, i.e. interpreting the matrix as a vector. If :expr:`r = 'in'` or :expr:`r = nil` and expr:`ij ~= nil` then it is assigned :var:`mat`, i.e. map in place. If :expr:`r = nil` still, then the type of the returned matrix is determined by the type of the value returned by :func:`f()` called once before mapping. Default: :expr:`ij_ = 1..#mat`.
+   Return a matrix or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied to the elements of the real, complex or integer matrix :var:`mat` at the indexes given by the :type:`iterable` :var:`ij` using :expr:`f(mat[n], n)`, i.e. interpreting the matrix as a vector. If :expr:`r = 'in'` or :expr:`r = nil` and :expr:`ij ~= nil` then it is assigned :var:`mat`, i.e. map in place. If :expr:`r = nil` still, then the type of the returned matrix is determined by the type of the value returned by :func:`f()` called once before mapping. Default: :expr:`ij_ = 1..#mat`.
 
 .. function:: mat:map2 (y, [ij_,] f, r_)
 
@@ -451,25 +451,25 @@ Mapping and Folding
 
    Return a vector, a matrix or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied iteratively to the elements of the real, complex or integer matrix :var:`mat` using the scanning left (forward with increasing indexes) expression :expr:`v = f(v, mat[n])` in the direction depending on the :type:`string` :var:`d`:
 
-   - If :expr:`d = 'vec'`, the sanning left iteration runs on the entire matrix :var:`mat` interpreted as a vector and a vector is returned.
+   - If :expr:`d = 'vec'`, the scanning left iteration runs on the entire matrix :var:`mat` interpreted as a vector and a vector is returned.
 
-   - If :expr:`d = 'diag'`, the sanning left iteration runs on the diagonal of the matrix :var:`mat` and a vector is returned.
+   - If :expr:`d = 'diag'`, the scanning left iteration runs on the diagonal of the matrix :var:`mat` and a vector is returned.
 
-   - If :expr:`d = 'row'`, the sanning left iteration runs on the rows of the matrix :var:`mat` and a matrix is returned.
+   - If :expr:`d = 'row'`, the scanning left iteration runs on the rows of the matrix :var:`mat` and a matrix is returned.
 
-   - If :expr:`d = 'col'`, the sanning left iteration runs on the columns of the matrix :var:`mat` and a matrix is returned.
+   - If :expr:`d = 'col'`, the scanning left iteration runs on the columns of the matrix :var:`mat` and a matrix is returned.
 
    Note that ommitting both :var:`x0` and :var:`d` implies to not specify :var:`r` as well, otherwise the latter will be interpreted as :var:`x0`.
    If :expr:`r = nil`, then the type of the returned matrix is determined by the type of the value returned by :func:`f()` called once before scanning. Default: :expr:`x0 = mat[1]` (or first row or column element), :expr:`d = 'vec'`.
 
 .. function:: mat:scanr (f, [x0_,] [d_,] r_)
 
-   Same as :func:`mat:scanl()` but the :type:`callable` (or the operator string) :var:`f` is applied iteratively using the folding right (backward with decreasing indexes) expression :expr:`v = f(mat[n], v)`. Default: :expr:`x0 = mat[#mat]` (or last row or column element), :expr:`d = 'vec'`.
+   Same as :func:`mat:scanl()` but the :type:`callable` (or the operator string) :var:`f` is applied iteratively using the scanning right (backward with decreasing indexes) expression :expr:`v = f(mat[n], v)`. Default: :expr:`x0 = mat[#mat]` (or last row or column element), :expr:`d = 'vec'`.
 
 Mapping Real-like Methods
 -------------------------
 
-The following table lists the methods built from the application of :func:`mat:map()` and variants to the real-like functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`. The methods :func:`mat:sign()`, :func:`mat:sign1()` and :func:`mat:atan2()` are not available for :type:`cmatrix`, and only the mehods :func:`mat:abs()`, :func:`mat:sqr()` and :func:`mat:sign()` are available for :type:`imatrix`.
+The following table lists the methods built from the application of :func:`mat:map()` and variants to the real-like functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`. The methods :func:`mat:sign()`, :func:`mat:sign1()` and :func:`mat:atan2()` are not available for :type:`cmatrix`, and only the methods :func:`mat:abs()`, :func:`mat:sqr()` and :func:`mat:sign()` are available for :type:`imatrix`.
 
 ============================  ===============================
 Functions                     Equivalent Mapping
@@ -728,7 +728,7 @@ Special Methods
 .. function:: mat:trace ()
               mat:tr()
 
-   Return the `Trace <https://en.wikipedia.org/wiki/Trace_(linear_algebra)>`_ of the real or complex :var:`mat` equivalent to :expr:`mat:sum'diag'`.
+   Return the `Trace <https://en.wikipedia.org/wiki/Trace_(linear_algebra)>`_ of the real or complex :var:`mat` equivalent to :expr:`mat:sum('diag')`.
 
 .. function:: mat:inner (mat2)
               mat:dot (mat2)
@@ -749,7 +749,7 @@ Special Methods
 
 .. function:: mat:norm ()
 
-   Return the `Frobenius norm <https://en.wikipedia.org/wiki/Matrix_norm#Frobenius_norm>`_ of the matrix :math:`\| M \|_2`. Other :math:`L_p` matrix norms and variants can be easily calculated using already provided methods, e.g. :math:`L_1` :expr:`= mat:sumabs'col':max()`, :math:`L_{\infty}` :expr:`= mat:sumabs'row':max()`, and :math:`L_2` :expr:`= mat:svd():max()`.
+   Return the `Frobenius norm <https://en.wikipedia.org/wiki/Matrix_norm#Frobenius_norm>`_ of the matrix :math:`\| M \|_2`. Other :math:`L_p` matrix norms and variants can be easily calculated using already provided methods, e.g. :math:`L_1` :expr:`= mat:sumabs('col'):max()`, :math:`L_{\infty}` :expr:`= mat:sumabs('row'):max()`, and :math:`L_2` :expr:`= mat:svd():max()`.
 
 .. function:: mat:dist (mat2)
 
@@ -812,31 +812,31 @@ Solvers and Decompositions
 
 .. function:: mat:solve (b, rcond_)
 
-   Return the real or complex :math:`[ n \times p ]` matrix :var:`x` as the minimum-norm solution of the linear least square problem :math:`\min \| A x - B \|` where :math:`A` is the real or complex :math:`[ m \times n ]` matrix :var:`mat` and :math:`B` is a :math:`[ m \times p ]` matrix of the same type as :math:`A`, using LU, QR or LQ factorisation depending on the shape of the system. The conditional number :var:`rcond` is used by the solver to determine the effective rank of non-square system. This method also returns the rank of the system. Default: :expr:`rcond_ = eps`.
+   Return the real or complex :math:`[ n \times p ]` matrix :math:`x` as the minimum-norm solution of the linear least square problem :math:`\min \| A x - B \|` where :math:`A` is the real or complex :math:`[ m \times n ]` matrix :var:`mat` and :math:`B` is a :math:`[ m \times p ]` matrix :var:`b` of the same type as :var:`mat`, using LU, QR or LQ factorisation depending on the shape of the system. The conditional number :var:`rcond` is used by the solver to determine the effective rank of non-square system. This method also returns the rank of the system. Default: :expr:`rcond_ = eps`.
 
 .. function:: mat:ssolve (b, rcond_)
 
-   Return the real or complex :math:`[ n \times p ]` matrix :var:`x` as the minimum-norm solution of the linear least square problem :math:`\min \| A x - B \|` where :math:`A` is the real or complex :math:`[ m \times n ]` matrix :var:`mat` and :math:`B` is a :math:`[ m \times p ]` matrix of the same type as :math:`A`, using SVD factorisation. The conditional number :var:`rcond` is used by the solver to determine the effective rank of the system. This method also returns the rank of the system followed by the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`rcond_ = eps`.
+   Return the real or complex :math:`[ n \times p ]` matrix :math:`x` as the minimum-norm solution of the linear least square problem :math:`\min \| A x - B \|` where :math:`A` is the real or complex :math:`[ m \times n ]` matrix :var:`mat` and :math:`B` is a :math:`[ m \times p ]` matrix :var:`b` of the same type as :var:`mat`, using SVD factorisation. The conditional number :var:`rcond` is used by the solver to determine the effective rank of the system. This method also returns the rank of the system followed by the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`rcond_ = eps`.
 
 .. function:: mat:gsolve (b, c, d)
 
-   Return the real or complex :math:`[ n \times 1 ]` vector :var:`x` as the minimum-norm solution of the linear least square problem :math:`\min \| A x - C \|` under the constraint :math:`B x = D` where :math:`A` is the real or complex :math:`[ m \times n ]` matrix :var:`mat`, :math:`B` is a :math:`[ p \times n ]` matrix, :math:`C` is a :math:`[ m \times 1 ]` vector and :math:`D` is a :math:`[ p \times 1 ]` vector, all of the same type as :math:`A`, using QR or LQ factorisation depending on the shape of the system. This method also returns the norm of the residues and the status :var:`info`.
+   Return the real or complex :math:`[ n \times 1 ]` vector :var:`x` as the minimum-norm solution of the linear least square problem :math:`\min \| A x - C \|` under the constraint :math:`B x = D` where :math:`A` is the real or complex :math:`[ m \times n ]` matrix :var:`mat`, :math:`B` is a :math:`[ p \times n ]` matrix :var:`b`, :math:`C` is a :math:`[ m \times 1 ]` vector :var:`c` and :math:`D` is a :math:`[ p \times 1 ]` vector :var:`d`, all of the same type as :var:`mat`, using QR or LQ factorisation depending on the shape of the system. This method also returns the norm of the residues and the status :var:`info`.
 
 .. function:: mat:gmsolve (b, d)
 
-   Return the real or complex :math:`[ n \times 1 ]` vector :var:`x` and :math:`[ p \times 1 ]` matrix :var:`y` as the minimum-norm solution of the linear Gauss-Markov problem :math:`\min_x \| y \|` under the constraint :math:`A x + B y = D` where :math:`A` is the :math:`[ m \times n ]` real or complex matrix :var:`mat`, :math:`B` is a :math:`[ m \times p ]` matrix, and :math:`D` is a :math:`[ m \times 1 ]` vector, both of the same type as :math:`A`, using QR or LQ factorisation depending on the shape of the system. This method also returns the status :var:`info`.
+   Return the real or complex :math:`[ n \times 1 ]` vector :var:`x` and :math:`[ p \times 1 ]` matrix :var:`y` as the minimum-norm solution of the linear Gauss-Markov problem :math:`\min_x \| y \|` under the constraint :math:`A x + B y = D` where :math:`A` is the :math:`[ m \times n ]` real or complex matrix :var:`mat`, :math:`B` is a :math:`[ m \times p ]` matrix :var:`b`, and :math:`D` is a :math:`[ m \times 1 ]` vector :var:`d`, both of the same type as :var:`mat`, using QR or LQ factorisation depending on the shape of the system. This method also returns the status :var:`info`.
 
 .. function:: mat:nsolve (b, nc_, tol_)
 
-   Return the real :math:`[ n \times 1 ]` vector :var:`x` (of correctors kicks) as the minimum-norm solution of the linear (best-kick) least square problem :math:`\min \| A x - B \|` where :math:`A` is the real :math:`[ m \times n ]` (response) matrix :var:`mat` and :math:`B` is a real :math:`[ m \times 1 ]` vector (of monitors readings), using the MICADO [#f3]_ algorithm based on the Householder-Golub method [MICADO]_. The argument :var:`nc` is the maximum number of correctors to use with :math:`0 < n_c \leq n` and the argument :var:`tol` is a convergence threshold (on the residues) to stop the (orbit) correction if :math:`\| A x - B \| \leq m \times` :var:`tol`. This method also returns the updated number of correctors :math:`n_c` effectively used during the correction followed by the real :math:`[ m \times 1 ]` vector of residues. Default: :expr:`nc_ = ncol`, :expr:`tol_ = eps`.
+   Return the real :math:`[ n \times 1 ]` vector :var:`x` (of correctors kicks) as the minimum-norm solution of the linear (best-kick) least square problem :math:`\min \| A x - B \|` where :math:`A` is the real :math:`[ m \times n ]` (response) matrix :var:`mat` and :math:`B` is a real :math:`[ m \times 1 ]` vector :var:`b` (of monitors readings), using the MICADO [#f3]_ algorithm based on the Householder-Golub method [MICADO]_. The argument :var:`nc` is the maximum number of correctors to use with :math:`0 < n_c \leq n` and the argument :var:`tol` is a convergence threshold (on the residues) to stop the (orbit) correction if :math:`\| A x - B \| \leq m \times` :var:`tol`. This method also returns the updated number of correctors :math:`n_c` effectively used during the correction followed by the real :math:`[ m \times 1 ]` vector of residues. Default: :expr:`nc_ = ncol`, :expr:`tol_ = eps`.
 
 .. function:: mat:pcacnd (ns_, rcond_)
 
-   Return the integer column vector :var:`ic` containing the indexes of the columns to remove from the real or complex :math:`[ m \times n ]` matrix :var:`mat` using the Principal Component Analysis. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. This method also returns the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`ns_ = ncol`, :expr:`rcond_ = eps`.
+   Return the integer column vector :var:`ic` containing the indexes of the columns to remove from the real or complex :math:`[ m \times n ]` matrix :var:`mat` using the Principal Component Analysis. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditioning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. This method also returns the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`ns_ = ncol`, :expr:`rcond_ = eps`.
 
 .. function:: mat:svdcnd (ns_, rcond_, tol_)
 
-   Return the integer column vector :var:`ic` containing the indexes of the columns to remove from the real or complex :math:`[ m \times n ]` matrix :var:`mat` based on the analysis of the right matrix :math:`V` from the SVD decomposition :math:`U S V`. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. The argument :var:`tol` is a threshold similar to :var:`rcond` used to reject components in :math:`V` that have similar or opposite effect than components already encountered. This method also returns the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`ns_ = min(nrow,ncol)`, :expr:`rcond_ = eps`.
+   Return the integer column vector :var:`ic` containing the indexes of the columns to remove from the real or complex :math:`[ m \times n ]` matrix :var:`mat` based on the analysis of the right matrix :math:`V` from the SVD decomposition :math:`U S V`. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditioning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. The argument :var:`tol` is a threshold similar to :var:`rcond` used to reject components in :math:`V` that have similar or opposite effect than components already encountered. This method also returns the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`ns_ = min(nrow,ncol)`, :expr:`rcond_ = eps`.
 
 .. function:: mat:svd ()
 
@@ -852,7 +852,7 @@ Solvers and Decompositions
 
 .. function:: mat:mfun (fun)
 
-   Return the real or complex matrix resulting from the matrix function :var:`fun` applyied to the real or complex matrix :var:`mat`. So far, :func:`mat:mfun()` uses the eigen decomposition of the matrix :var:`mat`, which must be `Diagonalizable <https://en.wikipedia.org/wiki/Diagonalizable_matrix>`_. See the section :ref:`matrix-functions` for the list of matrix functions already provided. Future versions of this method may be extended to use the more general Schur-Parlett algorithm [MATFUN]_, and other specialized versions for :func:`msqrt()`, :func:`mpow`, :func:`mexp`, and :func:`mlog` may be implemented too.
+   Return the real or complex matrix resulting from the matrix function :var:`fun` applied to the real or complex matrix :var:`mat`. So far, :func:`mat:mfun()` uses the eigen decomposition of the matrix :var:`mat`, which must be `Diagonalizable <https://en.wikipedia.org/wiki/Diagonalizable_matrix>`_. See the section :ref:`matrix-functions` for the list of matrix functions already provided. Future versions of this method may be extended to use the more general Schur-Parlett algorithm [MATFUN]_, and other specialized versions for :func:`msqrt()`, :func:`mpow`, :func:`mexp`, and :func:`mlog` may be implemented too.
 
 Fourier Transforms and Convolutions
 -----------------------------------
@@ -948,7 +948,7 @@ This section describe methods dealing with 2D and 3D rotations (see `Rotation Ma
 
 .. function:: mat:torotv (v_, inv_)
 
-   Return a real :type:`number` representing the angle of the 3D rotation around the axis defined by a 3D vector as stored in the :math:`[3\times 3]` real :type:`matrix` :var:`mat` by the method :func:`mat:rotv()`. If the :type:`iterable`` :var:`v` is provided, it is filled with the components of the unit vector that defines the axis of the rotation.  If :var:`inv` is true, the inverse rotation is returned, i.e. extracted from the transposed matrix.
+   Return a real :type:`number` representing the angle of the 3D rotation around the axis defined by a 3D vector as stored in the :math:`[3\times 3]` real :type:`matrix` :var:`mat` by the method :func:`mat:rotv()`. If the :type:`iterable` :var:`v` is provided, it is filled with the components of the unit vector that defines the axis of the rotation.  If :var:`inv` is true, the inverse rotation is returned, i.e. extracted from the transposed matrix.
 
 .. function:: mat:rotq (q, inv_)
 
@@ -956,14 +956,14 @@ This section describe methods dealing with 2D and 3D rotations (see `Rotation Ma
 
 .. function:: mat:torotq (q_, inv_)
 
-   Return a quaternion representing the 3D rotation as stored in the :math:`[3\times 3]` real :type:`matrix` :var:`mat` by the method :func:`mat:rotq()`. If the :type:`iterable`` :var:`q` is provided, it is filled with the components of the quaternion otherwise the quaternion is returned in a :type:`list` of length 4.  If :var:`inv` is true, the inverse rotation is returned, i.e. extracted from the transposed matrix.
+   Return a quaternion representing the 3D rotation as stored in the :math:`[3\times 3]` real :type:`matrix` :var:`mat` by the method :func:`mat:rotq()`. If the :type:`iterable` :var:`q` is provided, it is filled with the components of the quaternion otherwise the quaternion is returned in a :type:`list` of length 4.  If :var:`inv` is true, the inverse rotation is returned, i.e. extracted from the transposed matrix.
 
 Conversions
 -----------
 
 .. function:: mat:tostring (sep_, lsep_)
 
-   Return the string containing the real, complex or integer matrix converted to string. The argument :var:`sep` and :var:`lsep` are used as separator for columns and rows respectively. The elements values are formated using :func:`tostring()` that follows the :expr:`option.numfmt` string format for real numbers. Default: :expr:`sep = " "`, :expr:`lsep = "\n"`.
+   Return the string containing the real, complex or integer matrix converted to string. The argument :var:`sep` and :var:`lsep` are used as separator for columns and rows respectively. The elements values are formated using :func:`tostring()` that follows the :expr:`option.numfmt` string format for real numbers. Default: :expr:`sep = " "`, :expr:`lsep = "\\n"`.
 
 .. function:: mat:totable ([d_,] r_)
 
@@ -1447,12 +1447,12 @@ Matrix
 .. c:function:: int mad_mat_pcacnd  (const  num_t a[], idx_t ic[], ssz_t m, ssz_t n, ssz_t ns, num_t cut, num_t s_[])
                 int mad_cmat_pcacnd (const cnum_t a[], idx_t ic[], ssz_t m, ssz_t n, ssz_t ns, num_t cut, num_t s_[])
 
-   Fill the column vector :var:`ic` of size :var:`n` with the indexes of the columns to remove from the matrix :var:`a` of sizes :expr:`[m, n]` using the Principal Component Analysis. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. This function also returns the column vector of size :expr:`min(m,n)` filled with the singluar values. Default: :expr:`ns_ = ncol`, :expr:`rcond_ = eps`.
+   Fill the column vector :var:`ic` of size :var:`n` with the indexes of the columns to remove from the matrix :var:`a` of sizes :expr:`[m, n]` using the Principal Component Analysis. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditioning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. This function also returns the column vector of size :expr:`min(m,n)` filled with the singluar values. Default: :expr:`ns_ = ncol`, :expr:`rcond_ = eps`.
 
 .. c:function:: int mad_mat_svdcnd  (const  num_t a[], idx_t ic[], ssz_t m, ssz_t n, ssz_t ns, num_t cut, num_t s_[], num_t tol)
                 int mad_cmat_svdcnd (const cnum_t a[], idx_t ic[], ssz_t m, ssz_t n, ssz_t ns, num_t cut, num_t s_[], num_t tol)
 
-   Fill the column vector :var:`ic` of size :var:`n` with the indexes of the columns to remove from the matrix :var:`a` of sizes :expr:`[m, n]` based on the analysis of the right matrix :math:`V` from the SVD decomposition :math:`U S V`. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. The argument :var:`tol` is a threshold similar to :var:`rcond` used to reject components in :math:`V` that have similar or opposite effect than components already encountered. This function also returns the real column vector of size :expr:`min(m,n)` filled with the singluar values. Default: :expr:`ns_ = min(m,n)`, :expr:`rcond_ = eps`.
+   Fill the column vector :var:`ic` of size :var:`n` with the indexes of the columns to remove from the matrix :var:`a` of sizes :expr:`[m, n]` based on the analysis of the right matrix :math:`V` from the SVD decomposition :math:`U S V`. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditioning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. The argument :var:`tol` is a threshold similar to :var:`rcond` used to reject components in :math:`V` that have similar or opposite effect than components already encountered. This function also returns the real column vector of size :expr:`min(m,n)` filled with the singluar values. Default: :expr:`ns_ = min(m,n)`, :expr:`rcond_ = eps`.
 
 .. c:function:: int mad_mat_svd  (const  num_t x[],  num_t u[], num_t s[],   num_t v[], ssz_t m, ssz_t n)
                 int mad_cmat_svd (const cnum_t x[], cnum_t u[], num_t s[],  cnum_t v[], ssz_t m, ssz_t n)
