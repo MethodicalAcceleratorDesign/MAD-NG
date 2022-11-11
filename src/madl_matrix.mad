@@ -39,7 +39,8 @@ local is_nil, is_boolean, is_logical, is_number, is_integer,
       is_string, is_range, is_table, is_complex, is_scalar,
       is_callable, is_iterable, get_metamethod                   in MAD.typeid
 local ident, swap, compose, bind1st, opstr,
-      unm, add, sub, mul, div, mod, pow, lbool, lnot, land, lor  in MAD.gfunc
+      unm, add, sub, mul, div, mod, pow, lbool, lnot, land, lor,
+      rshift                                                     in MAD.gfunc
 local fabs, cabs, carg, real, imag, conj, proj, rect, polar, ceil, floor,
       frac, trunc, round, abs, sqr, exp, log, log10, sqrt, sin, cos, tan, cot,
       sinh, cosh, tanh, coth, asin, acos, atan, acot, asinh, acosh, atanh,
@@ -62,6 +63,10 @@ local dbl_sz = ffi.sizeof  'num_t'
 local cpx_sz = ffi.sizeof 'cnum_t'
 
 local gmm = get_metamethod
+
+-- directions
+local dir = {[0]='vec', [1]='row', [2]='col', [3]='both', [4]='diag'
+             ['vec']=0, ['row']=1, ['col']=2, ['both']=3, ['diag']=4}
 
 -- types ----------------------------------------------------------------------o
 
@@ -842,7 +847,7 @@ function MR.insvec (x, ij, y) -- inplace
   assert(is_iterable(y) , "invalid argument #3 (scalar or iterable expected)")
 
   -- check if ij is monotonic
-  local nx, nij, ny, ord = #x, #ij, #y, monotonic(ij)
+  local nx, nij, ny, ord = size(x), #ij, #y, monotonic(ij)
 
   -- increasing indexes, linear insertion
   if ord == 1 then
@@ -964,6 +969,23 @@ MI.inscol = MR.inscol
 MI.getdiag = MR.getdiag
 MI.setdiag = MR.setdiag
 
+-- reverse --------------------------------------------------------------------o
+
+function MR.rev (x, d_)
+  local d = assert(dir[d_ or 'vec'], "invalid direction")
+  _C.mad_mat_rev(x._dat, x.nrow, x.ncol, d) return x
+end
+
+function MC.rev (x, d_)
+  local d = assert(dir[d_ or 'vec'], "invalid direction")
+  _C.mad_cmat_rev(x._dat, x.nrow, x.ncol, d) return x
+end
+
+function MI.rev (x, d_)
+  local d = assert(dir[d_ or 'vec'], "invalid direction")
+  _C.mad_imat_rev(x._dat, x.nrow, x.ncol, d) return x
+end
+
 -- foreach, map, fold, scan, filter -------------------------------------------o
 
 function MR.foreach (x, ij_, f, r_)
@@ -990,7 +1012,7 @@ function MR.filter (x, ij_, p, r_)
   local ij = ij_ or 1..size(x)
   assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
   assert(is_callable(p) , "invalid argument #3 (callable expected)")
-  local r, ri = r_ or x:same(), is_table(r_) and {} or ivector(#x)
+  local r, ri = r_ or x:same(), is_table(r_) and {} or ivector(size(x))
   assert(is_iterable(r) , "invalid argument #4 (iterable expected)")
   local k = 1
   for _,ii in ipairs(ij) do
@@ -1687,45 +1709,28 @@ function MC.dist (x, y)
   end
 end
 
-function MR.unit (x, r_)
-  if is_string(r_) and r_ == 'in' then r_ = x end
+function MR.unit (x)
   local n = x:norm()
   assert(n ~= 0, "null matrix norm")
-  local r = chksiz(r_,x) or x:same()
-  _C.mad_vec_muln(x._dat, 1/n, r._dat, size(r))
-  return r
+  _C.mad_vec_muln(x._dat, 1/n, x._dat, size(x))
+  return x
 end
 
-function MC.unit (x, r_)
-  if is_string(r_) and r_ == 'in' then r_ = x end
+function MC.unit (x)
   local n = x:norm()
   assert(n ~= 0, "null matrix norm")
-  local r = chksiz(r_,x) or x:same()
-  _C.mad_cvec_muln(x._dat, 1/n, r._dat, size(r))
-  return r
+  _C.mad_cvec_muln(x._dat, 1/n, x._dat, size(x))
+  return x
 end
 
-function MR.center (x, d_, r_) -- center vector or matrix row or col on mean
-  if (is_matrix(d_)  or d_ == 'in') and is_nil(r_) then r_, d_ = d_, nil end
-  if  is_string(r_) and r_ == 'in' then r_ = x end
-  local r = chksiz(r_,x) or x:same()
-  local d = d_ or 'vec'
-  if d == 'vec'
-  then _C.mad_vec_center(x._dat, r._dat, size(x))
-  else _C.mad_mat_center(x._dat, r._dat, x.nrow, x.ncol, d=='col' and 2 or 1)
-  end
-  return r
+function MR.center (x, d_) -- center vector or matrix in place
+  local d = assert(dir[d_ or 'vec'], "invalid direction")
+  _C.mad_mat_center(x._dat, x.nrow, x.ncol, d) return x
 end
 
-function MC.center (x, d_, r_) -- center vector or matrix row or col on mean
-  if (is_cmatrix(d_)  or d_ == 'in') and is_nil(r_) then r_, d_ = d_, nil end
-  if  is_string (r_) and r_ == 'in' then r_ = x end
-  local r = chksiz(r_,x) or x:same()
-  if is_nil(d_) or d_ == 'vec'
-  then _C.mad_cvec_center(x._dat, r._dat, size(x))
-  else _C.mad_cmat_center(x._dat, r._dat, x.nrow, x.ncol, d_=='col' and 2 or 1)
-  end
-  return r
+function MC.center (x, d_) -- center vector or matrix in place
+  local d = assert(dir[d_ or 'vec'], "invalid direction")
+  _C.mad_cmat_center(x._dat, x.nrow, x.ncol, d) return x
 end
 
 function MR.angle (x, y, n_)
@@ -2586,55 +2591,57 @@ end
 
 function MR.fft (x, d_, r_)
   if is_cmatrix(d_) and is_nil(r_) then r_, d_ = d_, nil end -- right shift
+  local d = assert(dir[dir[d_ or 'both']], "invalid direction")
   local nr, nc = x:sizes()
   local r = r_ or cmatrix_alloc(nr,nc)
   assert(is_cmatrix(r), "invalid argument #3 (cmatrix expected)")
-  if nr == 1 or nc == 1 or d_ == 'vec' then
+  if d == 'vec' or nr == 1 or nc == 1 then
     assert(size(r) == nr*nc, "incompatible cmatrix sizes")
     _C.mad_vec_fft(x._dat, r._dat, nr*nc)          -- 1D FFT
-  elseif d_ == 'row' then
+  elseif d == 'row' then
     assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
     for i=0,nr-1 do
       _C.mad_vec_fft(x._dat+i*nc, r._dat+i*nc, nc) -- 1D FFT
     end
-  elseif d_ == 'col' then
+  elseif d == 'col' then
     assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
     x = x:t()
     for i=0,nc-1 do
       _C.mad_vec_fft(x._dat+i*nr, r._dat+i*nr, nr) -- 1D FFT
     end
     r:reshape(nc, nr):t(false, r)
-  else
+  elseif d == 'both' then
     assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
     _C.mad_mat_fft(x._dat, r._dat, nr, nc)         -- 2D FFT
-  end
+  else error("invalid direction '"..d.."'") end
   return r
 end
 
 function MC.fft (x, d_, r_)
   if is_cmatrix(d_) and is_nil(r_) then r_, d_ = d_, nil end -- right shift
+  local d = assert(dir[dir[d_ or 'both']], "invalid direction")
   local nr, nc = x:sizes()
   local r = r_ or cmatrix_alloc(nr,nc)
   assert(is_cmatrix(r), "invalid argument #3 (cmatrix expected)")
-  if nr == 1 or nc == 1 or d_ == 'vec' then
+  if d == 'vec' or nr == 1 or nc == 1 then
     assert(size(r) == nr*nc, "incompatible cmatrix sizes")
     _C.mad_cvec_fft(x._dat, r._dat, nr*nc)          -- 1D FFT
-  elseif d_ == 'row' then
+  elseif d == 'row' then
     assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
     for i=0,nr-1 do
       _C.mad_cvec_fft(x._dat+i*nc, r._dat+i*nc, nc) -- 1D FFT
     end
-  elseif d_ == 'col' then
+  elseif d == 'col' then
     assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
     x = x:t(false)
     for i=0,nc-1 do
       _C.mad_cvec_fft(x._dat+i*nr, r._dat+i*nr, nr) -- 1D FFT
     end
     r:reshape(nc, nr):t(false, r)
-  else
+  elseif d == 'both' then
     assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
     _C.mad_cmat_fft(x._dat, r._dat, nr, nc)         -- 2D FFT
-  end
+  else error("invalid direction '"..d.."'") end
   return r
 end
 
@@ -2642,50 +2649,52 @@ MR.ifft = \ error("invalid argument #1 (cmatrix expected)")
 
 function MC.ifft (x, d_, r_)
   if is_cmatrix(d_) and is_nil(r_) then r_, d_ = d_, nil end -- right shift
+  local d = assert(dir[dir[d_ or 'both']], "invalid direction")
   local nr, nc = x:sizes()
   local r = r_ or cmatrix_alloc(nr,nc)
   assert(is_cmatrix(r), "invalid argument #3 (cmatrix expected)")
-  if nr == 1 or nc == 1 or d_ == 'vec' then
+  if d == 'vec' or nr == 1 or nc == 1 then
     assert(size(r) == nr*nc, "incompatible cmatrix sizes")
     _C.mad_cvec_ifft(x._dat, r._dat, nr*nc)          -- 1D FFT
-  elseif d_ == 'row' then
+  elseif d == 'row' then
     assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
     for i=0,nr-1 do
       _C.mad_cvec_ifft(x._dat+i*nc, r._dat+i*nc, nc) -- 1D FFT
     end
-  elseif d_ == 'col' then
+  elseif d == 'col' then
     assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
     x = x:t(false)
     for i=0,nc-1 do
       _C.mad_cvec_ifft(x._dat+i*nr, r._dat+i*nr, nr) -- 1D FFT
     end
     r:reshape(nc, nr):t(false, r)
-  else
+  elseif d == 'both' then
     assert(r.nrow == nr and r.ncol == nc, "incompatible cmatrix sizes")
     _C.mad_cmat_ifft(x._dat, r._dat, nr, nc)         -- 2D FFT
-  end
+  else error("invalid direction '"..d.."'") end
   return r
 end
 
 function MR.rfft (x, d_, r_)
   if is_cmatrix(d_) and is_nil(r_) then r_, d_ = d_, nil end -- right shift
   assert(is_nil(r_) or is_cmatrix(r_), "invalid argument #3 (cmatrix expected)")
+  local d = assert(dir[dir[d_ or 'both']], "invalid direction")
   local nr, nc, r = x:sizes()
   local nr2 = max(1, floor(nr/2+1))
   local nc2 = max(1, floor(nc/2+1))
-  if nr == 1 or nc == 1 or d_ == 'vec' then
+  if d == 'vec' or nr == 1 or nc == 1 then
     local nr2, nc2 = max(1, floor(nr*nc/2+1)), 1
     if nr == 1 and nc ~= 1 then nr2, nc2 = nc2, nr2 end
     r = r_ or cmatrix_alloc(nr2,nc2)
     assert(size(r) == nr2*nc2, "incompatible cmatrix sizes")
     _C.mad_vec_rfft(x._dat, r._dat, nr*nc)           -- 1D FFT
-  elseif d_ == 'row' then
+  elseif d == 'row' then
     r = r_ or cmatrix_alloc(nr,nc2)
     assert(r.nrow == nr and r.ncol == nc2, "incompatible cmatrix sizes")
     for i=0,nr-1 do
       _C.mad_vec_rfft(x._dat+i*nc, r._dat+i*nc2, nc) -- 1D FFT
     end
-  elseif d_ == 'col' then
+  elseif d == 'col' then
     r = r_ or cmatrix_alloc(nr2,nc)
     assert(r.nrow == nr2 and r.ncol == nc, "incompatible cmatrix sizes")
     x = x:t(false)
@@ -2693,11 +2702,11 @@ function MR.rfft (x, d_, r_)
       _C.mad_vec_rfft(x._dat+i*nr, r._dat+i*nr2, nr) -- 1D FFT
     end
     r:reshape(nc, nr2):t(false, r)
-  else
+  elseif d == 'both' then
     r = r_ or cmatrix_alloc(nr,nc2)
     assert(r.nrow == nr and r.ncol == nc2, "incompatible cmatrix sizes")
     _C.mad_mat_rfft(x._dat, r._dat, nr, nc)          -- 2D FFT
-  end
+  else error("invalid direction '"..d.."'") end
   return r
 end
 
@@ -2707,36 +2716,76 @@ MR.irfft = \ error("invalid argument #1 (cmatrix expected)")
 function MC.irfft (x, d_, r)
   if is_matrix(d_) and is_nil(r) then r, d_ = d_, nil end -- right shift
   assert(is_matrix(r), "invalid argument #3 (matrix expected)")
+  local d = assert(dir[dir[d_ or 'both']], "invalid direction")
   local nr, nc = r:sizes()
   local nr2 = max(1, floor(nr/2+1))
   local nc2 = max(1, floor(nc/2+1))
-  if nr == 1 or nc == 1 or d_ == 'vec' then
+  if d == 'vec' or nr == 1 or nc == 1 then
     local nn = max(1, floor(nr*nc/2+1))
     assert(size(x) == nn, "incompatible matrix sizes")
     _C.mad_cvec_irfft(x._dat, r._dat, nr*nc)           -- 1D FFT
-  elseif d_ == 'row' then
+  elseif d == 'row' then
     assert(x.nrow == nr and x.ncol == nc2, "incompatible matrix sizes")
     for i=0,nr-1 do
       _C.mad_cvec_irfft(x._dat+i*nc2, r._dat+i*nc, nc) -- 1D FFT
     end
-  elseif d_ == 'col' then
+  elseif d == 'col' then
     assert(x.nrow == nr2 and x.ncol == nc, "incompatible matrix sizes")
     x = x:t(false)
     for i=0,nc-1 do
       _C.mad_cvec_irfft(x._dat+i*nr2, r._dat+i*nr, nr) -- 1D FFT
     end
     r:reshape(nc, nr):t(false, r)
-  else
+  elseif d == 'both' then
     assert(x.nrow == nr and x.ncol == nc2, "incompatible matrix sizes")
     _C.mad_cmat_irfft(x._dat, r._dat, nr, nc)          -- 2D FFT
+  else error("invalid direction '"..d.."'") end
+  return r
+end
+
+-- zero padding
+
+function MR.zpad (x, nr, nc, d_)
+  local nxr, nxc, r = x:sizes()
+      if d_ == 'vec' or nr == 1 or nc == 1 then
+    r = nr == nxr and nc == nxc and x or x:same(nr,nc ):setvec(1..nxr*nxc   ,x)
+  elseif d_ == 'row' then
+    r =               nc == nxc and x or x:same(nxr,nc):setsub(1..nxr,1..nxc,x)
+  elseif d_ == 'col' then
+    r = nr == nxr               and x or x:same(nr,nxc):setsub(1..nxr,1..nxc,x)
+  else      -- 2D
+    r = nr == nxr and nc == nxc and x or x:same(nr,nc ):setsub(1..nxr,1..nxc,x)
   end
   return r
 end
 
- -- convolution theorem
-function MR.conv (x, y, d_, r_)
-  if is_matrix(d_) and is_nil(r_) then r, d_ = d_, nil end -- right shift
-  local r = r_ or x:same()
+MI.zpad = MR.zpad
+
+-- zero padding for linear convolution
+
+local function zpadconv (x, y, d_)
+  local nr, nc
+  if d_ == 'vec' or isa_vector(x) and isa_vector(y)
+  then nr, nc = 1                 , size(x)+ size(y)-1 ; d_ = 'vec'
+  else nr, nc = x.nrow + y.nrow -1, x.ncol + y.ncol -1
+  end
+  local xpad = x:zpad(nr,nc,d_)
+  if rawequal(x, y)
+  then return xpad, xpad            , nr, nc
+  else return xpad, y:zpad(nr,nc,d_), nr, nc
+  end
+end
+
+ -- linear convolution (convolution theorem)
+
+function MR.conv (x, y_, d_, r_)
+  if is_string(y_) and is_nil(r_) then d_, r_, y_ = y_, d_ end -- right shift
+  if is_matrix(d_) and is_nil(r_) then r_, d_ = d_ end         -- right shift
+  local x, y, nr, nc = zpadconv(x, y_ or x, d_)
+  local r = r_ or x:same(nr,nc)
+  assert(is_matrix(r), "invalid argument #4 (matrix expected)")
+  assert(r.nrow == nr and r.ncol == nc, "incompatible matrix sizes")
+
   local xf = x:rfft(d_)
   if rawequal(x, y)
   then return xf:emul(xf        ,xf):irfft(d_, r)
@@ -2744,9 +2793,14 @@ function MR.conv (x, y, d_, r_)
   end
 end
 
-function MC.conv (x, y, d_, r_)
-  if is_cmatrix(d_) and is_nil(r_) then r, d_ = d_, nil end -- right shift
-  local r = r_ or x:same()
+function MC.conv (x, y_, d_, r_)
+  if is_string(y_)  and is_nil(r_) then d_, r_, y_ = y_, d_ end -- right shift
+  if is_cmatrix(d_) and is_nil(r_) then r_, d_ = d_ end         -- right shift
+  local x, y, nr, nc = zpadconv(x, y_ or x, d_)
+  local r = r_ or x:same(nr,nc)
+  assert(is_cmatrix(r), "invalid argument #4 (cmatrix expected)")
+  assert(r.nrow == nr and r.ncol == nc, "incompatible matrix sizes")
+
   local xf = x:fft(d_)
   if rawequal(x, y)
   then return xf:emul(xf       ,xf):ifft(d_, r)
@@ -2754,33 +2808,25 @@ function MC.conv (x, y, d_, r_)
   end
 end
 
- -- correlation theorem
-function MR.corr (x, y, d_, r_)
-  if is_matrix(d_) and is_nil(r_) then r, d_ = d_, nil end -- right shift
-  local r = r_ or x:same()
-  local xf = x:rfft(d_)
-  if rawequal(x, y)
-  then return xf:emul(xf        :conj(    ),xf):irfft(d_, r)
-  else return xf:emul(y:rfft(d_):conj('in'),xf):irfft(d_, r)
-  end
+ -- linear correlation (correlation theorem)
+
+function MR.corr (x, y_, d_, r_)
+  return x:copy():rev(d_):conv(y_ or x, d_, r_)
 end
 
-function MC.corr (x, y, d_, r_)
-  if is_cmatrix(d_) and is_nil(r_) then r, d_ = d_, nil end -- right shift
-  local r = r_ or x:same()
-  local xf = x:fft(d_)
-  if rawequal(x, y)
-  then return xf:emul(xf       :conj(    ),xf):ifft(d_, r)
-  else return xf:emul(y:fft(d_):conj('in'),xf):ifft(d_, r)
-  end
+function MC.corr (x, y_, d_, r_)
+  return x:conj():rev(d_):conv(y_ or x, d_, r_)
 end
 
-function MR.covar (x, y, d_, r_)
-  if isa_matrix(d_) and is_nil(r_) then r, d_ = d_, nil end -- right shift
-  local xc = x:center(d_, x:same())
+-- covariance
+
+function MR.covar (x, y_, d_)
+  if is_string(y_) and is_nil(d_) then d_, y_ = y_ end -- right shift
+  local xc = x:copy():center(d_)
+  local y = y_ or xc
   if rawequal(x, y)
-  then return xc:corr(xc                    , d_, r_)
-  else return xc:corr(y:center(d_, y:same()), d_, r_)
+  then return xc:corr(xc                 , d_)
+  else return xc:corr(y:copy():center(d_), d_)
   end
 end
 
