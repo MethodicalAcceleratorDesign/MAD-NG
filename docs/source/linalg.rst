@@ -387,6 +387,17 @@ Filling and Moving
 
       - otherwise the matrix will be filled with values from :var:`a[n]` for :expr:`1 <= n <= #mat`, i.e. treated as a 1D container.
 
+.. function:: mat:rev (d_)
+
+   Reverse the elements of the matrix :var:`mat` according to the direction :var:`d`:
+   
+   - If :expr:`d = 'vec'`, it reverses the entire matrix.
+   - If :expr:`d = 'row'`, it reverses each row.
+   - If :expr:`d = 'col'`, it reverses each column.
+   - If :expr:`d = 'diag'`, it reverse the only the diagonal.
+
+   Default: :expr:`d_ = 'vec'`.
+
 .. function:: mat:roll (nr_, nc_)
 
    Return the real, complex or integer matrix :var:`mat` after rolling its rows by :var:`nr` :math:`\in \mathbb{Z}` and then columns by :var:`nc` :math:`\in \mathbb{Z}`. Default: :expr:`nr_ = 0`, :expr:`nc_ = 0`.  
@@ -434,11 +445,11 @@ Mapping and Folding
 
    - If :expr:`d = 'vec'`, the folding left iteration runs on the entire matrix :var:`mat` interpreted as a vector and a scalar is returned.
 
-   - If :expr:`d = 'diag'`, the folding left iteration runs on the diagonal of the matrix :var:`mat` and a scalar is returned.
-
    - If :expr:`d = 'row'`, the folding left iteration runs on the rows of the matrix :var:`mat` and a column vector is returned.
 
    - If :expr:`d = 'col'`, the folding left iteration runs on the columns of the matrix :var:`mat` and a row vector is returned.
+
+   - If :expr:`d = 'diag'`, the folding left iteration runs on the diagonal of the matrix :var:`mat` and a scalar is returned.
 
    Note that ommitting both :var:`x0` and :var:`d` implies to not specify :var:`r` as well, otherwise the latter will be interpreted as :var:`x0`.
    If :expr:`r = nil` and :expr:`d = 'row'` or :expr:`d = 'col'`, then the type of the returned vector is determined by the type of the value returned by :func:`f()` called once before folding. Default: :expr:`x0 = mat[1]` (or first row or column element), :expr:`d = 'vec'`.
@@ -453,11 +464,11 @@ Mapping and Folding
 
    - If :expr:`d = 'vec'`, the scanning left iteration runs on the entire matrix :var:`mat` interpreted as a vector and a vector is returned.
 
-   - If :expr:`d = 'diag'`, the scanning left iteration runs on the diagonal of the matrix :var:`mat` and a vector is returned.
-
    - If :expr:`d = 'row'`, the scanning left iteration runs on the rows of the matrix :var:`mat` and a matrix is returned.
 
    - If :expr:`d = 'col'`, the scanning left iteration runs on the columns of the matrix :var:`mat` and a matrix is returned.
+
+   - If :expr:`d = 'diag'`, the scanning left iteration runs on the diagonal of the matrix :var:`mat` and a vector is returned.
 
    Note that ommitting both :var:`x0` and :var:`d` implies to not specify :var:`r` as well, otherwise the latter will be interpreted as :var:`x0`.
    If :expr:`r = nil`, then the type of the returned matrix is determined by the type of the value returned by :func:`f()` called once before scanning. Default: :expr:`x0 = mat[1]` (or first row or column element), :expr:`d = 'vec'`.
@@ -589,8 +600,8 @@ Functions                   Equivalent Folding
 
 Where :func:`any()` and :func:`all()` are functions that bind the predicate :var:`p` to the propagation of the logical AND and the logical OR respectively, that can be implemented like:
 
-   - :expr:`all = \p -> \r,x -> lbool(land(r, p(x)))`
-   - :expr:`any = \p -> \r,x -> lbool(lor (r, p(x)))`
+   - :expr:`all = \\p -> \\r,x -> lbool(land(r, p(x)))`
+   - :expr:`any = \\p -> \\r,x -> lbool(lor (r, p(x)))`
 
 Scanning Methods
 ----------------
@@ -711,9 +722,9 @@ Operator-like Methods
 
    Equivalent to :expr:`mat .. mat2` with the possibility to place the result in :var:`r` and to specify the direction of the concatenation:
 
-   - vector-oriented (appended) for :expr:`d = 'vec'`
-   - row-oriented (horizontal) for :expr:`d = 'row'`
-   - column-oriented (vectical) for :expr:`d = 'col'`
+   - If :expr:`d = 'vec'`, it concatenates the matrices (appended as vectors)
+   - If :expr:`d = 'row'`, it concatenates the rows (horizontal) 
+   - If :expr:`d = 'col'`, it concatenates the columns (vectical)
    
    Default: :var:`d_ = 'row'`.
 
@@ -755,13 +766,20 @@ Special Methods
 
    Equivalent to :expr:`(mat - mat2):norm()`.
 
-.. function:: mat:unit (r_)
+.. function:: mat:unit ()
 
-   Equivalent to :expr:`mat:div(mat:norm(), r_)`.
+   Scale the matrix :var:`mat` to the unit norm equivalent to :expr:`mat:div(mat:norm(), mat)`.
 
-.. function:: mat:center ([d_,] r_)
+.. function:: mat:center (d_)
 
-   Equivalent to :expr:`mat:sub(mat:mean(), r_)`. If :expr:`d = 'vec'`, :expr:`d = 'row'` or :expr:`d = 'col'` then centering will be vector-wise, row-wise or column-wise respectively. Default: :expr:`d_ = 'vec'`.
+   Center the matrix :var:`mat` to have zero mean equivalent to :expr:`mat:sub(mat:mean(),mat)`. The direction :var:`d` indicates how the centering must be performed:
+   
+   - If :expr:`d = 'vec'`, it centers the entire matrix by substracting its mean.
+   - If :expr:`d = 'row'`, it centers each row by substracting their mean.
+   - If :expr:`d = 'col'` , it centers each column by substracting their mean.
+   - If :expr:`d = 'diag'`, it centers the diagonal by substracting its mean.
+
+   Default: :expr:`d_ = 'vec'`.
 
 .. function:: mat:angle (mat2, n_)
 
@@ -863,10 +881,10 @@ The methods described is this section are based on the `FFTW <https://fftw.org>`
 
    Return the complex :math:`[n_r \times n_c]` vector, matrix or :var:`r` resulting from the 1D or 2D `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the real or complex :math:`[n_r \times n_c]` vector or matrix :var:`mat` in the direction given by :var:`d`:
 
-   - vector-oriented for :expr:`d = 'vec'`, return a 1D FFT of length :math:`n_r n_c`.
-   - row-oriented for :expr:`d = 'row'`, return :math:`n_r` 1D FFTs of length :math:`n_c`.
-   - column-oriented for :expr:`d = 'col'`, return :math:`n_c` 1D FFTs of length :math:`n_r`.
-   - otherwise, return a 2D FFT of sizes :math:`[n_r \times n_c]`.
+   - If :expr:`d = 'vec'`, it returns a 1D vector FFT of length :math:`n_r n_c`.
+   - If :expr:`d = 'row'`, it returns :math:`n_r` 1D row FFTs of length :math:`n_c`.
+   - If :expr:`d = 'col'`, it returns :math:`n_c` 1D column FFTs of length :math:`n_r`.
+   - otherwise, it returns a 2D FFT of sizes :math:`[n_r \times n_c]`.
 
 .. function:: mat:ifft ([d_,] r_)
 
@@ -888,17 +906,28 @@ The methods described is this section are based on the `FFTW <https://fftw.org>`
 
    Return the complex vector, matrix or :var:`r` resulting from the 1D or 2D *Nonequispaced* inverse `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the real or complex vector or matrix :var:`mat` respectively at :var:`p` frequency nodes.
 
-.. function:: mat:conv (y, [d_], r_)
+.. function:: mat:conv ([y_,] [d_], r_)
 
-   Return the real or complex vector, matrix or :var:`r` resulting from the 1D or 2D `Convolution <https://en.wikipedia.org/wiki/Convolution>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively. See :func:`mat:fft()` for the direction :var:`d`.
+   Return the real or complex vector, matrix or :var:`r` resulting from the 1D or 2D `Convolution <https://en.wikipedia.org/wiki/Convolution>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively. See :func:`mat:fft()` for the direction :var:`d`. Default: :expr:`y = mat`.
 
-.. function:: mat:corr (y, [d_], r_)
+.. function:: mat:corr ([y_,] [d_], r_)
 
-   Return the real or complex vector, matrix or :var:`r` resulting from the 1D or 2D `Correlation <https://en.wikipedia.org/wiki/Cross-correlation>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively. See :func:`mat:fft()` for the direction :var:`d`.
+   Return the real or complex vector, matrix or :var:`r` resulting from the 1D or 2D `Correlation <https://en.wikipedia.org/wiki/Cross-correlation>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively. See :func:`mat:fft()` for the direction :var:`d`. Default: :expr:`y = mat`.
 
-.. function:: mat:covar (y, [d_,] r_)
+.. function:: mat:covar ([y_,] [d_,] r_)
 
-   Return the real or complex vector, matrix or :var:`r` resulting from the 1D or 2D `Covariance <https://en.wikipedia.org/wiki/Covariance>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively. See :func:`mat:fft()` for the direction :var:`d`.
+   Return the real or complex vector, matrix or :var:`r` resulting from the 1D or 2D `Covariance <https://en.wikipedia.org/wiki/Covariance>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively. See :func:`mat:fft()` for the direction :var:`d`. Default: :expr:`y = mat`.
+
+.. function:: mat:zpad (nr, nc, d_)
+
+   Return the real or complex vector or matrix resulting from the zero padding of the matrix :var:`mat` extended to the sizes :var:`nr` and :var:`nc`, following the direction :var:`d`:
+
+   - If :expr:`d = 'vec'`, it pads the zeros at the end of the matrix equivalent :expr:`x:same(nr,nc) :setvec(1..#x,x)`, i.e. interpreting the matrix as a vector. 
+   - If :expr:`d = 'row'`, it pads the zeros at the end of the rows equivalent :expr:`x:same(x.nrow,nc) :setsub(1..x.nrow,1..x.ncol,x)`, i.e. ignoring :var:`nr`. 
+   - If :expr:`d = 'col'`, it pads the zeros at the end of the columns equivalent :expr:`x:same(nr,x.ncol) :setsub(1..x.nrow,1..x.ncol,x)`, i.e. ignoring :var:`nc`. 
+   - otherwise, it pads the zeros at the end of the rows and the columns equivalent to :expr:`x:same(nr,nc) :setsub(1..x.nrow,1..x.ncol,x)`. 
+
+   If the zero padding does not change the size of :var:`mat`, the orignal :var:`mat` is returned unchanged.
 
 Rotations
 ---------
@@ -1344,17 +1373,28 @@ Vector
 Matrix
 ------
 
-.. c:function:: void mad_mat_eye    (num_t v,                 num_t  r[], ssz_t m, ssz_t n, ssz_t ldr)
-                void mad_cmat_eye_r (num_t v_re, num_t v_im, cnum_t  r[], ssz_t m, ssz_t n, ssz_t ldr)
-                void mad_imat_eye   (idx_t v,                  idx_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+.. c:function:: void mad_mat_rev  ( num_t x[], ssz_t m, ssz_t n, int d)
+                void mad_cmat_rev (cnum_t x[], ssz_t m, ssz_t n, int d)
+                void mad_imat_rev ( idx_t x[], ssz_t m, ssz_t n, int d)
 
-   Fill in place the matrix :var:`x` of sizes :expr:`[m, n]` with zeros and :var:`v` on the diagonal.
+   Reverse in place the matrix :var:`x` following the direction :expr:`d in {0,1,2,3}` for respectively the entire matrix, each row, each column and the diagonal.  
+
+.. c:function:: void mad_mat_center  ( num_t x[], ssz_t m, ssz_t n, int d)
+                void mad_cmat_center (cnum_t x[], ssz_t m, ssz_t n, int d)
+
+   Center in place the matrix :var:`x` following the direction :expr:`d in {0,1,2,3}` for respectively the entire matrix, each row, each column and the diagonal.  
 
 .. c:function:: void mad_mat_roll  ( num_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
                 void mad_cmat_roll (cnum_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
                 void mad_imat_roll ( idx_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
 
    Roll in place the values of the elements of the matrix :var:`x` of sizes :expr:`[m, n]` by :var:`mroll` and :var:`nroll`.
+
+.. c:function:: void mad_mat_eye    ( num_t  x[], num_t v,                ssz_t m, ssz_t n, ssz_t ldr)
+                void mad_cmat_eye_r (cnum_t  x[], num_t v_re, num_t v_im, ssz_t m, ssz_t n, ssz_t ldr)
+                void mad_imat_eye   (  idx_t x[], idx_t v,                ssz_t m, ssz_t n, ssz_t ldr)
+
+   Fill in place the matrix :var:`x` of sizes :expr:`[m, n]` with zeros and :var:`v` on the diagonal.
 
 .. c:function:: void mad_mat_copy   (const  num_t x[],  num_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
                 void mad_mat_copym  (const  num_t x[], cnum_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
@@ -1491,11 +1531,6 @@ Matrix
 .. c:function:: void mad_cmat_infft (const cnum_t x[], const num_t r_node[], cnum_t r[], ssz_t m, ssz_t n, ssz_t nx)
 
    Fill the matrix :var:`r` of sizes :expr:`[m, n]` with the 2D non-equispaced FFT inverse of the matrix :var:`x` of sizes :expr:`[m, nx]` and the matrix :var:`r_node` of sizes :expr:`[m, n]`. Note that :var:`r_node` here is the same matrix as :var:`x_node` in the 2D non-equispaced forward FFT.
-
-.. c:function:: void mad_mat_center  (const  num_t x[],  num_t r[], ssz_t m, ssz_t n, int d)
-                void mad_cmat_center (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, int d)
-
-   Return in :var:`r` the centered matrix :var:`x` along the rows for :expr:`d = 1` and the columns for :expr:`d = 2`.  
 
 .. c:function:: void mad_mat_sympconj (const  num_t x[],  num_t r[], ssz_t n)
                 void mad_cmat_sympconj(const cnum_t x[], cnum_t r[], ssz_t n)
