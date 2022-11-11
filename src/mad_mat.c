@@ -38,10 +38,9 @@ static void __attribute__((unused))
 mprint(str_t name, const num_t a[], ssz_t m, ssz_t n)
 {
   printf("%s[%dx%d]=\n", name, m, n);
-  for (idx_t i=0; i < m; i++) {
-    for (idx_t j=0; j < n; j++)
-      printf("% -10.5f ", a[i*n+j]);
-    printf("\n");
+  FOR(i,m) {
+  FOR(j,n) printf("% -10.5f ", a[i*n+j]);
+           printf("\n");
   }
 }
 
@@ -49,10 +48,9 @@ static void __attribute__((unused))
 iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 {
   printf("%s[%dx%d]=\n", name, m, n);
-  for (idx_t i=0; i < m; i++) {
-    for (idx_t j=0; j < n; j++)
-      printf("% 3d ", a[i*n+j]);
-    printf("\n");
+  FOR(i,m) {
+    FOR(j,n) printf("% 3d ", a[i*n+j]);
+             printf("\n");
   }
 }
 #endif
@@ -92,11 +90,8 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 // r[m x n] = x[m x p] * y[p x n]
 // naive implementation (more efficient on recent superscalar arch!)
 #define MMUL() /* mat * mat */ \
-  for (idx_t i=0; i < m*n; i++) r[i] = 0; \
-  for (idx_t i=0; i < m  ; i++) \
-  for (idx_t k=0; k < p  ; k++) \
-  for (idx_t j=0; j < n  ; j++) \
-    r[i*n+j] += x[i*p+k] * y[k*n+j];
+  FOR(i,m*n) r[i] = 0; \
+  FOR(i,m) FOR(k,p) FOR(j,n) r[i*n+j] += x[i*p+k] * y[k*n+j];
 #else
 // [m x n] = [m x p] * [p x n]
 // portable vectorized general matrix-matrix multiplication
@@ -104,31 +99,29 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 #define MMUL() { /* mat * mat */ \
   assert(m>0 && n>0 && p>0); \
   if (n & ~7) { \
-    for (idx_t i=0; i < m; i++) { \
-      for (idx_t j=0; j < n-7; j+=8) { \
-        r[i*n+j  ] = r[i*n+j+1] = \
-        r[i*n+j+2] = r[i*n+j+3] = \
-        r[i*n+j+4] = r[i*n+j+5] = \
-        r[i*n+j+6] = r[i*n+j+7] = 0; \
-        for (idx_t k=0; k < p; k++) { \
-          r[i*n+j  ] += x[i*p+k] * y[k*n+j  ]; \
-          r[i*n+j+1] += x[i*p+k] * y[k*n+j+1]; \
-          r[i*n+j+2] += x[i*p+k] * y[k*n+j+2]; \
-          r[i*n+j+3] += x[i*p+k] * y[k*n+j+3]; \
-          r[i*n+j+4] += x[i*p+k] * y[k*n+j+4]; \
-          r[i*n+j+5] += x[i*p+k] * y[k*n+j+5]; \
-          r[i*n+j+6] += x[i*p+k] * y[k*n+j+6]; \
-          r[i*n+j+7] += x[i*p+k] * y[k*n+j+7]; \
-        } \
+    FOR(i,m) FOR(j,0,n-7,8) { \
+      r[i*n+j  ] = r[i*n+j+1] = \
+      r[i*n+j+2] = r[i*n+j+3] = \
+      r[i*n+j+4] = r[i*n+j+5] = \
+      r[i*n+j+6] = r[i*n+j+7] = 0; \
+      FOR(k,p) { \
+        r[i*n+j  ] += x[i*p+k] * y[k*n+j  ]; \
+        r[i*n+j+1] += x[i*p+k] * y[k*n+j+1]; \
+        r[i*n+j+2] += x[i*p+k] * y[k*n+j+2]; \
+        r[i*n+j+3] += x[i*p+k] * y[k*n+j+3]; \
+        r[i*n+j+4] += x[i*p+k] * y[k*n+j+4]; \
+        r[i*n+j+5] += x[i*p+k] * y[k*n+j+5]; \
+        r[i*n+j+6] += x[i*p+k] * y[k*n+j+6]; \
+        r[i*n+j+7] += x[i*p+k] * y[k*n+j+7]; \
       } \
     } \
   } \
   if (n & 4) { \
     idx_t j = n - (n & 7); \
-    for (idx_t i=0; i < m; i++) { \
+    FOR(i,m) { \
       r[i*n+j  ] = r[i*n+j+1] = \
       r[i*n+j+2] = r[i*n+j+3] = 0; \
-      for (idx_t k=0; k < p; k++) { \
+      FOR(k,p) { \
         r[i*n+j  ] += x[i*p+k] * y[k*n+j  ]; \
         r[i*n+j+1] += x[i*p+k] * y[k*n+j+1]; \
         r[i*n+j+2] += x[i*p+k] * y[k*n+j+2]; \
@@ -138,9 +131,9 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
   } \
   if (n & 2) { \
     idx_t j = n - (n & 3); \
-    for (idx_t i=0; i < m; i++) { \
+    FOR(i,m) { \
       r[i*n+j] = r[i*n+j+1] = 0; \
-      for (idx_t k=0; k < p; k++) { \
+      FOR(k,p) { \
         r[i*n+j  ] += x[i*p+k] * y[k*n+j  ]; \
         r[i*n+j+1] += x[i*p+k] * y[k*n+j+1]; \
       } \
@@ -148,10 +141,9 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
   } \
   if (n & 1) { \
     idx_t j = n - 1; \
-    for (idx_t i=0; i < m; i++) { \
+    FOR(i,m) { \
       r[i*n+j] = 0; \
-      for (idx_t k=0; k < p; k++) \
-        r[i*n+j] += x[i*p+k] * y[k*n+j]; \
+      FOR(k,p) r[i*n+j] += x[i*p+k] * y[k*n+j]; \
     } \
   } \
 }
@@ -159,23 +151,18 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 
 // n=1: [m x 1] = [m x p] * [p x 1]
 #define MULV() /* mat * vec */ \
-  for (idx_t i=0; i < m; i++) r[i] = 0; \
-  for (idx_t i=0; i < m; i++) \
-  for (idx_t k=0; k < p; k++) \
-      r[i] += x[i*p+k] * y[k];
+  FOR(i,m) r[i] = 0; \
+  FOR(i,m) FOR(k,p) r[i] += x[i*p+k] * y[k];
 
 // m=1: [1 x n] = [1 x p] * [p x n]
 #define VMUL() /* vec * mat */ \
-  for (idx_t j=0; j < n; j++) r[j] = 0; \
-  for (idx_t k=0; k < p; k++) \
-  for (idx_t j=0; j < n; j++) \
-      r[j] += y[k*n+j] * x[k];
+  FOR(j,n) r[j] = 0; \
+  FOR(k,p) FOR(j,n) r[j] += y[k*n+j] * x[k];
 
 // m=1, n=1: [1 x 1] = [1 x p] * [p x 1]
 #define IMUL() /* vec * vec */ \
   r[0] = 0; \
-  for (idx_t k=0; k < p; k++) \
-    r[0] += x[k] * y[k];
+  FOR(k,p) r[0] += x[k] * y[k];
 
 // [m x n] = [m x p] * [p x n]
 #define MUL() \
@@ -192,11 +179,8 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 // [m x n] = [p x m]' * [p x n]
 // naive implementation (more efficient on recent superscalar arch!)
 #define TMMUL(C) /* mat' * mat */ \
-  for (idx_t i=0; i < m*n; i++) r[i] = 0; \
-  for (idx_t i=0; i < m  ; i++) \
-  for (idx_t k=0; k < p  ; k++) \
-  for (idx_t j=0; j < n  ; j++) \
-    r[i*n+j] += C(x[k*m+i]) * y[k*n+j];
+  FOR(i,m*n) r[i] = 0; \
+  FOR(i,m) FOR(k,p) FOR(j,n) r[i*n+j] += C(x[k*m+i]) * y[k*n+j];
 #else
 // [m x n] = [p x m]' * [p x n]
 // portable vectorized general transpose matrix-matrix multiplication
@@ -204,31 +188,29 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 #define TMMUL(C) { /* mat' * mat */ \
   assert(m>0 && n>0 && p>0); \
   if (n & ~7) { \
-    for (idx_t i=0; i < m; i++) { \
-      for (idx_t j=0; j < n-7; j+=8) { \
-        r[i*n+j  ] = r[i*n+j+1] = \
-        r[i*n+j+2] = r[i*n+j+3] = \
-        r[i*n+j+4] = r[i*n+j+5] = \
-        r[i*n+j+6] = r[i*n+j+7] = 0; \
-        for (idx_t k=0; k < p; k++) { \
-          r[i*n+j  ] += C(x[k*m+i]) * y[k*n+j  ]; \
-          r[i*n+j+1] += C(x[k*m+i]) * y[k*n+j+1]; \
-          r[i*n+j+2] += C(x[k*m+i]) * y[k*n+j+2]; \
-          r[i*n+j+3] += C(x[k*m+i]) * y[k*n+j+3]; \
-          r[i*n+j+4] += C(x[k*m+i]) * y[k*n+j+4]; \
-          r[i*n+j+5] += C(x[k*m+i]) * y[k*n+j+5]; \
-          r[i*n+j+6] += C(x[k*m+i]) * y[k*n+j+6]; \
-          r[i*n+j+7] += C(x[k*m+i]) * y[k*n+j+7]; \
-        } \
+    FOR(i,m) FOR(j,0,n-7,8) { \
+      r[i*n+j  ] = r[i*n+j+1] = \
+      r[i*n+j+2] = r[i*n+j+3] = \
+      r[i*n+j+4] = r[i*n+j+5] = \
+      r[i*n+j+6] = r[i*n+j+7] = 0; \
+      FOR(k,p) { \
+        r[i*n+j  ] += C(x[k*m+i]) * y[k*n+j  ]; \
+        r[i*n+j+1] += C(x[k*m+i]) * y[k*n+j+1]; \
+        r[i*n+j+2] += C(x[k*m+i]) * y[k*n+j+2]; \
+        r[i*n+j+3] += C(x[k*m+i]) * y[k*n+j+3]; \
+        r[i*n+j+4] += C(x[k*m+i]) * y[k*n+j+4]; \
+        r[i*n+j+5] += C(x[k*m+i]) * y[k*n+j+5]; \
+        r[i*n+j+6] += C(x[k*m+i]) * y[k*n+j+6]; \
+        r[i*n+j+7] += C(x[k*m+i]) * y[k*n+j+7]; \
       } \
     } \
   } \
   if (n & 4) { \
     idx_t j = n - (n & 7); \
-    for (idx_t i=0; i < m; i++) { \
+    FOR(i,m) { \
       r[i*n+j  ] = r[i*n+j+1] = \
       r[i*n+j+2] = r[i*n+j+3] = 0; \
-      for (idx_t k=0; k < p; k++) { \
+      FOR(k,p) { \
         r[i*n+j  ] += C(x[k*m+i]) * y[k*n+j  ]; \
         r[i*n+j+1] += C(x[k*m+i]) * y[k*n+j+1]; \
         r[i*n+j+2] += C(x[k*m+i]) * y[k*n+j+2]; \
@@ -238,9 +220,9 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
   } \
   if (n & 2) { \
     idx_t j = n - (n & 3); \
-    for (idx_t i=0; i < m; i++) { \
+    FOR(i,m) { \
       r[i*n+j] = r[i*n+j+1] = 0; \
-      for (idx_t k=0; k < p; k++) { \
+      FOR(k,p) { \
         r[i*n+j  ] += C(x[k*m+i]) * y[k*n+j  ]; \
         r[i*n+j+1] += C(x[k*m+i]) * y[k*n+j+1]; \
       } \
@@ -248,10 +230,9 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
   } \
   if (n & 1) { \
     idx_t j = n - 1; \
-    for (idx_t i=0; i < m; i++) { \
+    FOR(i,m) { \
       r[i*n+j] = 0; \
-      for (idx_t k=0; k < p; k++) \
-        r[i*n+j] += C(x[k*m+i]) * y[k*n+j]; \
+      FOR(k,p) r[i*n+j] += C(x[k*m+i]) * y[k*n+j]; \
     } \
   } \
 }
@@ -259,23 +240,17 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 
 // n=1: [m x 1] = [p x m]' * [p x 1]
 #define TMULV(C) /* mat' * vec */ \
-  for (idx_t i=0; i < m; i++) r[i] = 0; \
-  for (idx_t k=0; k < p; k++) \
-  for (idx_t i=0; i < m; i++) \
-    r[i] += C(x[k*m+i]) * y[k];
+  FOR(i,m) r[i] = 0; \
+  FOR(k,p) FOR(i,m) r[i] += C(x[k*m+i]) * y[k];
 
 // m=1: [1 x n] = [p x 1]' * [p x n]
 #define TVMUL(C) /* vec' * mat */ \
-  for (idx_t j=0; j < n; j++) r[j] = 0; \
-  for (idx_t k=0; k < p; k++) \
-  for (idx_t j=0; j < n; j++) \
-    r[j] += C(x[k]) * y[k*n+j];
+  FOR(j,n) r[j] = 0; \
+  FOR(k,p) FOR(j,n) r[j] += C(x[k]) * y[k*n+j];
 
 // m=1, n=1: [1 x 1] = [p x 1]' * [p x 1]
 #define TIMUL(C) /* vec' * vec */ \
-  r[0] = 0; \
-  for (idx_t k=0; k < p; k++) \
-    r[0] += C(x[k]) * y[k];
+  r[0]= 0; FOR(k,p) r[0] += C(x[k]) * y[k];
 
 // [m x n] = [p x m]' * [p x n]
 #define TMUL(C) \
@@ -292,83 +267,63 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 // [m x n] = [m x p] * [n x p]'
 // naive implementation (more efficient on recent superscalar arch!)
 #define MMULT(C) /* mat * mat' */ \
-  for (idx_t i=0; i < m*n; i++) r[i] = 0; \
-  for (idx_t i=0; i < m  ; i++) \
-  for (idx_t j=0; j < n  ; j++) \
-  for (idx_t k=0; k < p  ; k++) \
-    r[i*n+j] += x[i*p+k] * C(y[j*p+k]);
+  FOR(i,m*n) r[i] = 0; \
+  FOR(i,m) FOR(j,n) FOR(k,p) r[i*n+j] += x[i*p+k] * C(y[j*p+k]);
 #else
 // [m x n] = [m x p] * [n x p]'
 // portable vectorized general transpose matrix-matrix multiplication
 // loop unroll + vectorized on SSE2 (x2), AVX & AVX2 (x4), AVX-512 (x8)
 #define MMULT(C) { /* mat * mat' */ \
   assert(m>0 && n>0 && p>0); \
-  for (idx_t i=0; i < m*n; i++) r[i] = 0; \
+  FOR(i,m*n) r[i] = 0; \
   if (n & ~7) { \
-    for (idx_t i=0; i < m; i++) { \
-      for (idx_t j=0; j < n; j++) { \
-        for (idx_t k=0; k < p-7; k+=8) { \
-          r[i*n+j] += x[i*p+k  ] * C(y[j*p+k  ]); \
-          r[i*n+j] += x[i*p+k+1] * C(y[j*p+k+1]); \
-          r[i*n+j] += x[i*p+k+2] * C(y[j*p+k+2]); \
-          r[i*n+j] += x[i*p+k+3] * C(y[j*p+k+3]); \
-          r[i*n+j] += x[i*p+k+4] * C(y[j*p+k+4]); \
-          r[i*n+j] += x[i*p+k+5] * C(y[j*p+k+5]); \
-          r[i*n+j] += x[i*p+k+6] * C(y[j*p+k+6]); \
-          r[i*n+j] += x[i*p+k+7] * C(y[j*p+k+7]); \
-        } \
-      } \
+    FOR(i,m) FOR(j,n) FOR(k,0,p-7,8) { \
+      r[i*n+j] += x[i*p+k  ] * C(y[j*p+k  ]); \
+      r[i*n+j] += x[i*p+k+1] * C(y[j*p+k+1]); \
+      r[i*n+j] += x[i*p+k+2] * C(y[j*p+k+2]); \
+      r[i*n+j] += x[i*p+k+3] * C(y[j*p+k+3]); \
+      r[i*n+j] += x[i*p+k+4] * C(y[j*p+k+4]); \
+      r[i*n+j] += x[i*p+k+5] * C(y[j*p+k+5]); \
+      r[i*n+j] += x[i*p+k+6] * C(y[j*p+k+6]); \
+      r[i*n+j] += x[i*p+k+7] * C(y[j*p+k+7]); \
     } \
   } \
   if (p & 4) { \
     idx_t k = p - (p & 7); \
-    for (idx_t i=0; i < m; i++) { \
-      for (idx_t j=0; j < n; j++) { \
-        r[i*n+j] += x[i*p+k  ] * C(y[j*p+k  ]); \
-        r[i*n+j] += x[i*p+k+1] * C(y[j*p+k+1]); \
-        r[i*n+j] += x[i*p+k+2] * C(y[j*p+k+2]); \
-        r[i*n+j] += x[i*p+k+3] * C(y[j*p+k+3]); \
-      } \
+    FOR(i,m) FOR(j,n) { \
+      r[i*n+j] += x[i*p+k  ] * C(y[j*p+k  ]); \
+      r[i*n+j] += x[i*p+k+1] * C(y[j*p+k+1]); \
+      r[i*n+j] += x[i*p+k+2] * C(y[j*p+k+2]); \
+      r[i*n+j] += x[i*p+k+3] * C(y[j*p+k+3]); \
     } \
   } \
   if (p & 2) { \
     idx_t k = p - (p & 3); \
-    for (idx_t i=0; i < m; i++) { \
-      for (idx_t j=0; j < n; j++) { \
-        r[i*n+j] += x[i*p+k  ] * C(y[j*p+k  ]); \
-        r[i*n+j] += x[i*p+k+1] * C(y[j*p+k+1]); \
-      } \
+    FOR(i,m) FOR(j,n) { \
+      r[i*n+j] += x[i*p+k  ] * C(y[j*p+k  ]); \
+      r[i*n+j] += x[i*p+k+1] * C(y[j*p+k+1]); \
     } \
   } \
   if (p & 1) { \
     idx_t k = p - 1; \
-    for (idx_t i=0; i < m; i++) { \
-      for (idx_t j=0; j < n; j++) \
-        r[i*n+j] += x[i*p+k] * C(y[j*p+k]); \
-    } \
+    FOR(i,m) FOR(j,n) r[i*n+j] += x[i*p+k] * C(y[j*p+k]); \
   } \
 }
 #endif
 
 // n=1: [m x 1] = [m x p] * [1 x p]'
 #define MULVT(C) /* mat * vec' */ \
-  for (idx_t i=0; i < m; i++) r[i] = 0; \
-  for (idx_t i=0; i < m; i++) \
-  for (idx_t k=0; k < p; k++) \
-    r[i] += x[i*p+k] * C(y[k]);
+  FOR(i,m) r[i] = 0; \
+  FOR(i,m) FOR(k,p) r[i] += x[i*p+k] * C(y[k]);
 
 // m=1: [1 x n] = [1 x p]' * [n x p]'
 #define VMULT(C) /* vec * mat' */ \
-  for (idx_t j=0; j < n; j++) r[j] = 0; \
-  for (idx_t j=0; j < n; j++) \
-  for (idx_t k=0; k < p; k++) \
-    r[j] += x[k] * C(y[j*p+k]);
+  FOR(j,n) r[j] = 0; \
+  FOR(j,n) FOR(k,p) r[j] += x[k] * C(y[j*p+k]);
 
 // m=1, n=1: [1 x 1] = [1 x p] * [1 x p]'
 #define IMULT(C) /* vec * vec' */ \
-  r[0] = 0; \
-  for (idx_t k=0; k < p; k++) \
-    r[0] += x[k] * C(y[k]);
+  r[0]= 0; FOR(k,p) r[0] += x[k] * C(y[k]);
 
 // [m x n] = [m x p] * [n x p]'
 #define MULT(C) \
@@ -385,28 +340,20 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 // naive implementation (more efficient on recent superscalar arch!)
 #define DMUL() /* diag(mat) * mat */ \
   if (p == 1) { \
-    for (idx_t i=0, mn=MIN(m,n); i < mn; i++) \
-    for (idx_t j=0; j < n; j++) \
-      r[i*n+j] = x[i] * y[i*n+j]; \
+    FOR(i,MIN(m,n)) FOR(j,n) r[i*n+j] = x[i] * y[i*n+j]; \
   } else { \
-    for (idx_t i=0; i < m*n; i++) r[i] = 0; \
-    for (idx_t i=0, mp=MIN(m,p); i < mp; i++) \
-    for (idx_t j=0; j < n; j++) \
-      r[i*n+j] = x[i*p+i] * y[i*n+j]; \
+    FOR(i,m*n) r[i] = 0; \
+    FOR(i,MIN(m,p)) FOR(j,n) r[i*n+j] = x[i*p+i] * y[i*n+j]; \
   }
 
 // r[m x n] = x[m x p] * diag(y[p x n])
 // naive implementation (more efficient on recent superscalar arch!)
 #define MULD() /* mat * diag(mat) */ \
   if (p == 1) { \
-    for (idx_t i=0, mn=MIN(m,n); i < m; i++) \
-    for (idx_t j=0; j < mn; j++) \
-      r[i*n+j] = x[i] * y[j*n+j]; \
+    FOR(i,m) FOR(j,MIN(m,n)) r[i*n+j] = x[i] * y[j*n+j]; \
   } else { \
-    for (idx_t i=0, mn=m*n; i < mn; i++) r[i] = 0; \
-    for (idx_t i=0, np=MIN(n,p); i < m; i++) \
-    for (idx_t j=0; j < np; j++) \
-      r[i*n+j] = x[i*p+j] * y[j*n+j]; \
+    FOR(i,m*n) r[i] = 0; \
+    FOR(i,m) FOR(j,MIN(n,p)) r[i*n+j] = x[i*p+j] * y[j*n+j]; \
   }
 
 // -----
@@ -414,27 +361,19 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 // [m x n] transpose
 #define TRANS(T,C) \
   if (m == 1 || n == 1) { \
-    if (x != r || I != C(I)) { \
-      idx_t mn = m*n; \
-      for (idx_t i=0; i < mn; i++) \
-        r[i] = C(x[i]); \
-    } \
+    if (x != r || I != C(I)) \
+      FOR(i,m*n) r[i] = C(x[i]); \
   } else if ((const void*)x != (const void*)r) { \
-    for (idx_t i=0; i < m; i++) \
-    for (idx_t j=0; j < n; j++) \
-      r[j*m+i] = C(x[i*n+j]); \
+    FOR(i,m) FOR(j,n) r[j*m+i] = C(x[i*n+j]); \
   } else if (m == n) { \
-    for (idx_t i=0; i < m; i++) \
-    for (idx_t j=i; j < n; j++) { \
+    FOR(i,m) FOR(j,i,n) { \
       T t = C(r[j*m+i]); \
       r[j*m+i] = C(r[i*n+j]); \
       r[i*n+j] = t; \
     } \
   } else { \
     mad_alloc_tmp(T, t, m*n); \
-    for (idx_t i=0; i < m; i++) \
-    for (idx_t j=0; j < n; j++) \
-      t[j*m+i] = C(x[i*n+j]); \
+    FOR(i,m) FOR(j,n) t[j*m+i] = C(x[i*n+j]); \
     memcpy(r, t, m*n*sizeof(T)); \
     mad_free_tmp(t); \
   };
@@ -442,31 +381,20 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 // -----
 
 // [m x n] copy [+ op]
-#define CPY(OP) \
-  for (idx_t i=0; i<m; i++) \
-  for (idx_t j=0; j<n; j++) \
-    r[i*ldr+j] OP##= x[i*ldx+j];
+#define CPY(OP) FOR(i,m) FOR(j,n) r[i*ldr+j] OP##= x[i*ldx+j]
 
 // [m x n] set [+ op]
-#define SET(OP) \
-  for (idx_t i=0; i<m; i++) \
-  for (idx_t j=0; j<n; j++) \
-    r[i*ldr+j] OP##= x;
+#define SET(OP) FOR(i,m) FOR(j,n) r[i*ldr+j] OP##= x
 
 // [m x n] sequence [+ op]
-#define SEQ(OP) \
-  for (idx_t i=0; i<m; i++) \
-  for (idx_t j=0; j<n; j++) \
-    r[i*ldr+j] OP##= (i*ldr+j)+x;
+#define SEQ(OP) FOR(i,m) FOR(j,n) r[i*ldr+j] OP##= (i*ldr+j)+x
 
 // [m x n] diagonal [+ op]
-#define DIAG(OP) \
-  for (idx_t i=0, mn=MIN(m,n); i<mn; i++) \
-    r[i*ldr+i] OP##= x;
+#define DIAG(OP) FOR(i, MIN(m,n)) r[i*ldr+i] OP##= x
 
 // --- mat
 
-void mad_mat_eye (num_t v, num_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+void mad_mat_eye (num_t r[], num_t v, ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; num_t x = 0; SET(); x = v; DIAG(); }
 
 void mad_mat_copy (const num_t x[], num_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
@@ -578,23 +506,40 @@ void mad_mat_muldm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_
   mad_free_tmp(r_);
 }
 
-void mad_mat_center (const num_t x[], num_t r[], ssz_t m, ssz_t n, int d)
-{ CHKXR;
-  assert(d == 1 || d == 2); // 1=row, 2=col
-  if (d == 1)
-    for (idx_t i=0; i < m; i++) {
-      num_t mu = 0;
-      for (idx_t j=0; j < n; j++) mu += x[i*n+j];
+void mad_mat_center (num_t x[], ssz_t m, ssz_t n, int d)
+{ CHKX; num_t mu;
+  assert(d >= 0 && d <= 4); // 0=vec, 1=row, 2=col, 3=both, 4=diag
+  if (! d  ) { mu = 0;
+      FOR(k,m*n) mu += x[k];
+      mu /= m*n;
+      FOR(k,m*n) x[k] -= mu;
+    }
+  if (d & 1)
+    FOR(i,m) { mu = 0;
+      FOR(j,n) mu += x[i*n+j];
       mu /= n;
-      for (idx_t j=0; j < n; j++) r[i*n+j] = x[i*n+j] - mu;
+      FOR(j,n) x[i*n+j] -= mu;
     }
-  else
-    for (idx_t j=0; j < n; j++) {
-      num_t mu = 0;
-      for (idx_t i=0; i < m; i++) mu += x[i*n+j];
+  if (d & 2)
+    FOR(j,n) { mu = 0;
+      FOR(i,m) mu += x[i*n+j];
       mu /= m;
-      for (idx_t i=0; i < m; i++) r[i*n+j] = x[i*n+j] - mu;
+      FOR(i,m) x[i*n+j] -= mu;
     }
+  if (d & 4) { mu = 0;
+      FOR(k,MIN(m,n)) mu += x[k*n+k];
+      mu /= MIN(m,n);
+      FOR(k,MIN(m,n)) x[k*n+k] -= mu;
+    }
+}
+
+void mad_mat_rev (num_t x[], ssz_t m, ssz_t n, int d)
+{ CHKX; num_t t;
+  assert(d >= 0 && d <= 4); // 0=vec, 1=row, 2=col, 3=both, 4=diag
+  if (! d  ) FOR(i,(m*n)/2)        SWAP(x[i     ], x[           n-1-i], t);
+  if (d & 1) FOR(i,m  ) FOR(j,n/2) SWAP(x[i*n +j], x[     i *n +n-1-j], t);
+  if (d & 2) FOR(i,m/2) FOR(j,n  ) SWAP(x[i*n +j], x[(m-1-i)*n +    j], t);
+  if (d & 4) FOR(i,MIN(m,n)/2)     SWAP(x[i*n +i], x[(m-1-i)*n +    i], t);
 }
 
 void
@@ -613,33 +558,26 @@ mad_mat_roll (num_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
     mad_vec_copy(x+msz, x       , nm-msz); // shift x up
     mad_vec_copy(a    , x+nm-msz,    msz); // a to end of x
   }
-  if (nroll > 0) {
-    for (ssz_t i=0; i < nm; i += n) {
-      mad_vec_copy(x+i+n-nsz, a      ,   nsz); // end of x to a
-      mad_vec_copy(x+i      , x+i+nsz, n-nsz); // shift x right
-      mad_vec_copy(a        , x+i    ,   nsz); // a to beginning of x
-    }
+  if (nroll > 0) FOR(i,0,nm,n) {
+    mad_vec_copy(x+i+n-nsz, a      ,   nsz); // end of x to a
+    mad_vec_copy(x+i      , x+i+nsz, n-nsz); // shift x right
+    mad_vec_copy(a        , x+i    ,   nsz); // a to beginning of x
   } else
-  if (nroll < 0) {
-    for (ssz_t i=0; i < nm; i += n) {
-      mad_vec_copy(x+i    , a        ,   nsz); // beginning of x to a
-      mad_vec_copy(x+i+nsz, x+i      , n-nsz); // shift x left
-      mad_vec_copy(a      , x+i+n-nsz,   nsz); // a to end of x
-    }
+  if (nroll < 0) FOR(i,0,nm,n) {
+    mad_vec_copy(x+i    , a        ,   nsz); // beginning of x to a
+    mad_vec_copy(x+i+nsz, x+i      , n-nsz); // shift x left
+    mad_vec_copy(a      , x+i+n-nsz,   nsz); // a to end of x
   }
   mad_free_tmp(a);
 }
 
 // -- cmat
 
-void mad_cmat_eye (cnum_t v, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+void mad_cmat_eye (cnum_t r[], cnum_t v, ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; cnum_t x = 0; SET(); x = v; DIAG(); }
 
-void mad_cmat_eye_r (num_t v_re, num_t v_im, cnum_t r[], ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; mad_cmat_eye(CNUM(v_re,v_im), r, m, n, ldr); }
-
-void mad_cmat_roll (cnum_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
-{ mad_mat_roll((num_t*)x, m, 2*n, mroll, 2*nroll); }
+void mad_cmat_eye_r (cnum_t r[], num_t v_re, num_t v_im, ssz_t m, ssz_t n, ssz_t ldr)
+{ CHKR; mad_cmat_eye(r, CNUM(v_re,v_im), m, n, ldr); }
 
 void mad_cmat_copy (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
 { CHKXRX; CPY(); }
@@ -710,28 +648,48 @@ void mad_cmat_multm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz
   mad_free_tmp(r_);
 }
 
-void mad_cmat_center (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, int d)
-{ CHKXR;
-  assert(d == 1 || d == 2); // 1=row, 2=col
-  if (d == 1)
-    for (idx_t i=0; i < m; i++) {
-      cnum_t mu = 0;
-      for (idx_t j=0; j < n; j++) mu += x[i*n+j];
-      mu /= n;
-      for (idx_t j=0; j < n; j++) r[i*n+j] = x[i*n+j] - mu;
+void mad_cmat_center (cnum_t x[], ssz_t m, ssz_t n, int d)
+{ CHKX; cnum_t mu;
+  assert(d >= 0 && d <= 4); // 0=vec, 1=row, 2=col, 3=both, 4=diag
+  if (! d  ) { mu = 0;
+      FOR(k,m*n) mu += x[k];
+      mu /= m*n;
+      FOR(k,m*n) x[k] -= mu;
     }
-  else
-    for (idx_t j=0; j < n; j++) {
-      cnum_t mu = 0;
-      for (idx_t i=0; i < m; i++) mu += x[i*n+j];
+  if (d & 1)
+    FOR(i,m) { mu = 0;
+      FOR(j,n) mu += x[i*n+j];
+      mu /= n;
+      FOR(j,n) x[i*n+j] -= mu;
+    }
+  if (d & 2)
+    FOR(j,n) { mu = 0;
+      FOR(i,m) mu += x[i*n+j];
       mu /= m;
-      for (idx_t i=0; i < m; i++) r[i*n+j] = x[i*n+j] - mu;
+      FOR(i,m) x[i*n+j] -= mu;
+    }
+  if (d & 4) { mu = 0;
+      FOR(k,MIN(m,n)) mu += x[k*n+k];
+      mu /= MIN(m,n);
+      FOR(k,MIN(m,n)) x[k*n+k] -= mu;
     }
 }
 
+void mad_cmat_rev (cnum_t x[], ssz_t m, ssz_t n, int d)
+{ CHKX; cnum_t t;
+  assert(d >= 0 && d <= 4); // 0=vec, 1=row, 2=col, 3=both, 4=diag
+  if (! d  ) FOR(i,(m*n)/2)        SWAP(x[i     ], x[           n-1-i], t);
+  if (d & 1) FOR(i,m  ) FOR(j,n/2) SWAP(x[i*n +j], x[     i *n +n-1-j], t);
+  if (d & 2) FOR(i,m/2) FOR(j,n  ) SWAP(x[i*n +j], x[(m-1-i)*n +    j], t);
+  if (d & 4) FOR(i,MIN(m,n)/2)     SWAP(x[i*n +i], x[(m-1-i)*n +    i], t);
+}
+
+void mad_cmat_roll (cnum_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
+{ mad_mat_roll((num_t*)x, m, 2*n, mroll, 2*nroll); }
+
 // --- imat
 
-void mad_imat_eye (idx_t v, idx_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+void mad_imat_eye (idx_t r[], idx_t v, ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; idx_t x = 0; SET(); x = v; DIAG(); }
 
 void mad_imat_copy (const idx_t x[], idx_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
@@ -743,13 +701,22 @@ void mad_imat_copym (const idx_t x[], num_t r[], ssz_t m, ssz_t n, ssz_t ldx, ss
 void mad_imat_trans (const idx_t x[], idx_t r[], ssz_t m, ssz_t n)
 { CHKXR; TRANS(idx_t,); }
 
+void mad_imat_rev (idx_t x[], ssz_t m, ssz_t n, int d)
+{ CHKX; idx_t t;
+  assert(d >= 0 && d <= 4); // 0=vec, 1=row, 2=col, 3=both, 4=diag
+  if (! d  ) FOR(i,(m*n)/2)        SWAP(x[i     ], x[           n-1-i], t);
+  if (d & 1) FOR(i,m  ) FOR(j,n/2) SWAP(x[i*n +j], x[     i *n +n-1-j], t);
+  if (d & 2) FOR(i,m/2) FOR(j,n  ) SWAP(x[i*n +j], x[(m-1-i)*n +    j], t);
+  if (d & 4) FOR(i,MIN(m,n)/2)     SWAP(x[i*n +i], x[(m-1-i)*n +    i], t);
+}
+
 void
 mad_imat_roll (idx_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
 { CHKX; mroll %= m; nroll %= n;
   ssz_t nm = n*m, msz = n*abs(mroll), nsz = abs(nroll);
   ssz_t sz = msz > nsz ? msz : nsz;
   mad_alloc_tmp(idx_t, a, sz);
-  if (mroll > 0) {
+  if (mroll > 0) { // roll rows
     mad_ivec_copy(x+nm-msz, a    ,    msz); // end of x to a
     mad_ivec_copy(x       , x+msz, nm-msz); // shift x down
     mad_ivec_copy(a       , x    ,    msz); // a to beginning of x
@@ -759,19 +726,15 @@ mad_imat_roll (idx_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
     mad_ivec_copy(x+msz, x       , nm-msz); // shift x up
     mad_ivec_copy(a    , x+nm-msz,    msz); // a to end of x
   }
-  if (nroll > 0) {
-    for (ssz_t i=0; i < nm; i += n) {
-      mad_ivec_copy(x+i+n-nsz, a      ,   nsz); // end of x to a
-      mad_ivec_copy(x+i      , x+i+nsz, n-nsz); // shift x right
-      mad_ivec_copy(a        , x+i    ,   nsz); // a to beginning of x
-    }
+  if (nroll > 0) FOR(i,0,nm,n) {
+    mad_ivec_copy(x+i+n-nsz, a      ,   nsz); // end of x to a
+    mad_ivec_copy(x+i      , x+i+nsz, n-nsz); // shift x right
+    mad_ivec_copy(a        , x+i    ,   nsz); // a to beginning of x
   } else
-  if (nroll < 0) {
-    for (ssz_t i=0; i < nm; i += n) {
-      mad_ivec_copy(x+i    , a        ,   nsz); // beginning of x to a
-      mad_ivec_copy(x+i+nsz, x+i      , n-nsz); // shift x left
-      mad_ivec_copy(a      , x+i+n-nsz,   nsz); // a to end of x
-    }
+  if (nroll < 0) FOR(i,0,nm,n) {
+    mad_ivec_copy(x+i    , a        ,   nsz); // beginning of x to a
+    mad_ivec_copy(x+i+nsz, x+i      , n-nsz); // shift x left
+    mad_ivec_copy(a      , x+i+n-nsz,   nsz); // a to end of x
   }
   mad_free_tmp(a);
 }
@@ -1065,7 +1028,7 @@ mad_mat_invn (const num_t y[], num_t x, num_t r[], ssz_t m, ssz_t n, num_t rcond
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(num_t, u, n*n);
-  mad_mat_eye(1, u, n, n, n);
+  mad_mat_eye(u, 1, n, n, n);
 #pragma GCC diagnostic push // remove false-positive
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
   int rank = mad_mat_div(u, y, r, n, m, n, rcond);
@@ -1085,7 +1048,7 @@ mad_mat_invc (const num_t y[], cnum_t x, cnum_t r[], ssz_t m, ssz_t n, num_t rco
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(num_t, t, m*n);
   mad_alloc_tmp(num_t, u, n*n);
-  mad_mat_eye(1, u, n, n, n);
+  mad_mat_eye(u, 1, n, n, n);
   int rank = mad_mat_div(u, y, t, n, m, n, rcond);
   mad_free_tmp(u);
   if (x != 1) mad_vec_mulc(t, x, r, m*n);
@@ -1098,7 +1061,7 @@ mad_cmat_invn (const cnum_t y[], num_t x, cnum_t r[], ssz_t m, ssz_t n, num_t rc
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(cnum_t, u, n*n);
-  mad_cmat_eye(1, u, n, n, n);
+  mad_cmat_eye(u, 1, n, n, n);
 #pragma GCC diagnostic push // remove false-positive
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
   int rank = mad_cmat_div(u, y, r, n, m, n, rcond);
@@ -1113,7 +1076,7 @@ mad_cmat_invc (const cnum_t y[], cnum_t x, cnum_t r[], ssz_t m, ssz_t n, num_t r
 {
   CHKYR; // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(cnum_t, u, n*n);
-  mad_cmat_eye(1, u, n, n, n);
+  mad_cmat_eye(u, 1, n, n, n);
 #pragma GCC diagnostic push // remove false-positive
 #pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
   int rank = mad_cmat_div(u, y, r, n, m, n, rcond);
@@ -1897,7 +1860,7 @@ void mad_mat_rotv (num_t x[NN], const num_t v[N], num_t a, log_t inv)
   num_t n = vx*vx + vy*vy + vz*vz;
 
   if (n == 0) {
-    mad_mat_eye(1, x, N, N, N);
+    mad_mat_eye(x, 1, N, N, N);
     return;
   }
 
@@ -2072,11 +2035,10 @@ vec_sort (num_t v[], idx_t c[], ssz_t n)
   idx_t ti;
 
   // Set indexes.
-  for (idx_t i=0; i < n; i++) c[i] = i;
+  FOR(i,n) c[i] = i;
 
   // Sort values by ascending order.
-  for (idx_t i=1; i < n; i++)
-  for (idx_t j=i; j > 0; j--)
+  FOR(i,1,n) RFOR(j,i,0)
     if (v[j-1] > v[j]) {
       SWAP(v[j-1], v[j], tr);
       SWAP(c[j-1], c[j], ti);
@@ -2089,15 +2051,13 @@ ivec_sort (idx_t v[], ssz_t n, log_t rmdup)
   idx_t ti;
 
   // Sort indexes by ascending order.
-  for (idx_t i=1; i < n; i++)
-  for (idx_t j=i; j > 0; j--)
+  FOR(i,1,n) RFOR(j,i,0)
     if (v[j-1] > v[j]) SWAP(v[j-1], v[j], ti);
 
   // Remove duplicates.
   if (rmdup) {
     idx_t k = 1;
-    for (idx_t i=1; i < n; i++)
-      if (v[k-1] < v[i]) v[k++] = v[i];
+    FOR(i,1,n) if (v[k-1] < v[i]) v[k++] = v[i];
     return k;
   }
 
@@ -2127,7 +2087,7 @@ madx_svdcnd (const num_t a[], idx_t c[], ssz_t m, ssz_t n, num_t scut, num_t s_[
   if (s_) mad_vec_copy(S, s_, MIN(m,n));
 
   // Backup indexes of columns to remove.
-  for (idx_t i=0; i < nc; i++) c[i] = sng[2*i];
+  FOR(i,nc) c[i] = sng[2*i];
 
   /* copy buffers */
   mad_free_tmp(A);
@@ -2181,14 +2141,12 @@ mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
 #define V(i,j) V[(i)*n+(j)]
 
   // Loop over increasing singular values.
-  for (idx_t i=mn-1; i >= mn-N; i--) {
-
+  RFOR(i,mn-1,mn-1-N) {
     // Singular value is large, stop checking.
     if (S[i] > rcond*S[0]) break;
 
     // Loop over rows of V (i.e. columns of V^T)
-    for (idx_t j=0  ; j < n-1; j++)
-    for (idx_t k=j+1; k < n  ; k++) {
+    FOR(j,n-1) FOR(k,j+1,n) {
       num_t vj = fabs(V(j,i));
 
       // Proceed only significant component for this singular value.
@@ -2249,14 +2207,12 @@ mad_cmat_svdcnd(const cnum_t a[], idx_t c[], ssz_t m, ssz_t n,
 #define V(i,j) V[(i)*n+(j)]
 
   // Loop over increasing singular values.
-  for (idx_t i=mn-1; i >= mn-N; i--) {
-
+  RFOR(i,mn-1,mn-1-N) {
     // Singular value is large, stop checking.
     if (S[i] > rcond*S[0]) break;
 
     // Loop over rows of V (i.e. columns of V^T)
-    for (idx_t j=0  ; j < n-1; j++)
-    for (idx_t k=j+1; k < n  ; k++) {
+    FOR(j,n-1) FOR(k,j+1,n) {
       num_t vj = cabs(V(j,i));
 
       // Proceed only significant component for this singular value.
@@ -2309,8 +2265,7 @@ mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
   // Tolerance on keeping singular values.
   rcond = MAX(rcond, DBL_EPSILON);
 
-  for (idx_t i=0; i < N; i++)
-    if (S[i] <= rcond*S[0]) { N=i; break; }
+  FOR(i,N) if (S[i] <= rcond*S[0]) { N=i; break; }
 
   // Compute projections on Principal Components, i.e. S V.
   mad_vec_abs(V, V, N*n);
@@ -2353,8 +2308,7 @@ mad_cmat_pcacnd(const cnum_t a[], idx_t c[], ssz_t m, ssz_t n,
   // Tolerance on keeping singular values.
   rcond = MAX(rcond, DBL_EPSILON);
 
-  for (idx_t i=0; i < N; i++)
-    if (S[i] <= rcond*S[0]) { N=i; break; }
+  FOR(i,N) if (S[i] <= rcond*S[0]) { N=i; break; }
 
   // Compute projections on Principal Components, i.e. S V.
   mad_cvec_abs(V, R, N*n);
@@ -2406,7 +2360,7 @@ madx_micado (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
          ny, ax, cinx, xinx, resx, rho, ptop, rmss, xrms, xptp, xitr, &ifail);
 
   // Re-order corrector strengths and save residues. Strengths are not minused!
-  for (idx_t i=0; i < iter; ++i) x[i] = -X[nx[i]-1];
+  FOR(i,iter) x[i] = -X[nx[i]-1];
   if (r_) mad_vec_copy(R, r_, m);
 
   /* copy buffers */
@@ -2487,10 +2441,10 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
   // Box 3: Compute scalar products sqr[k] = A[k].A[k] and dot[k] = A[k].B.
   num_t sqrmin = 0;
   { num_t sum = 0;
-    for (idx_t k=0; k < n; ++k) {
+    FOR(k,n) {
       pvt[k] = k;
       num_t hh = 0, gg = 0;
-      for (idx_t i=0; i < m; ++i) {
+      FOR(i,m) {
         hh += A(i,k) * A(i,k);  // corrector effectiveness versus measured orbit
         gg += A(i,k) * B[i];    // corrector effectiveness versus target   orbit
       }
@@ -2502,11 +2456,11 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
   }
 
   // Begin of iteration (l): loop over best-kick selection (i.e. A columns).
-  for (idx_t k=0; k < N; ++k) {
+  FOR(k,N) {
     // Box 3: Search the columns not yet used for largest scaled change vector.
     { num_t maxChange = 0;
       idx_t changeIndex = -1;
-      for (idx_t j=k; j < n; ++j) {
+      FOR(j,k,n) {
         if (sqr[j] > sqrmin) {        // criteria rho that minimize the residues
           num_t change = dot[j]*dot[j] / sqr[j];
           if (change > maxChange) {
@@ -2525,14 +2479,14 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
         SWAP(sqr[k], sqr[changeIndex], tr);
         SWAP(dot[k], dot[changeIndex], tr);
         SWAP(pvt[k], pvt[changeIndex], ti);
-        for (idx_t i=0; i < m; ++i) SWAP(A(i,k), A(i,changeIndex), tr);
+        FOR(i,m) SWAP(A(i,k), A(i,changeIndex), tr);
       }
     }
 
     // Box 4: Compute beta, sigma, and vector u[k].
     num_t beta, hh;
     { hh = 0;
-      for (idx_t i=k; i < m; ++i) hh += A(i,k) * A(i,k);
+      FOR(i,k,m) hh += A(i,k) * A(i,k);
       num_t sigma = A(k,k) < 0 ? -sqrt(hh) : sqrt(hh);
       sqr[k] = -sigma; // saved for use in X[1..k] update
       A(k,k) += sigma;
@@ -2540,39 +2494,39 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
     }
 
     // Box 5: Transform remaining columns of A.
-    for (idx_t j=k+1; j < n; ++j) {
+    FOR(j,k+1,n) {
       hh = 0;
-      for (idx_t i=k; i < m; ++i) hh += A(i,k) * A(i,j);
+      FOR(i,k,m) hh += A(i,k) * A(i,j);
       hh *= beta;
-      for (idx_t i=k; i < m; ++i) A(i,j) -= A(i,k) * hh;
+      FOR(i,k,m) A(i,j) -= A(i,k) * hh;
     }
 
     // Box 6: Transform vector b.
     hh = 0;
-    for (idx_t i=k; i < m; ++i) hh += A(i,k) * B[i];
+    FOR(i,k,m) hh += A(i,k) * B[i];
     hh *= beta;
-    for (idx_t i=k; i < m; ++i) B[i] -= A(i,k) * hh;
+    FOR(i,k,m) B[i] -= A(i,k) * hh;
 
     // Box 3: Update scalar products sqr[j]=A[j]*A[j] and dot[j]=A[j]*b.
-    for (idx_t j=k+1; j < n; ++j) {
+    FOR(j,k+1,n) {
       sqr[j] -= A(k,j) * A(k,j);
       dot[j] -= A(k,j) * B[k];
     }
 
     // Box 7: Recalculate solution vector x. Here, sqr[1..k] = -sigma[1..k].
-    for (idx_t i=k; i >= 0; --i) {
+    RFOR(i,k,-1) {
       X[i] = B[i];
-      for (idx_t j=i+1; j <= k; ++j) X[i] -= A(i,j) * X[j];
+      FOR(j,i+1,k+1) X[i] -= A(i,j) * X[j];
       X[i] /= sqr[i];
     }
 
     // Box 8: Compute original residual vector by backward transformation.
     mad_vec_copy(B, R, m);
-    for (idx_t j=k; j >= 0; --j) {
+    RFOR(j,k,-1) {
       R[j] = hh = 0;
-      for (idx_t i=j; i < m; ++i) hh += A(i,j) * R[i];
+      FOR(i,j,m) hh += A(i,j) * R[i];
       hh /= sqr[j] * A(j,j);
-      for (idx_t i=j; i < m; ++i) R[i] += A(i,j) * hh;
+      FOR(i,j,m) R[i] += A(i,j) * hh;
     }
 
     // Box 9: Check for convergence.
@@ -2583,7 +2537,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
 #undef A
 
   // Re-order corrector strengths and save residues.
-  for (idx_t i=0; i < N; ++i) x[pvt[i]] = X[i];
+  FOR(i,N) x[pvt[i]] = X[i];
   if (r_) mad_vec_copy(R, r_, m);
 
   mad_free_tmp(A);
@@ -2622,7 +2576,7 @@ mad_mat_rtbar (num_t Rb[NN],       num_t Tb[N], num_t el, num_t ang, num_t tlt,
       mad_vec_copy(R_,     Rb, NN);           // Rb = R
     } else { // R = I
       mad_vec_copy(T, Tb, N);                 // Tb = T
-      mad_mat_eye (1, Rb, N, N, N);           // Rb = I
+      mad_mat_eye (Rb, 1, N, N, N);           // Rb = I
      }
 
   } else {                                    // -- curved --------------------o
@@ -2649,7 +2603,7 @@ mad_mat_rtbar (num_t Rb[NN],       num_t Tb[N], num_t el, num_t ang, num_t tlt,
       mad_mat_mul (Wt, We, Rb, N, N, N);      // Rb = We:t()*R*We
     } else { // R = I
       mad_mat_tmul(We, T , Tb, N, 1, N);      // Tb = We:t()*T
-      mad_mat_eye (    1 , Rb, N, N, N);      // Rb = I
+      mad_mat_eye (Rb,      1, N, N, N);      // Rb = I
      }
   }
 }
