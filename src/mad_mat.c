@@ -508,38 +508,44 @@ void mad_mat_muldm (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_
 
 void mad_mat_center (num_t x[], ssz_t m, ssz_t n, int d)
 { CHKX; num_t mu;
-  assert(d >= 0 && d <= 4); // 0=vec, 1=row, 2=col, 3=both, 4=diag
-  if (! d  ) { mu = 0;
-      FOR(k,m*n) mu += x[k];
-      mu /= m*n;
-      FOR(k,m*n) x[k] -= mu;
-    }
-  if (d & 1)
+  switch(d) { // 0=vec, 1=row, 2=col, 3=diag
+  case 0:
+    mu = 0;
+    FOR(k,m*n) mu += x[k];
+    mu /= m*n;
+    FOR(k,m*n) x[k] -= mu;
+    break;
+  case 1:
     FOR(i,m) { mu = 0;
       FOR(j,n) mu += x[i*n+j];
       mu /= n;
       FOR(j,n) x[i*n+j] -= mu;
-    }
-  if (d & 2)
+    } break;
+  case 2:
     FOR(j,n) { mu = 0;
       FOR(i,m) mu += x[i*n+j];
       mu /= m;
       FOR(i,m) x[i*n+j] -= mu;
-    }
-  if (d & 4) { mu = 0;
-      FOR(k,MIN(m,n)) mu += x[k*n+k];
-      mu /= MIN(m,n);
-      FOR(k,MIN(m,n)) x[k*n+k] -= mu;
-    }
+    } break;
+  case 3:
+    mu = 0;
+    FOR(k,MIN(m,n)) mu += x[k*n+k];
+    mu /= MIN(m,n);
+    FOR(k,MIN(m,n)) x[k*n+k] -= mu;
+    break;
+  default: error("invalid direction");
+  }
 }
 
 void mad_mat_rev (num_t x[], ssz_t m, ssz_t n, int d)
 { CHKX; num_t t;
-  assert(d >= 0 && d <= 4); // 0=vec, 1=row, 2=col, 3=both, 4=diag
-  if (! d  ) FOR(i,(m*n)/2)        SWAP(x[i     ], x[           n-1-i], t);
-  if (d & 1) FOR(i,m  ) FOR(j,n/2) SWAP(x[i*n +j], x[     i *n +n-1-j], t);
-  if (d & 2) FOR(i,m/2) FOR(j,n  ) SWAP(x[i*n +j], x[(m-1-i)*n +    j], t);
-  if (d & 4) FOR(i,MIN(m,n)/2)     SWAP(x[i*n +i], x[(m-1-i)*n +    i], t);
+  switch(d) { // 0=vec, 1=row, 2=col, 3=diag
+  case 0: FOR(i,(m*n)/2)        SWAP(x[i     ], x[         m*n-1-i], t); break;
+  case 1: FOR(i,m  ) FOR(j,n/2) SWAP(x[i*n +j], x[     i *n +n-1-j], t); break;
+  case 2: FOR(i,m/2) FOR(j,n  ) SWAP(x[i*n +j], x[(m-1-i)*n +    j], t); break;
+  case 3: FOR(i,MIN(m,n)/2)     SWAP(x[i*n +i], x[(m-1-i)*n +    i], t); break;
+  default: error("invalid direction");
+  }
 }
 
 void
@@ -650,38 +656,44 @@ void mad_cmat_multm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz
 
 void mad_cmat_center (cnum_t x[], ssz_t m, ssz_t n, int d)
 { CHKX; cnum_t mu;
-  assert(d >= 0 && d <= 4); // 0=vec, 1=row, 2=col, 3=both, 4=diag
-  if (! d  ) { mu = 0;
-      FOR(k,m*n) mu += x[k];
-      mu /= m*n;
-      FOR(k,m*n) x[k] -= mu;
-    }
-  if (d & 1)
+  switch(d) { // 0=vec, 1=row, 2=col, 3=diag
+  case 0:
+    mu = 0;
+    FOR(k,m*n) mu += x[k];
+    mu /= m*n;
+    FOR(k,m*n) x[k] -= mu;
+    break;
+  case 1:
     FOR(i,m) { mu = 0;
       FOR(j,n) mu += x[i*n+j];
       mu /= n;
       FOR(j,n) x[i*n+j] -= mu;
-    }
-  if (d & 2)
+    } break;
+  case 2:
     FOR(j,n) { mu = 0;
       FOR(i,m) mu += x[i*n+j];
       mu /= m;
       FOR(i,m) x[i*n+j] -= mu;
-    }
-  if (d & 4) { mu = 0;
-      FOR(k,MIN(m,n)) mu += x[k*n+k];
-      mu /= MIN(m,n);
-      FOR(k,MIN(m,n)) x[k*n+k] -= mu;
-    }
+    } break;
+  case 3:
+    mu = 0;
+    FOR(k,MIN(m,n)) mu += x[k*n+k];
+    mu /= MIN(m,n);
+    FOR(k,MIN(m,n)) x[k*n+k] -= mu;
+    break;
+  default: error("invalid direction");
+  }
 }
 
 void mad_cmat_rev (cnum_t x[], ssz_t m, ssz_t n, int d)
 { CHKX; cnum_t t;
-  assert(d >= 0 && d <= 4); // 0=vec, 1=row, 2=col, 3=both, 4=diag
-  if (! d  ) FOR(i,(m*n)/2)        SWAP(x[i     ], x[           n-1-i], t);
-  if (d & 1) FOR(i,m  ) FOR(j,n/2) SWAP(x[i*n +j], x[     i *n +n-1-j], t);
-  if (d & 2) FOR(i,m/2) FOR(j,n  ) SWAP(x[i*n +j], x[(m-1-i)*n +    j], t);
-  if (d & 4) FOR(i,MIN(m,n)/2)     SWAP(x[i*n +i], x[(m-1-i)*n +    i], t);
+  switch(d) { // 0=vec, 1=row, 2=col, 3=diag
+  case 0: FOR(i,(m*n)/2)        SWAP(x[i     ], x[         m*n-1-i], t); break;
+  case 1: FOR(i,m  ) FOR(j,n/2) SWAP(x[i*n +j], x[     i *n +n-1-j], t); break;
+  case 2: FOR(i,m/2) FOR(j,n  ) SWAP(x[i*n +j], x[(m-1-i)*n +    j], t); break;
+  case 3: FOR(i,MIN(m,n)/2)     SWAP(x[i*n +i], x[(m-1-i)*n +    i], t); break;
+  default: error("invalid direction");
+  }
 }
 
 void mad_cmat_roll (cnum_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
@@ -703,11 +715,13 @@ void mad_imat_trans (const idx_t x[], idx_t r[], ssz_t m, ssz_t n)
 
 void mad_imat_rev (idx_t x[], ssz_t m, ssz_t n, int d)
 { CHKX; idx_t t;
-  assert(d >= 0 && d <= 4); // 0=vec, 1=row, 2=col, 3=both, 4=diag
-  if (! d  ) FOR(i,(m*n)/2)        SWAP(x[i     ], x[           n-1-i], t);
-  if (d & 1) FOR(i,m  ) FOR(j,n/2) SWAP(x[i*n +j], x[     i *n +n-1-j], t);
-  if (d & 2) FOR(i,m/2) FOR(j,n  ) SWAP(x[i*n +j], x[(m-1-i)*n +    j], t);
-  if (d & 4) FOR(i,MIN(m,n)/2)     SWAP(x[i*n +i], x[(m-1-i)*n +    i], t);
+  switch(d) { // 0=vec, 1=row, 2=col, 3=diag
+  case 0: FOR(i,(m*n)/2)        SWAP(x[i     ], x[         m*n-1-i], t); break;
+  case 1: FOR(i,m  ) FOR(j,n/2) SWAP(x[i*n +j], x[     i *n +n-1-j], t); break;
+  case 2: FOR(i,m/2) FOR(j,n  ) SWAP(x[i*n +j], x[(m-1-i)*n +    j], t); break;
+  case 3: FOR(i,MIN(m,n)/2)     SWAP(x[i*n +i], x[(m-1-i)*n +    i], t); break;
+  default: error("invalid direction");
+  }
 }
 
 void
