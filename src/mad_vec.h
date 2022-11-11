@@ -38,7 +38,6 @@ num_t  mad_vec_sum    (const  num_t x[],                                      ss
 num_t  mad_vec_ksum   (const  num_t x[],                                      ssz_t n); // Sum(vec) (Kahan)
 num_t  mad_vec_mean   (const  num_t x[],                                      ssz_t n); // Mean(vec)
 num_t  mad_vec_var    (const  num_t x[],                                      ssz_t n); // Var(vec)
-void   mad_vec_center (const  num_t x[],                          num_t  r[], ssz_t n); // vec -> vec-<vec>
 num_t  mad_vec_norm   (const  num_t x[]                                     , ssz_t n); // |vec|
 num_t  mad_vec_dist   (const  num_t x[], const  num_t y[]                   , ssz_t n); // |vec -  vec|
 num_t  mad_vec_distv  (const  num_t x[], const cnum_t y[]                   , ssz_t n); // |vec - cvec|
@@ -84,7 +83,6 @@ cnum_t mad_cvec_mean  (const cnum_t x[],                                      ss
 void   mad_cvec_mean_r(const cnum_t x[],                         cnum_t *r  , ssz_t n); // Mean(vec)
 cnum_t mad_cvec_var   (const cnum_t x[],                                      ssz_t n); // Var(vec)
 void   mad_cvec_var_r (const cnum_t x[],                         cnum_t *r  , ssz_t n); // Var(vec)
-void   mad_cvec_center(const cnum_t x[],                         cnum_t  r[], ssz_t n); //  cvec ->cvec-<cvec>
 num_t  mad_cvec_norm  (const cnum_t x[]                                     , ssz_t n); // |cvec|
 num_t  mad_cvec_dist  (const cnum_t x[], const cnum_t y[]                   , ssz_t n); // |cvec - cvec|
 num_t  mad_cvec_distv (const cnum_t x[], const  num_t y[]                   , ssz_t n); // |cvec -  vec|
