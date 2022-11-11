@@ -73,9 +73,6 @@ num_t mad_vec_var (const num_t x[], ssz_t n)
   return (s2 - SQR(s)/n)/(n-1); // Bessel's correction on centered values.
 }
 
-void mad_vec_center (const num_t x[], num_t r[], ssz_t n)
-{ CHKR; num_t m = mad_vec_mean(x,n); FOR(i,n) r[i] = x[i] - m; }
-
 num_t mad_vec_dot (const num_t x[], const num_t y[], ssz_t n)
 { CHKXY; num_t r=0; FOR(i,n) r += x[i] * y[i]; return r; }
 
@@ -349,9 +346,7 @@ void mad_cvec_reim (const cnum_t x[], num_t re[], num_t ri[], ssz_t n)
 }
 
 void mad_cvec_abs (const cnum_t x[], num_t r[], ssz_t n)
-{ CHKXR;
-  FOR(i,n) r[i] = cabs(x[i]);
-}
+{ CHKXR; FOR(i,n) r[i] = cabs(x[i]); }
 
 void mad_cvec_conj (const cnum_t x[], cnum_t r[], ssz_t n)
 { CHKXR; FOR(i,n) r[i] = conj(x[i]); }
@@ -398,9 +393,6 @@ cnum_t mad_cvec_var (const cnum_t x[], ssz_t n)
 
 void mad_cvec_var_r (const cnum_t x[], cnum_t *r, ssz_t n)
 { CHKXR; *r = mad_cvec_var(x,n); }
-
-void mad_cvec_center (const cnum_t x[], cnum_t r[], ssz_t n)
-{ CHKR; cnum_t m = mad_cvec_mean(x,n); FOR(i,n) r[i] = x[i] - m; }
 
 num_t mad_cvec_norm (const cnum_t x[], ssz_t n)
 { return sqrt(creal(mad_cvec_dot(x,x,n))); }
