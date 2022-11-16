@@ -114,7 +114,7 @@ Special Constructors
 
 .. function:: mat:vech ()
 
-   Return a vector of the same type as :var:`mat` filled with the values of the elements of the `half vectorized <https://en.wikipedia.org/wiki/Vectorization_(mathematics)#Half-vectorization>`_ real, complex or integer *symmetric* matrix :var:`mat`. The symmetric property can be pre-checked bu the user with :func:`mat:is_symm()`.
+   Return a vector of the same type as :var:`mat` filled with the values of the elements of the `half vectorized <https://en.wikipedia.org/wiki/Vectorization_(mathematics)#Half-vectorization>`_ real, complex or integer *symmetric* matrix :var:`mat`. The symmetric property can be pre-checked by the user with :func:`mat:is_symm()`.
 
 .. function:: mat:diag (k_)
 
@@ -150,7 +150,7 @@ Sizes and Indexing
 
 .. function:: mat:getdidx (k_)
 
-   Return an :type:`iterable` describing the indexes of the :math:`k`-th diagonal of the real, complex or integer matrix :var:`mat` where :expr:`-nrow <= k <= ncol`. This method is useful to build the 1D indexes of the :math:`k`-th diagonal for the given matrix sizes.
+   Return an :type:`iterable` describing the indexes of the :math:`k`-th diagonal of the real, complex or integer matrix :var:`mat` where :expr:`-nrow <= k <= ncol`. This method is useful to build the 1D indexes of the :math:`k`-th diagonal for the given matrix sizes. Default :expr:`k_ = 0`
 
 Getters and Setters
 -------------------
@@ -359,7 +359,7 @@ Filling and Moving
 
 .. function:: mat:shuffle ()
 
-   Return the real, complex or integer matrix :var:`mat` with its elements randomly swapped using the `Fisher–Yates or Knuth shuffle <https://en.wikipedia.org/wiki/Fisher–Yates_shuffle>`_ algorithm and :func:`math.random` as PRNG.
+   Return the real, complex or integer matrix :var:`mat` with its elements randomly swapped using the `Fisher–Yates or Knuth shuffle <https://en.wikipedia.org/wiki/Fisher–Yates_shuffle>`_ algorithm and :func:`math.random` as the PRNG.
 
 .. function:: mat:symp ()
 
@@ -373,7 +373,7 @@ Filling and Moving
 
    Return the real, complex or integer matrix :var:`mat` filled with values provided by :var:`a` depending of its kind:
 
-   - if :var:`a` is a :type:`scalar`, it is equivalent to :func:`mat:ones()`.
+   - if :var:`a` is a :type:`scalar`, it is equivalent to :func:`mat:ones(a)`.
 
    - if :var:`a` is a :type:`callable`, then:
 
@@ -387,9 +387,20 @@ Filling and Moving
 
       - otherwise the matrix will be filled with values from :var:`a[n]` for :expr:`1 <= n <= #mat`, i.e. treated as a 1D container.
 
+.. function:: mat:rev (d_)
+
+   Reverse the elements of the matrix :var:`mat` according to the direction :var:`d`:
+   
+   - If :expr:`d = 'vec'`, it reverses the entire matrix.
+   - If :expr:`d = 'row'`, it reverses each row.
+   - If :expr:`d = 'col'`, it reverses each column.
+   - If :expr:`d = 'diag'`, it reverse the only the diagonal.
+
+   Default: :expr:`d_ = 'vec'`.
+
 .. function:: mat:roll (nr_, nc_)
 
-   Return the real, complex or integer matrix :var:`mat` after rolling its rows by :var:`nr` :math:`\in \mathbb{Z}` and columns by :var:`nc` :math:`\in \mathbb{Z}`. Default: :expr:`nr_ = 0`, :expr:`nc_ = 0`.  
+   Return the real, complex or integer matrix :var:`mat` after rolling its rows by :var:`nr` :math:`\in \mathbb{Z}` and then columns by :var:`nc` :math:`\in \mathbb{Z}`. Default: :expr:`nr_ = 0`, :expr:`nc_ = 0`.  
 
 .. function:: mat:movev (i, j, k, r_)
 
@@ -418,7 +429,7 @@ Mapping and Folding
 
 .. function:: mat:map ([ij_,] f, r_)
 
-   Return a matrix or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied to the elements of the real, complex or integer matrix :var:`mat` at the indexes given by the :type:`iterable` :var:`ij` using :expr:`f(mat[n], n)`, i.e. interpreting the matrix as a vector. If :expr:`r = 'in'` or :expr:`r = nil` and expr:`ij ~= nil` then it is assigned :var:`mat`, i.e. map in place. If :expr:`r = nil` still, then the type of the returned matrix is determined by the type of the value returned by :func:`f()` called once before mapping. Default: :expr:`ij_ = 1..#mat`.
+   Return a matrix or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied to the elements of the real, complex or integer matrix :var:`mat` at the indexes given by the :type:`iterable` :var:`ij` using :expr:`f(mat[n], n)`, i.e. interpreting the matrix as a vector. If :expr:`r = 'in'` or :expr:`r = nil` and :expr:`ij ~= nil` then it is assigned :var:`mat`, i.e. map in place. If :expr:`r = nil` still, then the type of the returned matrix is determined by the type of the value returned by :func:`f()` called once before mapping. Default: :expr:`ij_ = 1..#mat`.
 
 .. function:: mat:map2 (y, [ij_,] f, r_)
 
@@ -434,11 +445,11 @@ Mapping and Folding
 
    - If :expr:`d = 'vec'`, the folding left iteration runs on the entire matrix :var:`mat` interpreted as a vector and a scalar is returned.
 
-   - If :expr:`d = 'diag'`, the folding left iteration runs on the diagonal of the matrix :var:`mat` and a scalar is returned.
-
    - If :expr:`d = 'row'`, the folding left iteration runs on the rows of the matrix :var:`mat` and a column vector is returned.
 
    - If :expr:`d = 'col'`, the folding left iteration runs on the columns of the matrix :var:`mat` and a row vector is returned.
+
+   - If :expr:`d = 'diag'`, the folding left iteration runs on the diagonal of the matrix :var:`mat` and a scalar is returned.
 
    Note that ommitting both :var:`x0` and :var:`d` implies to not specify :var:`r` as well, otherwise the latter will be interpreted as :var:`x0`.
    If :expr:`r = nil` and :expr:`d = 'row'` or :expr:`d = 'col'`, then the type of the returned vector is determined by the type of the value returned by :func:`f()` called once before folding. Default: :expr:`x0 = mat[1]` (or first row or column element), :expr:`d = 'vec'`.
@@ -451,25 +462,25 @@ Mapping and Folding
 
    Return a vector, a matrix or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied iteratively to the elements of the real, complex or integer matrix :var:`mat` using the scanning left (forward with increasing indexes) expression :expr:`v = f(v, mat[n])` in the direction depending on the :type:`string` :var:`d`:
 
-   - If :expr:`d = 'vec'`, the sanning left iteration runs on the entire matrix :var:`mat` interpreted as a vector and a vector is returned.
+   - If :expr:`d = 'vec'`, the scanning left iteration runs on the entire matrix :var:`mat` interpreted as a vector and a vector is returned.
 
-   - If :expr:`d = 'diag'`, the sanning left iteration runs on the diagonal of the matrix :var:`mat` and a vector is returned.
+   - If :expr:`d = 'row'`, the scanning left iteration runs on the rows of the matrix :var:`mat` and a matrix is returned.
 
-   - If :expr:`d = 'row'`, the sanning left iteration runs on the rows of the matrix :var:`mat` and a matrix is returned.
+   - If :expr:`d = 'col'`, the scanning left iteration runs on the columns of the matrix :var:`mat` and a matrix is returned.
 
-   - If :expr:`d = 'col'`, the sanning left iteration runs on the columns of the matrix :var:`mat` and a matrix is returned.
+   - If :expr:`d = 'diag'`, the scanning left iteration runs on the diagonal of the matrix :var:`mat` and a vector is returned.
 
    Note that ommitting both :var:`x0` and :var:`d` implies to not specify :var:`r` as well, otherwise the latter will be interpreted as :var:`x0`.
    If :expr:`r = nil`, then the type of the returned matrix is determined by the type of the value returned by :func:`f()` called once before scanning. Default: :expr:`x0 = mat[1]` (or first row or column element), :expr:`d = 'vec'`.
 
 .. function:: mat:scanr (f, [x0_,] [d_,] r_)
 
-   Same as :func:`mat:scanl()` but the :type:`callable` (or the operator string) :var:`f` is applied iteratively using the folding right (backward with decreasing indexes) expression :expr:`v = f(mat[n], v)`. Default: :expr:`x0 = mat[#mat]` (or last row or column element), :expr:`d = 'vec'`.
+   Same as :func:`mat:scanl()` but the :type:`callable` (or the operator string) :var:`f` is applied iteratively using the scanning right (backward with decreasing indexes) expression :expr:`v = f(mat[n], v)`. Default: :expr:`x0 = mat[#mat]` (or last row or column element), :expr:`d = 'vec'`.
 
 Mapping Real-like Methods
 -------------------------
 
-The following table lists the methods built from the application of :func:`mat:map()` and variants to the real-like functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`. The methods :func:`mat:sign()`, :func:`mat:sign1()` and :func:`mat:atan2()` are not available for :type:`cmatrix`, and only the mehods :func:`mat:abs()`, :func:`mat:sqr()` and :func:`mat:sign()` are available for :type:`imatrix`.
+The following table lists the methods built from the application of :func:`mat:map()` and variants to the real-like functions from the module :mod:`MAD.gmath` for :type:`matrix` and :type:`cmatrix`. The methods :func:`mat:sign()`, :func:`mat:sign1()` and :func:`mat:atan2()` are not available for :type:`cmatrix`, and only the methods :func:`mat:abs()`, :func:`mat:sqr()` and :func:`mat:sign()` are available for :type:`imatrix`.
 
 ============================  ===============================
 Functions                     Equivalent Mapping
@@ -589,8 +600,8 @@ Functions                   Equivalent Folding
 
 Where :func:`any()` and :func:`all()` are functions that bind the predicate :var:`p` to the propagation of the logical AND and the logical OR respectively, that can be implemented like:
 
-   - :expr:`all = \p -> \r,x -> lbool(land(r, p(x)))`
-   - :expr:`any = \p -> \r,x -> lbool(lor (r, p(x)))`
+   - :expr:`all = \\p -> \\r,x -> lbool(land(r, p(x)))`
+   - :expr:`any = \\p -> \\r,x -> lbool(lor (r, p(x)))`
 
 Scanning Methods
 ----------------
@@ -711,9 +722,9 @@ Operator-like Methods
 
    Equivalent to :expr:`mat .. mat2` with the possibility to place the result in :var:`r` and to specify the direction of the concatenation:
 
-   - vector-oriented (appended) for :expr:`d = 'vec'`
-   - row-oriented (horizontal) for :expr:`d = 'row'`
-   - column-oriented (vectical) for :expr:`d = 'col'`
+   - If :expr:`d = 'vec'`, it concatenates the matrices (appended as vectors)
+   - If :expr:`d = 'row'`, it concatenates the rows (horizontal) 
+   - If :expr:`d = 'col'`, it concatenates the columns (vectical)
    
    Default: :var:`d_ = 'row'`.
 
@@ -728,7 +739,7 @@ Special Methods
 .. function:: mat:trace ()
               mat:tr()
 
-   Return the `Trace <https://en.wikipedia.org/wiki/Trace_(linear_algebra)>`_ of the real or complex :var:`mat` equivalent to :expr:`mat:sum'diag'`.
+   Return the `Trace <https://en.wikipedia.org/wiki/Trace_(linear_algebra)>`_ of the real or complex :var:`mat` equivalent to :expr:`mat:sum('diag')`.
 
 .. function:: mat:inner (mat2)
               mat:dot (mat2)
@@ -749,19 +760,26 @@ Special Methods
 
 .. function:: mat:norm ()
 
-   Return the `Frobenius norm <https://en.wikipedia.org/wiki/Matrix_norm#Frobenius_norm>`_ of the matrix :math:`\| M \|_2`. Other :math:`L_p` matrix norms and variants can be easily calculated using already provided methods, e.g. :math:`L_1` :expr:`= mat:sumabs'col':max()`, :math:`L_{\infty}` :expr:`= mat:sumabs'row':max()`, and :math:`L_2` :expr:`= mat:svd():max()`.
+   Return the `Frobenius norm <https://en.wikipedia.org/wiki/Matrix_norm#Frobenius_norm>`_ of the matrix :math:`\| M \|_2`. Other :math:`L_p` matrix norms and variants can be easily calculated using already provided methods, e.g. :math:`L_1` :expr:`= mat:sumabs('col'):max()`, :math:`L_{\infty}` :expr:`= mat:sumabs('row'):max()`, and :math:`L_2` :expr:`= mat:svd():max()`.
 
 .. function:: mat:dist (mat2)
 
    Equivalent to :expr:`(mat - mat2):norm()`.
 
-.. function:: mat:unit (r_)
+.. function:: mat:unit ()
 
-   Equivalent to :expr:`mat:div(mat:norm(), r_)`.
+   Scale the matrix :var:`mat` to the unit norm equivalent to :expr:`mat:div(mat:norm(), mat)`.
 
-.. function:: mat:center ([d_,] r_)
+.. function:: mat:center (d_)
 
-   Equivalent to :expr:`mat:sub(mat:mean(), r_)`. If :expr:`d = 'vec'`, :expr:`d = 'row'` or :expr:`d = 'col'` then centering will be vector-wise, row-wise or column-wise respectively. Default: :expr:`d_ = 'vec'`.
+   Center the matrix :var:`mat` to have zero mean equivalent to :expr:`mat:sub(mat:mean(),mat)`. The direction :var:`d` indicates how the centering must be performed:
+   
+   - If :expr:`d = 'vec'`, it centers the entire matrix by substracting its mean.
+   - If :expr:`d = 'row'`, it centers each row by substracting their mean.
+   - If :expr:`d = 'col'` , it centers each column by substracting their mean.
+   - If :expr:`d = 'diag'`, it centers the diagonal by substracting its mean.
+
+   Default: :expr:`d_ = 'vec'`.
 
 .. function:: mat:angle (mat2, n_)
 
@@ -812,31 +830,31 @@ Solvers and Decompositions
 
 .. function:: mat:solve (b, rcond_)
 
-   Return the real or complex :math:`[ n \times p ]` matrix :var:`x` as the minimum-norm solution of the linear least square problem :math:`\min \| A x - B \|` where :math:`A` is the real or complex :math:`[ m \times n ]` matrix :var:`mat` and :math:`B` is a :math:`[ m \times p ]` matrix of the same type as :math:`A`, using LU, QR or LQ factorisation depending on the shape of the system. The conditional number :var:`rcond` is used by the solver to determine the effective rank of non-square system. This method also returns the rank of the system. Default: :expr:`rcond_ = eps`.
+   Return the real or complex :math:`[ n \times p ]` matrix :math:`x` as the minimum-norm solution of the linear least square problem :math:`\min \| A x - B \|` where :math:`A` is the real or complex :math:`[ m \times n ]` matrix :var:`mat` and :math:`B` is a :math:`[ m \times p ]` matrix :var:`b` of the same type as :var:`mat`, using LU, QR or LQ factorisation depending on the shape of the system. The conditional number :var:`rcond` is used by the solver to determine the effective rank of non-square system. This method also returns the rank of the system. Default: :expr:`rcond_ = eps`.
 
 .. function:: mat:ssolve (b, rcond_)
 
-   Return the real or complex :math:`[ n \times p ]` matrix :var:`x` as the minimum-norm solution of the linear least square problem :math:`\min \| A x - B \|` where :math:`A` is the real or complex :math:`[ m \times n ]` matrix :var:`mat` and :math:`B` is a :math:`[ m \times p ]` matrix of the same type as :math:`A`, using SVD factorisation. The conditional number :var:`rcond` is used by the solver to determine the effective rank of the system. This method also returns the rank of the system followed by the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`rcond_ = eps`.
+   Return the real or complex :math:`[ n \times p ]` matrix :math:`x` as the minimum-norm solution of the linear least square problem :math:`\min \| A x - B \|` where :math:`A` is the real or complex :math:`[ m \times n ]` matrix :var:`mat` and :math:`B` is a :math:`[ m \times p ]` matrix :var:`b` of the same type as :var:`mat`, using SVD factorisation. The conditional number :var:`rcond` is used by the solver to determine the effective rank of the system. This method also returns the rank of the system followed by the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`rcond_ = eps`.
 
 .. function:: mat:gsolve (b, c, d)
 
-   Return the real or complex :math:`[ n \times 1 ]` vector :var:`x` as the minimum-norm solution of the linear least square problem :math:`\min \| A x - C \|` under the constraint :math:`B x = D` where :math:`A` is the real or complex :math:`[ m \times n ]` matrix :var:`mat`, :math:`B` is a :math:`[ p \times n ]` matrix, :math:`C` is a :math:`[ m \times 1 ]` vector and :math:`D` is a :math:`[ p \times 1 ]` vector, all of the same type as :math:`A`, using QR or LQ factorisation depending on the shape of the system. This method also returns the norm of the residues and the status :var:`info`.
+   Return the real or complex :math:`[ n \times 1 ]` vector :var:`x` as the minimum-norm solution of the linear least square problem :math:`\min \| A x - C \|` under the constraint :math:`B x = D` where :math:`A` is the real or complex :math:`[ m \times n ]` matrix :var:`mat`, :math:`B` is a :math:`[ p \times n ]` matrix :var:`b`, :math:`C` is a :math:`[ m \times 1 ]` vector :var:`c` and :math:`D` is a :math:`[ p \times 1 ]` vector :var:`d`, all of the same type as :var:`mat`, using QR or LQ factorisation depending on the shape of the system. This method also returns the norm of the residues and the status :var:`info`.
 
 .. function:: mat:gmsolve (b, d)
 
-   Return the real or complex :math:`[ n \times 1 ]` vector :var:`x` and :math:`[ p \times 1 ]` matrix :var:`y` as the minimum-norm solution of the linear Gauss-Markov problem :math:`\min_x \| y \|` under the constraint :math:`A x + B y = D` where :math:`A` is the :math:`[ m \times n ]` real or complex matrix :var:`mat`, :math:`B` is a :math:`[ m \times p ]` matrix, and :math:`D` is a :math:`[ m \times 1 ]` vector, both of the same type as :math:`A`, using QR or LQ factorisation depending on the shape of the system. This method also returns the status :var:`info`.
+   Return the real or complex :math:`[ n \times 1 ]` vector :var:`x` and :math:`[ p \times 1 ]` matrix :var:`y` as the minimum-norm solution of the linear Gauss-Markov problem :math:`\min_x \| y \|` under the constraint :math:`A x + B y = D` where :math:`A` is the :math:`[ m \times n ]` real or complex matrix :var:`mat`, :math:`B` is a :math:`[ m \times p ]` matrix :var:`b`, and :math:`D` is a :math:`[ m \times 1 ]` vector :var:`d`, both of the same type as :var:`mat`, using QR or LQ factorisation depending on the shape of the system. This method also returns the status :var:`info`.
 
 .. function:: mat:nsolve (b, nc_, tol_)
 
-   Return the real :math:`[ n \times 1 ]` vector :var:`x` (of correctors kicks) as the minimum-norm solution of the linear (best-kick) least square problem :math:`\min \| A x - B \|` where :math:`A` is the real :math:`[ m \times n ]` (response) matrix :var:`mat` and :math:`B` is a real :math:`[ m \times 1 ]` vector (of monitors readings), using the MICADO [#f3]_ algorithm based on the Householder-Golub method [MICADO]_. The argument :var:`nc` is the maximum number of correctors to use with :math:`0 < n_c \leq n` and the argument :var:`tol` is a convergence threshold (on the residues) to stop the (orbit) correction if :math:`\| A x - B \| \leq m \times` :var:`tol`. This method also returns the updated number of correctors :math:`n_c` effectively used during the correction followed by the real :math:`[ m \times 1 ]` vector of residues. Default: :expr:`nc_ = ncol`, :expr:`tol_ = eps`.
+   Return the real :math:`[ n \times 1 ]` vector :var:`x` (of correctors kicks) as the minimum-norm solution of the linear (best-kick) least square problem :math:`\min \| A x - B \|` where :math:`A` is the real :math:`[ m \times n ]` (response) matrix :var:`mat` and :math:`B` is a real :math:`[ m \times 1 ]` vector :var:`b` (of monitors readings), using the MICADO [#f3]_ algorithm based on the Householder-Golub method [MICADO]_. The argument :var:`nc` is the maximum number of correctors to use with :math:`0 < n_c \leq n` and the argument :var:`tol` is a convergence threshold (on the residues) to stop the (orbit) correction if :math:`\| A x - B \| \leq m \times` :var:`tol`. This method also returns the updated number of correctors :math:`n_c` effectively used during the correction followed by the real :math:`[ m \times 1 ]` vector of residues. Default: :expr:`nc_ = ncol`, :expr:`tol_ = eps`.
 
 .. function:: mat:pcacnd (ns_, rcond_)
 
-   Return the integer column vector :var:`ic` containing the indexes of the columns to remove from the real or complex :math:`[ m \times n ]` matrix :var:`mat` using the Principal Component Analysis. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. This method also returns the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`ns_ = ncol`, :expr:`rcond_ = eps`.
+   Return the integer column vector :var:`ic` containing the indexes of the columns to remove from the real or complex :math:`[ m \times n ]` matrix :var:`mat` using the Principal Component Analysis. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditioning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. This method also returns the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`ns_ = ncol`, :expr:`rcond_ = eps`.
 
 .. function:: mat:svdcnd (ns_, rcond_, tol_)
 
-   Return the integer column vector :var:`ic` containing the indexes of the columns to remove from the real or complex :math:`[ m \times n ]` matrix :var:`mat` based on the analysis of the right matrix :math:`V` from the SVD decomposition :math:`U S V`. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. The argument :var:`tol` is a threshold similar to :var:`rcond` used to reject components in :math:`V` that have similar or opposite effect than components already encountered. This method also returns the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`ns_ = min(nrow,ncol)`, :expr:`rcond_ = eps`.
+   Return the integer column vector :var:`ic` containing the indexes of the columns to remove from the real or complex :math:`[ m \times n ]` matrix :var:`mat` based on the analysis of the right matrix :math:`V` from the SVD decomposition :math:`U S V`. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditioning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. The argument :var:`tol` is a threshold similar to :var:`rcond` used to reject components in :math:`V` that have similar or opposite effect than components already encountered. This method also returns the real :math:`[ \min(m,n) \times 1 ]` vector of singluar values. Default: :expr:`ns_ = min(nrow,ncol)`, :expr:`rcond_ = eps`.
 
 .. function:: mat:svd ()
 
@@ -852,7 +870,7 @@ Solvers and Decompositions
 
 .. function:: mat:mfun (fun)
 
-   Return the real or complex matrix resulting from the matrix function :var:`fun` applyied to the real or complex matrix :var:`mat`. So far, :func:`mat:mfun()` uses the eigen decomposition of the matrix :var:`mat`, which must be `Diagonalizable <https://en.wikipedia.org/wiki/Diagonalizable_matrix>`_. See the section :ref:`matrix-functions` for the list of matrix functions already provided. Future versions of this method may be extended to use the more general Schur-Parlett algorithm [MATFUN]_, and other specialized versions for :func:`msqrt()`, :func:`mpow`, :func:`mexp`, and :func:`mlog` may be implemented too.
+   Return the real or complex matrix resulting from the matrix function :var:`fun` applied to the real or complex matrix :var:`mat`. So far, :func:`mat:mfun()` uses the eigen decomposition of the matrix :var:`mat`, which must be `Diagonalizable <https://en.wikipedia.org/wiki/Diagonalizable_matrix>`_. See the section :ref:`matrix-functions` for the list of matrix functions already provided. Future versions of this method may be extended to use the more general Schur-Parlett algorithm [MATFUN]_, and other specialized versions for :func:`msqrt()`, :func:`mpow`, :func:`mexp`, and :func:`mlog` may be implemented too.
 
 Fourier Transforms and Convolutions
 -----------------------------------
@@ -863,10 +881,10 @@ The methods described is this section are based on the `FFTW <https://fftw.org>`
 
    Return the complex :math:`[n_r \times n_c]` vector, matrix or :var:`r` resulting from the 1D or 2D `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the real or complex :math:`[n_r \times n_c]` vector or matrix :var:`mat` in the direction given by :var:`d`:
 
-   - vector-oriented for :expr:`d = 'vec'`, return a 1D FFT of length :math:`n_r n_c`.
-   - row-oriented for :expr:`d = 'row'`, return :math:`n_r` 1D FFTs of length :math:`n_c`.
-   - column-oriented for :expr:`d = 'col'`, return :math:`n_c` 1D FFTs of length :math:`n_r`.
-   - otherwise, return a 2D FFT of sizes :math:`[n_r \times n_c]`.
+   - If :expr:`d = 'vec'`, it returns a 1D vector FFT of length :math:`n_r n_c`.
+   - If :expr:`d = 'row'`, it returns :math:`n_r` 1D row FFTs of length :math:`n_c`.
+   - If :expr:`d = 'col'`, it returns :math:`n_c` 1D column FFTs of length :math:`n_r`.
+   - otherwise, it returns a 2D FFT of sizes :math:`[n_r \times n_c]`.
 
 .. function:: mat:ifft ([d_,] r_)
 
@@ -888,17 +906,28 @@ The methods described is this section are based on the `FFTW <https://fftw.org>`
 
    Return the complex vector, matrix or :var:`r` resulting from the 1D or 2D *Nonequispaced* inverse `Fourier Transform <https://en.wikipedia.org/wiki/Fourier_transform>`_ of the real or complex vector or matrix :var:`mat` respectively at :var:`p` frequency nodes.
 
-.. function:: mat:conv (y, [d_], r_)
+.. function:: mat:conv ([y_,] [d_], r_)
 
-   Return the real or complex vector, matrix or :var:`r` resulting from the 1D or 2D `Convolution <https://en.wikipedia.org/wiki/Convolution>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively. See :func:`mat:fft()` for the direction :var:`d`.
+   Return the real or complex vector, matrix or :var:`r` resulting from the 1D or 2D `Convolution <https://en.wikipedia.org/wiki/Convolution>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively. See :func:`mat:fft()` for the direction :var:`d`. Default: :expr:`y = mat`.
 
-.. function:: mat:corr (y, [d_], r_)
+.. function:: mat:corr ([y_,] [d_], r_)
 
-   Return the real or complex vector, matrix or :var:`r` resulting from the 1D or 2D `Correlation <https://en.wikipedia.org/wiki/Cross-correlation>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively. See :func:`mat:fft()` for the direction :var:`d`.
+   Return the real or complex vector, matrix or :var:`r` resulting from the 1D or 2D `Correlation <https://en.wikipedia.org/wiki/Cross-correlation>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively. See :func:`mat:fft()` for the direction :var:`d`. Default: :expr:`y = mat`.
 
-.. function:: mat:covar (y, [d_,] r_)
+.. function:: mat:covar ([y_,] [d_,] r_)
 
-   Return the real or complex vector, matrix or :var:`r` resulting from the 1D or 2D `Covariance <https://en.wikipedia.org/wiki/Covariance>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively. See :func:`mat:fft()` for the direction :var:`d`.
+   Return the real or complex vector, matrix or :var:`r` resulting from the 1D or 2D `Covariance <https://en.wikipedia.org/wiki/Covariance>`_ between the compatible real or complex vectors or matrices :var:`mat` and :var:`y` respectively. See :func:`mat:fft()` for the direction :var:`d`. Default: :expr:`y = mat`.
+
+.. function:: mat:zpad (nr, nc, d_)
+
+   Return the real or complex vector or matrix resulting from the zero padding of the matrix :var:`mat` extended to the sizes :var:`nr` and :var:`nc`, following the direction :var:`d`:
+
+   - If :expr:`d = 'vec'`, it pads the zeros at the end of the matrix equivalent :expr:`x:same(nr,nc) :setvec(1..#x,x)`, i.e. interpreting the matrix as a vector. 
+   - If :expr:`d = 'row'`, it pads the zeros at the end of the rows equivalent :expr:`x:same(x.nrow,nc) :setsub(1..x.nrow,1..x.ncol,x)`, i.e. ignoring :var:`nr`. 
+   - If :expr:`d = 'col'`, it pads the zeros at the end of the columns equivalent :expr:`x:same(nr,x.ncol) :setsub(1..x.nrow,1..x.ncol,x)`, i.e. ignoring :var:`nc`. 
+   - otherwise, it pads the zeros at the end of the rows and the columns equivalent to :expr:`x:same(nr,nc) :setsub(1..x.nrow,1..x.ncol,x)`. 
+
+   If the zero padding does not change the size of :var:`mat`, the orignal :var:`mat` is returned unchanged.
 
 Rotations
 ---------
@@ -948,7 +977,7 @@ This section describe methods dealing with 2D and 3D rotations (see `Rotation Ma
 
 .. function:: mat:torotv (v_, inv_)
 
-   Return a real :type:`number` representing the angle of the 3D rotation around the axis defined by a 3D vector as stored in the :math:`[3\times 3]` real :type:`matrix` :var:`mat` by the method :func:`mat:rotv()`. If the :type:`iterable`` :var:`v` is provided, it is filled with the components of the unit vector that defines the axis of the rotation.  If :var:`inv` is true, the inverse rotation is returned, i.e. extracted from the transposed matrix.
+   Return a real :type:`number` representing the angle of the 3D rotation around the axis defined by a 3D vector as stored in the :math:`[3\times 3]` real :type:`matrix` :var:`mat` by the method :func:`mat:rotv()`. If the :type:`iterable` :var:`v` is provided, it is filled with the components of the unit vector that defines the axis of the rotation.  If :var:`inv` is true, the inverse rotation is returned, i.e. extracted from the transposed matrix.
 
 .. function:: mat:rotq (q, inv_)
 
@@ -956,14 +985,14 @@ This section describe methods dealing with 2D and 3D rotations (see `Rotation Ma
 
 .. function:: mat:torotq (q_, inv_)
 
-   Return a quaternion representing the 3D rotation as stored in the :math:`[3\times 3]` real :type:`matrix` :var:`mat` by the method :func:`mat:rotq()`. If the :type:`iterable`` :var:`q` is provided, it is filled with the components of the quaternion otherwise the quaternion is returned in a :type:`list` of length 4.  If :var:`inv` is true, the inverse rotation is returned, i.e. extracted from the transposed matrix.
+   Return a quaternion representing the 3D rotation as stored in the :math:`[3\times 3]` real :type:`matrix` :var:`mat` by the method :func:`mat:rotq()`. If the :type:`iterable` :var:`q` is provided, it is filled with the components of the quaternion otherwise the quaternion is returned in a :type:`list` of length 4.  If :var:`inv` is true, the inverse rotation is returned, i.e. extracted from the transposed matrix.
 
 Conversions
 -----------
 
 .. function:: mat:tostring (sep_, lsep_)
 
-   Return the string containing the real, complex or integer matrix converted to string. The argument :var:`sep` and :var:`lsep` are used as separator for columns and rows respectively. The elements values are formated using :func:`tostring()` that follows the :expr:`option.numfmt` string format for real numbers. Default: :expr:`sep = " "`, :expr:`lsep = "\n"`.
+   Return the string containing the real, complex or integer matrix converted to string. The argument :var:`sep` and :var:`lsep` are used as separator for columns and rows respectively. The elements values are formated using :func:`tostring()` that follows the :expr:`option.numfmt` string format for real numbers. Default: :expr:`sep = " "`, :expr:`lsep = "\\n"`.
 
 .. function:: mat:totable ([d_,] r_)
 
@@ -1170,159 +1199,153 @@ This C Application Programming Interface describes only the C functions declared
 Vector
 ------
 
-.. c:function:: void mad_vec_fill  ( num_t x, num_t  r[], ssz_t n, ssz_t d)
-                void mad_cvec_fill (cnum_t x, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_fill ( idx_t x, idx_t  r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_fill  ( num_t x, num_t  r[], ssz_t n)
+                void mad_cvec_fill (cnum_t x, cnum_t r[], ssz_t n)
+                void mad_ivec_fill ( idx_t x, idx_t  r[], ssz_t n)
 
-   Return the vector :var:`r` of size :var:`n` filled with the value of :var:`x` every :var:`d` steps.
+   Return the vector :var:`r` of size :var:`n` filled with the value of :var:`x`.
 
-.. c:function:: void mad_vec_shift  ( num_t x[], ssz_t n, ssz_t d, int nshft)
-                void mad_cvec_shift (cnum_t x[], ssz_t n, ssz_t d, int nshft)
-                void mad_ivec_shift ( idx_t x[], ssz_t n, ssz_t d, int nshft)
-
-   Shift in place the values of the elements of the vector :var:`x` of size :var:`n` by :var:`nshft`.
-
-.. c:function:: void mad_vec_roll  ( num_t x[], ssz_t n, ssz_t d, int nroll)
-                void mad_cvec_roll (cnum_t x[], ssz_t n, ssz_t d, int nroll)
-                void mad_ivec_roll ( idx_t x[], ssz_t n, ssz_t d, int nroll)
+.. c:function:: void mad_vec_roll  ( num_t x[], ssz_t n, int nroll)
+                void mad_cvec_roll (cnum_t x[], ssz_t n, int nroll)
+                void mad_ivec_roll ( idx_t x[], ssz_t n, int nroll)
 
    Roll in place the values of the elements of the vector :var:`x` of size :var:`n` by :var:`nroll`.
 
-.. c:function:: void mad_vec_copy  (const  num_t x[],  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_copyv (const  num_t x[], cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_copy (const cnum_t x[], cnum_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_copy (const  idx_t x[],  idx_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_copy  (const  num_t x[],  num_t r[], ssz_t n)
+                void mad_vec_copyv (const  num_t x[], cnum_t r[], ssz_t n)
+                void mad_cvec_copy (const cnum_t x[], cnum_t r[], ssz_t n)
+                void mad_ivec_copy (const  idx_t x[],  idx_t r[], ssz_t n)
 
-   Fill the vector :var:`r` of size :var:`n` with the content of the vector :var:`x` every :var:`d` steps.
+   Fill the vector :var:`r` of size :var:`n` with the content of the vector :var:`x`.
 
-.. c:function:: void mad_vec_minmax  (const  num_t x[], log_t absf, idx_t r[2], ssz_t n, ssz_t d)
-                void mad_cvec_minmax (const cnum_t x[],             idx_t r[2], ssz_t n, ssz_t d)
-                void mad_ivec_minmax (const  idx_t x[], log_t absf, idx_t r[2], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_minmax  (const  num_t x[], log_t absf, idx_t r[2], ssz_t n)
+                void mad_cvec_minmax (const cnum_t x[],             idx_t r[2], ssz_t n)
+                void mad_ivec_minmax (const  idx_t x[], log_t absf, idx_t r[2], ssz_t n)
 
-   Return in :var:`r` the indexes of the minimum and maximum values of the elements of the vector :var:`x` of size :var:`n` every :var:`d` steps. If :expr:`absf = TRUE`, the function :func:`abs()` is applied to the elements before comparison.
+   Return in :var:`r` the indexes of the minimum and maximum values of the elements of the vector :var:`x` of size :var:`n`. If :expr:`absf = TRUE`, the function :func:`abs()` is applied to the elements before comparison.
 
-.. c:function:: num_t mad_vec_eval    (const  num_t x[], num_t x0,                            ssz_t n, ssz_t d)
-                void  mad_cvec_eval_r (const cnum_t x[], num_t x0_re, num_t x0_im, cnum_t *r, ssz_t n, ssz_t d)
+.. c:function:: num_t mad_vec_eval    (const  num_t x[], num_t x0,                            ssz_t n)
+                void  mad_cvec_eval_r (const cnum_t x[], num_t x0_re, num_t x0_im, cnum_t *r, ssz_t n)
 
-   Return in :var:`r` or directly the evaluation of the vector :var:`x` of size :var:`n` every :var:`d` steps at the point :var:`x0` using Honer's scheme.
+   Return in :var:`r` or directly the evaluation of the vector :var:`x` of size :var:`n` at the point :var:`x0` using Honer's scheme.
 
-.. c:function:: num_t mad_vec_sum     (const  num_t x[],            ssz_t n, ssz_t d)
-                void  mad_cvec_sum_r  (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
-                num_t mad_vec_ksum    (const  num_t x[],            ssz_t n, ssz_t d)
-                void  mad_cvec_ksum_r (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
+.. c:function:: num_t mad_vec_sum     (const  num_t x[],            ssz_t n)
+                void  mad_cvec_sum_r  (const cnum_t x[], cnum_t *r, ssz_t n)
+                num_t mad_vec_ksum    (const  num_t x[],            ssz_t n)
+                void  mad_cvec_ksum_r (const cnum_t x[], cnum_t *r, ssz_t n)
 
-   Return in :var:`r` or directly the sum of the values of the elements of the vector :var:`x` of size :var:`n` every :var:`d` steps. The *k* versions use the Neumaier variants of the Kahan sum.
+   Return in :var:`r` or directly the sum of the values of the elements of the vector :var:`x` of size :var:`n`. The *k* versions use the Neumaier variants of the Kahan sum.
 
-.. c:function:: num_t mad_vec_mean    (const  num_t x[],            ssz_t n, ssz_t d)
-                void  mad_cvec_mean_r (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
+.. c:function:: num_t mad_vec_mean    (const  num_t x[],            ssz_t n)
+                void  mad_cvec_mean_r (const cnum_t x[], cnum_t *r, ssz_t n)
 
-   Return in :var:`r` or directly the mean of the vector :var:`x` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` or directly the mean of the vector :var:`x` of size :var:`n`.
 
-.. c:function:: num_t mad_vec_var    (const  num_t x[],            ssz_t n, ssz_t d)
-                void  mad_cvec_var_r (const cnum_t x[], cnum_t *r, ssz_t n, ssz_t d)
+.. c:function:: num_t mad_vec_var    (const  num_t x[],            ssz_t n)
+                void  mad_cvec_var_r (const cnum_t x[], cnum_t *r, ssz_t n)
 
-   Return in :var:`r` or directly the unbiased variance with 2nd order correction of the vector :var:`x` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` or directly the unbiased variance with 2nd order correction of the vector :var:`x` of size :var:`n`.
 
-.. c:function:: void mad_vec_center  (const  num_t x[],  num_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_center (const cnum_t x[], cnum_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_center  (const  num_t x[],  num_t r[], ssz_t n)
+                void mad_cvec_center (const cnum_t x[], cnum_t r[], ssz_t n)
 
-   Return in :var:`r` the centered, vector :var:`x` of size :var:`n` every :var:`d` steps equivalent to :expr:`x[i] - mean(x)`.
+   Return in :var:`r` the centered, vector :var:`x` of size :var:`n` equivalent to :expr:`x[i] - mean(x)`.
 
-.. c:function:: num_t mad_vec_norm  (const  num_t x[], ssz_t n, ssz_t d) 
-                num_t mad_cvec_norm (const cnum_t x[], ssz_t n, ssz_t d)
+.. c:function:: num_t mad_vec_norm  (const  num_t x[], ssz_t n) 
+                num_t mad_cvec_norm (const cnum_t x[], ssz_t n)
 
-   Return the norm of the vector :var:`x` of size :var:`n` every :var:`d` steps.
+   Return the norm of the vector :var:`x` of size :var:`n`.
 
-.. c:function:: num_t mad_vec_dist   (const  num_t x[], const  num_t y[], ssz_t n, ssz_t d)
-                num_t mad_vec_distv  (const  num_t x[], const cnum_t y[], ssz_t n, ssz_t d)
-                num_t mad_cvec_dist  (const cnum_t x[], const cnum_t y[], ssz_t n, ssz_t d)
-                num_t mad_cvec_distv (const cnum_t x[], const  num_t y[], ssz_t n, ssz_t d)
+.. c:function:: num_t mad_vec_dist   (const  num_t x[], const  num_t y[], ssz_t n)
+                num_t mad_vec_distv  (const  num_t x[], const cnum_t y[], ssz_t n)
+                num_t mad_cvec_dist  (const cnum_t x[], const cnum_t y[], ssz_t n)
+                num_t mad_cvec_distv (const cnum_t x[], const  num_t y[], ssz_t n)
 
-   Return the distance between the vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps equivalent to :expr:`norm(x - y)`.
+   Return the distance between the vectors :var:`x` and :var:`y` of size :var:`n` equivalent to :expr:`norm(x - y)`.
 
-.. c:function:: num_t mad_vec_dot      (const  num_t x[], const  num_t y[]           , ssz_t n, ssz_t d)
-                void  mad_cvec_dot_r   (const cnum_t x[], const cnum_t y[], cnum_t *r, ssz_t n, ssz_t d)
-                void  mad_cvec_dotv_r  (const cnum_t x[], const  num_t y[], cnum_t *r, ssz_t n, ssz_t d)
-                num_t mad_vec_kdot     (const  num_t x[], const  num_t y[]           , ssz_t n, ssz_t d)
-                void  mad_cvec_kdot_r  (const cnum_t x[], const cnum_t y[], cnum_t *r, ssz_t n, ssz_t d)
-                void  mad_cvec_kdotv_r (const cnum_t x[], const  num_t y[], cnum_t *r, ssz_t n, ssz_t d)
+.. c:function:: num_t mad_vec_dot      (const  num_t x[], const  num_t y[]           , ssz_t n)
+                void  mad_cvec_dot_r   (const cnum_t x[], const cnum_t y[], cnum_t *r, ssz_t n)
+                void  mad_cvec_dotv_r  (const cnum_t x[], const  num_t y[], cnum_t *r, ssz_t n)
+                num_t mad_vec_kdot     (const  num_t x[], const  num_t y[]           , ssz_t n)
+                void  mad_cvec_kdot_r  (const cnum_t x[], const cnum_t y[], cnum_t *r, ssz_t n)
+                void  mad_cvec_kdotv_r (const cnum_t x[], const  num_t y[], cnum_t *r, ssz_t n)
 
-   Return in :var:`r` or directly the dot product between the vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps. The *k* versions use the Neumaier variants of the Kahan sum.
+   Return in :var:`r` or directly the dot product between the vectors :var:`x` and :var:`y` of size :var:`n`. The *k* versions use the Neumaier variants of the Kahan sum.
 
-.. c:function:: void mad_vec_cplx (const num_t re_[], const num_t im_[], cnum_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_cplx (const num_t re_[], const num_t im_[], cnum_t r[], ssz_t n)
 
-   Convert the real and imaginary vectors :var:`re` and :var:`im` of size :var:`n` into the complex vector :var:`r` every :var:`d` steps.
+   Convert the real and imaginary vectors :var:`re` and :var:`im` of size :var:`n` into the complex vector :var:`r`.
 
-.. c:function:: void mad_cvec_reim (const cnum_t x[], num_t re_[], num_t ri_[], ssz_t n, ssz_t d)
+.. c:function:: void mad_cvec_reim (const cnum_t x[], num_t re_[], num_t ri_[], ssz_t n)
 
-   Split the complex vector :var:`x` of size :var:`n` into the real vector :var:`re` and the imaginary vector :var:`ri` every :var:`d` steps.
+   Split the complex vector :var:`x` of size :var:`n` into the real vector :var:`re` and the imaginary vector :var:`ri`.
 
-.. c:function:: void mad_cvec_conj (const cnum_t x[], cnum_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_cvec_conj (const cnum_t x[], cnum_t r[], ssz_t n)
 
-   Return in :var:`r` the conjugate of the complex vector :var:`x` of size :var:`n` every :var:`d` steps. 
+   Return in :var:`r` the conjugate of the complex vector :var:`x` of size :var:`n`. 
 
-.. c:function:: void mad_vec_abs  (const  num_t x[], num_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_abs (const cnum_t x[], num_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_abs  (const  num_t x[], num_t r[], ssz_t n)
+                void mad_cvec_abs (const cnum_t x[], num_t r[], ssz_t n)
 
-   Return in :var:`r` the absolute value of the vector :var:`x` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` the absolute value of the vector :var:`x` of size :var:`n`.
 
-.. c:function:: void mad_vec_add     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_addn    (const  num_t x[],        num_t y        ,  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_addc_r  (const  num_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_add    (const cnum_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_addv   (const cnum_t x[], const  num_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_addn   (const cnum_t x[],        num_t y        , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_addc_r (const cnum_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_add    (const  idx_t x[], const  idx_t y[]      ,  idx_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_addn   (const  idx_t x[],        idx_t y        ,  idx_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_add     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n)
+                void mad_vec_addn    (const  num_t x[],        num_t y        ,  num_t r[], ssz_t n)
+                void mad_vec_addc_r  (const  num_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n)
+                void mad_cvec_add    (const cnum_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n)
+                void mad_cvec_addv   (const cnum_t x[], const  num_t y[]      , cnum_t r[], ssz_t n)
+                void mad_cvec_addn   (const cnum_t x[],        num_t y        , cnum_t r[], ssz_t n)
+                void mad_cvec_addc_r (const cnum_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n)
+                void mad_ivec_add    (const  idx_t x[], const  idx_t y[]      ,  idx_t r[], ssz_t n)
+                void mad_ivec_addn   (const  idx_t x[],        idx_t y        ,  idx_t r[], ssz_t n)
 
-   Return in :var:`r` the sum of the scalar or vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` the sum of the scalar or vectors :var:`x` and :var:`y` of size :var:`n`.
 
-.. c:function:: void mad_vec_sub     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_subv    (const  num_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_vec_subn    (const  num_t y[],        num_t x        ,  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_subc_r  (const  num_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_sub    (const cnum_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_subv   (const cnum_t x[], const  num_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_subn   (const cnum_t y[],        num_t x        , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_subc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_sub    (const  idx_t x[], const  idx_t y[]      ,  idx_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_subn   (const  idx_t y[],        idx_t x        ,  idx_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_sub     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n)
+                void mad_vec_subv    (const  num_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n)
+                void mad_vec_subn    (const  num_t y[],        num_t x        ,  num_t r[], ssz_t n)
+                void mad_vec_subc_r  (const  num_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
+                void mad_cvec_sub    (const cnum_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n)
+                void mad_cvec_subv   (const cnum_t x[], const  num_t y[]      , cnum_t r[], ssz_t n)
+                void mad_cvec_subn   (const cnum_t y[],        num_t x        , cnum_t r[], ssz_t n)
+                void mad_cvec_subc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
+                void mad_ivec_sub    (const  idx_t x[], const  idx_t y[]      ,  idx_t r[], ssz_t n)
+                void mad_ivec_subn   (const  idx_t y[],        idx_t x        ,  idx_t r[], ssz_t n)
 
-   Return in :var:`r` the difference between the scalar or vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` the difference between the scalar or vectors :var:`x` and :var:`y` of size :var:`n`.
 
-.. c:function:: void mad_vec_mul     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_muln    (const  num_t x[],        num_t y        ,  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_mulc_r  (const  num_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_mul    (const cnum_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_mulv   (const cnum_t x[], const  num_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_muln   (const cnum_t x[],        num_t y        , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_mulc_r (const cnum_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_mul    (const  idx_t x[], const  idx_t y[]      ,  idx_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_muln   (const  idx_t x[],        idx_t y        ,  idx_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_mul     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n)
+                void mad_vec_muln    (const  num_t x[],        num_t y        ,  num_t r[], ssz_t n)
+                void mad_vec_mulc_r  (const  num_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n)
+                void mad_cvec_mul    (const cnum_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n)
+                void mad_cvec_mulv   (const cnum_t x[], const  num_t y[]      , cnum_t r[], ssz_t n)
+                void mad_cvec_muln   (const cnum_t x[],        num_t y        , cnum_t r[], ssz_t n)
+                void mad_cvec_mulc_r (const cnum_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n)
+                void mad_ivec_mul    (const  idx_t x[], const  idx_t y[]      ,  idx_t r[], ssz_t n)
+                void mad_ivec_muln   (const  idx_t x[],        idx_t y        ,  idx_t r[], ssz_t n)
 
-   Return in :var:`r` the product of the scalar or vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` the product of the scalar or vectors :var:`x` and :var:`y` of size :var:`n`.
 
-.. c:function:: void mad_vec_div     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_divv    (const  num_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_vec_divn    (const  num_t y[],        num_t x        ,  num_t r[], ssz_t n, ssz_t d)
-                void mad_vec_divc_r  (const  num_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_div    (const cnum_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_divv   (const cnum_t x[], const  num_t y[]      , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_divn   (const cnum_t y[],        num_t x        , cnum_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_divc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n, ssz_t d)
-                void mad_ivec_divn   (const  idx_t x[],        idx_t y        ,  idx_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_div     (const  num_t x[], const  num_t y[]      ,  num_t r[], ssz_t n)
+                void mad_vec_divv    (const  num_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n)
+                void mad_vec_divn    (const  num_t y[],        num_t x        ,  num_t r[], ssz_t n)
+                void mad_vec_divc_r  (const  num_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
+                void mad_cvec_div    (const cnum_t x[], const cnum_t y[]      , cnum_t r[], ssz_t n)
+                void mad_cvec_divv   (const cnum_t x[], const  num_t y[]      , cnum_t r[], ssz_t n)
+                void mad_cvec_divn   (const cnum_t y[],        num_t x        , cnum_t r[], ssz_t n)
+                void mad_cvec_divc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
+                void mad_ivec_divn   (const  idx_t x[],        idx_t y        ,  idx_t r[], ssz_t n)
 
-   Return in :var:`r` the division of the scalar or vectors :var:`x` and :var:`y` of size :var:`n` every :var:`d` steps.
+   Return in :var:`r` the division of the scalar or vectors :var:`x` and :var:`y` of size :var:`n`.
 
-.. c:function:: void mad_ivec_modn (const idx_t x[], idx_t y, idx_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_ivec_modn (const idx_t x[], idx_t y, idx_t r[], ssz_t n)
 
-   Return in :var:`r` the modulo of the integer vector :var:`x` of size :var:`n` by the integer :var:`y` every :var:`d` steps.
+   Return in :var:`r` the modulo of the integer vector :var:`x` of size :var:`n` by the integer :var:`y`.
 
-.. c:function:: void mad_vec_kadd  (int k, const num_t  a[], const num_t  *x[],  num_t r[], ssz_t n, ssz_t d)
-                void mad_cvec_kadd (int k, const cnum_t a[], const cnum_t *x[], cnum_t r[], ssz_t n, ssz_t d)
+.. c:function:: void mad_vec_kadd  (int k, const num_t  a[], const num_t  *x[],  num_t r[], ssz_t n)
+                void mad_cvec_kadd (int k, const cnum_t a[], const cnum_t *x[], cnum_t r[], ssz_t n)
 
-   Return in :var:`r` the linear combination of the :var:`k` vectors in :var:`x` of size :var:`n` scaled by the :var:`k` scalars in :var:`a` every :var:`d` steps.
+   Return in :var:`r` the linear combination of the :var:`k` vectors in :var:`x` of size :var:`n` scaled by the :var:`k` scalars in :var:`a`.
 
 .. c:function:: void mad_vec_fft   (const  num_t x[], cnum_t r[], ssz_t n)        
                 void mad_cvec_fft  (const cnum_t x[], cnum_t r[], ssz_t n)        
@@ -1350,17 +1373,28 @@ Vector
 Matrix
 ------
 
-.. c:function:: void mad_mat_eye    (num_t v,                 num_t  r[], ssz_t m, ssz_t n, ssz_t ldr)
-                void mad_cmat_eye_r (num_t v_re, num_t v_im, cnum_t  r[], ssz_t m, ssz_t n, ssz_t ldr)
-                void mad_imat_eye   (idx_t v,                  idx_t r[], ssz_t m, ssz_t n, ssz_t ldr)
+.. c:function:: void mad_mat_rev  ( num_t x[], ssz_t m, ssz_t n, int d)
+                void mad_cmat_rev (cnum_t x[], ssz_t m, ssz_t n, int d)
+                void mad_imat_rev ( idx_t x[], ssz_t m, ssz_t n, int d)
 
-   Fill in place the matrix :var:`x` of sizes :expr:`[m, n]` with zeros and :var:`v` on the diagonal.
+   Reverse in place the matrix :var:`x` following the direction :expr:`d in {0,1,2,3}` for respectively the entire matrix, each row, each column and the diagonal.  
+
+.. c:function:: void mad_mat_center  ( num_t x[], ssz_t m, ssz_t n, int d)
+                void mad_cmat_center (cnum_t x[], ssz_t m, ssz_t n, int d)
+
+   Center in place the matrix :var:`x` following the direction :expr:`d in {0,1,2,3}` for respectively the entire matrix, each row, each column and the diagonal.  
 
 .. c:function:: void mad_mat_roll  ( num_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
                 void mad_cmat_roll (cnum_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
                 void mad_imat_roll ( idx_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
 
    Roll in place the values of the elements of the matrix :var:`x` of sizes :expr:`[m, n]` by :var:`mroll` and :var:`nroll`.
+
+.. c:function:: void mad_mat_eye    ( num_t  x[], num_t v,                ssz_t m, ssz_t n, ssz_t ldr)
+                void mad_cmat_eye_r (cnum_t  x[], num_t v_re, num_t v_im, ssz_t m, ssz_t n, ssz_t ldr)
+                void mad_imat_eye   (  idx_t x[], idx_t v,                ssz_t m, ssz_t n, ssz_t ldr)
+
+   Fill in place the matrix :var:`x` of sizes :expr:`[m, n]` with zeros and :var:`v` on the diagonal.
 
 .. c:function:: void mad_mat_copy   (const  num_t x[],  num_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
                 void mad_mat_copym  (const  num_t x[], cnum_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
@@ -1453,12 +1487,12 @@ Matrix
 .. c:function:: int mad_mat_pcacnd  (const  num_t a[], idx_t ic[], ssz_t m, ssz_t n, ssz_t ns, num_t cut, num_t s_[])
                 int mad_cmat_pcacnd (const cnum_t a[], idx_t ic[], ssz_t m, ssz_t n, ssz_t ns, num_t cut, num_t s_[])
 
-   Fill the column vector :var:`ic` of size :var:`n` with the indexes of the columns to remove from the matrix :var:`a` of sizes :expr:`[m, n]` using the Principal Component Analysis. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. This function also returns the column vector of size :expr:`min(m,n)` filled with the singluar values. Default: :expr:`ns_ = ncol`, :expr:`rcond_ = eps`.
+   Fill the column vector :var:`ic` of size :var:`n` with the indexes of the columns to remove from the matrix :var:`a` of sizes :expr:`[m, n]` using the Principal Component Analysis. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditioning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. This function also returns the column vector of size :expr:`min(m,n)` filled with the singluar values. Default: :expr:`ns_ = ncol`, :expr:`rcond_ = eps`.
 
 .. c:function:: int mad_mat_svdcnd  (const  num_t a[], idx_t ic[], ssz_t m, ssz_t n, ssz_t ns, num_t cut, num_t s_[], num_t tol)
                 int mad_cmat_svdcnd (const cnum_t a[], idx_t ic[], ssz_t m, ssz_t n, ssz_t ns, num_t cut, num_t s_[], num_t tol)
 
-   Fill the column vector :var:`ic` of size :var:`n` with the indexes of the columns to remove from the matrix :var:`a` of sizes :expr:`[m, n]` based on the analysis of the right matrix :math:`V` from the SVD decomposition :math:`U S V`. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditionning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. The argument :var:`tol` is a threshold similar to :var:`rcond` used to reject components in :math:`V` that have similar or opposite effect than components already encountered. This function also returns the real column vector of size :expr:`min(m,n)` filled with the singluar values. Default: :expr:`ns_ = min(m,n)`, :expr:`rcond_ = eps`.
+   Fill the column vector :var:`ic` of size :var:`n` with the indexes of the columns to remove from the matrix :var:`a` of sizes :expr:`[m, n]` based on the analysis of the right matrix :math:`V` from the SVD decomposition :math:`U S V`. The argument :var:`ns` is the maximum number of singular values to consider and :var:`rcond` is the conditioning number used to select the singular values versus the largest one, i.e. consider the :var:`ns` larger singular values :math:`\sigma_i` such that :math:`\sigma_i > \sigma_{\max}\times`:var:`rcond`. The argument :var:`tol` is a threshold similar to :var:`rcond` used to reject components in :math:`V` that have similar or opposite effect than components already encountered. This function also returns the real column vector of size :expr:`min(m,n)` filled with the singluar values. Default: :expr:`ns_ = min(m,n)`, :expr:`rcond_ = eps`.
 
 .. c:function:: int mad_mat_svd  (const  num_t x[],  num_t u[], num_t s[],   num_t v[], ssz_t m, ssz_t n)
                 int mad_cmat_svd (const cnum_t x[], cnum_t u[], num_t s[],  cnum_t v[], ssz_t m, ssz_t n)
@@ -1498,15 +1532,10 @@ Matrix
 
    Fill the matrix :var:`r` of sizes :expr:`[m, n]` with the 2D non-equispaced FFT inverse of the matrix :var:`x` of sizes :expr:`[m, nx]` and the matrix :var:`r_node` of sizes :expr:`[m, n]`. Note that :var:`r_node` here is the same matrix as :var:`x_node` in the 2D non-equispaced forward FFT.
 
-.. c:function:: void mad_mat_center  (const  num_t x[],  num_t r[], ssz_t m, ssz_t n, int d)
-                void mad_cmat_center (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n, int d)
-
-   Return in :var:`r` the centered matrix :var:`x` along the rows for :expr:`d = 1` and the columns for :expr:`d = 2`.  
-
 .. c:function:: void mad_mat_sympconj (const  num_t x[],  num_t r[], ssz_t n)
                 void mad_cmat_sympconj(const cnum_t x[], cnum_t r[], ssz_t n)
 
-   Return in :var:`r` the symplectic 'conjugate' of the vector :var:`x` of size :var:`n` every :var:`d` steps. 
+   Return in :var:`r` the symplectic 'conjugate' of the vector :var:`x` of size :var:`n`. 
 
 .. c:function:: num_t mad_mat_symperr  (const  num_t x[],  num_t r_[], ssz_t n, num_t *tol_)
                 num_t mad_cmat_symperr (const cnum_t x[], cnum_t r_[], ssz_t n, num_t *tol_)

@@ -5,6 +5,7 @@ MODULES
 .. toctree::
    :maxdepth: 2
 
+   /types.rst
    /constants.rst
    /functions.rst
    /functor.rst

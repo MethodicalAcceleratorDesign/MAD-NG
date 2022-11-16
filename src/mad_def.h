@@ -67,9 +67,14 @@ typedef double _Complex cnum_t;
 #define MAX_3(a,b,c,d)   ((b)>(a) ? MAX_2(b,c,d) : MAX_2(a,c,d))
 
 #define FOR(i,...)       MKNAME(FOR_,NARG(__VA_ARGS__))(i,__VA_ARGS__)
-#define FOR_1(i,n)       for (idx_t i= 0; i<(n); i++)
-#define FOR_2(i,i0,n)    for (idx_t i=i0; i<(n); i++)
-#define FOR_3(i,i0,n,s)  for (idx_t i=i0; i<(n); i+=s)
+#define FOR_1(i,n)       for (idx_t i=  0 ; i<(n); i++)
+#define FOR_2(i,i0,n)    for (idx_t i=(i0); i<(n); i++)
+#define FOR_3(i,i0,n,s)  for (idx_t i=(i0); i<(n); i+=(s))
+
+#define RFOR(i,...)      MKNAME(RFOR_,NARG(__VA_ARGS__))(i,__VA_ARGS__)
+#define RFOR_1(i,n)      for (idx_t i=  0 ; i>(n); i--)
+#define RFOR_2(i,i0,n)   for (idx_t i=(i0); i>(n); i--)
+#define RFOR_3(i,i0,n,s) for (idx_t i=(i0); i>(n); i-=(s))
 
 #define MKSTR(...)       MKSTR_OP_(__VA_ARGS__)
 #define MKSTR_OP_(...)   #__VA_ARGS__

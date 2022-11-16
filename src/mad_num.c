@@ -265,9 +265,11 @@ void mad_cnum_polar_r (num_t x_re, num_t x_im, cnum_t *r)
 void mad_cnum_div_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
 { CHKR; *r = mad_cnum_div(CNUM(x), CNUM(y)); }
 
+// This function uses floor() for compliance with the real modulo of Lua 5.
+// See https://en.wikipedia.org/wiki/Modulo_operation for other languages.
 void mad_cnum_mod_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
 { CHKR; cnum_t cr = mad_cnum_div(CNUM(x), CNUM(y));
-  *r = CNUM(x) - CNUM(y) * CNUM2(trunc(creal(cr)), trunc(cimag(cr))); }
+  *r = CNUM(x) - CNUM(y) * CNUM2(floor(creal(cr)), floor(cimag(cr))); }
 
 void mad_cnum_pow_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
 { CHKR; *r = cpow( CNUM(x), CNUM(y) ); }
