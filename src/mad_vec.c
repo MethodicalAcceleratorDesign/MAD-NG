@@ -388,7 +388,7 @@ cnum_t mad_cvec_var (const cnum_t x[], ssz_t n)
 { if (n == 1) return 0;
   cnum_t m = mad_cvec_mean(x,n);
   cnum_t s=0, s2=0; FOR(i,n) s += x[i]-m, s2 += SQR(x[i]-m);
-  return s2 - SQR(s)/n; // corrected estimator
+  return (s2 - SQR(s)/n)/(n-1); // Bessel's correction on centered values.
 }
 
 void mad_cvec_var_r (const cnum_t x[], cnum_t *r, ssz_t n)
