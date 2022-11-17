@@ -441,7 +441,7 @@ Mapping and Folding
 
 .. function:: mat:foldl (f, [x0_,] [d_,] r_)
 
-   Return a scalar, a vector or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied iteratively to the elements of the real, complex or integer matrix :var:`mat` using the folding left (forward with increasing indexes) expression :expr:`v = f(v, mat[n])` in the direction depending on the :type:`string` :var:`d`:
+   Return a scalar, a vector or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied iteratively to the elements of the real, complex or integer matrix :var:`mat` using the folding left (forward with increasing indexes) expression :expr:`v = f(v, mat[n])` starting at :var:`x0` and running in the direction depending on the :type:`string` :var:`d`:
 
    - If :expr:`d = 'vec'`, the folding left iteration runs on the entire matrix :var:`mat` interpreted as a vector and a scalar is returned.
 
@@ -460,7 +460,7 @@ Mapping and Folding
 
 .. function:: mat:scanl (f, [x0_,] [d_,] r_)
 
-   Return a vector, a matrix or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied iteratively to the elements of the real, complex or integer matrix :var:`mat` using the scanning left (forward with increasing indexes) expression :expr:`v = f(v, mat[n])` in the direction depending on the :type:`string` :var:`d`:
+   Return a vector, a matrix or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied iteratively to the elements of the real, complex or integer matrix :var:`mat` using the scanning left (forward with increasing indexes) expression :expr:`v = f(v, mat[n])` starting at :var:`x0` and running in the direction depending on the :type:`string` :var:`d`:
 
    - If :expr:`d = 'vec'`, the scanning left iteration runs on the entire matrix :var:`mat` interpreted as a vector and a vector is returned.
 
@@ -799,7 +799,7 @@ Special Methods
 
 .. function:: mat:variance ()
 
-   Equivalent to :expr:`(mat - mat:mean()):sumsqr()/(#mat-1)`, i.e. return the unbiased estimator of the variance with second order correction, interpreting the matrix as a vector.
+   Equivalent to :expr:`(mat - mat:mean()):sumsqr()/(#mat-1)`, i.e. return the unbiased estimator of the variance with second order `Bessel's correction <https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance>`_, interpreting the matrix as a vector.
 
 .. function:: mat:ksum ()
               mat:kdot (mat2)
