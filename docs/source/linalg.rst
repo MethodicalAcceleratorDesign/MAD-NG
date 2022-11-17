@@ -768,11 +768,11 @@ Special Methods
 
 .. function:: mat:unit ()
 
-   Scale the matrix :var:`mat` to the unit norm equivalent to :expr:`mat:div(mat:norm(), mat)`.
+   Return the scaled matrix :var:`mat` to the unit norm equivalent to :expr:`mat:div(mat:norm(), mat)`.
 
 .. function:: mat:center (d_)
 
-   Center the matrix :var:`mat` to have zero mean equivalent to :expr:`mat:sub(mat:mean(),mat)`. The direction :var:`d` indicates how the centering must be performed:
+   Return the centered matrix :var:`mat` to have zero mean equivalent to :expr:`mat:sub(mat:mean(),mat)`. The direction :var:`d` indicates how the centering must be performed:
    
    - If :expr:`d = 'vec'`, it centers the entire matrix by substracting its mean.
    - If :expr:`d = 'row'`, it centers each row by substracting their mean.
