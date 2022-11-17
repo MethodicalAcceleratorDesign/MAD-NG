@@ -654,6 +654,46 @@ void mad_cmat_multm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz
   mad_free_tmp(r_);
 }
 
+void mad_cmat_dmul (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+{ CHKXYR;
+  if (x != r && y != r) { DMUL(); return; }
+  mad_alloc_tmp(cnum_t, r_, m*n);
+  cnum_t *t = r; r = r_;
+  DMUL();
+  mad_cvec_copy(r_, t, m*n);
+  mad_free_tmp(r_);
+}
+
+void mad_cmat_dmulm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+{ CHKXYR;
+  if (x != r) { DMUL(); return; }
+  mad_alloc_tmp(cnum_t, r_, m*n);
+  cnum_t *t = r; r = r_;
+  DMUL();
+  mad_cvec_copy(r_, t, m*n);
+  mad_free_tmp(r_);
+}
+
+void mad_cmat_muld (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+{ CHKXYR;
+  if (x != r && y != r) { MULD(); return; }
+  mad_alloc_tmp(cnum_t, r_, m*n);
+  cnum_t *t = r; r = r_;
+  MULD();
+  mad_cvec_copy(r_, t, m*n);
+  mad_free_tmp(r_);
+}
+
+void mad_cmat_muldm (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t m, ssz_t n, ssz_t p)
+{ CHKXYR;
+  if (x != r) { MULD(); return; }
+  mad_alloc_tmp(cnum_t, r_, m*n);
+  cnum_t *t = r; r = r_;
+  MULD();
+  mad_cvec_copy(r_, t, m*n);
+  mad_free_tmp(r_);
+}
+
 void mad_cmat_center (cnum_t x[], ssz_t m, ssz_t n, int d)
 { CHKX; cnum_t mu;
   switch(d) { // 0=vec, 1=row, 2=col, 3=diag
