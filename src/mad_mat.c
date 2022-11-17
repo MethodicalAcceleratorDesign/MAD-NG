@@ -340,7 +340,7 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 // naive implementation (more efficient on recent superscalar arch!)
 #define DMUL() /* diag(mat) * mat */ \
   if (p == 1) { \
-    FOR(i,MIN(m,n)) FOR(j,n) r[i*n+j] = x[i] * y[i*n+j]; \
+    FOR(i,m) FOR(j,n) r[i*n+j] = x[i] * y[i*n+j]; \
   } else { \
     FOR(i,m*n) r[i] = 0; \
     FOR(i,MIN(m,p)) FOR(j,n) r[i*n+j] = x[i*p+i] * y[i*n+j]; \
@@ -350,7 +350,7 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 // naive implementation (more efficient on recent superscalar arch!)
 #define MULD() /* mat * diag(mat) */ \
   if (p == 1) { \
-    FOR(i,m) FOR(j,MIN(m,n)) r[i*n+j] = x[i] * y[j*n+j]; \
+    FOR(i,m) FOR(j,n) r[i*n+j] = x[i*n+j] * y[j]; \
   } else { \
     FOR(i,m*n) r[i] = 0; \
     FOR(i,m) FOR(j,MIN(n,p)) r[i*n+j] = x[i*p+j] * y[j*n+j]; \
@@ -540,10 +540,10 @@ void mad_mat_center (num_t x[], ssz_t m, ssz_t n, int d)
 void mad_mat_rev (num_t x[], ssz_t m, ssz_t n, int d)
 { CHKX; num_t t;
   switch(d) { // 0=vec, 1=row, 2=col, 3=diag
-  case 0: FOR(i,(m*n)/2)        SWAP(x[i     ], x[         m*n-1-i], t); break;
-  case 1: FOR(i,m  ) FOR(j,n/2) SWAP(x[i*n +j], x[     i *n +n-1-j], t); break;
-  case 2: FOR(i,m/2) FOR(j,n  ) SWAP(x[i*n +j], x[(m-1-i)*n +    j], t); break;
-  case 3: FOR(i,MIN(m,n)/2)     SWAP(x[i*n +i], x[(m-1-i)*n +    i], t); break;
+  case 0: FOR(i,(m*n)/2)        SWAP(x[i    ], x[         m*n-1-i]    , t); break;
+  case 1: FOR(i,m  ) FOR(j,n/2) SWAP(x[i*n+j], x[     i *n +n-1-j]    , t); break;
+  case 2: FOR(i,m/2) FOR(j,n  ) SWAP(x[i*n+j], x[(m-1-i)*n +    j]    , t); break;
+  case 3: FOR(i,MIN(m,n)/2)     SWAP(x[i*n+i], x[(MIN(m,n)-1-i)*(n+1)], t); break;
   default: error("invalid direction");
   }
 }
