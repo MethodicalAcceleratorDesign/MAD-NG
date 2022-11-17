@@ -182,6 +182,23 @@ Concepts                     Associated metamethods
 
    Return a proxy for :var:`a` which behaves like :var:`a` except that elements of type :type:`function` will be considered as deferred expressions and evaluated on read, i.e. returning their results in their stead.
 
+C Type Sizes
+============
+
+The following table lists the constants holding the size of the C types used by common :type:`cdata` like complex, matrices or TPSA. See section on `C API`_ for the description for those C types.
+
+====================  ================  
+C types sizes         C types            
+====================  ================  
+:const:`ctsz_log`     :c:type:`log_t`   
+:const:`ctsz_idx`     :c:type:`idx_t`   
+:const:`ctsz_ssz`     :c:type:`ssz_t`   
+:const:`ctsz_dbl`     :c:type:`num_t`   
+:const:`ctsz_cpx`     :c:type:`cnum_t`  
+:const:`ctsz_str`     :c:type:`str_t`   
+:const:`ctsz_ptr`     :c:type:`ptr_t`   
+====================  ================  
+       
 C API
 =====
 
