@@ -152,14 +152,16 @@ local recv_imat = \s -> recv_gmat(s, imatrix)
 
 -- tables
 
-local function send_tbl (self, tbl)
-  -- tables with metatable must be queried explicitly by key/slot
-  if getmetatable(tbl) then return send_int(self, -1) end
+local function send_tbl (self, t)
+  -- tables with metatable must be queried explicitly by <key,val>
+  if getmetatable(t) then return send_int(self, -1) end
 
-  send_int(self, #tbl)
-  for _,v in ipairs(tbl) do
-    if is_value(v) or isy_matrix(v) then
-      self:send(v)              -- deep    copy for values
+  local n = #t
+  send_int(self, n)
+  for i=1,n do
+    local v = t[i]
+    if is_value(v) or is_complex(v) or isy_matrix(v) then
+      self:send(v)              -- deep    copy for values, complex, and matrix
     else
       send_dat(self, 'ref_', 4) -- swallow copy for references
     end
@@ -256,8 +258,8 @@ local function start(self, py_fd)
 end
 
 local function send (self, a)
-  local typ = is_int32(a) and 'int_' or
-              dat_type[type(a)] or dat_type[get_metatable(a)]
+  local typ = is_int32(a) and 'int_' or dat_type[type(a)]
+                                     or dat_type[get_metatable(a)]
   local fun = assert(fun_send[typ], "unsupported data type")
   return fun(send_dat(self, typ, 4), a)
 end

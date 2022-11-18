@@ -58,28 +58,29 @@ Attributes
 .. constant:: rng.start
               rng.logstart
 
-   The component *start* of the range and the logrange on a linear scale. 
+   The component *start* of the :type:`range` and the :type:`logrange` on a linear scale. 
 
 .. constant:: rng.stop
               rng.logstop
 
-   The component *stop* of the range and the logrange on a linear scale. 
+   The component *stop* of the :type:`range` and the :type:`logrange` on a linear scale. 
 
 .. constant:: rng.step
               rng.logstep
 
-   The component *step* of the range and the logrange on a linear scale, which may slighlty differ from the value provided to the constructors due to adjustment. 
+   The component *step* of the :type:`range` and the :type:`logrange` on a linear scale, which may slighlty differ from the value provided to the constructors due to adjustment. 
 
 Functions
 =========
 
 .. function:: is_range(a)
+              is_logrange(a)
 
-   Return :const:`true` if :var:`a` is a :type:`range`, :const:`false` otherwise. This function is only available from the module :mod:`MAD.typeid`.
+   Return :const:`true` if :var:`a` is respectively a :type:`range` or a :type:`logrange`, :const:`false` otherwise. These functions are only available from the module :mod:`MAD.typeid`.
 
-.. function:: is_logrange(a)
+.. function:: isa_range(a)
 
-   Return :const:`true` if :var:`a` is a :type:`logrange`, :const:`false` otherwise. This function is only available from the module :mod:`MAD.typeid`.
+   Return :const:`true` if :var:`a` is a :type:`range` or a :type:`logrange` (i.e. is-a range), :const:`false` otherwise. This function is only available from the module :mod:`MAD.typeid`.
 
 Methods
 =======
