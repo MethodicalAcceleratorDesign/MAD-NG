@@ -24,10 +24,11 @@
 -- locals ---------------------------------------------------------------------o
 
 local ffi = require "ffi"
-local _C, complex, matrix, cmatrix, imatrix                        in MAD
-local is_natural, is_int32, isy_matrix, get_metatable              in MAD.typeid
+local _C, complex, matrix, cmatrix, imatrix, range, logrange,
+          monomial, tpsa, ctpsa                                    in MAD
+local is_natural, is_int32, get_metatable                          in MAD.typeid
 
-local type, assert, ipairs, tonumber, getmetatable, table =
+local type, assert, ipairs, tonumber,    metatable, table =
       type, assert, ipairs, tonumber, getmetatable, table
 
 ffi.cdef [[
@@ -57,43 +58,34 @@ end
 
 -- nil
 
-local function send_nil (self)
-  return self
-end
-
-local function recv_nil (self)
-  return nil
-end
+local send_nil = \s -> s
+local recv_nil = \_ -> nil
 
 -- boolean
 
-local log   = ffi.new 'log_t[1]'
-local log_n = ffi.new 'log_t'
+local log    = ffi.new 'log_t[1]'
+local log_sz = ffi.new 'log_t'
 
 local function send_bool (self, b)
   log[0] = b
-  return send_dat(self, log, log_n)
+  return send_dat(self, log, log_sz)
 end
 
-local function recv_bool (self)
-  return recv_dat(self, log, log_n)[0]
-end
+local recv_bool = \s -> recv_dat(s, log, log_sz)[0]
 
--- integer
+-- int32
 
-local int   = ffi.new    'int32_t[2]' -- used to hold mat dims
-local int_n = ffi.sizeof 'int32_t'
+local int    = ffi.new    'int32_t[3]' -- used to hold mat dims and irange
+local int_sz = ffi.sizeof 'int32_t'
 
 local function send_int (self, n)
   int[0] = n
-  return send_dat(self, int, int_n)
+  return send_dat(self, int, int_sz)
 end
 
-local function recv_int (self)
-  return recv_dat(self, int, int_n)[0]
-end
+local recv_int = \s -> recv_dat(s, int, int_sz)[0]
 
--- strings
+-- string
 
 local function send_str (self, s)
   local n = #s
@@ -105,42 +97,71 @@ local function recv_str (self)
   return assert(io.read(n), "couldn't receive string")
 end
 
--- numbers
+-- number
 
-local num   = ffi.new 'num_t[2]' -- used to hold complex
-local num_n = ffi.new 'num_t'
+local num    = ffi.new 'num_t[3]' -- used to hold complex, range and logrange
+local num_sz = ffi.new 'num_t'
 
 local function send_num (self, x)
   num[0] = x
-  return send_dat(self, num, num_n)
+  return send_dat(self, num, num_sz)
 end
 
-local function recv_num (self)
-  return recv_dat(self, num, num_n)[0]
-end
+local recv_num = \s -> recv_dat(s, num, num_sz)[0]
 
--- complexes
+-- complex
 
 local function send_cnum (self, x)
-  num[0], num[1] = x.re, x.im
-  return send_dat(self, num, 2*num_n)
+  num[0], num[1] = x:reim()
+  return send_dat(self, num, 2*num_sz)
 end
 
 local function recv_cnum (self)
-  recv_dat(self, num, 2*num_n)
+  recv_dat(self, num, 2*num_sz)
   return complex(num[0], num[1])
 end
 
--- matrices
+-- range
+
+local function send_grng (self, r)
+  num[0], num[1], num[2] = r:start(), r:stop(), r:step()
+  return send_dat(self, num, 3*num_sz)
+end
+
+local function recv_grng (self, ctor)
+  recv_dat(self, num, 3*num_sz)
+  return ctor(num[0], num[1], num[2])
+end
+
+local recv_rng  = \s -> recv_grng(s,    range)
+local recv_lrng = \s -> recv_grng(s, logrange)
+
+-- irange
+
+local function is_irange (r)
+  return is_int32(r.start) and is_int32(r.stop) and is_int32(r.step)
+end
+
+local function send_irng (self, r)
+  int[0], int[1], int[2] = r.start, r.stop, r.step
+  return send_dat(self, int, 3*int_sz)
+end
+
+local function recv_irng (self)
+  recv_dat(self, int, 3*int_sz)
+  return int[0]..int[1]..int[2]
+end
+
+-- matrix
 
 local function send_gmat (self, m)
   int[0], int[1] = m.nrow, m.ncol
-  send_dat(self, int, 2*int_n)
+  send_dat(self, int, 2*int_sz)
   return sent_dat(self, m._dat, m:bytesize())
 end
 
 local function recv_gmat (self, ctor)
-  recv_dat(self, int, 2*int_n)
+  recv_dat(self, int, 2*int_sz)
   local m = ctor(int[0], int[1])
   recv_dat(self, m._dat, m:bytesize())
   return m
@@ -150,71 +171,86 @@ local recv_mat  = \s -> recv_gmat(s,  matrix)
 local recv_cmat = \s -> recv_gmat(s, cmatrix)
 local recv_imat = \s -> recv_gmat(s, imatrix)
 
--- tables
+-- mono
 
-local function send_tbl (self, t)
-  -- tables with metatable must be queried explicitly by <key,val>
-  if getmetatable(t) then return send_int(self, -1) end
+local send_mono = \s,m -> send_str(s, m:tostring())
+local recv_mono = \s   -> monomial(recv_str(s))
 
+-- tpsa
+
+local function send_gtpsa (self, x, send)
+  local t = x:totable(true)
   local n = #t
   send_int(self, n)
-  for i=1,n do
-    local v = t[i]
-    if is_value(v) or is_complex(v) or isy_matrix(v) then
-      self:send(v)              -- deep    copy for values, complex, and matrix
-    else
-      send_dat(self, 'ref_', 4) -- swallow copy for references
-    end
-  end
+  for i=1,n do send(send_str(self, t[i]), t[t[i]]) end
+  return self
+end
+
+local send_tpsa = \s,x -> send_gtpsa(s, x, send_num )
+local send_ctpa = \s,x -> send_gtpsa(s, x, send_cnum)
+
+local recv_tpsa = \_ -> error("unsupported data type received: tpsa")
+local recv_ctpa = \_ -> error("unsupported data type received: ctpsa")
+
+-- table
+
+local function send_tbl (self, t)
+  local n = #t
+  send_int(self, n)
+  for i=1,n do self:send(t[i]) end -- deep copy
   return self
 end
 
 local function recv_tbl (self)
   local n = recv_int(self)
   local t = table.new(n,0)
-  for i=1,n do t[i] = self:recv() end
+  for i=1,n do t[i] = self:recv() end -- deep copy
   return t
 end
 
--- dispatch tables
+-- object (table with metatable are treated as pure reference)
 
-local fun_send = {
-  ['nil_'] = send_nil,
-  ['bool'] = send_bool,
-  ['str_'] = send_str,
-  ['tbl_'] = send_tbl,
-  ['int_'] = send_int,
-  ['num_'] = send_num,
-  ['cnum'] = send_cnum,
-  ['mat_'] = send_gmat,
-  ['cmat'] = send_gmat,
-  ['imat'] = send_gmat,
+local send_obj = \s -> s
+local recv_obj = \_ -> error("unsupported data type received: object")
+
+-- dispatch tables ------------------------------------------------------------o
+
+local type_fun = {
+  nil_ = { send = send_nil , recv = recv_nil  },
+  bool = { send = send_bool, recv = recv_bool },
+  str_ = { send = send_str , recv = recv_str  },
+  tbl_ = { send = send_tbl , recv = recv_tbl  },
+  obj_ = { send = send_obj , recv = recv_obj  },
+  int_ = { send = send_int , recv = recv_int  },
+  num_ = { send = send_num , recv = recv_num  },
+  cnum = { send = send_cnum, recv = recv_cnum },
+  mat_ = { send = send_gmat, recv = recv_mat  },
+  cmat = { send = send_gmat, recv = recv_cmat },
+  imat = { send = send_gmat, recv = recv_imat },
+  rng_ = { send = send_grng, recv = recv_rng  },
+  lrng = { send = send_grng, recv = recv_lrng },
+  irng = { send = send_irng, recv = recv_irng },
+  mono = { send = send_mono, recv = recv_mono },
+  tpsa = { send = send_tpsa, recv = recv_tpsa },
+  ctpa = { send = send_ctpa, recv = recv_ctpa },
 }
 
-local fun_recv = {
-  ['nil_'] = recv_nil,
-  ['bool'] = recv_bool,
-  ['str_'] = recv_str,
-  ['tbl_'] = recv_tbl,
-  ['int_'] = recv_int,
-  ['num_'] = recv_num,
-  ['cnum'] = recv_cnum,
-  ['mat_'] = recv_mat,
-  ['cmat'] = recv_cmat,
-  ['imat'] = recv_imat,
-}
-
-local dat_type = { -- list strings allowed in the protocol
-  ['nil'    ]                 = 'nil_',
-  ['boolean']                 = 'bool',
-  ['string' ]                 = 'str_',
-  ['table'  ]                 = 'tbl_',
---['int32'  ]                 = 'int_',
-  ['number' ]                 = 'num_',
-  [get_metatable(complex(1))] = 'cnum',
-  [get_metatable( matrix(1))] = 'mat_',
-  [get_metatable(cmatrix(1))] = 'cmat',
-  [get_metatable(imatrix(1))] = 'imat',
+local type_str = {
+  ['nil'    ]                  = \_ -> 'nil_',
+  ['boolean']                  = \_ -> 'bool',
+  ['string' ]                  = \_ -> 'str_',
+  ['table'  ]                  = \a -> metatable(a) and 'obj_' or 'tbl_',
+  ['number' ]                  = \a -> is_int32 (a) and 'int_' or 'num_',
+  [get_metatable(complex (1))] = \_ -> 'cnum',
+  [get_metatable( matrix (1))] = \_ -> 'mat_',
+  [get_metatable(cmatrix (1))] = \_ -> 'cmat',
+  [get_metatable(imatrix (1))] = \_ -> 'imat',
+  [get_metatable(range   (1))] = \a -> is_irange(a) and 'rng_' or 'irng',
+  [get_metatable(logrange(1))] = \_ -> 'lrng',
+  [get_metatable(monomial(1))] = \_ -> 'mono',
+  [get_metatable(tpsa    (1))] = \_ -> 'tpsa',
+  [get_metatable(ctpsa   (1))] = \_ -> 'ctpa',
+--['cdata'] must absolutely not be in this list!
 }
 
 -- pymad ----------------------------------------------------------------------o
@@ -258,15 +294,14 @@ local function start(self, py_fd)
 end
 
 local function send (self, a)
-  local typ = is_int32(a) and 'int_' or dat_type[type(a)]
-                                     or dat_type[get_metatable(a)]
-  local fun = assert(fun_send[typ], "unsupported data type")
-  return fun(send_dat(self, typ, 4), a)
+  local typ = assert(type_str[type(a)] or type_str[get_metatable(a)],
+                     "unsupported data type")(a)
+  return type_fun[typ].send(send_dat(self, typ, 4), a)
 end
 
 local function recv (self)
   local typ = io.read(4)
-  return assert(fun_recv[typ], "unsupported data type")(self)
+  return assert(type_fun[typ].recv, "unsupported data type")(self)
 end
 
 pymad:set_methods {
