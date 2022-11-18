@@ -51,6 +51,7 @@ Functions                  Return :const:`true` if :var:`a`
 :func:`is_znegative(a)`    is a :type:`number` with :math:`a \le 0`
 :func:`is_nonzero(a)`      is a :type:`number` with :math:`a \ne 0`
 :func:`is_integer(a)`      is a :type:`number` with :math:`-2^{52} \le a \le 2^{52}` and no fractional part
+:func:`is_int32(a)`        is a :type:`number` with :math:`-2^{31} \le a \lt 2^{31}` and no fractional part
 :func:`is_natural(a)`      is an :type:`integer` with :math:`a \ge 0`
 :func:`is_even(a)`         is an even :type:`integer`
 :func:`is_odd(a)`          is an odd :type:`integer`
