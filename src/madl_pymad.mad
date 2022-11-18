@@ -6,7 +6,7 @@
  | Methodical Accelerator Design - Copyright (c) 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
- | Contrib: J. Gray, joshua.mark.gray@cern.ch
+ | Contrib: J. Gray, joshua.mark.gray at cern.ch
  |
  o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
@@ -23,47 +23,254 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local is_string in MAD.typeid
-local fprintf in MAD.utility
-local format in string
+local ffi = require "ffi"
+local _C, complex, matrix, cmatrix, imatrix                        in MAD
+local is_natural, is_int32, isy_matrix, get_metatable              in MAD.typeid
 
-local assert = assert
+local type, assert, ipairs, tonumber, getmetatable, table =
+      type, assert, ipairs, tonumber, getmetatable, table
 
--- implementation -------------------------------------------------------------o
+ffi.cdef [[
+FILE*   fdopen (int fd, str_t mode); // wrap py_fd into a FILE*
 
-local pymad = MAD.object 'pymad' { dispdbgf = false }
+size_t  fwrite (ptr_t buf, size_t sz, size_t n, FILE*);
+size_t  fread  (void* buf, size_t sz, size_t n, FILE*);
 
-local function dispdbg (str)
-  io.write("***mad.send: '", str:sub(1, min(32,#str)))
-  if #str > 32 then io.write("' .. '", str:sub(max(32,#str-32),-1)) end
-  io.write("' ***\n")
-end
+void    setbuf (FILE*, char* buf);   // make _pyfp unbuffered
+]]
 
-local function send(self, str)
-  assert(is_string(str), "invalid argument #2 (string expected)")
-  if self.dispdbgf then dispdbg(str) end
-  local strn = format("%08d", #str) --see ffi docs
-  self.__py_out:write(strn, str)
+-- data transfer --------------------------------------------------------------o
+
+-- data
+
+local function send_dat (self, dat, sz)
+  if self._dbgf then io.write("***pymad.send: data "..sz.." bytes\n") end
+  assert(_C.fwrite(dat, 1, sz, self._pyfp) == sz, "couldn't send data")
   return self
 end
 
-local function open_pipe (self, name)
-  self.__py_name = name
-  self.__py_out = assert(io.open(name, "w"))
-  self.__py_out:setvbuf("no")
+local function recv_dat (self, dat, sz)
+  if self._dbgf then io.write("***pymad.recv: data "..sz.." bytes\n") end
+  assert(_C.fread(dat, 1, sz, io.stdin) == sz, "couldn't receive data")
+  return dat
+end
+
+-- nil
+
+local function send_nil (self)
   return self
 end
 
-local function publish (self, env_)
-  local env = env_ or _G
-  env[self.name] = self
+local function recv_nil (self)
+  return nil
+end
+
+-- boolean
+
+local log   = ffi.new 'log_t[1]'
+local log_n = ffi.new 'log_t'
+
+local function send_bool (self, b)
+  log[0] = b
+  return send_dat(self, log, log_n)
+end
+
+local function recv_bool (self)
+  return recv_dat(self, log, log_n)[0]
+end
+
+-- integer
+
+local int   = ffi.new    'int32_t[2]' -- used to hold mat dims
+local int_n = ffi.sizeof 'int32_t'
+
+local function send_int (self, n)
+  int[0] = n
+  return send_dat(self, int, int_n)
+end
+
+local function recv_int (self)
+  return recv_dat(self, int, int_n)[0]
+end
+
+-- strings
+
+local function send_str (self, s)
+  local n = #s
+  return send_dat(send_int(self, n), s, n)
+end
+
+local function recv_str (self)
+  local n = recv_int(self)
+  return assert(io.read(n), "couldn't receive string")
+end
+
+-- numbers
+
+local num   = ffi.new 'num_t[2]' -- used to hold complex
+local num_n = ffi.new 'num_t'
+
+local function send_num (self, x)
+  num[0] = x
+  return send_dat(self, num, num_n)
+end
+
+local function recv_num (self)
+  return recv_dat(self, num, num_n)[0]
+end
+
+-- complexes
+
+local function send_cnum (self, x)
+  num[0], num[1] = x.re, x.im
+  return send_dat(self, num, 2*num_n)
+end
+
+local function recv_cnum (self)
+  recv_dat(self, num, 2*num_n)
+  return complex(num[0], num[1])
+end
+
+-- matrices
+
+local function send_gmat (self, m)
+  int[0], int[1] = m.nrow, m.ncol
+  send_dat(self, int, 2*int_n)
+  return sent_dat(self, m._dat, m:bytesize())
+end
+
+local function recv_gmat (self, ctor)
+  recv_dat(self, int, 2*int_n)
+  local m = ctor(int[0], int[1])
+  recv_dat(self, m._dat, m:bytesize())
+  return m
+end
+
+local recv_mat  = \s -> recv_gmat(s,  matrix)
+local recv_cmat = \s -> recv_gmat(s, cmatrix)
+local recv_imat = \s -> recv_gmat(s, imatrix)
+
+-- tables
+
+local function send_tbl (self, tbl)
+  -- tables with metatable must be queried explicitly by key/slot
+  if getmetatable(tbl) then return send_int(self, -1) end
+
+  send_int(self, #tbl)
+  for _,v in ipairs(tbl) do
+    if is_value(v) or isy_matrix(v) then
+      self:send(v)              -- deep    copy for values
+    else
+      send_dat(self, 'ref_', 4) -- swallow copy for references
+    end
+  end
   return self
+end
+
+local function recv_tbl (self)
+  local n = recv_int(self)
+  local t = table.new(n,0)
+  for i=1,n do t[i] = self:recv() end
+  return t
+end
+
+-- dispatch tables
+
+local fun_send = {
+  ['nil_'] = send_nil,
+  ['bool'] = send_bool,
+  ['str_'] = send_str,
+  ['tbl_'] = send_tbl,
+  ['int_'] = send_int,
+  ['num_'] = send_num,
+  ['cnum'] = send_cnum,
+  ['mat_'] = send_gmat,
+  ['cmat'] = send_gmat,
+  ['imat'] = send_gmat,
+}
+
+local fun_recv = {
+  ['nil_'] = recv_nil,
+  ['bool'] = recv_bool,
+  ['str_'] = recv_str,
+  ['tbl_'] = recv_tbl,
+  ['int_'] = recv_int,
+  ['num_'] = recv_num,
+  ['cnum'] = recv_cnum,
+  ['mat_'] = recv_mat,
+  ['cmat'] = recv_cmat,
+  ['imat'] = recv_imat,
+}
+
+local dat_type = { -- list strings allowed in the protocol
+  ['nil'    ]                 = 'nil_',
+  ['boolean']                 = 'bool',
+  ['string' ]                 = 'str_',
+  ['table'  ]                 = 'tbl_',
+--['int32'  ]                 = 'int_',
+  ['number' ]                 = 'num_',
+  [get_metatable(complex(1))] = 'cnum',
+  [get_metatable( matrix(1))] = 'mat_',
+  [get_metatable(cmatrix(1))] = 'cmat',
+  [get_metatable(imatrix(1))] = 'imat',
+}
+
+-- pymad ----------------------------------------------------------------------o
+
+local pymad = MAD.object 'pymad' { _dbgf = false }
+
+local function catch_err(err)
+  io.write("***pymad.run: ", err, "\n", debug.traceback())
+end
+
+local function open_pipe (self, py_fd)
+  self._pyfp = assert(_C.fdopen(py_fd, "wb"), "unable to wrap py_fd with FILE")
+  _C.setbuf(self._pyfp, nil)
+  return self
+end
+
+local function open_env (self)
+  self._env = {}
+  setmetatable(self._env, {__index = _G})
+  self._env[self.name] = self
+  return self
+end
+
+local function run (self)
+  while true do
+    local str = self:recv()
+    local fun, err = load(str, nil, nil, self._env)
+    if fun then xpcall(fun, catch_err) -- Catch runtime error
+    else        catch_err(err)         -- Catch load error
+    end
+  end
+end
+
+-- methods --
+
+local function start(self, py_fd)
+  assert(is_natural(py_fd), "invalid argument #2 (file descritor expected)")
+  open_pipe(self, py_fd)
+  open_env (self)
+  run      (self)
+end
+
+local function send (self, a)
+  local typ = is_int32(a) and 'int_' or
+              dat_type[type(a)] or dat_type[get_metatable(a)]
+  local fun = assert(fun_send[typ], "unsupported data type")
+  return fun(send_dat(self, typ, 4), a)
+end
+
+local function recv (self)
+  local typ = io.read(4)
+  return assert(fun_recv[typ], "unsupported data type")(self)
 end
 
 pymad:set_methods {
-  send      = send,
-  publish   = publish,
-  open_pipe = open_pipe,
+  start = start,
+  send  = send,
+  recv  = recv,
 } :set_readonly()
 
 -- end ------------------------------------------------------------------------o
