@@ -46,6 +46,7 @@ local infi = complex(0,inf)
 local dat = assert(loadfile('data/matrix.dat'))()
 
 -- locals ---------------------------------------------------------------------o
+local testNSolve = true
 
 local mth = \f,s,... s[f](s,...)
 local idx = \i,j,nc ( (i-1)*nc+j )
@@ -90,7 +91,7 @@ math.randomseed( os.clock() )
 -- regression test suites -----------------------------------------------------o
 
 TestMatrix    = {}
-TestMatrixErr = {}
+TestMatrixErr = {} --TODO
 
 TestMatrixGet = {}
 TestMatrixSet = {}
@@ -1485,6 +1486,67 @@ function TestMatrixInPlace:testFill()
   assertTrue ( is_matrix( m:same():fill(complex(1,1))) ) -- no matrix types change
 end
 
+function TestMatrix:testRev()
+  for _,m in ipairs(G.matidx) do
+    local nr, nc  = m:sizes()
+    local mVecRev, mVecRev2, mRowRev, mColRev, mDiagRev = m:copy():rev(), m:copy():rev("vec"), m:copy():rev("row"), m:copy():rev("col"), m:copy():rev("diag")
+    for i = 1, nr do 
+      for j = 1, nc do 
+        assertEquals(mVecRev :get(i, j), m:geti(#m - idx(i, j, nc) + 1))
+        assertEquals(mVecRev2:get(i, j), m:geti(#m - idx(i, j, nc) + 1))
+        assertEquals(mColRev:get(i, j), m:get(nr - i + 1, j))
+        assertEquals(mRowRev:get(i, j), m:get(i, nc - j + 1))
+        if i ~= j or min(nr, nc) == 1 then assertEquals(mDiagRev:get(i, j), m:get(i, j))
+        else 
+          local dLen = min(nr, nc); 
+          assertEquals(mDiagRev:get(dLen - i + 1, dLen - j + 1), m:get(i, j))
+        end
+      end 
+    end
+  end
+end
+
+function TestMatrix:testZpad() --over tested?
+  for _,m in ipairs(G.matidx) do
+    local nr, nc = m:sizes()
+    for nr2 = nr, nr*2 do 
+      for nc2 = nc, nc*2 do 
+        --identities
+        local mPad, mVecPad, mRowPad, mColPad = m:copy():zpad(nr2, nc2), m:copy():zpad(nr2, nc2, "vec"), m:copy():zpad(nr2, nc2, "row"), m:copy():zpad(nr2, nc2, "col")
+        assertEquals(mVecPad, m:same(nr2, nc2):setvec(1..#m, m))
+        assertEquals(mPad   , m:same(nr2, nc2):setsub(1..nr, 1..nc, m))
+        if nr2 ~= 1 and nc2 ~= 1 then 
+          assertEquals(mRowPad, m:same(nr , nc2):setsub(1..nr, 1..nc, m))
+          assertEquals(mColPad, m:same(nr2, nc ):setsub(1..nr, 1..nc, m))
+        else --is below intentional, i.e. ignores direction if nr2 or nc2 == 1?
+          assertEquals(mVecPad, mRowPad)
+          assertEquals(mVecPad, mColPad)
+        end
+        for i = 1, nr2 do 
+          for j = 1, nc2 do
+            if i <= nr and j <= nc then
+              assertEquals(mRowPad:get(i, j), m:get(i, j))
+              assertEquals(mColPad:get(i, j), m:get(i, j))
+              assertEquals(mPad   :get(i, j), m:get(i, j))
+            elseif nr2 > 1 and nc2 > 1 then
+              assertEquals(mRowPad:get(i, j), i <= nr and 0 or nil)
+              assertEquals(mColPad:get(i, j), j <= nc and 0 or nil)
+              assertEquals(mPad   :get(i, j), 0)
+            end
+          end
+        end
+        for mIdx = 1, #mVecPad do 
+          if mIdx <= #m then
+            assertEquals(mVecPad:geti(mIdx), m:geti(mIdx))
+          else 
+            assertEquals(mVecPad:geti(mIdx), 0)
+          end
+        end
+      end
+    end
+  end
+end
+
 function TestMatrixErr:testCopy()
   local msg = {
     "invalid argument #2 (matrix expected)",
@@ -1713,24 +1775,26 @@ end
 
 
 function TestMatrixInPlaceII:testShiftv()
-  for n=1,6 do
-    for i=1,n do
-      for j=0,n-i do
+  for sz=1,6 do
+    for i=1,sz do
+      for n=0,i-1 do
         -- left shift
-        local v = vector(n):fill(1..n)
-        local w = vector(n):fill(1..n)
-        assertEquals(v:copy():shiftv(i, -j), v:copy():movev(i+j, #v, i))  --identity
-        assertEquals(w:copy():shiftv(i, -j), w:copy():movev(i+j, #w, i))  --identity
-        v:shiftv(i,-j)
-        w:setvec(i..n-j, w:getvec(i+j..n) )
+        local v = vector(sz):fill(1..sz)
+        local w = vector(sz):fill(1..sz)
+        assertEquals(v:copy():shiftv(i, -n), v:copy():movev(i, sz, i-n))  --identity
+        assertEquals(w:copy():shiftv(i, -n), w:copy():movev(i, sz, i-n))  --identity
+        v:shiftv(i,-n)
+        w:setvec(i-n..sz-n, w:getvec(i..sz) )
         assertAllAlmostEquals(totable(v), totable(w))
+      end
+      for n = 0, sz-i do 
         -- right shift
-        local v = vector(n):fill(1..n)
-        local w = vector(n):fill(1..n)
-        assertEquals(v:copy():shiftv(i, j), v:copy():movev(i, #v-j, i+j))  --identity
-        assertEquals(w:copy():shiftv(i, j), w:copy():movev(i, #w-j, i+j))  --identity
-        v:shiftv(i,+j)
-        w:setvec(i+j..n, w:getvec(i..n-j) )
+        local v = vector(sz):fill(1..sz)
+        local w = vector(sz):fill(1..sz)
+        assertEquals(v:copy():shiftv(i, n), v:copy():movev(i, #v-n, i+n))  --identity
+        assertEquals(w:copy():shiftv(i, n), w:copy():movev(i, #w-n, i+n))  --identity
+        v:shiftv(i,+n)
+        w:setvec(i+n..sz, w:getvec(i..sz-n) )
         assertAllAlmostEquals(totable(v), totable(w))
       end
     end
@@ -3705,16 +3769,18 @@ end
 
 function TestMatrixLinAlg:testUnit()  --  unit :  u / |u|
   for _,m in ipairs(G.matidx) do
-    assertEquals( m:copy():unit(), m / m:norm() )
+    if m:norm() ~= 0 then 
+      assertEquals( m:copy():unit(), m / m:norm() )
+    end
   end
 end
 
 function TestMatrixLinAlg:testCenter() --Is there a better way testing centering rows and column
   for _,m in ipairs(G.matidx) do
     local mid = m:sum() / #m
-    assertEquals( m:center(),  m:map(\x x-mid) )
-    assertEquals( m:center("vec"),  m:map(\x x-mid) )
-    local centeredrow, centeredcol, mc = m:copy(), m:copy(), m:same()
+    assertEquals( m:copy():center(),  m:copy():map(\x x-mid) )
+    assertEquals( m:copy():center("vec"),  m:copy():map(\x x-mid) )
+    local centeredrow, centeredcol, mc = m:copy(), m:copy(), m:copy():center()
     for i = 1, m.nrow do 
       local row = centeredrow:getsub(i)
       centeredrow:setsub(i, nil, row - row:mean())
@@ -3723,10 +3789,12 @@ function TestMatrixLinAlg:testCenter() --Is there a better way testing centering
       local col = centeredcol:getsub(nil, i)
       centeredcol:setsub(nil, i, col - col:mean())
     end
-    assertEquals( m:center("row"), centeredrow)
-    assertEquals( m:center("col"), centeredcol)
-    m:center(mc)
-    assertEquals( m:center(), mc) --check r_
+    assertEquals( m:copy():center("row"), centeredrow)
+    assertEquals( m:copy():center("col"), centeredcol)
+    local mid = m:getdiag():mean()
+    assertEquals( m:copy():center("diag"), m:copy():map(m:getdidx(), \x x-mid))
+    m:center()
+    assertEquals( m, mc) --check in place
   end
 end
 
@@ -4044,7 +4112,7 @@ function TestMatrixOps:testMult()
   end
 end
 
-function TestMatrixOps:testDmul() -- only works for square matrices (non square matrices do not work as I expect)
+function TestMatrixOps:testDmul()
   for x = 1, 5 do 
     local m  = matrix(x, x):seq()
     local m2 = m:same():seq()/2
@@ -4056,7 +4124,11 @@ function TestMatrixOps:testDmul() -- only works for square matrices (non square 
   for _,m in ipairs(G.matidx) do
     local nr = min(m.nrow, m.ncol)
     for _, m2 in ipairs(G.matidx) do 
-      if m.ncol == m2.nrow then --They have to be multiplicable to begin with
+      if (m.ncol == 1 or m.nrow == 1) and #m == m2.nrow then --If m is a vector, make sure the m2 is multiplicable with m:diag()
+        local cm = m2:copy() + 1i 
+        assertEquals( m:dmul(m2), m:diag() * m2 ) -- diagonalOf(mat) *  mat
+        assertEquals( m:dmul(cm), m:diag() * cm ) -- diagonalOf(mat) * cmat
+      elseif m.ncol == m2.nrow and m.ncol ~= 1 and m.nrow ~= 1  then --They have to be multiplicable to begin with (and not with a vector)
         local diag_m = m:same():setvec(m:getdidx(), m:getdiag())
         local cm = m2:copy() + 1i 
         assertEquals( m:dmul(m2), diag_m * m2 ) -- diagonalOf(mat) *  mat
@@ -4067,7 +4139,7 @@ function TestMatrixOps:testDmul() -- only works for square matrices (non square 
   end
 end
 
-function TestMatrixOps:testMuld() -- only works for square matrices (non square matrices do not work as I expect)
+function TestMatrixOps:testMuld()
   for x = 1, 5 do 
     local m  = matrix(x, x):seq()
     local m2 = m:same():seq()/2
@@ -4079,7 +4151,11 @@ function TestMatrixOps:testMuld() -- only works for square matrices (non square 
   for _,m in ipairs(G.matidx) do
     local nr = min(m.nrow, m.ncol)
     for _, m2 in ipairs(G.matidx) do 
-      if m.ncol == m2.nrow then --They have to be multiplicable to begin with
+      if (m2.ncol == 1 or m2.nrow == 1) and #m2 == m.ncol then --If m is a vector, make sure the m2 is multiplicable with m:diag()
+        local cm = m2:copy() + 1i 
+        assertEquals( m:muld(m2), m * m2:diag() ) -- diagonalOf(mat) *  mat
+        assertEquals( m:muld(cm), m * cm:diag() ) -- diagonalOf(mat) * cmat
+      elseif m.ncol == m2.nrow and m2.ncol ~= 1 and m2.nrow ~= 1 then --They have to be multiplicable to begin with
         local diag_m = m2:same():setvec(m2:getdidx(), m2:getdiag())
         local cm      = m2:copy() + 1i
         local diag_cm = cm:same():setvec(cm:getdidx(), cm:getdiag())
@@ -4267,18 +4343,20 @@ end
 
 function TestMatrixLapack:testNSolve() -- reuse data of Solve --I have left these tests failing and just added to the comments
   MAD._C.mad_use_madx_micado = 0
-  for i,m1 in ipairs(dat.nsolveIn1) do
-      local m2 = dat.nsolveIn2 [i]
-      local m3 = dat.nsolveOut1[i]
-      local m4 = dat.nsolveOut2[i]
-      local rn = dat.nsolveRnk [i]
-      local re = dat.nsolveRes [i]
-      local x, n, r = m1:nsolve(m2)
-      local e = (m2-m1*x):norm()
-      assertTrue( n == rn )              -- mad_use_madx_micado = 1
-      assertTrue( x:eq(m3, 2*eps) )      -- 3e3*eps (Currently fails at 1708*eps linux)
-      assertTrue( r:eq(m4, 2*eps) )      --   8*eps (Currently fails at 6*eps linux)
-      assertAlmostEquals( e, re, 2*eps ) --   5*eps (Currently fails at 10*eps linux)
+  if testNSolve then 
+    for i,m1 in ipairs(dat.nsolveIn1) do
+        local m2 = dat.nsolveIn2 [i]
+        local m3 = dat.nsolveOut1[i]
+        local m4 = dat.nsolveOut2[i]
+        local rn = dat.nsolveRnk [i]
+        local re = dat.nsolveRes [i]
+        local x, n, r = m1:nsolve(m2)
+        local e = (m2-m1*x):norm()
+        assertTrue( n == rn )              -- mad_use_madx_micado = 1
+        assertTrue( x:eq(m3, 2*eps) )      -- 3e3*eps (Currently fails at 1708*eps linux)
+        assertTrue( r:eq(m4, 2*eps) )      --   8*eps (Currently fails at 6*eps linux)
+        assertAlmostEquals( e, re, 2*eps ) --   5*eps (Currently fails at 10*eps linux)
+    end
   end
 end
 
@@ -4679,15 +4757,14 @@ local function resize (x, nr, nc)
 	return y
 end
 
- -- convolution theorem (using matlab, conv(f, g) is not the same is ifft(fft(f)*fft(g)) )
+ -- convolution theorem
 function TestMatrixFFT:testConv()
-  -- HELP - to get full conv: nr, nc = xr+yr-1, xc+yc-1
-  for i=3,8 do
-    local outs = (i-1)+(i-2) - 1
-    local v1  = resize(pasVec(i-1), outs,1)
-    local v2  = resize(pasVec(i-2), outs,1)
+  for i=1,6 do
+    local outs = (i + 1) + (i) - 1
+    local v1  = pasVec(i + 1)
+    local v2  = pasVec(i)
     local res = v1:conv(v2)
-    assertTrue( res:eq(pasVec(outs), 51*eps ) )
+    assertTrue( res:eq(pasVec(outs):t(), 51*eps ) )
     assertTrue( res:eq(v2:conv(v1)          ) )
   end
   for i=3,5 do
@@ -4702,60 +4779,60 @@ function TestMatrixFFT:testConv()
   end end
   local m1 = dat.fftMIn:getsub(1..3, 1..3)
   local m2 = dat.fftMIn:getsub(5..7, 5..7)
-  assertTrue(dat.convRow:eq(m1:conv(m2, "row"), eps))
+  assertTrue(dat.convRow:eq(m1:conv(m2, "row"), 2*eps))
   assertTrue(dat.convCol:eq(m1:conv(m2, "col"), eps))
-  assertTrue(dat.convVec:reshape(3, 3):eq(m1:conv(m2, "vec"), 2*eps))
+  assertTrue(dat.convVec:eq(m1:conv(m2, "vec"), 4*eps))
 end
 
- -- correlation theorem (using matlab, conv(f, g) is not the same is ifft(fft(f)*conj(fft(g))) )
+ -- cross-correlation theorem
 function TestMatrixFFT:testCorr()
-  for i=3,6 do
-    local outs = (i-1)+(i-2) - 1
-    local v1  = resize(pasVec(i-1), outs,1)
-    local v2  = resize(pasVec(i-2), outs,1)
+  for i=1,6 do
+    local outs = (i + 1) + (i) - 1
+    local v1  = pasVec(i + 1)
+    local v2  = pasVec(i)
     local res = v1:corr(v2)
-    assertTrue( res:eq( pasVec(outs):roll(outs/2+1,0), 16*eps ) )
-    assertTrue( res:eq( v2:corr(v1) :roll(1       ,0), 16*eps ) )
+    assertTrue( res:eq( pasVec(outs):t(), 51*eps ) ) --Should be identical to conv as pascals triangle is symmetric and real
+    assertTrue( res:eq(v2:corr(v1)          ) )
   end
   for i=3,5 do
   for j=0,2 do
     local outs = i+2
     local m = resize(dat.fftMIn:getsub(1+j..i+j, 1+j..i+j), outs)
     local k = resize(matrix{{0,0,0},{0,1,0},{0,0,0}}      , outs)
-    local mref = m:conv(k):roll(-1,-1)
-    local mres = m:corr(k):roll( 1 ,1)
-    assertTrue( mref:eq( mres, 2*eps ) )
+    local mref = m:copy():rev():conv(k) -- identity F{conj(f(-t))} = conj(F{f(t)})
+    local mres = m:corr(k)
+    assertTrue( mref:eq( mres, 2*eps ) ) --check identity
   end end
   local m1 = dat.fftMIn:getsub(1..3, 1..3)
   local m2 = dat.fftMIn:getsub(5..7, 5..7)
-  assertTrue(dat.corrRow:eq(m1:corr(m2, "row"), eps))
-  assertTrue(dat.corrCol:eq(m1:corr(m2, "col"), eps))
-  assertTrue(dat.corrVec:reshape(3, 3):eq(m1:corr(m2, "vec"), 2*eps)) 
+  assertTrue(dat.corrRow:rev("row"):eq(m1:corr(m2, "row"), eps)) --Matlab outputs in reverse
+  assertTrue(dat.corrCol:rev("col"):eq(m1:corr(m2, "col"), eps))
+  assertTrue(dat.corrVec:rev(     ):eq(m1:corr(m2, "vec"), 6*eps)) 
 end
 
---Should we test this with matlab? Note: its different.
+--Cross-covariance 
 function TestMatrixFFT:testCovar()
-  for i=3,6 do
-    local outs = (i-1)+(i-2) - 1
-    local v1 = resize(pasVec(i-1), outs,1)
-    local v2 = resize(pasVec(i-2), outs,1)
+  for i=1,6 do
+    local outs = (i + 1) + (i) - 1
+    local v1  = pasVec(i + 1)
+    local v2  = pasVec(i)
     local res = v1:covar(v2)
-    local ref = v1:corr (v2):center()
+    local ref = v1:center():corr(v2:center()) --same as matlab method
     assertTrue( res:eq( ref, 16*eps ) )
   end
   for i=3,5 do
     local outs = i+2
     local m = resize(dat.fftMIn:getsub(1..i, 1..i)  , outs)
     local k = resize(matrix{{0,0,0},{0,1,0},{0,0,0}}, outs)
-    local mref = m:corr (k):roll(1,1):center()
-    local mres = m:covar(k):roll(1,1)
+    local mref = m:center():corr(k:center()) --identity
+    local mres = m:covar(k)
     assertTrue( mref:eq( mres, 2*eps ) )
   end
   local m1 = dat.fftMIn:getsub(1..3, 1..3)
   local m2 = dat.fftMIn:getsub(5..7, 5..7)
-  assertTrue(m1:corr(m2, "vec"):center("vec"):eq(m1:covar(m2, "vec"), 3*eps))
-  assertTrue(m1:corr(m2, "row"):center("row"):eq(m1:covar(m2, "row"), 2*eps))
-  assertTrue(m1:corr(m2, "col"):center("col"):eq(m1:covar(m2, "col"), 2*eps))
+  assertTrue(dat.covVec:rev(     ):eq(m1:covar(m2, "vec"), eps)) --Matlab outputs in reverse
+  assertTrue(dat.covRow:rev("row"):eq(m1:covar(m2, "row"), eps))
+  assertTrue(dat.covCol:rev("col"):eq(m1:covar(m2, "col"), eps))
 end
 
 -- rotations ------------------------------------------------------------------o
@@ -5233,7 +5310,7 @@ function TestMatrixRot:testRotq()
   end
 end
 
-function TestMatrixRot:testTorotq() -- TODO
+function TestMatrixRot:testTorotq()
   local v, m = vector{0,0,1}:unit(), matrix(3)
   for _,a in ipairs(dat.rad) do
     for _,a1 in ipairs(dat.rad) do
