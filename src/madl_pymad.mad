@@ -93,14 +93,14 @@ local function send_str (self, s)
 end
 
 local function recv_str (self)
-  local n = recv_int(self)
+  local n = tonumber(recv_int(self))
   return assert(io.read(n), "couldn't receive string")
 end
 
 -- number
 
-local num    = ffi.new 'num_t[3]' -- used to hold complex, range and logrange
-local num_sz = ffi.new 'num_t'
+local num    = ffi.new    'num_t[3]' -- used to hold complex, range and logrange
+local num_sz = ffi.sizeof 'num_t'
 
 local function send_num (self, x)
   num[0] = x
@@ -123,8 +123,13 @@ end
 
 -- range
 
-local function send_grng (self, r)
-  num[0], num[1], num[2] = r:start(), r:stop(), r:step()
+local function send_rng (self, r)
+  num[0], num[1], num[2] = r.start, r.stop, #r--r.step
+  return send_dat(self, num, 3*num_sz)
+end
+
+local function send_lrng (self, r)
+  num[0], num[1], num[2] = r:start(), r:stop(), #r--r:step()
   return send_dat(self, num, 3*num_sz)
 end
 
@@ -143,7 +148,8 @@ local function is_irange (r)
 end
 
 local function send_irng (self, r)
-  int[0], int[1], int[2] = r.start, r.stop, r.step
+  int[0], int[1], int[2] = r.start, r.stop, #r 
+  print(int_sz)
   return send_dat(self, int, 3*int_sz)
 end
 
@@ -157,7 +163,7 @@ end
 local function send_gmat (self, m)
   int[0], int[1] = m.nrow, m.ncol
   send_dat(self, int, 2*int_sz)
-  return sent_dat(self, m._dat, m:bytesize())
+  return send_dat(self, m._dat, m:bytesize())
 end
 
 local function recv_gmat (self, ctor)
@@ -210,7 +216,7 @@ end
 
 -- object (table with metatable are treated as pure reference)
 
-local send_obj = \s -> s
+local send_obj = \s,x -> s
 local recv_obj = \_ -> error("unsupported data type received: object")
 
 -- dispatch tables ------------------------------------------------------------o
@@ -227,8 +233,8 @@ local type_fun = {
   mat_ = { send = send_gmat, recv = recv_mat  },
   cmat = { send = send_gmat, recv = recv_cmat },
   imat = { send = send_gmat, recv = recv_imat },
-  rng_ = { send = send_grng, recv = recv_rng  },
-  lrng = { send = send_grng, recv = recv_lrng },
+  rng_ = { send = send_rng , recv = recv_rng  },
+  lrng = { send = send_lrng, recv = recv_lrng },
   irng = { send = send_irng, recv = recv_irng },
   mono = { send = send_mono, recv = recv_mono },
   tpsa = { send = send_tpsa, recv = recv_tpsa },
@@ -301,7 +307,7 @@ end
 
 local function recv (self)
   local typ = io.read(4)
-  return assert(type_fun[typ].recv, "unsupported data type")(self)
+  return assert(type_fun[typ], "unsupported data type").recv(self)
 end
 
 pymad:set_methods {
