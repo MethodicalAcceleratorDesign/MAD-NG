@@ -63,8 +63,8 @@ local recv_nil = \_ -> nil
 
 -- boolean
 
-local log    = ffi.new 'log_t[1]'
-local log_sz = ffi.new 'log_t'
+local log    = ffi.new    'log_t[1]'
+local log_sz = ffi.sizeof 'log_t'
 
 local function send_bool (self, b)
   log[0] = b
@@ -99,8 +99,8 @@ end
 
 -- number
 
-local num    = ffi.new 'num_t[3]' -- used to hold complex, range and logrange
-local num_sz = ffi.new 'num_t'
+local num    = ffi.new    'num_t[3]' -- used to hold complex, range and logrange
+local num_sz = ffi.sizeof 'num_t'
 
 local function send_num (self, x)
   num[0] = x
@@ -124,17 +124,22 @@ end
 -- range
 
 local function send_grng (self, r)
-  num[0], num[1], num[2] = r:start(), r:stop(), r:step()
-  return send_dat(self, num, 3*num_sz)
+  num[0], num[1] = r:ranges()
+  send_dat(self, num, 2*num_sz)
+  int[0] = r:size()
+  return send_dat(self, int, int_sz)
 end
 
 local function recv_grng (self, ctor)
-  recv_dat(self, num, 3*num_sz)
-  return ctor(num[0], num[1], num[2])
+  recv_dat(self, num, 2*num_sz)
+  recv_dat(self, int,   int_sz)
+  return ctor(num[0], num[1], int[0])
 end
 
-local recv_rng  = \s -> recv_grng(s,    range)
-local recv_lrng = \s -> recv_grng(s, logrange)
+local nrange, nlogrange in MAD
+
+local recv_rng  = \s -> recv_grng(s,    nrange)
+local recv_lrng = \s -> recv_grng(s, nlogrange)
 
 -- irange
 
@@ -157,7 +162,7 @@ end
 local function send_gmat (self, m)
   int[0], int[1] = m.nrow, m.ncol
   send_dat(self, int, 2*int_sz)
-  return sent_dat(self, m._dat, m:bytesize())
+  return send_dat(self, m._dat, m:bytesize())
 end
 
 local function recv_gmat (self, ctor)
@@ -173,16 +178,29 @@ local recv_imat = \s -> recv_gmat(s, imatrix)
 
 -- mono
 
-local send_mono = \s,m -> send_str(s, m:tostring())
-local recv_mono = \s   -> monomial(recv_str(s))
+local send_mono = \s,m -> send_dat(send_int(s, m.n), m._dat, m.n)
+
+local function recv_mono (self)
+  local n = recv_int(s)
+  local m = momomial(n)
+  recv_dat(self, m._dat, n)
+  return m
+end
 
 -- tpsa
 
-local function send_gtpsa (self, x, send)
+local function send_gtpsa (self, x, send_num)
   local t = x:totable(true)
-  local n = #t
-  send_int(self, n)           -- string ,   value
-  for i=1,n do send(send_str(self, t[i]), t[t[i]]) end
+  local nt = #t                        -- #coef ~= 0
+  local nm = nt > 0 and #t[1] or 0     -- #vars
+  int[0], int[1] = nt, nm
+  send_dat(self, int, 2*int_sz)
+
+  if n > 0 then
+    local m = momomial(nm)
+    for i=1,n do send_dat(self, m:fill(t[i])._dat, nm) end
+    for i=1,n do send_num(self, t[t[i]]) end
+  end
   return self
 end
 
@@ -301,7 +319,7 @@ end
 
 local function recv (self)
   local typ = io.read(4)
-  return assert(type_fun[typ].recv, "unsupported data type")(self)
+  return assert(type_fun[typ], "unsupported data type").recv(self)
 end
 
 pymad:set_methods {
