@@ -103,6 +103,10 @@ Unless specified, the object :var:`rng` that owns the methods represents either 
 
    Return the values of :var:`start`, :var:`stop` and :var:`step`, fully characterising the range :var:`rng`.
 
+.. function:: rng:size()
+
+   Return the number of values contained by the range :var:`rng`, i.e. its size that is the number of steps plus one.
+
 .. function:: rng:value(x)
 
    Return the interpolated value at :var:`x`, i.e. interpreting the range  :var:`rng` as a (log)line with equation :expr:`start + x * step`.
@@ -176,11 +180,11 @@ Operators
 
 .. function:: #rng
 
-   Return the number of values contained by the range :var:`rng`, i.e. its size that is the number of steps plus one.
+   Return the number of values contained by the range :var:`rng`, i.e. it is equivalent to :expr:`rng:size()`.
 
 .. function:: rng[n]
 
-   Return the value at index :var:`n` contained by the range :var:`rng`, i.e. its is equivalent to :expr:`rng:get(round(n-1))`.
+   Return the value at index :var:`n` contained by the range :var:`rng`, i.e. it is equivalent to :expr:`rng:get(round(n-1))`.
 
 .. function:: -rng
 
