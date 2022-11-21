@@ -99,17 +99,9 @@ Unless specified, the object :var:`rng` that owns the methods represents either 
 
    Return :var:`rng` itself. This method is the identity for objects with value semantic.
 
-.. function:: rng:start()
+.. function:: rng:ranges()
 
-   Return the start value of the range :var:`rng`.
-
-.. function:: rng:stop()
-
-   Return the stop value of the range :var:`rng`.
-
-.. function:: rng:step()
-
-   Return the step value of the range :var:`rng`, which may slighlty differ from the value provided to the constructors due to adjustment. 
+   Return the values of :var:`start`, :var:`stop` and :var:`step`, fully characterising the range :var:`rng`.
 
 .. function:: rng:value(x)
 
@@ -134,10 +126,6 @@ Unless specified, the object :var:`rng` that owns the methods represents either 
    - :expr:`range (start, stop, step):value(size-1) == stop`
    
    The maximum adjustment is :expr:`step = step * (1-eps)^2`, beyond this value it is the user reponsibility to provide better inputs.
-
-.. function:: rng:ranges()
-
-   Return the values of :var:`start`, :var:`stop` and :var:`step`, fully characterising the range :var:`rng`. 
 
 .. function:: rng:bounds()
 
