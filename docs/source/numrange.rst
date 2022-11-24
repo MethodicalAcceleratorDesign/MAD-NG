@@ -58,28 +58,29 @@ Attributes
 .. constant:: rng.start
               rng.logstart
 
-   The component *start* of the range and the logrange on a linear scale. 
+   The component *start* of the :type:`range` and the :type:`logrange` on a linear scale. 
 
 .. constant:: rng.stop
               rng.logstop
 
-   The component *stop* of the range and the logrange on a linear scale. 
+   The component *stop* of the :type:`range` and the :type:`logrange` on a linear scale. 
 
 .. constant:: rng.step
               rng.logstep
 
-   The component *step* of the range and the logrange on a linear scale, which may slighlty differ from the value provided to the constructors due to adjustment. 
+   The component *step* of the :type:`range` and the :type:`logrange` on a linear scale, which may slighlty differ from the value provided to the constructors due to adjustment. 
 
 Functions
 =========
 
 .. function:: is_range(a)
+              is_logrange(a)
 
-   Return :const:`true` if :var:`a` is a :type:`range`, :const:`false` otherwise. This function is only available from the module :mod:`MAD.typeid`.
+   Return :const:`true` if :var:`a` is respectively a :type:`range` or a :type:`logrange`, :const:`false` otherwise. These functions are only available from the module :mod:`MAD.typeid`.
 
-.. function:: is_logrange(a)
+.. function:: isa_range(a)
 
-   Return :const:`true` if :var:`a` is a :type:`logrange`, :const:`false` otherwise. This function is only available from the module :mod:`MAD.typeid`.
+   Return :const:`true` if :var:`a` is a :type:`range` or a :type:`logrange` (i.e. is-a range), :const:`false` otherwise. This function is only available from the module :mod:`MAD.typeid`.
 
 Methods
 =======
@@ -98,17 +99,13 @@ Unless specified, the object :var:`rng` that owns the methods represents either 
 
    Return :var:`rng` itself. This method is the identity for objects with value semantic.
 
-.. function:: rng:start()
+.. function:: rng:ranges()
 
-   Return the start value of the range :var:`rng`.
+   Return the values of :var:`start`, :var:`stop` and :var:`step`, fully characterising the range :var:`rng`.
 
-.. function:: rng:stop()
+.. function:: rng:size()
 
-   Return the stop value of the range :var:`rng`.
-
-.. function:: rng:step()
-
-   Return the step value of the range :var:`rng`, which may slighlty differ from the value provided to the constructors due to adjustment. 
+   Return the number of values contained by the range :var:`rng`, i.e. its size that is the number of steps plus one.
 
 .. function:: rng:value(x)
 
@@ -133,10 +130,6 @@ Unless specified, the object :var:`rng` that owns the methods represents either 
    - :expr:`range (start, stop, step):value(size-1) == stop`
    
    The maximum adjustment is :expr:`step = step * (1-eps)^2`, beyond this value it is the user reponsibility to provide better inputs.
-
-.. function:: rng:ranges()
-
-   Return the values of :var:`start`, :var:`stop` and :var:`step`, fully characterising the range :var:`rng`. 
 
 .. function:: rng:bounds()
 
@@ -187,11 +180,11 @@ Operators
 
 .. function:: #rng
 
-   Return the number of values contained by the range :var:`rng`, i.e. its size that is the number of steps plus one.
+   Return the number of values contained by the range :var:`rng`, i.e. it is equivalent to :expr:`rng:size()`.
 
 .. function:: rng[n]
 
-   Return the value at index :var:`n` contained by the range :var:`rng`, i.e. its is equivalent to :expr:`rng:get(round(n-1))`.
+   Return the value at index :var:`n` contained by the range :var:`rng`, i.e. it is equivalent to :expr:`rng:get(round(n-1))`.
 
 .. function:: -rng
 
