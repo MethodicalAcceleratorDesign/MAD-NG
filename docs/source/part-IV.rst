@@ -10,6 +10,7 @@ MODULES
    /functions.rst
    /functor.rst
    /monomial.rst
+   /mtable.rst
    /numrange.rst
    /randnum.rst
    /cplxnum.rst

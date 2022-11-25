@@ -18,7 +18,10 @@ release = '0.9.6'
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 primary_domain = "mad" #Use .. default-domain:: c to change to c then .. default-domain:: mad to change back to mad
-extensions = ["customRoles", "sphinx-mad-domain"]
+extensions = [
+    "customRoles", 
+    "sphinx-mad-domain", 
+    ]
 
 source_suffix = {
     '.rst': 'restructuredtext',
@@ -26,6 +29,7 @@ source_suffix = {
 }
 
 highlight_language = "lua"
+numfig = True
 
 templates_path = ['_templates']
 exclude_patterns = []

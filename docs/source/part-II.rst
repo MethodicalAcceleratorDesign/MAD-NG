@@ -9,3 +9,5 @@ ELEMENTS & COMMANDS
    /sequence.rst
    /survey.rst
    /track.rst
+   /correct.rst
+   /twiss.rst
