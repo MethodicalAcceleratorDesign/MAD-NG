@@ -417,7 +417,7 @@ Mapping and Folding
 
 .. function:: mat:foreach ([ij_,] f)
 
-   Return the real, complex or integer matrix :var:`mat` after applying the :type:`callable` (or the operator string) :var:`f` to the elements at the indexes given by the :type:`iterable` :var:`ij` using :expr:`f(mat[n], n)`, i.e. interpreting the matrix as a vector. Default: :expr:`ij_ = 1..#mat`.
+   Return the real, complex or integer matrix :var:`mat` after applying the :type:`callable` :var:`f` to the elements at the indexes given by the :type:`iterable` :var:`ij` using :expr:`f(mat[n], n)`, i.e. interpreting the matrix as a vector. Default: :expr:`ij_ = 1..#mat`.
 
 .. function:: mat:filter ([ij_,] p, r_)
 
