@@ -191,20 +191,20 @@ function TestCMatrix:testCdataType()
   assertTrue ( isa_matrix( cv ) )
 end
 
-function TestMatrix:testIpairs()
+function TestCMatrix:testIpairs()
   for _, m in ipairs(G.cmatidx) do 
     for i, v in ipairs(m) do 
-      assertEquals(i, v) 
+      assertEquals(toC(i), v) 
     end
   end
 end
 
 -- special constructors -------------------------------------------------------o
 
-function TestMatrix:testVec()
+function TestCMatrix:testVec()
   for _,cmat in ipairs(G.cmatidx) do 
     local vec_res = cmat:vec()
-    assertEquals(vec_res, cmat:transpose():reshape(#cmat, 1))
+    assertEquals(vec_res, cmat:copy():transpose(false):reshape(#cmat, 1))
     for i = 1, cmat.nrow do 
       for j = 1, cmat.ncol do
         assertEquals(cmat:get(i, j), vec_res[i + (j-1)*cmat.nrow])
@@ -976,7 +976,7 @@ function TestCMatrixInPlaceII:testInsrow()
     for i = 1, cm.nrow do 
       assertEquals(cm:copy():insrow(1..i, i), cm:copy():inssub(1..i, nil, i))
       assertEquals(cm:copy():insrow(1..i, 1..i*cm.ncol):getrow(1..i), cmatrix(i, cm.ncol):fill(1..i*cm.ncol)) --check for rowwise fill
-      assertEquals(cm:zeros():insrow(1..i, 1..i*cm.ncol), cm:zeros():inssub(1..i, nil, 1..i*cm.ncol))
+      assertEquals(cm:copy():zeros():insrow(1..i, 1..i*cm.ncol), cm:copy():zeros():inssub(1..i, nil, 1..i*cm.ncol))
     end
   end
 end
@@ -1567,21 +1567,23 @@ function TestCMatrixErr:testShiftv()
 end
 
 function TestCMatrixInPlaceII:testShiftv()
-  for n=1,6 do
-    for i=1,n do
-      for j=0,n-i do
+  for sz=1,6 do
+    for i=1,sz do
+      for n=0,i-1 do
         -- left shift
-        local v = cvector(n):fill(1..n)/2i
-        local w = cvector(n):fill(1..n)/2i
-        v:shiftv(i,-j)
-        w:setvec(i..n-j, w:getvec(i+j..n) )
+        local v = cvector(sz):fill(1..sz):map(toC)
+        local w = cvector(sz):fill(1..sz):map(toC)
+        v:shiftv(i,-n)
+        w:setvec(i-n..sz-n, w:getvec(i..sz) )
         assertAllAlmostEquals(totable(v:real()), totable(w:real()))
         assertAllAlmostEquals(totable(v:imag()), totable(w:imag()))
+      end
+      for n=0, sz-i do
         -- right shift
-        local v = cvector(n):fill(1..n)/2i
-        local w = cvector(n):fill(1..n)/2i
-        v:shiftv(i,+j)
-        w:setvec(i+j..n, w:getvec(i..n-j) )
+        local v = cvector(sz):fill(1..sz):map(toC)
+        local w = cvector(sz):fill(1..sz):map(toC)
+        v:shiftv(i,+n)
+        w:setvec(i+n..sz, w:getvec(i..sz-n) )
         assertAllAlmostEquals(totable(v:real()), totable(w:real()))
         assertAllAlmostEquals(totable(v:imag()), totable(w:imag()))
       end
@@ -2236,12 +2238,6 @@ function TestCMatrixFun:testFilter()
     else
       assertEquals( cm:filter(3..#cm, \x x ~= 1 + 1i, {}), {}         )
     end
-    local cmc = cm:copy()
-    cmc:filter(\x x==1+1i, 'in' ) assertEquals( cmc , cvector(1) :fill(1+1i)           )
-    cmc = cm:copy()
-    if #cmc > 4 then
-      cmc:filter(\x x:real()>4, 'in' ) assertEquals( cmc  , cvector(#cmc):seq(4) + cvector(#cmc):seq(4)*1i)
-    end
   end
 end
 
@@ -2263,15 +2259,16 @@ end
 
 function TestCMatrixFun:testFilter_out()
   for _,cm in ipairs(G.cmatidx) do
+    local cmc = cm:copy()
     local mn = #cm
-    assertEquals( cm:filter_out(\x x~=1+1i    ), cm:filter(\x x==1+1i    ) )
-    assertEquals( cm:filter_out(\x x==0+0i    ), cm:filter(\x x~=0+0i    ) )
-    assertEquals( cm:filter_out(\x x~=1+1i, {}), cm:filter(\x x==1+1i, {}) )
-    assertEquals( cm:filter_out(2..#cm, \x x ~= 1, {}), {}                     )
-    if #cm >= 3 then 
-      assertEquals( cm:filter_out(3..#cm, \x x == 1 + 1i, {}), cvector(#cm - 2):seq(2):map(toC):totable()         )
+    assertEquals( cmc:filter_out(\x x~=1+1i    ), cmc:filter(\x x==1+1i    ) )
+    assertEquals( cmc:filter_out(\x x==0+0i    ), cmc:filter(\x x~=0+0i    ) )
+    assertEquals( cmc:filter_out(\x x~=1+1i, {}), cmc:filter(\x x==1+1i, {}) )
+    assertEquals( cmc:filter_out(2..#cmc, \x x ~= 1, {}), {}                     )
+    if #cmc >= 3 then 
+      assertEquals( cmc:filter_out(3..#cmc, \x x == 1 + 1i, {}), cvector(#cmc - 2):seq(2):map(toC):totable()         )
     else
-      assertEquals( cm:filter_out(3..#cm, \x x == 1 + 1i, {}), {}         )
+      assertEquals( cmc:filter_out(3..#cmc, \x x == 1 + 1i, {}), {}         )
     end
   end
 end
@@ -2680,7 +2677,7 @@ end
 
 function TestCMatrixSMaps:testFabs()
   for _,cm in ipairs(G.matidx) do
-    local cm2 = cm:map(\x x*x) - 10*cm --Acheives +/-
+    local cm2 = cm:copy():map(\x x*x) - 10*cm --Acheives +/-
     assertEquals( cm2:fabs(), cm2:real():abs() + cm2:imag():abs()*1i ) --No cplx
   end
 end
@@ -3274,7 +3271,7 @@ function TestCMatrix:testMean()
   end
 end
 
-function TestMatrix:testVariance()
+function TestCMatrix:testVariance() --Fails as corrector is incorrectly used.
   for _,cm in ipairs(G.cmatidx) do
     local mean = cm:mean()
     local sum = 0
@@ -3530,15 +3527,17 @@ end
 
 function TestCMatrixLinAlg:testUnit()  --  unit :  u / |u|
   for _,cm in ipairs(G.cmatidx) do
-    assertEquals( cm:copy():unit(), cm / cm:norm() )
+    if cm:norm() ~= 0 then 
+      assertEquals( cm:copy():unit(), cm / cm:norm() )
+    end
   end
 end
 
 function TestCMatrixLinAlg:testCenter()
   for _,cm in ipairs(G.cmatidx) do
     local mid = cm:sum() / #cm
-    assertEquals( cm:center(),  cm:map(\x x-mid) )
-    local centeredrow, centeredcol, cmc = cm:copy(), cm:copy(), cm:same()
+    assertEquals( cm:copy():center(),  cm:copy():map(\x x-mid) )
+    local centeredrow, centeredcol, cmc = cm:copy(), cm:copy(), cm:copy()
     for i = 1, cm.nrow do 
       local row = centeredrow:getsub(i)
       centeredrow:setsub(i, nil, row - row:mean())
@@ -3547,10 +3546,12 @@ function TestCMatrixLinAlg:testCenter()
       local col = centeredcol:getsub(nil, i)
       centeredcol:setsub(nil, i, col - col:mean())
     end
-    assertEquals( cm:center("row"), centeredrow)
-    assertEquals( cm:center("col"), centeredcol)
-    cm:center(cmc)
-    assertEquals( cm:center("vec"), cmc) --check r_
+    assertEquals( cm:copy():center("row"), centeredrow)
+    assertEquals( cm:copy():center("col"), centeredcol)
+    local mid = cm:getdiag():mean()
+    assertEquals( cm:copy():center("diag"), cm:copy():map(cm:getdidx(), \x x-mid))
+    cmc:center("vec")
+    assertEquals( cmc, cm:copy():center("vec")) --check in place
   end
 end
 
@@ -3986,6 +3987,62 @@ function TestCMatrixOps:testEpow()
     assertTrue  ( is_cmatrix(cm:ediv(cm2)) )
    end
 end
+
+function TestCMatrixOps:testDmul()
+  for x = 1, 5 do 
+    local cm  = cmatrix(x, x):seq():map(toC)
+    local cm2 = cm:same():seq():map(toC)/2
+    local m = cm2:real()
+    assertEquals( cm:dmul(cm2), cm:getdiag():diag() * cm2 ) -- diagonalOf(cmat) * cmat
+    assertEquals( cm:dmul(m)  , cm:getdiag():diag() *  m  ) -- diagonalOf(cmat) *  mat
+    assertTrue  ( is_cmatrix(cm:dmul(m)) )
+  end
+  for _,cm in ipairs(G.cmatidx) do
+    local nr = min(cm.nrow, cm.ncol)
+    for _, cm2 in ipairs(G.cmatidx) do 
+      if (cm.ncol == 1 or cm.nrow == 1) and #cm == cm2.nrow then --If cm is a vector, make sure the cm2 is multiplicable with cm:diag()
+        local m = cm2:copy():real()
+        assertEquals( cm:dmul(cm2), cm:diag() * cm2 ) -- diagonalOf(cmat) * cmat
+        assertEquals( cm:dmul(m)  , cm:diag() *  m  ) -- diagonalOf(cmat) *  mat
+      elseif cm.ncol == cm2.nrow and cm.ncol ~= 1 and cm.nrow ~= 1  then --They have to be multiplicable to begin with (and not with a vector)
+        local diag_cm = cm:same():setvec(cm:getdidx(), cm:getdiag())
+        local m = cm2:copy():real()
+        assertEquals( cm:dmul(cm2), diag_cm * cm2 ) -- diagonalOf(mat) * cmat
+        assertEquals( cm:dmul(m)  , diag_cm *  m  ) -- diagonalOf(mat) *  mat
+        assertTrue  ( is_cmatrix(cm:dmul(m)) )
+      end
+    end
+  end
+end
+
+function TestCMatrixOps:testMuld()
+  for x = 1, 5 do 
+    local cm  = cmatrix(x, x):seq():map(toC)
+    local cm2 = cm:same():seq():map(toC)/2
+    local m = cm2:real()
+    assertEquals( cm:muld(cm2), cm * cm2:getdiag():diag() ) -- mat * diagonalOf( mat)
+    assertEquals( cm:muld( m ), cm *  m :getdiag():diag() ) -- mat * diagonalOf(cmat)
+    assertTrue  ( is_cmatrix(cm:muld(m)) )
+  end
+  for _,cm in ipairs(G.cmatidx) do
+    local nr = min(cm.nrow, cm.ncol)
+    for _, cm2 in ipairs(G.cmatidx) do 
+      if (cm2.ncol == 1 or cm2.nrow == 1) and #cm2 == cm.ncol then --If cm is a vector, make sure the cm2 is multiplicable with cm:diag()
+        local m = cm2:copy():real()
+        assertEquals( cm:muld(cm2), cm * cm2:diag() ) -- cmat * diagonalOf(cmat)
+        assertEquals( cm:muld( m ), cm *  m :diag() ) -- cmat * diagonalOf( mat)
+      elseif cm.ncol == cm2.nrow and cm2.ncol ~= 1 and cm2.nrow ~= 1 then --They have to be multiplicable to begin with
+        local diag_cm = cm2:same():setvec(cm2:getdidx(), cm2:getdiag())
+        local m       = cm2:copy():real()
+        local diag_m  = m:same():setvec(m:getdidx(), m:getdiag())
+        assertEquals( cm:muld(cm2), cm * diag_cm ) -- cmat * diagonalOf(cmat)
+        assertEquals( cm:muld( m ), cm * diag_m  ) -- cmat * diagonalOf( mat)
+        assertTrue  ( is_cmatrix(cm:muld(m)) )
+      end
+    end
+  end
+end
+
 -- linear algebra -------------------------------------------------------------o
 
 function TestCMatrixErr:testSolve() -- TODO
@@ -4213,8 +4270,8 @@ function TestCMatrixFFT:testIFFT()
     assertTrue( res:imag():eq( ref:imag(),   eps ) )
   end end
   local cm = datC.fftMIn:copy()
-  assertTrue(cm:reshape(1, #cm):eq(cm:fft("vec"):reshape(cm:sizes()):ifft("vec"), 2*eps))
-  assertTrue(cm               :eq(cm:fft("row")                   :ifft("row"), 2*eps))
+  assertTrue(cm:eq(cm:fft("vec"):ifft("vec"), 2*eps))
+  assertTrue(cm:eq(cm:fft("row"):ifft("row"), 2*eps))
   local res = cmatrix(cm:sizes())
   cm:fft("col"):ifft("col", res) --test d_ and r_
   assertTrue(cm:eq(res, 2*eps))
@@ -4294,7 +4351,7 @@ local function resize (x, nr, nc)
   local nr, nc = y:sizes()
 	for i=1,nr do
     for j = 1, nc do
-      local val = x:get(i, j) or 0 
+      local val = x:geti(idx(i, j, nc)) or 0 
       y:set(i, j, val)
     end
 	end
@@ -4303,80 +4360,75 @@ end
 
  -- convolution theorem
 function TestCMatrixFFT:testConv()
-  -- HELP - to get full conv: nr, nc = xr+yr-1, xc+yc-1
-  for i=3,8 do
-    local outs = (i-1)+(i-2) - 1
-    local v1  = resize(pasVec(i-1), outs,1):map(toC)
-    local v2  = resize(pasVec(i-2), outs,1):map(toC)
+ for i=1,6 do
+    local outs = (i + 1) + (i) - 1
+    local v1  = pasVec(i + 1):map(toC)
+    local v2  = pasVec(i):map(toC)
     local res = v1:conv(v2)
-    assertTrue( res:eq(pasVec(outs):map(\x 2i*x), 600*eps ) )
+    local nr, nc = 1, #v1 + #v2 - 1
+    assertTrue( res:eq(pasVec(outs):map(\x 2i*x):t(false), 515*eps ) )
     assertTrue( res:eq(v2:conv(v1), 74*eps) )
   end
-  for i=3,5 do
-  for j=0,2 do
-    local outs = i+2
-    local cm = resize(dat.fftMIn:getsub(1+j..i+j, 1+j..i+j), outs, outs):map(toC)
-    local k  = resize(matrix{{0,0,0},{0,1,0},{0,0,0}}      , outs, outs):map(toC)
-    local mres = cm:conv(k):roll(-1,-1)
-    assertTrue( mres:getsub(1..i     ,1..i     ):eq( cm:getsub(1..i, 1..i  ):map(\x ((x:real()+x:imag())*1i) ), 3*eps) )
-    assertTrue( mres:getsub(i+1..outs,1..i     ):eq( cmatrix(outs-i, i     )                                  , 2*eps) )
-    assertTrue( mres:getsub(1..i     ,i+1..outs):eq( cmatrix(i     , outs-i)                                  , 2*eps) )
+  for i = 2,5 do
+  for j = 2,5 do
+    local cm = dat.fftMIn:getsub(1..i, 1..j)  :map(toC)
+    local k  = matrix{{0,0,0},{0,1,0},{0,0,0}}:map(toC)
+    local mres = cm:copy():conv(k)
+    assertTrue(datC.convOut[(i-2)*4+j-1]:eq(mres, 3*eps))
   end end
   local cm1 = dat.fftMIn:getsub(1..3, 1..3):map(toC)
   local cm2 = dat.fftMIn:getsub(5..7, 5..7):map(toC)
-  assertTrue(datC.convRow:eq(cm1:conv(cm2, "row"), 2*eps))
+  assertTrue(datC.convRow:eq(cm1:conv(cm2, "row"), 3*eps))
   assertTrue(datC.convCol:eq(cm1:conv(cm2, "col"), 2*eps))
-  assertTrue(datC.convVec:reshape(3, 3):eq(cm1:conv(cm2, "vec"), 4*eps))
+  assertTrue(datC.convVec:eq(cm1:conv(cm2, "vec"), 12*eps))
 end
 
  -- correlation theorem
 function TestCMatrixFFT:testCorr()
-  for i=3,6 do
-    local outs = (i-1)+(i-2) - 1
-    local v1  = resize(pasVec(i-1), outs,1):map(toC)
-    local v2  = resize(pasVec(i-2), outs,1):map(toC)
+  for i=1,6 do
+    local outs = (i + 1) + (i) - 1
+    local v1  = pasVec(i + 1):map(toC)
+    local v2  = pasVec(i):map(toC)
     local res = v1:corr(v2)
-    assertTrue( res:eq( pasVec(outs):roll(outs/2+1,0):map(\x 2*x+0i), 32*eps ) )
+    assertTrue( res:eq( pasVec(outs):map(\x 2*x+0i):t(), 512*eps ) )
     assertTrue( res:eq( v2:corr(v1) :roll(1       ,0)               , 32*eps ) )
   end
-  for i=3,5 do
-  for j=0,2 do
-    local outs = i+2
-    local m = resize(dat.fftMIn:getsub(1+j..i+j, 1+j..i+j), outs, outs):map(toC)
-    local k = resize(matrix{{0,0,0},{0,1,0},{0,0,0}}, outs, outs):map(toC)
-    local mref = m:conv(k):roll(-1,-1):map(\x complex(x:imag(), x:real()) )
-    local mres = m:corr(k):roll( 1 ,1)
-    assertTrue( mref:eq( mres, 4*eps ) )
+  for i = 2,5 do
+    for j = 2,5 do
+      local cm = dat.fftMIn:getsub(1..i, 1..j)  :map(toC)
+      local k  = matrix{{0,0,0},{0,1,0},{0,0,0}}:map(toC)
+      local mres = cm:copy():corr(k)
+      assertTrue(datC.corrOut[(i-2)*4+j-1]:copy():rev("vec"):eq(mres, 30*eps)) -- Matlab returns reverse
   end end
   local cm1 = dat.fftMIn:getsub(1..3, 1..3):map(toC)
   local cm2 = dat.fftMIn:getsub(5..7, 5..7):map(toC)
-  assertTrue(datC.corrRow:eq(cm1:corr(cm2, "row"), 2*eps))
-  assertTrue(datC.corrCol:eq(cm1:corr(cm2, "col"), 2*eps))
-  assertTrue(datC.corrVec:reshape(3, 3):eq(cm1:corr(cm2, "vec"), 4*eps)) 
+  assertTrue(datC.corrRow:copy():rev("row"):eq(cm1:corr(cm2, "row"), 4*eps))
+  assertTrue(datC.corrCol:copy():rev("col"):eq(cm1:corr(cm2, "col"), 4*eps))
+  assertTrue(datC.corrVec:copy():rev("vec"):eq(cm1:corr(cm2, "vec"), 8*eps)) 
 end
 
-function TestCMatrixFFT:testCovar()
-for i=3,6 do
-    local outs = (i-1)+(i-2) - 1
-    local v1 = resize(pasVec(i-1), outs,1):map(toC)
-    local v2 = resize(pasVec(i-2), outs,1):map(toC)
+function TestCMatrixFFT:testCovar() --All fails below, caused by changes to size manipulation 
+  for i=1,6 do
+    local outs = (i + 1) + (i) - 1
+    local v1  = pasVec(i + 1):map(toC)
+    local v2  = pasVec(i):map(toC)
     local res = v1:covar(v2)
-    local ref = v1:corr (v2):center()
+    local ref = v1:center():corr (v2:center())
     assertTrue( res:eq( ref, 32*eps ) )
   end
   for i=3,5 do
     local outs = i+2
     local m = resize(dat.fftMIn:getsub(1..i, 1..i)  ,outs, outs):map(toC)
     local k = resize(matrix{{0,0,0},{0,1,0},{0,0,0}},outs, outs):map(toC)
-    local mref = m:corr (k):roll(1,1):center()
-    local mres = m:covar(k):roll(1,1)
+    local mref = m:center():corr(k:center())
+    local mres = m:covar(k)
     assertTrue( mref:eq( mres, 5*eps ) )
   end
   local cm1 = dat.fftMIn:getsub(1..3, 1..3):map(toC)
   local cm2 = dat.fftMIn:getsub(5..7, 5..7):map(toC)
-  assertTrue(cm1:corr(cm2, "vec"):center("vec"):eq(cm1:covar(cm2, "vec"), 8*eps))
-  assertTrue(cm1:corr(cm2, "row"):center("row"):eq(cm1:covar(cm2, "row"), 4*eps))
-  assertTrue(cm1:corr(cm2, "col"):center("col"):eq(cm1:covar(cm2, "col"), 2*eps))
+  assertTrue(datC.covVec:copy():rev("vec"):eq(cm1:covar(cm2, "vec"), eps))
+  assertTrue(datC.covRow:copy():rev("row"):eq(cm1:covar(cm2, "row"), eps))
+  assertTrue(datC.covCol:copy():rev("col"):eq(cm1:covar(cm2, "col"), eps))
 end
 
 -- concatenation, conversion --------------------------------------------------o
@@ -4460,8 +4512,8 @@ function TestCMatrixConv:testTotable()
     assertTrue  ( is_table(cm:totable())    )
     assertEquals( cmatrix (cm:totable("row")), cm )
     assertEquals( cmatrix (cm:totable("col")), cm )
-    assertEquals( cmatrix (cm:totable("vec")), cm:reshape(#cm, 1) )
-    assertEquals( cmatrix (cm:totable(     )), cm:reshape(#cm, 1) )
+    assertEquals( cmatrix (cm:totable("vec")), cm:copy():reshape(#cm, 1) )
+    assertEquals( cmatrix (cm:totable(     )), cm:copy():reshape(#cm, 1) )
   end
 end
 
