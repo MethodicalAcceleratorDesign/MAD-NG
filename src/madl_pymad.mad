@@ -37,7 +37,7 @@ FILE*   fdopen (int fd, str_t mode); // wrap py_fd into a FILE*
 size_t  fwrite (ptr_t buf, size_t sz, size_t n, FILE*);
 size_t  fread  (void* buf, size_t sz, size_t n, FILE*);
 
-void    setbuf (FILE*, char* buf);   // make _pyfp unbuffered
+void    setbuf (FILE*, char* buf);   // make _toPy unbuffered
 ]]
 
 -- data transfer --------------------------------------------------------------o
@@ -46,7 +46,7 @@ void    setbuf (FILE*, char* buf);   // make _pyfp unbuffered
 
 local function send_dat (self, dat, sz)
   if self._dbgf then io.write("***pymad.send: data "..sz.." bytes\n") end
-  assert(_C.fwrite(dat, 1, sz, self._pyfp) == sz, "couldn't send data")
+  assert(_C.fwrite(dat, 1, sz, self._toPy) == sz, "couldn't send data")
   return self
 end
 
@@ -196,10 +196,10 @@ local function send_gtpsa (self, x, send_num)
   int[0], int[1] = nt, nm
   send_dat(self, int, 2*int_sz)
 
-  if n > 0 then
+  if nt > 0 then
     local m = momomial(nm)
-    for i=1,n do send_dat(self, m:fill(t[i])._dat, nm) end
-    for i=1,n do send_num(self, t[t[i]]) end
+    for i=1,nt do send_dat(self, m:fill(t[i])._dat, nm) end
+    for i=1,nt do send_num(self, t[t[i]]) end
   end
   return self
 end
@@ -285,14 +285,14 @@ local function catch_err(err)
   io.write("***pymad.run: ", err, "\n", debug.traceback())
 end
 
-local function open_pipe (self, py_fd)
-  self._pyfp = assert(_C.fdopen(py_fd, "wb"), "unable to wrap py_fd with FILE")
-  _C.setbuf(self._pyfp, nil)
+local function open_pipe (self, pyFd)
+  self._toPy = assert(_C.fdopen(pyFd, "wb"), "unable to wrap py_fd with FILE")
+  _C.setbuf(self._toPy, nil)
   return self
 end
 
 local function open_env (self)
-  self._env = {}
+  self._env =  {} -- object 'pymadenv' { MAD=MAD }
   setmetatable(self._env, {__index = _G})
   self._env[self.name] = self
   return self
@@ -310,9 +310,9 @@ end
 
 -- methods --
 
-local function start(self, py_fd)
-  assert(is_natural(py_fd), "invalid argument #2 (file descritor expected)")
-  open_pipe(self, py_fd)
+local function start(self, pyFd)
+  assert(is_natural(pyFd), "invalid argument #2 (file descritor expected)")
+  open_pipe(self, pyFd)
   open_env (self)
   run      (self)
 end
