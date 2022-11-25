@@ -26,7 +26,7 @@
 local ffi = require "ffi"
 local _C, complex, matrix, cmatrix, imatrix, range, logrange,
           monomial, tpsa, ctpsa                                    in MAD
-local is_natural, is_int32, get_metatable                          in MAD.typeid
+local is_natural, is_int32, is_object, is_functor, get_metatable   in MAD.typeid
 
 local type, assert, ipairs, tonumber,    metatable, table =
       type, assert, ipairs, tonumber, getmetatable, table
@@ -63,8 +63,8 @@ local recv_nil = \_ -> nil
 
 -- boolean
 
-local log    = ffi.new 'log_t[1]'
-local log_sz = ffi.new 'log_t'
+local log    = ffi.new    'log_t[1]'
+local log_sz = ffi.sizeof 'log_t'
 
 local function send_bool (self, b)
   log[0] = b
@@ -99,8 +99,8 @@ end
 
 -- number
 
-local num    = ffi.new 'num_t[3]' -- used to hold complex, range and logrange
-local num_sz = ffi.new 'num_t'
+local num    = ffi.new    'num_t[3]' -- used to hold complex, range and logrange
+local num_sz = ffi.sizeof 'num_t'
 
 local function send_num (self, x)
   num[0] = x
@@ -124,17 +124,22 @@ end
 -- range
 
 local function send_grng (self, r)
-  num[0], num[1], num[2] = r:start(), r:stop(), r:step()
-  return send_dat(self, num, 3*num_sz)
+  num[0], num[1] = r:ranges()
+  send_dat(self, num, 2*num_sz)
+  int[0] = r:size()
+  return send_dat(self, int, int_sz)
 end
 
 local function recv_grng (self, ctor)
-  recv_dat(self, num, 3*num_sz)
-  return ctor(num[0], num[1], num[2])
+  recv_dat(self, num, 2*num_sz)
+  recv_dat(self, int,   int_sz)
+  return ctor(num[0], num[1], int[0])
 end
 
-local recv_rng  = \s -> recv_grng(s,    range)
-local recv_lrng = \s -> recv_grng(s, logrange)
+local nrange, nlogrange in MAD
+
+local recv_rng  = \s -> recv_grng(s,    nrange)
+local recv_lrng = \s -> recv_grng(s, nlogrange)
 
 -- irange
 
@@ -157,7 +162,7 @@ end
 local function send_gmat (self, m)
   int[0], int[1] = m.nrow, m.ncol
   send_dat(self, int, 2*int_sz)
-  return sent_dat(self, m._dat, m:bytesize())
+  return send_dat(self, m._dat, m:bytesize())
 end
 
 local function recv_gmat (self, ctor)
@@ -173,16 +178,29 @@ local recv_imat = \s -> recv_gmat(s, imatrix)
 
 -- mono
 
-local send_mono = \s,m -> send_str(s, m:tostring())
-local recv_mono = \s   -> monomial(recv_str(s))
+local send_mono = \s,m -> send_dat(send_int(s, m.n), m._dat, m.n)
+
+local function recv_mono (self)
+  local n = recv_int(s)
+  local m = momomial(n)
+  recv_dat(self, m._dat, n)
+  return m
+end
 
 -- tpsa
 
-local function send_gtpsa (self, x, send)
+local function send_gtpsa (self, x, send_num)
   local t = x:totable(true)
-  local n = #t
-  send_int(self, n)           -- string ,   value
-  for i=1,n do send(send_str(self, t[i]), t[t[i]]) end
+  local nt = #t                        -- #coef ~= 0
+  local nm = nt > 0 and #t[1] or 0     -- #vars
+  int[0], int[1] = nt, nm
+  send_dat(self, int, 2*int_sz)
+
+  if n > 0 then
+    local m = momomial(nm)
+    for i=1,n do send_dat(self, m:fill(t[i])._dat, nm) end
+    for i=1,n do send_num(self, t[t[i]]) end
+  end
   return self
 end
 
@@ -210,8 +228,12 @@ end
 
 -- object (table with metatable are treated as pure reference)
 
-local send_obj = \s -> s
-local recv_obj = \_ -> error("unsupported data type received: object")
+local function chktbl (a)
+  return is_object(a) and 'obj_' or is_functor(a) and 'fun_' or 'ref_'
+end
+
+local send_ref = \s -> s
+local recv_ref = \_ -> error("unsupported data type received: reference")
 
 -- dispatch tables ------------------------------------------------------------o
 
@@ -220,7 +242,9 @@ local type_fun = {
   bool = { send = send_bool, recv = recv_bool },
   str_ = { send = send_str , recv = recv_str  },
   tbl_ = { send = send_tbl , recv = recv_tbl  },
-  obj_ = { send = send_obj , recv = recv_obj  },
+  ref_ = { send = send_ref , recv = recv_ref  },
+  fun_ = { send = send_ref , recv = recv_ref  },
+  obj_ = { send = send_ref , recv = recv_ref  },
   int_ = { send = send_int , recv = recv_int  },
   num_ = { send = send_num , recv = recv_num  },
   cnum = { send = send_cnum, recv = recv_cnum },
@@ -239,7 +263,7 @@ local type_str = {
   ['nil'    ]                  = \_ -> 'nil_',
   ['boolean']                  = \_ -> 'bool',
   ['string' ]                  = \_ -> 'str_',
-  ['table'  ]                  = \a -> metatable(a) and 'obj_' or 'tbl_',
+  ['table'  ]                  = \a -> metatable(a) and chktbl(a) or 'tbl_',
   ['number' ]                  = \a -> is_int32 (a) and 'int_' or 'num_',
 --['cdata'  ]                  = must not be in this list!
   [get_metatable(complex (1))] = \_ -> 'cnum',
@@ -301,7 +325,7 @@ end
 
 local function recv (self)
   local typ = io.read(4)
-  return assert(type_fun[typ].recv, "unsupported data type")(self)
+  return assert(type_fun[typ], "unsupported data type").recv(self)
 end
 
 pymad:set_methods {
