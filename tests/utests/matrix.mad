@@ -761,14 +761,33 @@ function TestMatrixErr:testRemvec()
 end
 
 function TestMatrixSet:testRemvec()
-  local m = matrix(6):fill(1..36)
-  for n = 1, 25 do --Check single element by element removal
-    assertEquals( m:remvec(1), matrix(36-n, 1):fill((n+1)..36)) --Now reshaped as column vector
-  end
-  local m = matrix(6):fill(1..36)
-  for n = 1, 25 do --Check multi-element removal
-    assertEquals( m:copy():remvec(1..n), matrix(36-n, 1):fill((n+1)..36)) --Always outputs 1D
-    assertEquals( #m:copy():remvec(1..n), #m - #(1..n) )
+  for _, m in ipairs(G.matidx) do 
+    if #m > 1 then 
+      for remVal = 1, #m do --Single element removal
+        local mc = m:copy()
+        mc:remvec(remVal)
+        assertEquals(#mc, #m-1)
+        for ij = 1, #mc do
+          if     ij < remVal then assertEquals(mc[ij], m[ij  ])
+          elseif ij > remVal then assertEquals(mc[ij], m[ij+1]) 
+          end
+        end
+      end
+      for i = 1, #m do    --Multi element removal
+        for j = i, #m do
+          if i ~= 1 and j ~= #m then --Not the entire matrix
+            local mc = m:copy()
+            mc:remvec(i..j)
+            assertEquals(#mc, #m-(j-i+1))
+            for ij = 1, #mc do
+              if     ij < i then assertEquals(mc[ij], m[ij    ])
+              elseif ij > j then assertEquals(mc[ij], m[ij+j-i+1]) 
+              end
+            end
+          end
+        end
+      end
+    end 
   end
 end
 
@@ -1567,7 +1586,7 @@ function TestMatrixInPlaceII:testCopy()
   end
 end
 
-function TestMatrixInPlaceII:testRemsub() --Need to test for ir or jc = nil
+function TestMatrixInPlaceII:testRemsub() --Need to test for ir or jc = nil (is remcol and remrow sufficient?)
   for _,m in ipairs(G.matidx) do
     local nrow, ncol = m:sizes()
     for startRem = 1, nrow - 1 do 
@@ -1599,13 +1618,30 @@ function TestMatrixInPlaceII:testRemcol()
   for _,m in ipairs(G.matidx) do
     local nrow, ncol = m:sizes()
     if ncol > 1 then
-      local smallMat = m:copy():remcol(1)
-      assertEquals(ncol, smallMat.ncol + 1)
-      local smallMat2 = m:copy():remcol(ncol)
-      for i = 1, nrow do
-        for j = 1, ncol - 1 do 
-          assertEquals(m:get(i, j+1), smallMat:get(i, j)) 
-          assertEquals(m:get(i, j  ), smallMat2:get(i, j))
+      for colToRem = 1, ncol do 
+        local smallMat = m:copy():remcol(colToRem)
+        assertEquals(ncol, smallMat.ncol + 1)
+        for i = 1, nrow do
+          for j = 1, ncol - 1 do 
+            if     j < colToRem then assertEquals(smallMat:get(i, j), m:get(i, j  ))
+            elseif j > colToRem then assertEquals(smallMat:get(i, j), m:get(i, j+1)) 
+            end
+          end
+        end
+      end
+      for remStart = 1, ncol do 
+        for remEnd = remStart, ncol do 
+          if remStart ~= 1 and remEnd ~= ncol then
+            local smallMat = m:copy():remcol(remStart..remEnd)
+            assertEquals(smallMat.ncol, ncol - (remEnd-remStart+1))
+            for i = 1, nrow do
+              for j = 1, smallMat.ncol do 
+                if     j < remStart then assertEquals(smallMat:get(i, j), m:get(i, j                    ))
+                elseif j > remEnd   then assertEquals(smallMat:get(i, j), m:get(i, j+(remEnd-remStart+1))) 
+                end
+              end
+            end
+          end
         end
       end
     end
@@ -1616,13 +1652,30 @@ function TestMatrixInPlaceII:testRemrow()
   for _,m in ipairs(G.matidx) do
     local nrow, ncol = m:sizes()
     if nrow > 1 then
-      local smallMat = m:copy():remrow(1)
-      assertEquals(nrow, smallMat.nrow + 1)
-      local smallMat2 = m:copy():remrow(nrow)
-      for i = 1, nrow - 1 do
-        for j = 1, ncol do 
-          assertEquals(m:get(i+1,j), smallMat:get(i, j))
-          assertEquals(m:get(i  ,j), smallMat2:get(i, j))
+      for rowToRem = 1, nrow do 
+        local smallMat = m:copy():remrow(rowToRem)
+        assertEquals(nrow, smallMat.nrow + 1)
+        for i = 1, nrow - 1 do
+          for j = 1, ncol do 
+            if     i < rowToRem then assertEquals(smallMat:get(i, j), m:get(i  , j))
+            elseif i > rowToRem then assertEquals(smallMat:get(i, j), m:get(i+1, j)) 
+            end
+          end
+        end
+      end
+      for remStart = 1, nrow do 
+        for remEnd = remStart, nrow do 
+          if remStart ~= 1 and remEnd ~= nrow then
+            local smallMat = m:copy():remrow(remStart..remEnd)
+            assertEquals(smallMat.nrow, nrow - (remEnd-remStart+1))
+            for i = 1, smallMat.nrow do
+              for j = 1, ncol do 
+                if     i < remStart then assertEquals(smallMat:get(i, j), m:get(i                    , j))
+                elseif i > remEnd   then assertEquals(smallMat:get(i, j), m:get(i+(remEnd-remStart+1), j)) 
+                end
+              end
+            end
+          end
         end
       end
     end
