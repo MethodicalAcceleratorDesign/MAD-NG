@@ -415,13 +415,13 @@ Mapping and Folding
 
    This section lists the high-order functions `map <https://en.wikipedia.org/wiki/Map_(higher-order_function)>`_, `fold <https://en.wikipedia.org/wiki/Fold_(higher-order_function)>`_ and their variants useful in `functional programming <https://en.wikipedia.org/wiki/Functional_programming>`_ [#f1]_, followed by sections that list their direct application.
 
-.. function:: mat:foreach ([ij_,] f, r_)
+.. function:: mat:foreach ([ij_,] f)
 
-   Return the real, complex or integer matrix :var:`mat` after applying the :type:`callable` (or the operator string) :var:`f` to the elements at the indexes given by the :type:`iterable` :var:`ij` using :expr:`f(mat[n], n)`, i.e. interpreting the matrix as a vector. If :var:`r` is provided then it is filled with the values returned by :var:`f`. If :expr:`r = 'in'` then it is assigned :var:`mat`. Default: :expr:`ij_ = 1..#mat`.
+   Return the real, complex or integer matrix :var:`mat` after applying the :type:`callable` :var:`f` to the elements at the indexes given by the :type:`iterable` :var:`ij` using :expr:`f(mat[n], n)`, i.e. interpreting the matrix as a vector. Default: :expr:`ij_ = 1..#mat`.
 
 .. function:: mat:filter ([ij_,] p, r_)
 
-   Return a matrix or :var:`r` filled with the values of the elements of the real, complex or integer matrix :var:`mat` at the indexes given by the :type:`iterable` :var:`ij` if they are selected by the :type:`callable` `predicate <https://en.wikipedia.org/wiki/First-order_logic>`_ :var:`p` using :expr:`p(mat[n], n) = true`, i.e. interpreting the matrix as a vector. This method returns next to the matrix, a :type:`table` if :var:`r` is a table or a :type:`ivector` otherwise, containing the indexes of the selected elements. If :expr:`r = 'in'` then it is assigned :var:`mat`. Default: :expr:`ij_ = 1..#mat`.
+   Return a matrix or :var:`r` filled with the values of the elements of the real, complex or integer matrix :var:`mat` at the indexes given by the :type:`iterable` :var:`ij` if they are selected by the :type:`callable` `predicate <https://en.wikipedia.org/wiki/First-order_logic>`_ :var:`p` using :expr:`p(mat[n], n) = true`, i.e. interpreting the matrix as a vector. This method returns next to the matrix, a :type:`table` if :var:`r` is a table or a :type:`ivector` otherwise, containing the indexes of the selected elements returned. Default: :expr:`ij_ = 1..#mat`.
 
 .. function:: mat:filter_out ([ij_,] p, r_)
 

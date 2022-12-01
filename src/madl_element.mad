@@ -83,6 +83,9 @@ M.flags = {
 
 local selected, disabled, observed, implicit, fringe in M.flags
 
+local is_bline    = \a -> a.kind == 'bline'
+local is_rawbline = \a -> a.kind == 'bline' and not a.__rep
+
 M.element :set_methods {
   select      = \s,f ->   set_flags(s, f or selected),
   deselect    = \s,f -> clear_flags(s, f or selected),
@@ -95,14 +98,24 @@ M.element :set_methods {
   -- identity
   __elem = _id,
   -- concatenation
-  __add = \a,b -> M.bline { a, b },
+  __add = \a,b => assert(is_element(a) and is_element(b), "elements expected")
+                  if is_rawbline(a) then     a:insert(b)
+              elseif is_rawbline(b) then a = b:insert(1, a)
+              else a = M.bline { a, b } end
+              return a
+            end,
   -- repetition
-  __mul = \a,b => if is_number(b) then a,b = b,a
-                  else assert(is_number(a), "number expected")
-                  end
-                  return M.bline { __rep=a, b } end,
+  __mul = \a,b => if is_number(b) then a,b = b,a end -- swap
+              assert(is_number(a) and is_element(b), "number and element expected")
+              if is_bline(b) then b.__rep = a * (b.__rep or 1)
+              else b = M.bline { __rep=a, b } end
+              return b
+            end,
   -- reflection
-  __unm = \a -> M.bline { __rep=-1, a },
+  __unm = \a   => if is_bline(a) then a.__rep = -(a.__rep or 1)
+                else a = M.bline { __rep=-1, a } end
+              return a
+            end,
   -- dump
   __tostring = \s -> string.format("%s: '%s' %p", s.kind, s.name, s),
 
@@ -165,13 +178,13 @@ local satmth = {  index_sat =   index_sat,
                 replace_sat = replace_sat }
 
 -- element kinds
-M. thin_element = M.element  'thin_element' { is_thin =true,
-  knl={}, ksl={}, dknl={}, dksl={} }                            :set_methods(defmth)
+M. thin_element = M.element  'thin_element' { is_thin =true, knl={}, ksl={}, dknl={}, dksl={} }
+                                                                :set_methods(defmth)
 M.drift_element = M.element 'drift_element' { is_drift=true }   :set_methods(defmth):set_methods(satmth)
-M.thick_element = M.element 'thick_element' { is_thick=true,
-  knl={}, ksl={}, dknl={}, dksl={}, fringe=0,
-  e1=0, e2=0, h1=0, h2=0, hgap=0, fint=0, fintx=false,
-  fringemax=2, kill_ent_fringe=false, kill_exi_fringe=false }   :set_methods(defmth):set_methods(satmth)
+M.thick_element = M.element 'thick_element' { is_thick=true, knl={}, ksl={}, dknl={}, dksl={}, fringe=0,
+                                                             e1=0, e2=0, h1=0, h2=0, hgap=0, fint=0, fintx=false,
+                                                             fringemax=2, kill_ent_fringe=false, kill_exi_fringe=false }
+                                                                :set_methods(defmth):set_methods(satmth)
 M.patch_element = M.element 'patch_element' { is_patch  =true } :set_methods(defmth)
 M.extrn_element = M.element 'extrn_element' { is_extern =true } :set_methods(defmth)
 M.specl_element = M.element 'specl_element' { is_special=true } :set_methods(defmth)
