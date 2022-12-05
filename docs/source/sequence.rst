@@ -160,7 +160,7 @@ The ``sequence`` object provides the following methods:
    have been moved. [#f3]_
 
 **misalign**
-   A *method* ``(algn, [rng], [sel])`` returning the sequence itself after setting the :ref:`element misalignments <elm-misalign>` from 
+   A *method* ``(algn, [rng], [sel])`` returning the sequence itself after setting the :ref:`element misalignments <sec.elm.misalign>` from 
    ``algn`` at the indexes determined by ``:filter([rng], [sel], true)``. If ``algn`` is a *mappable*, it will be used to misalign the filtered elements. 
    If ``algn`` is a *iterable*, it will be accessed using the filtered elements indexes to retrieve their specific misalignment. 
    If ``algn`` is a *callable* ``(idx)``, it will be invoked for each filtered element with their index as solely argument to retrieve their specific misalignment.

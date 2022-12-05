@@ -11,3 +11,4 @@ ELEMENTS & COMMANDS
    /track.rst
    /correct.rst
    /twiss.rst
+   /match.rst
