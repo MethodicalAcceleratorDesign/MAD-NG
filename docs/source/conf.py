@@ -79,8 +79,7 @@ latex_elements = {
     \\titleformat{\\subsection   }{\\normalfont\\large\\bfseries}{\\thesubsection   }{1em}{}
     \\titleformat{\\subsubsection}{\\normalfont\\large\\bfseries}{\\thesubsubsection}{1em}{}
     
-    \\makeatletter %so @ works
-    
+    \\makeatletter
     %Changes headers and footers
     \\fancypagestyle{normal}{ % After page 3 
         \\fancyhf{}
@@ -94,7 +93,6 @@ latex_elements = {
         \\fancyhead[R]{\\thepage}
     }
     \\makeatother
-    \\geometry{}
     ''',
     'fncychap': '',
     'sphinxsetup':  "InnerLinkColor={rgb}{0,0,1}, OuterLinkColor={rgb}{0,0,1}",#'verbatimwithframe = false', #Remove border around code blocks
