@@ -21,7 +21,7 @@ The ``sequence`` object provides the following attributes:
    A *number* holding one of ``1`` (forward) or ``-1`` (backward) and specifying the direction of the sequence. [#f1]_ (default:~ ``1``)
 
 **refer** 
-   A *string* holding one of ``"entry"``, ``"centre"`` or    return true ``"exit"`` to specify the default reference position in the elements to use for their placement. An element can override it with its ``refpos`` attribute, see `element positions`_ for details. (default: ``nil`` :math:`\equiv` ``"centre"``).
+   A *string* holding one of ``"entry"``, ``"centre"`` or return true ``"exit"`` to specify the default reference position in the elements to use for their placement. An element can override it with its ``refpos`` attribute, see `element positions`_ for details. (default: ``nil`` :math:`\equiv` ``"centre"``).
 
 **owner**
    A *logical* specifying if an *empty* sequence is a view with no data ``(owner ~= true)``, or a sequence holding data ``(owner == true)``. (default: ``nil``)
@@ -97,7 +97,7 @@ The ``sequence`` object provides the following methods:
 
 **iter**
    A *method* ``([rng], [ntrn], [dir])`` returning an iterator over the sequence elements. The optional range is determined by 
-   \TT{:range_of(rng, [dir])}, optionally including ``ntrn`` turns (default: ``0``). The optional direction ``dir`` specifies the forward ``1`` 
+   :meth:`:range_of(rng, [dir])`, optionally including ``ntrn`` turns (default: ``0``). The optional direction ``dir`` specifies the forward ``1`` 
    or the backward ``-1`` direction of the iterator. If ``rng`` is not provided and the ?sequence? is cycled, the *start* and *end* indexes are 
    determined by ``:index_of(self.__cycle)``. When used with a generic ``for`` loop, the iterator returns at each element: its index, 
    the element itself, its :math:`s`-position over the running loop and its signed length depending on the direction.

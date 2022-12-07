@@ -4,7 +4,7 @@ Beams
 
 The ``beam`` object is the *root object* of beams that store information relative to particles and particle beams. It also provides a simple interface to the particles and nuclei database.
 
-The ``beam`` module extends the :doc:`typeid <types>`  module with the ``is_beam`` *function*, which returns ``true`` if its argument is a ``beam`` object, ``false`` otherwise.
+The ``beam`` module extends the :doc:`typeid <types>` module with the ``is_beam`` *function*, which returns ``true`` if its argument is a ``beam`` object, ``false`` otherwise.
 
 Attributes
 ----------
@@ -151,6 +151,7 @@ The ``beam`` object provides the following metamethods:
 	 A *metamethod*	``(key, val)`` called by the assignment operator ``[key]=val`` to create new attributes for the pairs (*key*, *value*) or to update the underlying physical quantity of the ``beam`` objects.
 
 
+The following attribute is stored with metamethods in the metatable, but has different purpose:
 
 
 **__beam**
@@ -164,7 +165,7 @@ The ``beam`` *object* manages the particles database, which is shared by all ``b
 		electron, positron, proton, antiproton, neutron, antineutron, ion, muon, 
 		antimuon, deuteron, antideuteron, negmuon (=muon), posmuon (=antimuon).
 
-New particles can be added to the database, either explicitly using the ``new_particle`` method, or by creating or updating a beam *object* and specifying all the attributes of a particle, i.e. ``particle``'s name, ``charge``, ``mass``, and  (optional) ``spin``:
+New particles can be added to the database, either explicitly using the ``new_particle`` method, or by creating or updating a beam *object* and specifying all the attributes of a particle, i.e. ``particle``'s name, ``charge``, ``mass``, and (optional) ``spin``:
 
 .. :code-block:: lua
 	

@@ -4,12 +4,41 @@ Correct
 
 The ``correct`` command (i.e. orbit correction) provides a simple interface to compute the orbit steering correction and setup the kickers of the sequences from the analysis of their ``track`` and ``twiss`` mtables.
 
-Command synopsis
-----------------
+.. code-block:: 
+	:caption: Synopsis of the ``correct`` command with default setup.
+	:name: fig-correct-synop
+
+	mlst = correct { 
+		sequence=nil,	-- sequence(s) (required) 
+		range=nil,  	-- sequence(s) range(s) (or sequence.range) 
+		title=nil,  	-- title of mtable (default seq.name) 
+		model=nil,  	-- mtable(s) with twiss functions (required) 
+		orbit=nil,  	-- mtable(s) with measured orbit(s), or use model 
+		target=nil,  	-- mtable(s) with target orbit(s), or zero orbit 
+		kind='ring',  	--\ 'line' or 'ring' 
+		plane='xy',  	--\ 'x', 'y' or 'xy' 
+		method='micado',--\ 'LSQ', 'SVD' or 'MICADO' 
+		ncor=0,  	-- number of correctors to consider by method, 0=all 
+		tol=1e-5,  	-- rms tolerance on the orbit 
+		units=1,  	-- units in [m] of the orbit 
+		corcnd=false,  	-- precond of correctors using 'svdcnd' or 'pcacnd' 
+		corcut=0,  	-- value to theshold singular values in precond 
+		cortol=0,  	-- value to theshold correctors in svdcnd 
+		corset=true,  	-- update correctors correction strengths 
+		monon=false,  	-- fraction (0<?<=1) of randomly available monitors 
+		moncut=false,  	-- cut monitors above moncut sigmas 
+		monerr=false,  	-- 1:use mrex and mrey alignment errors of monitors 
+						-- 2:use msex and msey scaling errors of monitors 
+		info=nil,  	-- information level (output on terminal) 
+		debug=nil, 	-- debug information level (output on terminal) 
+	}
+
 .. _sec.correct.synop:
 
+Command synopsis
+----------------
 
-The ``correct`` command format is summarized in Figure :ref:`fig:correct:synop <fig.correct.synop>`, including the default setup of the attributes.
+The ``correct`` command format is summarized in :numref:`fig-correct-synop`, including the default setup of the attributes.
 The ``correct`` command supports the following attributes:
 
 .. _correct.attr:
@@ -30,7 +59,7 @@ The ``correct`` command supports the following attributes:
 	 A *mtable* (or a list of *mtable*) providing ``twiss``-like information, e.g. elements, orbits and optical functions, of the corresponding sequences. (no default, required). 
 	 Example: ``model = twmtbl``.
 
-	**orbit**  
+	**orbit**
 	 A *mtable* (or a list of *mtable*) providing ``track``-like information, e.g. elements and measured orbits, of the corresponding sequences. If this attribute is ``nil``, the model orbit is used. (default: ``nil``). 
 	 Example: ``orbit = tkmtbl``.
 
@@ -39,19 +68,19 @@ The ``correct`` command supports the following attributes:
 	 Example: ``target = tgmtbl``.
 
 	**kind** 
-	 A *string* specifying the kind of correction to apply among ``line`` or ``ring``. The kind ``line`` takes care of the causality between monitors, correctors and sequences directions, while the kind  takes care of the causality between monitors, correctors and sequences directions, while the kind ``ring`` considers the system as periodic. (default: ). 
+	 A *string* specifying the kind of correction to apply among ``line`` or ``ring``. The kind ``line`` takes care of the causality between monitors, correctors and sequences directions, while the kind ``ring`` considers the system as periodic. (default: ). 
 	 Example: ``kind = 'line'``.
 
 	**plane**
-	 A *string* specifying the plane to correct among  A *string* specifying the plane to correct among ``x``, , ``y`` and ``xy``. (default: ``'xy'``). 
+	 A *string* specifying the plane to correct among ``x``, , ``y`` and ``xy``. (default: ``'xy'``). 
 	 Example: ``plane = 'x'``.
 
 	**method**
-	 A *string* specifying the method to use for correcting the orbit among  A *string* specifying the method to use for correcting the orbit among ``LSQ``, ``SVD`` or ``micado``. These methods correspond to the solver used from the :doc:`linear algebra <linalg>` module to find the orbit correction, namely  module to find the orbit correction, namely ``solve``, ``ssolve`` or ``nsolve``. (default: ``'micado'``). 
+	 A *string* specifying the method to use for correcting the orbit among ``LSQ``, ``SVD`` or ``micado``. These methods correspond to the solver used from the :doc:`linear algebra <linalg>` module to find the orbit correction, namely ``solve``, ``ssolve`` or ``nsolve``. (default: ``'micado'``). 
 	 Example: ``method = 'svd'``.
 
 	**ncor**
-	 A *number* specifying the number of correctors to consider with the method  A *number* specifying the number of correctors to consider with the method ``micado``, zero meaning all available correctors. (default: ``0``). 
+	 A *number* specifying the number of correctors to consider with the method ``micado``, zero meaning all available correctors. (default: ``0``). 
 	 Example: ``ncor = 4``.
 
 	**tol** 
@@ -59,19 +88,19 @@ The ``correct`` command supports the following attributes:
 	 Example: ``tol = 1e- 6``.
 
 	**unit**
-	 A *number* specifying the unit of the  A *number* specifying the unit of the ``orbit`` and  and ``target`` coordinates. (default: ``1`` [m]). 
+	 A *number* specifying the unit of the ``orbit`` and ``target`` coordinates. (default: ``1`` [m]). 
 	 Example: ``units = 1e- 3`` [m], i.e. [mm].
 
 	**corcnd** 
-	 A *log* or a *string* specifying the method to use among  A *log* or a *string* specifying the method to use among ``svdcnd`` and  and ``pcacnd`` from the  from the :doc:`linear algebra <linalg>` module for the preconditioning of the system. A ``true`` value corresponds to . (default: ``false``). 
+	 A *log* or a *string* specifying the method to use among ``svdcnd`` and ``pcacnd`` from the :doc:`linear algebra <linalg>` module for the preconditioning of the system. A ``true`` value corresponds to . (default: ``false``). 
 	 Example: ``corcnd = 'pcacnd'``.
 
 	**corcut** 
-	 A *number* specifying the thresholds for the singular values to pass to the  A *number* specifying the thresholds for the singular values to pass to the ``svdcnd`` and  and ``pcacnd`` method for the preconditioning of the system. (default: ``0``). 
+	 A *number* specifying the thresholds for the singular values to pass to the ``svdcnd`` and ``pcacnd`` method for the preconditioning of the system. (default: ``0``). 
 	 Example: ``cortol = 1e- 6``.
 
 	**cortol**
-	 A *number* specifying the thresholds for the correctors to pass to the  A *number* specifying the thresholds for the correctors to pass to the ``svdcnd`` method for the preconditioning of the system. (default: ``0``). 
+	 A *number* specifying the thresholds for the correctors to pass to the ``svdcnd`` method for the preconditioning of the system. (default: ``0``). 
 	 Example: ``cortol = 1e- 8``.
 
 	**corset**
@@ -87,7 +116,7 @@ The ``correct`` command supports the following attributes:
 	 Example: ``moncut = 2``, cut monitors above :math:`2\sigma`.
 
 	**monerr**
-	 A *number* in ``0..3`` specifying the type of monitor reading errors to consider:  specifying the type of monitor reading errors to consider: ``1`` use scaling errors ``msex`` and ``msey``, ``2`` use alignment errors  use alignment errors ``mrex``, ``mrey`` and ``dpsi``, ``3`` use both. (default: ``false``). 
+	 A *number* in ``0..3`` specifying the type of monitor reading errors to consider: ``1`` use scaling errors ``msex`` and ``msey``, ``2`` use alignment errors ``mrex``, ``mrey`` and ``dpsi``, ``3`` use both. (default: ``false``). 
 	 Example: ``monerr = 3``.
 
 	**info**

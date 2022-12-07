@@ -18,7 +18,7 @@ The classes defined by the ``element`` module are organized according to the kin
 	 The *thick* elements have a length and their physics depends on it. Elements like ``sbend``, ``rbend``, ``quadrupole``, ``solenoid``, and ``elseparator`` trigger a runtime error if they have zero-length. Other thick elements will accept to have zero-length for compatibility with MAD-X [#f1]_ , but their physics will have to be adjusted. [#f2]_ 
 
 **drift**
-	 The *drift* elements have a length with a ``drift``-like physics if :math:`l/geq` ``minlen`` [#f3]_ otherwise they are discarded or ignored. Any space between elements with a length :math:`l/geq`  otherwise they are discarded or ignored. Any space between elements with a length :math:`l/geq` ``minlen`` are represented by an ``implicit`` drift created on need by the :math:`s`-iterator of sequences and discarded afterward.
+	 The *drift* elements have a length with a ``drift``-like physics if :math:`l\geq` ``minlen`` [#f3]_ otherwise they are discarded or ignored. Any space between elements with a length :math:`l\geq` ``minlen`` are represented by an ``implicit`` drift created on need by the :math:`s`-iterator of sequences and discarded afterward.
 
 **patch**
 	 The *patch* elements have zero-length and the purpose of their physics is to change the reference frame.
@@ -448,7 +448,7 @@ The ``rfcavity`` element defines the following attributes:
 	 A *number* specifying a non-zero RF frequency of the element [MHz]. (default: ``0``).
 
 **lag**
-	 A *number* specifying the RF phase lag of the element in unit of :math:`2/pi`. (default: ``0``).
+	 A *number* specifying the RF phase lag of the element in unit of :math:`2\pi`. (default: ``0``).
 
 **harmon**
 	 A *number* specifying the harmonic number of the element if ``freq`` is zero. (default: ``0``).
@@ -634,7 +634,7 @@ The ``thick_element`` provides a dozen of attributes to parametrize the aforemen
 Sub-elements
 ------------
 
-An element can have thin or thick sub-elements stored in its *list* part, hence the length operator ``#`` returns the number of them. The attribute ``sat`` of sub-elements, i.e. read ``s``\ ub-\ ``at``\ , is interpreted as their relative position from the entry of their enclosing main element, that is a fractional of its length. The positions of the sub-elements can be made absolute by dividing their ``sat`` attribute by the length of their main element using lambda expressions. The sub-elements are only considered and valid in the ``drift_element`` and ``thick_element`` kinds that implement the  methods ``:index_sat``, ``:insert_sat``, ``:remove_sat``, and ``:replace_sat`` to manage sub-elements from their ``sat`` attribute. The sequence method ``:install`` updates the ``sat`` attribute of the elements installed as sub-elements if the *log* ``elements.subelem`` of the packed form is enabled, i.e. when the :math:`s`-position determined by the ``at``, ``from`` and ``refpos`` attributes falls inside a non-zero length element already installed in the sequence that is not an *implicit* drift. The physics of thick sub-elements will shield the physics of their enclosing main element along their length, unless they combine their attributes with those of their main element using lambda expressions to select some combined function physics.
+An element can have thin or thick sub-elements stored in its *list* part, hence the length operator ``#`` returns the number of them. The attribute ``sat`` of sub-elements, i.e. read ``s``\ ub-\ ``at``\ , is interpreted as their relative position from the entry of their enclosing main element, that is a fractional of its length. The positions of the sub-elements can be made absolute by dividing their ``sat`` attribute by the length of their main element using lambda expressions. The sub-elements are only considered and valid in the ``drift_element`` and ``thick_element`` kinds that implement the methods ``:index_sat``, ``:insert_sat``, ``:remove_sat``, and ``:replace_sat`` to manage sub-elements from their ``sat`` attribute. The sequence method ``:install`` updates the ``sat`` attribute of the elements installed as sub-elements if the *log* ``elements.subelem`` of the packed form is enabled, i.e. when the :math:`s`-position determined by the ``at``, ``from`` and ``refpos`` attributes falls inside a non-zero length element already installed in the sequence that is not an *implicit* drift. The physics of thick sub-elements will shield the physics of their enclosing main element along their length, unless they combine their attributes with those of their main element using lambda expressions to select some combined function physics.
 
 .. _sec.elm.aper:
 
@@ -659,7 +659,7 @@ All the apertures are *mappable* defined by the following attributes in the tilt
 The supported aperture shapes are listed hereafter. The parameters defining the shapes are expected to be in the *list* part of the apertures and defines the top-right sector shape, except for the ``polygon``:
 
 **square**
-	 A square shape with one parameter defining the side half-length. It is the default aperture check with limits set to  ``1``.
+	 A square shape with one parameter defining the side half-length. It is the default aperture check with limits set to ``1``.
 
 **rectangle**
 	 A rectangular shape with two parameters defining the :math:`x`\ , :math:`y`\ -half lengths (default: ``1`` [m]).
@@ -717,7 +717,7 @@ Misalignment
 The misalignments are *mappable* defined at the entry of an element by the following attributes, see the :doc:`track <track>` command for details:
 
 **dx, dy, ds**
-	 A *number* specifying the :math:`x`\ , :math:`y`\ , :math:`s`\ -displacement at the element entry [m], see Figures `<fig:gen:dispxs>`_  and `<fig:gen:dispys>`_ . (default: ``0``).
+	 A *number* specifying the :math:`x`\ , :math:`y`\ , :math:`s`\ -displacement at the element entry [m], see Figures `<fig:gen:dispxs>`_ and `<fig:gen:dispys>`_ . (default: ``0``).
 
 **dtheta**
 	 A *number* specifying the :math:`y`-rotation angle (azimuthal) at the element entry [rad], see Figure `<fig:gen:dispxs>`_ . (default: ``0``).

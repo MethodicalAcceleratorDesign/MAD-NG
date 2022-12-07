@@ -129,7 +129,7 @@ Special Functions
 
 The special function :func:`fact()` supports negative integers as input as it uses extended factorial definition, and the values are cached to make its complexity in :math:`O(1)` after warmup.
 
-The special function :func:`rangle()` adjust the angle :var:`a` versus the *previous* right angle :var:`r`, e.g. during phase advance accumulation, to ensure proper value when passing through the :math:`±2k\pi` boundaries.
+The special function :func:`rangle()` adjust the angle :var:`a` versus the *previous* right angle :var:`r`, e.g. during phase advance accumulation, to ensure proper value when passing through the :math:`\pm 2k\pi` boundaries.
 
 ===================  ================================================  =========================
 Functions            Return values                                     C functions

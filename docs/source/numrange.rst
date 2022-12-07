@@ -126,7 +126,7 @@ Unless specified, the object :var:`rng` that owns the methods represents either 
 
    Return a range with a :var:`step` adjusted.
 
-   The internal quantity :var:`step` is adjusted if the computed size is close to an integer by :math:`±10^{-12}`. Then the following properties should hold even for rational binary numbers given a consistent input for :var:`start`, :var:`stop`, :var:`step` and :var:`size`:
+   The internal quantity :var:`step` is adjusted if the computed size is close to an integer by :math:`\pm10^{-12}`. Then the following properties should hold even for rational binary numbers given a consistent input for :var:`start`, :var:`stop`, :var:`step` and :var:`size`:
 
    - :expr:`#range(start, stop, step)               == size`
    - :expr:`nrange(start, stop, size):step()        == step`

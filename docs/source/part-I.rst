@@ -7,6 +7,7 @@ LANGUAGE
    :maxdepth: 2
 
    /types.rst
+   /objects.rst
 
 
 

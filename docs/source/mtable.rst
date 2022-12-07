@@ -40,7 +40,7 @@ The ``mtable`` object provides the following attributes:
 	 A *list* specifying the augmented columns names (and their order) used by default for the columns when writing the mtable to files. Augmented meaning that the *list* is concatenated to the *list* held by the parent mtable during initialization. (default: ``nil``).
 
 **novector**
-	 A *logical* specifying to not convert (``novector == true``)  columns containing only numbers to vectors during the insertion of the second row. The attribute can also be a *list* specifying the columns names to remove from the specialization. If the *list* is empty or ``novector ~= true``, all numeric columns will be converted to vectors, and support all methods and operations from the :doc:`linear algebra <linalg>` module. (default: ``nil``).
+	 A *logical* specifying to not convert (``novector == true``) columns containing only numbers to vectors during the insertion of the second row. The attribute can also be a *list* specifying the columns names to remove from the specialization. If the *list* is empty or ``novector ~= true``, all numeric columns will be converted to vectors, and support all methods and operations from the :doc:`linear algebra <linalg>` module. (default: ``nil``).
 
 **owner**
 	 A *logical* specifying if an *empty* mtable is a view with no data (``owner ~= true``), or a mtable holding data (``owner == true``). (default: ``nil``).
@@ -124,7 +124,7 @@ The ``mtable`` object provides the following methods:
 	 A *method*	``(row, [ref])`` returning the *mappable* (proxy) of the row determined by the method ``:index_of(row, [ref])``, or ``nil``.
 
 **setrow**
-	 A *method*	``(row, val, [ref])`` returning the mtable itself after updating the row at index determined by ``:index_of(row, [ref])`` using the values provided by the *mappable* ``val``, which can be a *list* iterated as pairs of (*index*, *value*) or a *set* iterated as pairs of (*key*, *value*) with *key* being the column names,  or a combination of the two. An error is raised if the column does not exist.
+	 A *method*	``(row, val, [ref])`` returning the mtable itself after updating the row at index determined by ``:index_of(row, [ref])`` using the values provided by the *mappable* ``val``, which can be a *list* iterated as pairs of (*index*, *value*) or a *set* iterated as pairs of (*key*, *value*) with *key* being the column names, or a combination of the two. An error is raised if the column does not exist.
 
 **insrow**
 	 A *method*	``(row, val, [ref])`` returning the mtable itself after inserting a new row at index determined by ``:index_of(row, [ref])`` and filled with the values provided by the *mappable* ``val``, which can be a *list* iterated as pairs of (*index*, *value*) or a *set* iterated as pairs of (*key*, *value*) with *key* being the column names or a combination of the two.
@@ -148,7 +148,7 @@ The ``mtable`` object provides the following methods:
 	 A *method*	``([rng], [ntrn], [dir])`` returning an iterator over the mtable rows. The optional range is determined by ``:range_of([rng], [dir])``, optionally including ``ntrn`` turns (default: ``0``). The optional direction ``dir`` specifies the forward ``1`` or the backward ``- 1`` direction of the iterator. If ``rng`` is not provided and the mtable is cycled, the *start* and *end* indexes are determined by ``:index_of(self.__cycle)``. When used with a generic :literal:`for` loop, the iterator returns at each rows the index and the row *mappable* (proxy).
 
 **foreach**
-	 A *method*	``(act, [rng], [sel], [not])`` returning the mtable itself after applying the action ``act`` on the selected rows. If ``act`` is a *set* representing the arguments in the packed form, the missing arguments will be extracted from the attributes ``action``, ``range``, ``select`` and ``default``. The action ``act`` must be a *callable* ``(row, idx)``  applied to a row passed as first argument and its index as second argument. The optional range is used to generate the loop iterator ``:iter([rng])``. The optional selector ``sel`` is a *callable* ``(row, idx)`` predicate selecting eligible rows for the action from the row itself passed as first argument and its index as second argument. The selector ``sel`` can be specified in other ways, see :doc:`row selections <numrange>` for details. The optional *logical* ``not`` (default: ``false``) indicates how to interpret default selection, as *all* or *none*, depending on the semantic of the action. [#f2]_  method needs remove all rows if no selector is provided.}
+	 A *method*	``(act, [rng], [sel], [not])`` returning the mtable itself after applying the action ``act`` on the selected rows. If ``act`` is a *set* representing the arguments in the packed form, the missing arguments will be extracted from the attributes ``action``, ``range``, ``select`` and ``default``. The action ``act`` must be a *callable* ``(row, idx)``  applied to a row passed as first argument and its index as second argument. The optional range is used to generate the loop iterator ``:iter([rng])``. The optional selector ``sel`` is a *callable* ``(row, idx)`` predicate selecting eligible rows for the action from the row itself passed as first argument and its index as second argument. The selector ``sel`` can be specified in other ways, see :doc:`row selections <numrange>` for details. The optional *logical* ``not`` (default: ``false``) indicates how to interpret default selection, as *all* or *none*, depending on the semantic of the action. [#f2]_ method needs remove all rows if no selector is provided.}
 
 **select**
 	 A *method*	``([rng], [sel], [not])`` returning the mtable itself after selecting the rows using ``:foreach(sel_act, [rng], [sel], [not])``. By default mtable have all their rows deselected, the selection being stored as *boolean* in the column at index ``0`` and named ``is_selected``.
@@ -220,7 +220,7 @@ The ``mtable`` object provides the following metamethods:
 
 
 
-#.	 If *key* is not a column name, then *key* is interpreted as a value in the reference column and returns either an *iterable* on the  row (proxy) determined by this value or an *iterable* on the rows (proxies) holding this non-unique value. [#f4]_ , the indexing operator loops with
+#.	 If *key* is not a column name, then *key* is interpreted as a value in the reference column and returns either an *iterable* on the row (proxy) determined by this value or an *iterable* on the rows (proxies) holding this non-unique value. [#f4]_ , the indexing operator loops with
 
 
 
@@ -281,7 +281,7 @@ The row selection in mtable use predicates in combination with iterators. The mt
 	 A *boolean* compared to the rows selection stored in column ``'is_selected'``.
 
 **pattern**
-	 A *string* interpreted as a pattern to match the *string* in the reference column, which must exist, using ``string.match`` from the standard library, see `Lua 5.2 Reference Manual <http://github.com/MethodicalAcceleratorDesign/MADdocs/blob/master/lua52-refman-madng.pdf>`_ §6.4 for details. If the reference column does not exist, it can be built using the  method.
+	 A *string* interpreted as a pattern to match the *string* in the reference column, which must exist, using ``string.match`` from the standard library, see `Lua 5.2 <http://github.com/MethodicalAcceleratorDesign/MADdocs/blob/master/lua52-refman-madng.pdf>`_ §6.4 for details. If the reference column does not exist, it can be built using the method.
 
 **list**
 	 An *iterable* interpreted as a *list* used to build a *set* and select the rows by their name, i.e. the built predicate will use ``tbl[row.name]`` as a *logical*, meaning that column ``name`` must exists. An alternate column name can be provided through the key ``colname``, i.e. used as ``tbl[row[colname]]``. If the *iterable* is a single item, e.g. a *string*, it will be converted first to a *list*.

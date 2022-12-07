@@ -1,3 +1,6 @@
+.. role:: raw-latex(raw)
+   :format: latex
+
 Match
 =====
 .. _ch.cmd.match:
@@ -9,32 +12,62 @@ Command synopsis
 .. _sec.match.synop:
 
 
-The ``match`` command format is summarized in :numref:`fig.match.synop`. including the default setup of the attributes.
+The ``match`` command format is summarized in :numref:`fig-match-synop`. including the default setup of the attributes.
+
+
+.. code-block:: lua
+	:caption: Synopsis of the ``match`` command with default setup.
+	:name: fig-match-synop
+
+	status, fmin, ncall = match { 
+		command		= function or nil, 
+		variables 	= { variables-attributes }, 
+					{ variable-attributes }, 
+					..., more variable definitions, ... 
+					{ variable-attributes }, 
+		equalities 	= { constraints-attributes}, 
+					{ constraint-attributes }, 
+					..., more equality definitions, ... 
+					{ constraint-attributes }, 
+		inequalities 	= { constraints-attributes }, 
+					{ constraint-attributes }, 
+					..., more inequality definitions,... 
+					{ constraint-attributes }, 
+		weights 	= { weights-list }, 
+		objective 	= {  objective-attributes }, 
+		maxcall=nil,  	-- call limit 
+		maxtime=nil,  	-- time limit 
+		info=nil,  	-- information level (output on terminal) 
+		debug=nil, 	-- debug information level (output on terminal) 
+		usrdef=nil,  	-- user defined data attached to the environment 
+	}
+
+
 The ``match`` command supports the following attributes:
 
 .. _match.attr:
 
-**command**
+:ref:`command <sec.match.cmd>`
 	A *callable*\ ``(e)`` that will be invoked during the optimization process at each iteration. (default: ``nil``). 
 	Example: ``command := twiss { twiss-attributes } }``.
 
-**variables**
+:ref:`variables <sec.match.var>`
 	An *mappable* of single :ref:`variable <sec.match.var>` specification that can be combined with a *set* of specifications for all variables. (no default, required). 
 	Example: ``variables = {{ var="seq.knobs.mq_k1" }}``.
 
-**equalities**
+:ref:`equalities <sec.match.cst>`
 	An *mappable* of single equality specification that can be combined with a *set* of specifications for all equalities. (default: ). 
 	Example: ``equalities = {{  expr=\t -> t.q1- 64.295, name='q1' }}``.
 
-**inequalities**
+:ref:`inequalities <sec.match.cst>`
 	An *mappable* of single inequality specification that can be combined with a *set* of specifications for all inequalities. (default: ). 
 	Example: ``inequalities = {{  expr=\t -> t.mq4.beta11- 50 }}``.
 
-**weights**
+:ref:`weights <sec.match.cst>`
 	A *mappable* of weights specification that can be used in the  A *mappable* of weights specification that can be used in the ``kind`` attribute of the constraints specifications. (default: ). 
 	Example: ``weights = { px=10 }``.
 
-**objective**
+:ref:`objective <sec.match.obj>`
 	A *mappable* of specifications for the objective to minimize. (default: ). 
 	Example: ``objective = { method="LD_LMDIF", fmin=1e- 10 }``.
 
@@ -72,9 +105,9 @@ The ``match`` command returns the following values in this order:
 **ncall**
 	 The *number* of calls of the ``command`` function or the ``objective`` function.
 
-
 .. table:: List of :var:`status` (*string*) returned by the :mod:`match`
 	:name: tbl.match.status
+	:align: center
 	
 	+---------------+------------------------------------------------------------------------------------------------+
 	| ``status``    | Meaning                                                                                        |
@@ -148,13 +181,13 @@ The value returned by ``command`` is passed as the first argument to all constra
 
 A typical ``command`` definition for matching optics is a function that calls a ``twiss`` command [#f1]_ :
 
-.. code-block:: 
+.. code-block:: lua
 
 	command := mchklost( twiss { twiss-attributes } )
 
 where the function ``mchklost`` surrounding the ``twiss`` command checks if the returned ``mtable`` (i.e. the twiss table) has lost particles and returns ``nil``\ instead:
 
-.. code-block:: 
+.. code-block:: lua
 
 	mchklost = \mt -> mt.lost == 0 and mt or nil
 
@@ -259,10 +292,10 @@ The *variables-attributes* is a set of attributes that specify all variables tog
 	A *logical* disabling a warning emitted when the definition of ``get`` and ``set`` are advised but not defined. It is safe to not define ``get`` and ``set`` in such case, but it will significantly slowdown the code. (default: ``nil``). 
 	Example: ``nowarn = true``.
 
+.. _sec.match.cst:
 
 Constraints
 -----------
-.. _sec.match.cst:
 
 The attributes ``equalities`` (default: ``{}``) and ``inequalities`` (default: ``{}``) define the constraints that the command ``match`` will try to satisfy while minimizing the objective function. Equalities and inequalities are considered differently when calculating the :ref:`penalty function <sec.match.fun>`.
 
@@ -339,31 +372,45 @@ Example: ``weights = { q1=100, q2=100, mykind=3 }``.
 
 .. table:: List of supported kinds *string* and their default weights (*number*).
 	:name: tbl.match.wght
+	:align: center
 
-	====================== ======================== ====================== ======================== ====================== ======================== ============================= 
-			Name    				  Weight				   Name    				 Weight			  		  Name    		         Weight 				 Generic name 
-	====================== ======================== ====================== ======================== ====================== ======================== ============================= 
-	``x``                  ``10``                   ``y``                  ``10``                   ``t``                  ``10``                                                   
-	``px``                 ``100``                  ``py``                 ``100``                  ``pt``                 ``100``                                                  
-	``dx``                 ``10``                   ``dy``                 ``10``                   ``dt``                 ``10``                   ``d``                           
-	``dpx``                ``100``                  ``dpy``                ``100``                  ``dpt``                ``100``                  ``dp``                          
-	``ddx``                ``10``                   ``ddy``                ``10``                   ``ddt``                ``10``                   ``dd``                          
-	``ddpx``               ``100``                  ``ddpy``               ``100``                  ``ddpt``               ``100``                  ``ddp``                         
-	``wx``                 ``1``                    ``wy``                 ``1``                    ``wz``                 ``1``                    ``w``                           
-	``phix``               ``1``                    ``phiy``               ``1``                    ``phiz``               ``1``                    ``phi``                         
-	``betx``               ``1``                    ``bety``               ``1``                    ``betz``               ``1``                    ``beta``                        
-	``alfx``               ``10``                   ``alfy``               ``10``                   ``alfz``               ``10``                   ``alfa``                        
-	``mux``                ``10``                   ``muy``                ``10``                   ``muz``                ``10``                   ``mu``                          
-	``beta1``              ``1``                    ``beta2``              ``1``                    ``beta3``              ``1``                    ``beta``                        
-	``alfa1``              ``10``                   ``alfa2``              ``10``                   ``alfa3``              ``10``                   ``alfa``                        
-	``mu1``                ``10``                   ``mu2``                ``10``                   ``mu3``                ``10``                   ``mu``                          
-	``q1``                 ``10``                   ``q2``                 ``10``                   ``q3``                 ``10``                   ``q``                           
-	``dq1``                ``1``                    ``dq2``                ``1``                    ``dq3``                ``1``                    ``dq``                          
-	====================== ======================== ====================== ======================== ====================== ======================== =============================
+	+------------+--------+----------+--------+----------+--------+-------------+
+	|Name        |Weight  |Name      |Weight  |Name      |Weight  |Generic name |	
+	+============+========+==========+========+==========+========+=============+
+	|``x``       |``10``  |``y``     |``10``  |``t``     |``10``  |             |   
+	+------------+--------+----------+--------+----------+--------+-------------+
+	|``dx``      |``10``  |``dy``    |``10``  |``dt``    |``10``  |``d``        |   
+	+------------+--------+----------+--------+----------+--------+-------------+
+	|``dpx``     |``100`` |``dpy``   |``100`` |``dpt``   |``100`` |``dp``       |   
+	+------------+--------+----------+--------+----------+--------+-------------+
+	|``ddx``     |``10``  |``ddy``   |``10``  |``ddt``   |``10``  |``dd``       |   
+	+------------+--------+----------+--------+----------+--------+-------------+
+	|``ddpx``    |``100`` |``ddpy``  |``100`` |``ddpt``  |``100`` |``ddp``      |   
+	+------------+--------+----------+--------+----------+--------+-------------+
+	|``wx``      |``1``   |``wy``    |``1``   |``wz``    |``1``   |``w``        |   
+	+------------+--------+----------+--------+----------+--------+-------------+
+	|``phix``    |``1``   |``phiy``  |``1``   |``phiz``  |``1``   |``phi``      |   
+	+------------+--------+----------+--------+----------+--------+-------------+
+	|``betx``    |``1``   |``bety``  |``1``   |``betz``  |``1``   |``beta``     |   
+	+------------+--------+----------+--------+----------+--------+-------------+
+	|``alfx``    |``10``  |``alfy``  |``10``  |``alfz``  |``10``  |``alfa``     |   
+	+------------+--------+----------+--------+----------+--------+-------------+
+	|``mux``     |``10``  |``muy``   |``10``  |``muz``   |``10``  |``mu``       |   
+	+------------+--------+----------+--------+----------+--------+-------------+
+	|``beta1``   |``1``   |``beta2`` |``1``   |``beta3`` |``1``   |``beta``     |   
+	+------------+--------+----------+--------+----------+--------+-------------+
+	|``alfa1``   |``10``  |``alfa2`` |``10``  |``alfa3`` |``10``  |``alfa``     |   
+	+------------+--------+----------+--------+----------+--------+-------------+
+	|``mu1``     |``10``  |``mu2``   |``10``  |``mu3``   |``10``  |``mu``       |   
+	+------------+--------+----------+--------+----------+--------+-------------+
+	|``q1``      |``10``  |``q2``    |``10``  |``q3``    |``10``  |``q``        |   
+	+------------+--------+----------+--------+----------+--------+-------------+
+	|``dq1``     |``1``   |``dq2``   |``1``   |``dq3``   |``1``   |``dq``       |   
+	+------------+--------+----------+--------+----------+--------+-------------+
+.. _sec.match.obj:
 
 Objective
 ---------
-.. _sec.match.obj:
 
 The attribute ``objective`` (default: ``{}``) defines the objective that the command ``match`` will try to minimize.
 
@@ -456,10 +503,10 @@ jstra    Strategy for reducing variables of least squares system.
 3        idem 2, but strategy switches definitely to 0 if ``jiter`` is reached.  
 ======== ========================================================================= 
 
+.. _sec.match.algo:
 
 Algorithms
 ----------
-.. _sec.match.algo:
 
 The ``match`` command supports local and global optimization algorithms through the ``method`` attribute, as well as combinations of them with the ``submethod`` attribute (see :ref:`objective<sec.match.obj>`). The method should be selected according to the kind of problem that will add a prefix to the method name: local (``L``) or global (``G``), with (``D``) or without (``N``) derivatives, and least squares or nonlinear function minimization. When the method requires the derivatives (``D``) and no ``objective.exec`` function is defined or the attribute ``grad`` is set to ``false``, the ``match`` command will approximate the derivatives, i.e. gradient and Jacobian, by the finite difference method (see :ref:`derivatives <sec.match.der>`}).
 
@@ -525,11 +572,10 @@ The ``match`` command will stop the iteration of the algorithm and return one of
 	``MAXTIME``
 		Check ``env.dtime >= maxtime`` if ``maxtime > 0``.
 
+.. _sec.match.fun:
 
 Objective function
 """"""""""""""""""
-
-.. _sec.match.fun:
 
 The objective function is the key point of the ``match`` command, specially when tolerances are applied to it or to the constraints, or the best case strategy is changed. It is evaluated as follows:
 
@@ -559,9 +605,10 @@ The objective function is the key point of the ``match`` command, specially when
 | \-    | :math:`c_{\text{fail}} < c^{\text{best}}_{\text{fail}}` or :math:`c_{\text{fail}} = c^{\text{best}}_{\text{fail}}` and :math:`f < f^{\text{best}}_{\text{min}}`, improve feasible point or objective.  |
 +-------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 
+.. _sec.match.der:
+
 Derivatives
 """""""""""
-.. _sec.match.der:
 
 The derivatives are approximated by the finite difference methods when the selected algorithm requires them (``D``) and the function ``objective.exec`` is undefined or the attribute ``grad=false``. The difficulty of the finite difference methods is to choose the small step :math:`h` for the difference. The ``match`` command uses the *forward difference method* with a step :math:`h = 10^{-4}\,\}\vec{h}\}`, where :math:`\vec{h}` is the last `iteration steps <sec.match.algo>`, unless it is overridden by the user with the variable attribute ``step``. In order to avoid zero step size, which would be problematic for the calculation of the Jacobian, the choice of :math:`h` is a bit more subtle:
 
@@ -584,10 +631,10 @@ Hence the approximation of the Jacobian will need an extra evaluation of the obj
 
 The update of the :math:`i`-th column of the Jacobian by the Broyden approximation makes sense if the angle between :math:`\vec{h}` and :math:`\vec{e}_i` is small, that is when :math:`|\vec{h}^T\vec{e}_i| \geq \gamma\,\|\vec{h}\|`. The  command uses a rather pessimistic choice of :math:`\gamma = 0.8`, which gives good performance. Nevertheless, it is advised to always check if Broyden's update saves evaluations of the objective function for your study.
 
+.. _sec.match.conso:
 
 Console output
 --------------
-.. _sec.match.conso:
 
 The verbosity of the output of the ``match`` command on the console (e.g. terminal) is controlled by the ``info`` level, where the level ``info=0`` means a completely silent command as usual. The first verbose level ``info=1`` displays the *final summary* at the end of the matching, as shown in the :ref:`summary output <sec.match.info1>` block and the next level ``info=2`` adds *intermediate summary* for each evaluation of the objective function, as shown in the :ref:`intermediate output <sec.match.info2>` block. The columns of these tables are self-explanatory, and the sign ``>`` on the right of the constraints marks those failing.
 
@@ -603,11 +650,11 @@ The bottom line of the *final summary* displays the same information but for the
 
 The :ref:`LSopt <sec.match.lsopt>` module adds the sign ``#`` to mark the *adjusted* variables and the sign ``*`` to mark the *rejected* variables and constraints on the right of the *intermediate summary* tables to qualify the behavior of the constraints and the variables during the optimization process. If these signs appear in the *final summary* too, it means that they were always adjusted or rejected during the matching, which is useful to tune your study e.g. by removing the useless constraints.
 
+.. _sec.match.info1:
 
 Match command summary output (info=1).
 """"""""""""""""""""""""""""""""""""""
 
-.. _sec.match.info1:
 
 .. code-block:: console
 
@@ -653,11 +700,11 @@ Match command summary output (info=1).
 
 	ncall=381 [4.1s], fbst[381]=8.80207e-12, fstp=-3.13047e-08, status=FMIN.
 
+.. _sec.match.info2:
 
 Match command intermediate output (info=2).
 """""""""""""""""""""""""""""""""""""""""""
 
-.. _sec.match.info2:
 
 .. code-block:: console
 
@@ -703,20 +750,23 @@ Match command intermediate output (info=2).
 
 	ncall=211 [2.3s], fval=8.67502e-01, fstp=-2.79653e+00, ccnt=14.
 
+.. _sec.match.mod:
+
 Modules
 -------
-.. _sec.match.mod:
 
 The ``match`` command can be extended easily with new optimizer either from external libraries or internal module, or both. The interface should be flexible and extensible enough to support new algorithms and new options with a minimal effort.
 
+.. _sec.match.lsopt:
+
 LSopt
 """""
-.. _sec.match.lsopt:
 
 The LSopt (Least Squares optimization) module implements custom variant of the Newton-Raphson and the Levenberg-Marquardt algorithms to solve least squares problems. Both support the options ``rcond``, ``bisec``, ``jtol``, ``jiter`` and ``jstra`` described in the section :ref:`objective <sec.match.obj>`, with the same default values. :numref:`tbl.match.mthd` lists the names of the algorithms for the attribute ``method``. These algorithms cannot be used with the attribute ``submethod`` for the augmented algorithms of the :ref:`NLopt <sec.match.nlopt>` module, which would not make sense as these methods support both equalities and inequalities.
 
 .. table:: List of supported least squares methods (:ref:`LSopt <sec.match.lsopt>`).
 	:name: tbl.match.mthd
+	:align: center
 
 	+------------------+-----+-----+------------------------------------------+
 	| ``method``       | Equ | Iqu | Description                              |
@@ -726,15 +776,16 @@ The LSopt (Least Squares optimization) module implements custom variant of the N
 	|| ``LD_LMDIF``    || y  || y  || Modified Levenberg-Marquardt algorithm. |
 	+------------------+-----+-----+------------------------------------------+
 
+.. _sec.match.nlopt:
 
 NLopt
 """""
-.. _sec.match.nlopt:
 
 The NLopt (Non-Linear optimization) module provides a simple interface to the algorithms implemented in the embedded `NLopt <https://nlopt.readthedocs.io/en/latest/>`_ library. :numref:`tbl.match.lmthd` and :numref:`tbl.match.gmthd` list the names of the local and global algorithms respectively for the attribute ``method``. The methods that do not support equalities (column Equ) or inequalities (column Iqu) can still be used with constraints by specifying them as the ``submethod`` of the AUGmented LAGrangian ``method``. For details about these algorithms, please refer to the `Algorithms <https://nlopt.readthedocs.io/en/latest/NLopt_Algorithms/>`_ section of its `online documentation <https://nlopt.readthedocs.io/en/latest>`_.
 
 .. table:: List of non-linear local methods (:ref:`NLopt <sec.match.nlopt>`)
 	:name: tbl.match.lmthd
+	:align: center
 
 	+----------------------------------------------+-----+-----+---------------------------------------------------------------------------+
 	| ``method``                                   | Equ | Iqu | Description                                                               |
@@ -783,6 +834,7 @@ The NLopt (Non-Linear optimization) module provides a simple interface to the al
 
 .. table:: List of supported non-linear global methods (:ref:`NLopt <sec.match.nlopt>`).
 	:name: tbl.match.gmthd
+	:align: center
 
 
 	+-----------------------+-----+-----+-------------------------------------------------------------------------------------------------------------------------+
@@ -823,10 +875,10 @@ The NLopt (Non-Linear optimization) module provides a simple interface to the al
 	| ``G_MLSL_LDS``        | n   | n   | Idem ``G_MLSL`` with low-discrepancy scan sequence.                                                                     |
 	+-----------------------+-----+-----+-------------------------------------------------------------------------------------------------------------------------+
 
+.. _sec.match.xmp:
 
 Examples
 --------
-.. _sec.match.xmp:
 
 Matching tunes and chromaticity
 """""""""""""""""""""""""""""""
@@ -834,7 +886,7 @@ Matching tunes and chromaticity
 The following example below shows how to match the betatron tunes of the LHC beam 1 to :math:`q_1=64.295` and :math:`q_2=59.301` using the quadrupoles strengths ``kqtf`` and ``kqtd``, followed by the matching of the chromaticities to :math:`dq_1=15` and :math:`dq_2=15` using the main sextupole strengths ``ksf`` and ``ksd``.
 
 
-.. code-block:: 
+.. code-block:: lua
 
 	local lhcb1 in MADX 
 	local twiss, match in MAD 
@@ -865,9 +917,9 @@ The following example below shows how to match the betatron tunes of the LHC bea
 Matching interaction point
 """"""""""""""""""""""""""
 
-The following example hereafter shows how to squeeze the beam 1 of the LHC to :math:`\beta^*=\text{beta_ip8}*0.6^2`  at the IP8 while enforcing the required constraints at the interaction point and the final dispersion suppressor (i.e. at makers ``"IP8"`` and ``"E.DS.R8.B1"``) in two iterations, using the 20 quadrupoles strengths from ``kq4`` to ``kqt13`` on left and right sides of the IP. The boundary conditions are specified by the beta0 blocks ``bir8b1`` for the initial conditions and ``eir8b1`` for the final conditions. The final summary and an instance of the intermediate summary of this ``match`` example are shown in the :ref:`summary output <sec.match.info1>` block and :ref:`intermediate output <sec.match.info2>` block.
+The following example hereafter shows how to squeeze the beam 1 of the LHC to :math:`\beta^*=\mathrm{beta_ip8}\times0.6^2`  at the IP8 while enforcing the required constraints at the interaction point and the final dispersion suppressor (i.e. at makers ``"IP8"`` and ``"E.DS.R8.B1"``) in two iterations, using the 20 quadrupoles strengths from ``kq4`` to ``kqt13`` on left and right sides of the IP. The boundary conditions are specified by the beta0 blocks ``bir8b1`` for the initial conditions and ``eir8b1`` for the final conditions. The final summary and an instance of the intermediate summary of this ``match`` example are shown in the :ref:`summary output <sec.match.info1>` block and :ref:`intermediate output <sec.match.info2>` block.
 
-.. code-block:: 
+.. code-block:: lua
 
 	local SS, ES = "S.DS.L8.B1", "E.DS.R8.B1" 
 	lhcb1.range = SS.."/"..ES 

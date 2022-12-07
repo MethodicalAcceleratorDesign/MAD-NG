@@ -4,12 +4,56 @@ Track
 
 The ``track`` command provides a simple interface to the *dynamic* tracking code. [#f1]_ The dynamic tracking can be used to track the particles in the *local reference system* (missing link) while running through the elements of a sequence. The particles coordinates can be expressed in the  while running through the elements of a sequence. The particles coordinates can be expressed in the *global reference system* (missing link) by changing from the local to the global frames using the information delivered by the  by changing from the local to the global frames using the information delivered by the :doc:`survey <survey>` command.
 
-Command synopsis
-----------------
+
+.. code-block:: lua
+	:caption: Synopsis of the ``track`` command with default setup.
+	:name: fig-track-synop
+
+		mtbl, mflw [, eidx] = track { 
+		 sequence=sequ, -- sequence (required) 
+		 beam=nil, 	-- beam (or sequence.beam, required) 
+		 range=nil,  	-- range of tracking (or sequence.range) 
+		 dir=1,  	-- s-direction of tracking (1 or -1) 
+		 s0=0,  	-- initial s-position offset [m]
+		 X0=0,  	-- initial coordinates (or damap(s), or beta block(s)) 
+		 O0=0,  	-- initial coordinates of reference orbit 
+		 deltap=nil,  	-- initial deltap(s) 
+		 nturn=1,  	-- number of turns to track 
+		 nstep=-1,  	-- number of elements to track 
+		 nslice=1,  	-- number of slices (or weights) for each element 
+		 mapdef=false,  	-- setup for damap (or list of, true => {}) 
+  		 method=2,  	-- method or order for integration (1 to 8) 
+		 model='TKT',  	-- model for integration ('DKD' or 'TKT') 
+		 ptcmodel=nil,  	-- use strict PTC thick model (override option) 
+		 implicit=false,  	-- slice implicit elements too (e.g. plots) 
+		 misalign=false,  	-- consider misalignment 
+		 fringe=true,  	-- enable fringe fields (see element.flags.fringe) 
+		 radiate=false,  	-- radiate at slices 
+		 totalpath=false,  	-- variable 't' is the totalpath 
+		 save=true,  	-- create mtable and save results 
+		 title=nil,  	-- title of mtable (default seq.name) 
+		 observe=1,  	-- save only in observed elements (every n turns) 
+		 savesel=fnil,  	-- save selector (predicate) 
+		 savemap=false,  	-- save damap in the column __map 
+		 atentry=fnil,  	-- action called when entering an element 
+		 atslice=fnil,  	-- action called after each element slices 
+		 atexit=fnil,  	-- action called when exiting an element 
+		 ataper=fnil,  	-- action called when checking for aperture 
+		 atsave=fnil,  	-- action called when saving in mtable 
+    	 atdebug=fnil,  	-- action called when debugging the element maps 
+    	 info=nil,  	-- information level (output on terminal) 
+		 debug=nil, 	-- debug information level (output on terminal) 
+		 usrdef=nil,  	-- user defined data attached to the mflow 
+		 mflow=nil,  	-- mflow, exclusive with other attributes except nstep 
+	}
+
 .. _sec.track.synop:
 
+Command synopsis
+----------------
 
-The ``track`` command format is summarized in Figure :ref:`fig:track:synop <fig:track:synop>`, including the default setup of the attributes.
+
+The ``track`` command format is summarized in :numref:`fig-track-synop`, including the default setup of the attributes.
 
 The ``track`` command supports the following attributes:
 
