@@ -158,9 +158,9 @@ The object model allows to build tree-like inheritance hierarchy by creating obj
 Reading attributes
 """"""""""""""""""
 
-Reading an attribute not defined in an object triggers a recursive dynamic lookup along the chain of its parents until it is found or the root ``object`` is reached. Reading an object attribute defined as a *function* automatically evaluates it with the object passed as the sole argument and the returned value is forwarded to the reader as if it were the attribute's value. When the argument is not used by the function, it becomes a *deferred expression* that can be defined directly with the operator :literal:`:=` as explained in section :ref:`sec.defexpr`. This feature allows to use attributes holding values and functions the same way and postpone design decisions, e.g. switching from simple value to complex calculations without impacting the users side with calling parentheses at every use.
+Reading an attribute not defined in an object triggers a recursive dynamic lookup along the chain of its parents until it is found or the root ``object`` is reached. Reading an object attribute defined as a *function* automatically evaluates it with the object passed as the sole argument and the returned value is forwarded to the reader as if it were the attribute's value. When the argument is not used by the function, it becomes a *deferred expression* that can be defined directly with the operator :literal:`:=` as explained in section :ref:`ssec.defexpr`. This feature allows to use attributes holding values and functions the same way and postpone design decisions, e.g. switching from simple value to complex calculations without impacting the users side with calling parentheses at every use.
 
-The following example is similar to the second example of the section :ref:`sec.defexpr`, and it must be clear that ``fun`` must be explicitly called to retrieve the value despite that its definition is the same as the attribute ``v2``.
+The following example is similar to the second example of the section :ref:`ssec.defexpr`, and it must be clear that ``fun`` must be explicitly called to retrieve the value despite that its definition is the same as the attribute ``v2``.
 
 .. code-block:: lua
 	

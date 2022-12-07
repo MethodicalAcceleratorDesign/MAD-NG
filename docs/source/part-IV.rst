@@ -18,6 +18,8 @@ MODULES
    /diffalg.rst
    /diffmap.rst
    /miscfuns.rst
+   /madx.rst
+   /extern.rst
 
 
 

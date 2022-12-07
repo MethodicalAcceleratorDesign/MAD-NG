@@ -12,3 +12,6 @@ ELEMENTS & COMMANDS
    /correct.rst
    /twiss.rst
    /match.rst
+   /cofind.rst
+   /plot.rst
+   /emit.rst

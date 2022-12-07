@@ -2,7 +2,7 @@ Survey
 ======
 .. _ch.cmd.survey:
 
-The ``survey`` command provides a simple interface to the *geometric* tracking code. [#f1]_ The geometric tracking can be used to place the elements of a sequence in the :ref:`global reference system <fig:phy:grs>`.
+The ``survey`` command provides a simple interface to the *geometric* tracking code. [#f1]_ The geometric tracking can be used to place the elements of a sequence in the global reference system in :numref:`fig-phy-grs`.
 
 .. _fig.survey.synop:
 

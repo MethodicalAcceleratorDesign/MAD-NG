@@ -167,7 +167,7 @@ The ``beam`` *object* manages the particles database, which is shared by all ``b
 
 New particles can be added to the database, either explicitly using the ``new_particle`` method, or by creating or updating a beam *object* and specifying all the attributes of a particle, i.e. ``particle``'s name, ``charge``, ``mass``, and (optional) ``spin``:
 
-.. :code-block:: lua
+.. code-block:: lua
 	
 	local beam in MAD
 	local nmass, pmass, mumass in MAD.constant
@@ -180,7 +180,7 @@ New particles can be added to the database, either explicitly using the ``new_pa
 
 The particles database can be displayed with the ``showdb`` method at any time from any beam:
 
-.. :code-block:: lua
+.. code-block:: lua
 	
 	beam:showdb()  -- check that both, mymuon and pb208 are in the database.
 
@@ -190,7 +190,7 @@ Particle charges
 
 The physics of \MAD is aware of particle charges. To enable the compatibility with codes like MAD-X that ignores the particle charges, the global option ``nocharge`` can be used to control the behavior of created beams as shown by the following example:
 
-.. :code-block:: lua
+.. code-block:: lua
 	
 	local beam, option in MAD
 	local beam1 = beam { particle="electron" } -- beam with negative charge
@@ -210,7 +210,7 @@ Examples
 
 
 
-.. :code-block:: lua
+.. code-block:: lua
 	
 	local beam in MAD
 	local lhcb1, lhcb2 in MADX

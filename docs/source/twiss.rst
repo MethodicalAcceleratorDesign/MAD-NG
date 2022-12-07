@@ -84,7 +84,7 @@ The ``twiss`` command supports the following attributes:
 	Example: ``s0 = 5000``.
 
 **X0**
-	A *mappable* (or a list of *mappable*) specifying initial coordinates ``{x,px,y,py, t,pt}``, damap, or beta0 block for each tracked object, i.e. particle or damap. The beta0 blocks are converted to damaps, while the coordinates are converted to damaps only if , damap, or beta0 block for each tracked object, i.e. particle or damap. The beta0 blocks are converted to damaps, while the coordinates are converted to damaps only if ``mapdef`` is specified, but both will use ``mapdef`` to setup the damap constructor. A closed orbit will be automatically searched for damaps built from coordinates. Each tracked object may also contain a ``beam`` to override the reference beam, and a *log* ``nosave`` to discard this object from being saved in the mtable. (default: ``0``). 
+	A *mappable* (or a list of *mappable*) specifying initial coordinates ``{x,px,y,py, t,pt}``, damap, or beta0 block for each tracked object, i.e. particle or damap. The beta0 blocks are converted to damaps, while the coordinates are converted to damaps only if , damap, or beta0 block for each tracked object, i.e. particle or damap. The beta0 blocks are converted to damaps, while the coordinates are converted to damaps only if ``mapdef`` is specified, but both will use ``mapdef`` to setup the damap constructor. A closed orbit will be automatically searched for damaps built from coordinates. Each tracked object may also contain a ``beam`` to override the reference beam, and a *logical* ``nosave`` to discard this object from being saved in the mtable. (default: ``0``). 
 	Example: ``X0 = { x=1e- 3, px=- 1e- 5 }``.
 
 **O0** 
@@ -96,11 +96,11 @@ The ``twiss`` command supports the following attributes:
 	Example: ``s0 = 5000``.
 
 **chrom**
-	A *log* specifying to calculate the chromatic functions by finite different using an extra :math:`\delta_p=` ``1e-6``. (default: ``false``). 
+	A *logical* specifying to calculate the chromatic functions by finite different using an extra :math:`\delta_p=` ``1e-6``. (default: ``false``). 
 	Example: ``chrom = true``.
 
 **coupling**
-	A *log* specifying to calculate the optical functions for coupling terms in the normalized forms. (default: ``false``). 
+	A *logical* specifying to calculate the optical functions for coupling terms in the normalized forms. (default: ``false``). 
 	Example: ``chrom = true``.
 
 **nturn**
@@ -128,31 +128,31 @@ The ``twiss`` command supports the following attributes:
 	Example: ``model = 'DKD'``.
 
 **ptcmodel**
-	A *log* indicating to use strict PTC model. A *log* indicating to use strict PTC model. [#f8]_ (default: ``nil``) 
+	A *logical* indicating to use strict PTC model. [#f8]_ (default: ``nil``) 
 	Example: ``ptcmodel = true``.
 
 **implicit**
-	A *log* indicating that implicit elements must be sliced too, e.g. for smooth plotting. (default: ``nil``). 
+	A *logical* indicating that implicit elements must be sliced too, e.g. for smooth plotting. (default: ``nil``). 
 	Example: ``implicit = true``.
 
 **misalign**
-	A *log* indicating that misalignment must be considered. (default: ``nil``). 
+	A *logical* indicating that misalignment must be considered. (default: ``nil``). 
 	Example: ``misalign = true``.
 
 **fringe**
-	A *log* indicating that fringe fields must be considered or a *number* specifying a bit mask to apply to all elements fringe flags defined by the element module. The value ``true`` is equivalent to the bit mask , i.e. allow all elements (default) fringe fields. (default: ``nil``). 
+	A *logical* indicating that fringe fields must be considered or a *number* specifying a bit mask to apply to all elements fringe flags defined by the element module. The value ``true`` is equivalent to the bit mask , i.e. allow all elements (default) fringe fields. (default: ``nil``). 
 	Example: ``fringe = false``.
 
 **radiate**
-	A *log* enabling or disabling the radiation or the *string* specifying the ``'average'`` type of radiation during the closed orbit search. The value ``true`` is equivalent to ``'average'`` and the value ``'quantum'`` is converted to ``'average'``. (default: ``nil``). 
+	A *logical* enabling or disabling the radiation or the *string* specifying the ``'average'`` type of radiation during the closed orbit search. The value ``true`` is equivalent to ``'average'`` and the value ``'quantum'`` is converted to ``'average'``. (default: ``nil``). 
 	Example: ``radiate = 'average'``.
 
 **totalpath**
-	A *log* indicating to use the totalpath for the fifth variable ``'t'`` instead of the local path. (default: ``nil``). 
+	A *logical* indicating to use the totalpath for the fifth variable ``'t'`` instead of the local path. (default: ``nil``). 
 	Example: ``totalpath = true``.
 
 **save**
-	A *log* specifying to create a *mtable* and record tracking information at the observation points. The ``save`` attribute can also be a *string* specifying saving positions in the observed elements: ``"atentry"``, ``"atslice"``, ``"atexit"`` (i.e. ``true``), ``"atbound"`` (i.e. entry and exit), ``"atbody"`` (i.e. slices and exit) and ``"atall"``. (default: ``false``). 
+	A *logical* specifying to create a *mtable* and record tracking information at the observation points. The ``save`` attribute can also be a *string* specifying saving positions in the observed elements: ``"atentry"``, ``"atslice"``, ``"atexit"`` (i.e. ``true``), ``"atbound"`` (i.e. entry and exit), ``"atbody"`` (i.e. slices and exit) and ``"atall"``. (default: ``false``). 
 	Example: ``save = false``.
 
 **title**
@@ -168,7 +168,7 @@ The ``twiss`` command supports the following attributes:
 	Example: ``savesel = \LMB e -> mylist[e.name] ~= nil``.
 
 **savemap**
-	A *log* indicating to save the damap in the column ``__map`` of the *mtable*. (default: ``nil``). 
+	A *logical* indicating to save the damap in the column ``__map`` of the *mtable*. (default: ``nil``). 
 	Example: ``savemap = true``.
 
 **atentry**

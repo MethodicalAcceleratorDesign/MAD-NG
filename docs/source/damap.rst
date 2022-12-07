@@ -1,5 +1,5 @@
+.. _ch.mod.damap:
+
 DA Map
 ======
-
-just a link (never written)
 

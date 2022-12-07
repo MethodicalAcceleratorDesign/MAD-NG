@@ -31,7 +31,7 @@ The classes defined by the ``element`` module are organized according to the kin
 
 These classes are not supposed to be used directly, except for extending the hierarchy defined by the ``element`` module and schematically reproduced hereafter to help users understanding:
 
-.. :code-block:: lua
+.. code-block:: lua
 	
 	thin_element = element  'thin_element' { is_thin    = true }
 	thick_element = element 'thick_element' { is_thick   = true }
@@ -92,7 +92,7 @@ These classes are not supposed to be used directly, except for extending the hie
 
 All the classes above, including ``element``, define the attributes ``kind = name`` and ``is_name = true`` where ``name`` correspond to the class name. These attributes help to identify the kind and the role of an element as shown in the following code excerpt:
 
-.. :code-block:: lua
+.. code-block:: lua
 	
 	local drift, hmonitor, sequence in MAD.element
 	local dft = drift    {}
@@ -272,7 +272,7 @@ Some elements define new attributes or override the default values provided by t
 SBend
 """""
 
-The ``sbend`` element is a sector bending magnet with a curved reference system as shown in Figure `<fig:gen:sbend>`_ , and defines or overrides the following attributes:
+The ``sbend`` element is a sector bending magnet with a curved reference system as shown in :numref:`fig-gen-sbend`, and defines or overrides the following attributes:
 
 **k0**
 	A ``number`` specifying the dipolar strength of the element [:math:`\mathrm{m}^{-1}`].
@@ -290,13 +290,16 @@ The ``sbend`` element is a sector bending magnet with a curved reference system 
 **fringe**
 	 Set to flag ``fringe.bend`` to activate the fringe fields by default, see :ref:`Flags <sec.elm.flgs>` for details.
 
+.. figure:: fig/elm_refsys_sbend.jpg
+	:name: fig-gen-sbend
+	:align: center
 
-\input{fig\elm_refsys_sbend.tex}
+	Reference system for a sector bending magnet.
 
 RBend
 """""
 
-The ``rbend`` element is a rectangular bending magnet with a straight reference system as shown in Figure `<fig:gen:rbend>`_ , and defines or overrides the following attributes:
+The ``rbend`` element is a rectangular bending magnet with a straight reference system as shown in :numref:`fig-gen-rbend`, and defines or overrides the following attributes:
 
 **k0**
 	A ``number`` specifying the dipolar strength of the element [:math:`\mathrm{m}^{-1}`].
@@ -317,8 +320,11 @@ The ``rbend`` element is a rectangular bending magnet with a straight reference 
 **true_rbend**
 	 A *log* specifying if this ``rbend`` element behaves like (``false``) a ``sbend`` element with parallel pole faces, i.e. :math:`e_1=e_2=\alpha/2` in Figure `<fig:gen:sbend>`_ , or like (``true``) a rectangular bending magnet with a straight reference system as shown in Figure `<fig:gen:rbend>`_ . (default: ``false``). [#f6]_
 
+.. figure:: fig/elm_refsys_rbend.jpg
+	:name: fig-gen-rbend
+	:align: center
 
-\input{fig\elm_refsys_rbend.tex}
+	Reference system for a rectangular bending magnet.
 
 Quadrupole
 """"""""""
@@ -691,7 +697,7 @@ The supported aperture shapes are listed hereafter. The parameters defining the 
 
 
 
-.. :code-block:: lua
+.. code-block:: lua
 	
 	local quadrupole in MAD.element
 	local mq = quadrupole 'mq' { l=1,                               -- new class
@@ -717,35 +723,42 @@ Misalignment
 The misalignments are *mappable* defined at the entry of an element by the following attributes, see the :doc:`track <track>` command for details:
 
 **dx, dy, ds**
-	 A *number* specifying the :math:`x`\ , :math:`y`\ , :math:`s`\ -displacement at the element entry [m], see Figures `<fig:gen:dispxs>`_ and `<fig:gen:dispys>`_ . (default: ``0``).
+	 A *number* specifying the :math:`x`\ , :math:`y`\ , :math:`s`\ -displacement at the element entry [m], see :numref:`fig-gen-dispxs` and :numref:`fig-gen-dispys` . (default: ``0``).
 
 **dtheta**
-	 A *number* specifying the :math:`y`-rotation angle (azimuthal) at the element entry [rad], see Figure `<fig:gen:dispxs>`_ . (default: ``0``).
+	 A *number* specifying the :math:`y`-rotation angle (azimuthal) at the element entry [rad], see :numref:`fig-gen-dispxs`. (default: ``0``).
 
 **dphi**
-	 A *number* specifying the :math:`-x`-rotation angle (elevation) at the entry of the element [rad], see Figure `<fig:gen:dispys>`_ . (default: ``0``).
+	 A *number* specifying the :math:`-x`-rotation angle (elevation) at the entry of the element [rad], see :numref:`fig-gen-dispxy` . (default: ``0``).
 
 **dpsi**
-	 A *number* specifying the :math:`s`-rotation angle (roll) at the element entry [rad], see Figure `<fig:gen:dispxy>`_ . (default: ``0``).
+	 A *number* specifying the :math:`s`-rotation angle (roll) at the element entry [rad], see :numref:`fig-gen-dispxy` . (default: ``0``).
+
+Two kinds of misalignments are available for an element and summed beforehand:
 
 
-.. %The misalignments are treated in the following order when applied to the local frame transformation by the ``survey`` command: first translate by ``(dx,dy,ds)``, then rotate around the :math:`y` axis by ``dtheta``, the :math:`x` axis by ``- dphi``, and finally the :math:`s` axis by ``dpsi``.
+*	 The *absolute* misalignments of the element versus its local reference frame, and specified by its ``misalign`` attribute. These misalignments are always considered.
 
-.. %The misalignments are treated in the following order (opposite to local frame) when applied to the phase space by the ``track`` command: first rotate around the :math:`s` axis by ``-dpsi``, the :math:`x` axis by ``dphi``, then the :math:`y` axis by ``- dtheta``, and finally translate by ``(- dx,- dy,- ds)``,
+*	 The *relative* misalignments of the element versus a given sequence, and specified by the ``:misalign`` of ``sequence``. These misalignments can be considered or not depending of command settings.
+
+.. figure:: fig/elm_dsplmnt_xs.jpg
+	:name: fig-gen-dispxs
+	:align: center
+
+	Displacements in the :math:`(x, s)` plane.
+
+.. figure:: fig/elm_dsplmnt_ys.jpg
+	:name: fig-gen-dispys
+	:align: center
+
+	Displacements in the :math:`(y, s)` plane.
 
 
+.. figure:: fig/elm_dsplmnt_xy.jpg
+	:name: fig-gen-dispxy
+	:align: center
 
-#.	 The *absolute* misalignments of the element versus its local reference frame, and specified by its ``misalign`` attribute. These misalignments are always considered.
-
-#.	 The *relative* misalignments of the element versus a given sequence, and specified by the ``:misalign`` of ``sequence``. These misalignments can be considered or not depending of command settings.
-
-
-\input{fig/elm_dsplmnt_xs.tex}
-
-\input{fig/elm_dsplmnt_ys.tex}
-
-\input{fig/elm_dsplmnt_xy.tex}
-
+	Displacements in the :math:`(x, y)` plane.
 
 .. rubric:: Footnotes
 
