@@ -40,10 +40,7 @@ assert(is_nil(rawget(_G,'MADX')), "MADX environment already defined")
   const, int, real, shared
 
 - identifier:
-  [%a_][%w%.%$_]*
-
-- extended-identifier:
-  [%a_][%w%s%.%$%%_->]*
+  [%a_][%w.$_]*
 
 - statement selection from first operator:
     [%]   => beam%sequence
@@ -114,7 +111,7 @@ local function check_chunk (out, doit)
     out[out.n], out.n = ''        , out.n+1 -- empty line
     out[out.n], out.n = BEGOFCHUNK, out.n+1 -- open  new      chunk
     out.nchk = out.n
-    return true -- true if chunk has been closed/opened
+    return true -- chunk has been closed/opened
   end
 end
 
@@ -123,9 +120,9 @@ end
 local function remove_comments (lst)
   local c, l, j = false
   for i=1,#lst do
-    l = lst[i]:gsub("/%*.-%*/",'')
-    j = l:find("!" ,1,true) ; if j then l = l:sub(1,j-1) end
-    j = l:find("//",1,true) ; if j then l = l:sub(1,j-1) end
+    l = lst[i]:gsub("/%*.-%*/", '')
+    j = l:find("!" , 1, true) ; if j then l = l:sub(1,j-1) end
+    j = l:find("//", 1, true) ; if j then l = l:sub(1,j-1) end
 
     if c then
       j = l:find("*/", 1, true)
@@ -142,9 +139,9 @@ end
 
 -- names, madx names, extended names ------------------------------------------o
 
-local name_patt = "%s*([%a_][%w.$_]*)"
-local qnam_patt = "%s*['\"]?([%a_][%w.$_]*)['\"]?"
-local beam_patt = "%s*([%a_][%w_]*)%s*%%([%a_][%w_]*)"
+local name_patt = "%s*%f[%w_]([%a_][%w.$_]*)"                 -- identifier
+local qnam_patt = "%s*%f[%w_]['\"]?([%a_][%w.$_]*)['\"]?"     -- optional quotes
+local beam_patt = "%s*%f[%w_]([%a_][%w_]*)%s*%%([%a_][%w_]*)" -- attached beam
 
 local kwd = { int='', real='', const='', shared='', }
 
@@ -194,9 +191,9 @@ end
 -- attr := expr
 --                            [1] flag  [2] attr         [3] op      [4] rest [5] open
 local attribute_patt = "^,?%s*(%-?)" .. name_patt .. "%s*(:?[=,]?)%s*(([{'\"]?).*)$"
-local attlst_patt = "%s*([,%a]?.*)$"
+local attrlst_patt = "%s*([%a,]?.*)$"
 
-local tok = { slice='nslice', nst='nslice' }
+local attr = { slice='nslice', nst='nslice' }
 
 local function convert_attrlist (str_)
   local res, str, flg, opn = {}, str_ or ''
@@ -207,11 +204,11 @@ local function convert_attrlist (str_)
     if #cap == 0 then break end
 --io.write(#res+1,": [",cap[1],"], [",cap[2],"], [",cap[3],"], [",cap[4],"], [",cap[5],"]\n")
 
-    cap[2] = convert_name(cap[2]):gsub(name_patt, tok)
+    cap[2] = convert_name(cap[2]):gsub(name_patt, attr)
     flg, opn = cap[1], cap[5]
 
     if cap[2] == "from" or cap[2] == "refpos" then
-      local scap = capf(cap[4]:find("^" .. qnam_patt .. attlst_patt))
+      local scap = capf(cap[4]:find("^" .. qnam_patt .. attrlst_patt))
       cap[4], str = convert_xname(scap[1]), scap[2]
       cap[4] = '"'..cap[4]..'"'
 
@@ -220,15 +217,15 @@ local function convert_attrlist (str_)
       cap[3], cap[4] = '=', 'true'
 
     elseif opn == '"' or opn == "'" then       -- string
-      local scap = capf(cap[4]:find("^((['\"]).-%2)" .. attlst_patt))
+      local scap = capf(cap[4]:find("^((['\"]).-%2)" .. attrlst_patt))
       cap[4], str = scap[1], scap[3]
 
     elseif opn == '{' then                     -- array of expressions
-      local scap = capf(cap[4]:find("^(%b{})" .. attlst_patt))
+      local scap = capf(cap[4]:find("^(%b{})" .. attrlst_patt))
       cap[4], str = convert_ename(scap[1]), scap[2]
 
     else                                       -- expression
-      local scap = capf(cap[4]:find("^([^,]+)" .. attlst_patt))
+      local scap = capf(cap[4]:find("^([^,]+)" .. attrlst_patt))
       cap[4], str = convert_ename(scap[1]), scap[2]
     end
     res[#res+1] = table.concat(cap, ' ', 2, 4)
@@ -241,7 +238,7 @@ end
 -- elm:cls, attr-list;
 -- elm:cls  attr-list;
 --                     [1] elm         [2] class    [3] attr-list
-local element_patt = "^([^:=,(]+):" .. name_patt .. attlst_patt
+local element_patt = "^([^:=,(]+):" .. name_patt .. attrlst_patt
 
 local function convert_element (env, str, cap)
 --io.write("conv-elm: [", str, "]\n")
@@ -291,7 +288,7 @@ end
 -- cmd[, attr-list]
 -- cmd[  attr-list]
                    --       [1] name     [2] attr-list
-local command_patt = "^" .. name_patt .. attlst_patt
+local command_patt = "^" .. name_patt .. attrlst_patt
 
 local function convert_command (env, str, cap)
 --io.write("conv-cmd: [", str, "]\n")
@@ -341,6 +338,7 @@ end
 local function convert_statements (str, env)
   local cap
 
+  -- order of matching matters! order constraints from + to -
   cap = capf(string.find(str, variable_patt))
   if #cap > 0 then return convert_variable(env, str, cap) end
 
