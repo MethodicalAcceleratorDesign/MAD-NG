@@ -484,8 +484,9 @@ FUN(mul) (const T *a, const T *b, T *r)
   if (c->hi > 1) {
     ord_t c_hi = c->hi, ab_hi = MAX(a->hi,b->hi);
     if (a0 != 0 && b0 != 0) TPSA_LINOP(2, b0*, +a0*, );
-    else if       (b0 == 0) TPSA_LINOP(2,  0*, +a0*, );
-    else                    TPSA_LINOP(2, b0*, + 0*, );
+    else if       (b0 != 0) TPSA_LINOP(2, b0*, + 0*, );
+    else if       (a0 != 0) TPSA_LINOP(2,  0*, +a0*, );
+    else                    TPSA_LINOP(2,  0*, + 0*, );
     TPSA_CLEAR(ab_hi+1);
 
     if (a0 != 0) { c->nz |= mad_bit_lcut(b->nz,2); }
