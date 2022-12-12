@@ -26,7 +26,7 @@
 local ffi = require "ffi"
 local _C, complex, matrix, cmatrix, imatrix, range, logrange,
           monomial, tpsa, ctpsa                                   in MAD
-local is_natural, is_int32, is_string, is_object,
+local is_natural, is_int32, is_logical, is_string, is_object,
       is_callable, get_metatable                                  in MAD.typeid
 local kpairs                                                      in MAD.utility
 
@@ -314,13 +314,19 @@ local function catch_err(err)
   io.write("***pymad.run: ", err, "\n", debug.traceback())
 end
 
+local function catch_err_(err)
+  io.write("***pymad.run: ", err, "\n", debug.traceback())
+  send_dat(self, 'err_', 4)
+end
+
 local function open_pipe (self, pyFd)
   self._toPy = assert(_C.fdopen(pyFd, "wb"), "unable to wrap py_fd with FILE")
   _C.setbuf(self._toPy, nil)
   return self
 end
 
-local function open_env (self)
+local function init (self)
+  self._err = catch_err
   self._env =  {}
   setmetatable(self._env, {__index = _G})
   self._env[self.name] = self
@@ -331,8 +337,8 @@ local function run (self)
   while true do
     local str = self:recv()
     local fun, err = load(str, nil, nil, self._env)
-    if fun then xpcall(fun, catch_err) -- Catch runtime error
-    else        catch_err(err)         -- Catch load error
+    if fun then xpcall(fun, self._err) -- Catch runtime error
+    else        self._err(err)         -- Catch load error
     end
   end
 end
@@ -342,8 +348,7 @@ end
 local function start(self, pyFd)
   assert(is_natural(pyFd), "invalid argument #2 (file descritor expected)")
   open_pipe(self, pyFd)
-  open_env (self)
-  run      (self)
+  run( init(self) )
 end
 
 local function send (self, a)
@@ -357,10 +362,18 @@ local function recv (self)
   return assert(type_fun[typ], "unsupported data type").recv(self)
 end
 
+local function errhdlr (self, reterr)
+  assert(is_logical(reterr), "invalid argument #2 (logical expected)")
+  self._err = reterr and catch_err_ or catch_err
+  return self
+end
+
 pymad:set_methods {
   start = start,
   send  = send,
   recv  = recv,
+
+  errhdlr = errhdlr,
 } :set_readonly()
 
 -- end ------------------------------------------------------------------------o
