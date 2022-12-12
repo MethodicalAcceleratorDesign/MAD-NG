@@ -12,7 +12,10 @@ local IGNORED_READS  = {
 local MT = {
   __index = function (table, key)
     if IGNORED_READS[key] then return end
-    error("attempt to read undeclared variable: "..key, 2)
+    local info = debug.getinfo(2, "Sl")
+    MAD.warn("%s:%s: attempt to read undeclared global variable: %s\n",
+             tostring(info.short_src), tostring(info.currentline), key)
+    return nil
   end,
 
   __newindex = function (table, key, value)

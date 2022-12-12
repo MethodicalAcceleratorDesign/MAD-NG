@@ -415,13 +415,13 @@ Mapping and Folding
 
    This section lists the high-order functions `map <https://en.wikipedia.org/wiki/Map_(higher-order_function)>`_, `fold <https://en.wikipedia.org/wiki/Fold_(higher-order_function)>`_ and their variants useful in `functional programming <https://en.wikipedia.org/wiki/Functional_programming>`_ [#f1]_, followed by sections that list their direct application.
 
-.. function:: mat:foreach ([ij_,] f, r_)
+.. function:: mat:foreach ([ij_,] f)
 
-   Return the real, complex or integer matrix :var:`mat` after applying the :type:`callable` (or the operator string) :var:`f` to the elements at the indexes given by the :type:`iterable` :var:`ij` using :expr:`f(mat[n], n)`, i.e. interpreting the matrix as a vector. If :var:`r` is provided then it is filled with the values returned by :var:`f`. If :expr:`r = 'in'` then it is assigned :var:`mat`. Default: :expr:`ij_ = 1..#mat`.
+   Return the real, complex or integer matrix :var:`mat` after applying the :type:`callable` :var:`f` to the elements at the indexes given by the :type:`iterable` :var:`ij` using :expr:`f(mat[n], n)`, i.e. interpreting the matrix as a vector. Default: :expr:`ij_ = 1..#mat`.
 
 .. function:: mat:filter ([ij_,] p, r_)
 
-   Return a matrix or :var:`r` filled with the values of the elements of the real, complex or integer matrix :var:`mat` at the indexes given by the :type:`iterable` :var:`ij` if they are selected by the :type:`callable` `predicate <https://en.wikipedia.org/wiki/First-order_logic>`_ :var:`p` using :expr:`p(mat[n], n) = true`, i.e. interpreting the matrix as a vector. This method returns next to the matrix, a :type:`table` if :var:`r` is a table or a :type:`ivector` otherwise, containing the indexes of the selected elements. If :expr:`r = 'in'` then it is assigned :var:`mat`. Default: :expr:`ij_ = 1..#mat`.
+   Return a matrix or :var:`r` filled with the values of the elements of the real, complex or integer matrix :var:`mat` at the indexes given by the :type:`iterable` :var:`ij` if they are selected by the :type:`callable` `predicate <https://en.wikipedia.org/wiki/First-order_logic>`_ :var:`p` using :expr:`p(mat[n], n) = true`, i.e. interpreting the matrix as a vector. This method returns next to the matrix, a :type:`table` if :var:`r` is a table or a :type:`ivector` otherwise, containing the indexes of the selected elements returned. Default: :expr:`ij_ = 1..#mat`.
 
 .. function:: mat:filter_out ([ij_,] p, r_)
 
@@ -441,7 +441,7 @@ Mapping and Folding
 
 .. function:: mat:foldl (f, [x0_,] [d_,] r_)
 
-   Return a scalar, a vector or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied iteratively to the elements of the real, complex or integer matrix :var:`mat` using the folding left (forward with increasing indexes) expression :expr:`v = f(v, mat[n])` in the direction depending on the :type:`string` :var:`d`:
+   Return a scalar, a vector or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied iteratively to the elements of the real, complex or integer matrix :var:`mat` using the folding left (forward with increasing indexes) expression :expr:`v = f(v, mat[n])` starting at :var:`x0` and running in the direction depending on the :type:`string` :var:`d`:
 
    - If :expr:`d = 'vec'`, the folding left iteration runs on the entire matrix :var:`mat` interpreted as a vector and a scalar is returned.
 
@@ -460,7 +460,7 @@ Mapping and Folding
 
 .. function:: mat:scanl (f, [x0_,] [d_,] r_)
 
-   Return a vector, a matrix or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied iteratively to the elements of the real, complex or integer matrix :var:`mat` using the scanning left (forward with increasing indexes) expression :expr:`v = f(v, mat[n])` in the direction depending on the :type:`string` :var:`d`:
+   Return a vector, a matrix or :var:`r` filled with the values returned by the :type:`callable` (or the operator string) :var:`f` applied iteratively to the elements of the real, complex or integer matrix :var:`mat` using the scanning left (forward with increasing indexes) expression :expr:`v = f(v, mat[n])` starting at :var:`x0` and running in the direction depending on the :type:`string` :var:`d`:
 
    - If :expr:`d = 'vec'`, the scanning left iteration runs on the entire matrix :var:`mat` interpreted as a vector and a vector is returned.
 
@@ -768,11 +768,11 @@ Special Methods
 
 .. function:: mat:unit ()
 
-   Scale the matrix :var:`mat` to the unit norm equivalent to :expr:`mat:div(mat:norm(), mat)`.
+   Return the scaled matrix :var:`mat` to the unit norm equivalent to :expr:`mat:div(mat:norm(), mat)`.
 
 .. function:: mat:center (d_)
 
-   Center the matrix :var:`mat` to have zero mean equivalent to :expr:`mat:sub(mat:mean(),mat)`. The direction :var:`d` indicates how the centering must be performed:
+   Return the centered matrix :var:`mat` to have zero mean equivalent to :expr:`mat:sub(mat:mean(),mat)`. The direction :var:`d` indicates how the centering must be performed:
    
    - If :expr:`d = 'vec'`, it centers the entire matrix by substracting its mean.
    - If :expr:`d = 'row'`, it centers each row by substracting their mean.
@@ -799,7 +799,7 @@ Special Methods
 
 .. function:: mat:variance ()
 
-   Equivalent to :expr:`(mat - mat:mean()):sumsqr()/(#mat-1)`, i.e. return the unbiased estimator of the variance with second order correction, interpreting the matrix as a vector.
+   Equivalent to :expr:`(mat - mat:mean()):sumsqr()/(#mat-1)`, i.e. return the unbiased estimator of the variance with second order `Bessel's correction <https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance>`_, interpreting the matrix as a vector.
 
 .. function:: mat:ksum ()
               mat:kdot (mat2)

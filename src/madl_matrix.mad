@@ -52,15 +52,13 @@ local rep, errorf, assertf, openfile, strsplitall,
 local inf, eps                                                   in constant
 local min, max, random                                           in math
 
+-- C types sizes
+local ctsz_idx, ctsz_dbl, ctsz_cpx                               in MAD.typeid
+
 -- tmp for returned values
 local ires = ffi.new  'idx_t[2]'
 local  res = ffi.new  'num_t[2]'
 local cres = ffi.new 'cnum_t[2]'
-
--- constants
-local idx_sz = ffi.sizeof ' idx_t'
-local dbl_sz = ffi.sizeof  'num_t'
-local cpx_sz = ffi.sizeof 'cnum_t'
 
 local gmm = get_metamethod
 
@@ -254,9 +252,9 @@ MI.size   = MR.size
 MI.sizes  = MR.sizes
 MI.tsizes = MR.tsizes
 
-MR.bytesize = \x -> dbl_sz * size(x)
-MC.bytesize = \x -> cpx_sz * size(x)
-MI.bytesize = \x -> idx_sz * size(x)
+MR.bytesize = \x -> ctsz_dbl * size(x)
+MC.bytesize = \x -> ctsz_cpx * size(x)
+MI.bytesize = \x -> ctsz_idx * size(x)
 
 -- x:same()
 -- x:same(e)
@@ -439,17 +437,17 @@ end
 -- zeros, ones, eye, symp, circ, fill, shift, reshape (in place) --------------o
 
 function MR.zeros (x)
-  ffi.fill(x._dat, dbl_sz * size(x))
+  ffi.fill(x._dat, ctsz_dbl * size(x))
   return x
 end
 
 function MC.zeros (x)
-  ffi.fill(x._dat, cpx_sz * size(x))
+  ffi.fill(x._dat, ctsz_cpx * size(x))
   return x
 end
 
 function MI.zeros (x)
-  ffi.fill(x._dat, idx_sz * size(x))
+  ffi.fill(x._dat, ctsz_idx * size(x))
   return x
 end
 
@@ -988,19 +986,12 @@ end
 
 -- foreach, map, fold, scan, filter -------------------------------------------o
 
-function MR.foreach (x, ij_, f, r_)
-  if is_callable(ij_) or is_string(ij_) then f, r_, ij_ = ij_, f end -- right shift
-  if is_string(f ) then f = assert(opstr[f], "invalid operator string") end
-  if is_string(r_) and r_ == 'in' or ij_ and is_nil(r_) then r_ = x end
+function MR.foreach (x, ij_, f)
+  if is_callable(ij_) or is_string(ij_) then f, ij_ = ij_ end -- right shift
   local ij = ij_ or 1..size(x)
   assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
   assert(is_callable(f ), "invalid argument #3 (callable expected)")
-  if is_nil(r_) then
-    for _,ii in ipairs(ij) do         f(geti_s(x,ii), ii) end
-  else
-    assert(is_iterable(r_), "invalid argument #4 (iterable expected)")
-    for i,ii in ipairs(ij) do r_[i] = f(geti_s(x,ii), ii) end
-  end
+  for _,ii in ipairs(ij) do f(geti_s(x,ii), ii) end
   return x
 end
 
@@ -1008,7 +999,6 @@ MI.foreach = MR.foreach
 
 function MR.filter (x, ij_, p, r_)
   if is_callable(ij_) then p, r_, ij_ = ij_, p end -- right shift
-  if is_string(r_) and r_ == 'in' or ij_ and is_nil(r_) then r_ = x end
   local ij = ij_ or 1..size(x)
   assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
   assert(is_callable(p) , "invalid argument #3 (callable expected)")
@@ -2775,8 +2765,8 @@ local function zpadconv (x, y, d_)
   end
   local xpad = x:zpad(nr,nc,d_)
   if rawequal(x, y)
-  then return xpad, xpad            , nr, nc
-  else return xpad, y:zpad(nr,nc,d_), nr, nc
+  then return xpad, xpad
+  else return xpad, y:zpad(nr,nc,d_)
   end
 end
 
@@ -2786,10 +2776,10 @@ function MR.conv (x, y_, d_, r_)
   if is_string(y_) and is_nil(r_) then d_, r_, y_ = y_, d_ end -- right shift
   if is_matrix(d_) and is_nil(r_) then r_, d_ = d_ end         -- right shift
   assert(is_matrix(y_ or x), "invalid argument #2 (matrix expected)")
-  local x, y, nr, nc = zpadconv(x, y_ or x, d_)
-  local r = r_ or x:same(nr,nc)
+  local x, y = zpadconv(x, y_ or x, d_)
+  local r = r_ or x:same()
   assert(is_matrix(r), "invalid argument #4 (matrix expected)")
-  assert(r.nrow == nr and r.ncol == nc, "incompatible matrix sizes")
+  assert(r.nrow == x.nrow and r.ncol == x.ncol, "incompatible matrix sizes")
 
   local xf = x:rfft(d_)
   if rawequal(x, y)
@@ -2802,10 +2792,10 @@ function MC.conv (x, y_, d_, r_)
   if is_string(y_)  and is_nil(r_) then d_, r_, y_ = y_, d_ end -- right shift
   if is_cmatrix(d_) and is_nil(r_) then r_, d_ = d_ end         -- right shift
   assert(is_cmatrix(y_ or x), "invalid argument #2 (cmatrix expected)")
-  local x, y, nr, nc = zpadconv(x, y_ or x, d_)
-  local r = r_ or x:same(nr,nc)
+  local x, y = zpadconv(x, y_ or x, d_)
+  local r = r_ or x:same()
   assert(is_cmatrix(r), "invalid argument #4 (cmatrix expected)")
-  assert(r.nrow == nr and r.ncol == nc, "incompatible matrix sizes")
+  assert(r.nrow == x.nrow and r.ncol == x.ncol, "incompatible matrix sizes")
 
   local xf = x:fft(d_)
   if rawequal(x, y)
