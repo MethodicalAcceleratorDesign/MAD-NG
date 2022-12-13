@@ -311,13 +311,9 @@ local type_str = {
 
 local pymad = MAD.object 'pymad' { _dbgf = 0 }
 
-local function catch_err(err)
-  io.write("***pymad.run: ", err, "\n", debug.traceback())
-end
-
-local function catch_err_(self, err)
-  io.write("***pymad.run: ", err, "\n", debug.traceback())
-  send_dat(self, 'err_', 4)
+local function catch_err(err, self)
+  io.stderr:write("***pymad.run: ", err, "\n", debug.traceback(), "\n")
+  if self._err then send_dat(self, 'err_', 4) end
 end
 
 local function open_pipe (self, pyFd)
@@ -327,30 +323,45 @@ local function open_pipe (self, pyFd)
 end
 
 local function init (self)
-  self._err = functor(catch_err)
-  self._env =  {}
+  self._run = true
+  self._err = false
+  self._env = {}
   setmetatable(self._env, {__index = _G})
   self._env[self.name] = self
   return self
 end
 
 local function run (self)
-  while true do
+  while self._run do
     local str = self:recv()
     local fun, err = load(str, nil, nil, self._env)
-    if fun then xpcall(fun, self._err) -- Catch runtime error
-    else        self._err(err)         -- Catch load error
+    if fun then xpcall(fun, catch_err, self) -- Catch runtime error
+    else                catch_err(err, self) -- Catch load error
     end
   end
 end
 
--- methods --
+-- private methods --
 
-local function start(self, pyFd)
+local function __ini (self, pyFd)
   assert(is_natural(pyFd), "invalid argument #2 (file descritor expected)")
   open_pipe(self, pyFd)
   run( init(self) )
 end
+
+local function __fin (self)
+  fclose(self._toPy)
+  self._run = false
+  return self
+end
+
+local function __err (self, reterr)
+  assert(is_logical(reterr), "invalid argument #2 (logical expected)")
+  self._err = reterr
+  return self
+end
+
+-- public methods --
 
 local function send (self, a)
   local typ = assert(type_str[type(a)] or type_str[get_metatable(a)],
@@ -363,18 +374,13 @@ local function recv (self)
   return assert(type_fun[typ], "unsupported data type").recv(self)
 end
 
-local function errhdlr (self, reterr)
-  assert(is_logical(reterr), "invalid argument #2 (logical expected)")
-  self._err = reterr and bind1st(catch_err_, self) or functor(catch_err)
-  return self
-end
-
 pymad:set_methods {
-  start = start,
   send  = send,
   recv  = recv,
 
-  errhdlr = errhdlr,
+  __ini = __ini,
+  __fin = __fin,
+  __err = __err,
 } :set_readonly()
 
 -- end ------------------------------------------------------------------------o
