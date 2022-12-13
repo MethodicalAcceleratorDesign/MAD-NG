@@ -216,6 +216,8 @@ end
 
 local istype in ffi
 
+local MP, MX = {}, {}
+
 -- MAD XoShiRo256** -- see mad_num.c
 -- generates 64 pseudo-random bits in [0,ULLONG_MAX].
 -- generates 52 pseudo-random bits in [0,1).
@@ -246,12 +248,12 @@ local xrng_sz   = ffi.sizeof 'struct xrng_state'
 local is_randgen  = \a -> istype(prng_ctor, a)
 local is_xrandgen = \a -> istype(xrng_ctor, a)
 
-local randjump  = \r   => _C.mad_num_randjump (r)    r.x = nan return r end
-local randseed  = \r,x => _C.mad_num_randseed (r, x) r.x = nan return r end
-local xrandseed = \r,x => _C.mad_num_xrandseed(r, x)           return r end
+local randjump = \r   => _C.mad_num_randjump (r)    r.x = nan return r end
+MP   .randseed = \r,x => _C.mad_num_randseed (r, x) r.x = nan return r end
+MX   .randseed = \r,x => _C.mad_num_xrandseed(r, x)           return r end
 
-local gref = randseed(prng_ctor(), 123456789) -- reference generator
-local grng = randseed(prng_ctor(), 123456789) -- global    generator
+local gref = MP.randseed(prng_ctor(), 123456789) -- reference generator
+local grng = MP.randseed(prng_ctor(), 123456789) -- global    generator
 
 local function randnew ()
   local rng = prng_ctor()
@@ -272,19 +274,19 @@ local function randset (rng_)
   return rng
 end
 
-local function rand (rng)
+function MP.rand (rng)
   return _C.mad_num_rand(rng)
 end
 
-local function randi (rng)
+function MP.randi (rng)
   return _C.mad_num_randi(rng)
 end
 
-local function xrand (rng)
+function MX.rand (rng)
   return _C.mad_num_xrand(rng)
 end
 
-local function xrandi (rng)
+function MX.randi (rng)
   return _C.mad_num_xrandi(rng)
 end
 
@@ -301,7 +303,7 @@ local function randn2 (rng)
   return x1*w, x2*w
 end
 
-local function randn (rng)
+function MP.randn (rng)
   local x1
   if rng.x == rng.x
   then x1, rng.x = rng.x, nan -- use cache
@@ -310,17 +312,21 @@ local function randn (rng)
   return x1
 end
 
+MX.randn = \rng -> ((randn2(rng)))
+
 -- Truncated normal distribution (TODO: use direct formula for cut < ~0.7)
-local function randtn (rng, cut_)
+function MP.randtn (rng, cut_)
   local c, r = abs(cut_ or inf)
   assert(is_number(c), "invalid argument #2 (number expected)")
   repeat r = rng:randn() until abs(r) <= c
   return r
 end
 
+MX.randtn = MP.randtn
+
 -- Inverse transform sampling (for 'small' lamdba in O(lambda))
 -- Discrete Univariate Distributions, L. Devroye, p505
-local function randp (rng, lmb_)
+function MP.randp (rng, lmb_)
   local lmb = lmb_ or 1
   assert(is_positive(lmb) and lmb < 30,
          "invalid argument #2 (0 < lambda < 30 expected)")
@@ -334,39 +340,20 @@ local function randp (rng, lmb_)
   return x
 end
 
+MX.randp = MP.randp
+
 -- RNG as an infinite stream
 local function iter (rng, i)
   return i+1, rng:rand()
 end
 
-local prng_mt = set_concept({
-  __index = {
-    rand     = rand,
-    randi    = randi,
-    randn    = randn,
-    randp    = randp,
-    randtn   = randtn,
-    randseed = randseed,
-  },
-  __ipairs   = \r -> (iter, r, 0),
-  __tostring = \r -> string.format("RNG: %p", r),
-}, not_mappable + not_extendable + not_mutable)
+MP.__index    = MP
+MP.__ipairs   = \r -> (iter, r, 0)
+MP.__tostring = \r -> string.format("RNG: %p", r)
 
-local xrng_mt = set_concept({
-  __index = {
-    rand     = xrand,
-    randi    = xrandi,
-    randn    = \rng -> ((randn2(rng))), -- MAD-X discard even trials...
-    randp    = randp,
-    randtn   = randtn,
-    randseed = xrandseed,
-  },
-  __ipairs   = \r -> (iter, r, 0),
-  __tostring = \r -> string.format("XRNG: %p", r),
-}, not_mappable + not_extendable + not_mutable)
-
-ffi.metatype(prng_ctor, prng_mt)
-ffi.metatype(xrng_ctor, xrng_mt)
+MX.__index    = MX
+MX.__ipairs   = \r -> (iter, r, 0)
+MX.__tostring = \r -> string.format("XRNG: %p", r)
 
 -- gmath ----------------------------------------------------------------------o
 
@@ -397,6 +384,14 @@ end
 
 MAD.typeid.is_randgen  = is_randgen
 MAD.typeid.is_xrandgen = is_xrandgen
+
+-- metatables -----------------------------------------------------------------o
+
+MP.__metatable = MP
+MX.__metatable = MX
+
+ffi.metatype(prng_ctor, MP)
+ffi.metatype(xrng_ctor, MX)
 
 gmath = wrestrict(setmetatable(gmath, {__tostring := "MAD.gmath"}))
 
