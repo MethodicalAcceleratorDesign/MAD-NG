@@ -43,6 +43,7 @@ typedef uint32_t         u32_t;
 typedef uint64_t         u64_t;
 typedef double           num_t;
 typedef double _Complex cnum_t;
+typedef double _Complex  cpx_t;
 
 // --- constants -------------------------------------------------------------o
 
