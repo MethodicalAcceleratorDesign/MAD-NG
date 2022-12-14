@@ -44,7 +44,7 @@ void    setbuf (FILE*, char* buf);   // make _toPy unbuffered
 
 -- debug helper ---------------------------------------------------------------o
 
-local function dgbfun (self, knd, dat, sz)
+local function dbg (self, knd, dat, sz)
   if is_string(dat) then
     io.write("***pymad.", knd, ": [",dat,"] ", sz, " bytes\n")
   else
@@ -57,14 +57,14 @@ end
 -- data
 
 local function send_dat (self, dat, sz)
-  if self._dbgf ~= 0 then dgbfun(self, "send", dat, sz) end
+  if self._dbg then dbg(self, "send", dat, sz) end
   assert(_C.fwrite(dat, 1, sz, self._toPy) == sz, "couldn't send data")
   return self
 end
 
 local function recv_dat (self, dat, sz)
   assert(_C.fread(dat, 1, sz, io.stdin) == sz, "couldn't receive data")
-  if self._dbgf ~= 0 then dgbfun(self, "recv", dat, sz) end
+  if self._dbg then dbg(self, "recv", dat, sz) end
   return dat
 end
 
@@ -107,7 +107,7 @@ end
 local function recv_str (self)
   local n = recv_int(self)
   local s = assert(io.read(n), "couldn't receive string")
-  if self._dbgf ~= 0 then dgbfun(self, "recv", s, #s) end
+  if self._dbg then dbg(self, "recv", s, #s) end
   return s
 end
 
@@ -306,9 +306,7 @@ local type_str = {
   [get_metatable(ctpsa   (1))] = \_ -> 'ctpa',
 }
 
--- pymad ----------------------------------------------------------------------o
-
-local pymad = MAD.object 'pymad' { _dbgf = 0 }
+-- methods --------------------------------------------------------------------o
 
 local function catch_err(err, self)
   if self._err then send_dat(self, 'err_', 4) end
@@ -322,8 +320,6 @@ local function open_pipe (self, pyFd)
 end
 
 local function init (self)
-  self._run = true
-  self._err = false
   self._env = {}
   setmetatable(self._env, {__index = _G})
   self._env[self.name] = self
@@ -372,7 +368,11 @@ local function recv (self)
   return assert(type_fun[typ], "unsupported data type").recv(self)
 end
 
-pymad:set_methods {
+-- pymad ----------------------------------------------------------------------o
+
+local pymad = MAD.object 'pymad' { _run = true, _err = false, _dbg = false }
+
+:set_methods {
   send  = send,
   recv  = recv,
 
