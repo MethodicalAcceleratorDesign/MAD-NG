@@ -39,7 +39,7 @@ local is_nil, is_boolean, is_number, is_integer, is_decimal,
 local not_mappable, not_extendable, not_mutable                  in concept
 local implicit, observed                                         in flags
 
-local abs, modf in math
+local abs, min, modf in math
 
 local type, getmetatable, setmetatable, assert, error, rawequal =
       type, getmetatable, setmetatable, assert, error, rawequal
@@ -125,7 +125,7 @@ end
 
 -- check sequence spos and elements overlapp, [clear 'at' and 'from']
 local function check_drift (seq, idx)
-  local data, ds = seq.__dat
+  local data, minlen, ds = seq.__dat, seq.minlen or minlen
   assert(idx > 1 and idx < data.ne, "unexpected corrupted element index")
 
   ds = data.spos[idx] - (data.spos[idx-1] + data.ds[idx-1])
@@ -155,7 +155,7 @@ end
 
 -- check sequence spos and elements overlapp
 local function check_pos (seq)
-  local data = seq.__dat
+  local data, minlen = seq.__dat, seq.minlen or minlen
   for i=1,data.ne-1 do
     local ds = data.spos[i+1] - (data.spos[i] + data.ds[i])
     if ds < -minlen then
@@ -295,7 +295,7 @@ end
 
 -- get index from s-position (binary)
 local function index_of_num (seq, num, ref_, dir_)
-  local data = seq.__dat
+  local data, minlen = seq.__dat, seq.minlen or minlen
   if ref_ then num = num + data.upos[index_of_ref(seq,ref_)] end
   if num < 0 or num > seq.l then return nil end
   local idx, dir = bsearch(data.spos, num), dir_ or 1 -- num <= spos[idx]
@@ -544,7 +544,7 @@ end
 
 -- compute elements positions
 local function build_pos (seq, sref)
-  local data = seq.__dat
+  local data, minlen = seq.__dat, seq.minlen or minlen
   local n, idx, pos = data.ne, 1, 0
   for i=1,n do
     if data[i].from == 'selected' then
@@ -556,8 +556,8 @@ local function build_pos (seq, sref)
     local sseq = sref[idx]
     if is_nil(sseq) then     -- element
       elem_pos(seq, idx)     -- set element positions
-      if data.spos[idx]-pos < -minlen then -- see check_pos
-      -- if pos-minlen > data.spos[idx] then
+      if pos-minlen > data.spos[idx] then
+      -- if data.spos[idx]-pos < -minlen then -- see check_pos
         seq_poserr('element', seq, idx, pos)
       elseif data[idx].is_thin and data.ds[idx] ~= 0 then
         seq_lenerr("thin element", seq, idx, data[idx].l)
@@ -730,12 +730,6 @@ local function finish_sequ (seq)
   -- sanity checks
   check_mark(seq)
   if option.debug >= 2 then check_sequ(seq) end
-
-  -- publish sequence in MADX environment
-  if option.madxenv then
-    seq.minlen = 1e-6 -- [m] for MAD-X compatibility
-    seq:publish(MADX, true)
-  end
 end
 
 -- sequence init (build)
@@ -757,10 +751,17 @@ local function init_mm (seq)
   data.algn = table.new(ne,0)
   seq.__dat, data.ne = data, ne
 
+  -- set minlen to 1e-6 [m] for MAD-X compatibility
+  if option.madxenv then seq.minlen = 1e-6 end
+
   build_idx(data)
   build_pos(seq, sref)
   clear_sub(seq, sref)
   finish_sequ(seq)
+
+  -- publish sequence elements in MADX environment
+  if option.madxenv then seq:publish(MADX, true) end
+
   return seq
 end
 
@@ -1426,6 +1427,7 @@ local function share (seq1, seq2)
   assert(not (data1.ro or seq1:is_readonly()), "invalid write access to readonly sequence")
   assert(not (data2.ro or seq2:is_readonly()), "invalid write access to readonly sequence")
 
+  local minlen = min(seq1.minlen or minlen, seq2.minlen or minlen)
   local elm_r, idx_r, nr = {}, {}, 1
   for i=2,data1.ne-1 do
     local nam = data1[i].name -- share by (unique) name
