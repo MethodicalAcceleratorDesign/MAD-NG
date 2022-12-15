@@ -63,7 +63,7 @@ local origin = string.format("MAD %s %s %s", env.version, env.os, env.arch)
 local mtable = object 'mtable' {
     type='user', title='no-title', origin=origin, date=nil, time=nil,
     header={'name', 'type', 'title', 'origin', 'date', 'time', 'refcol'},-- default header
-    column=nil, refcol=nil, novector=nil, owner=nil, reserve=8,
+    column=nil, refcol=nil, novector=nil, reserve=8,
     __dat={ridx={}, cidx={}, nvec={}, cref=nil, nr=0, nc=0, ng=0, rmax=0,},
   }
 
@@ -79,10 +79,6 @@ local _id = {} -- identity
 local function is_mtable (a)
   local mt = getmetatable(a)
   return mt ~= nil and mt.__mtbl == _id
-end
-
-local function is_view (a)
-  return raw_get(a, '__dat') == nil
 end
 
 -- sanity checks --------------------------------------------------------------o
@@ -384,10 +380,7 @@ end
 
 -- mtable initialization
 local function init_mm (tbl)
-  local nc, owner = tbl:raw_len(), raw_get(tbl, 'owner')
-  if nc == 0 and owner ~= true then return tbl end -- view
-  -- tbl.owner = nil
-
+  local nc = tbl:raw_len()
   local pdat = tbl.parent.__dat
   nc = nc + pdat.nc
   local data = table.new(nc, 9)     -- columns (data)
@@ -399,6 +392,9 @@ local function init_mm (tbl)
   data.nc    = nc                   -- #cols
   data.ng    = 0                    -- #gens
   data.rmax  = 1                    -- allocated rows (specialize after 1st row)
+
+  -- disable inheritance
+  tbl:set_final()
 
   -- create columns
   for i=0,nc do data[i] = {} end
@@ -459,15 +455,10 @@ end
 
 -- copy mtable ----------------------------------------------------------------o
 
-local function copy_mm (tbl, name_, owner_)
-  if is_nil(owner_) and is_boolean(name_) then
-    owner_, name_ = name_
-  end
-  assert(is_mtable(tbl)           , "invalid argument #1 (mtable expected)")
+local function copy_mm (tbl, name_)
   assert(not rawequal(tbl, mtable), "invalid argument #1 (cannot copy 'mtable')")
-  local cpy = tbl_cpy(tbl,name_)
-  if is_view(tbl) and owner_ ~= true then return cpy end
-
+  assert(is_mtable(tbl)           , "invalid argument #1 (mtable expected)")
+  local cpy  = tbl_cpy(tbl,name_)
   local data = tbl.__dat
   local nr, nc = data.nr, data.nc
   local cdat = table.new(nc, 9)      -- see init_mm
@@ -486,7 +477,8 @@ local function copy_mm (tbl, name_, owner_)
     cdat[i] = isa_matrix(col) and col:copy() or tblicpy(col, table.new(nr,0))
   end
 
-  cpy.__dat = cdat
+  cpy:raw_set('__dat', cdat)
+
   return cpy:make_dict()
 end
 
@@ -1701,9 +1693,6 @@ mtable :set_methods {
   read         = read,
   write        = write,
   print        = print_,
-
-  -- ownership
-  is_view      = is_view,
 
   -- selection
   save_sel    = save_sel,

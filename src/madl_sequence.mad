@@ -74,10 +74,6 @@ local function is_sequence (a)
   return mt ~= nil and mt.__sequ == _id
 end
 
-local function is_view (a)
-  return raw_get(a, '__dat') == nil
-end
-
 -- definitions ----------------------------------------------------------------o
 
 -- start and end markers
@@ -592,7 +588,6 @@ end
 local function copy_ssequ (seq, flat, sref, idx, dir)
   local data = seq.__dat
   local n = data.ne
-  if n == 0 then return idx end -- view
 
   check_mark(seq)
 
@@ -733,12 +728,14 @@ end
 
 -- sequence init (build)
 local function init_mm (seq)
-  local n, owner = seq:raw_len(), raw_get(seq, 'owner')
-  if n == 0 and owner ~= true then return seq end -- view
-
+  local n = seq:raw_len()
   local sref = { dir=seq.dir, sdir={} }
   local data = table.new(n+2,8)
 
+  -- disable inheritance
+  seq:set_final()
+
+  -- flatten subsequences
   flatten_sequ(seq, data, sref)
   seq:clear_array()
 
@@ -764,30 +761,27 @@ local function init_mm (seq)
   return seq
 end
 
-local function copy_mm (seq, name_, owner_)
-  if is_nil(owner_) and is_boolean(name_) then
-    owner_, name_ = name_  -- right shift
-  end
+local function copy_mm (seq, name_)
   assert(not rawequal(seq, sequence), "invalid argument #1 (cannot copy 'sequence')")
   assert(is_sequence(seq)           , "invalid argument #1 (sequence expected)")
-  local cpy = seq_cpy(seq,name_)
-  if is_view(seq) and owner_ ~= true then return cpy end
-
+  local cpy  = seq_cpy(seq,name_)
   local data = seq.__dat
-  local ne = data.ne
+  local ne   = data.ne
   local cdat = table.new(ne,5)  -- see init_mm
   cdat.eidx  = table.new(0,ne)
   cdat.spos  = table.new(ne,0)
   cdat.upos  = table.new(ne,0)
   cdat.ds    = table.new(ne,0)
   cdat.algn  = table.new(ne,0)
-  cpy.__dat, cdat.ne = cdat, ne
+  cdat.ne    = ne
 
   for i=1,ne do
     cdat[i] = data[i]:copy()
     cdat.spos[i], cdat.upos[i], cdat.ds[i], cdat.algn[i] =
     data.spos[i], data.upos[i], data.ds[i], data.algn[i]
   end
+
+  cpy:raw_set('__dat', cdat)
 
   build_idx(cdat)
   finish_sequ(cpy)
@@ -1729,9 +1723,6 @@ sequence :set_methods {
 
   -- duplicate
   copy          = copy_mm,
-
-  -- ownership
-  is_view       = is_view,
 
   -- flags
   save_flags    = save_flags,
