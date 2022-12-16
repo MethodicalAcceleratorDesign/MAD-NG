@@ -8,13 +8,12 @@ LANGUAGE
 
    /intro.rst
    /script.rst
-   /types.rst
    /objects.rst
-   /cffi.rst
-   /commands.rst
-   /prg_elements.rst
-   /mad.rst
-   /prg_modules.rst
-   /tests.rst
+   /beam.rst
+   /beta0.rst
+   /elements.rst
+   /sequence.rst
+   /mtable.rst
+   /madx.rst
 
 

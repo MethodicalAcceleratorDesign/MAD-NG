@@ -10,7 +10,6 @@ MODULES
    /functions.rst
    /functor.rst
    /monomial.rst
-   /mtable.rst
    /numrange.rst
    /randnum.rst
    /cplxnum.rst
@@ -18,7 +17,7 @@ MODULES
    /diffalg.rst
    /diffmap.rst
    /miscfuns.rst
-   /madx.rst
+   /gphys.rst
    /extern.rst
 
 

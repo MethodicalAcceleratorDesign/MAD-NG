@@ -6,17 +6,12 @@ PHYSICS
    :maxdepth: 2
 
    /physintro.rst
-   /track.rst
-   /damap.rst
-   /gphys.rst
-   /beam.rst
-   /beta0.rst
+   /geomap.rst
+   /dynmap.rst
+   /integrators.rst
+   /orbit.rst
+   /optics.rst
+   /nforms.rst
    /alignments.rst
    /aperture.rst
-   /dynmap.rst
-   /geomap.rst
-   /integrators.rst
-   /nforms.rst
-   /optics.rst
-   /orbit.rst
    /radiation.rst
