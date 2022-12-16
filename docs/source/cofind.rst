@@ -104,7 +104,7 @@ The ``cofind`` command supports the following attributes:
 		Example: ``nslice = 5``.
 
 	**mapdef**
-		A *logical* or a *damap* specification as defined by the :doc:`DAmap <damap>`} module to track DA maps instead of particles coordinates. A value of ``true`` is equivalent to invoke the *damap* constructor with ``{}`` as argument. A value of ``false`` or :const:`nil` disable the use of damaps and force ``cofind`` to replace each particles or damaps by seven particles to approximate their Jacobian by finite difference. (default: ``true``). 
+		A *logical* or a *damap* specification as defined by the :doc:`DAmap <diffmap>` module to track DA maps instead of particles coordinates. A value of ``true`` is equivalent to invoke the *damap* constructor with ``{}`` as argument. A value of ``false`` or :const:`nil` disable the use of damaps and force ``cofind`` to replace each particles or damaps by seven particles to approximate their Jacobian by finite difference. (default: ``true``). 
 		Example: ``mapdef = { xy=2, pt=5 }``.
 
 	**method**

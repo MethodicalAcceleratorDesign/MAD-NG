@@ -102,7 +102,7 @@ The ``track`` command supports the following attributes:
 	 Example: :expr:`nslice = 5`.
 
 	**mapdef** 
-	 A *logical* or a  A *logical* or a *damap* specification as defined by the :doc:`DAmap <damap>`  module to track DA maps instead of particles coordinates. A value of ``true`` is equivalent to invoke the  module to track DA maps instead of particles coordinates. A value of ``true`` is equivalent to invoke the *damap* constructor with ``{}`` as argument. This attribute allows to track DA maps instead of particles. (default: ``nil``). 
+	 A *logical* or a  A *logical* or a *damap* specification as defined by the :doc:`DAmap <diffmap>`  module to track DA maps instead of particles coordinates. A value of ``true`` is equivalent to invoke the  module to track DA maps instead of particles coordinates. A value of ``true`` is equivalent to invoke the *damap* constructor with ``{}`` as argument. This attribute allows to track DA maps instead of particles. (default: ``nil``). 
 	 Example: :expr:`mapdef = { xy=2, pt=5 }`.
 
 	**method** 

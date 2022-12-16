@@ -116,7 +116,7 @@ The ``twiss`` command supports the following attributes:
 	Example: ``nslice = 5``.
 
 **mapdef** 
-	A *logical* or a *damap* specification as defined by the :doc:`DAmap <damap>` module to track DA maps instead of particles coordinates. A value of ``true`` is equivalent to invoke the *damap* constructor with ``{}`` as argument. A value of ``false`` or ``nil`` will be internally forced to ``true`` for the tracking of the normalized forms. (default: ``true``). 
+	A *logical* or a *damap* specification as defined by the :doc:`DAmap <diffmap>` module to track DA maps instead of particles coordinates. A value of ``true`` is equivalent to invoke the *damap* constructor with ``{}`` as argument. A value of ``false`` or ``nil`` will be internally forced to ``true`` for the tracking of the normalized forms. (default: ``true``). 
 	Example: ``mapdef = { xy=2, pt=5 }``.
 
 **method**
