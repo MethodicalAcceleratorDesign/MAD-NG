@@ -28,14 +28,14 @@
 
 // --- implementation ---------------------------------------------------------o
 
-#define CHKR    assert( r )
-#define CHKX    assert( x )
-#define CHKXY   assert( x && y )
-#define CHKXR   assert( x && r )
-#define CHKYR   assert( y && r )
-#define CHKXYR  assert( x && y && r )
+#define CHKR   assert( r )
+#define CHKX   assert( x )
+#define CHKXY  assert( x && y )
+#define CHKXR  assert( x && r )
+#define CHKYR  assert( y && r )
+#define CHKXYR assert( x && y && r )
 
-#define CNUM(re,im) (* (cnum_t*) & (num_t[2]) { re, im })
+#define CPX(re,im) (* (cpx_t*) & (num_t[2]) { re, im })
 
 // --- vec
 
@@ -46,15 +46,15 @@ void mad_vec_copy (const num_t x[], num_t r[], ssz_t n)
 { CHKXR; if (x > r) FOR(i,n) r[    i] = x[    i];
     else if (x < r) FOR(i,n) r[n-1-i] = x[n-1-i]; }
 
-void mad_vec_copyv (const num_t x[], cnum_t r[], ssz_t n)
+void mad_vec_copyv (const num_t x[], cpx_t r[], ssz_t n)
 { CHKXR; if (x > (num_t*)r) FOR(i,n) r[    i] = x[    i];
     else if (x < (num_t*)r) FOR(i,n) r[n-1-i] = x[n-1-i]; }
 
-void mad_vec_cplx (const num_t re[], const num_t im[], cnum_t r[], ssz_t n)
+void mad_vec_cplx (const num_t re[], const num_t im[], cpx_t r[], ssz_t n)
 { assert( r && (re || im) );
-  if (re && im) FOR(i,n) r[i] = CNUM(re[i],im[i]);
-  else if  (re) FOR(i,n) r[i] =      re[i]       ;
-  else          FOR(i,n) r[i] = CNUM(0    ,im[i]);
+  if (re && im) FOR(i,n) r[i] = CPX(re[i],im[i]);
+  else if  (re) FOR(i,n) r[i] =     re[i]       ;
+  else          FOR(i,n) r[i] = CPX(0    ,im[i]);
 }
 
 void mad_vec_abs (const num_t x[], num_t r[], ssz_t n)
@@ -84,7 +84,7 @@ num_t mad_vec_dist (const num_t x[], const num_t y[], ssz_t n)
   return sqrt(r);
 }
 
-num_t mad_vec_distv (const num_t x[], const cnum_t y[], ssz_t n)
+num_t mad_vec_distv (const num_t x[], const cpx_t y[], ssz_t n)
 { CHKXY; num_t r=0;
   FOR(i,n) r += conj(x[i]-y[i])*(x[i]-y[i]);
   return sqrt(r);
@@ -96,26 +96,26 @@ void mad_vec_add (const num_t x[], const num_t y[], num_t r[], ssz_t n)
 void mad_vec_addn (const num_t x[], num_t y, num_t r[], ssz_t n)
 { CHKXR; FOR(i,n) r[i] = x[i] + y; }
 
-void mad_vec_addc (const num_t x[], cnum_t y, cnum_t r[], ssz_t n)
+void mad_vec_addc (const num_t x[], cpx_t y, cpx_t r[], ssz_t n)
 { CHKXR; FOR(i,n) r[i] = x[i] + y; }
 
-void mad_vec_addc_r (const num_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n)
-{ mad_vec_addc(x, CNUM(y_re,y_im), r, n); }
+void mad_vec_addc_r (const num_t x[], num_t y_re, num_t y_im, cpx_t r[], ssz_t n)
+{ mad_vec_addc(x, CPX(y_re,y_im), r, n); }
 
 void mad_vec_sub (const num_t x[], const num_t y[], num_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] - y[i]; }
 
-void mad_vec_subv (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t n)
+void mad_vec_subv (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] - y[i]; }
 
 void mad_vec_subn (const num_t y[], num_t x, num_t r[], ssz_t n)
 { CHKYR; FOR(i,n) r[i] = x - y[i]; }
 
-void mad_vec_subc (const num_t y[], cnum_t x, cnum_t r[], ssz_t n)
+void mad_vec_subc (const num_t y[], cpx_t x, cpx_t r[], ssz_t n)
 { CHKYR; FOR(i,n) r[i] = x - y[i]; }
 
-void mad_vec_subc_r (const num_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
-{ mad_vec_subc(y, CNUM(x_re,x_im), r, n); }
+void mad_vec_subc_r (const num_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t n)
+{ mad_vec_subc(y, CPX(x_re,x_im), r, n); }
 
 void mad_vec_mul (const num_t x[], const num_t y[], num_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] * y[i]; }
@@ -123,26 +123,26 @@ void mad_vec_mul (const num_t x[], const num_t y[], num_t r[], ssz_t n)
 void mad_vec_muln (const num_t x[], num_t y, num_t r[], ssz_t n)
 { CHKXR; FOR(i,n) r[i] = x[i] * y; }
 
-void mad_vec_mulc (const num_t x[], cnum_t y, cnum_t r[], ssz_t n)
+void mad_vec_mulc (const num_t x[], cpx_t y, cpx_t r[], ssz_t n)
 { CHKXR; FOR(i,n) r[i] = x[i] * y; }
 
-void mad_vec_mulc_r (const num_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n)
-{ mad_vec_mulc(x, CNUM(y_re,y_im), r, n); }
+void mad_vec_mulc_r (const num_t x[], num_t y_re, num_t y_im, cpx_t r[], ssz_t n)
+{ mad_vec_mulc(x, CPX(y_re,y_im), r, n); }
 
 void mad_vec_div (const num_t x[], const num_t y[], num_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] / y[i]; }
 
-void mad_vec_divv (const num_t x[], const cnum_t y[], cnum_t r[], ssz_t n)
+void mad_vec_divv (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] / y[i]; }
 
 void mad_vec_divn (const num_t y[], num_t x, num_t r[], ssz_t n)
 { CHKYR; FOR(i,n) r[i] = x / y[i]; }
 
-void mad_vec_divc (const num_t y[], cnum_t x, cnum_t r[], ssz_t n)
+void mad_vec_divc (const num_t y[], cpx_t x, cpx_t r[], ssz_t n)
 { CHKYR; FOR(i,n) r[i] = x / y[i]; }
 
-void mad_vec_divc_r (const num_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
-{  mad_vec_divc(y, CNUM(x_re,x_im), r, n); }
+void mad_vec_divc_r (const num_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t n)
+{  mad_vec_divc(y, CPX(x_re,x_im), r, n); }
 
 num_t mad_vec_eval (const num_t x[], num_t x0, ssz_t n) // Horner scheme
 { CHKX; num_t v=x[n-1]; FOR(i,1,n) v = v*x0 + x[n-1-i]; return v; }
@@ -186,9 +186,9 @@ num_t mad_vec_ksum (const num_t x[], ssz_t n)
   return s + c;
 }
 
-cnum_t mad_cvec_ksum (const cnum_t x[], ssz_t n)
+cpx_t mad_cvec_ksum (const cpx_t x[], ssz_t n)
 { CHKX;
-  cnum_t s = x[0], c = 0, t;
+  cpx_t s = x[0], c = 0, t;
   FOR(i,1,n) {
     t = s + x[i];
     if (cabs(s) >= cabs(t))
@@ -215,9 +215,9 @@ num_t mad_vec_kdot (const num_t x[], const num_t y[], ssz_t n)
   return s + c;
 }
 
-cnum_t mad_cvec_kdot (const cnum_t x[], const cnum_t y[], ssz_t n)
+cpx_t mad_cvec_kdot (const cpx_t x[], const cpx_t y[], ssz_t n)
 { CHKXY;
-  cnum_t s = x[0]*y[0], c = 0, t, v;
+  cpx_t s = x[0]*y[0], c = 0, t, v;
   FOR(i,1,n) {
     v = x[i]*y[i];
     t = s + v;
@@ -230,9 +230,9 @@ cnum_t mad_cvec_kdot (const cnum_t x[], const cnum_t y[], ssz_t n)
   return s + c;
 }
 
-cnum_t mad_cvec_kdotv (const cnum_t x[], const num_t y[], ssz_t n)
+cpx_t mad_cvec_kdotv (const cpx_t x[], const num_t y[], ssz_t n)
 { CHKXY;
-  cnum_t s = x[0]*y[0], c = 0, t, v;
+  cpx_t s = x[0]*y[0], c = 0, t, v;
   FOR(i,1,n) {
     v = x[i]*y[i];
     t = s + v;
@@ -327,17 +327,17 @@ void mad_vec_kadd (int k, const num_t a[], const num_t *x[], num_t r[], ssz_t n)
 
 // --- cvec
 
-void mad_cvec_fill (cnum_t x, cnum_t r[], ssz_t n)
+void mad_cvec_fill (cpx_t x, cpx_t r[], ssz_t n)
 { CHKR; FOR(i,n) r[i] = x; }
 
-void mad_cvec_fill_r (num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
-{ mad_cvec_fill(CNUM(x_re,x_im), r, n); }
+void mad_cvec_fill_r (num_t x_re, num_t x_im, cpx_t r[], ssz_t n)
+{ mad_cvec_fill(CPX(x_re,x_im), r, n); }
 
-void mad_cvec_copy (const cnum_t x[], cnum_t r[], ssz_t n)
+void mad_cvec_copy (const cpx_t x[], cpx_t r[], ssz_t n)
 { CHKXR; if (x > r) FOR(i,n) r[    i] = x[    i];
     else if (x < r) FOR(i,n) r[n-1-i] = x[n-1-i]; }
 
-void mad_cvec_reim (const cnum_t x[], num_t re[], num_t ri[], ssz_t n)
+void mad_cvec_reim (const cpx_t x[], num_t re[], num_t ri[], ssz_t n)
 { assert( x && (re || ri) );
   if (re && ri) FOR(i,n) re[i]=creal(x[i]),
                          ri[i]=cimag(x[i]);
@@ -345,135 +345,135 @@ void mad_cvec_reim (const cnum_t x[], num_t re[], num_t ri[], ssz_t n)
   else          FOR(i,n) ri[i]=cimag(x[i]);
 }
 
-void mad_cvec_abs (const cnum_t x[], num_t r[], ssz_t n)
+void mad_cvec_abs (const cpx_t x[], num_t r[], ssz_t n)
 { CHKXR; FOR(i,n) r[i] = cabs(x[i]); }
 
-void mad_cvec_conj (const cnum_t x[], cnum_t r[], ssz_t n)
+void mad_cvec_conj (const cpx_t x[], cpx_t r[], ssz_t n)
 { CHKXR; FOR(i,n) r[i] = conj(x[i]); }
 
-cnum_t mad_cvec_sum (const cnum_t x[], ssz_t n)
-{ CHKX; cnum_t r=0; FOR(i,n) r += x[i]; return r; }
+cpx_t mad_cvec_sum (const cpx_t x[], ssz_t n)
+{ CHKX; cpx_t r=0; FOR(i,n) r += x[i]; return r; }
 
-void mad_cvec_sum_r (const cnum_t x[], cnum_t *r, ssz_t n)
+void mad_cvec_sum_r (const cpx_t x[], cpx_t *r, ssz_t n)
 { CHKXR; *r = mad_cvec_sum(x,n); }
 
-void mad_cvec_ksum_r (const cnum_t x[], cnum_t *r, ssz_t n)
+void mad_cvec_ksum_r (const cpx_t x[], cpx_t *r, ssz_t n)
 { CHKXR; *r = mad_cvec_ksum(x,n); }
 
-cnum_t mad_cvec_dot (const cnum_t x[], const cnum_t y[], ssz_t n)
-{ CHKXY; cnum_t r=0; FOR(i,n) r += conj(x[i])*y[i]; return r; }
+cpx_t mad_cvec_dot (const cpx_t x[], const cpx_t y[], ssz_t n)
+{ CHKXY; cpx_t r=0; FOR(i,n) r += conj(x[i])*y[i]; return r; }
 
-void mad_cvec_dot_r (const cnum_t x[], const cnum_t y[], cnum_t *r, ssz_t n)
+void mad_cvec_dot_r (const cpx_t x[], const cpx_t y[], cpx_t *r, ssz_t n)
 { CHKR; *r = mad_cvec_dot(x,y,n); }
 
-cnum_t mad_cvec_dotv (const cnum_t x[], const num_t y[], ssz_t n)
-{ CHKXY; cnum_t r=0; FOR(i,n) r += conj(x[i])*y[i]; return r; }
+cpx_t mad_cvec_dotv (const cpx_t x[], const num_t y[], ssz_t n)
+{ CHKXY; cpx_t r=0; FOR(i,n) r += conj(x[i])*y[i]; return r; }
 
-void mad_cvec_dotv_r (const cnum_t x[], const num_t y[], cnum_t *r, ssz_t n)
+void mad_cvec_dotv_r (const cpx_t x[], const num_t y[], cpx_t *r, ssz_t n)
 { CHKR; *r = mad_cvec_dotv(x,y,n); }
 
-void mad_cvec_kdot_r (const cnum_t x[], const cnum_t y[], cnum_t *r, ssz_t n)
+void mad_cvec_kdot_r (const cpx_t x[], const cpx_t y[], cpx_t *r, ssz_t n)
 { CHKR; *r = mad_cvec_kdot(x,y,n); }
 
-void mad_cvec_kdotv_r (const cnum_t x[], const num_t y[], cnum_t *r, ssz_t n)
+void mad_cvec_kdotv_r (const cpx_t x[], const num_t y[], cpx_t *r, ssz_t n)
 { CHKR; *r = mad_cvec_kdotv(x,y,n); }
 
-cnum_t mad_cvec_mean (const cnum_t x[], ssz_t n)
+cpx_t mad_cvec_mean (const cpx_t x[], ssz_t n)
 { CHKX; return mad_cvec_sum(x,n)/n; }
 
-void mad_cvec_mean_r (const cnum_t x[], cnum_t *r, ssz_t n)
+void mad_cvec_mean_r (const cpx_t x[], cpx_t *r, ssz_t n)
 { CHKXR; *r = mad_cvec_mean(x,n); }
 
-cnum_t mad_cvec_var (const cnum_t x[], ssz_t n)
+cpx_t mad_cvec_var (const cpx_t x[], ssz_t n)
 { if (n == 1) return 0;
-  cnum_t m = mad_cvec_mean(x,n);
-  cnum_t s=0, s2=0; FOR(i,n) s += x[i]-m, s2 += SQR(x[i]-m);
+  cpx_t m = mad_cvec_mean(x,n);
+  cpx_t s=0, s2=0; FOR(i,n) s += x[i]-m, s2 += SQR(x[i]-m);
   return (s2 - SQR(s)/n)/(n-1); // Bessel's correction on centered values.
 }
 
-void mad_cvec_var_r (const cnum_t x[], cnum_t *r, ssz_t n)
+void mad_cvec_var_r (const cpx_t x[], cpx_t *r, ssz_t n)
 { CHKXR; *r = mad_cvec_var(x,n); }
 
-num_t mad_cvec_norm (const cnum_t x[], ssz_t n)
+num_t mad_cvec_norm (const cpx_t x[], ssz_t n)
 { return sqrt(creal(mad_cvec_dot(x,x,n))); }
 
-num_t mad_cvec_dist (const cnum_t x[], const cnum_t y[], ssz_t n)
+num_t mad_cvec_dist (const cpx_t x[], const cpx_t y[], ssz_t n)
 { CHKXY; num_t r=0; FOR(i,n) r += creal(conj(x[i]-y[i])*(x[i]-y[i]));
   return sqrt(r);
 }
 
-num_t mad_cvec_distv (const cnum_t x[], const num_t y[], ssz_t n)
+num_t mad_cvec_distv (const cpx_t x[], const num_t y[], ssz_t n)
 { CHKXY; num_t r=0; FOR(i,n) r += creal(conj(x[i]-y[i])*(x[i]-y[i]));
   return sqrt(r);
 }
 
-void mad_cvec_add (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t n)
+void mad_cvec_add (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] + y[i]; }
 
-void mad_cvec_addv (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t n)
+void mad_cvec_addv (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] + y[i]; }
 
-void mad_cvec_addn (const cnum_t x[], num_t y, cnum_t r[], ssz_t n)
+void mad_cvec_addn (const cpx_t x[], num_t y, cpx_t r[], ssz_t n)
 { CHKXR; FOR(i,n) r[i] = x[i] + y; }
 
-void mad_cvec_addc (const cnum_t x[], cnum_t y, cnum_t r[], ssz_t n)
+void mad_cvec_addc (const cpx_t x[], cpx_t y, cpx_t r[], ssz_t n)
 { CHKXR; FOR(i,n) r[i] = x[i] + y; }
 
-void mad_cvec_addc_r (const cnum_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n)
-{ mad_cvec_addc(x, CNUM(y_re,y_im), r, n); }
+void mad_cvec_addc_r (const cpx_t x[], num_t y_re, num_t y_im, cpx_t r[], ssz_t n)
+{ mad_cvec_addc(x, CPX(y_re,y_im), r, n); }
 
-void mad_cvec_sub (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t n)
+void mad_cvec_sub (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] - y[i]; }
 
-void mad_cvec_subv (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t n)
+void mad_cvec_subv (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] - y[i]; }
 
-void mad_cvec_subn (const cnum_t y[], num_t x, cnum_t r[], ssz_t n)
+void mad_cvec_subn (const cpx_t y[], num_t x, cpx_t r[], ssz_t n)
 { CHKYR; FOR(i,n) r[i] = x - y[i]; }
 
-void mad_cvec_subc (const cnum_t y[], cnum_t x, cnum_t r[], ssz_t n)
+void mad_cvec_subc (const cpx_t y[], cpx_t x, cpx_t r[], ssz_t n)
 { CHKYR; FOR(i,n) r[i] = x - y[i]; }
 
-void mad_cvec_subc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
-{ mad_cvec_subc(y, CNUM(x_re,x_im), r, n); }
+void mad_cvec_subc_r (const cpx_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t n)
+{ mad_cvec_subc(y, CPX(x_re,x_im), r, n); }
 
-void mad_cvec_mul (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t n)
+void mad_cvec_mul (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] * y[i]; }
 
-void mad_cvec_mulv (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t n)
+void mad_cvec_mulv (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] * y[i]; }
 
-void mad_cvec_muln (const cnum_t x[], num_t y, cnum_t r[], ssz_t n)
+void mad_cvec_muln (const cpx_t x[], num_t y, cpx_t r[], ssz_t n)
 { CHKXR; FOR(i,n) r[i] = x[i] * y; }
 
-void mad_cvec_mulc (const cnum_t x[], cnum_t y, cnum_t r[], ssz_t n)
+void mad_cvec_mulc (const cpx_t x[], cpx_t y, cpx_t r[], ssz_t n)
 { CHKXR; FOR(i,n) r[i] = x[i] * y; }
 
-void mad_cvec_mulc_r (const cnum_t x[], num_t y_re, num_t y_im, cnum_t r[], ssz_t n)
-{ mad_cvec_mulc(x, CNUM(y_re,y_im), r, n); }
+void mad_cvec_mulc_r (const cpx_t x[], num_t y_re, num_t y_im, cpx_t r[], ssz_t n)
+{ mad_cvec_mulc(x, CPX(y_re,y_im), r, n); }
 
-void mad_cvec_div (const cnum_t x[], const cnum_t y[], cnum_t r[], ssz_t n)
+void mad_cvec_div (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] / y[i]; }
 
-void mad_cvec_divv (const cnum_t x[], const num_t y[], cnum_t r[], ssz_t n)
+void mad_cvec_divv (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] / y[i]; }
 
-void mad_cvec_divn (const cnum_t y[], num_t x, cnum_t r[], ssz_t n)
+void mad_cvec_divn (const cpx_t y[], num_t x, cpx_t r[], ssz_t n)
 { CHKYR; FOR(i,n) r[i] = x / y[i]; }
 
-void mad_cvec_divc (const cnum_t y[], cnum_t x, cnum_t r[], ssz_t n)
+void mad_cvec_divc (const cpx_t y[], cpx_t x, cpx_t r[], ssz_t n)
 { CHKYR; FOR(i,n) r[i] = x / y[i]; }
 
-void mad_cvec_divc_r (const cnum_t y[], num_t x_re, num_t x_im, cnum_t r[], ssz_t n)
-{ mad_cvec_divc(y, CNUM(x_re,x_im), r, n); }
+void mad_cvec_divc_r (const cpx_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t n)
+{ mad_cvec_divc(y, CPX(x_re,x_im), r, n); }
 
-cnum_t mad_cvec_eval (const cnum_t x[], cnum_t x0, ssz_t n) // Horner scheme
-{ CHKX; cnum_t v=x[n-1]; FOR(i,1,n) v = v*x0 + x[n-1-i]; return v; }
+cpx_t mad_cvec_eval (const cpx_t x[], cpx_t x0, ssz_t n) // Horner scheme
+{ CHKX; cpx_t v=x[n-1]; FOR(i,1,n) v = v*x0 + x[n-1-i]; return v; }
 
-void mad_cvec_eval_r (const cnum_t x[], num_t x0_re, num_t x0_im, cnum_t *r, ssz_t n)
-{ CHKXR; *r = mad_cvec_eval(x, CNUM(x0_re, x0_im), n); }
+void mad_cvec_eval_r (const cpx_t x[], num_t x0_re, num_t x0_im, cpx_t *r, ssz_t n)
+{ CHKXR; *r = mad_cvec_eval(x, CPX(x0_re, x0_im), n); }
 
-void mad_cvec_minmax(const cnum_t x[], idx_t r[2], ssz_t n)
+void mad_cvec_minmax(const cpx_t x[], idx_t r[2], ssz_t n)
 { CHKXR; num_t v[2];
   r[0] = r[1] = 0;
   v[0] = v[1] = cabs(x[0]);
@@ -484,10 +484,10 @@ void mad_cvec_minmax(const cnum_t x[], idx_t r[2], ssz_t n)
   }
 }
 
-void mad_cvec_roll (cnum_t x[], ssz_t n, int nroll)
+void mad_cvec_roll (cpx_t x[], ssz_t n, int nroll)
 { CHKX; nroll %= n;
   ssz_t nsz = abs(nroll);
-  mad_alloc_tmp(cnum_t, a, nsz);
+  mad_alloc_tmp(cpx_t, a, nsz);
   if (nroll > 0) {
     mad_cvec_copy(x+n-nsz, a    ,   nsz); // end of x to a
     mad_cvec_copy(x      , x+nsz, n-nsz); // shift x down (or right)
@@ -501,7 +501,7 @@ void mad_cvec_roll (cnum_t x[], ssz_t n, int nroll)
   mad_free_tmp(a);
 }
 
-void mad_cvec_kadd (int k, const cnum_t a[], const cnum_t *x[], cnum_t r[], ssz_t n)
+void mad_cvec_kadd (int k, const cpx_t a[], const cpx_t *x[], cpx_t r[], ssz_t n)
 { assert(a && x && r);
   if (k == 0) return;
   int j = k%4;

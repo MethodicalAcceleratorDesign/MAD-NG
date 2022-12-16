@@ -789,22 +789,22 @@ void FUN(getsm_r) (const T *t, ssz_t n, const idx_t m[n], NUM *r)
 { assert(r); *r = FUN(getsm)(t, n, m); }
 
 void FUN(set0_r) (T *t, num_t a_re, num_t a_im, num_t b_re, num_t b_im)
-{ FUN(set0)(t, CNUM(a), CNUM(b)); }
+{ FUN(set0)(t, CPX(a), CPX(b)); }
 
 void FUN(seti_r) (T *t, idx_t i, num_t a_re, num_t a_im, num_t b_re, num_t b_im)
-{ FUN(seti)(t, i, CNUM(a), CNUM(b)); }
+{ FUN(seti)(t, i, CPX(a), CPX(b)); }
 
 void FUN(sets_r) (T *t, ssz_t n, str_t s, num_t a_re, num_t a_im, num_t b_re, num_t b_im)
-{ FUN(sets)(t, n, s, CNUM(a), CNUM(b)); }
+{ FUN(sets)(t, n, s, CPX(a), CPX(b)); }
 
 void FUN(setm_r) (T *t, ssz_t n, const ord_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im)
-{ FUN(setm)(t, n, m, CNUM(a), CNUM(b)); }
+{ FUN(setm)(t, n, m, CPX(a), CPX(b)); }
 
 void FUN(setsm_r) (T *t, ssz_t n, const idx_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im)
-{ FUN(setsm)(t, n, m, CNUM(a), CNUM(b)); }
+{ FUN(setsm)(t, n, m, CPX(a), CPX(b)); }
 
 void FUN(setvar_r) (T *t, num_t v_re, num_t v_im, idx_t iv, num_t scl_re, num_t scl_im)
-{ FUN(setvar)(t, CNUM(v), iv, CNUM(scl)); }
+{ FUN(setvar)(t, CPX(v), iv, CPX(scl)); }
 
 #endif // MAD_CTPSA_IMPL
 
