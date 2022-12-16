@@ -284,7 +284,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
   #endif
 
   if (c == 'I') {
-    fscanf(stream_, "I%*[ \t]COEFFICIENT%*[ \t]ORDER%*[ \t]EXPONENTS%n", &nc);
+    (void)fscanf(stream_, "I%*[ \t]COEFFICIENT%*[ \t]ORDER%*[ \t]EXPONENTS%n", &nc);
     if (nc < 29) warn("unable to parse GTPSA coefficients for '%s'",
                        t->nam[0] ? t->nam : "-UNNAMED-");
     #if DEBUG > 2
@@ -294,7 +294,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
   }
 
   if (c == 'A') {
-    fscanf(stream_, "ALL COMPONENTS %n", &nc); // works for 0_dp, ALL and EPS
+    (void)fscanf(stream_, "ALL COMPONENTS %n", &nc); // works for 0_dp, ALL and EPS
     if (nc != 15) warn("unable to parse GTPSA coefficients for '%s'",
                        t->nam[0] ? t->nam : "-UNNAMED-");
     #if DEBUG > 2

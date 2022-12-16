@@ -26,25 +26,25 @@
 local ffi = require "ffi"
 local _C, complex, matrix, cmatrix, imatrix, range, logrange,
           monomial, tpsa, ctpsa                                   in MAD
-local is_natural, is_int32, is_string, is_object,
+local is_natural, is_int32, is_logical, is_string, is_object,
       is_callable, get_metatable                                  in MAD.typeid
 local kpairs                                                      in MAD.utility
+local functor, bind1st                                            in MAD.gfunc
 
 local type, assert, ipairs, tonumber,    metatable, table =
       type, assert, ipairs, tonumber, getmetatable, table
 
 ffi.cdef [[
 FILE*   fdopen (int fd, str_t mode); // wrap py_fd into a FILE*
-
 size_t  fwrite (ptr_t buf, size_t sz, size_t n, FILE*);
 size_t  fread  (void* buf, size_t sz, size_t n, FILE*);
-
+int     fclose (FILE*);
 void    setbuf (FILE*, char* buf);   // make _toPy unbuffered
 ]]
 
 -- debug helper ---------------------------------------------------------------o
 
-local function dgbfun (self, knd, dat, sz)
+local function dbg (self, knd, dat, sz)
   if is_string(dat) then
     io.write("***pymad.", knd, ": [",dat,"] ", sz, " bytes\n")
   else
@@ -57,14 +57,14 @@ end
 -- data
 
 local function send_dat (self, dat, sz)
-  if self._dbgf ~= 0 then dgbfun(self, "send", dat, sz) end
+  if self._dbg then dbg(self, "send", dat, sz) end
   assert(_C.fwrite(dat, 1, sz, self._toPy) == sz, "couldn't send data")
   return self
 end
 
 local function recv_dat (self, dat, sz)
   assert(_C.fread(dat, 1, sz, io.stdin) == sz, "couldn't receive data")
-  if self._dbgf ~= 0 then dgbfun(self, "recv", dat, sz) end
+  if self._dbg then dbg(self, "recv", dat, sz) end
   return dat
 end
 
@@ -107,7 +107,7 @@ end
 local function recv_str (self)
   local n = recv_int(self)
   local s = assert(io.read(n), "couldn't receive string")
-  if self._dbgf ~= 0 then dgbfun(self, "recv", s, #s) end
+  if self._dbg then dbg(self, "recv", s, #s) end
   return s
 end
 
@@ -306,12 +306,11 @@ local type_str = {
   [get_metatable(ctpsa   (1))] = \_ -> 'ctpa',
 }
 
--- pymad ----------------------------------------------------------------------o
+-- methods --------------------------------------------------------------------o
 
-local pymad = MAD.object 'pymad' { _dbgf = 0 }
-
-local function catch_err(err)
-  io.write("***pymad.run: ", err, "\n", debug.traceback())
+local function catch_err(err, self)
+  if self._err then send_dat(self, 'err_', 4) end
+  return "***pymad.run: " .. err .. "\n" .. debug.traceback() .. "\n"
 end
 
 local function open_pipe (self, pyFd)
@@ -320,31 +319,45 @@ local function open_pipe (self, pyFd)
   return self
 end
 
-local function open_env (self)
-  self._env =  {}
+local function init (self)
+  self._env = {}
   setmetatable(self._env, {__index = _G})
   self._env[self.name] = self
   return self
 end
 
 local function run (self)
-  while true do
+  local errfun = \err -> catch_err(err, self)
+  while self._run do
     local str = self:recv()
-    local fun, err = load(str, nil, nil, self._env)
-    if fun then xpcall(fun, catch_err) -- Catch runtime error
-    else        catch_err(err)         -- Catch load error
-    end
+    local fun, err = load(str, nil, nil, self._env) -- Catch load error
+    if fun then fun, err = xpcall(fun, errfun)      -- Catch run  error
+           else err = errfun(err) end
+    if err then io.stderr:write(err) end
   end
 end
 
--- methods --
+-- private methods --
 
-local function start(self, pyFd)
+local function __ini (self, pyFd)
   assert(is_natural(pyFd), "invalid argument #2 (file descritor expected)")
   open_pipe(self, pyFd)
-  open_env (self)
-  run      (self)
+  run( init(self) )
 end
+
+local function __fin (self)
+  _C.fclose(self._toPy)
+  self._run = false
+  return self
+end
+
+local function __err (self, reterr)
+  assert(is_logical(reterr), "invalid argument #2 (logical expected)")
+  self._err = reterr
+  return self
+end
+
+-- public methods --
 
 local function send (self, a)
   local typ = assert(type_str[type(a)] or type_str[get_metatable(a)],
@@ -357,10 +370,20 @@ local function recv (self)
   return assert(type_fun[typ], "unsupported data type").recv(self)
 end
 
-pymad:set_methods {
-  start = start,
+-- pymad ----------------------------------------------------------------------o
+
+local pymad = MAD.object 'pymad' {
+  _run = true ,
+  _err = false,
+  _dbg = false,
+
+} :set_methods {
   send  = send,
   recv  = recv,
+
+  __ini = __ini,
+  __fin = __fin,
+  __err = __err,
 } :set_readonly()
 
 -- end ------------------------------------------------------------------------o

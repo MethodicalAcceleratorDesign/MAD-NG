@@ -106,7 +106,7 @@ local MINSZCHUNK = 4000
 
 local function check_chunk (out, doit)
   if out.n ~= out.nchk and (doit or out.n-out.nchk >= MINSZCHUNK) then
-  --io.write("chunk size=", out.n-out.nchk, "\n")
+    if option.debug >= 2 then io.write("chunk size=", out.n-out.nchk, "\n") end
     out[out.n], out.n = ENDOFCHUNK, out.n+1 -- close previous chunk
     out[out.n], out.n = ''        , out.n+1 -- empty line
     out[out.n], out.n = BEGOFCHUNK, out.n+1 -- open  new      chunk
@@ -172,7 +172,7 @@ end
 local variable_patt = "^([^:=,(]+)(:?=)%s*(.*)$"
 
 local function convert_variable (env, str, cap)
---io.write("conv-var: [", str, "]\n")
+  if option.debug >= 2 then io.write("conv-var: [", str, "]\n") end
   assertf(env.cur == 0, "unsupported variable %s assignment in %s, line %d",
                                              cap[1], env[env.cur], env.out.n)
   cap[1] = convert_ename(cap[1])
@@ -197,13 +197,14 @@ local attr = { slice='nslice', nst='nslice' }
 
 local function convert_attrlist (str_)
   local res, str, flg, opn = {}, str_ or ''
-
   while str ~= '' do
---io.write("attr-lst: [", str, "]\n")
+    if option.debug >= 2 then io.write("attr-lst: [", str, "]\n") end
     local cap = capf(str:find(attribute_patt))
     if #cap == 0 then break end
---io.write(#res+1,": [",cap[1],"], [",cap[2],"], [",cap[3],"], [",cap[4],"], [",cap[5],"]\n")
-
+    if option.debug >= 2 then
+      io.write(#res+1,": [",cap[1],"], [",cap[2],"], [",cap[3],
+                                   "], [",cap[4],"], [",cap[5],"]\n")
+    end
     cap[2] = convert_name(cap[2]):gsub(name_patt, attr)
     flg, opn = cap[1], cap[5]
 
@@ -212,19 +213,18 @@ local function convert_attrlist (str_)
       cap[4], str = convert_xname(scap[1]), scap[2]
       cap[4] = '"'..cap[4]..'"'
 
-    elseif cap[3] == "," then                  -- boolean
-      assert(#cap == 3, "boken matching")
-      cap[3], cap[4] = '=', 'true'
+    elseif cap[3] == "," or cap[3] == '' and cap[4] == '' then -- boolean
+      cap[4], str = 'true', cap[4] ; cap[3] = '='
 
-    elseif opn == '"' or opn == "'" then       -- string
+    elseif opn == '"' or opn == "'" then                       -- string
       local scap = capf(cap[4]:find("^((['\"]).-%2)" .. attrlst_patt))
       cap[4], str = scap[1], scap[3]
 
-    elseif opn == '{' then                     -- array of expressions
+    elseif opn == '{' then                                     -- array of expr
       local scap = capf(cap[4]:find("^(%b{})" .. attrlst_patt))
       cap[4], str = convert_ename(scap[1]), scap[2]
 
-    else                                       -- expression
+    else                                                       -- expression
       local scap = capf(cap[4]:find("^([^,]+)" .. attrlst_patt))
       cap[4], str = convert_ename(scap[1]), scap[2]
     end
@@ -241,7 +241,7 @@ end
 local element_patt = "^([^:=,(]+):" .. name_patt .. attrlst_patt
 
 local function convert_element (env, str, cap)
---io.write("conv-elm: [", str, "]\n")
+  if option.debug >= 2 then io.write("conv-elm: [", str, "]\n") end
   local nam = convert_name(cap[1])
   local cls = convert_name(cap[2])
   local out, sid, clo, pfx = env.out, env.elm[nam]
@@ -291,7 +291,7 @@ end
 local command_patt = "^" .. name_patt .. attrlst_patt
 
 local function convert_command (env, str, cap)
---io.write("conv-cmd: [", str, "]\n")
+  if option.debug >= 2 then io.write("conv-cmd: [", str, "]\n") end
   local cmd = convert_name(cap[1])
 
   if cmd == 'endsequence' then
@@ -514,8 +514,6 @@ MADX:set_methods {
 -- math functions, see mad_dict.c from MAD-X source
 local xrng = MAD.gmath.xrandnew()
 
-MADX.global_prng = xrng
-
 MADX:set_methods {
   abs     = math.abs,
   sqrt    = math.sqrt,
@@ -534,8 +532,8 @@ MADX:set_methods {
   asinh   = MAD.gmath.asinh,
   acosh   = MAD.gmath.acosh,
   atanh   = MAD.gmath.atanh,
-  ranf    = \ -> xrng:rand(),
-  gauss   = \ -> xrng:randn(),
+  ranf    = \     -> xrng:rand(),
+  gauss   = \     -> xrng:randn(),
   tgauss  = \cut_ -> xrng:randtn(cut_),
   poisson = \lmb_ -> xrng:randp(lmb_),
   seed    = \seed -> xrng:randseed(seed),

@@ -36,35 +36,35 @@ Extended Types
 
 The following table shows the functions for identifying the extended types, which are primitive types with some extensions, specializations or value ranges. 
 
-======================================== ====================================
-Functions                                Return :const:`true` if :var:`a`
-======================================== ====================================
-:func:`is_nan(a)`                        is   :const:`nan` (Not a Number)
-:func:`is_true(a)`                       is   :const:`true`
-:func:`is_false(a)`                      is   :const:`false`
-:func:`is_logical(a)`                    is a :type:`boolean` or :const:`nil`
-:func:`is_finite(a)`                     is a :type:`number` with :math:`|a| < \infty`
-:func:`is_infinite(a)`                   is a :type:`number` with :math:`|a| = \infty`
-:func:`is_positive(a)`                   is a :type:`number` with :math:`a > 0`
-:func:`is_negative(a)`                   is a :type:`number` with :math:`a < 0`
-:func:`is_zpositive(a)`                  is a :type:`number` with :math:`a \ge 0`
-:func:`is_znegative(a)`                  is a :type:`number` with :math:`a \le 0`
-:func:`is_nonzeroic (log)range` (a)      is a :type:`number` with :math:`a \ne 0`
-:func:`is_integer(a)`                    is a :type:`number` with :math:`-2^{52} \le a \le 2^{52}` and no fractional part
-:func:`is_int32(a)`                      is a :type:`number` with :math:`-2^{31} \le a < 2^{31}` and no fractional part
-:func:`is_natural(a)`                    is an :type:`integer` with :math:`a \ge 0`
-:func:`is_even(a)`                       is an even :type:`integer`
-:func:`is_odd(a)`                        is an odd :type:`integer`
-:func:`is_decimal(a)`                    is not an :type:`integer`
-:func:`is_emptystring(a)`                is a :type:`string` with :expr:`#a == 0`
-:func:`is_identifier(a)`                 is a :type:`string` with valid identifier characters, i.e. :expr:`%s*[_%a][_%w]*%s*`
-:func:`is_rawtable(a)`                   is a :type:`table`  with no metatable
-:func:`is_emptytable(a)`                 is a :type:`table`  with no element
-:func:`is_file(a)`                       is a :type:`userdata` with :expr:`io.type(a) ~= nil`
-:func:`is_openfile(a)`                   is a :type:`userdata` with :expr:`io.type(a) == 'file'`
-:func:`is_closedfile(a)`                 is a :type:`userdata` with :expr:`io.type(a) == 'closed file'`
-:func:`is_emptyfile(a)`                  is an open :type:`file` with some content
-======================================== ====================================
+=========================  ====================================
+Functions                  Return :const:`true` if :var:`a`
+=========================  ====================================
+:func:`is_nan(a)`          is   :const:`nan` (Not a Number)
+:func:`is_true(a)`         is   :const:`true`
+:func:`is_false(a)`        is   :const:`false`
+:func:`is_logical(a)`      is a :type:`boolean` or :const:`nil`
+:func:`is_finite(a)`       is a :type:`number` with :math:`|a| < \infty`
+:func:`is_infinite(a)`     is a :type:`number` with :math:`|a| = \infty`
+:func:`is_positive(a)`     is a :type:`number` with :math:`a > 0`
+:func:`is_negative(a)`     is a :type:`number` with :math:`a < 0`
+:func:`is_zpositive(a)`    is a :type:`number` with :math:`a \ge 0`
+:func:`is_znegative(a)`    is a :type:`number` with :math:`a \le 0`
+:func:`is_nonzero(a)`      is a :type:`number` with :math:`a \ne 0`
+:func:`is_integer(a)`      is a :type:`number` with :math:`-2^{52} \le a \le 2^{52}` and no fractional part
+:func:`is_int32(a)`        is a :type:`number` with :math:`-2^{31} \le a < 2^{31}` and no fractional part
+:func:`is_natural(a)`      is an :type:`integer` with :math:`a \ge 0`
+:func:`is_even(a)`         is an even :type:`integer`
+:func:`is_odd(a)`          is an odd :type:`integer`
+:func:`is_decimal(a)`      is not an :type:`integer`
+:func:`is_emptystring(a)`  is a :type:`string` with :expr:`#a == 0`
+:func:`is_identifier(a)`   is a :type:`string` with valid identifier characters, i.e. :expr:`%s*[_%a][_%w]*%s*`
+:func:`is_rawtable(a)`     is a :type:`table`  with no metatable
+:func:`is_emptytable(a)`   is a :type:`table`  with no element
+:func:`is_file(a)`         is a :type:`userdata` with :expr:`io.type(a) ~= nil`
+:func:`is_openfile(a)`     is a :type:`userdata` with :expr:`io.type(a) == 'file'`
+:func:`is_closedfile(a)`   is a :type:`userdata` with :expr:`io.type(a) == 'closed file'`
+:func:`is_emptyfile(a)`    is an open :type:`file` with some content
+=========================  ====================================
 
 Concepts
 ========
