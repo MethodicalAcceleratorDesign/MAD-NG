@@ -5,7 +5,11 @@ ELEMENTS & COMMANDS
 .. toctree::
    :maxdepth: 2
 
-   /elements.rst
-   /sequence.rst
    /survey.rst
    /track.rst
+   /cofind.rst
+   /twiss.rst
+   /match.rst
+   /correct.rst
+   /emit.rst
+   /plot.rst
