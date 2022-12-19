@@ -4,6 +4,10 @@ sys.path.append(os.path.abspath("./_ext")) #Add to path here!
 # Configuration file for the Sphinx documentation builder.
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
+from pygments_mad_lexer import MadLexer
+
+from sphinx.highlighting import lexers
+lexers['mad'] = MadLexer()
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
@@ -25,10 +29,9 @@ extensions = [
 
 source_suffix = {
     '.rst': 'restructuredtext',
-    '.mad': 'lua',
 }
 
-highlight_language = "lua"
+highlight_language = "mad"
 numfig = True
 
 templates_path = ['_templates']
