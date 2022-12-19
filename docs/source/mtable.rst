@@ -217,12 +217,11 @@ The ``mtable`` object provides the following metamethods:
 **__index**
 	 A *metamethod*	``(key)`` called by the indexing operator ``[key]`` to return the *value* of an attribute determined by *key*. The *key* is interpreted differently depending on its type with the following precedence:
 
-
-
-
-#.	 If *key* is not a column name, then *key* is interpreted as a value in the reference column and returns either an *iterable* on the row (proxy) determined by this value or an *iterable* on the rows (proxies) holding this non-unique value. [#f4]_ , the indexing operator loops with
-
-
+		#. A *number* is interpreted as a row index and returns an *iterable* on the row (proxy) or ``nil``.
+		#. Other *key* types are interpreted as *object* attributes subject to object model lookup.
+		#. If the *value* associated with *key* is ``nil``, then *key* is interpreted as a column name and returns the column if it exists, otherwise...
+		#. If *key* is not a column name, then *key* is interpreted as a value in the reference column and returns either an *iterable* on the  row (proxy) determined by this value or an *iterable* on the rows (proxies) holding this non-unique value. 
+		#. Otherwise returns ``nil``.
 
 **__newindex**
 	 A *metamethod*	``(key, val)`` called by the assignment operator ``[key]=val`` to create new attributes for the pairs (*key*, *value*). If *key* is a *number* or a value specifying a row in the reference column or a *string* specifying a column name, the following error is raised:

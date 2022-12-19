@@ -628,16 +628,6 @@ The following more complex example shows how to install elements and subsequence
    017  drift         df4       1.000       0       9.000      9.000   0.000
    018  marker        $end      0.000       0      10.000     10.000   0.000
 
-Random Maths
-============
-.. math::
-
-   \nabla \cdot \textbf{E} = \frac{\rho}{\epsilon_0}\\\\
-   \nabla \cdot \textbf{B} = 0\\\\
-   \nabla \times \textbf{E} =- \frac{\partial \textbf{B}}{\partial t}\\\\
-   \nabla \times \textbf{B} = \mu_0 \textbf{J} + \mu_0 \epsilon_0 \frac{\partial \textbf{E}}{\partial t}
-
-
 
 .. rubric:: Footnotes
 
