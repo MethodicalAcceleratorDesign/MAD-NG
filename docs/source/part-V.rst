@@ -1,5 +1,5 @@
 ###########
-Programming
+PROGRAMMING
 ###########
 
 .. toctree::

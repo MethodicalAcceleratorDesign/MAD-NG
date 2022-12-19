@@ -63,14 +63,14 @@ To run MAD-NG in interactive mode, just typewrite its name on the Shell invite l
                                      |   started: 2020-08-01 20:13:51
 
 
-.. code-block:: lua
+.. code-block::
 	
 	> print "hello world!"
 	"hello world!"
 
 Here the application is assumed to be installed in the current directory '``.``' and the character '``>``' is the prompt waiting for user input in interactive mode. If you write an incomplete statement, the interpreter waits for its completion by issuing a different prompt:
 
-.. code-block:: lua
+.. code-block::
 	
 	> print                -- 1st level prompt, incomplete statement
 	>> "hello world!"      -- 2nd level prompt, complete the statement
@@ -78,7 +78,7 @@ Here the application is assumed to be installed in the current directory '``.``'
 
 Typing the character '``=``' right after the 1st level prompt is equivalent to call the :literal:`print` function:
 
-.. code-block:: lua
+.. code-block::
 	
 	> = "hello world!"     -- 1st level prompt followed by =
 	hello world!           -- execute print "hello world!"
@@ -88,7 +88,7 @@ Typing the character '``=``' right after the 1st level prompt is equivalent to c
 
 To quit the application typewrite ``Crtl+D`` to send ``EOF`` (end-of-file) on the input, [#f2]_ ``Crtl+\`` to send the ``SIGQUIT`` (quit) signal, or ``Crtl+C`` to send the stronger ``SIGINT`` (interrupt) signal. If the application is stalled or looping for ever, typewriting a single ``Crtl+\`` or ``Crtl+C`` twice will stop it:
 
-.. code-block:: lua
+.. code-block::
 	
 	> while true do end    -- loop forever, 1st Crtl+C doesn't stop it
 	pending interruption (*in*) VM! (next will exit)         -- 2nd Crtl+C
@@ -100,7 +100,7 @@ To quit the application typewrite ``Crtl+D`` to send ``EOF`` (end-of-file) on th
 
 In interactive mode, each line input is run in its own *chunk* [#f3]_, which also rules variables scopes. Hence ``local``, variables are not visible between chunks, i.e. input lines. The simple solutions are either to use global variables or to enclose local statements into the same chunk delimited by the ``do ... end`` keywords:
 
-.. code-block:: lua
+.. code-block::
 	
 	> local a = "hello"
 	> print(a.." world!")

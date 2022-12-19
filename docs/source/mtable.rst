@@ -226,7 +226,7 @@ The ``mtable`` object provides the following metamethods:
 **__newindex**
 	 A *metamethod*	``(key, val)`` called by the assignment operator ``[key]=val`` to create new attributes for the pairs (*key*, *value*). If *key* is a *number* or a value specifying a row in the reference column or a *string* specifying a column name, the following error is raised:
 
-.. code-block:: lua
+.. code-block::
 	
 	"invalid mtable write access (use 'set' methods)"
 
@@ -255,7 +255,7 @@ Some attributes are considered during the creation by the ``__init``, like ``own
 
 
 
-.. code-block:: lua
+.. code-block::
 	
 	local mtable in MAD
 	local tbl = mtable 'mytable' {
@@ -309,7 +309,7 @@ If a row exists but its *value* is not unique in the reference column, an *itera
 
 
 
-.. code-block:: lua
+.. code-block::
 	
 	local mtable in MAD
 	local tbl = mtable { {'name'}, 'x', 'y' } -- column 'name' is the refcol
@@ -341,7 +341,7 @@ The method ``:foreach`` uses the iterator returned by ``:iter`` with a range as 
 
 The following example shows how to access to the rows with the ``:foreach`` method:
 
-.. code-block:: lua
+.. code-block::
 	
 	local mtable in MAD
 	local tbl = mtable { {'name'}, 'x', 'y' }
@@ -382,7 +382,7 @@ Creating a MTable
 
 The following example shows how the ``track`` command, i.e. ``self`` hereafter, creates its MTable:
 
-.. code-block:: lua
+.. code-block::
 	
 	local header = { -- extra attributes to save in track headers
 	  'direction', 'observe', 'implicit', 'misalign', 'deltap', 'lost' }
@@ -405,7 +405,7 @@ Extending a MTable
 
 The following example shows how to extend the MTable created by a ``twiss`` command with the elements tilt, angle and integrated strengths from the attached sequence:
 
-.. code-block:: lua
+.. code-block::
 	
 	-- The prelude creating the sequence seq is omitted.
 	local tws = twiss { sequence=seq, method=4, cofind=true }
@@ -442,7 +442,7 @@ The following example shows how to extend the MTable created by a ``twiss`` comm
 
 Hopefully, the :doc:`physics <gphys>` module provides the *function* ``melmcol(mtbl, cols)`` to achieve the same task easily:
 
-.. code-block:: lua
+.. code-block::
 	
 	-- The prelude creating the sequence seq is omitted.
 	local tws = twiss { sequence=seq, method=4, cofind=true }

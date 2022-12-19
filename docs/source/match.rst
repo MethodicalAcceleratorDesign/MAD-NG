@@ -15,7 +15,7 @@ Command synopsis
 The ``match`` command format is summarized in :numref:`fig-match-synop`. including the default setup of the attributes.
 
 
-.. code-block:: lua
+.. code-block::
 	:caption: Synopsis of the ``match`` command with default setup.
 	:name: fig-match-synop
 
@@ -181,13 +181,13 @@ The value returned by ``command`` is passed as the first argument to all constra
 
 A typical ``command`` definition for matching optics is a function that calls a ``twiss`` command [#f1]_ :
 
-.. code-block:: lua
+.. code-block::
 
 	command := mchklost( twiss { twiss-attributes } )
 
 where the function ``mchklost`` surrounding the ``twiss`` command checks if the returned ``mtable`` (i.e. the twiss table) has lost particles and returns ``nil``\ instead:
 
-.. code-block:: lua
+.. code-block::
 
 	mchklost = \mt -> mt.lost == 0 and mt or nil
 
@@ -886,7 +886,7 @@ Matching tunes and chromaticity
 The following example below shows how to match the betatron tunes of the LHC beam 1 to :math:`q_1=64.295` and :math:`q_2=59.301` using the quadrupoles strengths ``kqtf`` and ``kqtd``, followed by the matching of the chromaticities to :math:`dq_1=15` and :math:`dq_2=15` using the main sextupole strengths ``ksf`` and ``ksd``.
 
 
-.. code-block:: lua
+.. code-block::
 
 	local lhcb1 in MADX 
 	local twiss, match in MAD 
@@ -919,7 +919,7 @@ Matching interaction point
 
 The following example hereafter shows how to squeeze the beam 1 of the LHC to :math:`\beta^*=\mathrm{beta_ip8}\times0.6^2`  at the IP8 while enforcing the required constraints at the interaction point and the final dispersion suppressor (i.e. at makers ``"IP8"`` and ``"E.DS.R8.B1"``) in two iterations, using the 20 quadrupoles strengths from ``kq4`` to ``kqt13`` on left and right sides of the IP. The boundary conditions are specified by the beta0 blocks ``bir8b1`` for the initial conditions and ``eir8b1`` for the final conditions. The final summary and an instance of the intermediate summary of this ``match`` example are shown in the :ref:`summary output <sec.match.info1>` block and :ref:`intermediate output <sec.match.info2>` block.
 
-.. code-block:: lua
+.. code-block::
 
 	local SS, ES = "S.DS.L8.B1", "E.DS.R8.B1" 
 	lhcb1.range = SS.."/"..ES 

@@ -84,7 +84,7 @@ Line comment
 
 The line comment operator :literal:`!` is valid in MAD-NG, but does not exists in Lua: [#f5]_:
 
-.. code-block:: lua
+.. code-block::
 	
 	local a = 1     ! this remaining part is a comment
 	local b = 2     -- line comment in Lua
@@ -95,7 +95,7 @@ Unary plus
 
 The unary plus operator :literal:`+` is valid in MAD-NG, but does not exists in Lua: [#f5]_
 
-.. code-block:: lua
+.. code-block::
 	
 	local a = +1    -- syntax error in Lua
 	local b = +a    -- syntax error in Lua
@@ -106,7 +106,7 @@ Local in table
 
 The local :literal:`in` table syntax provides a convenient way to retrieve values from a *mappable* and avoid error-prone repetitions of attributes names. The syntax is as follows:
 
-.. code-block:: lua
+.. code-block::
 	
 	local sin, cos, tan in math      -- syntax error in Lua
 	local a, b, c in { a=1, b=2, c=3 }
@@ -114,7 +114,7 @@ The local :literal:`in` table syntax provides a convenient way to retrieve value
 
 which is strictly equivalent to the Lua code:
 
-.. code-block:: lua
+.. code-block::
 	
 	local sin, cos, tan = math.sin, math.cos, math.tan
 	local tbl = { a=1, b=2, c=3 }
@@ -129,7 +129,7 @@ Lambda function
 
 The lambda function syntax is pure syntactic sugar for function definition and therefore fully compatible with the Lua semantic. The following definitions are all semantically equivalent:
 
-.. code-block:: lua
+.. code-block::
 	
 	local f = function(x) return x^2 end  -- Lua syntax
 	local f = \x x^2                      -- most compact form
@@ -140,12 +140,12 @@ The lambda function syntax is pure syntactic sugar for function definition and t
 	local f = \(x) x^2                    -- uncommon valid form
 	local f = \(x) (x^2)                  -- uncommon valid form
 
-The important point is that no space must be present between the *lambda*  operator :literal:`\` and the first formal parameter or the first parenthesis; the former will be considered as an empty list of parameters and the latter as an expressions list returning multiple values, and both will trigger a syntax error. For the sake of readability, it is possible without changing the semantic to add extra spaces anywhere in the definition, add an arrow operator :literal:`->`, or add parentheses around the formal parameter list, whether the list is empty or not.
+The important point is that no space must be present between the *lambda*  operator :literal:`\\` and the first formal parameter or the first parenthesis; the former will be considered as an empty list of parameters and the latter as an expressions list returning multiple values, and both will trigger a syntax error. For the sake of readability, it is possible without changing the semantic to add extra spaces anywhere in the definition, add an arrow operator :literal:`->`, or add parentheses around the formal parameter list, whether the list is empty or not.
 
 The following examples show *lambda* functions with multiple formal parameters:
 
 
-.. code-block:: lua
+.. code-block::
 	
 	local f = function(x,y) return x+y end  -- Lua syntax
 	local f = \x x+y                        -- most compact form
@@ -154,7 +154,7 @@ The following examples show *lambda* functions with multiple formal parameters:
 
 The lambda function syntax supports multiple return values by enclosing the list of returned expressions within (not optional!) parentheses:
 
-.. code-block:: lua
+.. code-block::
 	
 	local f = function(x,y) return x+y, x-y end  -- Lua syntax
 	local f = \x,y(x+y,x-y)                      -- most compact form
@@ -162,7 +162,7 @@ The lambda function syntax supports multiple return values by enclosing the list
 
 Extra surrounding parentheses can also be added to disambiguate false multiple return values syntax:
 
-.. code-block:: lua
+.. code-block::
 	
 	local f = function(x,y) return (x+y)/2 end  -- Lua syntax
 	local f = \x,y -> ((x+y)/2)     -- disambiguation: single value returned
@@ -183,7 +183,7 @@ as it is a bit subtle and needs some explanations: the *lambda* is syntactically
 
 Finally, the *lambda* function syntax supports full function syntax (for consistency) using the *fat* arrow operator  :literal:`=>` in place of the arrow operator:
 
-.. code-block:: lua
+.. code-block::
 	
 	local c = 0
 	local f = function(x) c=c+1 return x^2 end   -- Lua syntax
@@ -198,7 +198,7 @@ Deferred expression
 
 The deferred expression operator :literal:`:=` is semantically equivalent to a *lambda* function without argument. It is syntactically valid only inside *table* constructors (see `Lua 5.2 <http://github.com/MethodicalAcceleratorDesign/MADdocs/blob/master/lua52-refman-madng.pdf>`_  §3.4.8): [#f5]_
 
-.. code-block:: lua
+.. code-block::
 	
 	local var = 10
 	local fun = \-> var
@@ -210,7 +210,7 @@ The deferred expression operator :literal:`:=` is semantically equivalent to a *
 
 The deferred expressions hereabove have to be explicitly called to retrieve their values, because they are defined in a *table*. It is a feature of the object model making the deferred expressions behaving like values. Still, it is possible to support deferred expressions as values in a raw *table*, i.e. a table without metatable, using the ``deferred`` function from the :doc:`typeid <types>` module:
 
-.. code-block:: lua
+.. code-block::
 	
 	local deferred in MAD.typeid
 	local var = 10
@@ -225,7 +225,7 @@ Ranges
 
 The ranges are created from pairs or triplets of concatenated numbers: [#f6]_ 
 
-.. code-block:: lua
+.. code-block::
 	
 	start..stop..step   -- order is the same as numerical 'for'
 	start..stop         -- default step is 1
@@ -238,7 +238,7 @@ The default value for unspecified ``step`` is ``1``. The Lua syntax has been mod
 
 Ranges are *iterable* and *lengthable* so the following code excerpt is valid:
 
-.. code-block:: lua
+.. code-block::
 	
 	local rng = 3..4..0.1
 	print(#rng) -- display: 11
@@ -262,11 +262,11 @@ The operator precedence (see `Lua 5.2`_ §3.4.7) is recapped and extended in Tab
 	+--+-----------------------------------------------+------------------+
 	|3:| 	<  >  <=  >=  ~=  ==                       |  left            |
 	+--+-----------------------------------------------+------------------+
-	|4:| 	..                                         |  right           |
+	|4:| 	\.\.                                       |  right           |
 	+--+-----------------------------------------------+------------------+
-	|5:| 	+  - (binary)                              |  left            |
+	|5:| 	\+  \- (binary)                            |  left            |
 	+--+-----------------------------------------------+------------------+
-	|6:| 	*  /  \%                                   |  left            |
+	|6:| 	\*  /  \%                                  |  left            |
 	+--+-----------------------------------------------+------------------+
 	|7:| 	not   #  -  + (unary)                      |  left            |
 	+--+-----------------------------------------------+------------------+
@@ -279,13 +279,13 @@ The operator precedence (see `Lua 5.2`_ §3.4.7) is recapped and extended in Tab
 
 The *string* literals, *table* constructors, and *lambda* definitions can be combined with function calls (see `Lua 5.2`_ §3.4.9) advantageously like in the object model to create objects in a similar way to MAD-X. The following function calls are semantically equivalent by pairs:
 
-.. code-block:: lua
+.. code-block::
 	
 	! with parentheses                  ! without parentheses
 	func( 'hello world!' )              func  'hello world!'
 	func( "hello world!" )              func  "hello world!"
 	func( [[hello world!]] )            func  [[hello world!]]
-	func( {(*\dots\,	extit{fields}\,\dots*)} )             (*\,*)func  {(*\dots\,	extit{fields}\,\dots*)}
+	func( {...fields...} )              func  {...fields...} 
 	func( \x -> x^2 )                   func  \x -> x^2
 	func( \x,y -> (x+y,x-y) )           func  \x,y -> (x+y,x-y)
 

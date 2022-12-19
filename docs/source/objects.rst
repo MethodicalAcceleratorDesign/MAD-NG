@@ -24,7 +24,7 @@ The special *root object* ``object`` from the ``MAD`` environment is the parent 
 
 It is possible to name immutably an object during its creation:
 
-.. code-block:: lua
+.. code-block::
 	
 	local obj = object 'myobj' { }
 	print(obj.name) -- display: myobj
@@ -34,7 +34,7 @@ Here, [#f2]_ ``obj`` is the variable holding the object while the *string* :var:
 
 It is possible to define attributes during object creation or afterward:
 
-.. code-block:: lua
+.. code-block::
 	
 	local obj = object 'myobj' { a=1, b='hello' }
 	obj.c = { d=5 } -- add a new attribute c
@@ -46,13 +46,13 @@ Constructors
 
 The previous object creation can be done equivalently using the prototype as a constructor:
 
-.. code-block:: lua
+.. code-block::
 	
 	local obj = object('myobj',{ a=1, b='hello' })
 
 An object constructor expects two arguments, an optional *string* for the name, and a required *table* for the attributes placeholder, optionally filled with initial attributes. The table is used to create the object itself, so it cannot be reused to create a different object:
 
-.. code-block:: lua
+.. code-block::
 	
 	local attr = { a=1, b='hello' }
 	local obj1 = object('obj1',attr) -- ok
@@ -61,7 +61,7 @@ An object constructor expects two arguments, an optional *string* for the name, 
 
 The following objects creations are all semantically equivalent but use different syntax that may help to understand the creation process and avoid runtime errors:
 
-.. code-block:: lua
+.. code-block::
 	
 	-- named objects:
 	local nobj = object 'myobj'  { }  -- two stages creation.
@@ -82,7 +82,7 @@ Incomplete objects
 
 The following object creation shows how the two stage form can create an incomplete object that can only be used to complete its construction:
 
-.. code-block:: lua
+.. code-block::
 	
 	local obj = object 'myobj'   -- obj is incomplete, table is missing
 	print(obj.name)              -- runtime error.
@@ -114,14 +114,14 @@ Identification
 
 The ``object`` module extends the :doc:`typeid <types>` module with the ``is_object(a)`` *function*, which returns ``true`` if its argument ``a`` is an object, ``false`` otherwise:
 
-.. code-block:: lua
+.. code-block::
 	
 	local is_object in MAD.typeid
 	print(is_object(object), is_object(object), is_object)
 	-- display: true  true  false
 
 It is possible to know the objects qualifiers using the appropriate methods: 
-.. code-block:: lua
+.. code-block::
 	
 	print(object:is_class(), object:is_final(), object:is_readonly())
 	-- display: true  false  true
@@ -137,7 +137,7 @@ Inheritance
 
 The object model allows to build tree-like inheritance hierarchy by creating objects from classes, themselves created from other classes, and so on until the desired hierarchy is modeled. The example below shows an excerpt of the taxonomy of the elements as implemented by the :doc:`element <elements>` module, with their corresponding depth levels in comment:
 
-.. code-block:: lua
+.. code-block::
 	
 	local object in MAD                    -- depth level 1
 	local element = object           {...} -- depth level 2
@@ -162,7 +162,7 @@ Reading an attribute not defined in an object triggers a recursive dynamic looku
 
 The following example is similar to the second example of the section :ref:`ssec.defexpr`, and it must be clear that ``fun`` must be explicitly called to retrieve the value despite that its definition is the same as the attribute ``v2``.
 
-.. code-block:: lua
+.. code-block::
 	
 	local var = 10
 	local fun = \-> var -- here := is invalid
@@ -177,7 +177,7 @@ Writing attributes
 
 Writing to an object uses direct access and does not involve any lookup. Hence setting an attribute with a non-\ ``nil`` value in an object hides his definition inherited from the parents, while setting an attribute with ``nil`` in an object restores the inheritance lookup:
 
-.. code-block:: lua
+.. code-block::
 	
 	local obj1 = object { a=1, b='hello' }
 	local obj2 = obj1 { a=\s-> s.b..' world' }
@@ -194,14 +194,14 @@ Class instances
 
 To determine if an object is an instance of a given class, use the :meth:`:is_instanceOf` *method*:
 
-.. code-block:: lua
+.. code-block::
 	
 	local hmonitor, instrument, element in MAD.element
 	print(hmonitor:is_instanceOf(instrument)) -- display: true
 
 To get the list of *public* attributes of an instance, use the :meth:`:get_varkeys` *method*:
 
-.. code-block:: lua
+.. code-block::
 	
 	for _,a in ipairs(hmonitor:get_varkeys()) do print(a) end
 	for _,a in ipairs(hmonitor:get_varkeys(object)) do print(a) end
@@ -227,7 +227,7 @@ Examples
 
 :numref:`fig.gen.objmod` summarizes inheritance and attributes lookup with arrows and colors, which are reproduced by the example hereafter:
 
-.. code-block:: lua
+.. code-block::
 	
 	local element, quadrupole in MAD.element    -- kind
 	local mq  = quadrupole 'mq'  { l  =  2.1  } -- class
@@ -251,7 +251,7 @@ Attributes
 
 New attributes can be added to objects using the dot operator :literal:`.` or the indexing operator :literal:`[]` as for tables. Attributes with non-*string* keys are considered as private. Attributes with *string* keys starting by two underscores are considered as private and read-only, and must be set during creation:
 
-.. code-block:: lua
+.. code-block::
 	
 	mq.comment = "Main Arc Quadrupole"
 	print(qf1.comment)      -- displays: Main Arc Quadrupole
@@ -295,7 +295,7 @@ Methods
 
 New methods can be added to objects but not classes, using the :literal:`:set_methods(set)` ``set`` being the *set* of methods to add as in the following example:
 
-.. code-block:: lua
+.. code-block::
 	
 	sequence :set_methods {
 	  name_of   = name_of,
@@ -351,7 +351,7 @@ The root ``object`` provides the following methods:
 
 The following example shows how to convert the length ``l`` of an RBEND from cord to arc, [#f4]_ keeping its strength ``k0`` to be computed on the fly:
 
-.. code-block:: lua
+.. code-block::
 	
 	local cord2arc in MAD.gmath
 	local rbend    in MAD.element
@@ -449,7 +449,7 @@ Metamethods
 
 New metamethods can be added to objects but not classes, using the :meth:`:set_metamethods(set)` *method* with ``set`` being the *set* of metamethods to add as in the following example:
 
-.. code-block:: lua
+.. code-block::
 	
 	sequence :set_metamethods {
 	  __len      = len_mm,
@@ -518,7 +518,7 @@ The object model allows to transform an object into an environment; in other wor
 
 Things defined in this workspace will be stored in the object, and accessible from outside using the standard ways to access object attributes:
 
-.. code-block:: lua
+.. code-block::
 	
 	local object in MAD
 	local one = 1
@@ -540,7 +540,7 @@ Uncommenting the line ``local a = 1`` would change the last displayed column to 
 
 The MADX environment is an object that relies on this powerful feature to load MAD-X lattices, their settings and their "business logic", and provides functions, constants and elements to mimic the behavior of the global workspace of MAD-X to some extend:
 
-.. code-block:: lua
+.. code-block::
 	
 	MADX:open_env()
 	mq_k1 = 0.01                     -- mq.k1 is not a valid identifier!

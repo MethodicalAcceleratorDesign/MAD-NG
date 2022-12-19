@@ -459,7 +459,7 @@ Examples
 FODO cell
 ---------
 
-.. code-block:: lua
+.. code-block::
    
    local sequence, sbend, quadrupole, sextupole, hkicker, vkicker, marker in MAD.element
    local mkf = marker 'mkf' {}
