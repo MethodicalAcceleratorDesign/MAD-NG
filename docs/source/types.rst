@@ -195,7 +195,7 @@ C types sizes         C types
 :const:`ctsz_idx`     :c:type:`idx_t`   
 :const:`ctsz_ssz`     :c:type:`ssz_t`   
 :const:`ctsz_dbl`     :c:type:`num_t`   
-:const:`ctsz_cpx`     :c:type:`cnum_t`  
+:const:`ctsz_cpx`     :c:type:`cpx_t`  
 :const:`ctsz_str`     :c:type:`str_t`   
 :const:`ctsz_ptr`     :c:type:`ptr_t`   
 ====================  ================  
@@ -219,7 +219,7 @@ C API
 
    The :type:`number` type aliasing :type:`double`, i.e. double precision 64-bit floating point numbers, that holds double-precision normalized number in IEC 60559 in the approximative range :math:`\{-\infty\} \cup [-\text{huge}, -\text{tiny}] \cup \{0\} \cup [\text{tiny}, \text{huge}] \cup \{\infty\}` where :math:`\text{huge} \approx 10^{308}` and :math:`\text{tiny} \approx 10^{-308}`. See :const:`MAD.constant.huge` and :const:`MAD.constant.tiny` for precise values.
 
-.. c:type:: cnum_t
+.. c:type:: cpx_t
 
    The :type:`complex` type aliasing :type:`double _Complex`, i.e. two double precision 64-bit floating point numbers, that holds double-precision normalized number in IEC 60559.
 
