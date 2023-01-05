@@ -54,7 +54,6 @@ local string, table, io =
 local sequence_mt = getmetatable(sequence)
 local var_get, var_val, raw_get, is_instanceOf in sequence
 local seq_cpy, var_set = sequence.copy, sequence_mt.__newindex
-local readonly = sequence.set_readonly
 
 -- root object ----------------------------------------------------------------o
 
@@ -73,10 +72,6 @@ local _id = {} -- identity
 local function is_sequence (a)
   local mt = getmetatable(a)
   return mt ~= nil and mt.__sequ == _id
-end
-
-local function is_view (a)
-  return raw_get(a, '__dat') == nil
 end
 
 -- definitions ----------------------------------------------------------------o
@@ -593,7 +588,6 @@ end
 local function copy_ssequ (seq, flat, sref, idx, dir)
   local data = seq.__dat
   local n = data.ne
-  if n == 0 then return idx end -- view
 
   check_mark(seq)
 
@@ -734,12 +728,14 @@ end
 
 -- sequence init (build)
 local function init_mm (seq)
-  local n, owner = seq:raw_len(), raw_get(seq, 'owner')
-  if n == 0 and owner ~= true then return seq end -- view
-
+  local n = seq:raw_len()
   local sref = { dir=seq.dir, sdir={} }
   local data = table.new(n+2,8)
 
+  -- disable inheritance
+  -- seq:set_final()
+
+  -- flatten subsequences
   flatten_sequ(seq, data, sref)
   seq:clear_array()
 
@@ -765,30 +761,27 @@ local function init_mm (seq)
   return seq
 end
 
-local function copy_mm (seq, name_, owner_)
-  if is_nil(owner_) and is_boolean(name_) then
-    owner_, name_ = name_  -- right shift
-  end
+local function copy_mm (seq, name_)
   assert(not rawequal(seq, sequence), "invalid argument #1 (cannot copy 'sequence')")
   assert(is_sequence(seq)           , "invalid argument #1 (sequence expected)")
-  local cpy = seq_cpy(seq,name_)
-  if is_view(seq) and owner_ ~= true then return cpy end
-
+  local cpy  = seq_cpy(seq,name_)
   local data = seq.__dat
-  local ne = data.ne
+  local ne   = data.ne
   local cdat = table.new(ne,5)  -- see init_mm
   cdat.eidx  = table.new(0,ne)
   cdat.spos  = table.new(ne,0)
   cdat.upos  = table.new(ne,0)
   cdat.ds    = table.new(ne,0)
   cdat.algn  = table.new(ne,0)
-  cpy.__dat, cdat.ne = cdat, ne
+  cdat.ne    = ne
 
   for i=1,ne do
     cdat[i] = data[i]:copy()
     cdat.spos[i], cdat.upos[i], cdat.ds[i], cdat.algn[i] =
     data.spos[i], data.upos[i], data.ds[i], data.algn[i]
   end
+
+  cpy:raw_set('__dat', cdat)
 
   build_idx(cdat)
   finish_sequ(cpy)
@@ -833,7 +826,7 @@ local function index_mm (seq, key)
   if type(idx) == 'number' then
     return data[idx]
   elseif is_table(idx) then
-    return setmetatable({__idx=idx, __dat=data}, cnt_mt)
+    return setmetatable({__idx=idx, __dat=data, __slf=seq}, cnt_mt)
   end
   return nil
 end
@@ -845,20 +838,6 @@ local function newindex_mm (seq, key, val)
   end
   -- variable
   var_set(seq, key, val)
-end
-
--- readonly protection --------------------------------------------------------o
-
-local function set_readonly (seq, set_)
-  assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local data = raw_get(seq,'__dat')
-  if data then
-    set_ = set_ ~= false and true or false
-    if set_ ~= seq:is_readonly() then
-      data.ro = set_
-    end
-  end
-  return readonly(seq, set_)
 end
 
 -- methods (readonly) ---------------------------------------------------------o
@@ -1064,7 +1043,6 @@ end
 local function misalign (seq, mis, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   local data = seq.__dat
-  assert(not (data.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   -- collect indexes of elements to misalign
   local idx_m, ne = filter(seq, rng_, sel_)
@@ -1116,7 +1094,6 @@ end
 local function move (seq, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   local data = seq.__dat
-  assert(not (data.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   -- collect indexes of elements to move
   local idx_m, ne = filter(seq, rng_, sel_, true)
@@ -1158,7 +1135,6 @@ end
 local function remove (seq, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   local data = seq.__dat
-  assert(not (data.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   -- collect indexes of elements to remove
   local idx_r, nr = filter(seq, rng_, sel_, true)
@@ -1202,7 +1178,6 @@ end
 local function replace (seq, elm, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   local data = seq.__dat
-  assert(not (data.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   if is_rawtable(elm) and is_nil(rng_) and is_nil(sel_) and elm.elements then
     rng_, elm = elm, elm.elements -- extract elements + right shift
@@ -1272,7 +1247,6 @@ end
 local function install (seq, elm, rng_, sel_, cmp_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   local data = seq.__dat
-  assert(not (data.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   if is_rawtable(elm) and is_nil(rng_) and is_nil(sel_) and elm.elements then
     rng_, elm = elm, elm.elements -- extract elements + right shift
@@ -1422,10 +1396,7 @@ local function share (seq1, seq2)
   assert(is_sequence(seq1), "invalid argument #1 (sequence expected)")
   assert(is_sequence(seq2), "invalid argument #2 (sequence expected)")
   check_mark(seq1) check_mark(seq2)
-  local data1 = seq1.__dat
-  local data2 = seq2.__dat
-  assert(not (data1.ro or seq1:is_readonly()), "invalid write access to readonly sequence")
-  assert(not (data2.ro or seq2:is_readonly()), "invalid write access to readonly sequence")
+  local data1, data2 = seq1.__dat, seq2.__dat
 
   local minlen = min(seq1.minlen or minlen, seq2.minlen or minlen)
   local elm_r, idx_r, nr = {}, {}, 1
@@ -1454,7 +1425,6 @@ local function unique (seq, fmt_)
   if is_string(fmt_) then fmt_ = bind1st(string.format, fmt_) end
   assert(is_nil(fmt_) or is_callable(fmt_), "invalid argument #2 (callable expected)")
   local data, lst = seq.__dat, table.new(0,100)
-  assert(not (data.ro or seq:is_readonly()), "invalid write access to readonly sequence")
 
   for en,ei in pairs(data.eidx) do
     if is_table(ei) then
@@ -1754,15 +1724,9 @@ sequence :set_methods {
   -- duplicate
   copy          = copy_mm,
 
-  -- ownership
-  is_view       = is_view,
-
   -- flags
   save_flags    = save_flags,
   restore_flags = restore_flags,
-
-  -- readonly
-  set_readonly  = set_readonly,
 
   -- for debugging
   check_sequ    = check_sequ,

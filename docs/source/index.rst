@@ -30,6 +30,12 @@ Welcome to MAD-NG's Reference Manual!
 
    /part-IV.rst
 
+.. toctree::
+   :maxdepth: 3
+   :caption: Part V:
+
+   /part-V.rst
+
 Indices and tables
 ==================
 

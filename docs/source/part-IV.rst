@@ -17,6 +17,8 @@ MODULES
    /diffalg.rst
    /diffmap.rst
    /miscfuns.rst
+   /gphys.rst
+   /extern.rst
 
 
 
