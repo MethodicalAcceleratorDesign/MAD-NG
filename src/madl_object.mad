@@ -166,26 +166,26 @@ end
 -- objects try to optimize lookup of attributes with precedence for variables.
 
 if cachelookup then                 -- object model with cached lookup
+  function MT:__index (k)
+    local v = rawget(self.__var, k)
+    if rawequal(v, nil) then v = self.__var[k] ; self.__var[k] = v end
+    if type(v) == 'function' then return v(self) else return v end
+  end
+
   function MF:var_get (k)
     local v = rawget(self.__var, k)
     if rawequal(v, nil) then v = self.__var[k] ; self.__var[k] = v end
     return v
   end
 
-  function MT:__index (k)
-    local v = rawget(self.__var, k)
-    if rawequal(v, nil) then v = self.__var[k] ; self.__var[k] = v end
-    if type(v) == 'function' then return v(self) else return v end
-  end
-
 else -- default                     -- object model with lookup
-  function MF:var_get (k)
-    return self.__var[k]
-  end
-
   function MT:__index (k)
     local v = self.__var[k]
     if type(v) == 'function' then return v(self) else return v end
+  end
+
+  function MF:var_get (k)
+    return self.__var[k]
   end
 end
 
@@ -195,7 +195,7 @@ end
 
 function MT:__newindex (k, v)
   local var = self.__var
-  if freadonly(self) or type(k) == 'string' and string.sub(k,1,2) == '__' and
+  if freadonly(self) or type(k) == 'string' and k:sub(1,2) == '__' and
                         type(rawget(var,k)) ~= 'nil' then
     error("forbidden write access to '" .. name(self) .. "." .. tostring(k)
           .. "' (readonly object, method or variable)", 2)
@@ -246,7 +246,7 @@ function MF:raw_get (k)
 end
 
 function MF:raw_set (k, v)
-  rawset(self.__var,k,v)              -- no guards
+  rawset(self.__var,k,v)              -- no guards against readonly or __name
 end
 
 function MF:is_class ()
@@ -299,7 +299,7 @@ function MF:get_varkeys (class_, nofun_)
   repeat
     for k,v in kpairs(self) do
       if not (key[k] or nofun_ ~= false and is_functor(v))
-         and is_string(k) and string.sub(k,1,2) ~= '__' then
+         and is_string(k) and k:sub(1,2) ~= '__' then
         lst[#lst+1], key[k] = k, k
       end
     end
@@ -330,7 +330,7 @@ function MF:set_variables (set, ovrd_)
   end
   local var, ovrd = self.__var, ovrd_ == true
   for k,v in pairs(set) do
-    assertf(ovrd or type(k) ~= 'string' or string.sub(k,1,2) ~= '__' or
+    assertf(ovrd or type(k) ~= 'string' or k:sub(1,2) ~= '__' or
             is_nil(var[k]), "cannot override variable '%s'", k)
     var[k] = v
   end
@@ -350,13 +350,13 @@ function MF:copy_variables (set, lst_, ovrd_)
   local svar, lst = set.__var, lst_ or self.__attr
   assert(is_iterable(lst), "invalid list of attributes (iterable expected)")
   for _,k in ipairs(lst) do
-    assertf(ovrd or type(k) ~= 'string' or string.sub(k,1,2) ~= '__' or
+    assertf(ovrd or type(k) ~= 'string' or k:sub(1,2) ~= '__' or
             is_nil(var[k]), "cannot override variable '%s'", k)
     var[k] = set[k]
   end
   if svar and is_iterable(lst.noeval) then
     for _,k in ipairs(lst.noeval) do
-      assertf(ovrd or type(k) ~= 'string' or string.sub(k,1,2) ~= '__' or
+      assertf(ovrd or type(k) ~= 'string' or k:sub(1,2) ~= '__' or
               is_nil(var[k]), "cannot override variable '%s'", k)
       var[k] = svar[k]
     end
@@ -375,7 +375,7 @@ function MF:wrap_variables (set, ovrd_)
     local v, newv = var[k]
     assert(not is_nil(v) , "invalid variable (nil value)")
     assert(is_callable(f), "invalid wrapper (callable expected)")
-    assertf(ovrd or type(k) ~= 'string' or string.sub(k,1,2) ~= '__',
+    assertf(ovrd or type(k) ~= 'string' or k:sub(1,2) ~= '__',
             "cannot override variable '%s'",k)
     if is_callable(v) then newv = f(v) else newv = f(\ v) end -- simplify user's side.
     if is_functor(v) and not is_functor(newv) then
@@ -403,7 +403,7 @@ function MF:clear_variables ()
   end
   local var = self.__var
   for k in kpairs(self) do
-    if type(k) ~= 'string' or string.sub(k,1,2) ~= '__' then
+    if type(k) ~= 'string' or k:sub(1,2) ~= '__' then
       var[k]=nil
     end
   end
@@ -417,7 +417,7 @@ function MF:clear_all ()
   end
   local var = self.__var
   for k in pairs_iter(self) do -- table.clear destroys all keys
-    if type(k) ~= 'string' or string.sub(k,1,2) ~= '__' then
+    if type(k) ~= 'string' or k:sub(1,2) ~= '__' then
       var[k]=nil
     end
   end
@@ -434,7 +434,7 @@ function MF:set_methods (set, ovrd_)
   for k,m in pairs(set) do
     assertf(is_string(k)  , "invalid key '%s' (string expected)", k)
     assertf(is_callable(m), "invalid value for key '%s' (callable expected)", k)
-    assertf(ovrd or string.sub(k,1,2) ~= '__' or is_nil(var[k]),
+    assertf(ovrd or k:sub(1,2) ~= '__' or is_nil(var[k]),
             "cannot override method '%s'",k)
     var[k] = is_function(m) and functor(m) or m
   end
@@ -454,7 +454,7 @@ function MF:set_metamethods (set, ovrd_)
   local sm, pm = getmetatable(self), getmetatable(parent(self))
   if sm == pm then sm = copy_metamethods(self, pm) end
   for k,m in pairs(set) do
-    assertf(type(k) == 'string' and string.sub(k,1,2) == '__',
+    assertf(type(k) == 'string' and k:sub(1,2) == '__',
             "invalid key '%s' (string starting with __ expected)", tostring(k))
     assertf(ovrd or is_nil(sm[k]), "cannot override metamethod '%s'",k)
     sm[k] = m
@@ -531,7 +531,7 @@ function MF:copy (name_)
   local cpy = MF.same(self, name_)
   local var, cvar = self.__var, cpy.__var
   for k,v in pairs_iter(self) do
-    if type(k) ~= 'string' or string.sub(k,1,2) ~= '__' then
+    if type(k) ~= 'string' or k:sub(1,2) ~= '__' then
       cvar[k] = v
     end
   end
@@ -662,7 +662,7 @@ function MF:dumpobj (filnam_, class_, pattern_, noeval_)
     local nv = 0
     table.clear(lst)
     for k,v in kpairs(self) do  -- collect valid names
-      if is_string(k) and string.sub(k,1,2) ~= '__' and string.find(k,patt) then
+      if is_string(k) and k:sub(k,1,2) ~= '__' and k:find(patt) then
         lst[nv+1], nv = k, nv+1
       end
     end
