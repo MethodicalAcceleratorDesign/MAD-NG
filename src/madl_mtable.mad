@@ -69,7 +69,7 @@ local mtable = object 'mtable' {
 
 -- backup original methods and metamethods
 local mtable_mt = getmetatable(mtable)
-local var_get, var_val, raw_get in mtable
+local var_get, var_val in mtable
 local tbl_cpy, var_set = mtable.copy, mtable_mt.__newindex
 
 -- identity -------------------------------------------------------------------o
@@ -370,7 +370,7 @@ end
 -- build mtable ---------------------------------------------------------------o
 
 -- finalize mtable
-local function finish_mtbl (tbl)
+local function fini_mtbl (tbl)
   -- clear cycle (if any)
   tbl:raw_set('__cycle', nil)
 
@@ -381,6 +381,8 @@ end
 -- mtable initialization
 local function init_mm (tbl)
   local nc = tbl:raw_len()
+
+if nc > 0 then -- check if mtable needs __dat
   local pdat = tbl.parent.__dat
   nc = nc + pdat.nc
   local data = table.new(nc, 9)     -- columns (data)
@@ -393,9 +395,6 @@ local function init_mm (tbl)
   data.ng    = 0                    -- #gens
   data.rmax  = 1                    -- allocated rows (specialize after 1st row)
 
-  -- disable inheritance
-  -- tbl:set_final()
-
   -- create columns
   for i=0,nc do data[i] = {} end
 
@@ -403,9 +402,9 @@ local function init_mm (tbl)
   tblcpy(pdat.cidx, data.cidx)
   data.cidx.is_selected, data.cidx[0] = 0, 'is_selected' -- case pdat.nc == 0
 
-  local cref = raw_get(tbl, 'refcol')
+  local cref = tbl:raw_get'refcol'
   for i=pdat.nc+1,nc do
-    local col = raw_get(tbl, i-pdat.nc)    -- column key
+    local col = tbl:raw_get(i-pdat.nc)     -- column key
     if is_table(col) then                  -- cref: { key }
       assert(is_rawtable(col) and is_nil(col[2]), "invalid reference column")
       data.cref, col = i, col[1]
@@ -435,11 +434,17 @@ local function init_mm (tbl)
 
   -- clear list of column names
   tbl:clear_array()
+
   -- set current date and time
   tbl.date, tbl.time = os.date'%d/%m/%y', os.date'%H:%M:%S'
 
+  -- finalize
+  tbl.__dat = data
+  fini_mtbl(tbl)
+end -- nc > 0
+
   -- concat header names and column names to parent ones for I/O
-  local hdrnam, colnam = raw_get(tbl, 'header'), raw_get(tbl, 'column')
+  local hdrnam, colnam = tbl:raw_get'header', tbl:raw_get'column'
   if is_table(hdrnam) and #hdrnam > 0 then
     tbl.header = tblcat(tbl.parent.header or {}, hdrnam)
   end
@@ -447,9 +452,6 @@ local function init_mm (tbl)
     tbl.column = tblcat(tbl.parent.column or {}, colnam)
   end
 
-  -- finalized
-  tbl.__dat = data
-  finish_mtbl(tbl)
   return tbl
 end
 
@@ -458,7 +460,11 @@ end
 local function copy_mm (tbl, name_)
   assert(not rawequal(tbl, mtable), "invalid argument #1 (cannot copy 'mtable')")
   assert(is_mtable(tbl)           , "invalid argument #1 (mtable expected)")
-  local cpy  = tbl_cpy(tbl,name_)
+  local cpy = tbl_cpy(tbl,name_)
+
+  -- check if copy needs to be further processed
+  if tbl:is_view() then return cpy end
+
   local data = tbl.__dat
   local nr, nc = data.nr, data.nc
   local cdat = table.new(nc, 9)      -- see init_mm
@@ -469,6 +475,7 @@ local function copy_mm (tbl, name_)
   cdat.nc    = nc                    -- #cols
   cdat.ng    = 0                     -- #gens
   cdat.rmax  = nr                    -- allocated rows (no oversize with rmax)
+  cpy.__dat  = cdat
 
   tblcpy(data.cidx, cdat.cidx)
   cdat.nvec = data.nvec == data.cidx and cdat.cidx or tblcpy(data.nvec)
@@ -476,8 +483,6 @@ local function copy_mm (tbl, name_)
     local col = data[i]
     cdat[i] = isa_matrix(col) and col:copy() or tblicpy(col, table.new(nr,0))
   end
-
-  cpy:raw_set('__dat', cdat)
 
   return cpy:make_dict()
 end
@@ -628,11 +633,16 @@ local function build_index (tbl, key_)
   end
 
   build_idx (data)
-  finish_mtbl(tbl)
+  fini_mtbl(tbl)
   return tbl
 end
 
 -- methods (readonly) ---------------------------------------------------------o
+
+local function is_view (tbl)
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
+  return is_nil(tbl:raw_get'__dat')
+end
 
 local function index (tbl, idx)
   assert(is_mtable (tbl), "invalid argument #1 (mtable expected)")
@@ -1177,7 +1187,7 @@ local function remove (tbl, rng_, sel_)
   end
   data.nr = ni
 
-  return build_index(tbl)
+  return tbl:make_dict()
 end
 
 local function insert (tbl, rows, rng_, sel_)
@@ -1243,7 +1253,7 @@ local function insert (tbl, rows, rng_, sel_)
     i = i-1
   end
 
-  return build_index(tbl)
+  return tbl:make_dict()
 end
 
 local function sort (tbl, cmp, rng_, sel_)
@@ -1288,14 +1298,15 @@ local function sort (tbl, cmp, rng_, sel_)
   end
   assert(is_nil(next(idx_l)), "unexpected corrupted lookup indexes (sort)")
 
-  return build_index(tbl)
+  return tbl:make_dict()
 end
 
 -- special --------------------------------------------------------------------o
 
 local function cycle (tbl, a)
-  assert(is_mtable(tbl)  , "invalid argument #1 (mtable expected)")
-  assert(index_of(tbl, a), "invalid argument #2 (valid reference expected)")
+  assert(is_mtable(tbl), "invalid argument #1 (mtable expected)")
+  assert(is_nil(a) or index_of(tbl, a),
+                         "invalid argument #2 (valid reference expected)")
   assert(not tbl:is_readonly(), "invalid write access to readonly mtable")
   tbl:raw_set('__cycle', a)
   return tbl
@@ -1626,12 +1637,9 @@ local function read (tbl, filnam_)
     tbl:addrow(row)
   end
 
-  -- build index with column 'name' (if any)
-  local cref = raw_get(tbl, 'refcol')
-  if cref then build_index(tbl, cref) end
-
   if is_string(filnam_) then file:close() end
-  return tbl
+
+  return tbl:make_dict()
 end
 
 -- members --------------------------------------------------------------------o
@@ -1688,6 +1696,9 @@ mtable :set_methods {
 
   cycle        = cycle,
   iter         = iter,
+
+  -- ownership
+  is_view      = is_view,
 
   -- read/write
   read         = read,
