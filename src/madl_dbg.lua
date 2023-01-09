@@ -497,7 +497,7 @@ end
 dbg = setmetatable({}, {
   __call = function(_, condition, top_offset, source)
     if condition then return end
-    
+
     top_offset = (top_offset or 0)
     stack_inspect_offset = top_offset
     stack_top = top_offset
@@ -673,6 +673,20 @@ elseif "Lua 5.1" <= _VERSION and _VERSION <= "Lua 5.4" then
 else
   dbg_writeln(COLOR_YELLOW.."dbg: "..COLOR_RESET.."Not tested against ".._VERSION)
   dbg_writeln("Please send me feedback!")
+end
+
+-- mad extension (doesn't work with dbg) ---------------------------------------
+
+local function dbgfun (fun, typ_)
+  local function hook (event)
+    local info = debug.getinfo(2,'n')
+    if info.name == fun then
+      io.write("dbgfun-", event, ": ", info.name, "\n")
+      return debug.debug()
+--      return dbg()
+    end
+  end
+  debug.sethook(hook, typ_ or "call")
 end
 
 -- end -------------------------------------------------------------------------
