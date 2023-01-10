@@ -436,7 +436,7 @@ coeffonly: ;
          fprintf(stream_, "\n\n         ALL COMPONENTS ZERO (EPS=%.1lE)", eps_);
   } else fprintf(stream_, "\n\n         ALL COMPONENTS ZERO");
 
-  fprintf(stream_, "\n\n");
+  fprintf(stream_, "\n");
 
   DBGTPSA(t); DBGFUN(<-);
 }
