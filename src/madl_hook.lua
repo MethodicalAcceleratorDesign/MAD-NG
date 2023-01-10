@@ -59,5 +59,5 @@ local function dbghook (mode_, count_)
   end
 end
 
-return { dbghook = dbghook }
+return dbghook
 

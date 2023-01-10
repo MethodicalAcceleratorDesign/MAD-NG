@@ -689,7 +689,7 @@ local function dbgfunh (fun)
   debug.sethook(hook, "call")
 end
 
-local function dbgfun (fun, env, f_)
+function dbg.dbgfun (fun, env, f_)
   env = env or _G
   local f = assert(env[fun], "invalid function name or environment")
   env[fun] = f_ or function(...)
@@ -699,7 +699,7 @@ local function dbgfun (fun, env, f_)
   return f
 end
 
--- end -------------------------------------------------------------------------
-return { dbg    = dbg,     -- MAD: replace debugger.lua by dbg
-         dbgfun = dbgfun, }
+dbg.dbghook = require 'madl_hook'
 
+-- end -------------------------------------------------------------------------
+return { dbg = dbg }     -- MAD: replace debugger.lua by dbg
