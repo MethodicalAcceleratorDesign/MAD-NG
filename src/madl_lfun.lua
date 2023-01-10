@@ -1118,4 +1118,4 @@ setmetatable(exports, {
 })
 
 -- return exports
-return { fun = exports } -- MAD
+return { lfun = exports } -- MAD
