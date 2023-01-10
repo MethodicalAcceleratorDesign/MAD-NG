@@ -677,18 +677,29 @@ end
 
 -- mad extension (doesn't work with dbg) ---------------------------------------
 
-local function dbgfun (fun, typ_)
+local function dbgfunh (fun)
   local function hook (event)
     local info = debug.getinfo(2,'n')
     if info.name == fun then
-      io.write("dbgfun-", event, ": ", info.name, "\n")
-      return debug.debug()
---      return dbg()
+      io.write("dbgfun-call: ", info.name, "\n")
+--    return dbg()         -- does not work
+      return debug.debug() -- works
     end
   end
-  debug.sethook(hook, typ_ or "call")
+  debug.sethook(hook, "call")
+end
+
+local function dbgfun (fun, env, f_)
+  env = env or _G
+  local f = assert(env[fun], "invalid function name or environment")
+  env[fun] = f_ or function(...)
+    dbg()
+    f(...)
+  end
+  return f
 end
 
 -- end -------------------------------------------------------------------------
-return { dbg = dbg } -- MAD: replace debugger.lua by dbg
+return { dbg    = dbg,     -- MAD: replace debugger.lua by dbg
+         dbgfun = dbgfun, }
 
