@@ -1,0 +1,324 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Debug Fortran files module
+ |
+ | Methodical Accelerator Design - Copyright (c) 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Utility routines for comparing damaps or other information dumped into
+    fortran files, e.g. damap vs PTC
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+local M = {}
+
+-- locals ---------------------------------------------------------------------o
+
+local vector, matrix, damap, option                               in MAD
+local is_nil, is_number, is_string, is_table, is_iterable         in MAD.typeid
+local openfile, assertf                                           in MAD.utility
+
+-- implementation -------------------------------------------------------------o
+
+local dum = damap() -- get a dummy damap object
+
+function M.cmpdaf(lst, ctx_, eps_)
+  if not is_table(ctx_) and is_nil(eps_) then
+    eps_, ctx_ = ctx_ -- right shift
+  end
+
+  local eps = eps_ or 1e-14
+  local ctx = ctx_ or {}
+  local knd = ctx.knd or "4C"
+  local nam = ctx.nam or "fort"
+  local ptc = ctx.ptc or "_p"
+  local mad = ctx.mad or "_n"
+  local dif = ctx.dif or "_d"
+  local ext = ctx.ext or ".dat"
+
+  if not is_iterable(lst) then lst = {lst} end
+
+  local m_p, m_n, m_d, hdr
+
+  for _, v in ipairs(lst) do
+    io.stderr:write("processing files ", v)
+
+    local f_n = openfile(nam.."."..v..ext)
+    if f_n then
+      io.stderr:write(", ", v, mad)
+      m_n, hdr = dum:read(f_n) -- to improve!
+      f_n:close()
+      m_n:write(nam..mad.."."..v..ext, hdr)
+    end
+
+    local f_p = openfile(nam.."."..v)
+    if f_p then
+      io.stderr:write(", ", v, ptc)
+      f_p:read() ; f_p:read() ; f_p:read() -- to improve!
+      m_p = dum:read(f_p, knd):fromptc()
+      f_p:close()
+      m_p:write(nam..ptc.."."..v..ext, hdr)
+    end
+
+    if m_p and m_n then
+      io.stderr:write(", ", v, dif)
+      m_d = m_p:dif(m_n)
+      m_d:write(nam..dif.."."..v..ext, hdr, eps)
+    end
+    io.stderr:write("\n")
+  end
+
+  return m_p, m_n, m_d
+end
+
+-- function M.cmpdafN(lst_i, lst_n, pfx_, eps_)
+--   if is_number(pfx_) and is_nil(eps_) then eps_, pfx_ = pfx_, nil end
+--   local eps = eps_ or 1e-14
+--   local pfx = pfx_ or {}
+--   local nam = pfx.nam or "fort"
+--   local ptc = pfx.ptc or "_p"
+--   local mad = pfx.mad or "_n"
+--   local dif = pfx.dif or "_d"
+--   local ext = pfx.ext or ".dat"
+--   local nul = pfx.nul or false
+--
+--   if is_string(lst_i) then lst_i, lst_n = {lst_i}, {lst_n} end
+--
+--   for i, v in ipairs(lst_i) do
+--     io.stderr:write("processing files ", v)
+--     local f_i = assert(openfile(nam.."."..v)) ; f_i:read()
+--     local f_p = assert(openfile(nam..ptc.."."..v..ext, "w"))
+--     local f_n =        openfile(nam..mad.."."..v..ext)
+--     local f_d = nil
+--
+--     for k=1,lst_n[i] or 1 do
+--       local x = dum.x:read(f_i,"C")
+--       if nul or not x:isnul() then
+--         x:convert(x, {1,2,3,4,6,5}, 1):write(f_p)
+--         if f_n then
+--           if not f_d then -- create on need
+--             f_d = assert(openfile(nam..dif.."."..v..ext, "w"))
+--           end
+--
+--           local y = x:read(f_n)
+--           if y then
+--             if (x-y):nrm() > (-x-y):nrm() then x = -x end -- try to detect time
+--             x:dif(y):write(f_d, y:nam(), eps)
+--           end
+--         end
+--       end
+--     end
+--
+--     io.stderr:write(", ", v, ptc)
+--     f_p:close() ; f_i:close()
+--
+--     if f_n then
+--       io.stderr:write(", ", v, mad)
+--       io.stderr:write(", ", v, dif)
+--       f_n:close() ; f_d:close()
+--     end
+--     io.stderr:write("\n")
+--   end
+-- end
+
+local name_patt = "%s*%f[%w_]([%a_][%w.$_]*)" -- madx identifier
+local nmdm_patt = "^" .. name_patt .. "%s+([%w_]+)(%:[01])"
+
+local ptc2mad = {
+-- DRIFTs
+  DRIFT           = 'strex_drift',
+  SPROT           = 'curex_drift',
+
+-- KICKs
+  SKICK           = 'curex_kick', -- sbend
+  KICKT           = 'strex_kick', -- gmult (from frs)
+  KICKEX          = 'strex_kick', -- rbend, quad, etc...
+  -- variants
+  strex_kickh     = 'curex_kick',  -- mult with eh
+  strex_kicks     = 'curex_kick',  -- mult with ks
+
+-- FRINGEs
+  FRNG_MULT       = 'mult_fringe',
+  FRNG_STREX      = 'strex_fringe', -- rbend
+  FRNG_STRAIGHT   = 'strex_fringe', -- quad
+  FRNG_TEAPOT     = 'curex_fringe',
+  FRNG_DIPOLE     = 'bend_fringe',
+  NEWFACE         = 'bend_face',
+  EDGE            = 'bend_wedge',
+  MAD8_WEDGE      = 'mad8_wedge',
+  FRINGE2QUAD     = 'qsad_fringe',
+  --              = 'dipeg_fringe', -- not in PTC
+
+-- BENDs
+  SSEC            = 'sbend_thick',
+  SPAR            = 'rbend_thick',
+  -- variants
+  rbend_thick_new = 'rbend_thick',
+  sbend_thick_new = 'sbend_thick',
+  curex_drift0    = 'unexpected', -- photons only
+
+-- QUADs
+  KICKTKT7        = 'quad_kick',
+  PUSHTKT7        = 'quad_thick',
+  KICKPATH        = 'drift_adj',
+  -- variants
+  quad_kicks      = 'quad_kick',  -- quad with k1s
+  quad_kickh      = 'quad_kick',  -- quad with eh
+  quad_thicks     = 'quad_thick', -- quad with k1s
+  quad_thickh     = 'quad_thick', -- quad with eh
+  quad_thickh_new = 'quad_thick', -- quad with eh
+
+-- CAVs
+  KICKCAV         = 'rfcav_kick',
+  FRINGECAV       = 'rfcav_fringe',
+  -- variants
+  cav_fringe      = 'rfcav_fringe',
+  rfcav_kickn     = 'rfcav_kick', -- rfmultipole
+
+-- SOLs
+  KICK_SOL        = 'solen_thick',
+  --              = 'solen_fringe', -- not in PTC
+
+-- OTHERs
+  SEP             = 'esept_thick',
+  --              = 'nllens_kick', -- not in PTC
+
+-- PATCHs
+   TRANS          = 'translate',
+   ROT_YZ         = 'xrotation',
+   ROT_XZ         = 'yrotation',
+   ROT_XY         = 'srotation',
+   --             = 'changeref',
+   --             = 'changedir',
+   --             = 'changenrj',
+
+-- MISALIGN
+   --             = 'misalign',
+}
+
+local cvt_elm  = \e -> e:upper():find("^DRIFT__?%d+$") ~= nil and "DRIFT_" or e
+local cvt_map  = \m -> ptc2mad[m] or m
+
+local function find_next (f, elm_, map_)
+  local c = true
+  while c do
+    c = f:read(1)
+    if c == '@' then c = f:read(1)
+    if c == '@' then c = f:read("*L")
+      local i, j, elm, map, tag = c:find(nmdm_patt)
+      assert(not (is_nil(elm) or is_nil(map) or is_nil(tag)),
+             "invalid mdump line: cannot parse element name or map name")
+      local elmc, mapc = cvt_elm(elm), cvt_map(map)
+
+      if option.debug >= 2 then
+        io.write("find_next", elm_ and "_p" or "_n", ": '", elm, "'")
+        if elm ~= elmc then io.write(" => '", elmc, "'") end
+        io.write(", '", map, tag, "'")
+        if map ~= mapc then io.write(" => '", mapc, tag, "'") end
+        io.write("\n")
+      end
+
+      if elm_ and elm_ ~= elmc then
+        error("sequences differ at element '".. elm_ .."' (".. elmc ..")"..
+                                  " or map '".. map_ .."' not found")
+      end
+      if map_ and map == mapc then
+        error("unexpected unknown PTC map '".. map .. "'")
+      end
+
+      if tag == ":1" and (not map_ or map_ == mapc) then
+        local vec, mat, num = vector(6), matrix(6)
+        for k=1,6 do
+          i, j, num = c:find("%s*([^%s]+)", j+1)
+          vec[k] = tonumber(num)
+        end
+        for k=1,36 do
+          i, j, num = c:find("%s*([^%s]+)", j+1)
+          mat[k] = tonumber(num)
+        end
+        return elmc, mapc, vec, mat
+      end
+    end
+    elseif c ~= '\n' then c = f:read("*L") end
+  end
+end
+
+-- cmpmdump()
+-- cmpmdump"out"
+-- cmpmdump{mad="out_n", ptc="out_p"}
+-- cmpmdump{mad="out_n.txt", ptc="out_p.txt"}
+
+function M.cmpmdump (ctx_)
+  if is_string(ctx_) then ctx_ = {nam=ctx_} end
+  local ctx = ctx_    or {}
+  local ptc = ctx.ptc or "_p"
+  local mad = ctx.mad or "_n"
+  local dif = ctx.dif or "_d"
+  local nam = ctx.nam or ""
+  local ext = ctx.ext or {".txt", ".dat", ".out"}
+  local eps = ctx.eps or 1e-14
+
+  local f_n = openfile(nam..mad, "r", ext)
+  local f_p = openfile(nam..ptc, "r", ext)
+  local f_d = openfile(nam..dif, "w", ext)
+
+  local fmt = option.numfmt ; option.numfmt = "% -.16e"
+
+  while (true) do
+    local elm_n, map_n, vec_n, mat_n = find_next(f_n)
+    if elm_n == nil then break end
+
+    if option.debug >= 2 then
+      vec_n:print("V", 'line') ; mat_n:print("M")
+    end
+
+    local elm_p, map_p, vec_p, mat_p = find_next(f_p, elm_n, map_n)
+
+    if option.debug >= 2 then
+      vec_p:print("V", 'line') ; mat_p:print("M")
+    end
+
+    assert(elm_n == elm_p, "element in MAD-NG differs from MADX-PTC")
+    assert(map_n == map_p,     "map in MAD-NG differs from MADX-PTC")
+
+    local dam_n = dum:read(f_n)
+    local dam_p = dum:read(f_p):fromptc()
+
+    f_d:write("elm='", elm_n, "', map='", map_n, "'\n")
+
+    local vec_d = vec_n:dif(vec_p)
+    local mat_d = mat_n:dif(mat_p)
+    local dam_d = dam_n:dif(dam_p)
+
+    vec_d:write(f_d, "Orbit diff", 'line')
+    mat_d:write(f_d, "LinMap diff")
+    dam_d:write(f_d, "FullMap diff")
+  end
+
+  option.numfmt = fmt
+
+  f_n:close()
+  f_p:close()
+  f_d:close()
+end
+
+--[[
+MAD.option.debug = 2
+cd = require "madl_fortid" . cmpmdump
+cd("out")
+--]]
+
+-- end ------------------------------------------------------------------------o
+return M
