@@ -23,8 +23,8 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local abs, sqrt                                                  in math
 local object, option, tostring                                   in MAD
+local abs, sqrt, hypot                                           in MAD.gmath
 local setkeys, countkeys, fprintf                                in MAD.utility
 local is_object, is_nil, is_boolean, is_string, is_table,
       is_function, is_positive, is_zpositive, is_integer,
@@ -126,35 +126,35 @@ new_particle{particle = 'posmuon'     , mass = mumass , charge =  1, spin = 1/2}
 
 local beam = object 'beam' {
   -- particle
-  particle  = 'positron',                              --                   [RW]
-  mass      = particledb.positron.mass,                -- GeV (m.c^2)       [RO]
-  charge    = particledb.positron.charge,              -- +/- n qelect      [RO]
-  spin      = particledb.positron.spin,                -- +/- n/2           [RO]
+  particle  = 'positron',                                  --               [RW]
+  mass      = particledb.positron.mass,                    -- GeV (m.c^2)   [RO]
+  charge    = particledb.positron.charge,                  -- +/- n qelect  [RO]
+  spin      = particledb.positron.spin,                    -- +/- n/2       [RO]
   -- electromagnetic radius, average photon emission per radian
-  emrad     = \s -> krad_GeV * s.charge^2/s.mass,      -- m                 [RO]
-  aphot     = \s -> kpht_GeV * s.charge^2*s.betgam,    -- rad^-1            [RO]
+  emrad     = \s -> krad_GeV * abs(s.charge)/s.mass,       -- m             [RO]
+  aphot     = \s -> kpht_GeV * abs(s.charge)*s.betgam,     -- rad^-1        [RO]
   -- energy
-  energy    = 1,                                       -- GeV               [RW]
-  pc        = \s -> sqrt(s.pc2),                       -- GeV               [RU]
-  pc2       = \s -> s.energy^2 - s.mass^2,             -- GeV               [RU]
-  beta      = \s -> sqrt(s.beta2),                     --                   [RU]
-  beta2     = \s -> 1 - (s.mass/s.energy)^2,           --                   [RU]
-  gamma     = \s -> s.energy/s.mass,                   --                   [RU]
-  betgam    = \s -> sqrt(s.betgam2),                   --                   [RU]
-  betgam2   = \s -> s.gamma^2-1,                       --                   [RU]
-  brho      = \s -> GeV_c * s.pc/abs(s.charge),        -- T.m               [RU]
+  energy    = 1,                                           -- GeV           [RW]
+  pc        = \s -> sqrt(s.pc2),                           -- GeV           [RU]
+  pc2       = \s -> ((s.energy-s.mass)*(s.energy+s.mass)), -- GeV           [RU]
+  beta      = \s -> sqrt(s.beta2),                         --               [RU]
+  beta2     = \s -> ((1-s.mass/s.energy)*(1+s.mass/s.energy)), --           [RU]
+  gamma     = \s -> s.energy/s.mass,                       --               [RU]
+  betgam    = \s -> sqrt(s.betgam2),                       --               [RU]
+  betgam2   = \s -> ((s.gamma-1)*(s.gamma+1)),             --               [RU]
+  brho      = \s -> GeV_c * s.pc/abs(s.charge),            -- T.m           [RU]
   -- emittance
-  ex        = 1,                                       -- m                 [RW]
-  ey        = 1,                                       -- m                 [RW]
-  et        = 1e-3,                                    -- m                 [RW]
-  exn       = \s -> s.betgam*s.ex,                     -- m                 [RU]
-  eyn       = \s -> s.betgam*s.ey,                     -- m                 [RU]
-  etn       = \s -> s.betgam*s.et,                     -- m                 [RU]
+  ex        = 1,                                           -- m             [RW]
+  ey        = 1,                                           -- m             [RW]
+  et        = 1e-3,                                        -- m             [RW]
+  exn       = \s -> s.betgam*s.ex,                         -- m             [RU]
+  eyn       = \s -> s.betgam*s.ey,                         -- m             [RU]
+  etn       = \s -> s.betgam*s.et,                         -- m             [RU]
   -- bunch
-  nbunch    = 0,                                       --                   [RW]
-  npart     = 0,                                       -- per bunch         [RW]
-  sigt      = 1,                                       -- m                 [RW]
-  sige      = 1e-3,                                    -- GeV               [RW]
+  nbunch    = 0,                                           --               [RW]
+  npart     = 0,                                           -- per bunch     [RW]
+  sigt      = 1,                                           -- m             [RW]
+  sige      = 1e-3,                                        -- GeV           [RW]
 }
 
 local newidx = getmetatable(beam).__newindex         -- forward to parent
@@ -181,10 +181,10 @@ local update = setmetatable({
                      newidx(s, 'energy', v) end,
   pc     = \s,_,v => v = eval(s,v)
                      assert(is_positive(v), "invalid pc (pc >0 expected)")
-                     newidx(s, 'energy', sqrt(v^2 + s.mass^2)) end,
+                     newidx(s, 'energy', hypot(v, s.mass)) end,
   beta   = \s,_,v => v = eval(s,v)
                      assert(is_positive(v) and v<0.9, "inaccurate energy from beta (beta <0.9 accepted)")
-                     newidx(s, 'energy', sqrt(s.mass^2 / (1-v^2))) end,
+                     newidx(s, 'energy', sqrt(s.mass^2 / ((1-v)*(1+v)))) end,
   gamma  = \s,_,v => v = eval(s,v)
                      assert(is_positive(v) and v>1, "inaccurate energy from gamma (gamma >1 accepted)")
                      newidx(s, 'energy', v * s.mass) end,
@@ -193,7 +193,7 @@ local update = setmetatable({
                      newidx(s, 'energy', sqrt((v^2+1) * s.mass^2)) end,
   brho   = \s,_,v => v = eval(s,v)
                      assert(is_positive(v), "invalid Brho (Brho >0 expected)")
-                     newidx(s, 'energy', sqrt((v*abs(s.charge)/GeV_c)^2 + s.mass^2)) end,
+                     newidx(s, 'energy', hypot(v*abs(s.charge)/GeV_c, s.mass)) end,
   -- emittance (better to store e or en or both?)
   ex     = \s,_,v => v=eval(s,v) assert(is_positive(v),"invalid ex <= 0" ) newidx(s,'ex',v) end,
   ey     = \s,_,v => v=eval(s,v) assert(is_positive(v),"invalid ey <= 0" ) newidx(s,'ey',v) end,
