@@ -35,7 +35,7 @@
 #include "mad_mem.h"
 #include "mad_desc_impl.h"
 
-#define DEBUG_DESC 3
+#define DEBUG_DESC 0
 
 // --- globals ----------------------------------------------------------------o
 
