@@ -35,7 +35,7 @@
 #include "mad_mem.h"
 #include "mad_desc_impl.h"
 
-#define DEBUG_DESC 0
+#define DEBUG_DESC 3
 
 // --- globals ----------------------------------------------------------------o
 
@@ -404,7 +404,7 @@ tbl_solve_H(D *d)
     for (; i < ni && !H[j*ni+i]; ++i) {   // for each unknown..
       mad_mono_copy(n, To[o2i[i]-1], m);  // monomial without the unknown
       m[j]++;                             // add the unknown               // 2.
-      if (!mono_isvalid(d, n, m)) {      // monomial blocked by po
+      if (!mono_isvalid(d, n, m)) {       // monomial blocked by po
         for (; i < ni && !H[j*ni+i]; ++i) H[j*ni+i] = -1;
         break;
       }
@@ -1227,8 +1227,8 @@ mad_desc_newv (int nv, ord_t mo)
   DBGFUN(->);
   ensure(0 < nv && nv <= DESC_MAX_VAR,
          "invalid number of variables: %d (0<?<=%d)", nv, DESC_MAX_VAR);
-  ensure(mo <= DESC_MAX_ORD,
-         "invalid maximum order: %d (0<=?<=%d)", mo, DESC_MAX_ORD);
+  ensure(0 < mo && mo <= DESC_MAX_ORD,
+         "invalid maximum order: %d (0<?<=%d)", mo, DESC_MAX_ORD);
 
 #if DEBUG_DESC > 1
   printf(">> nv=%d,mo=%d\n", nv, mo);
@@ -1253,8 +1253,8 @@ mad_desc_newvp(int nv, int np, ord_t mo, ord_t po_)
 
   ensure(0 < nn && nn <= DESC_MAX_VAR,
          "invalid number of variables+parameters: %d (0<?<=%d)", nn, DESC_MAX_VAR);
-  ensure(mo <= DESC_MAX_ORD,
-         "invalid maximum order: %d (0<=?<=%d)", mo, DESC_MAX_ORD);
+  ensure(0 < mo && mo <= DESC_MAX_ORD,
+         "invalid maximum order: %d (0<?<=%d)", mo, DESC_MAX_ORD);
 
   ord_t po = po_ ? MIN(mo,po_) : mo;
 
@@ -1283,8 +1283,8 @@ mad_desc_newvpo(int nv, int np, const ord_t no[/*nv+np*/], ord_t po_)
          "some variables have invalid zero order");
 
   ord_t mo = mad_mono_max(nn, no), po = mo;
-  ensure(mo <= DESC_MAX_ORD,
-         "invalid maximum order: %d (0<=?<=%d)", mo, DESC_MAX_ORD);
+  ensure(0 < mo && mo <= DESC_MAX_ORD,
+         "invalid maximum order: %d (0<?<=%d)", mo, DESC_MAX_ORD);
 
   if (np) {
     po = mad_mono_max(np, no+nv);
