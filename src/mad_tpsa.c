@@ -462,7 +462,7 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
     for (; i < MIN(tn, n); ++i) {
       t2r[i] = t2r_[i] >= 0 && t2r_[i] < rn ? t2r_[i] : -1; // -1 discard var
       pbs[i] = pb*(t2r[i]-i)%2 < 0; // pb sign, ignored for discarded vars
-    }
+    } // fromptc: pt => 1*(6-5)<0=0, t => 1*(5-6)<0=1, x,px,y,py => 1*(i-i)<0=0
   for (; i < tn; i++) t2r[i] = -1;  // discard remaining vars
 
   const idx_t *o2i = t->d->ord2idx;
@@ -475,7 +475,7 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
     for (idx_t i = 0; i < tn; ++i) {              // set rm mono
       if (t2r[i] < 0 && tm[i]) goto skip;         // discard coef
       rm[t2r[i]] = tm[i];                         // translate tm to rm
-      sgn = sgn - !!tm[i] * pbs[i] * (tm[i] & 1); // poisson bracket
+      sgn = sgn - pbs[i] * (tm[i] & 1);           // poisson bracket
     }
     idx_t ri = mad_desc_idxm(r->d, rn, rm);       // get index ri of mono rm
 #if DEBUG > 2
