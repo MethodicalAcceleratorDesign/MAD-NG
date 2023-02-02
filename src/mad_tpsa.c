@@ -448,8 +448,8 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
     }
   }
 
+  // slow branch for non-compatible cases with monomials translation
   T *r = t == r_ ? GET_TMPX(r_) : FUN(reset0)(r_);
-
   ssz_t rn = r->d->nv, tn = t->d->nv;
   ord_t rm[rn], tm[tn];
   idx_t t2r[tn]; // if t2r[i]>=0 then rm[t2r[i]] = tm[i] for i=0..tn-1
@@ -475,7 +475,7 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
     for (idx_t i = 0; i < tn; ++i) {              // set rm mono
       if (t2r[i] < 0 && tm[i]) goto skip;         // discard coef
       rm[t2r[i]] = tm[i];                         // translate tm to rm
-      sgn = sgn - !!tm[i] * pbs[i];               // poisson bracket
+      sgn = sgn - !!tm[i] * pbs[i] * (tm[i] & 1); // poisson bracket
     }
     idx_t ri = mad_desc_idxm(r->d, rn, rm);       // get index ri of mono rm
 #if DEBUG > 2
