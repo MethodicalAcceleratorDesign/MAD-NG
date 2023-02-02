@@ -22,6 +22,7 @@
 #include <string.h>
 #include <assert.h>
 #include <limits.h>
+#include <math.h>
 
 #include "mad_mem.h"
 #include "mad_desc_impl.h"
@@ -330,7 +331,7 @@ FUN(setvar) (T *t, NUM v, idx_t iv, NUM scl)
 void
 FUN(copy) (const T *t, T *r)
 {
-  assert(t && r); DBGFUN(->); DBGTPSA(t); DBGTPSA(r);
+  assert(t && r); DBGFUN(->); DBGTPSA(t);
   if (t != r) {
     const D *d = t->d;
     ensure(d == r->d, "incompatible GTPSAs descriptors 0x%p vs 0x%p", d, r->d);
@@ -351,7 +352,7 @@ FUN(copy) (const T *t, T *r)
 void
 FUN(sclord) (const T *t, T *r, log_t inv)
 {
-  assert(t && r); DBGFUN(->);
+  assert(t && r); DBGFUN(->); DBGTPSA(t);
 
   FUN(copy)(t,r);
 
@@ -423,6 +424,29 @@ FUN(cutord) (const T *t, T *r, int ord)
   }
 
   DBGTPSA(r); DBGFUN(<-);
+}
+
+idx_t
+FUN(maxord) (const T *t, ssz_t n, idx_t idx_[n])
+{
+  assert(t); DBGFUN(->); DBGTPSA(t);
+
+  if (idx_) for (ord_t o=0; o < n; ++o) idx_[o] = -1;
+
+  const idx_t *o2i = t->d->ord2idx;
+  num_t mv =  0;
+  idx_t mi = -1;
+  for (ord_t o = t->lo; o <= MIN(n,t->hi); ++o)
+    if (mad_bit_tst(t->nz,o)) {
+      num_t mo = 0;
+      for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
+        if (mo < fabs(t->coef[i])) {
+          mo = fabs(t->coef[i]);
+          if (idx_) idx_[o] = i;
+          if (mv < mo) mv = mo, mi = i;
+        }
+    }
+  DBGFUN(<-); return mi;
 }
 
 void

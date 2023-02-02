@@ -67,6 +67,7 @@ void     mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *r);
 void     mad_ctpsa_sclord  (const ctpsa_t *t, ctpsa_t *r, log_t inv); // t[i]*o[i]
 void     mad_ctpsa_getord  (const ctpsa_t *t, ctpsa_t *r, ord_t ord);
 void     mad_ctpsa_cutord  (const ctpsa_t *t, ctpsa_t *r, int   ord); // ord..mo = 0 or 0..-ord=0
+idx_t    mad_ctpsa_maxord  (const ctpsa_t *t,             ssz_t n, idx_t idx_[n]);
 void     mad_ctpsa_convert (const ctpsa_t *t, ctpsa_t *r, ssz_t n, idx_t t2r_[n], int pb);
 void     mad_ctpsa_setvar  (      ctpsa_t *t, cpx_t v, idx_t iv_, cpx_t scl_);
 void     mad_ctpsa_setvar_r(      ctpsa_t *t, num_t v_re, num_t v_im, idx_t iv_, num_t scl_re_, num_t scl_im_);
