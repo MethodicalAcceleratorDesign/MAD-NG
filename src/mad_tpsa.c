@@ -429,7 +429,8 @@ void
 FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
 {
   assert(t && r_); DBGFUN(->); DBGTPSA(t); DBGTPSA(r_);
-  ensure(pb >= -1 && pb <= 1, "invalid pb value %d, {-1, 0, 1} expected", pb);
+  ensure(pb >= -1 && pb <= 1,
+         "invalid Poisson bracket direction %d, {-1, 0, 1} expected", pb);
 
   // fast branch for (almost) compatible cases avoiding monomials translation
   if (!t2r_) {
