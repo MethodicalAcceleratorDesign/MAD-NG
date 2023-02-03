@@ -1,0 +1,235 @@
+-- time ../mad -Oloopunroll=500 -Oinstunroll=100 -jp=vl ex-lhc-f2002.mad > ex-lhc-f2002.out 2>&1
+
+local beam, track, twiss, match, damap, option in MAD
+local mchklost, melmcol, normal                in MAD.gphys
+local abs, real, imag                          in MAD.gmath
+local printf, tblcat                           in MAD.utility
+
+MADX:load("lhcb1_saved.seq", "lhcb1_saved.mad") -- convert on need
+MADX:load("lhcb1_vars0.mad")
+
+local lhcb1 in MADX
+
+-- need to create a "new" particle for MAD-X compatibility (old pmass?)
+lhcb1.beam = beam {particle="xproton", charge=1, mass=0.938272046, energy=450}
+
+-- select observed elements
+local observed in MAD.element.flags
+
+lhcb1:deselect(observed)
+lhcb1:  select(observed, {pattern="BPM"})
+lhcb1:  select(observed, {pattern="IP"})
+lhcb1:  select(observed, {pattern="MO"})
+
+-- track and twiss columns
+local tkcols = {'name','s','l','x','px','y','py'}
+local twcols = {'name','s','beta11','beta22','mu1','mu2','dx','dy','x','y'}
+
+-------------------------------------------------------------------------------o
+-- small checks                                                              --o
+-------------------------------------------------------------------------------o
+
+if false then -- set to true to run twiss checks
+
+local tw = twiss {sequence=lhcb1, method=4, observe=1}
+
+tw:write("twiss_t_n.tfs", twcols)
+
+os.exit()
+end
+
+-------------------------------------------------------------------------------o
+-- set variables in MADX env                                                 --o
+-------------------------------------------------------------------------------o
+
+MADX:open_env()
+
+! Tune change and chroma
+
+dQx_b1_op=-0.035;
+dQy_b1_op=-0.025;
+dQpx_b1_op=15;
+dQpy_b1_op=15;
+
+! Phase change
+
+a1 = -1.22598e-05;
+a2 = -1.24548e-05;
+b1 = -2.89785e-05;
+b2 = -2.88736e-05;
+
+kqf_a12 = kqf_a12 + a1 ;
+kqf_a23 = kqf_a23 + a1 ;
+kqf_a34 = kqf_a34 + a1 ;
+kqf_a45 = kqf_a45 + a1 ;
+kqf_a56 = kqf_a56 - a2 ;
+kqf_a67 = kqf_a67 - a2 ;
+kqf_a78 = kqf_a78 - a2 ;
+kqf_a81 = kqf_a81 - a2 ;
+kqd_a12 = kqd_a12 + b1 ;
+kqd_a23 = kqd_a23 + b1 ;
+kqd_a34 = kqd_a34 + b1 ;
+kqd_a45 = kqd_a45 + b1 ;
+kqd_a56 = kqd_a56 - b2 ;
+kqd_a67 = kqd_a67 - b2 ;
+kqd_a78 = kqd_a78 - b2 ;
+kqd_a81 = kqd_a81 - b2 ;
+
+a1=  1.50366e-04;
+a2=  1.44269e-04;
+b1= -8.08072e-04;
+b2= -8.02084e-04;
+
+kqtf_a12b1 = kqtf_a12b1 + a1 ;
+kqtf_a23b1 = kqtf_a23b1 + a1 ;
+kqtf_a34b1 = kqtf_a34b1 + a1 ;
+kqtf_a45b1 = kqtf_a45b1 + a1 ;
+kqtf_a56b1 = kqtf_a56b1 - a2 ;
+kqtf_a67b1 = kqtf_a67b1 - a2 ;
+kqtf_a78b1 = kqtf_a78b1 - a2 ;
+kqtf_a81b1 = kqtf_a81b1 - a2*2 ;
+kqtd_a12b1 = kqtd_a12b1 + b1 ;
+kqtd_a23b1 = kqtd_a23b1 + b1 ;
+kqtd_a34b1 = kqtd_a34b1 + b1 ;
+kqtd_a45b1 = kqtd_a45b1 + b1 ;
+kqtd_a56b1 = kqtd_a56b1 - b2 ;
+kqtd_a67b1 = kqtd_a67b1 - b2 ;
+kqtd_a78b1 = kqtd_a78b1 - b2 ;
+kqtd_a81b1 = kqtd_a81b1 - b2 ;
+
+! Octupole knob
+
+!ko= kmax_MO/Imax_MO * 40 / (450*3.33);
+ko= 18;
+
+kof_a81b1 =\ ko;
+kof_a12b1 =\ ko;
+kof_a23b1 =\ ko;
+kof_a34b1 =\ ko;
+kof_a45b1 =\ ko;
+kof_a56b1 =\ ko;
+kof_a67b1 =\ ko;
+kof_a78b1 =\ ko;
+kod_a81b1 =\ ko;
+kod_a12b1 =\ ko;
+kod_a23b1 =\ ko;
+kod_a34b1 =\ ko;
+kod_a45b1 =\ ko;
+kod_a56b1 =\ ko;
+kod_a67b1 =\ ko;
+kod_a78b1 =\ ko;
+
+MADX:close_env()
+
+-------------------------------------------------------------------------------o
+-- small checks                                                              --o
+-------------------------------------------------------------------------------o
+
+if false then -- set to true to run twiss checks
+
+local tw = twiss {sequence=lhcb1, method=4, observe=1, chrom=true}
+
+tw:write("twiss_phase_n.tfs", twcols)
+
+os.exit()
+end
+
+-------------------------------------------------------------------------------o
+-- match                                                                     --o
+-------------------------------------------------------------------------------o
+
+-- magnet families and sectors names
+local knam = {'kqtf', 'kqtd', 'kof', 'kod'} -- 'kqf', 'kqd',
+local snam = {'a12', 'a23', 'a34', 'a45', 'a56', 'a67', 'a78', 'a81'}
+local b1_i = 0 -- threshold to add 'b1'
+
+-- list of all knobs
+local ki, kn = 0, {}
+for _,ks in ipairs(knam) do
+for _,ss in ipairs(snam) do
+  ki = ki+1
+  kn[ki] = ks .. '_' .. ss .. (ki < b1_i and '' or 'b1')
+end end
+
+-- create phase space damap
+local X0 = damap{nv=6, np=ki, mo=5, po=1,
+                 vn=tblcat({'x','px','y','py','t','pt'}, kn)}
+
+-- set strengths as knobs, prepare variables and monomial strings
+local vars = {rtol=1e-6} -- 1 ppm -- rtol=1e-10
+local knbs = {[0]=string.rep("0",ki)} -- all zeros
+local kj   = 0
+for _, ks in ipairs(kn) do
+  kj = kj+1
+  vars[kj] = { name=ks, var='MADX.'..ks}
+  knbs[kj] = string.rep("0",kj-1) .. "1" .. string.rep("0",ki-(kj-1)-1)
+  MADX[ks] = MADX[ks] + X0[ks]
+  MADX[ks]:print(ks)
+end
+
+local function prt_rdt (nf, kind)
+  local a = assert(nf[kind], "invalid kind '"..kind.."'")
+  for i,k in ipairs(a) do
+    local v = nf[kind][k]
+    printf("%4d: %s[%s] C=% .6e, S=% .6e, A=% .6e\n",i,kind,k,real(v),imag(v),abs(v))
+  end
+end
+
+local function get_dq()
+  local _, mflw = track{sequence=lhcb1, method=6, save=false, X0=X0}
+  -- mflw[1]:get0():print("Orbit", 'line')
+  local nf = normal(mflw[1]):analyse(); --prt_rdt(nf, 'anh') ; prt_rdt(nf, 'gnf')
+
+  -- GNF_2_0_0_2: A=100582.1645, C=-88117.66444, S=48497.92808
+  -- gnf[2002]  : A=100585.3   , C=-88119.91   , S=48500.32
+
+  return nf
+end
+
+-- run once for reference values
+if false then
+  get_dq()
+  os.exit()
+end
+
+local nf = get_dq()
+local q1j1_ref = nf.anh["210000"..knbs[0]]
+local q2j2_ref = nf.anh["002100"..knbs[0]]
+
+printf("q1j1_ref = % -.16e\n", q1j1_ref)
+printf("q2j2_ref = % -.16e\n", q2j2_ref)
+
+match {
+  command := get_dq(),
+  
+  jacobian = \nf,_,jac => -- gradient not used, fill only jacobian
+    assert(nf, "nf is nil in match.jacobian")
+
+    --> parameters
+    for i=1,ki do                               --     |
+      jac:set(1,ki, nf.anh["210000"..knbs[ki]]) --     |
+      jac:set(2,ki, nf.anh["002100"..knbs[ki]]) --     v
+      jac:set(3,ki, nf.gnf["200200"..knbs[ki]]) -- constraints
+    end
+
+    !jac:fill{{t.q1p1s1, t.q1p1s2, t.q1p1s3, t.q1p1s4 }, --     |
+    !         {t.q2p1s1, t.q2p1s2, t.q2p1s3, t.q2p1s4 }, --     |
+    !         {t.q1p2s1, t.q1p2s2, t.q1p2s3, t.q1p2s4 }, --     v
+    !         {t.q2p2s1, t.q2p2s2, t.q2p2s3, t.q2p2s4 }, -- constraints
+    !        }
+  end,
+  variables = vars,
+  equalities = {                    -- target
+    { name='q1j1' , expr = \nf -> nf.anh["210000"..knbs[0]] - q1j1_ref, tol=1e-5, weight=1},
+    { name='q2j2' , expr = \nf -> nf.anh["002100"..knbs[0]] - q2j2_ref, tol=1e-5, weight=1},
+    { name='f2002', expr = \nf -> nf.gnf["200200"..knbs[0]] - 0       , tol=1e-5, weight=1},
+  },
+  -- objective = { bisec=5 },
+  maxcall=100, info=4, -- debug=3
+}
+
+-- restore strengths as scalars, print parameters to full precision
+for _, ks in ipairs(kn) do
+  MADX[ks] = MADX[ks]:get0()
+  printf("%s = % -.16e\n", ks, MADX[ks])
+end
