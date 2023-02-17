@@ -13,7 +13,7 @@ local dbgmap = require "madl_dbgmap"
 local create_dif =  dbgmap.cmpmdump
 
 local doprnt = false
-local dosave = true
+local dosave = false
 local dodbg  = true
 local dum = damap() -- get a dummy damap object
 
@@ -32,14 +32,6 @@ local ref_cfg = {
     order = {2},
     icase = {56},
 }
-
-local function gen_params(cfg) -- Generate string of parameters set to values from cfg
-    local string = ""
-    for k, v in pairs(cfg) do 
-        string = string .. k .. "=" .. tostring(v) .. "; "
-    end
-    return string
-end 
 
 local function tbl_cat(t1, t2) -- Concatenate two tables, index and keys
     local t1_len = #t1
@@ -80,8 +72,9 @@ local function getlastmap(filename)
     return dam
   end
 
-local script = [[
-${params}
+local ctx =  "icase = ${icase}; model = ${model}; method = ${method}; nslice = ${nslice}; x0i = ${x0i}; order = ${order}; energy = ${energy};"
+local madx_script = [[
+${ctx}
 seq: sequence, l=2 ;
   elm: ${elm};
 endsequence ;
@@ -101,69 +94,52 @@ local function get_diffs(map, order)
     return max_dif
 end
 
-local function run_mad(elm)
-    io.open("ref.mad", "w"):write([[
+local function get_mad_str(cfg, elm, elm_str, debug_)
+    io.open("element.seq", "w"):write(
+        madx_script%{elm = elm_str(cfg), ctx=ctx}%cfg
+    ):close()
+    return [[
 local X0s = {{x=0   , px=0    , y=0    , py=0   , t=0   , pt=0   }, -- zero
-                {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=0   }, -- 4D
-                {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=2e-5}, -- 5D
-                {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=2e-5}} -- 6D
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=0   }, -- 4D
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=2e-5}, -- 5D
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=2e-5}} -- 6D
+
 local models = {DKD = 1, TKT = 2}
 local beam, sequence, track in MAD
 MADX:load("element.seq", true)
 local beam = beam { energy = MADX.energy }
 local mtbl, mflw = track {
     sequence=MADX.seq, beam=beam, X0=X0s[MADX.x0i], mapdef=MADX.order, model=models[MADX.model],
-    method=MADX.method, nslice=MADX.nslice, ptcmodel=true, debug=6
-        }
-        ]]):close()
+    method=MADX.method, nslice=MADX.nslice, ptcmodel=true, debug=${debug},
+}
+return mtbl, mflw
+        ]] % {debug = debug_ and 6 or 0}
+end
+
+local function run_dbg(cfg, elm, elm_str)
+    io.open("ref.mad", "w"):write(get_mad_str(cfg, elm, elm_str, true)):close()
     os.execute('../mad '.. "ref.mad" ..' >' .. elm.name .. "_n.txt")
-    return 
-end
-
-local function run_dbg(exit, elm)
-    run_mad(elm)
+    os.execute('../madx64 '.. "ref.madx" ..' >' .. elm.name .. "_p.txt")
     create_dif({nam=elm.name})
-    exit["exit"] = true 
+    cfg.exit = true 
 end
 
-local function do_trck(cfg, exit, elm, elm_str, max_dif_tbl, tol, res_tbl)
+local function do_trck(cfg, exit, elm, elm_str, tol, res_tbl)
     -- Run track and PTC
     cfg.n = cfg.n + 1 
     local mtbl_row = {}
-    io.open("element.seq", "w"):write(
-        script%{elm = elm_str(cfg), params=gen_params(cfg)}
-    ):close()
+    local _, mflw = assert(loadstring(get_mad_str(cfg, elm, elm_str)))() -- Run track
     os.execute('../madx64 '.. "ref.madx" ..' >' .. elm.name .. "_p.txt")
-    -- run_mad(elm)
-
-    local beam = beam { energy = cfg.energy }
-    MADX:load("element.seq", true)
-    local mtbl, mflw = track {
-        sequence=MADX.seq, 
-        beam=beam, X0=X0s[cfg.x0i], mapdef=cfg.order, model=models[cfg.model],
-        method=cfg.method, nslice=cfg.nslice, ptcmodel=true
-    }
     MADX.elm = nil -- Remove element so that next test can be run with new values
         
     -- Get last map from ptc and compare with mflw
     local ptc_res = getlastmap(elm.name .. "_p.txt"):fromptc()    
     local dif_map = mflw[1]:dif(ptc_res)
-    -- local mad_res = getlastmap(elm.name .. "_n.txt")
-    -- local dif_map = mad_res:dif(ptc_res)
     local max_dif = get_diffs(dif_map, cfg.order) -- To be replaced. Gets a list of max differences of e
     
     for i = 0, cfg.order do 
-        if dosave then mtbl_row["max_err_"..i] = max_dif[i]/eps end 
-        if max_dif[i]/eps > tol then 
-            if dodbg  then run_dbg(exit, elm) end
-            if doprnt then 
-                for k, v in pairs(cfg) do
-                    -- k = is_number(k) and k or tostring(k)
-                    if not max_dif_tbl[i][k] then max_dif_tbl[i][k] = {} end
-                    max_dif_tbl[i][k][v] = max_dif_tbl[i][k][v] and max_dif_tbl[i][k][v] + 1 or 1
-                end
-            end
-        end
+        if dosave then mtbl_row["max_err_"..i] = max_dif[i]/eps  end 
+        if dodbg and max_dif[i]/eps > tol then run_dbg(cfg, elm, elm_str) end
     end
         -- Print results
     if doprnt then 
@@ -180,15 +156,15 @@ local function do_trck(cfg, exit, elm, elm_str, max_dif_tbl, tol, res_tbl)
     end
 end
 
-local function run_cfg(tbl, idx, cfg, exit, cnd_, ...) --The recursive function
-    if exit["exit"] then return end
+local function run_cfg(tbl, idx, cfg, cnd_, ...) --The recursive function
+    if cfg.exit then return end
     local k = tbl[idx]
     if not k then 
-        return do_trck(cfg, exit, ...) -- Could be changed to any function
+        return do_trck(cfg, ...) -- Could be changed to any function
     end
     for i, v in ipairs(tbl[k]) do
         cfg[k] = cnd_[k] and cnd_[k](v, cfg) or v -- If there is a condition, use it
-        run_cfg(tbl, idx+1, cfg, exit, cnd_, ...)
+        run_cfg(tbl, idx+1, cfg, cnd_, ...)
     end
 end
 
@@ -201,23 +177,6 @@ local function print_result(max_dif_tbl, order) -- From max_dif_tbl, print the r
             end
         end
     end
-end
-
-local function run_test(elm, elm_str, cfg_tbl, tol, cnd_)
-    local max_dif_tbl = {}
-    for i = 0, cfg_tbl.order[1] do max_dif_tbl[i] = {} end
-    local res_tbl
-    if dosave then res_tbl = gen_mtbl(cfg_tbl, elm, cfg_tbl.order[1]) end
-    run_cfg(cfg_tbl, 1, {n = 0}, {}, cnd_ or {},  -- For recursion, could place icase and order here instead?
-                    elm, elm_str, max_dif_tbl, tol, res_tbl) -- For do_trck
-    
-    if doprnt then print_result(max_dif_tbl, cfg_tbl.order[1]) end
-    if dosave then res_tbl:write(elm.name..".tfs") end
-    
-    if not dodbg then  -- Cleanup
-        os.remove(elm.name .. "_p.txt")
-        os.remove("element.seq")
-    end 
 end
 
 local function read_mtbl(element, lower_bnds_, order_)
@@ -246,8 +205,26 @@ local function read_mtbl(element, lower_bnds_, order_)
     print_result(col_tbl, order)
 end
 
+local function run_test(elm, elm_str, cfg_tbl, tol, cnd_)
+    local res_tbl
+    local mtbl = io.open(elm.name..".tfs", "r")
+    if not mtbl then dosave = true end
+    mtbl:close()
+    if dosave then res_tbl = gen_mtbl(cfg_tbl, elm, cfg_tbl.order[1]) end
+    run_cfg(cfg_tbl, 1, {n = 0}, {}, cnd_ or {},  -- For recursion, could place icase and order here instead?
+                    elm, elm_str, tol, res_tbl) -- For do_trck
+    
+    if dosave then res_tbl:write(elm.name..".tfs") end
+    if doprnt then read_mtbl(elm, tol, cfg_tbl.order[1]) end
+    
+    if not dodbg then  -- Cleanup
+        os.remove(elm.name .. "_p.txt")
+        os.remove("element.seq")
+    end 
+end
+
 local function testQUAD ()
-    local elm_str = \->" QUADRUPOLE, at=0.75, l=1.5, k1=k1, k1s=k1s, tilt=tilt*pi/8, fringe=fringe"
+    local elm_str = \->" QUADRUPOLE, at=0.75, l=1.5, k1=${k1}, k1s=${k1s}, tilt=${tilt}*pi/8, fringe=${fringe}"
     local quad_cfg = {
         "tilt", "fringe", "k1", "k1s",
         tilt   = 0  ..4,
@@ -259,29 +236,57 @@ local function testQUAD ()
 end
 
 local function testSEXT ()
-    local elm_str = \->" SEXTUPOLE, at=0.75, l=1.5, k2=k2, k2s=k2s, tilt=tilt*pi/12, fringe=fringe"
-    local quad_cfg = {
+    local elm_str = \->" SEXTUPOLE, at=0.75, l=1.5, k2=${k2}, k2s=${k2s}, tilt=${tilt}*pi/12, fringe=${fringe}"
+    local sext_cfg = {
         "tilt", "fringe", "k2", "k2s",
         tilt   = 0  ..6,
         fringe = 0  ..3 ..3,
         k2     = -0.2..0.2..0.2,
         k2s    = -0.2..0.2..0.2,
     }
-    run_test(sextupole, elm_str, tbl_cat(ref_cfg, quad_cfg), 100) -- Only actually use elm.name
+    run_test(sextupole, elm_str, tbl_cat(ref_cfg, sext_cfg), 100) -- Only actually use elm.name
 end
 
 local function testOCT ()
-    local elm_str = \->" OCTUPOLE, at=0.75, l=1.5, k2=k3, k3s=k3s, tilt=tilt*pi/16, fringe=fringe"
-    local quad_cfg = {
+    local elm_str = \->" OCTUPOLE, at=0.75, l=1.5, k3=${k3}, k3s=${k3s}, tilt=${tilt}*pi/16, fringe=${fringe}"
+    local oct_cfg = {
         "tilt", "fringe", "k3", "k3s",
         tilt   = 0  ..8..2,
         fringe = 0  ..3 ..3,
         k3     = -0.2..0.2..0.2,
         k3s    = -0.2..0.2..0.2,
     }
-    run_test(sextupole, elm_str, tbl_cat(ref_cfg, quad_cfg), 100) -- Only actually use elm.name
+    run_test(octupole, elm_str, tbl_cat(ref_cfg, oct_cfg), 100) -- Only actually use elm.name
 end
 
+
+local function testDECA ()
+    local elm_str = \->" DECAPOLE, at=0.75, l=1.5, k4=${k4}, k4s=${k4s}, tilt=${tilt}*pi/20, fringe=${fringe}"
+    local deca_cfg = {
+        "tilt", "fringe", "k4", "k4s",
+        tilt   = 0  ..10..5,
+        fringe = 0  ..3 ..3,
+        k4     = -0.2..0.2..0.2,
+        k4s    = -0.2..0.2..0.2,
+    }
+    local deca_ref = tblcpy(ref_cfg)
+    deca_ref.order = {5}
+    run_test(decapole, elm_str, tbl_cat(deca_ref, deca_cfg), 100) -- Only actually use elm.name
+end
+
+local function testDODECA ()
+    local elm_str = \->" DODECAPOLE, at=0.75, l=1.5, k5=${k5}, k5s=${k5s}, tilt=${tilt}*pi/24, fringe=${fringe}"
+    local deca_cfg = {
+        "tilt", "fringe", "k5", "k5s",
+        tilt   = 0  ..12..3,
+        fringe = 0  ..3 ..3,
+        k5     = -0.2..0.2..0.2,
+        k5s    = -0.2..0.2..0.2,
+    }
+    local dodeca_ref = tblcpy(ref_cfg)
+    dodeca_ref.order = {6}
+    run_test(dodecapole, elm_str, tbl_cat(dodeca_ref, deca_cfg), 100) -- Only actually use elm.name
+end
 
 local function testDRIFT ()
     local elm_str = \->" DRIFT, at=0.75, l=1.5"
@@ -291,8 +296,8 @@ local function testDRIFT ()
 end
 
 local function testCAV ()
-    local elm_str = \cfg -> cfg.totalpath and "RFCAVITY, at=0.75, l=1.5, volt=VOLT, lag=LAG, harmon=HARMON, freq=FREQ;"
-                                             or "RFCAVITY, at=0.75, l=1.5, volt=VOLT, lag=LAG, harmon=HARMON, freq=FREQ, no_cavity_totalpath=true;"
+    local elm_str = \cfg -> cfg.totalpath and "RFCAVITY, at=0.75, l=1.5, volt=${volt}, lag=${lag}, harmon=${harmon}, freq=${freq};"
+                                             or "RFCAVITY, at=0.75, l=1.5, volt=${volt}, lag=${lag}, harmon=${harmon}, freq=${freq}, no_cavity_totalpath=true;"
     local cav_cfg = {
         "totalpath", "volt", "lag", "freq", "harmon",
         totalpath = {false, true},
@@ -307,8 +312,28 @@ local function testCAV ()
     run_test(rfcavity, elm_str, tbl_cat(cav_ref, cav_cfg), 10000, cnd)
 end
 
+local function testMULT ()
+    local elm_str = \-> "MULTIPOLE, at=0.75, lrad=1.5, knl={${k0}, ${k1}, ${k2}, ${k3}}, ksl={${k0s}, ${k1s}, ${k2s}, ${k3s}};"
+    local cav_cfg = {
+        "k0", "k1", "k2", "k3", "k0s", "k1s", "k2s", "k3s", "knl", "ksl",
+        k0        = -0.2..0.2..0.2,
+        k1        = -0.2..0.2..0.2,
+        k2        = -0.2..0.2..0.2,
+        k3        = -0.2..0.2..0.2,
+        k0s       = -0.2..0.2..0.2,
+        k1s       = -0.2..0.2..0.2,
+        k2s       = -0.2..0.2..0.2,
+        k3s       = -0.2..0.2..0.2,
+    }
+    local cav_ref = tblcpy(ref_cfg)
+    cav_ref.icase = {6}
+    run_test(multipole, elm_str, tbl_cat(cav_ref, cav_cfg), 1, cnd)
+end
+
 local function testRFMULT ()
-    local elm_str = \-> "RFMULTIPOLE, at=0.75, lrad=1.5, volt=VOLT, lag=LAG, harmon=HARMON, freq=FREQ, pnl={K0, K1, K2, K3}, psl={K0S, K1S, K2S, K3S};"
+    local elm_str = \-> [[
+        RFMULTIPOLE, at=0.75, lrad=1.5, volt=${volt}, lag=${lag}, harmon=${harmon}, freq=${freq}, 
+        pnl={${k0}, ${k1}, ${k2}, ${k3}}, psl={${k0s}, ${k1s}, ${k2s}, ${k3s}};]]
     local cav_cfg = {
         "volt", "lag", "freq", "harmon", "k0", "k1", "k2", "k3", "k0s", "k1s", "k2s", "k3s", "pnl", "psl",
         -- totalpath = {false, true}, !illegal in MAD-X
@@ -324,22 +349,21 @@ local function testRFMULT ()
         k1s       = -0.2..0.2..0.2,
         k2s       = -0.2..0.2..0.2,
         k3s       = -0.2..0.2..0.2,
-        pnl       = {{}},
-        psl       = {{}},
     }
     local cnd = {
         harmon = \v, cfg -> cfg.freq == 0 and 2 or 0, 
-        pnl = \v, cfg -> {cfg.k0, cfg.k1, cfg.k2, cfg.k3},
-        psl = \v, cfg -> {cfg.k0s, cfg.k1s, cfg.k2s, cfg.k3s},
         }
     local cav_ref = tblcpy(ref_cfg)
     cav_ref.icase = {6}
-    run_test(rfmultipole, elm_str, tbl_cat(cav_ref, cav_cfg), 1, cnd)
+    run_test(rfmultipole, elm_str, tbl_cat(cav_ref, cav_cfg), 1000, cnd)
 end
 -- testCAV()
 -- testRFMULT()
 -- read_mtbl(rfcavity, 20) -- For reading the results
 -- testQUAD()
 testSEXT()
+-- testOCT()
+-- testDECA ()
+-- testDODECA ()
 -- testDRIFT()
--- read_mtbl(sextupole, 2000, 2) -- For reading the results
+-- read_mtbl(sextupole, 10, 2) -- For reading the results
