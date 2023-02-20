@@ -6,10 +6,9 @@ local sbend, rbend, quadrupole, sextupole, octupole, decapole,
       dodecapole, drift, rfcavity, kicker, solenoid, elseparator,
       multipole, rfmultipole, crabcavity                         in MAD.element
 local fringe                                                     in MAD.element.flags
-local printf, openfile, tblcpy, val2keys                         in MAD.utility
+local printf, openfile, tblcpy, val2keys, fileexists             in MAD.utility
 local pi, abs                                                    in math                            
 
--- TODO: See if it is possible to create a tfs table that is just a generator based on the config
 local create_dif = require "madl_dbgmap".cmpmdump
 
 -- The Setup for the tests -----------------------------------------------------o
@@ -39,7 +38,7 @@ local ref_cfg = {
     model = 1..2,
     energy = {1, 6500}, 
     method = 2..2..2,
-    nslice = 1..3..2, 
+    nslice = 1..3..1, 
     x0i = 1..4,
     order = {2},
     icase = {56},
@@ -47,11 +46,10 @@ local ref_cfg = {
 --------------------------------------------------------------------------------o
 
 -- Dealing with the cfg mtable -------------------------------------------------o
-
 local function gen_cfg(tbl, idx, cfg, mtbl) --The recursive function
     local k = tbl[idx]
     if not k then 
-        cfg.n = cfg.n + 1
+        cfg.cfgid = cfg.cfgid + 1
         return mtbl:addrow(cfg) -- Could be changed to any function
     end
     for i, v in ipairs(tbl[k]) do
@@ -61,34 +59,21 @@ local function gen_cfg(tbl, idx, cfg, mtbl) --The recursive function
 end
 
 local function gen_mtbls(tbl, element, order) -- Generate mtbls ready to be appended
-    local cfg_mtbl, err_mtbl = {{"n"}}, {{"n"}}
+    local cfg_mtbl, err_mtbl = {{"cfgid"}}, {{"cfgid"}}
     local order = tbl.order[1]                -- Get the order
     for i = 0, order do
-        err_mtbl[i+2] = "max_err_"..i.."_val"
+        err_mtbl[i+2] = "order"..i.."_val"
     end
     err_mtbl = mtable(element.name.."_max_err")(err_mtbl)
     for i = 0, order do
-        err_mtbl:inscol("max_err_"..i.."_eps", \ri,m -> m["max_err_"..i.."_val"][ri]/eps ) -- colgen
+        err_mtbl:inscol("order"..i.."_eps", \ri,m -> m["order"..i.."_val"][ri]/eps ) -- colgen
     end 
     for i, v in ipairs(tbl) do
         cfg_mtbl[i+1] = v
     end
     cfg_mtbl = mtable(element.name)(cfg_mtbl)
-    gen_cfg(tbl, 1, {n = 0}, cfg_mtbl)         -- Generate the cfg
+    gen_cfg(tbl, 1, {cfgid = 0}, cfg_mtbl)         -- Generate the cfg
     return cfg_mtbl, err_mtbl
-end
-
-local function check_mtbls(elm) 
-    local dosave, docfg = dosave 
-    local old_cfg_file = io.open(elm.name..".tfs", "r")
-    if old_cfg_file then 
-        old_cfg_file:close()
-    end
-    local old_err_file = io.open(elm.name.."_max_err.tfs", "r")
-    if old_err_file then
-        old_err_file:close()
-    end
-    return true
 end
 --------------------------------------------------------------------------------o
 
@@ -113,11 +98,12 @@ local function get_diffs(map, order)
     local max_dif = {}
     for i = 0, order do max_dif[i] = 0 end
     for i=1,#map do
-        local j, val = map[i]:cycle(1)
-        while j > 0 do
-            local ord = map[i]:get_mono(j)!:ord() --Get mono just returns the order???
-            if abs(val) > max_dif[ord] then max_dif[ord] = abs(val) end
-            j, val = map[i]:cycle(j)
+        local _, max_idxs = map[i]:maxbyord()
+        for ord = 1, order do
+            if max_idxs[ord] ~= 0 then
+                local val = abs(map[i]:get(max_idxs[ord]))
+                if val > max_dif[ord-1] then max_dif[ord-1] = val end
+            end
         end
     end
     return max_dif
@@ -160,30 +146,26 @@ end
 
 -- Run track and PTC ----------------------------------------------------------o
 local function do_trck(cfg, elm, elm_str, tol, res_mtbl)
-    local mtbl_row = {n = cfg.n}
+    local mtbl_row = {cfgid = cfg.cfgid}
     local _, mflw = assert(loadstring(get_mad_str(cfg, elm, elm_str)))() -- Run track
     os.execute('../madx64 '.. "ref.madx" ..' >' .. elm.name .. "_p.txt")
     MADX.elm = nil -- Remove element so that next test can be run with new values
         
     
     local ptc_res = getlastmap(elm.name .. "_p.txt"):fromptc() -- Get last map from ptc 
-    local max_dif = get_diffs(mflw[1]:dif(ptc_res), cfg.order) -- To be replaced. Gets a list of max differences of each order
+    local max_dif = get_diffs(mflw[1]:dif(ptc_res), cfg.order) -- Gets a list of max differences of each order
 
-    if doprnt then -- Print results
-        io.write(cfg.n, "\t") 
-        for i = 0, cfg.order do 
-            mtbl_row["max_err_"..i.."_val"] = max_dif[i]
-            printf("%.2e %d\t", max_dif[i], max_dif[i]/eps) 
-        end
-        io.write("\n")
-        res_mtbl:addrow(mtbl_row) -- Save results to mtbl
+    for i = 0, cfg.order do 
+        mtbl_row["order"..i.."_val"] = max_dif[i]
     end
+    res_mtbl:addrow(mtbl_row) -- Save results to mtbl
 
-    if dodbg then -- If debug, check if max_dif is greater than tolerance
-        for i = 0, cfg.order do 
-            if max_dif[i]/eps > tol then return run_dbg(cfg, elm, elm_str) end
-        end
+    if doprnt then io.write(cfg.cfgid, "\t") end    
+    for i = 0, cfg.order do 
+        if doprnt then printf("%.2e %d\t", max_dif[i], max_dif[i]/eps) end
+        if dodbg and max_dif[i]/eps > tol then return run_dbg(cfg, elm, elm_str) end
     end
+    if doprnt then io.write("\n") end 
 end
 -------------------------------------------------------------------------------o
 
@@ -192,7 +174,7 @@ local function print_result(max_dif_tbl, order) -- From max_dif_tbl, print the r
     for i = 0, order do 
         io.write("\norder ",i, ":\n")
         for k, v in pairs(max_dif_tbl[i]) do
-            if not (is_number(k) or k == "n") then 
+            if not (is_number(k) or k == "cfgid") then 
                 io.write(k, "\t= ", tostring(v), "\n")
             end
         end
@@ -200,6 +182,7 @@ local function print_result(max_dif_tbl, order) -- From max_dif_tbl, print the r
 end
 
 local function show_mtbl(cfg, res, lower_bnds_, order) -- (Lower bounds not optional but can be a number or tbl)
+    assert(#cfg == #res, "The configuration and result mtables must have the same number of rows")
     local lower_bnds = {}
     if is_number (lower_bnds_) then 
         for i = 0, order do lower_bnds[i] = lower_bnds_ end
@@ -209,7 +192,7 @@ local function show_mtbl(cfg, res, lower_bnds_, order) -- (Lower bounds not opti
     local col_tbl = {}; for i = 0, order do col_tbl[i] = {} end
     for i = 0, order do 
         local red_tbl = mtable(cfg:colnames())
-        cfg:foreach(\r, ri => if res[ri] and res[ri]["max_err_"..i.."_eps"] > lower_bnds[i] then red_tbl = red_tbl + r end end)
+        cfg:foreach(\r, ri => if res[ri] and res[ri]["order"..i.."_eps"] > lower_bnds[i] then red_tbl = red_tbl + r end end)
         for _, col_name in ipairs(cfg:colnames()) do
             local c = red_tbl:getcol(col_name) 
             local _, klist = val2keys(is_matrix(c) and c:totable() or c)
@@ -230,7 +213,8 @@ end
 -- Run test -------------------------------------------------------------------o
 local function run_test(elm, elm_str, cfg_tbl, tol)
     local cfg_mtbl, res_mtbl = gen_mtbls(cfg_tbl, elm)
-    local dosave = dosave or check_mtbls(elm)                -- Check if the cfg and results are already saved.
+    local dosave = dosave or not
+                  (fileexists(elm.name..".tfs") and fileexists(elm.name.."_max_err.tfs")) 
     if dosave then cfg_mtbl:write(cfg_mtbl.name..".tfs") end -- Save the cfg before results for debugging
 
     for i, row in cfg_mtbl:iter() do 
@@ -242,6 +226,8 @@ local function run_test(elm, elm_str, cfg_tbl, tol)
     if not dodbg then  -- Cleanup
         os.remove(elm.name .. "_p.txt")
         os.remove("element.seq")
+        os.remove("internal_mag_pot.txt")
+        os.remove("fort.18")
     end 
 end
 --------------------------------------------------------------------------------o
@@ -338,7 +324,7 @@ end
 
 local function testCAV ()
     local elm_str = \cfg -> cfg.totalpath and "RFCAVITY, at=0.75, l=1.5, volt=${volt}, lag=${lag}, harmon=${harmon}, freq=${freq};"
-                                             or "RFCAVITY, at=0.75, l=1.5, volt=${volt}, lag=${lag}, harmon=${harmon}, freq=${freq}, no_cavity_totalpath=true;"
+                                           or "RFCAVITY, at=0.75, l=1.5, volt=${volt}, lag=${lag}, harmon=${harmon}, freq=${freq}, no_cavity_totalpath=true;"
     local cav_cfg = {
         "totalpath", "volt", "lag", "freq", "harmon",
         totalpath = {false, true},
@@ -355,7 +341,7 @@ end
 local function testMULT ()
     local elm_str = \-> "MULTIPOLE, at=0.75, lrad=1.5, knl={${k0}, ${k1}, ${k2}, ${k3}}, ksl={${k0s}, ${k1s}, ${k2s}, ${k3s}};"
     local cav_cfg = {
-        "k0", "k1", "k2", "k3", "k0s", "k1s", "k2s", "k3s", "knl", "ksl",
+        "k0", "k1", "k2", "k3", "k0s", "k1s", "k2s", "k3s",
         k0        = -0.2..0.2..0.2,
         k1        = -0.2..0.2..0.2,
         k2        = -0.2..0.2..0.2,
@@ -375,7 +361,7 @@ local function testRFMULT ()
         RFMULTIPOLE, at=0.75, lrad=1.5, volt=${volt}, lag=${lag}, harmon=${harmon}, freq=${freq}, 
         pnl={${k0}, ${k1}, ${k2}, ${k3}}, psl={${k0s}, ${k1s}, ${k2s}, ${k3s}};]]
     local cav_cfg = {
-        "volt", "lag", "freq", "harmon", "k0", "k1", "k2", "k3", "k0s", "k1s", "k2s", "k3s", "pnl", "psl",
+        "volt", "lag", "freq", "harmon", "k0", "k1", "k2", "k3", "k0s", "k1s", "k2s", "k3s",
         -- totalpath = {false, true}, !illegal in MAD-X
         volt      = -8 ..8  ..8   ,
         lag       =  0 ..0.9..0.45,
