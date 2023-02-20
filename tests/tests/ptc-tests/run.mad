@@ -1,5 +1,5 @@
 local track, sequence, beam, option, filesys, regex, matrix,     
-      tpsa, logrange, mtable, monomial, tostring, damap          in MAD
+      tpsa, logrange, mtable, monomial, tostring, damap, vector  in MAD
 local eps                                                        in MAD.constant
 local is_number, is_matrix, is_function, is_string               in MAD.typeid
 local sbend, rbend, quadrupole, sextupole, octupole, decapole,   
@@ -14,9 +14,10 @@ local create_dif = require "madl_dbgmap".cmpmdump
 -- The Setup for the tests -----------------------------------------------------o
 local doprnt = true -- false
 local dosave = true  -- true
-local dodbg  = false -- false
+local dodbg  = true -- false
 
 local dum = damap() -- get a dummy damap object
+local coords = {"x", "px", "y", "py", "t", "pt"}                    -- Coordinates
 local X0s = {{x=0   , px=0    , y=0    , py=0   , t=0   , pt=0   }, -- zero
              {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=0   }, -- 4D
              {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=2e-5}, -- 5D
@@ -58,16 +59,20 @@ local function gen_cfg(tbl, idx, cfg, mtbl) --The recursive function
     end
 end
 
-local function gen_mtbls(tbl, element, order) -- Generate mtbls ready to be appended
+local function gen_mtbls(tbl, element) -- Generate mtbls ready to be appended
     local cfg_mtbl, err_mtbl = {{"cfgid"}}, {{"cfgid"}}
-    local order = tbl.order[1]                -- Get the order
-    for i = 0, order do
-        err_mtbl[i+2] = "order"..i.."_val"
-    end
+    local order = tbl.order[1]                  -- Get the order
+    
+    for i = 0, order do err_mtbl[i+2] = "order"..i.."_dif" end
+    for i, c in ipairs(coords) do err_mtbl[i+order+2] = c.."_dif" end
     err_mtbl = mtable(element.name.."_max_err")(err_mtbl)
+    
     for i = 0, order do
-        err_mtbl:inscol("order"..i.."_eps", \ri,m -> m["order"..i.."_val"][ri]/eps ) -- colgen
+        err_mtbl:inscol("order"..i.."_eps", \ri,m -> m["order"..i.."_dif"][ri]/eps ) -- colgen
     end 
+    for i, c in ipairs(coords) do 
+        err_mtbl:inscol(c.."_eps", \ri,m -> m[c.."_dif"][ri]/eps ) -- colgen
+    end
     for i, v in ipairs(tbl) do
         cfg_mtbl[i+1] = v
     end
@@ -97,13 +102,13 @@ local function getlastmap(filename)
 local function get_diffs(map, order)
     local max_dif = {}
     for i = 0, order do max_dif[i] = 0 end
-    for i=1,#map do
-        local _, max_idxs = map[i]:maxbyord()
-        for ord = 1, order+1 do
-            if max_idxs[ord] ~= 0 then
-                local val = abs(map[i]:get(max_idxs[ord]))
-                if val > max_dif[ord-1] then max_dif[ord-1] = val end
-            end
+    for i, c in ipairs(coords) do -- Loop over coordinates instead
+        local _, max_idxs = map[c]:maxbyord()
+        local max_vals = vector(#max_idxs)
+        max_idxs:map(\x-> x~=0 and abs(map[c]:get(x)) or 0, max_vals)
+        max_dif[c] = max_vals:max()
+        for ord, val in ipairs(max_vals) do
+            if val > max_dif[ord-1] then max_dif[ord-1] = val end
         end
     end
     return max_dif
@@ -156,7 +161,10 @@ local function do_trck(cfg, elm, elm_str, tol, res_mtbl)
     local max_dif = get_diffs(mflw[1]:dif(ptc_res), cfg.order) -- Gets a list of max differences of each order
 
     for i = 0, cfg.order do 
-        mtbl_row["order"..i.."_val"] = max_dif[i]
+        mtbl_row["order"..i.."_dif"] = max_dif[i]
+    end
+    for i, c in ipairs(coords) do -- Loop over coordinates instead
+        mtbl_row[c.."_dif"] = max_dif[c]
     end
     res_mtbl:addrow(mtbl_row) -- Save results to mtbl
 
@@ -196,7 +204,7 @@ local function get_lower_bnds(cfg, lower_bnds)
 end
 
 local function show_mtbl(cfg, res, lower_bnds, order) -- (Lower bounds not optional but can be a number or tbl)
-    assert(#cfg == #res, "The configuration and result mtables must have the same number of rows")
+    assert(dodbg or #cfg == #res, "The configuration and result mtables must have the same number of rows")
     local lower_bnds = get_lower_bnds(cfg, lower_bnds)
     local col_tbl = {}; for i = 0, order do col_tbl[i] = {} end
     for i = 0, order do 
@@ -220,14 +228,15 @@ end
 --------------------------------------------------------------------------------o
 
 -- Run test -------------------------------------------------------------------o
-local function run_test(elm, elm_str, cfg_tbl, tol)
-    local cfg_mtbl, res_mtbl = gen_mtbls(cfg_tbl, elm)
+local function run_test(elm, elm_str, cfg_tbl, tol_, coords_)
+    local cfg_mtbl, res_mtbl = gen_mtbls(cfg_tbl, elm, coords_)
     local dosave = dosave or not
                   (fileexists(elm.name..".tfs") and fileexists(elm.name.."_max_err.tfs")) 
     if dosave then cfg_mtbl:write(cfg_mtbl.name..".tfs") end -- Save the cfg before results for debugging
 
+    local tol = tol_ or 1 -- Default tolerance is 1 eps
     for i, row in cfg_mtbl:iter() do 
-        if do_trck(row, elm, elm_str, tol, res_mtbl) then break end -- Run every cfg and break if debug is on and there is a failure
+        if do_trck(row, elm, elm_str, tol, res_mtbl, coords_) then break end -- Run every cfg and break if debug is on and there is a failure
     end
     if dosave then res_mtbl:write(res_mtbl.name..".tfs") end -- Save the results
     if doprnt then show_mtbl(cfg_mtbl, res_mtbl, tol, cfg_tbl.order[1]) end -- Print the results
@@ -395,11 +404,11 @@ end
 -- testCAV()
 -- testRFMULT()
 -- read_mtbl(rfcavity, 20) -- For reading the results
--- testQUAD()
+testQUAD()
 -- testSEXT()
 -- testOCT()
 -- testDECA ()
 -- testDODECA ()
 -- testDRIFT()
 -- read_mtbl(quadrupole, 10, 2) -- For reading the results
-read_mtbl(quadrupole, "quadrupole_max_err", 2) -- For reading the results
+-- read_mtbl(quadrupole, "quadrupole_max_err", 2) -- For reading the results
