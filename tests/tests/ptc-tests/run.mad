@@ -1,7 +1,7 @@
 local track, sequence, beam, option, filesys, regex, matrix,     
       tpsa, logrange, mtable, monomial, tostring, damap          in MAD
 local eps                                                        in MAD.constant
-local is_number, is_matrix, is_function                          in MAD.typeid
+local is_number, is_matrix, is_function, is_string               in MAD.typeid
 local sbend, rbend, quadrupole, sextupole, octupole, decapole,   
       dodecapole, drift, rfcavity, kicker, solenoid, elseparator,
       multipole, rfmultipole, crabcavity                         in MAD.element
@@ -181,18 +181,27 @@ local function print_result(max_dif_tbl, order) -- From max_dif_tbl, print the r
     end
 end
 
-local function show_mtbl(cfg, res, lower_bnds_, order) -- (Lower bounds not optional but can be a number or tbl)
-    assert(#cfg == #res, "The configuration and result mtables must have the same number of rows")
-    local lower_bnds = {}
-    if is_number (lower_bnds_) then 
-        for i = 0, order do lower_bnds[i] = lower_bnds_ end
+local function get_lower_bnds(cfg, lower_bnds)
+    local final_bnds = {}
+    if is_string(lower_bnds) then
+        local bnds_file = mtable:read(lower_bnds)
+        assert(#bnds_file == #cfg, "The tolerance file must have the same number of rows as the configuration file")
+        for i = 0, #cfg do final_bnds[i] = \r->bnds_file[r]["order"..i.."_eps"] end
+    elseif is_number(lower_bnds) then
+        for i = 0, #cfg do final_bnds[i] = \->lower_bnds end
     else
-        lower_bnds = lower_bnds_
+        for i = 0, #cfg do final_bnds[i] = \->lower_bnds[i] end
     end
+    return final_bnds
+end
+
+local function show_mtbl(cfg, res, lower_bnds, order) -- (Lower bounds not optional but can be a number or tbl)
+    assert(#cfg == #res, "The configuration and result mtables must have the same number of rows")
+    local lower_bnds = get_lower_bnds(cfg, lower_bnds)
     local col_tbl = {}; for i = 0, order do col_tbl[i] = {} end
     for i = 0, order do 
         local red_tbl = mtable(cfg:colnames())
-        cfg:foreach(\r, ri => if res[ri] and res[ri]["order"..i.."_eps"] > lower_bnds[i] then red_tbl = red_tbl + r end end)
+        cfg:foreach(\r, ri => if res[ri] and res[ri]["order"..i.."_eps"] > lower_bnds[i](ri) then red_tbl = red_tbl + r end end)
         for _, col_name in ipairs(cfg:colnames()) do
             local c = red_tbl:getcol(col_name) 
             local _, klist = val2keys(is_matrix(c) and c:totable() or c)
@@ -202,7 +211,7 @@ local function show_mtbl(cfg, res, lower_bnds_, order) -- (Lower bounds not opti
     print_result(col_tbl, order)
 end
 
-local function read_mtbl(element, lower_bnds, order) -- Read the stored mtbl and cfg for the element
+local function read_mtbl(element, lower_bnds, order_) -- Read the stored mtbl and cfg for the element
     local order = order_ or 4
     local cfg = mtable:read(element.name..".tfs")
     local res = mtable:read(element.name.."_max_err.tfs")
@@ -386,10 +395,11 @@ end
 -- testCAV()
 -- testRFMULT()
 -- read_mtbl(rfcavity, 20) -- For reading the results
-testQUAD()
+-- testQUAD()
 -- testSEXT()
 -- testOCT()
 -- testDECA ()
 -- testDODECA ()
 -- testDRIFT()
--- read_mtbl(sextupole, 10, 2) -- For reading the results
+-- read_mtbl(quadrupole, 10, 2) -- For reading the results
+read_mtbl(quadrupole, "quadrupole_max_err", 2) -- For reading the results
