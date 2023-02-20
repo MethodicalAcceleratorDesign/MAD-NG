@@ -434,16 +434,16 @@ FUN(maxord) (const T *t, ssz_t n, idx_t idx_[n])
   if (idx_) for (ord_t o=0; o < n; ++o) idx_[o] = -1;
 
   const idx_t *o2i = t->d->ord2idx;
-  num_t mv =  0;
-  idx_t mi = -1;
+  num_t mv =  0; // max of all values
+  idx_t mi = -1; // idx of max for all
   for (ord_t o = t->lo; o <= MIN(n,t->hi); ++o)
     if (mad_bit_tst(t->nz,o)) {
-      num_t mo = 0;
+      num_t mo = 0; // max of this order
       for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
         if (mo < fabs(t->coef[i])) {
-          mo = fabs(t->coef[i]);
-          if (idx_) idx_[o] = i;
-          if (mv < mo) mv = mo, mi = i;
+          mo = fabs(t->coef[i]);        // save max for this order
+          if (idx_) idx_[o] = i;        // save idx for this order
+          if (mv < mo) mv = mo, mi = i; // save max and idx for all orders
         }
     }
   DBGFUN(<-); return mi;
