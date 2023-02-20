@@ -1,7 +1,7 @@
 local track, sequence, beam, option, filesys, regex, matrix,     
       tpsa, logrange, mtable, monomial, tostring, damap          in MAD
 local eps                                                        in MAD.constant
-local is_number, is_matrix                                       in MAD.typeid
+local is_number, is_matrix, is_function                          in MAD.typeid
 local sbend, rbend, quadrupole, sextupole, octupole, decapole,   
       dodecapole, drift, rfcavity, kicker, solenoid, elseparator,
       multipole, rfmultipole, crabcavity                         in MAD.element
@@ -13,9 +13,9 @@ local pi, abs                                                    in math
 local dbgmap = require "madl_dbgmap"
 local create_dif =  dbgmap.cmpmdump
 
-local doprnt = false
+local doprnt = true
 local dosave = false
-local dodbg  = true
+local dodbg  = false
 local dum = damap() -- get a dummy damap object
 
 local X0s = {{x=0   , px=0    , y=0    , py=0   , t=0   , pt=0   }, -- zero
@@ -48,20 +48,54 @@ local function tbl_cat(t1, t2) -- Concatenate two tables, index and keys
     return t
 end
 
--- TODO: Change to be two different mtbls - one max_err and one for the config
--- TODO: Change max_dif to have a generator column 
-local function gen_mtbl(tbl, element, order) -- Generate mtbl ready to be appended
-    local mtbl = {{"n"}}
-    for i = 0, order do
-        mtbl[i+2] = "max_err_"..i
+-- Dealing with the cfg mtable -------------------------------------------------o
+
+local function gen_cfg(tbl, idx, cfg, mtbl) --The recursive function
+    local k = tbl[idx]
+    if not k then 
+        cfg.n = cfg.n + 1
+        return mtbl:addrow(cfg) -- Could be changed to any function
     end
-    for i, v in ipairs(tbl) do
-        mtbl[order + 2 + i] = v
+    for i, v in ipairs(tbl[k]) do
+        cfg[k] = is_function(v) and v(cfg) or v -- If there is a condition, use it
+        gen_cfg(tbl, idx+1, cfg, mtbl)
     end
-    return mtable(element.name)(mtbl)
 end
 
-local function getlastmap(filename)
+local function gen_mtbls(tbl, element, order) -- Generate mtbls ready to be appended
+    local cfg_mtbl, err_mtbl = {{"n"}}, {{"n"}}
+    local order = tbl.order[1]                -- Get the order
+    for i = 0, order do
+        err_mtbl[i+2] = "max_err_"..i.."_val"
+    end
+    err_mtbl = mtable(element.name.."_max_err")(err_mtbl)
+    for i = 0, order do
+        err_mtbl:inscol("max_err_"..i.."_eps", \ri,m -> m["max_err_"..i.."_val"][ri]/eps ) -- colgen
+    end 
+    for i, v in ipairs(tbl) do
+        cfg_mtbl[i+1] = v
+    end
+    cfg_mtbl = mtable(element.name)(cfg_mtbl)
+    gen_cfg(tbl, 1, {n = 0}, cfg_mtbl)         -- Generate the cfg
+    return cfg_mtbl, err_mtbl
+end
+
+local function check_mtbls(elm) 
+    local dosave, docfg = dosave 
+    local old_cfg_file = io.open(elm.name..".tfs", "r")
+    if old_cfg_file then 
+        old_cfg_file:close()
+    end
+    local old_err_file = io.open(elm.name.."_max_err.tfs", "r")
+    if old_err_file then
+        old_err_file:close()
+    end
+    return true
+end
+
+--------------------------------------------------------------------------------o
+
+local function getlastmap(filename) -- Get the last map from a madx dump file
     local file = openfile(filename, "r", {".txt", ".dat", ".out"})
     local final_pos = 0
     for line in file:lines() do
@@ -84,21 +118,21 @@ endsequence ;
 ]]
 
 -- Get max difference in all monomials of all coordinates in the last map
--- TODO: Adapt to use cycle?
 local function get_diffs(map, order)
     local max_dif = {}
     for i = 0, order do max_dif[i] = 0 end
     for i=1,#map do
-        local tbl = map[i]:totable()
-        for i, mono in ipairs(tbl) do
-            local ord = monomial(mono):ord() 
-            if abs(tbl[mono]) > max_dif[ord] then max_dif[ord] = abs(tbl[mono]) end
+        local j, val = map[i]:cycle(1)
+        while j > 0 do
+            local ord = map[i]:get_mono(j)!:ord() --Get mono just returns the order???
+            if abs(val) > max_dif[ord] then max_dif[ord] = abs(val) end
+            j, val = map[i]:cycle(j)
         end
     end
     return max_dif
 end
 
-local function get_mad_str(cfg, elm, elm_str, debug_)
+local function get_mad_str(cfg, elm, elm_str, debug_) -- Write MAD-X script to element.seq and generate a MAD-NG script and return it. 
     io.open("element.seq", "w"):write(
         madx_script%{elm = elm_str(cfg), ctx=ctx}%cfg
     ):close()
@@ -120,55 +154,40 @@ return mtbl, mflw
         ]] % {debug = debug_ and 6 or 0}
 end
 
-local function run_dbg(cfg, elm, elm_str)
+local function run_dbg(cfg, elm, elm_str) -- Run MAD-NG (in debug mode) and MAD-X and compare the results
     io.open("ref.mad", "w"):write(get_mad_str(cfg, elm, elm_str, true)):close()
     os.execute('../mad '.. "ref.mad" ..' >' .. elm.name .. "_n.txt")
     os.execute('../madx64 '.. "ref.madx" ..' >' .. elm.name .. "_p.txt")
     create_dif({nam=elm.name})
-    cfg.exit = true 
+    return true 
 end
 
-local function do_trck(cfg, exit, elm, elm_str, tol, res_tbl)
+local function do_trck(cfg, elm, elm_str, tol, res_mtbl)
     -- Run track and PTC
-    cfg.n = cfg.n + 1 
-    local mtbl_row = {}
+    local mtbl_row = {n = cfg.n}
     local _, mflw = assert(loadstring(get_mad_str(cfg, elm, elm_str)))() -- Run track
     os.execute('../madx64 '.. "ref.madx" ..' >' .. elm.name .. "_p.txt")
     MADX.elm = nil -- Remove element so that next test can be run with new values
         
     -- Get last map from ptc and compare with mflw
     local ptc_res = getlastmap(elm.name .. "_p.txt"):fromptc()    
-    local dif_map = mflw[1]:dif(ptc_res)
-    local max_dif = get_diffs(dif_map, cfg.order) -- To be replaced. Gets a list of max differences of e
-    
-    for i = 0, cfg.order do 
-        if dosave then mtbl_row["max_err_"..i] = max_dif[i]/eps  end 
-        if dodbg and max_dif[i]/eps > tol then run_dbg(cfg, elm, elm_str) end
-    end
+    local max_dif = get_diffs(mflw[1]:dif(ptc_res), cfg.order) -- To be replaced. Gets a list of max differences of e
+
     -- Print results
     if doprnt then 
         io.write(cfg.n, "\t") 
         for i = 0, cfg.order do 
+            mtbl_row["max_err_"..i.."_val"] = max_dif[i]
             printf("%.2e %d\t", max_dif[i], max_dif[i]/eps) 
         end
         io.write("\n")
+        res_mtbl:addrow(mtbl_row) -- Save results to mtbl
     end
-    -- Save results
-    if dosave then 
-        for k, v in pairs(cfg) do mtbl_row[k] = v end
-        res_tbl:addrow(mtbl_row)
-    end
-end
 
-local function run_cfg(tbl, idx, cfg, cnd_, ...) --The recursive function
-    if cfg.exit then return end
-    local k = tbl[idx]
-    if not k then 
-        return do_trck(cfg, ...) -- Could be changed to any function
-    end
-    for i, v in ipairs(tbl[k]) do
-        cfg[k] = cnd_[k] and cnd_[k](v, cfg) or v -- If there is a condition, use it
-        run_cfg(tbl, idx+1, cfg, cnd_, ...)
+    if dodbg then -- If debug, check if max_dif is greater than tolerance
+        for i = 0, cfg.order do 
+            if max_dif[i]/eps > tol then return run_dbg(cfg, elm, elm_str) end
+        end
     end
 end
 
@@ -183,25 +202,19 @@ local function print_result(max_dif_tbl, order) -- From max_dif_tbl, print the r
     end
 end
 
-local function read_mtbl(element, lower_bnds_, order_)
+local function show_mtbl(cfg, res, lower_bnds_, order) -- Use cfg and res to print the results (Lower bounds not optional but can be a number or tbl)
     local lower_bnds = {}
-    local order = order_ or 4
     if is_number (lower_bnds_) then 
         for i = 0, order do lower_bnds[i] = lower_bnds_ end
     else
         lower_bnds = lower_bnds_
     end
-    local ref = mtable:read(element.name..".tfs")
-    local col_list = {}
-    for i, v in ipairs(ref:colnames()) do -- Could be removed if dif becomes separated
-        if not (v:find("max_err_") or v == "n") then col_list[#col_list+1] = v end
-    end
     local col_tbl = {}; for i = 0, order do col_tbl[i] = {} end
     for i = 0, order do 
-        local red_tbl = mtable(ref:colnames())
-        ref:foreach(\r, ri => if r["max_err_"..i] > lower_bnds[i] then red_tbl = red_tbl + r end end)
-        for _, col_name in ipairs(col_list) do
-            local c = red_tbl:getcol(col_name)
+        local red_tbl = mtable(cfg:colnames())
+        cfg:foreach(\r, ri => if res[ri] and res[ri]["max_err_"..i.."_eps"] > lower_bnds[i] then red_tbl = red_tbl + r end end)
+        for _, col_name in ipairs(cfg:colnames()) do
+            local c = red_tbl:getcol(col_name) 
             local _, klist = val2keys(is_matrix(c) and c:totable() or c)
             col_tbl[i][col_name] = klist
         end
@@ -209,17 +222,22 @@ local function read_mtbl(element, lower_bnds_, order_)
     print_result(col_tbl, order)
 end
 
-local function run_test(elm, elm_str, cfg_tbl, tol, cnd_)
-    local res_tbl
-    local mtbl = io.open(elm.name..".tfs", "r")
-    if not mtbl then dosave = true
-    else mtbl:close() end
-    if dosave then res_tbl = gen_mtbl(cfg_tbl, elm, cfg_tbl.order[1]) end
-    run_cfg(cfg_tbl, 1, {n = 0}, {}, cnd_ or {},  -- For recursion, could place icase and order here instead?
-                    elm, elm_str, tol, res_tbl) -- For do_trck
-    
-    if dosave then res_tbl:write(elm.name..".tfs") end
-    if doprnt then read_mtbl(elm, tol, cfg_tbl.order[1]) end
+local function read_mtbl(element, lower_bnds, order) -- Read the stored mtbl and cfg for the element
+    local order = order_ or 4
+    local cfg = mtable:read(element.name..".tfs")
+    local res = mtable:read(element.name.."_max_err.tfs")
+    show_mtbl(cfg, res, lower_bnds, order) 
+end
+
+local function run_test(elm, elm_str, cfg_tbl, tol)
+    local cfg_mtbl, res_mtbl = gen_mtbls(cfg_tbl, elm)
+    local dosave = dosave or check_mtbls(elm)                -- Check if the cfg and results are already saved.
+    if dosave then cfg_mtbl:write(cfg_mtbl.name..".tfs") end -- Save the cfg before results for debugging
+    for i, row in cfg_mtbl:iter() do 
+        if do_trck(row, elm, elm_str, tol, res_mtbl) then break end -- Run every cfg and break if debug is on and there is a failure
+    end
+    if dosave then res_mtbl:write(res_mtbl.name..".tfs") end -- Save the results
+    if doprnt then show_mtbl(cfg_mtbl, res_mtbl, tol, cfg_tbl.order[1]) end -- Print the results
     
     if not dodbg then  -- Cleanup
         os.remove(elm.name .. "_p.txt")
@@ -308,12 +326,11 @@ local function testCAV ()
         volt      = -8 ..8  ..8   ,
         lag       =  0 ..0.9..0.45,
         freq      =  0 ..150 ..75,
-        harmon    =  {2},
+        harmon    =  {\cfg -> cfg.freq == 0 and 2 or 0},
     }
-    local cnd = {harmon = \v, cfg -> cfg.freq == 0 and 2 or 0}
     local cav_ref = tblcpy(ref_cfg)
     cav_ref.icase = {6}
-    run_test(rfcavity, elm_str, tbl_cat(cav_ref, cav_cfg), 10000, cnd)
+    run_test(rfcavity, elm_str, tbl_cat(cav_ref, cav_cfg), 10000)
 end
 
 local function testMULT ()
@@ -331,7 +348,7 @@ local function testMULT ()
     }
     local cav_ref = tblcpy(ref_cfg)
     cav_ref.icase = {6}
-    run_test(multipole, elm_str, tbl_cat(cav_ref, cav_cfg), 1, cnd)
+    run_test(multipole, elm_str, tbl_cat(cav_ref, cav_cfg), 1)
 end
 
 local function testRFMULT ()
@@ -344,7 +361,7 @@ local function testRFMULT ()
         volt      = -8 ..8  ..8   ,
         lag       =  0 ..0.9..0.45,
         freq      =  0 ..150 ..75,
-        harmon    =  {2},
+        harmon    =  {\cfg -> cfg.freq == 0 and 2 or 0},
         k0        = -0.2..0.2..0.2,
         k1        = -0.2..0.2..0.2,
         k2        = -0.2..0.2..0.2,
@@ -354,20 +371,17 @@ local function testRFMULT ()
         k2s       = -0.2..0.2..0.2,
         k3s       = -0.2..0.2..0.2,
     }
-    local cnd = {
-        harmon = \v, cfg -> cfg.freq == 0 and 2 or 0, 
-        }
     local cav_ref = tblcpy(ref_cfg)
     cav_ref.icase = {6}
-    run_test(rfmultipole, elm_str, tbl_cat(cav_ref, cav_cfg), 1000, cnd)
+    run_test(rfmultipole, elm_str, tbl_cat(cav_ref, cav_cfg), 1000)
 end
 -- testCAV()
 -- testRFMULT()
 -- read_mtbl(rfcavity, 20) -- For reading the results
--- testQUAD()
+testQUAD()
 -- testSEXT()
 -- testOCT()
 -- testDECA ()
 -- testDODECA ()
 -- testDRIFT()
-read_mtbl(sextupole, 10, 2) -- For reading the results
+-- read_mtbl(sextupole, 10, 2) -- For reading the results
