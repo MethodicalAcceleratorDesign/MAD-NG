@@ -10,19 +10,30 @@ local printf, openfile, tblcpy, val2keys                         in MAD.utility
 local pi, abs                                                    in math                            
 
 -- TODO: See if it is possible to create a tfs table that is just a generator based on the config
-local dbgmap = require "madl_dbgmap"
-local create_dif =  dbgmap.cmpmdump
+local create_dif = require "madl_dbgmap".cmpmdump
 
-local doprnt = true
-local dosave = false
-local dodbg  = false
+-- The Setup for the tests -----------------------------------------------------o
+local doprnt = false -- false
+local dosave = true  -- true
+local dodbg  = false -- false
+
 local dum = damap() -- get a dummy damap object
-
 local X0s = {{x=0   , px=0    , y=0    , py=0   , t=0   , pt=0   }, -- zero
              {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=0   }, -- 4D
              {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=2e-5}, -- 5D
              {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=2e-5}} -- 6D
 local models = {DKD = 1, TKT = 2}
+
+local ctx =  "icase = ${icase}; model = ${model}; method = ${method}; nslice = ${nslice}; x0i = ${x0i}; order = ${order}; energy = ${energy};"
+local madx_script = [[
+${ctx}
+seq: sequence, l=2 ;
+  elm: ${elm};
+endsequence ;
+]]
+--------------------------------------------------------------------------------o
+
+-- The configuration table -----------------------------------------------------o
 local ref_cfg = { 
     "model", "energy", "method", "nslice", "x0i", "order", "icase",
     model = 1..2,
@@ -33,20 +44,7 @@ local ref_cfg = {
     order = {2},
     icase = {56},
 }
-
-local function tbl_cat(t1, t2) -- Concatenate two tables, index and keys
-    local t1_len = #t1
-    local t = table.new(t1_len + #t2, t1_len + #t2)
-    for i, v in ipairs(t1) do
-        t[i] = v
-        t[v] = t1[v]
-    end
-    for i, v in ipairs(t2) do
-        t[i+t1_len] = v
-        t[v] = t2[v]
-    end
-    return t
-end
+--------------------------------------------------------------------------------o
 
 -- Dealing with the cfg mtable -------------------------------------------------o
 
@@ -92,10 +90,10 @@ local function check_mtbls(elm)
     end
     return true
 end
-
 --------------------------------------------------------------------------------o
 
-local function getlastmap(filename) -- Get the last map from a madx dump file
+-- Grab the final map from the madx dump file ----------------------------------o
+local function getlastmap(filename)
     local file = openfile(filename, "r", {".txt", ".dat", ".out"})
     local final_pos = 0
     for line in file:lines() do
@@ -108,16 +106,9 @@ local function getlastmap(filename) -- Get the last map from a madx dump file
     file:close()
     return dam
   end
+--------------------------------------------------------------------------------o
 
-local ctx =  "icase = ${icase}; model = ${model}; method = ${method}; nslice = ${nslice}; x0i = ${x0i}; order = ${order}; energy = ${energy};"
-local madx_script = [[
-${ctx}
-seq: sequence, l=2 ;
-  elm: ${elm};
-endsequence ;
-]]
-
--- Get max difference in all monomials of all coordinates in the last map
+-- Get max difference in all monomials of all coordinates in the last map ------o
 local function get_diffs(map, order)
     local max_dif = {}
     for i = 0, order do max_dif[i] = 0 end
@@ -131,8 +122,10 @@ local function get_diffs(map, order)
     end
     return max_dif
 end
+--------------------------------------------------------------------------------o
 
-local function get_mad_str(cfg, elm, elm_str, debug_) -- Write MAD-X script to element.seq and generate a MAD-NG script and return it. 
+-- Write MAD-X script to element.seq and generate a MAD-NG script and return it-o
+local function get_mad_str(cfg, elm, elm_str, debug_) 
     io.open("element.seq", "w"):write(
         madx_script%{elm = elm_str(cfg), ctx=ctx}%cfg
     ):close()
@@ -153,28 +146,30 @@ local mtbl, mflw = track {
 return mtbl, mflw
         ]] % {debug = debug_ and 6 or 0}
 end
+-------------------------------------------------------------------------------o
 
-local function run_dbg(cfg, elm, elm_str) -- Run MAD-NG (in debug mode) and MAD-X and compare the results
+-- Run MAD-NG (in debug mode) and MAD-X and compare the results ---------------o
+local function run_dbg(cfg, elm, elm_str) 
     io.open("ref.mad", "w"):write(get_mad_str(cfg, elm, elm_str, true)):close()
     os.execute('../mad '.. "ref.mad" ..' >' .. elm.name .. "_n.txt")
     os.execute('../madx64 '.. "ref.madx" ..' >' .. elm.name .. "_p.txt")
     create_dif({nam=elm.name})
     return true 
 end
+-------------------------------------------------------------------------------o
 
+-- Run track and PTC ----------------------------------------------------------o
 local function do_trck(cfg, elm, elm_str, tol, res_mtbl)
-    -- Run track and PTC
     local mtbl_row = {n = cfg.n}
     local _, mflw = assert(loadstring(get_mad_str(cfg, elm, elm_str)))() -- Run track
     os.execute('../madx64 '.. "ref.madx" ..' >' .. elm.name .. "_p.txt")
     MADX.elm = nil -- Remove element so that next test can be run with new values
         
-    -- Get last map from ptc and compare with mflw
-    local ptc_res = getlastmap(elm.name .. "_p.txt"):fromptc()    
-    local max_dif = get_diffs(mflw[1]:dif(ptc_res), cfg.order) -- To be replaced. Gets a list of max differences of e
+    
+    local ptc_res = getlastmap(elm.name .. "_p.txt"):fromptc() -- Get last map from ptc 
+    local max_dif = get_diffs(mflw[1]:dif(ptc_res), cfg.order) -- To be replaced. Gets a list of max differences of each order
 
-    -- Print results
-    if doprnt then 
+    if doprnt then -- Print results
         io.write(cfg.n, "\t") 
         for i = 0, cfg.order do 
             mtbl_row["max_err_"..i.."_val"] = max_dif[i]
@@ -190,7 +185,9 @@ local function do_trck(cfg, elm, elm_str, tol, res_mtbl)
         end
     end
 end
+-------------------------------------------------------------------------------o
 
+--  Output results of test ----------------------------------------------------o
 local function print_result(max_dif_tbl, order) -- From max_dif_tbl, print the results
     for i = 0, order do 
         io.write("\norder ",i, ":\n")
@@ -202,7 +199,7 @@ local function print_result(max_dif_tbl, order) -- From max_dif_tbl, print the r
     end
 end
 
-local function show_mtbl(cfg, res, lower_bnds_, order) -- Use cfg and res to print the results (Lower bounds not optional but can be a number or tbl)
+local function show_mtbl(cfg, res, lower_bnds_, order) -- (Lower bounds not optional but can be a number or tbl)
     local lower_bnds = {}
     if is_number (lower_bnds_) then 
         for i = 0, order do lower_bnds[i] = lower_bnds_ end
@@ -228,11 +225,14 @@ local function read_mtbl(element, lower_bnds, order) -- Read the stored mtbl and
     local res = mtable:read(element.name.."_max_err.tfs")
     show_mtbl(cfg, res, lower_bnds, order) 
 end
+--------------------------------------------------------------------------------o
 
+-- Run test -------------------------------------------------------------------o
 local function run_test(elm, elm_str, cfg_tbl, tol)
     local cfg_mtbl, res_mtbl = gen_mtbls(cfg_tbl, elm)
     local dosave = dosave or check_mtbls(elm)                -- Check if the cfg and results are already saved.
     if dosave then cfg_mtbl:write(cfg_mtbl.name..".tfs") end -- Save the cfg before results for debugging
+
     for i, row in cfg_mtbl:iter() do 
         if do_trck(row, elm, elm_str, tol, res_mtbl) then break end -- Run every cfg and break if debug is on and there is a failure
     end
@@ -244,7 +244,26 @@ local function run_test(elm, elm_str, cfg_tbl, tol)
         os.remove("element.seq")
     end 
 end
+--------------------------------------------------------------------------------o
 
+-- Concatenate two tables, index and keys --------------------------------------o
+local function tbl_cat(t1, t2) 
+    local t1_len = #t1
+    local t = table.new(t1_len + #t2, t1_len + #t2)
+    for i, v in ipairs(t1) do
+        t[i] = v
+        t[v] = t1[v]
+    end
+    for i, v in ipairs(t2) do
+        t[i+t1_len] = v
+        t[v] = t2[v]
+    end
+    return t
+end
+--------------------------------------------------------------------------------o
+
+
+-- The actual test functions ---------------------------------------------------o
 local function testQUAD ()
     local elm_str = \->" QUADRUPOLE, at=0.75, l=1.5, k1=${k1}, k1s=${k1s}, tilt=${tilt}*pi/8, fringe=${fringe}"
     local quad_cfg = {
@@ -375,6 +394,9 @@ local function testRFMULT ()
     cav_ref.icase = {6}
     run_test(rfmultipole, elm_str, tbl_cat(cav_ref, cav_cfg), 1000)
 end
+--------------------------------------------------------------------------------o
+
+-- Running the tests------------------------------------------------------------o
 -- testCAV()
 -- testRFMULT()
 -- read_mtbl(rfcavity, 20) -- For reading the results
