@@ -77,57 +77,74 @@ skip_wspaces(FILE *stream)
   return c;
 }
 
-static inline void
-print_ords_sm(int n, const ord_t ords[n], FILE *stream)
-{
-  assert(ords && stream);
-  for (int i=0; i < n; i++)
-    if (ords[i]) fprintf(stream, "  %d^%hhu", i+1, ords[i]);
-}
+// static inline void
+// print_ords_sm(int n, const ord_t ords[n], FILE *stream)
+// {
+//   assert(ords && stream);
+//   for (int i=0; i < n; i++)
+//     if (ords[i]) fprintf(stream, "  %d^%hhu", i+1, ords[i]);
+// }
 
 static inline void
-print_ords(int n, const ord_t ords[n], FILE *stream)
+print_ords(int nv, int np, ord_t po, const ord_t ords[nv+np], FILE *stream)
 {
   assert(ords && stream);
-  for (int i=0; i < n-1; i += 2)
+
+  // print variables
+  for (int i=0; i < nv-1; i += 2)
     fprintf(stream, "  %hhu %hhu", ords[i], ords[i+1]);
-  if (n % 2)
-    fprintf(stream, "  %hhu"     , ords[n-1]);
+  if (nv % 2)
+    fprintf(stream, "  %hhu"     , ords[nv-1]);
+
+  // print parameters
+  for (int i=nv; i < nv+np; i++)
+    if (ords[i] != po) fprintf(stream, "  %d^%hhu", i+1, ords[i]);
 }
 
 static inline void
-read_ords(int ci, str_t name, int n, ord_t ords[n], FILE *stream)
+read_ords(int nv, int np, ord_t po, ord_t ords[nv+np], FILE *stream, int ci, str_t name)
 {
   assert(ords && stream);
-  idx_t idx;
-  ord_t ord;
 
   if (!name[0]) name = "-UNNAMED-";
 
-  mad_mono_fill(n, ords, 0);
-  for (int i=0; i < n; i++) {
+  mad_mono_fill(nv, ords   ,  0);
+  mad_mono_fill(np, ords+nv, po);
+
+  // read variables
+  for (int i=0; i < nv-1; i += 2)
+    if (fscanf(stream, "  %hhu %hhu", &ords[i], &ords[i+1]) != 2)
+      error("invalid monomial input at index %d of '%s'", ci, name);
+  if (nv % 2)
+    if (fscanf(stream, "  %hhu"     , &ords[nv-1]) != 1)
+      error("invalid monomial input at index %d of '%s'", ci, name);
+
+  // read parameters
+  idx_t idx;
+  ord_t ord;
+  for (int i=nv; i < nv+np; i++) {
     idx = 0, ord = -1;
     int cnt = fscanf(stream, " %d^%hhu", &idx, &ord);
 
 #if DEBUG > 2
     int chr = getc(stream);
     printf("mono: ci=%d, i=%d[%d], cnt=%d, idx=%d, ord=%d, nxtchr='%c'\n",
-           ci, i, n, cnt, idx, ord, chr);
+           ci, i, nv+np, cnt, idx, ord, chr);
     ungetc(chr, stream);
 #endif
 
-         if (cnt == 1) ord = idx, idx = i;
-    else if (cnt == 2) idx = idx-1, i = idx;
+         if (cnt == 0) break;
+    else if (cnt == 2) ;
     else error("invalid monomial input at index %d of '%s'", ci, name);
 
-    ensure(0 <= idx && idx < n,
-           "invalid index (expecting 0 < %d <= %d) at index %d of '%s'",
-            idx+1, n, ci, name);
-    ensure(ord <= DESC_MAX_ORD,
-           "invalid order (expecting 0 <= %d <= %d) at index %d of '%s'",
+    ensure(nv < idx && idx <= nv+np,
+           "invalid parameter index (expecting %d < %d <= %d) at index %d of '%s'",
+            nv, idx, nv+np, ci, name);
+    ensure(0 < ord && ord <= DESC_MAX_ORD,
+           "invalid order (expecting 0 < %d <= %d) at index %d of '%s'",
             ord, DESC_MAX_ORD, ci, name);
 
-    ords[idx] = ord;
+    ords[idx-1] = ord;
   }
 }
 
@@ -242,7 +259,7 @@ FUN(scan_hdr) (int *kind_, char name_[NAMSZ], FILE *stream_)
     // read variables orders if present (GTPSA)
     ord_t no[nn];
     if ((cnt += fscanf(stream_, ", N%*[O] = ")) == 6) {
-      read_ords(-1,name,nn,no,stream_);
+      read_ords(nv,np,po,no,stream_,-1,name);
       ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish VO line
     }
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard *****
@@ -272,7 +289,8 @@ FUN(scan_coef) (T *t, FILE *stream_)
   if (!stream_) stream_ = stdin;
 
   NUM   v = 0;
-  int   nn = t->d->nn, cnt = -1, i = -1, nc;
+  int   nn = t->d->nn, nv = t->d->nv, np = t->d->np;
+  int   cnt = -1, i = -1, nc;
   ord_t o = 0, ords[nn];
   FUN(reset0)(t);
 
@@ -330,7 +348,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
       printf("coef: i=%d, v=" FMT ", o=%d\n", i, VAL(v), o);
     #endif
 
-    read_ords(i,t->nam,nn,ords,stream_); // sanity check
+    read_ords(nv,np,0,ords,stream_,i,t->nam); // sanity check
     ensure(mad_mono_ord(nn,ords) == o,
            "invalid monomial order at index %d of '%s'", i, t->nam);
 
@@ -402,7 +420,7 @@ FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
 
   if (d->uno) {
     fprintf(stream_, ", NO = ");
-    print_ords(d->nn, d->no, stream_);
+    print_ords(d->nv, d->np, d->po, d->no, stream_);
   }
   fprintf(stream_, "\n *******************************************************");
 #ifdef MAD_CTPSA_IMPL
@@ -429,7 +447,7 @@ coeffonly: ;
           fprintf(stream_, "\n     I   COEFFICIENT                                      ORDER   EXPONENTS");
         fprintf(stream_, "\n%6d  %23.16lE %+23.16lEi   %2hhu   ", ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
 #endif
-        (d->nn > 20 ? print_ords_sm : print_ords)(d->nn, d->To[i], stream_);
+        print_ords(d->nv, d->np, 0, d->To[i], stream_);
       }
     }
     if (!idx)
