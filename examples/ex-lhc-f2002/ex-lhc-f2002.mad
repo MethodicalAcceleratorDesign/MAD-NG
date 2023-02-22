@@ -312,8 +312,8 @@ local lhc = MADX['lhc'..bn] -- current sequence
 io.write("*** Running ", lhc.name, " ***\n")
 
 -- for 2nd method in get_nf
--- lhc:deselect(observed, {pattern="BPM"})
--- lhc:deselect(observed, {pattern="MO" })
+lhc:deselect(observed, {pattern="BPM"})
+lhc:deselect(observed, {pattern="MO" })
 
 -- list of all knobs
 local kn = {}
@@ -327,9 +327,10 @@ local X0 = damap{nv=6, np=ki, mo=5, po=1,
                  vn=tblcat({'x','px','y','py','t','pt'}, kn)}
 
 -- set knobs as parameters
-for _,ks in ipairs(kn) do
+for i,ks in ipairs(kn) do
   MADX[ks] = MADX[ks] + X0[ks] ; -- MADX[ks]:print(ks)
 end
+
 
 local function prt_rdt (nf, kind)
   local a = assert(nf[kind], "invalid kind '"..kind.."'")
@@ -338,6 +339,19 @@ local function prt_rdt (nf, kind)
     printf("%4d: %s[%s] A=% .6e, C=% .6e, S=% .6e\n",i,kind,k,abs(v),real(v),imag(v))
   end
 end
+
+-- phases
+local mu = {
+  IP1      = {0,0},
+  IP2      = {8.043061770, 7.840682306},
+  IP3      = {15.76253887, 15.45691078},
+  IP4      = {23.30585979, 22.16140101},
+  IP5      = {30.85363592, 29.85128770},
+  IP6      = {38.54141785, 37.20385002},
+  IP7      = {46.21397846, 44.57377229},
+  IP8      = {54.19227884, 52.24174731},
+["IP1.L1"] = {62.27504896, 60.29512787},
+}
 
 -- compute RDTs
 local function get_nf(mthd)
@@ -352,16 +366,16 @@ local function get_nf(mthd)
     end
 
   elseif mth == 'trkrdt' then  -- 2nd method (don't use yet)
-    io.write("** Tracking ", ip, " **\n")
+    io.write("** Tracking ", ips[1], " **\n")
     lhc:cycle(ips[1])
     local _, mflw = track{sequence=lhc, method=4, save=false, X0=X0}
-    local nf1 = normal(mflw[1])
+    local nf1 = normal(mflw[1]):analyse()
 
     io.write("** Tracking RDT\n")
-    local X1 = nf1.a:real()
-    local mtbl, mflw = track{sequence=lhc, method=4, savemap=true, X0=X1}
+    local X1 = nf1.a:real():set0(nf1.x0) ; X1.status = 'Aset'
+    local mtbl, mflw = track{sequence=lhc, range="IP1/IP5", method=4, savemap=true, X0=X1}
     for i,ip in ipairs(ips) do
-      nf[i] = nf1:analyse(mtbl[ip].__map, mu[i]) -- not yet in production
+      nf[i] = nf1:analyse('gnf', mtbl[ip].__map, mu[ip])
     end
   end
 
@@ -369,7 +383,7 @@ local function get_nf(mthd)
 end
 
 -- run once for reference values
-local nf = get_nf()
+local nf = get_nf('trkrdt')
 for i,ip in ipairs(ips) do
   printf("%s: q1     = % -.6e\n", ip, nf[i].q1                    )
   printf("%s: q2     = % -.6e\n", ip, nf[i].q2                    )
@@ -382,7 +396,7 @@ for i,ip in ipairs(ips) do
 end
 
 -- run once and quit
--- os.exit()
+os.exit()
 
 -- backup reference tunes and amplitude detuning.
 local q1_ref   = nf[1].q1
@@ -439,8 +453,8 @@ match {
   end,
   variables  = vars,
   equalities = equs,
-  objective  = { bisec=9 },
-  maxcall=100, info=4, -- debug=3
+  objective  = { bisec=9, method="LD_SLSQP" },
+  maxcall=2000, info=4, -- debug=3
 }
 
 -- restore strengths as scalars

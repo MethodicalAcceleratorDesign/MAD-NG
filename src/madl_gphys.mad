@@ -667,6 +667,7 @@ local function nfcpy (nf, a_)
     ci      = nf.ci,
 
     anh     = nf.anh,
+    t_op    = nf.t_op,
   }
 
   return cpy
@@ -676,20 +677,46 @@ local function nfana (nf, k_, m_, mu_)
   if is_damap(k_) and is_nil(m_) then m_, k_ = k_ end -- right shift
 
   assert(is_nf (nf), "invalid argument #1 (normal form expected)")
-  assert(is_nil(k_) or nf_knd[k_]   , "invalid argument #2 (kind expected)" )
-  assert(is_nil(m_) or isa_damap(m_), "invalid argument #3 (A-damap expected)")
-
-  if m_ then nf = nf:copy(m_:cplx()):set0(0) end
+  assert(is_nil(k_)  or nf_knd[k_]   , "invalid argument #2 (kind expected)" )
+  assert(is_nil(m_)  or isa_damap(m_), "invalid argument #3 (A-damap expected)")
+  assert(is_nil(mu_) or is_table(m_) , "invalid argument #4 (table expected)")
 
   local kind = nf_knd[k_ or 'all']
   local mono = monomial(nf.nn)
   local ham = {}
 
+  -- propagated normal form
+  local ri
+  if m_ then
+    if mu_ and abs(mu_[1])+abs(mu_[2]) > 0 then
+      local frac in MAD.gmath
+      ri = m_:same():eye()
+
+--      m_:print("a")
+
+      print("mu=", MAD.tostring(mu_))
+      local mu1, mu2 = -twopi*frac(mu_[1]), -twopi*frac(mu_[2])
+
+      ri. x:set(2, cos(mu1)) ; ri. x:set(3,-sin(mu1))
+      ri.px:set(2, sin(mu1)) ; ri.px:set(3, cos(mu1))
+      ri. y:set(4, cos(mu2)) ; ri. y:set(5,-sin(mu2))
+      ri.py:set(4, sin(mu2)) ; ri.py:set(5, cos(mu2))
+
+      ri:get1():print("R^-1")
+      ri:print("r^-1")
+      m_ = m_ * ri
+    end
+
+    nf = nf:copy(m_:cplx():set0(0))
+  end
+
   -- GNF and HAM
   if is_nil(nf.gnf) and (kind == 'gnf' or kind == 'all') then
     local a, c, ci, nv, nn, lam in nf
     local gnf = {}
-    local g = (ci*a*c):factor_map(-1):fld2vec()
+    local acs = ci*a*c
+    if ri then acs = acs*ri end
+    local g = acs:factor_map(-1):fld2vec()
     g:cutord(-2, g) -- keep only orders 3..
 
     local i, v = 0
@@ -697,13 +724,16 @@ local function nfana (nf, k_, m_, mu_)
       i, v = g:cycle(i, mono)
       if i == 0 then break; end
       local ms = mono:tostring()
-      local s, p = 0, 1
-      for j=2,nv,2 do
-        s = s +       abs(mono[j-1]-mono[j])
-        p = p * lam[j-1]^(mono[j-1]-mono[j])
-      end
       gnf[#gnf+1], gnf[ms] = ms, v                                  -- gnf terms
-      ham[#ham+1], ham[ms] = ms, v * (1-p)                          -- ham terms
+
+      if kind == 'all' then
+        local s, p = 0, 1
+        for j=2,nv,2 do
+          s = s +       abs(mono[j-1]-mono[j])
+          p = p * lam[j-1]^(mono[j-1]-mono[j])
+        end
+        ham[#ham+1], ham[ms] = ms, v * (1-p)                        -- ham terms
+      end
     end
     nf.gnf = gnf
   end
@@ -730,9 +760,9 @@ local function nfana (nf, k_, m_, mu_)
   -- TUNES
   if is_nil(nf.q1) then
     local lam in nf
-    nf.q1 = lam[1]:carg()/twopi
-    nf.q2 = lam[3]:carg()/twopi
-    nf.q3 = lam[5]:carg()/twopi
+    nf.q1 = lam[1]:carg()/twopi ; if nf.q1 < 0 then nf.q1 = nf.q1+1 end
+    nf.q2 = lam[3]:carg()/twopi ; if nf.q2 < 0 then nf.q2 = nf.q2+1 end
+    nf.q3 = lam[5]:carg()/twopi ; if nf.q3 < 0 then nf.q3 = nf.q3+1 end
   end
 
   nf.ham = ham
