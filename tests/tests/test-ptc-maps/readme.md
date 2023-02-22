@@ -3,7 +3,7 @@ Building a test for an element
 
 To create a test for a single element, there are two main components that need to be created; the sequence and the configuration specific to the element.
 
-The sequence is a string that contains the MAD-X script to create the element that you desire to test, with all the necessary parameters, the can be assigned through formatting with the configuration table. For example, a quadrupole with the parameters `k1`, `k1s` `fringe` and `tilt` can be created with the following string: 
+The sequence is a string that contains the MAD-X script to create the element that you desire to test, with all the necessary parameters, the parameters can be assigned through formatting with the configuration table. For example, a quadrupole with the parameters `k1`, `k1s` `fringe` and `tilt` can be created with the following string: 
 ```
 local elm_str = "QUADRUPOLE, at=0.75, l=1.5, k1=${k1}, k1s=${k1s}, tilt=${tilt}*pi/8, fringe=${fringe}"
 ```
