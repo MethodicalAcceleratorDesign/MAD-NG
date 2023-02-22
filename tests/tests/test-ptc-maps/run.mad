@@ -24,7 +24,7 @@ endsequence ;
 --------------------------------------------------------------------------------o
 
 -- The setup for the tests -----------------------------------------------------o
-local doprnt = true -- false
+local doprnt = false -- false
 local dorun  = true  -- true
 local dosave = true  -- true
 local dodbg  = false -- false
@@ -352,9 +352,24 @@ local function testCAV(tol_)
     run_test(rfcavity, elm_str, tbl_cat(cav_ref, cav_cfg), tol_)
 end
 
+local function testCCAV(tol_)
+    local elm_str =  "CRABCAVITY, at=0.75, l=1.5, volt=${volt}, lag=${lag}, harmon=${harmon}, freq=${freq};"
+    local ccav_cfg = {
+        "volt", "lag", "freq", "harmon",
+        -- no_totalpath = {true, false}, !Illegal in MAD-X
+        volt      = -8 ..8  ..8   ,
+        lag       =  0 ..0.9..0.45,
+        freq      =  0 ..150 ..75,
+        harmon    =  {\cfg -> cfg.freq == 0 and 2 or 0},
+    }
+    local cav_ref = tblcpy(ref_cfg)
+    cav_ref.icase = {6}
+    run_test(crabcavity, elm_str, tbl_cat(cav_ref, ccav_cfg), tol_)
+end
+
 local function testMULT(tol_)
     local elm_str =  "MULTIPOLE, at=0.75, lrad=1.5, knl={${k0}, ${k1}, ${k2}, ${k3}}, ksl={${k0s}, ${k1s}, ${k2s}, ${k3s}};"
-    local cav_cfg = {
+    local mult_cfg = {
         "k0", "k1", "k2", "k3", "k0s", "k1s", "k2s", "k3s",
         k0        = -0.2..0.2..0.2,
         k1        = -0.2..0.2..0.2,
@@ -367,17 +382,65 @@ local function testMULT(tol_)
     }
     local cav_ref = tblcpy(ref_cfg)
     cav_ref.icase = {6}
-    run_test(multipole, elm_str, tbl_cat(cav_ref, cav_cfg), tol_)
+    run_test(multipole, elm_str, tbl_cat(cav_ref, mult_cfg), tol_)
 end
 
 local function testSBEND(tol_)
     local elm_str =  "SBEND, at=0.75, l=1.5, k0=${k0}*2*pi/1e2/1.5, angle=${k0}*2*pi/1e2, kill_ent_fringe=${no_fringe}, kill_exi_fringe=${no_fringe};"
-    local cav_cfg = {
+    local sbend_cfg = {
         "k0", "no_fringe", 
         k0        = -0.5..0.5..0.2,
         no_fringe = {true, false},
     }
-    run_test(sbend, elm_str, tbl_cat(ref_cfg, cav_cfg), tol_)
+    run_test(sbend, elm_str, tbl_cat(ref_cfg, sbend_cfg), tol_)
+end
+
+local function testRBEND(tol_)
+    local elm_str =  "RBEND, at=0.75, l=1.5, k0=${k0}*2*pi/1e2/1.5, angle=${k0}*2*pi/1e2, kill_ent_fringe=${no_fringe}, kill_exi_fringe=${no_fringe}, ptcrbend=true, truerbend=true;"
+    local rbend_cfg = {
+        "k0", "no_fringe", 
+        k0        = -0.5..0.5..0.2,
+        no_fringe = {--[[ true, ]] false}, ! Impossible to turn off fringe in MAD-X
+    }
+    run_test(rbend, elm_str, tbl_cat(ref_cfg, rbend_cfg), tol_)
+end
+
+local function testSOL(tol_) ! Only TKT while MAD-NG does not support 0 length solenoids 
+    local elm_str =  "SOLENOID, at=0.75, l=${l}, ks=${ks}, fringe=${fringe};"
+    local sol_cfg = {
+        "l", "ks", --[[ "ksi", ]] "fringe",
+        l        = {1.5},
+        ks       = -0.6..0.6..0.3,
+        -- ksi      = {\cfg-> ((cfg.model==1) and (cfg.method < 4) and (cfg.nslice == 1) and cfg.ks*1.5 or 0)}, 
+        fringe   = 0..1,
+    }
+    local sol_ref = tblcpy(ref_cfg)
+    sol_ref.model = {2} ! TKT only
+    run_test(solenoid, elm_str, tbl_cat(sol_ref, sol_cfg), tol_)
+end
+
+local function testELSEP(tol_)
+    local elm_str =  "ELSEPARATOR, at=0.75, l=1.5, ex=${ex}, ey=${ey}, ex_l=${ex_l}, ey_l=${ey_l}, tilt=${tilt};" 
+    local elsep_cfg = {
+        "ex", "ey", "ex_l", "ey_l", "tilt",
+        ex       = -4..4..4,
+        ey       = -4..4..4,
+        ex_l     = {0}, !-6..6..6,   ! Broken as the madx is ex_l and the madng is exl
+        ey_l     = {0}, !-6..6..6,   ! Broken as the madx is ex_l and the madng is exl
+        tilt     = {0}, !1..4, ! MAD-X does not tell PTC about tilt
+    }
+    run_test(elseparator, elm_str, tbl_cat(ref_cfg, elsep_cfg), tol_)
+end
+
+local function testKICK(tol_)
+    local elm_str =  "KICKER, at=0.75, l=1.5, hkick=${hkick}, vkick=${vkick}, tilt=${tilt}*pi/16;"
+    local kick_cfg = {
+        "hkick", "vkick", "tilt",
+        hkick    = -2e-3..2e-3..2e-3,
+        vkick    = -2e-3..2e-3..2e-3,
+        tilt     = 1..4,
+    }
+    run_test(kicker, elm_str, tbl_cat(ref_cfg, kick_cfg), tol_)
 end
 
 local function testRFMULT(tol_)
@@ -385,7 +448,7 @@ local function testRFMULT(tol_)
         RFMULTIPOLE, at=0.75, lrad=1.5, volt=${volt}, lag=${lag}, harmon=${harmon}, freq=${freq}, 
         pnl={${k0}, ${k1}, ${k2}, ${k3}}, psl={${k0s}, ${k1s}, ${k2s}, ${k3s}};
         ]]
-    local cav_cfg = {
+    local rfmult_cfg = {
         "volt", "lag", "freq", "harmon", "k0", "k1", "k2", "k3", "k0s", "k1s", "k2s", "k3s",
         -- totalpath = {false, true}, !illegal in MAD-X
         volt      = -8 ..8  ..8   ,
@@ -403,19 +466,44 @@ local function testRFMULT(tol_)
     }
     local cav_ref = tblcpy(ref_cfg)
     cav_ref.icase = {6}
-    run_test(rfmultipole, elm_str, tbl_cat(cav_ref, cav_cfg), tol_)
+    run_test(rfmultipole, elm_str, tbl_cat(cav_ref, rfmult_cfg), tol_)
 end
 --------------------------------------------------------------------------------o
 
 -- Running the tests------------------------------------------------------------o
--- testCAV(1000)
-testSBEND(1e6)
--- testRFMULT()
+-- testDRIFT()
+-- testSBEND(1e6)
+-- testRBEND(1e6)
 -- testQUAD(1000)
--- testQUAD("quadrupole_max_err")
+-- testQUAD("quadrupole_max_err")! For testing with a file for the tolerance
 -- testSEXT()
 -- testOCT()
 -- testDECA ()
 -- testDODECA ()
--- testDRIFT()
+-- testKICK(1e3)
+-- testELSEP(1e3)
+testMULT(100)
+-- testSOL(1e3)
+-- testCAV(1000)
+-- testRFMULT()
+-- testCCAV(1000) !Fails as MAD-X defines a k0 for the crab cavity based on volt
 -- read_mtbl(quadrupole, 10, 2) -- For reading the results
+
+
+--[[
+    LIST OF ISSUES:
+    
+    MAD-NG:
+        - MAD-NG does not support 0 length solenoids
+
+    MAD-X:
+        - MAD-X does not communicate tilt in ELSEPARATOR to PTC
+        - MAD-X does not allow to turn off fringe in RBEND
+        - MAD-X defines a k0 for the crab cavity based on volt
+        - MAD-X does not support totalpath in RFMULTIPOLE
+        - MAD-X does not support totalpath in CRABCAVITY
+    
+    Other:
+        - MAD-NG does not support the same syntax for the rf cavity as MAD-X for totalpath
+        - MAD-NG does not support the same syntax for the elseparator as MAD-X for exl and eyl
+]]
