@@ -197,48 +197,46 @@ local function gen_cfg(cfg_obj, idx, gen_fun) --The recursive function
     end
     for i, v in ipairs(cfg_obj[k]) do
         cfg_obj.cfg[k] = v -- If there is a condition, use it
-        gen_cfg(cfg_obj, idx+1, gen_fun)
+        gen_cfg(cfg_obj, idx+1, gen_fun) -- Index required as this needs to stay constant during each call
     end
 end
 local function create_mtbl(cfg_obj, elm_str, tol) -- Create empty mtable and fill function
-    local mtbl_cols = {"__cfg", "__res"}
-	local mtbl = mtable(cfg_obj.name)(mtbl_cols)
+	local mtbl = mtable(cfg_obj.name)({"__cfg", "__res"})
 	gen_cfg(cfg_obj, 1, \-> run_cfg(cfg_obj, mtbl, elm_str, tol)) -- Fill the mtable
     
     local attr_cols = tbl2lst(mtbl.__cfg[1])
     local res_cols  = tbl2lst(mtbl.__res[1])
-    for i, k in pairs(attr_cols) do
-        mtbl:addcol(k, \ri, m -> m[ri].__cfg[k])
-    end
-    for i, k in pairs(res_cols) do
-        mtbl:addcol(k, \ri, m -> m[ri].__res[k])
+    for i, cols in ipairs({"__cfg", "__res"}) do
+        for k, v in pairs(mtbl[cols][1]) do
+            mtbl:addcol(k, \ri, m -> m[cols][ri][k])
+        end
     end
     return mtbl, attr_cols, res_cols
 end
 -------------------------------------------------------------------------------o
 
 --  Output results of test ----------------------------------------------------o
-local function get_lower_bnds(res, lower_bnds)
-    if is_string(lower_bnds) then
-        local bnds_file = mtable:read(lower_bnds)
+local function get_lower_bnds(res, tol)
+    if is_string(tol) then
+        local bnds_file = mtable:read(tol)
         assert(#bnds_file == #res, "The tolerance file must have the same number of rows as the configuration file")
         return \o, ri->bnds_file[ri]["order"..o.."_eps"]
-    elseif is_number(lower_bnds) then
-        return \->lower_bnds
+    elseif is_number(tol) then
+        return \->tol
     else 
-        return \o->lower_bnds[o]
+        return \o->tol[o]
     end
 end
 
-local function show_mtbl(res, attr_cols, lower_bnds, order) -- (Lower bounds not optional but can be a number or tbl)
-    local lower_bnds = get_lower_bnds(res, lower_bnds)
+local function show_mtbl(res, attr_cols, tol, order) -- (Lower bounds not optional but can be a number or tbl)
+    local tol = get_lower_bnds(res, tol)
     local col_tbl = {}; for i = 0, order do col_tbl[i] = {} end
     local dum_tbl = mtable(tblcpy(attr_cols))
     dum_tbl.novector = true
     for o = 0, order do
         local err_tbl = dum_tbl:copy()
         res:foreach(\r, ri =>
-            if res[ri]["order"..o.."_eps"] > lower_bnds(o, ri) then 
+            if res[ri]["order"..o.."_eps"] > tol(o, ri) then 
                 for i, v in ipairs(attr_cols) do
                     err_tbl[v][ri] = r[v]
                 end 
@@ -247,19 +245,19 @@ local function show_mtbl(res, attr_cols, lower_bnds, order) -- (Lower bounds not
         -- Printing
         io.write("\norder ",o, ":\n")
         for _, col_name in ipairs(attr_cols) do
-            local _, key_cnt = val2keys(err_tbl:getcol(col_name))
             if not (col_name == "cfgid") then
+                local _, key_cnt = val2keys(err_tbl:getcol(col_name))
                 io.write(col_name, "\t= ", tostring(key_cnt), "\n")
             end
         end
     end
 end
 
-local function read_mtbl(test_name, lower_bnds, order_) -- Read the stored mtbl and cfg for the element
+local function read_mtbl(test_name, tol, order_) -- Read the stored mtbl and cfg for the element
     local order = order_ or 4
     local cfg = mtable:read(out_dir(test_name.."_cfg.tfs"))
     local res = mtable:read(out_dir(test_name.."_res.tfs"))
-    show_mtbl(res, res:colnames(), lower_bnds, order)
+    show_mtbl(res, res:colnames(), tol, order)
 end
 -------------------------------------------------------------------------------o
 
@@ -268,8 +266,10 @@ local function run_test(elm_str, cfg_obj, tol_)
     local tol = tol_ or 1 -- Default tolerance is 1 eps
     if not cfg_obj.dorun then return read_mtbl(cfg_obj.name, tol, cfg_obj.order) end
     local cfg_mtbl, attr_cols, res_cols = create_mtbl(cfg_obj, elm_str, tol)
-    cfg_obj.dosave = cfg_obj.dosave or not
-                  (out_fileexists(cfg_obj.name.."_cfg.tfs") and out_fileexists(cfg_obj.name.."_res.tfs"))
+    cfg_obj.dosave = cfg_obj.dosave or not (
+                   out_fileexists(cfg_obj.name.."_cfg.tfs") and 
+                   out_fileexists(cfg_obj.name.."_res.tfs")
+                )
     if cfg_obj.dosave then 
         cfg_mtbl:write(out_dir(cfg_mtbl.name.."_cfg.tfs"), attr_cols) -- Save the cfg before results for debugging
         cfg_mtbl:write(out_dir(cfg_mtbl.name.."_res.tfs"), res_cols) 
