@@ -36,9 +36,9 @@ local log, exp                                                 in MAD.gmath
 local openfile, strtrim                                        in MAD.utility
 
 -- To review
-local is_nil, is_number, is_integer, is_complex, is_scalar,
-      is_string, is_table, is_matrix, is_cmatrix, is_vector,
-      is_ivector, is_cvector, is_monomial, is_lengthable,
+local is_nil, is_boolean, is_number, is_integer, is_complex, is_scalar,
+      is_matrix, is_cmatrix, is_vector, is_ivector, is_cvector,
+      is_monomial, is_string, is_table, is_lengthable,
       is_iterable, is_mappable, get_metamethod                 in MAD.typeid
 
 -- tmp for returned values
@@ -1195,7 +1195,10 @@ end
 
 -- dif : r_i = (x_i - y_i) / max(|x_i|, 1)
 
-function MR.dif (x, y, r)
+local difsum, prtsum
+
+function MR.dif (x, y, r, sum)
+  if is_boolean(r) then sum, r = r end
   if is_tpsa(y) and is_tpsa(x) then              -- tpsa ~ tpsa
     r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_tpsa_dif(x, y, r)
@@ -1205,10 +1208,11 @@ function MR.dif (x, y, r)
   else
     error("invalid 'tpsa ~ ?' operation")
   end
-  return r
+  return r, sum and difsum(r)
 end
 
-function MC.dif (x, y, r)
+function MC.dif (x, y, r, sum)
+  if is_boolean(r) then sum, r = r end
   if is_ctpsa(y) and is_ctpsa(x) then            -- ctpsa ~ ctpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_dif(x, y, r)
@@ -1218,7 +1222,44 @@ function MC.dif (x, y, r)
   else
     error("invalid 'ctpsa ~ ?' operation")
   end
-  return r
+  return r, sum and difsum(r)
+end
+
+-- dif summary
+
+function difsum (x)
+  local i, v = x:maxbyord()
+  local s = { nam = x:nam(), mi = i, c={}, m={}, print=prtsum }
+  for i=1,#v do
+    s[i] = v[i]
+    if v[i] > 0 then
+      s.c[i] = x:get     (v[i])
+      s.m[i] = x:get_mono(v[i])
+    end
+  end
+  return s
+end
+
+-- print dif summary (method of summary)
+
+function prtsum (s)
+  local printf in MAD.utility
+
+  printf(" %s = \n", s.nam:upper())
+  if s.mi == 0 then
+    io.write("         ALL COMPONENTS ZERO\n")
+    return s
+  end
+
+  local fmt = option.numfmt ; option.numfmt = "% -.16e"
+  for i=1,#s do
+    if s[i]>0 then
+      printf(" %-6d %s%-2d  %s  %s\n", s[i], s[i] == s.mi and "*" or " ",
+             s.m[i]:ord(), s.c[i]:tostring(), s.m[i]:tostring())
+    end
+  end
+  option.numfmt = fmt
+  return s
 end
 
 -- tpsa functions -------------------------------------------------------------o
