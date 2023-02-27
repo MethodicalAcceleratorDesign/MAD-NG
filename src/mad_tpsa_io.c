@@ -32,8 +32,8 @@
 #include "mad_tpsa_impl.h"
 #endif
 
-// #undef  DEBUG
-// #define DEBUG 3
+//#undef  DEBUG
+//#define DEBUG 3
 
 // --- local ------------------------------------------------------------------o
 
@@ -113,10 +113,10 @@ read_ords(int nv, int np, ord_t po, ord_t ords[nv+np], FILE *stream, int ci, str
 
   // read variables
   for (int i=0; i < nv-1; i += 2)
-    if (fscanf(stream, "  %hhu %hhu", &ords[i], &ords[i+1]) != 2)
+    if (fscanf(stream, "%*[ ]%hhu%*[ ]%hhu", &ords[i], &ords[i+1]) != 2)
       error("invalid monomial input at index %d of '%s'", ci, name);
   if (nv % 2)
-    if (fscanf(stream, "  %hhu"     , &ords[nv-1]) != 1)
+    if (fscanf(stream, "%*[ ]%hhu"         , &ords[nv-1]         ) != 1)
       error("invalid monomial input at index %d of '%s'", ci, name);
 
   // read parameters
@@ -124,13 +124,12 @@ read_ords(int nv, int np, ord_t po, ord_t ords[nv+np], FILE *stream, int ci, str
   ord_t ord;
   for (int i=nv; i < nv+np; i++) {
     idx = 0, ord = -1;
-    int cnt = fscanf(stream, " %d^%hhu", &idx, &ord);
+    int cnt = fscanf(stream, "%*[ ]%d^%hhu", &idx, &ord);
 
 #if DEBUG > 2
-    int chr = getc(stream);
-    printf("mono: ci=%d, i=%d[%d], cnt=%d, idx=%d, ord=%d, nxtchr='%c'\n",
+    int chr = getc(stream); ungetc(chr, stream);
+    printf("mono: ci=%d, oi=%d[%d], cnt=%d, idx=%d, ord=%d, nxtchr='%c'\n",
            ci, i, nv+np, cnt, idx, ord, chr);
-    ungetc(chr, stream);
 #endif
 
          if (cnt == 0) break;
@@ -179,9 +178,8 @@ FUN(scan_hdr) (int *kind_, char name_[NAMSZ], FILE *stream_)
   skip_wspaces(stream_);
 
   // read the name (which is 15+'\0' chars)
-  char name[NAMSZ]="", sep='?';
-  int cnt = fscanf(stream_, "%16[^:,\t\n]%c", name, &sep);
-  name[NAMSZ-1] = '\0';
+  char name[NAMSZ]= {0}, sep='?';
+  int cnt = fscanf(stream_, "%15[^:,\t\n]%c", name, &sep);
 
 #if DEBUG > 2
     printf("header: cnt=%d, name='%s', sep='%c'\n", cnt, name, sep);
@@ -196,17 +194,18 @@ FUN(scan_hdr) (int *kind_, char name_[NAMSZ], FILE *stream_)
   ensure(!feof(stream_) && !ferror(stream_), "invalid input (file error?)");
 
   char knd=0;
-  int nv=0, np=0;
+  int nv=0, np=0, nc;
   ord_t mo=0, po=0;
   log_t ptc=sep == ',';
 
   if (ptc) // n = 2, swap input for PTC/BERZ
-    cnt = fscanf(stream_, " NO = %hhu, NV = %d",
-                                  &mo,     &nv);
+    cnt = fscanf(stream_, "%*[ ]NO%*[ ]=%hhu,%*[ ]NV%*[ ]=%d",
+                                        &mo,              &nv);
   else     // n = 3 or 5
-    cnt = fscanf(stream_, " %c, NV = %d, MO = %hhu, NP = %d, PO = %hhu",
-                          &knd,     &nv,       &mo,     &np,       &po);
-
+    cnt = fscanf(stream_,"%*[ ]%c,%*[ ]NV%*[ ]=%d,%*[ ]MO%*[ ]=%hhu"
+                                ",%*[ ]NP%*[ ]=%d,%*[ ]PO%*[ ]=%hhu",
+                               &knd,           &nv,            &mo,
+                                               &np,            &po);
 #if DEBUG > 2
     printf("header: cnt=%d, knd='%c', nv=%d, mo=%d, np=%d, po=%d\n",
                        cnt, knd?knd:'?', nv,    mo,    np,    po);
@@ -258,10 +257,11 @@ FUN(scan_hdr) (int *kind_, char name_[NAMSZ], FILE *stream_)
 
     // read variables orders if present (GTPSA)
     ord_t no[nn];
-    if ((cnt += fscanf(stream_, ", N%*[O] = ")) == 6) {
-      read_ords(nv,np,po,no,stream_,-1,name);
-      ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish VO line
+    (void)fscanf(stream_, ",%*[ ]NO%*[ ]=%n", &nc);
+    if (nc >= 6) {
+      read_ords(nv,np,po,no,stream_,-1,name); ++cnt;
     }
+    ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish NO line
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard *****
 
     const D* ret = cnt == 5 ? mad_desc_newvp (nv, np, mo, po)
@@ -302,7 +302,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
   #endif
 
   if (c == 'I') {
-    (void)fscanf(stream_, "I%*[ \t]COEFFICIENT%*[ \t]ORDER%*[ \t]EXPONENTS%n", &nc);
+    (void)fscanf(stream_, "I%*[ ]COEFFICIENT%*[ ]ORDER%*[ ]EXPONENTS%n", &nc);
     if (nc < 29) warn("unable to parse GTPSA coefficients for '%s'",
                        t->nam[0] ? t->nam : "-UNNAMED-");
     #if DEBUG > 2
@@ -312,9 +312,10 @@ FUN(scan_coef) (T *t, FILE *stream_)
   }
 
   if (c == 'A') {
-    (void)fscanf(stream_, "ALL COMPONENTS %n", &nc); // works for 0_dp, ALL and EPS
-    if (nc != 15) warn("unable to parse GTPSA coefficients for '%s'",
-                       t->nam[0] ? t->nam : "-UNNAMED-");
+    // works for 0_dp, ZERO and EPS
+    (void)fscanf(stream_, "ALL%*[ ]COMPONENTS%n", &nc);
+    if (nc < 14) warn("unable to parse GTPSA coefficients for '%s'",
+                      t->nam[0] ? t->nam : "-UNNAMED-");
     #if DEBUG > 2
       printf("coef: 'ALL COMP...' parsed\n");
     #endif
@@ -326,18 +327,18 @@ FUN(scan_coef) (T *t, FILE *stream_)
     skip_spaces(stream_);
 
     // read index (avoid %d in case next TPSA name is a number!)
-    char idx[16];
-    cnt = fscanf(stream_, "%16[0-9]", idx);
+    char idx[16] = {0};
+    cnt = fscanf(stream_, "%15[0-9]", idx);
     if (cnt != 1) break;
     i = strtol(idx, 0, 0);
 
     // read coef and order
 #ifndef MAD_CTPSA_IMPL
-    cnt = fscanf(stream_, "%lG %hhu", &v, &o);
+    cnt = fscanf(stream_, "%lG%*[ ]%hhu", &v, &o);
     if (cnt != 2) break;
 #else
     char chr;
-    cnt = fscanf(stream_, "%lG%lG%c %hhu", (num_t*)&v, (num_t*)&v+1, &chr, &o);
+    cnt = fscanf(stream_, "%lG%lG%c%*[ ]%hhu", (num_t*)&v, (num_t*)&v+1, &chr, &o);
     if (cnt != 4) break;
     ensure(chr == ' ' || chr == 'i',
            "invalid complex number format (' ' or 'i' expected ending)"

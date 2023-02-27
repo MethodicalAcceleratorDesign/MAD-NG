@@ -436,7 +436,7 @@ FUN(maxord) (const T *t, ssz_t n, idx_t idx_[n])
   const idx_t *o2i = t->d->ord2idx;
   num_t mv =  0; // max of all values
   idx_t mi = -1; // idx of max for all
-  for (ord_t o = t->lo; o <= MIN(n,t->hi); ++o)
+  for (ord_t o = t->lo; o < MIN(n,t->hi+1); ++o)
     if (mad_bit_tst(t->nz,o)) {
       num_t mo = 0; // max of this order
       for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
