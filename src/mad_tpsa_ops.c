@@ -702,7 +702,7 @@ FUN(integ) (const T *a, T *r, int iv)
   T *t = GET_TMPX(r);
 
   FUN(setvar)(t, 0, iv, 0);
-  FUN(mul)(a, t, c);        // integrate
+  FUN(mul)(a, t, c);    // integrate
 
   ord_t **mono = d->To;
   for (ord_t o = MAX(c->lo,2); o <= c->hi; ++o)
