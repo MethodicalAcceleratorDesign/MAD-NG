@@ -285,20 +285,13 @@ dq2 = 15.23680003
 -- match                                                                     --o
 -------------------------------------------------------------------------------o
 
--- list of IPs and GNFs
-local ips = {'IP1', 'IP5'}
-local gfs = {'2002', '4000', '0040'}
-
 -- knobs families and sectors names
 local knam = {'kqtf', 'kqtd', 'kof', 'kod'}
 local snam = {'a12', 'a23', 'a34', 'a45', 'a56', 'a67', 'a78', 'a81'}
 
--- knobs monomial (strings)
-local ki = #knam * #snam -- knobs count
-local knbs = {[0]=string.rep("0",ki+2)} -- all zeros
-for kj=1,ki do
-  knbs[kj] = string.rep("0",kj+1) .. "1" .. string.rep("0",ki-(kj-1)-1)
-end
+-- list of IPs and GNFs
+local ips = {'IP1','IP5'} -- {'IP1', 'IP2', 'IP3', 'IP4', 'IP5', 'IP6', 'IP7', 'IP8'}
+local gfs = {'200200', '400000', '004000'}
 
 -- index of (IP,GNF)
 local idx_n = #gfs
@@ -323,14 +316,13 @@ for _,ss in ipairs(snam) do
 end end
 
 -- create phase space damap
-local X0 = damap{nv=6, np=ki, mo=5, po=1,
+local X0 = damap{nv=6, np=#kn, mo=5, po=1,
                  vn=tblcat({'x','px','y','py','t','pt'}, kn)}
 
 -- set knobs as parameters
 for i,ks in ipairs(kn) do
   MADX[ks] = MADX[ks] + X0[ks] ; -- MADX[ks]:print(ks)
 end
-
 
 local function prt_rdt (nf, kind)
   local a = assert(nf[kind], "invalid kind '"..kind.."'")
@@ -340,42 +332,33 @@ local function prt_rdt (nf, kind)
   end
 end
 
--- phases
-local mu = {
-  IP1      = {0,0},
-  IP2      = {8.043061770, 7.840682306},
-  IP3      = {15.76253887, 15.45691078},
-  IP4      = {23.30585979, 22.16140101},
-  IP5      = {30.85363592, 29.85128770},
-  IP6      = {38.54141785, 37.20385002},
-  IP7      = {46.21397846, 44.57377229},
-  IP8      = {54.19227884, 52.24174731},
-["IP1.L1"] = {62.27504896, 60.29512787},
-}
-
 -- compute RDTs
+local mthd = "cycle" -- trkrdt need new release of MAD-NG
 local function get_nf(mthd)
-  local nf, mth = {}, mthd or "cycle"
+  local nf, mth = {}, mthd or "trkrdt"
 
   if mth == "cycle" then       -- 1st method
     for i,ip in ipairs(ips) do
-      io.write("** Tracking ", ip, " **\n")
+      io.write("** Tracking ", ip, "\n")
       lhc:cycle(ip)
       local _, mflw = track{sequence=lhc, method=4, save=false, X0=X0}
       nf[i] = normal(mflw[1]):analyse();
+      nf[i].a:write("A_"..ip.."_cycle")
     end
 
-  elseif mth == 'trkrdt' then  -- 2nd method (don't use yet)
-    io.write("** Tracking ", ips[1], " **\n")
+  elseif mth == "trkrdt" then  -- 2nd method
+    io.write("** Tracking ", ips[1], "\n")
     lhc:cycle(ips[1])
     local _, mflw = track{sequence=lhc, method=4, save=false, X0=X0}
     local nf1 = normal(mflw[1]):analyse()
 
     io.write("** Tracking RDT\n")
     local X1 = nf1.a:real():set0(nf1.x0) ; X1.status = 'Aset'
-    local mtbl, mflw = track{sequence=lhc, range="IP1/IP5", method=4, savemap=true, X0=X1}
+    local mtbl, mflw = track{sequence=lhc, method=4, savemap=true, X0=X1,
+                             range=ips[1].."/"..ips[#ips]}
     for i,ip in ipairs(ips) do
-      nf[i] = nf1:analyse('gnf', mtbl[ip].__map, mu[ip])
+      nf[i] = nf1:analyse('gnf', mtbl[ip].__map)
+      nf[i].a:write("A_"..ip.."_trkrdt")
     end
   end
 
@@ -383,26 +366,33 @@ local function get_nf(mthd)
 end
 
 -- run once for reference values
-local nf = get_nf('trkrdt')
+local nf = get_nf(mthd)
+
+ -- monomial strings for all knobs
+local ks, ki = {}, #kn
+for i=0,ki do ks[i] = nf[1]:getks(i) end
+
+-- print reference some values
 for i,ip in ipairs(ips) do
-  printf("%s: q1     = % -.6e\n", ip, nf[i].q1                    )
-  printf("%s: q2     = % -.6e\n", ip, nf[i].q2                    )
-  printf("%s: q1j1   = % -.6e\n", ip, nf[i].anh["2100"..knbs[0]])
-  printf("%s: q2j2   = % -.6e\n", ip, nf[i].anh["0021"..knbs[0]])
+  printf("%s: q1       = % -.6e\n", ip, nf[i]:q1{1}    )                      -- nf[i].q1                  )
+  printf("%s: q2       = % -.6e\n", ip, nf[i]:q2{1}    )                      -- nf[i].q2                  )
+  printf("%s: q1j1     = % -.6e\n", ip, nf[i]:anhx{1,0})                      -- nf[i].anh["2100"..knbs[0]])
+  printf("%s: q2j2     = % -.6e\n", ip, nf[i]:anhy{0,1})                      -- nf[i].anh["0021"..knbs[0]])
   for _,gf in ipairs(gfs) do
-    printf("%s: f%sr = % -.6e\n", ip, gf, real(nf[i].gnf[gf..knbs[0]]))
-    printf("%s: f%si = % -.6e\n", ip, gf, imag(nf[i].gnf[gf..knbs[0]]))
+    local v = nf[i].gnf[gf..ks[0]]
+    printf("%s: f%sr = % -.6e\n", ip, gf, real(v))                            -- real(nf[i].gnf[gf..knbs[0]]))
+    printf("%s: f%si = % -.6e\n", ip, gf, imag(v))                            -- imag(nf[i].gnf[gf..knbs[0]]))
   end
 end
 
 -- run once and quit
-os.exit()
+-- os.exit()
 
 -- backup reference tunes and amplitude detuning.
-local q1_ref   = nf[1].q1
-local q2_ref   = nf[1].q2
-local q1j1_ref = nf[1].anh["2100"..knbs[0]]
-local q2j2_ref = nf[1].anh["0021"..knbs[0]]
+local q1_ref   = nf[1]:q1{1}
+local q2_ref   = nf[1]:q2{1}
+local q1j1_ref = nf[1]:anhx{1,0}                                              -- nf[1].anh["2100"..knbs[0]]
+local q2j2_ref = nf[1]:anhy{0,1}                                              -- nf[1].anh["0021"..knbs[0]]
 
 -- prepare "varying" variables
 local vars = { rtol=1e-6 } -- 1 ppm -- rtol=1e-10
@@ -416,45 +406,54 @@ for kj, ks in ipairs(kn) do
 end
 
 -- prepare "equality" constraints
-local equs = { tol=1, weight=1,
-  { name='q1'  , expr = \nf -> nf[1].q1                   - q1_ref, tol=1e-4},
-  { name='q2'  , expr = \nf -> nf[1].q2                   - q2_ref, tol=1e-4},
-  { name='q1j1', expr = \nf -> nf[1].anh["2100"..knbs[0]] - q1j1_ref},
-  { name='q2j2', expr = \nf -> nf[1].anh["0021"..knbs[0]] - q2j2_ref},
+local equs = {
+  { name='q1'  , expr = \nf -> nf[1]:q1{1}     - q1_ref  , tol=1e-4 },
+  { name='q2'  , expr = \nf -> nf[1]:q2{1}     - q2_ref  , tol=1e-4 },
+  { name='q1j1', expr = \nf -> nf[1]:anhx{1,0} - q1j1_ref, tol=100  },
+  { name='q2j2', expr = \nf -> nf[1]:anhy{0,1} - q2j2_ref, tol=100  },
 }
 for i,ip in ipairs(ips) do
 for j,gf in ipairs(gfs) do
   local s = ip:lower()
-  equs[5+idx_f(i,j)+0] = { name='f'..gf..'r_'..s, expr = \nf -> real(nf[i].gnf[gf..knbs[0]])-0 }
-  equs[5+idx_f(i,j)+1] = { name='f'..gf..'i_'..s, expr = \nf -> imag(nf[i].gnf[gf..knbs[0]])-0 }
+  equs[idx_f(i,j)+5] = { name='f'..gf..'r_'..s, expr = \nf -> real(nf[i].gnf[gf..ks[0]]), tol=100 }
+  equs[idx_f(i,j)+6] = { name='f'..gf..'i_'..s, expr = \nf -> imag(nf[i].gnf[gf..ks[0]]), tol=100 }
 end end
 
 -- run matching
 match {
-  command := get_nf(),
+  command := get_nf(mthd),
   
   jacobian = \nf,_,jac => -- gradient not used, fill only jacobian
     assert(nf, "nf is nil in match.jacobian")
 
     --> parameters
     for k=1,ki do
-      jac:set(1,k,nf[1].anh["1000"..knbs[k]] or 0)  --     |
-      jac:set(2,k,nf[1].anh["0010"..knbs[k]] or 0)  --     |
-      jac:set(3,k,nf[1].anh["2100"..knbs[k]])       --     v
-      jac:set(4,k,nf[1].anh["0021"..knbs[k]])       -- constraints
+      jac:set(1,k, nf[1]:q1{1,k} or 0 )  --     |                             -- nf[1].anh["1000"..knbs[k]] or 0)
+      jac:set(2,k, nf[1]:q2{1,k} or 0 )  --     |                             -- nf[1].anh["0010"..knbs[k]] or 0)
+      jac:set(3,k, nf[1]:anhx{1,0,0,k})  --     v                             -- nf[1].anh["2100"..knbs[k]])
+      jac:set(4,k, nf[1]:anhy{0,1,0,k})  -- constraints                       -- nf[1].anh["0021"..knbs[k]])
     end
     for i,ip in ipairs(ips) do
     for j,gf in ipairs(gfs) do
     for k=1,ki do
-      jac:set(5+idx_f(i,j)+0,k, real(nf[i].gnf[gf..knbs[k]]))
-      jac:set(5+idx_f(i,j)+1,k, imag(nf[i].gnf[gf..knbs[k]]))
+      local v = nf[i].gnf[gf..ks[k]]
+      jac:set(idx_f(i,j)+5,k, real(v))
+      jac:set(idx_f(i,j)+6,k, imag(v))
     end end end
-    -- jac:print("JAC")
+
+    -- debug jacobian
+    if true then
+      local fmt = option.numfmt ; option.numfmt = "% -.3e"
+      for i=1,ki do printf("% 12s", kn[i]) end io.write("\n")
+      jac:print("JAC")
+      option.numfmt = fmt
+    end
   end,
+
   variables  = vars,
   equalities = equs,
-  objective  = { bisec=9, method="LD_SLSQP" },
-  maxcall=2000, info=4, -- debug=3
+  objective  = { bisec=3 },
+  maxcall=100, info=4, -- debug=3
 }
 
 -- restore strengths as scalars
