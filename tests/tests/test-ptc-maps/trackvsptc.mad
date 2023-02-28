@@ -1,0 +1,327 @@
+-- locals ---------------------------------------------------------------------o
+local matrix, mtable, tostring, damap, vector, object            in MAD
+local eps                                                        in MAD.constant
+local is_number, is_string, is_vector                            in MAD.typeid
+local openfile, tblcpy, val2keys, fileexists, tblcat             in MAD.utility
+local pi, abs, floor, log                                        in math         
+local round                                                      in MAD.gmath                   
+
+local create_dif = require "madl_dbgmap".cmpmdump
+
+local dum = damap() -- get a dummy damap object for reading
+local X0s = {{x=0   , px=0    , y=0    , py=0   , t=0   , pt=0   }, -- zero
+       {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=0   }, -- 4D
+       {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=2e-5}, -- 5D
+       {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=2e-5}} -- 6D
+
+local cfg_ctx =  [[
+model  = ${model};
+method = ${method};
+nslice = ${nslice};
+energy = ${energy};
+]]
+
+local coord_str = [[
+x0  = ${x};
+px0 = ${px};
+y0  = ${y};
+py0 = ${py};
+t0  = ${t};
+pt0 = ${pt};
+]]
+
+local test_ctx = [[
+order  = ${order};
+icase  = ${icase};
+debug  = ${debug};
+seq: sequence, l=2 ;
+  elm: ${elm};
+endsequence ;
+]]
+
+local madx_script = [[
+${coords}
+${cfg_ctx}
+${test_ctx}
+]]
+
+local in_dir  = \s -> 'input/' ..(s or '')
+local mad_file = loadfile(in_dir("ref.mad"))
+local out_dir = \s -> 'output/'..(s or '')
+
+os.execute("mkdir -p "..out_dir()) -- Create output dir if it doesn't exist
+-------------------------------------------------------------------------------o
+
+-- Write MAD-X script to elmseq.seq and generate a MAD-NG script and return it-o
+local function create_seq(cfg)
+  openfile(in_dir("elmseq.seq"), "w"):write(
+    madx_script%{
+      cfg_ctx  = cfg_ctx,        -- Relies on cfg.cur_cfg
+      test_ctx = test_ctx % cfg, -- Relies on cfg.cur_cfg
+      coords   = coord_str % X0s[cfg.cur_cfg.x0i],
+    } % cfg.cur_cfg
+    ):close()
+end
+-------------------------------------------------------------------------------o
+
+-- Grab the final map from the madx dump file ---------------------------------o
+local function getlastmap(filename)
+  local file = openfile(filename, "r")
+  local final_pos = 0
+  for line in file:lines() do
+    if line:sub(1, 2) == "@@" then
+    final_pos = file:seek("cur")
+    end
+  end
+  file:seek("set", final_pos)
+  local dam = dum:read(file)
+  file:close()
+  return dam
+  end
+-------------------------------------------------------------------------------o
+
+-- Run track and PTC from cur_cfg and create results --------------------------o
+local function do_trck(cfg)
+   -- Create results table
+  local res = {}
+  
+  -- Create element sequence w/ current cfg context
+  create_seq(cfg)
+
+  -- Run MAD-NG track
+  local _, mflw = mad_file()
+
+  -- Run MAD-X-PTC
+  os.execute(
+    '../madx64 '..in_dir("ref.madx") ..' >' .. out_dir(cfg.name .. "_p.txt")
+  )
+  MADX.elm = nil -- Remove element so that next test can be run with new values
+
+  -- Grab PTC last map from out file and get diff with mflw[1]
+  local ptc_res = getlastmap(out_dir(cfg.name .. "_p.txt")):fromptc()
+  local dif = mflw[1]:dif(ptc_res)
+  
+  -- Setup max matrix (coords x order)
+  local max_difs = matrix(6, cfg.order+1)   
+  
+  for i, c in ipairs({"x", "px", "y", "py", "t", "pt"}) do 
+    -- Get max idx for each coordinate at each order
+    local _, max_idxs = dif[c]:maxbyord()
+    
+    -- Create dummy vector to store max values
+    local max_vals = vector(#max_idxs)
+
+    -- Get max value for each order
+    max_idxs:map(\x-> x~=0 and abs(dif[c]:get(x))/eps or 0, max_vals)
+    
+    -- Add max values to row of matrix
+    max_difs:setrow(i, max_vals)
+
+    -- Get and add coordinate max to results table
+    res[c.."_eps"] = max_vals:max()
+  end
+  
+  -- Get and add order max to results table
+  for i = 1, max_difs.ncol do
+    res["order"..i-1.."_eps"] = max_difs:getcol(i):max()
+  end
+  return res
+end
+
+local function run_cfg (cfg, results)
+  -- Run track for a single configuration
+  local res = do_trck(cfg)
+
+  -- Add results and configuration to table
+  results:addrow{
+    __cfg=tblcpy(cfg.cur_cfg), 
+    __res=res,
+  }
+  
+  if cfg.doprnt then -- If print mode is on, print results
+    io.write(cfg.cur_cfg.cfgid, "\t")
+    -- Print max dif for each order
+    for i = 1, cfg.order+1 do
+      local ord_max_dif = res["order"..i-1.."_eps"]
+      io.write(
+        ord_max_dif > cfg.tol and (">e+" .. floor(log(ord_max_dif, 10)))
+        or string.format("%d", ord_max_dif),
+        "\t"
+      )
+    end
+    -- Print current configuration
+    for i, attr in ipairs(cfg.alist) do 
+      io.write(attr, "=", tostring(cfg.cur_cfg[attr]), ",  ")
+    end
+    io.write("\n")
+  end
+
+  if cfg.dodbg then -- If debug mode is on, stop when max dif is greater than tol
+    for i = 1, cfg.order+1 do
+      if res["order"..i-1.."_eps"] > cfg.tol then
+        -- Run mad in debug mode and set the program to stop
+        create_seq(cfg {debug = 6})
+        os.execute(
+          '../mad '.. in_dir("ref.mad") ..' >' .. out_dir(cfg.name .. "_n.txt")
+        )
+        create_dif({nam=out_dir(cfg.name)})
+        cfg.stop = true
+      end
+    end
+  end
+end
+
+-- From cfg object, create every configuration through recursion --------------o
+local function gen_cfg(cfg, idx, gen_fun) 
+  if cfg.stop then return end -- Stop if the stop flag is set
+  local k = cfg.alist[idx]    
+  if not k then
+    cfg.cur_cfg.cfgid = cfg.cur_cfg.cfgid + 1
+    return gen_fun() -- Could be changed to any function
+  end
+  for i, v in ipairs(cfg[k]) do
+    cfg.cur_cfg[k] = v
+    gen_cfg(cfg, idx+1, gen_fun) -- Index required as this needs to stay constant during each call
+  end
+end
+
+-- Add the generator columns to the table ---------------------------------------o
+local function add_gen_cols(results, cfg)
+  -- Create the result column names as a list
+  local ord_lst = {}
+  for i = 0, cfg.order do ord_lst[i+1] = "order"..i.."_eps" end
+  results.res_cols = tblcat(
+    ord_lst, {"x_eps", "px_eps", "y_eps", "py_eps", "t_eps", "pt_eps"}
+  )
+  
+  -- Add the cfg columns to the mtable
+  for _, k in ipairs(cfg.alist) do
+    results:addcol(k, \ri, m -> m.__cfg[ri][k])
+  end
+
+  -- Add the result columns to the mtable
+  for _, k in ipairs(results.res_cols) do
+    results:addcol(k, \ri, m -> round(m.__res[ri][k], 2))
+  end
+end
+-------------------------------------------------------------------------------o
+
+--  Output results of test ----------------------------------------------------o
+local function get_lower_bnds(res, tol)
+  if is_string(tol) then
+    local bnds_file = mtable:read(tol)
+    assert(
+      #bnds_file == #res, 
+      "The tolerance file must have the same number of rows as the configuration file"
+    )
+    return \o, ri->bnds_file[ri]["order"..o.."_eps"]
+  elseif is_number(tol) then
+    return \->tol
+  else 
+    return \o->tol[o]
+  end
+end
+
+local function show_res(res, cfg, attr_cols, tol) 
+  local tol = get_lower_bnds(res, tol)
+  local col_tbl = {}; for i = 0, res.max_order do col_tbl[i] = {} end
+  local dum_tbl = mtable(tblcpy(attr_cols))
+  dum_tbl.novector = true
+
+  io.write("For each order, the number of configurations that failed:\n")
+  for o = 0, res.max_order do
+    local err_tbl = dum_tbl:copy()
+    res:foreach(\r, ri =>
+      if res[ri]["order"..o.."_eps"] > tol(o, ri) then 
+        for i, v in ipairs(attr_cols) do
+          err_tbl[v][ri] = cfg[ri][v]
+        end 
+      end end)
+
+      -- Printing
+    io.write("\norder ", o, ":\n")
+    for _, col_name in ipairs(attr_cols) do
+      if not (col_name == "cfgid") then
+        local _, key_cnt = val2keys(err_tbl:getcol(col_name))
+        io.write(col_name, "\t= ", tostring(key_cnt), "\n")
+      end
+    end
+  end
+end
+
+local function show_prev_res(test_name, tol)
+  -- Read the previous results
+  local cfg = mtable:read(out_dir(test_name.."_cfg.tfs"))
+  local res = mtable:read(out_dir(test_name.."_res.tfs"))
+  
+  -- Show the previous results
+  show_res(res, cfg, cfg:colnames(), tol)
+end
+-------------------------------------------------------------------------------o
+
+-- Run test -------------------------------------------------------------------o
+local function run_test(cfg)    
+  -- If the user does not want to run the test, 
+  -- just show results from previous run
+  if not cfg.dorun then 
+    return show_prev_res(cfg.name, cfg.tol) 
+  end
+
+  -- Create the mtable to store the results
+  local results = mtable(cfg.name){
+    "__cfg", "__res", 
+    max_order = cfg.order, 
+  }
+  
+  if cfg.doprnt then 
+    -- Calculate the total number of iterations
+    local tot_iter = 1
+    for i, attr in ipairs(cfg.alist) do 
+      tot_iter = tot_iter * #cfg[attr] 
+    end
+    io.write(
+      "Running ", cfg.name, " with ",
+      tot_iter, " configurations estimated to take ",
+      string.format("%.2f", tot_iter/1000), " minutes\n"
+    )
+  -- Print the header
+    io.write("cfgid\t")
+    for i = 0, cfg.order do io.write("order "..i.."\t") end
+    io.write("\n")
+  end
+
+  -- Fill the mtable with the cfg and results
+  cfg.cur_cfg = {cfgid = 0} -- Create new table for cur_cfg for each cfg set
+  gen_cfg(cfg, 1, \-> run_cfg(cfg, results))
+  
+  -- Add the generator columns to the results table
+  add_gen_cols(results, cfg)
+  
+  -- Decide whether to save the results
+  local dosave = cfg.dosave or not (
+           fileexists(out_dir(results.name.."_cfg.tfs")) and 
+           fileexists(out_dir(results.name.."_res.tfs"))
+        )
+  
+  -- Save the results (if required)
+  if dosave then 
+    local hdr_lst = {"name", "date", "time", "origin", "max_order"}
+    results:write(out_dir(results.name.."_cfg.tfs"), cfg.alist, hdr_lst)
+    results:write(out_dir(results.name.."_res.tfs"), results.res_cols, hdr_lst) 
+  end
+
+  -- Print the results
+  if cfg.doprnt then 
+    show_res(results, results, cfg.alist, cfg.tol)
+  end 
+
+  -- Cleanup excess files if the program is not stopped mid-test
+  if not cfg.stop then  
+    os.remove(out_dir(cfg.name .. "_p.txt"))
+    os.remove(in_dir("elmseq.seq"))
+    os.remove("internal_mag_pot.txt")
+    os.remove("fort.18")
+  end
+end
+-------------------------------------------------------------------------------o
+return {run_test = run_test, show_prev_res=show_prev_res}
