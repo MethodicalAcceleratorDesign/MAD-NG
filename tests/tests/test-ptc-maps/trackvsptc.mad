@@ -3,7 +3,7 @@ local matrix, mtable, tostring, damap, vector, object            in MAD
 local eps                                                        in MAD.constant
 local is_number, is_string, is_vector                            in MAD.typeid
 local openfile, tblcpy, val2keys, fileexists, tblcat, strinter   in MAD.utility
-local pi, abs, floor, log                                        in math         
+local pi, abs, floor, log, max                                   in math         
 local round                                                      in MAD.gmath                   
 
 local create_dif = require "madl_dbgmap".cmpmdump
@@ -227,15 +227,17 @@ local function show_res(res, cfg, attr_cols, tol)
   io.write("For each order, the number of configurations that failed:\n")
   for o = 0, res.max_order do
     local err_tbl = dum_tbl:copy()
+    local max_err = 0
     res:foreach(\r, ri =>
+      max_err = max(max_err, abs(res[ri]["order"..o.."_eps"]))
       if res[ri]["order"..o.."_eps"] > tol(o, ri) then 
         for i, v in ipairs(attr_cols) do
           err_tbl[v][ri] = cfg[ri][v]
         end 
       end end)
 
-      -- Printing
-    io.write("\norder ", o, ":\n")
+    -- Printing
+    io.write("\norder ", o, " (max error = ", max_err, ", tol = ", cfg.run_tol, "):\n")
     for _, col_name in ipairs(attr_cols) do
       if not (col_name == "cfgid") then
         local _, key_cnt = val2keys(err_tbl:getcol(col_name))
@@ -270,10 +272,11 @@ local function run_test(cfg)
   local results = mtable(cfg.name){
     "__cfg", "__res", 
     max_order = cfg.order, 
+    run_tol   = cfg.tol,
   }
   
   if cfg.doprnt then 
-    io.write("Running ", cfg.name, "\n")
+    io.write("Running ", cfg.name, " (tol = ", cfg.tol, ")\n")
   -- Print the header
     io.write("cfgid\t")
     for i = 0, cfg.order do io.write("order "..i.."\t") end
@@ -294,7 +297,7 @@ local function run_test(cfg)
   
   -- Save the results (if required)
   if dosave then 
-    local hdr_lst = {"name", "date", "time", "origin", "max_order"}
+    local hdr_lst = {"name", "date", "time", "origin", "max_order", "run_tol"}
     results:write(
       out_dir(results.name.."_cfg.tfs"), 
       tblcat({"cfgid"}, cfg.alist), 
