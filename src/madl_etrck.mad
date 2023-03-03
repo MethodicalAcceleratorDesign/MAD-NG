@@ -57,8 +57,8 @@ local thinonly, thickonly, driftonly, DKD, MKM                     in MAD.symint
 
 -- straight elements (DKD)
 local strex_drift, strex_kick             , strex_fringe           in MAD.dynmap
-local              strex_kickh --[[ h   ]]                         in MAD.dynmap
-local              strex_kicks --[[ ksi ]]                         in MAD.dynmap
+local              strex_kickh  --[[ h ]]                          in MAD.dynmap
+local              strex_kickhs --[[ h, ksi ]]                     in MAD.dynmap
 
 -- curved elements (DKD)
 local curex_drift, curex_kick             , curex_fringe           in MAD.dynmap
@@ -246,21 +246,18 @@ local function track_multipole (elm, m)
 
   if m.nmul == 0 then return track_marker(elm, m) end
 
-  local angle, ksi, lrad, knl, ksl in elm
-  local edir in m
+  local angle, ksi, lrad in elm
+  local knl, ksl in m
 
-  m.el = lrad
+  m.lrad, m.ksi = lrad, ksi or 0
 
   local kick = strex_kick
-  if abs(knl[1]) + abs(ksl[1]) >= minang then
-    kick = strex_kickh
-  elseif abs(ksi) >= minstr then
-    m.ksi = ksi
-    kick = strex_kicks
+  if abs(knl[1]) + abs(ksl[1]) + abs(m.ksi) >= minstr then
+    kick = strex_kickhs
   end
 
   trackelm(elm, m, thinonly, nil, kick, fnil)
-  m.ksi = nil
+  m.ksi, m.lrad = nil, nil
 end
 
 local function track_bbeam (elm, m)
@@ -548,10 +545,14 @@ local function track_solenoid (elm, m)
   get_mult(elm, m)
 
   local ds, tdir, edir in m
-  local ks, ksi in elm
+  local ks, ksi, lrad in elm
   local l = abs(ds)
+  local model  = elm.model or m.model
 
   if l < minlen then
+    if model == "DKD" and lrad ~= 0 then
+      return track_multipole(elm, m)
+    end
     errorf("invalid solenoid '%s' length=%.4e [m] (>0 expected)", elm.name, l)
   end
 
@@ -559,23 +560,22 @@ local function track_solenoid (elm, m)
 
   local ksi = ksi + ks*l
   local no_ksi = abs(ksi) < minstr
-  local model  = elm.model  or m.model
   local method = elm.method or m.method
   local thick, kick, fringe
 
   if model == 'DKD' and no_ksi then
     thick, kick, fringe = strex_drift, strex_kick , strex_fringe
   elseif model == 'DKD' then
-    m.ksi = ksi
-    thick, kick, fringe = strex_drift, strex_kicks, strex_fringe
+    m.ksi, m.lrad = ksi, lrad
+    thick, kick, fringe = strex_drift, strex_kickhs, strex_fringe
   else
     m.ks = ksi/l*edir
-    thick, kick, fringe = solen_thick, strex_kick , solen_fringe
+    thick, kick, fringe = solen_thick, strex_kick , m.ptcmodel and curex_fringe or solen_fringe
   end
 
   local track  = #elm == 0 and trackelm or tracksub
-  track(elm, m, DKD[method], thick, strex_kick, fringe)
-  m.ks, m.ksi = nil, nil
+  track(elm, m, DKD[method], thick, kick, fringe)
+  m.ks, m.ksi, m.lrad = nil, nil, nil
 end
 
 -- eseptum
