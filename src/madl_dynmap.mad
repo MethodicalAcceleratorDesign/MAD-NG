@@ -499,75 +499,64 @@ function M.strex_kick (elm, m, lw, no_k0l) -- [KICKEX]                       -- 
   m.atdebug(elm, m, lw, 'strex_kick:1', no_k0l)
 end
 
-function M.strex_kickh (elm, m, lw) -- [KICKT]                               -- checked
-  if m.nmul == 0 then return end
+function M.strex_kickhs (elm, m, lw) -- [KICKT]                               -- unchecked
+  local lrad, el, nmul, ksi in m
+  if lrad == 0 or nmul == 0 and ksi == 0 then return end
 
-  m.atdebug(elm, m, lw, 'strex_kickh:0')
+  m.atdebug(elm, m, lw, 'strex_kickhs:0')
 
-  local el, tdir, nmul, knl, ksl, beam in m
+  local tdir, knl, ksl, beam in m
   local  wchg = lw*tdir*beam.charge
   local _beta = 1/beam.beta
+  local  hss  = (ksi^2/lrad) -- 4 H(s_0)^2/ds
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
     local  wchg = beam and lw*tdir*beam.charge or wchg
     local _beta = beam and 1/beam.beta or _beta
     local    pz = sqrt(1 + (2*_beta)*pt + pt^2)
-    local bx,by = bxby(nmul, knl, ksl, x, y)
-
-    m[i].px = px - wchg*(by - knl[1]*pz)
-    m[i].py = py + wchg*(bx - ksl[1]*pz)
-    m[i].t  = t  - wchg*(knl[1]*x - ksl[1]*y)*(_beta+pt)/pz
-
-    -- field curvature
-    if el ~= 0 then
-      m[i].px = m[i].px - wchg*(knl[1]^2/el)*x 
-      m[i].py = m[i].py - wchg*(ksl[1]^2/el)*y
-    end
-  end
-
-  m.atdebug(elm, m, lw, 'strex_kickh:1')
-end
-
-function M.strex_kicks (elm, m, lw) -- [KICKT]                               -- unchecked
-  local lrad, nmul, ksi in m
-  if lrad == 0 or nmul == 0 and ksi == 0 then return end
-
-  m.atdebug(elm, m, lw, 'strex_kicks:0')
-
-  local tdir, knl, ksl, beam in m
-  local  wchg = lw*lrad*tdir*beam.charge
-  local _beta = 1/beam.beta
-  local  bsol = 0.5*ksi
-
-  for i=1,m.npar do
-    local x, px, y, py, t, pt, beam in m[i]
-    local  wchg = beam and lw*lrad*tdir*beam.charge or wchg
-    local _beta = beam and 1/beam.beta or _beta
 
     -- multipole
     local bx,by = bxby(nmul, knl, ksl, x, y)
 
-    m[i].px = px - wchg*by
+    m[i].px = px - wchg*by -- With 0 el and ksi ~= 0, we get problems with the multipole
     m[i].py = py + wchg*bx
 
+    if abs(knl[1]) + abs(ksl[1]) > 0 then
+      m[i].px = m[i].px + (wchg*knl[1])*pz
+      m[i].py = m[i].py - (wchg*ksl[1])*pz
+      m[i].t  = t  - wchg*(knl[1]*x - ksl[1]*y)*(_beta+pt)/pz    
+
+      -- field curvature
+      if lrad ~= 0 then
+        m[i].px = m[i].px - wchg*(knl[1]^2/lrad)*x 
+        m[i].py = m[i].py - wchg*(ksl[1]^2/lrad)*y
+      end
+    end
+
     -- solenoid
-    local _dpp = 1/sqrt(1 + (2*_beta)*pt + pt^2)
-    local  ang = bsol*_dpp
-    local ca, sa = cos(ang), sin(ang)
+    if ksi ~= 0 and lrad ~= 0 then
+      local x, px, y, py, t, pt, beam in m[i]
+      local _dp = 1/(1 + (2*_beta)*pt + pt^2)
+      local _dpp = 1/pz
+      local  ang = (0.5*ksi*lw)*_dpp
+      local ca, sa = cos(ang), sin(ang)
 
-    local nx  = ca* x + sa* y
-    local npx = ca*px + sa*py
-    local ny  = ca* y - sa* x
-    local npy = ca*py - sa*px
-    local nt  = t + ang*(_beta+pt)*(y*px - x*py)*_dp
+      local nx  = ca* x + sa* y
+      local npx = ca*px + sa*py
+      local ny  = ca* y - sa* x
+      local npy = ca*py - sa*px
+      local nt  = t - ang*(_beta+pt)*(y*px - x*py)*_dp
 
-    m[i].px = npx - 0.25*wchg*nx*_dpp
-    m[i].py = npy - 0.25*wchg*ny*_dpp
-    m[i].t  = nt  + 0.125*(_beta+pt)*wchg*(nx^2+ny^2)*_dpp^3
+      m[i].x  = nx
+      m[i].px = npx - 0.25*(wchg*hss)*nx*_dpp
+      m[i].y  = ny
+      m[i].py = npy - 0.25*(wchg*hss)*ny*_dpp
+      m[i].t  = nt  - 0.125*(_beta+pt)*(wchg*hss)*(nx^2+ny^2)*_dpp^3      
+    end
   end
 
-  m.atdebug(elm, m, lw, 'strex_kicks:1', no_k0l)
+  m.atdebug(elm, m, lw, 'strex_kickhs:1')
 end
 
 -- DKD [INTER_TEAPOT] ---------------------------------------------------------o
