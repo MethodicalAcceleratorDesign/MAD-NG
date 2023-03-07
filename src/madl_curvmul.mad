@@ -1,3 +1,41 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Coefficients for Curved Multipoles
+ |
+ | Methodical Accelerator Design - Copyright (c) 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: J. Gray, joshua.gray      at cern.ch
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+  Acknowledgements:
+
+  The physics implemented in this module is for the most part taken from the
+  work of E. Forest through his two books and numerous articles and reports on
+  the subject, and for some parts, from the translation of his Fortran code
+  PTC/FPP. The rest of the physics is taken from various publications. The
+  structure of the code, the choice of the integrators and the maps according
+  to the configuration of the commands and the elements are my own.
+
+  MAD-NG supports almost direct translation of equations into code that works
+  for both, particles (orbit) tracking and optics (damap) tracking at the same
+  time, including parametric damaps with knobs. This unique feature facilitates
+  the translation of new physics from publications with explicit equations.
+ o-----------------------------------------------------------------------------o
+  Purpose:
+
+  - Provide the coefficients and the function to compute curved multipole kicks.
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
 local SECTOR_NMUL_max = 22
 local S_B_FROM_V = {i = {}, j = {}, A_X = {}, B_X = {}, A_Y = {}, B_Y = {}}
 
@@ -7,6 +45,8 @@ for i = 1, SECTOR_NMUL_max do
     S_B_FROM_V.B_X[i] = {}
     S_B_FROM_V.B_Y[i] = {}
 end
+
+-- data -----------------------------------------------------------------------o
 
 S_B_FROM_V.i[1]=22;S_B_FROM_V.j[1]=0;
 S_B_FROM_V.i[2]=21;S_B_FROM_V.j[2]=1;
@@ -6972,37 +7012,43 @@ S_B_FROM_V.B_Y[22][233]=21.000000000000000E0
 S_B_FROM_V.B_X[22][255]=1.0000000000000000E0
 S_B_FROM_V.A_Y[22][255]=-1.0000000000000000E0
 
+-- functions ------------------------------------------------------------------o
+
 local function get_n_mono(no, ic)
     return ((no + 2 - ic) * (no + 1 - ic)) / 2
 end
 
 local n_mono_max = get_n_mono(SECTOR_NMUL_max, 0)
 
-local function getanbnr (nmul, knl, ksl, eh, el)
-    for i = nmul, nmul + 2 do 
-        knl[i] = 0
-        ksl[i] = 0
-    end
-    nmul = nmul + 2
-    local bf_X, bf_Y = {}, {}
-    for i = 1, get_n_mono(nmul,0) do 
-        bf_X[i], bf_Y[i] = 0, 0
-    end
+local function getanbnr (nmul, knl, ksl, eh) -- , el)
+  local nm = nmul+2
+  for i = nmul,nm do
+    knl[i] = 0
+    ksl[i] = 0
+  end
 
-    for i = 1, nmul do 
-        for j = 1, n_mono_max do 
-            local k = S_B_FROM_V.i[j] + S_B_FROM_V.j[j]
-            if k <= nmul and k + 1 >= i then -- k <= nmul -> we only go up to the nmul-th order 
-                local pow = k + 1 - i
-                local bf_idx = get_n_mono(nmul, S_B_FROM_V.i[j]) - S_B_FROM_V.j[j]
-                bf_X[bf_idx] = bf_X[bf_idx] + (ksl[i]*(S_B_FROM_V.A_X[i][j] or 0) + knl[i]*(S_B_FROM_V.B_X[i][j] or 0)) * eh ^ pow
-                bf_Y[bf_idx] = bf_Y[bf_idx] + (ksl[i]*(S_B_FROM_V.A_Y[i][j] or 0) + knl[i]*(S_B_FROM_V.B_Y[i][j] or 0)) * eh ^ pow
-            end
-        end
+  local bf_X, bf_Y = {}, {}
+
+  for i = 1, get_n_mono(nm,0) do
+      bf_X[i], bf_Y[i] = 0, 0
+  end
+
+  for i = 1, nm do
+    for j = 1, n_mono_max do
+      local k = S_B_FROM_V.i[j] + S_B_FROM_V.j[j]
+      if k <= nm and k + 1 >= i then -- k <= nmul -> we only go up to the nmul-th order
+        local n = k + 1 - i
+        local bf_idx = get_n_mono(nm, S_B_FROM_V.i[j]) - S_B_FROM_V.j[j]
+        bf_X[bf_idx] = bf_X[bf_idx] + (ksl[i]*(S_B_FROM_V.A_X[i][j] or 0) + knl[i]*(S_B_FROM_V.B_X[i][j] or 0)) * eh^n
+        bf_Y[bf_idx] = bf_Y[bf_idx] + (ksl[i]*(S_B_FROM_V.A_Y[i][j] or 0) + knl[i]*(S_B_FROM_V.B_Y[i][j] or 0)) * eh^n
+      end
     end
-    return bf_X, bf_Y
+  end
+
+  return bf_X, bf_Y
 end
 
+-- end ------------------------------------------------------------------------o
 return {
-    getanbnr = getanbnr,
+  getanbnr = getanbnr,
 }
