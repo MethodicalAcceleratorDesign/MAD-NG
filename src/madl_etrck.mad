@@ -53,7 +53,7 @@ local getanbnr in require("madl_curvmul")
 
 -- integrator schemes ---------------------------------------------------------o
 
-local thinonly, thickonly, driftonly, DKD, MKM                     in MAD.symint
+local thinonly, thickonly, driftonly, DKD, TKT, MKM                in MAD.symint
 
 -- dynamic maps ---------------------------------------------------------------o
 
@@ -104,12 +104,23 @@ local xrotation, yrotation, srotation, translate,
 
 -- strengths and phases -------------------------------------------------------o
 
+local function adj_mult (m)
+  local knl, ksl in m
+
+  for i=m.nmul,1,-1 do
+    if abs(knl[i]) + abs(ksl[i]) ~= 0 then
+      m.nmul = i ; return
+    end
+  end
+  n.nmul = 0
+end
+
 local function get_mult (elm, m, n)
   local knl, ksl, dknl, dksl in elm
 
-  m.nmul = max(#knl, #ksl, #dknl, #dksl, m.useda and n or 0)
+  m.nmul = max(#knl, #ksl, #dknl, #dksl, n or 0)
 
-  for i=1,max(m.nmul,n or 0) do
+  for i=1,m.nmul do
     m.knl[i] = ((knl[i] or 0) + (dknl[i] or 0)) / fact(i-1)
     m.ksl[i] = ((ksl[i] or 0) + (dksl[i] or 0)) / fact(i-1)
   end
@@ -119,10 +130,10 @@ local function get_multphas (elm, m, n)
   local knl, ksl, dknl, dksl in elm
   local pnl, psl, dpnl, dpsl in elm
 
-  m.nmul = max(#knl, #ksl, #dknl, #dksl)
+  m.nmul = max(#knl, #ksl, #dknl, #dksl, n or 0)
   m.npha = m.nmul
 
-  for i=1,max(m.nmul,n or 0) do
+  for i=1,m.nmul do
     m.knl[i] = ((knl[i] or 0) + (dknl[i] or 0)) / fact(i-1)
     m.ksl[i] = ((ksl[i] or 0) + (dksl[i] or 0)) / fact(i-1)
     m.pnl[i] =  (pnl[i] or 0) + (dpnl[i] or 0)
@@ -244,7 +255,7 @@ local function track_drift (elm, m)
 end
 
 local function track_multipole (elm, m)
-  get_mult(elm, m)
+  get_mult(elm, m) ; adj_mult(m)
 
   if m.nmul == 0 then return track_marker(elm, m) end
 
@@ -299,23 +310,16 @@ local function track_sbend (elm, m, e1_, e2_)
   m.el, m.eh = ds, angle/ds*tdir
   m.e1, m.e2 = (e1_ or elm.e1), (e2_ or elm.e2)
 
-  if nmul < 3 then
-    m.nmul = max(abs(knl[3])+abs(ksl[3]) ~= 0 and 3 or
-                 abs(knl[2])+abs(ksl[2]) ~= 0 and 2 or
-                 abs(knl[1])+abs(ksl[1]) ~= 0 and 1 or 0, nmul)
-  end
+  adj_mult(m) ; getanbnr(m)
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
   local inter, thick, kick
 
-  getanbnr(nmul, knl, ksl, m.eh, bfx, bfy)
   if model == 'DKD' then                          -- curved thin
     inter, thick, kick = DKD[method], curex_drift , curex_kick
   else -- if abs(knl[2]) < minstr then            -- curved thick
-    inter, thick, kick = DKD[method], sbend_thick , sbend_kick
---  else                                          -- curved thick with focusing
---    inter, thick, kick = MKM[method], sbend_thickf, sbend_kickf
+    inter, thick, kick = TKT[method], sbend_thick , sbend_kick
   end
 
   local track = #elm == 0 and trackelm or tracksub
@@ -349,13 +353,9 @@ local function track_rbend (elm, m)
   m.el, m.eld, m.eh = arc2cord(ds,angle), ds, angle/ds*tdir
   m.e1, m.e2, m.elc = e1, e2, m.el
 
-  -- io.write("eh=", m.eh, ", el=", m.el, ", eld=", m.eld, ", elc=", m.elc, ", e1=", m.e1, ", e2=", m.e2, "\n")
+  adj_mult(m)
 
-  if nmul < 3 then
-    m.nmul = max(abs(knl[3])+abs(ksl[3]) ~= 0 and 3 or
-                 abs(knl[2])+abs(ksl[2]) ~= 0 and 2 or
-                 abs(knl[1])+abs(ksl[1]) ~= 0 and 1 or 0, nmul)
-  end
+  -- io.write("eh=", m.eh, ", el=", m.el, ", eld=", m.eld, ", elc=", m.elc, ", e1=", m.e1, ", e2=", m.e2, "\n")
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
@@ -364,7 +364,7 @@ local function track_rbend (elm, m)
   if model == 'DKD' then
     inter, thick, kick = DKD[method], strex_drift, rbend_strex
   else
-    inter, thick, kick = DKD[method], rbend_thick, rbend_kick
+    inter, thick, kick = TKT[method], rbend_thick, rbend_kick
   end
 
   local track = #elm == 0 and trackelm or tracksub
@@ -387,10 +387,7 @@ local function track_quadrupole (elm, m)
   knl[2], ksl[2] = knl[2]+k1*l, ksl[2]+k1s*l
   m.el, m.eh = ds, angle/ds*tdir
 
-  if nmul < 2 then
-    m.nmul = max(abs(knl[2])+abs(ksl[2]) ~= 0 and 2 or
-                 abs(knl[1])+abs(ksl[1]) ~= 0 and 1 or 0, nmul)
-  end
+  adj_mult(m)
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
@@ -423,6 +420,8 @@ end
 local function track_strexgen (elm, m, ptc_, mth_)
   m.el, m.eh = m.ds, 0
 
+  adj_mult(m)
+
   local model  = elm.model  or m.model
   local method = elm.method or mth_ or m.method
   local inter, thick, kick, fringe
@@ -450,10 +449,6 @@ local function track_sextupole (elm, m)
   knl[3] = knl[3]+k2 *l/2
   ksl[3] = ksl[3]+k2s*l/2
 
-  if nmul < 3 then
-    m.nmul = max(abs(knl[3])+abs(ksl[3]) ~= 0 and 3 or 0, nmul)
-  end
-
   track_strexgen (elm, m, m.ptcmodel)
 end
 
@@ -466,10 +461,6 @@ local function track_octupole (elm, m)
 
   knl[4] = knl[4]+k3 *l/6
   ksl[4] = ksl[4]+k3s*l/6
-
-  if nmul < 4 then
-    m.nmul = max(abs(knl[4])+abs(ksl[4]) ~= 0 and 4 or 0, nmul)
-  end
 
   track_strexgen (elm, m, m.ptcmodel)
 end
@@ -484,10 +475,6 @@ local function track_decapole (elm, m)
   knl[5] = knl[5]+k4 *l/24
   ksl[5] = ksl[5]+k4s*l/24
 
-  if nmul < 5 then
-    m.nmul = max(abs(knl[5])+abs(ksl[5]) ~= 0 and 5 or 0, nmul)
-  end
-
   track_strexgen (elm, m)
 end
 
@@ -500,10 +487,6 @@ local function track_dodecapole (elm, m)
 
   knl[6] = knl[6]+k5 *l/120
   ksl[6] = ksl[6]+k5s*l/120
-
-  if nmul < 6 then
-    m.nmul = max(abs(knl[6])+abs(ksl[6]) ~= 0 and 6 or 0, nmul)
-  end
 
   track_strexgen (elm, m)
 end
@@ -518,10 +501,6 @@ local function track_kickgen (elm, m, hk, vk)
 
   knl[1] = knl[1] - hk
   ksl[1] = ksl[1] + vk
-
-  if nmul == 0 and abs(knl[1])+abs(ksl[1]) ~= 0 then
-    m.nmul = 1
-  end
 
   track_strexgen (elm, m, ptcmodel, method)
 end
@@ -545,7 +524,7 @@ end
 -- solenoid
 
 local function track_solenoid (elm, m)
-  get_mult(elm, m)
+  get_mult(elm, m) ; adj_mult(m)
 
   local ds, tdir, edir in m
   local ks, ksi, lrad in elm
@@ -584,7 +563,7 @@ end
 -- eseptum
 
 local function track_eseptum (elm, m)
-  get_mult(elm, m)
+  get_mult(elm, m) ; adj_mult(m)
 
   local ds, edir, tdir in m
   local ex, ey, exl, eyl in elm
@@ -622,6 +601,8 @@ local function track_rfcavgen (elm, m)
   local l = abs(ds)
 
   m.el, m.eh, m.nmul = ds, 0, 0
+
+  adj_mult(m)
 
   local inter, kick
 
@@ -661,7 +642,7 @@ end
 -- genmap element
 
 local function track_genmap (elm, m)
-  get_mult(elm, m)
+  get_mult(elm, m) ; adj_mult(m)
 
   local ds, tdir in m
   local angle in elm
