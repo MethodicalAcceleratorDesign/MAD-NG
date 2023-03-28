@@ -34,8 +34,9 @@ Notes about directions and quantities:
 local command, element, mtable, damap, symint, option, show    in MAD
 
 local is_nil, is_beam, is_sequence, is_boolean, is_number,
-      is_integer, is_true, is_string, is_matrix, is_beta0,
-      is_tpsa, is_damap, is_callable, is_iterable, is_mappable  in MAD.typeid
+      is_natural, is_nznatural, is_integer, is_string, is_true,
+      is_beta0, is_matrix, is_tpsa, is_damap,
+      is_callable, is_iterable, is_mappable                     in MAD.typeid
 local fnil, ffalse, chain, achain                               in MAD.gfunc
 local dp2pt, bet2map, par2vec                                   in MAD.gphys
 local errorf, assertf, printf                                   in MAD.utility
@@ -45,7 +46,7 @@ local srad_save, srad_damp, srad_quant                          in MAD.synrad
 local is_implicit                                               in element.drift
 local atbegin, atbody, atend, atins, atins1, action, actionat   in symint
 
-local abs in math
+local abs, max in math
 
 local io, type, setmetatable, assert =
       io, type, setmetatable, assert
@@ -294,10 +295,8 @@ local function make_mflow (self)
               "invalid save directive (boolean or valid atxxx string expected)")
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
   assert(is_string(radiate) or radiate == nil, "invalid radiate (string expected)")
-  assert(is_integer(fringe) and fringe >= -1
-                             , "invalid fringe (boolean or fringe flag expected)")
-  assert(is_integer(observe) and observe >= 0
-                             , "invalid observe (positive integer expected)")
+  assert(is_natural(fringe+1), "invalid fringe (boolean or fringe flag expected)")
+  assert(is_natural(observe) , "invalid observe (positive integer expected)")
 
   local savesel = self:var_get 'savesel'
   assert(is_callable(savesel), "invalid savesel (callable expected)")
@@ -311,7 +310,7 @@ local function make_mflow (self)
   local nslice = self:var_get 'nslice'
   local nslc = is_number(nslice) and nslice or is_callable(nslice) and 1
                                             or is_iterable(nslice) and #nslice
-  assert(is_integer(nslc) and nslc > 0,
+  assert(is_nznatural(nslc),
          "invalid nslice (integer>0 or iterable of or generator of slice weights expected)")
 
   -- setup default misalign
@@ -319,7 +318,7 @@ local function make_mflow (self)
   assert(is_boolean(misalign), "invalid misalign (boolean expected)")
 
   -- setup deltap (number, table, vector or range)
-  local deltap = self.deltap or 0
+  local deltap in self
   if is_number(deltap) then deltap = {deltap} end
   assert(is_iterable(deltap), "invalid deltap (number or iterable expected)")
   local ndp = #deltap
@@ -401,12 +400,13 @@ local function make_mflow (self)
   assert(is_boolean(totalpath), "invalid totalpath (boolean expected)")
   local T = totalpath and 1 or 0
 
-  -- model, method
-  local method, model, ptcmodel in self
+  -- model, method, secnmul
+  local method, model, secnmul, ptcmodel in self
   if is_nil(ptcmodel) then ptcmodel = option.ptcmodel end
   assertf(modint[model],
                     "invalid integration model %s (DKD or TKT expected)", model)
   assertf(symint[model][method], "invalid integration method '%s'", method)
+  assert(is_natural((secnmul or 0)+2), "invalid secnmul (integer or strategy expected)")
   assert(is_boolean(ptcmodel), "invalid ptcmodel (boolean expected)")
 
   -- retrieve initial conditions
@@ -421,8 +421,8 @@ local function make_mflow (self)
 
   -- damap defs and save
   local mapdef, savemap in self
-      if mapdef == true                    then mapdef = {} -- defaut is xy=1
-  elseif is_integer(mapdef) and mapdef > 0 then mapdef = {xy=mapdef} end
+      if mapdef == true       then mapdef = {} -- defaut is xy=1
+  elseif is_nznatural(mapdef) then mapdef = {xy=mapdef} end
   assert(is_boolean(mapdef) or is_mappable(mapdef),
                         "invalid mapdef (boolean, number or mappable expected)")
   assert(is_boolean(savemap) or savemap == 1, -- 1 means to save only the matrix
@@ -444,7 +444,7 @@ local function make_mflow (self)
   local beta = beam.beta
   local x0   = par2vec(O0)
   local pt0  = x0[6]
-  local stat, useda
+  local damo, stat = 0
 
   -- precedence of initial conditions
   for j,dp in ipairs(deltap) do
@@ -461,15 +461,15 @@ local function make_mflow (self)
 
       if is_beta0(X0i) then     -- damap created from beta0
         mflw[ii] = bet2map(X0i, damap(mdef[i] or mdef)):set0(x0,1) -- x0 added
-        stat, useda = 'Aset', true
+        stat, damo = 'Aset', max(damo, mflw[ii].__td.mo)
       elseif is_damap(X0i) then -- damap (copy)
         mflw[ii] = (nc and X0i or X0i:copy()):set0(x0,1)           -- x0 added
-        stat, useda = 'Mset', true
+        stat, damo = 'Mset', max(damo, mflw[ii].__td.mo)
       elseif is_iterable(X0i) then
         local x = x0 + par2vec(X0i)                                -- x0 added
         if mapdef then          -- damap created from particle
           mflw[ii] = damap(mdef[i] or mdef):set0(x)
-          useda = true
+          damo = max(damo, mflw[ii].__td.mo)
         else                    -- particle (copy)
           local p = nc and X0i or {x=0, px=0, y=0, py=0, t=0, pt=0}
           p.x, p.px, p.y, p.py, p.t, p.pt = x[1], x[2], x[3], x[4], x[5], x[6]
@@ -507,11 +507,11 @@ local function make_mflow (self)
 
   mflw.npar=#mflw            -- number of tracked particles or damaps
   mflw.tpar=mflw.npar        -- total number of particles or damaps
+  mflw.damo=damo             -- damap max order (0 means no DA)
   mflw.nslc=nslc             -- minimum number of slices for all elements
   mflw.nslice=nslice         -- slices for each element (num, fun or iterable)
   mflw.deltap=deltap         -- delta p
   mflw.implicit=implicit     -- slice also implicit elements (e.g. plots)
-  mflw.useda=useda           -- contain damap
   mflw.fringe=fringe         -- compute fringe fields
   mflw.misalign=misalign     -- misalign element
   mflw.radiate=radiate       -- radiate at slices
@@ -530,6 +530,7 @@ local function make_mflow (self)
 
   mflw.method=method         -- default integration method
   mflw.model=model           -- default integration model
+  mflw.secnmul=secnmul       -- default maximum number of multipoles for bends
   mflw.T=T                   -- cancel compensation for time of flight
 
   mflw.ptcmodel=ptcmodel     -- use PTC thick model
@@ -571,8 +572,9 @@ local function make_mflow (self)
     npha=0,                  -- current element number of multiplole phases
     pnl={[0]=0},             -- current element multipoles phases
     psl={[0]=0},             -- current element multipoles shew phases
-    bfx={[0]=0},             -- current subelement curved field x coefficients
-    bfy={[0]=0},             -- current subelement curved field y coefficients
+    snm=0,                   -- current element sector nmul max
+    bfx={[0]=0},             -- current element curved field x coefficients
+    bfy={[0]=0},             -- current element curved field y coefficients
   }, {__index=mflw})
 
   -- for processing (thin) subelements (pre-alloc to avoid rehash)
@@ -587,6 +589,7 @@ local function make_mflow (self)
     npha=0,                  -- current subelement number of multiplole phases
     pnl={[0]=0},             -- current subelement multipoles phases
     psl={[0]=0},             -- current subelement multipoles shew phases
+    snm=0,                   -- current subelement sector nmul max
     bfx={[0]=0},             -- current subelement curved field x coefficients
     bfy={[0]=0},             -- current subelement curved field y coefficients
   }, {__index=mflw})
@@ -660,7 +663,7 @@ local track = command 'track' {
   s0=0,             -- initial s-position offset [m]                      (mflw)
   X0=0,             -- initial X coordinates (or damap, or beta block)    (mflw)
   O0=0,             -- initial O coordinates of reference orbit           (mflw)
-  deltap=nil,       -- initial deltap(s)                                  (mflw)
+  deltap=0,         -- initial deltap(s)                                  (mflw)
 
   nturn=1,          -- number of turns to track                           (iter)
   nstep=-1,         -- number of elements to track                        (iter)
@@ -668,7 +671,8 @@ local track = command 'track' {
   mapdef=false,     -- setup for damap (or list of, true => {})           (mflw)
   method=2,         -- method or order for integration (1 to 8)           (mflw)
   model='TKT',      -- model for integration ('DKD' or 'TKT')             (mflw)
-  ptcmodel=nil,     -- use strict PTC thick model (override option)       (mflw)
+  secnmul=false,    -- maximun number of curved multipoles for bends      (mflw)
+  ptcmodel=false,   -- use strict PTC thick model (override option)       (mflw)
   implicit=false,   -- slice implicit elements too (e.g. plots)           (mflw)
   misalign=false,   -- consider misalignment                              (mflw)
   fringe=true,      -- enable fringe fields (see element.flags.fringe)    (mflw)
@@ -697,7 +701,7 @@ local track = command 'track' {
 
   __attr = {        -- list of all setup attributes
     'sequence', 'beam', 'range', 'dir', 's0', 'X0', 'O0', 'deltap',
-    'nturn', 'nstep', 'mapdef', 'method', 'model', 'ptcmodel',
+    'nturn', 'nstep', 'mapdef', 'method', 'model', 'secnmul', 'ptcmodel',
     'implicit', 'misalign', 'fringe', 'radiate', 'totalpath',
     'save', 'title', 'observe', 'savemap', 'info', 'debug', 'usrdef',
     noeval = {'nslice', 'savesel',
