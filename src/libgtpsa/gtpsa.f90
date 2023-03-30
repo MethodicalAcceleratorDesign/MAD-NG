@@ -539,7 +539,7 @@ module GTPSA
       integer(c_int), intent(in) :: m(*)       ! sparse monomial (idx,ord)
     end function mad_tpsa_idxsm
 
-    function mad_tpsa_cycle(tpsa,n,m_,i,v_) result(idx) bind(C)
+    function mad_tpsa_cycle(tpsa,i,n,m_,v_) result(idx) bind(C)
       import ; implicit none                   ! scan for non-zero coefs starting at i
       integer(c_idx_t) :: idx                  ! next index to start searching or -1
       type(c_ptr), value, intent(in) :: tpsa   !
@@ -1327,7 +1327,7 @@ module GTPSA
       integer(c_int), intent(in) :: m(*)       ! sparse monomial (idx,ord)
     end function mad_ctpsa_idxsm
 
-    function mad_ctpsa_cycle(ctpsa,n,m_,i,v_) result(idx) bind(C)
+    function mad_ctpsa_cycle(ctpsa,i,n,m_,v_) result(idx) bind(C)
       import ; implicit none                   ! scan for non-zero coefs starting at i
       integer(c_idx_t) :: idx                  ! next index to start searching or -1
       type(c_ptr), value, intent(in) :: ctpsa  !
