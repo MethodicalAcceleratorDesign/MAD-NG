@@ -27,13 +27,13 @@ program gtpsa_ex5
 
   ! descriptor for TPSA with 100 variables of order 2 without parameters
   d=mad_desc_newv(100, 2_1)
-  print *, "d2 length=", mad_desc_maxlen(d), "coefs"
+  print *, "d2 length=", mad_desc_maxlen(d, mad_tpsa_default), "coefs"
   call mad_desc_del(d); d=c_null
 
   ! descriptor for TPSA with 6  variables  of order 2 and
   !                          94 parameters of order 1
   d=mad_desc_newvp(6, 2_1, 94, 1_1)
-  print *, "d  length=", mad_desc_maxlen(d), "coefs"
+  print *, "d  length=", mad_desc_maxlen(d, mad_tpsa_default), "coefs"
 
   ! two TPSAs, t1 has maximum order, t2 is same as t1
   t1=mad_tpsa_newd(d , mad_tpsa_default)
