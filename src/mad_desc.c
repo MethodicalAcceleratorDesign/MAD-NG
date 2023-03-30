@@ -1097,7 +1097,7 @@ mad_desc_nxtbyord (const D *d, ssz_t n, ord_t m[n])
 }
 
 ord_t
-mad_desc_mono (const D *d, ssz_t n, ord_t m_[n], idx_t i)
+mad_desc_mono (const D *d, idx_t i, ssz_t n, ord_t m_[n])
 {
   DBGFUN(->);
   assert(d);
@@ -1151,38 +1151,23 @@ mad_desc_getnv (const D *d, ord_t *mo_, int *np_, ord_t *po_)
 }
 
 ord_t
-mad_desc_getno (const D *d, int n, ord_t no_[n])
+mad_desc_maxord (const D *d, int n, ord_t no_[n])
 {
   assert(d); DBGFUN(->);
   if (no_) {
-    ensure(n == d->nn, "invalid monomial length %d (%d orders expected)", n,d->nn);
-    mad_mono_copy(d->nn, d->no, no_);
+    ensure(n <= d->nn, "invalid monomial length %d (max %d orders expected)", n, d->nn);
+    mad_mono_copy(n, d->no, no_);
   }
   ord_t ret = d->mo;
   DBGFUN(<-); return ret;
 }
 
-ord_t
-mad_desc_maxord (const D *d)
-{
-  assert(d); DBGFUN(->);
-  ssz_t ret = d->mo;
-  DBGFUN(<-); return ret;
-}
-
 ssz_t
-mad_desc_maxlen (const D *d)
+mad_desc_maxlen (const D *d, ord_t mo)
 {
   assert(d); DBGFUN(->);
-  ssz_t ret = d->nc;
-  DBGFUN(<-); return ret;
-}
-
-ssz_t
-mad_desc_ordlen (const D *d, ord_t mo)
-{
-  assert(d); DBGFUN(->);
-  ensure(mo <= d->mo, "invalid order (exceeds maximum order)");
+  if (mo == mad_tpsa_default) mo = d->mo;
+  ensure(mo <= d->mo, "invalid order %d (exceeds maximum order %d)", mo, d->mo);
   ssz_t ret = d->ord2idx[mo+1];
   DBGFUN(<-); return ret;
 }

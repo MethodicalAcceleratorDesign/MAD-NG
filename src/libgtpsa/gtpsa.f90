@@ -266,32 +266,20 @@ module GTPSA
       integer(c_ord_t), optional, intent(out) :: mo_, po_ ! tpsa order, params x-orders
     end function mad_desc_getnv
 
-    function mad_desc_getno(desc,nn,no_) result(mo) bind(C)
+    function mad_desc_maxord(desc,nn,no_) result(mo) bind(C)
       import ; implicit none
       integer(c_ord_t) :: mo                   ! tpsa max order
       type(c_ptr), value, intent(in) :: desc   ! descriptor
       integer(c_int), value, intent(in) :: nn  ! #variables+parameters, no_[1..nn]
       integer(c_ord_t), intent(out) :: no_(*)  ! orders to be filled if provided
-    end function mad_desc_getno
-
-    function mad_desc_maxord(desc) result(mo) bind(C)
-      import ; implicit none
-      integer(c_ord_t) :: mo                   ! tpsa max order
-      type(c_ptr), value, intent(in) :: desc   ! descriptor
     end function mad_desc_maxord
 
-    function mad_desc_maxlen(desc) result(mlen) bind(C)
-      import ; implicit none
-      integer(c_ssz_t) :: mlen                 ! #monomials in 0..maxorder
-      type(c_ptr), value, intent(in) :: desc   ! descriptor
-    end function mad_desc_maxlen
-
-    function mad_desc_ordlen(desc,mo) result(olen) bind(C)
+    function mad_desc_maxlen(desc,mo) result(olen) bind(C)
       import ; implicit none
       integer(c_ssz_t) :: olen                  ! #monomials in 0..order
       type(c_ptr), value, intent(in) :: desc    ! descriptor
       integer(c_ord_t), value, intent(in) :: mo ! ordlen(maxord) == maxlen
-    end function mad_desc_ordlen
+    end function mad_desc_maxlen
 
     function mad_desc_gtrunc(desc,to) result(oldto) bind(C)
       import ; implicit none
@@ -366,7 +354,7 @@ module GTPSA
       integer(c_ord_t), intent(out) :: m(*)    ! monomial
     end function mad_desc_nxtbyord
 
-    function mad_desc_mono(desc,n,m_,i) result(ord) bind(C)
+    function mad_desc_mono(desc,i,n,m_) result(ord) bind(C)
       import ; implicit none
       integer(c_ord_t) :: ord                  ! monomial order
       type(c_ptr), value, intent(in) :: desc   !
