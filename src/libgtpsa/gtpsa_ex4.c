@@ -25,12 +25,12 @@
 int main(void)
 {
   // descriptor for TPSA with 6 variables of order 10,10,10,10,10,10 without parameters
-  const desc_t *d10 = mad_desc_newvpo(6, 0, (ord_t[]){10,10,10,10,10,10}, 0);
+  const desc_t *d10 = mad_desc_newvpo(6, 0, 0, 0, (ord_t[]){10,10,10,10,10,10});
   printf("d10 length=%4d coefs\n", mad_desc_maxlen(d10));
   mad_desc_del(d10); d10 = 0; // not used anymore.
 
   // descriptor for TPSA with 6 variables of order 2,2,2,2,1,10 without parameters
-  const desc_t *d = mad_desc_newvpo(6, 0, (ord_t[]){2,2,2,2,1,10}, 0);
+  const desc_t *d = mad_desc_newvpo(6, 0, 0, 0, (ord_t[]){2,2,2,2,1,10});
   printf("d   length=%4d coefs\n", mad_desc_maxlen(d));
 
   // two TPSAs, t2 is same as t1

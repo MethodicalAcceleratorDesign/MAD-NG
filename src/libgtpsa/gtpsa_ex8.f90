@@ -21,17 +21,19 @@ program gtpsa_ex8
   use gtpsa
   implicit none
 
-  type(c_ptr) :: d, d0, t1, t2, t3
+  type(c_ptr) :: d, t1, t2, t3
+  !type(c_ptr) :: d0
 
   ! descriptor for TPSA with 6 variables of order 2 (max)
-  d=mad_desc_newv(6, 2)
+  d=mad_desc_newv(6, 2_1)
 
   ! d0=mad_desc_newv(6, 0)
   ! -> error: mad_desc.c:1230: : invalid maximum order: 0 (0<?<=63)
 
   ! create three TPSAs of order 0 (as scalars) and set values
-  t1=mad_tpsa_newd(d, 0) ; call mad_tpsa_set0(t1,0d0,1.5d0);
-  t2=mad_tpsa_newd(d, 0) ; call mad_tpsa_set0(t2,0d0,2.0d0);
+  t1=mad_tpsa_newd(d, 0_1); call mad_tpsa_set0(t1,0d0,1.5d0);
+  t2=mad_tpsa_newd(d, 0_1); call mad_tpsa_set0(t2,0d0,2.0d0);
+  t3=mad_tpsa_newd(d, 0_1);
 
    call mad_tpsa_print(t1,"T1"//c_eos,0d0,0,c_null);
    call mad_tpsa_print(t2,"T2"//c_eos,0d0,0,c_null);

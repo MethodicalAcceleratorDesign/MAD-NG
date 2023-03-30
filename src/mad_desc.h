@@ -46,17 +46,17 @@ extern const desc_t *mad_desc_curr;
 // --- interface --------------------------------------------------------------o
 
 // -- ctor: new general interface
-// mo = max(1,mo_)
-const desc_t* mad_desc_newv(int nv, ord_t mo_);
+// mo = max(1, mo)
+const desc_t* mad_desc_newv(int nv, ord_t mo);
 
 // if np == 0, same as mad_desc_newv, otherwise
-// mo = max(1, mo_)
-// po = po_ ? min(mo,po_) : mo
-const desc_t* mad_desc_newvp(int nv, int np, ord_t mo_, ord_t po_);
+// mo = max(1, mo)
+// po = max(1, po_)
+const desc_t* mad_desc_newvp(int nv, ord_t mo, int np_, ord_t po_);
 
-// mo = max(no[0:nn-1]), nn = nv+np
-// po = np>0 ? min(mo, max(po_, max( no[nv:nn-1] ))) : mo
-const desc_t* mad_desc_newvpo(int nv, int np, const ord_t no[], ord_t po_);
+// mo = max(mo , no[0 :nn-1]), nn = nv+np
+// po = max(po_, no[nv:nn-1]), po <= mo
+const desc_t* mad_desc_newvpo(int nv, ord_t mo, int np_, ord_t po_, const ord_t no_[nv+np_]);
 
 // -- dtor
 void  mad_desc_del    (const desc_t *d);

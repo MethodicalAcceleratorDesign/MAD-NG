@@ -217,29 +217,32 @@ module GTPSA
     ! -- Constructors (all constructors return a descriptor)
 
     function mad_desc_newv(nv,mo_) result(desc) bind(C)
+      ! mo = max(1, mo)
       import ; implicit none
       type(c_ptr) :: desc                          ! descriptor
       integer(c_int), value, intent(in) :: nv      ! #vars
       integer(c_ord_t), value, intent(in) :: mo_   ! order of tpsa, mo=max(1,mo_)
     end function mad_desc_newv
 
-    function mad_desc_newvp(nv,np,mo_,po_) result(desc) bind(C)
+    function mad_desc_newvp(nv,mo_,np_,po_) result(desc) bind(C)
       ! if np == 0, same as mad_desc_newv, otherwise
-      ! mo = max(1,mo_) and po = po_ ? min(mo,po_) : mo
+      ! mo = max(1, mo)
+      ! po = max(1, po_)
       import ; implicit none
       type(c_ptr) :: desc                             ! descriptor
-      integer(c_int), value, intent(in) :: nv, np     ! #vars, #params
+      integer(c_int), value, intent(in) :: nv, np_    ! #vars, #params
       integer(c_ord_t), value, intent(in) :: mo_, po_ ! order of tpsa and params x-orders
     end function mad_desc_newvp
 
-    function mad_desc_newvpo(nv,np,no,po_) result(desc) bind(C)
-      ! mo = max(no[0:nv+np-1])
-      ! po = np>0 ? min(mo, max(po_, max( no[nv:nv+np-1] ))) : mo
+    function mad_desc_newvpo(nv,mo_,np_,po_,no_) result(desc) bind(C)
+      ! if no == null, same as mad_desc_newvp, otherwise
+      ! mo = max(mo , no[0 :nn-1]), nn = nv+np
+      ! po = max(po_, no[nv:nn-1]), po <= mo
       import ; implicit none
-      type(c_ptr) :: desc                         ! descriptor
-      integer(c_int), value, intent(in) :: nv, np ! #vars, #params (i.e. mo=max(no))
-      integer(c_ord_t), value, intent(in) :: po_  ! max params x-orders
-      integer(c_ord_t), intent(in) :: no(*)       ! orders of vars & params
+      type(c_ptr) :: desc                          ! descriptor
+      integer(c_int), value, intent(in) :: nv, np_ ! #vars, #params (i.e. mo=max(no))
+      integer(c_ord_t), value, intent(in) :: mo_, po_ ! max params x-orders
+      integer(c_ord_t), intent(in) :: no_(*)       ! orders of vars & params
     end function mad_desc_newvpo
 
     ! -- Destructor -------------------
