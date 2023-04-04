@@ -86,11 +86,11 @@ void     mad_ctpsa_rect    (const ctpsa_t *t, ctpsa_t *r);
 void     mad_ctpsa_polar   (const ctpsa_t *t, ctpsa_t *r);
 
 // indexing / monomials (return idx_t = -1 if invalid)
-ord_t    mad_ctpsa_mono    (const ctpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i);
-idx_t    mad_ctpsa_idxs    (const ctpsa_t *t, ssz_t n,       str_t s    ); // string mono "[0-9]*"
-idx_t    mad_ctpsa_idxm    (const ctpsa_t *t, ssz_t n, const ord_t m [n]);
-idx_t    mad_ctpsa_idxsm   (const ctpsa_t *t, ssz_t n, const int   m [n]); // sparse mono [(i,o)]
-idx_t    mad_ctpsa_cycle   (const ctpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i, cpx_t *v_);
+ord_t    mad_ctpsa_mono    (const ctpsa_t *t, idx_t i, ssz_t n,       ord_t m_[n]);
+idx_t    mad_ctpsa_idxs    (const ctpsa_t *t,          ssz_t n,       str_t s    ); // string mono "[0-9]*"
+idx_t    mad_ctpsa_idxm    (const ctpsa_t *t,          ssz_t n, const ord_t m [n]);
+idx_t    mad_ctpsa_idxsm   (const ctpsa_t *t,          ssz_t n, const int   m [n]); // sparse mono [(i,o)]
+idx_t    mad_ctpsa_cycle   (const ctpsa_t *t, idx_t i, ssz_t n,       ord_t m_[n], cpx_t *v_);
 
 // accessors
 cpx_t    mad_ctpsa_get0    (const ctpsa_t *t);

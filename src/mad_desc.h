@@ -46,40 +46,40 @@ extern const desc_t *mad_desc_curr;
 // --- interface --------------------------------------------------------------o
 
 // -- ctor: new general interface
-// mo = max(1,mo_)
-const desc_t* mad_desc_newv(int nv, ord_t mo_);
+// mo = max(1, mo)
+const desc_t* mad_desc_newv(int nv, ord_t mo);
 
 // if np == 0, same as mad_desc_newv, otherwise
-// mo = max(1, mo_)
-// po = po_ ? min(mo,po_) : mo
-const desc_t* mad_desc_newvp(int nv, int np, ord_t mo_, ord_t po_);
+// mo = max(1, mo)
+// po = max(1, po_)
+const desc_t* mad_desc_newvp(int nv, ord_t mo, int np_, ord_t po_);
 
-// mo = max(no[0:nn-1]), nn = nv+np
-// po = np>0 ? min(mo, max(po_, max( no[nv:nn-1] ))) : mo
-const desc_t* mad_desc_newvpo(int nv, int np, const ord_t no[], ord_t po_);
+// mo = max(mo , no[0 :nn-1]), nn = nv+np
+// po = max(po_, no[nv:nn-1]), po <= mo
+const desc_t* mad_desc_newvpo(int nv, ord_t mo, int np_, ord_t po_, const ord_t no_[nv+np_]);
 
 // -- dtor
 void  mad_desc_del    (const desc_t *d);
 
 // -- introspection
 int   mad_desc_getnv  (const desc_t *d, ord_t *mo_, int *np_, ord_t *po_); // return nv
-ord_t mad_desc_getno  (const desc_t *d, int nn, ord_t no_[nn]); // return mo
-ord_t mad_desc_maxord (const desc_t *d); // return mo
-ssz_t mad_desc_maxlen (const desc_t *d); // ordlen(mo) == maxlen
-ssz_t mad_desc_ordlen (const desc_t *d, ord_t mo);
+ord_t mad_desc_maxord (const desc_t *d, int nn, ord_t no_[nn]); // return mo
+ssz_t mad_desc_maxlen (const desc_t *d, ord_t mo);
 ord_t mad_desc_gtrunc (const desc_t *d, ord_t to);
-void  mad_desc_info   (const desc_t *d, FILE *fp_);
 
 // -- indexes / monomials
-log_t mad_desc_isvalids  (const desc_t *d, ssz_t n,       str_t s    );
-log_t mad_desc_isvalidm  (const desc_t *d, ssz_t n, const ord_t m [n]);
-log_t mad_desc_isvalidsm (const desc_t *d, ssz_t n, const idx_t m [n]);
-idx_t mad_desc_idxs      (const desc_t *d, ssz_t n,       str_t s    );
-idx_t mad_desc_idxm      (const desc_t *d, ssz_t n, const ord_t m [n]);
-idx_t mad_desc_idxsm     (const desc_t *d, ssz_t n, const idx_t m [n]);
-idx_t mad_desc_nxtbyvar  (const desc_t *d, ssz_t n,       ord_t m [n]);
-idx_t mad_desc_nxtbyord  (const desc_t *d, ssz_t n,       ord_t m [n]);
-ord_t mad_desc_mono      (const desc_t *d, ssz_t n,       ord_t m_[n], idx_t i);
+log_t mad_desc_isvalids  (const desc_t *d,          ssz_t n,       str_t s    ); // string
+log_t mad_desc_isvalidm  (const desc_t *d,          ssz_t n, const ord_t m [n]); // mono
+log_t mad_desc_isvalidsm (const desc_t *d,          ssz_t n, const idx_t m [n]); // sparse mono
+idx_t mad_desc_idxs      (const desc_t *d,          ssz_t n,       str_t s    ); // string
+idx_t mad_desc_idxm      (const desc_t *d,          ssz_t n, const ord_t m [n]); // mono
+idx_t mad_desc_idxsm     (const desc_t *d,          ssz_t n, const idx_t m [n]); // sparse mono
+idx_t mad_desc_nxtbyvar  (const desc_t *d,          ssz_t n,       ord_t m [n]);
+idx_t mad_desc_nxtbyord  (const desc_t *d,          ssz_t n,       ord_t m [n]);
+ord_t mad_desc_mono      (const desc_t *d, idx_t i, ssz_t n,       ord_t m_[n]);
+
+// for debugging
+void  mad_desc_info      (const desc_t *d, FILE *fp_);
 
 // global cleanup (warning: no GTSPA must still be in use!)
 void  mad_desc_cleanup(void);
