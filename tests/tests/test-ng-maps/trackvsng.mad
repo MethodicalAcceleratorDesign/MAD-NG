@@ -11,18 +11,20 @@ local create_dif = require "madl_dbgmap".cmpmdump
 local dum = damap() -- get a dummy damap object for reading
 
 
-local script = [[
+-- Very useful for debugging
+local const_str = [[
 -- Constants
 local models = {'DKD', 'TKT'}
 local X0s = {{x=0   , px=0    , y=0    , py=0   , t=0   , pt=0   }, -- zero
-       {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=0   }, -- 4D
-       {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=2e-5}, -- 5D
-       {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=2e-5}} -- 6D
-
--- Input
-local seq = MAD.sequence "seq" {dir = ${dir}, l=1.5, MAD.element.${elm}}
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=0   }, -- 4D
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=2e-5}, -- 5D
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=2e-5}} -- 6D
+]]
+local track_str = [[
+local seq = MAD.sequence "seq" {dir = ${edir}, l=1.5, MAD.element.${elm}}
 return MAD.track { -- see ref_cfg for list of values
-  beam     = MAD.beam {energy = ${energy}},
+  dir      = ${sdir},
+  beam     = MAD.beam {energy = ${energy}, charge=${chg}},
   sequence = seq,
   X0       = X0s[${x0i}],
   mapdef   = ${order},
@@ -33,6 +35,21 @@ return MAD.track { -- see ref_cfg for list of values
 }
 ]]
 
+local backtrack_str = [[
+local seq = MAD.sequence "seq" {dir = ${edir}, l=1.5, MAD.element.${elm}}
+local _, mflw = MAD.track { -- see ref_cfg for list of values
+  dir      = ${sdir},
+  beam     = MAD.beam {energy = ${energy}, charge=${chg}},
+  sequence = seq,
+  X0       = X0,
+  model    = models[${model}],
+  method   = ${method},
+  nslice   = ${nslice},
+  debug    = ${debug},
+}
+return mflw, X0s[${x0i}]
+]]
+
 local in_dir  = \s -> 'input/' ..(s or '')
 local out_dir = \s -> 'output/'..(s or '')
 
@@ -40,8 +57,8 @@ os.execute("mkdir -p "..out_dir()) -- Create output dir if it doesn't exist
 -------------------------------------------------------------------------------o
 
 -- Generate a MAD-NG script from the cfg and return it-------------------------o
-local function create_run(cfg, cur_cfg, elm)
-  return strinter(strinter(script, {elm = elm}, "="), cur_cfg, "=") % cfg
+local function create_run(cfg, cur_cfg, track_str_)
+  return const_str .. strinter(strinter(track_str_ or track_str, {elm = cfg.elm}, "="), cur_cfg, "=") % cfg
 end
 -------------------------------------------------------------------------------o
 
@@ -62,12 +79,10 @@ local function getlastmap(filename)
 -------------------------------------------------------------------------------o
 
 -- Run track and PTC from cur_cfg and create results --------------------------o
-local function get_diff(setup1, setup2, relation, order)
+local function get_diff(ref, res, order)
    -- Create results table
-  local res = {}
-  local _, mflw1 = setup1()
-  local _, mflw2 = setup2()
-  local dif = mflw1[1]:dif(relation(mflw2[1]))
+  local res_tbl = {}
+  local dif = ref:dif(res)
   
   -- Setup max matrix (coords x order)
   local max_difs = matrix(6, order+1)   
@@ -86,18 +101,19 @@ local function get_diff(setup1, setup2, relation, order)
     max_difs:setrow(i, max_vals)
 
     -- Get and add coordinate max to results table
-    res[c.."_eps"] = max_vals:max()
+    res_tbl[c.."_eps"] = max_vals:max()
   end
   
   -- Get and add order max to results table
   for i = 1, max_difs.ncol do
-    res["order"..i-1.."_eps"] = max_difs:getcol(i):max()
+    res_tbl["order"..i-1.."_eps"] = max_difs:getcol(i):max()
   end
-  return res
+  return res_tbl
 end
 
 local function save_results (cfg, res, results)
   -- Add results and configuration to table
+  cfg.cur_cfg.cfgid = cfg.cur_cfg.cfgid + 1     -- Increment config id
   results:addrow{
     __cfg=tblcpy(cfg.cur_cfg), 
     __res=res,
@@ -120,44 +136,87 @@ local function save_results (cfg, res, results)
     end
     io.write("\n")
   end
+end
 
-  if cfg.dodbg then -- If debug mode is on, stop when max dif is greater than tol
-    for i = 1, cfg.order+1 do
-      if res["order"..i-1.."_eps"] > cfg.tol then
-        print("Max dif greater than tolerance, stopping...")
-        io.open(out_dir("setup1.mad"), "w"):write(setup1_script):close()
-        io.open(out_dir("setup2.mad"), "w"):write(
-          create_run(cfg, other_cfg, cfg.elm)
-        ):close()
-        cfg.stop = true
-        return
-      end
+local function debug_chk(cfg, dif, script2)
+  if not cfg.dodbg then return end 
+  for i = 1, cfg.order+1 do
+    if dif["order"..i-1.."_eps"] > cfg.tol then
+      print("Max dif greater than tolerance, stopping...")
+      io.open(out_dir("setup1.mad"), "w"):write(cfg.ref_script):close()
+      io.open(out_dir("setup2.mad"), "w"):write(script2):close()
+      cfg.stop = true
+      return
     end
   end
 end
 
-local function run_cfg(cfg, equiv, results)
-  -- Get a callable for the main config
-  local setup1_script = create_run(cfg, cfg.cur_cfg, cfg.elm)
-  local setup1 = loadstring(setup1_script)
+local function backtrack(cfg, results)
+  -- Setup backward tracking
+  local bck_cfg = tblcpy(cfg.cur_cfg)
+  bck_cfg.sdir = -1         -- Override direction
 
-  -- Copy main config to make comparable config
+  -- Do backward tracking
+  local bck_trck = create_run(cfg, bck_cfg, backtrack_str)
+  local env = {X0 = cfg.ref_map}; setmetatable(env, {__index = _G})
+  local bck_map, init_coords = loadstring(bck_trck, nil, nil, env)()
+
+  -- Compare backward maps to initial coordinates
+  local exp = damap{nv = 6, mo = cfg.order}
+  for i, c in ipairs({"x", "px", "y", "py", "t", "pt"}) do 
+    exp[c]:set0(init_coords[c])
+  end
+  local dif = get_diff(exp, bck_map[1], cfg.order)
+  cfg.cur_cfg.test_type = "backtrack"  -- Set test type
+  save_results(cfg, dif, results)
+  debug_chk(cfg, dif, bck_trck)
+end
+
+local function reverse_attr(cfg, results, attr)
+  -- Run reversed attribute tracking
+  cfg[attr] = -cfg[attr] 
+  local attr_script = create_run(cfg, cfg.cur_cfg)
+  local _, attr_res = loadstring(attr_script)()
+  cfg[attr] = -cfg[attr]
+
+  cfg.cur_cfg.test_type = attr  -- Set test type
+  local dif = get_diff(cfg.ref_map, attr_res[1], cfg.order)
+  save_results(cfg, dif, results)
+  debug_chk(cfg, dif, attr_script)
+end
+
+  
+local function run_cfg(cfg, equiv, results)
+  -- Get the mflow for the main config
+  cfg.ref_script = create_run(cfg, cfg.cur_cfg)
+  local _, ref = loadstring(cfg.ref_script)()
+  cfg.ref_map = ref[1]
+  
+  -- Do default checks
+  backtrack(cfg, results)            -- Backtrack
+  reverse_attr(cfg, results, "chg")  -- Change sign of chg
+  reverse_attr(cfg, results, "edir") -- Change sign of edir
+
+  -- Copy main config to make comparable config and then compare
 
   -- Generate similar configs
   for i, change_type in ipairs(equiv.alist) do      -- Go through list of equivalences
     for j = 1, equiv[change_type].n do              -- Go through each equivalence
-      cfg.cur_cfg.cfgid = cfg.cur_cfg.cfgid + 1     -- Increment config id
-      cfg.cur_cfg.test_type = change_type.."_"..j    -- Set test type
+      cfg.cur_cfg.test_type = change_type.."_"..j   -- Set test type
       local other_cfg = tblcpy(cfg.cur_cfg)
       
       -- Change each attribute for the equivalence 
       for _, attr in ipairs(equiv[change_type]) do
         other_cfg[attr] = equiv[change_type][attr][j]
       end
-    
-      local setup2 = loadstring(create_run(cfg, other_cfg, cfg.elm))
-      local res = get_diff(setup1, setup2, equiv[change_type].f, cfg.order)
-      save_results(cfg, res, results)
+      
+      local setup2_script = create_run(cfg, other_cfg)
+      local _, res = loadstring(setup2_script)()
+      local dif = get_diff(ref[1], res[1], cfg.order)
+      save_results(cfg, dif, results)
+
+      -- If debug mode is on, stop when max dif is greater than tolerance
+      debug_chk(cfg, dif, setup2_script)
     end
   end
 end
@@ -167,7 +226,6 @@ local function gen_cfg(cfg, idx, gen_fun)
   if cfg.stop then return end -- Stop if the stop flag is set
   local k = cfg.alist[idx]    
   if not k then
-    cfg.cur_cfg.cfgid = cfg.cur_cfg.cfgid + 1
     return gen_fun() -- Could be changed to any function
   end
   for i, v in ipairs(cfg[k]) do
