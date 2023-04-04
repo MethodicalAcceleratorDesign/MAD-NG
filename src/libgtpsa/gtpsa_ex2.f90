@@ -27,7 +27,7 @@ program gtpsa_ex2
 
   ! descriptor for TPSA with 4 variables  of order 4 and
   !                          2 parameters of order 3
-  d=mad_desc_newvp(4, 2, 5_1, 3_1)
+  d=mad_desc_newvp(4, 5_1, 2, 3_1)
 
   ! two TPSAs, t1 has maximum order, t2 is same as t1
   t1=mad_tpsa_newd(d , mad_tpsa_default)

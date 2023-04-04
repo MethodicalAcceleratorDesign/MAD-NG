@@ -143,15 +143,15 @@ end
 
 -- element tracking -----------------------------------------------------------o
 
-local function trackone (elm, m, track, thick, thin)
+local function trackone (elm, m, inter, thick, thin)
   local sdir, atentry, atexit in m
 
   atentry(elm, m,  sdir, -1)
-  track  (elm, m,    1 , thick, thin)
+  inter  (elm, m,    1 , thick, thin)
   atexit (elm, m, -sdir, -2)
 end
 
-local function trackelm (elm, m, track, thick, thin, fringe)
+local function trackelm (elm, m, inter, thick, thin, fringe)
   local sdir, atentry, atexit in m
   local algn = elm.misalign
   local tlt  = elm.tilt*m.tdir
@@ -163,14 +163,14 @@ local function trackelm (elm, m, track, thick, thin, fringe)
   mis    (elm, m,  sdir)
   rot    (tlt, m,  sdir)
   fringe (elm, m,  sdir)
-  track  (elm, m,    1 , thick, thin)
+  inter  (elm, m,    1 , thick, thin)
   fringe (elm, m, -sdir)
   rot    (tlt, m, -sdir)
   mis    (elm, m, -sdir)
   atexit (elm, m, -sdir, -2)
 end
 
-local function tracksub (elm, m, track, thick, thin, fringe)
+local function tracksub (elm, m, inter, thick, thin, fringe)
   local sdir, atentry, atexit, __sdat in m
   local algn = elm.misalign
   local tlt  = elm.tilt*m.tdir
@@ -188,7 +188,7 @@ local function tracksub (elm, m, track, thick, thin, fringe)
     for i=1,#elm do
       at, lw = elm[i].sat, elm[i].sat - at
       if abs(lw) >= minlen then -- body step
-        track(elm, m, lw, thick, thin)
+        inter(elm, m, lw, thick, thin)
       end
       __sdat.clw = at
       elm[i]:track(__sdat)
@@ -196,7 +196,7 @@ local function tracksub (elm, m, track, thick, thin, fringe)
     end
     lw = 1 - at
     if abs(lw) >= minlen then  -- last body step
-      track(elm, m, lw, thick, thin)
+      inter(elm, m, lw, thick, thin)
     end
 
   else -- backtrack
@@ -204,7 +204,7 @@ local function tracksub (elm, m, track, thick, thin, fringe)
     for i=#elm,1,-1 do
       at, lw = elm[i].sat, at - elm[i].sat
       if abs(lw) >= minlen then -- body step
-        track(elm, m, lw, thick, thin)
+        inter(elm, m, lw, thick, thin)
       end
       __sdat.clw = at
       elm[i]:track(__sdat)
@@ -212,7 +212,7 @@ local function tracksub (elm, m, track, thick, thin, fringe)
     end
     lw = at
     if abs(lw) >= minlen then -- first body step
-      track(elm, m, lw, thick, thin)
+      inter(elm, m, lw, thick, thin)
     end
   end
 
@@ -238,19 +238,19 @@ end
 
 local function track_marker (elm, m)
   m.el, m.eh, m.nmul = 0, 0, 0
-  trackone(elm, m, thinonly, nil, fnil)
+  trackone(elm, m, thinonly, fnil, fnil)
 end
 
 local function track_drift (elm, m)
   m.el, m.eh, m.nmul = m.ds, 0, 0
 
   if is_implicit(elm) then
-    local track = m.implicit and thickonly or driftonly
-    trackone(elm, m, track, strex_drift)
+    local inter = m.implicit and thickonly or driftonly
+    trackone(elm, m, inter, strex_drift)
   else
     local track = #elm == 0 and trackelm or tracksub
-    local thick = abs(m.ds) >= minlen and thickonly or driftonly
-    track(elm, m, thick, strex_drift, nil, fnil)
+    local inter = abs(m.ds) >= minlen and thickonly or driftonly
+    track(elm, m, inter, strex_drift, fnil, fnil)
   end
 end
 
@@ -269,7 +269,7 @@ local function track_multipole (elm, m)
     kick = strex_kickhs
   end
 
-  trackelm(elm, m, thinonly, nil, kick, fnil)
+  trackelm(elm, m, thinonly, fnil, kick, fnil)
   m.ksi, m.lrad = nil, nil
 end
 
@@ -279,7 +279,7 @@ local function track_bbeam (elm, m)
   m.el, m.eh, m.nmul = 0, 0, 0
 
   local kick = elm.bb6D and bbeam_kick6D or bbeam_kick
-  trackelm(elm, m, thinonly, nil, kick, fnil)
+  trackelm(elm, m, thinonly, fnil, kick, fnil)
 end
 
 local function track_nllens (elm, m)
@@ -287,7 +287,7 @@ local function track_nllens (elm, m)
 
   m.el, m.eh, m.nmul = 0, 0, 0
 
-  trackelm(elm, m, thinonly, nil, nllens_kick, fnil)
+  trackelm(elm, m, thinonly, fnil, nllens_kick, fnil)
 end
 
 local function track_sbend (elm, m, e1_, e2_)
@@ -321,6 +321,8 @@ local function track_sbend (elm, m, e1_, e2_)
 
   if model == 'DKD' then                          -- curved thin
     inter, thick, kick = DKD[method], curex_drift , curex_kick
+  elseif m.nmul == 1 and ksl[1] == 0 then         -- curved thick only
+    inter, thick, kick = thickonly  , sbend_thick , fnil
   else -- if abs(knl[2]) < minstr then            -- curved thick
     inter, thick, kick = TKT[method], sbend_thick , sbend_kick
   end
@@ -366,6 +368,8 @@ local function track_rbend (elm, m)
 
   if model == 'DKD' then
     inter, thick, kick = DKD[method], strex_drift, rbend_strex
+  elseif m.nmul == 1 and ksl[1] == 0 then
+    inter, thick, kick = thickonly  , rbend_thick , fnil
   else
     inter, thick, kick = TKT[method], rbend_thick, rbend_kick
   end

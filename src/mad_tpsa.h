@@ -75,11 +75,11 @@ void    mad_tpsa_clear   (      tpsa_t *t);
 log_t   mad_tpsa_isnul   (const tpsa_t *t);
 
 // indexing / monomials (return idx_t = -1 if invalid)
-ord_t   mad_tpsa_mono    (const tpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i);
-idx_t   mad_tpsa_idxs    (const tpsa_t *t, ssz_t n,       str_t s    ); // string mono "[0-9]*"
-idx_t   mad_tpsa_idxm    (const tpsa_t *t, ssz_t n, const ord_t m [n]);
-idx_t   mad_tpsa_idxsm   (const tpsa_t *t, ssz_t n, const int   m [n]); // sparse mono [(i,o)]
-idx_t   mad_tpsa_cycle   (const tpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i, num_t *v_);
+ord_t   mad_tpsa_mono    (const tpsa_t *t, idx_t i, ssz_t n,       ord_t m_[n]);
+idx_t   mad_tpsa_idxs    (const tpsa_t *t,          ssz_t n,       str_t s    ); // string mono "[0-9]*"
+idx_t   mad_tpsa_idxm    (const tpsa_t *t,          ssz_t n, const ord_t m [n]);
+idx_t   mad_tpsa_idxsm   (const tpsa_t *t,          ssz_t n, const int   m [n]); // sparse mono [(i,o)]
+idx_t   mad_tpsa_cycle   (const tpsa_t *t, idx_t i, ssz_t n,       ord_t m_[n], num_t *v_);
 
 // accessors
 num_t   mad_tpsa_get0    (const tpsa_t *t);

@@ -264,8 +264,8 @@ FUN(scan_hdr) (int *kind_, char name_[NAMSZ], FILE *stream_)
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // finish NO line
     ensure(skip_line(stream_) != EOF, "invalid input (file error?)"); // discard *****
 
-    const D* ret = cnt == 5 ? mad_desc_newvp (nv, np, mo, po)
-                            : mad_desc_newvpo(nv, np, no, po);
+    const D* ret = cnt == 5 ? mad_desc_newvp (nv, mo, np, po)
+                            : mad_desc_newvpo(nv, mo, np, po, no);
     DBGFUN(<-);
     return ret;
   }

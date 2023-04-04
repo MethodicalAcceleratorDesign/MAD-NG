@@ -908,7 +908,7 @@ static int desc_max = 0;
 static D *Ds[DESC_MAX_ARR];
 
 static inline D*
-desc_init (int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
+desc_init (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
 {
   DBGFUN(->);
   ensure(mo <= DESC_MAX_ORD, // variables max orders validation
@@ -957,10 +957,10 @@ desc_init (int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
 }
 
 static D*
-desc_build (int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
+desc_build (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
 {
   DBGFUN(->);
-  D *d = desc_init(nn, mo, no_, np, po);
+  D *d = desc_init(nn, mo, np, po, no_);
   int err = 0, eid=0;
 
   tbl_by_var(d);
@@ -998,7 +998,7 @@ error:
 }
 
 static inline int
-desc_equiv (const D *d, int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
+desc_equiv (const D *d, int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
 {
   int same = d->nn == nn && d->mo == mo && d->np == np && (np ? d->po == po : 1);
 
@@ -1008,17 +1008,17 @@ desc_equiv (const D *d, int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
 }
 
 static inline D*
-get_desc (int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
+get_desc (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
 {
   DBGFUN(->);
   for (int i=0; i < desc_max; ++i)
-    if (Ds[i] && desc_equiv(Ds[i], nn, mo, no_, np, po)) {
+    if (Ds[i] && desc_equiv(Ds[i], nn, mo, np, po, no_)) {
       DBGFUN(<-); return mad_desc_curr=Ds[i], Ds[i];
     }
 
   for (int i=0; i < DESC_MAX_ARR; ++i)
     if (!Ds[i]) {
-      Ds[i] = desc_build(nn, mo, no_, np, po);
+      Ds[i] = desc_build(nn, mo, np, po, no_);
       Ds[i]->id = i;
       if (i == desc_max) ++desc_max;
       DBGFUN(<-); return mad_desc_curr=Ds[i], Ds[i];
@@ -1097,7 +1097,7 @@ mad_desc_nxtbyord (const D *d, ssz_t n, ord_t m[n])
 }
 
 ord_t
-mad_desc_mono (const D *d, ssz_t n, ord_t m_[n], idx_t i)
+mad_desc_mono (const D *d, idx_t i, ssz_t n, ord_t m_[n])
 {
   DBGFUN(->);
   assert(d);
@@ -1151,38 +1151,23 @@ mad_desc_getnv (const D *d, ord_t *mo_, int *np_, ord_t *po_)
 }
 
 ord_t
-mad_desc_getno (const D *d, int n, ord_t no_[n])
+mad_desc_maxord (const D *d, int n, ord_t no_[n])
 {
   assert(d); DBGFUN(->);
   if (no_) {
-    ensure(n == d->nn, "invalid monomial length %d (%d orders expected)", n,d->nn);
-    mad_mono_copy(d->nn, d->no, no_);
+    ensure(n <= d->nn, "invalid monomial length %d (max %d orders expected)", n, d->nn);
+    mad_mono_copy(n, d->no, no_);
   }
   ord_t ret = d->mo;
   DBGFUN(<-); return ret;
 }
 
-ord_t
-mad_desc_maxord (const D *d)
-{
-  assert(d); DBGFUN(->);
-  ssz_t ret = d->mo;
-  DBGFUN(<-); return ret;
-}
-
 ssz_t
-mad_desc_maxlen (const D *d)
+mad_desc_maxlen (const D *d, ord_t mo)
 {
   assert(d); DBGFUN(->);
-  ssz_t ret = d->nc;
-  DBGFUN(<-); return ret;
-}
-
-ssz_t
-mad_desc_ordlen (const D *d, ord_t mo)
-{
-  assert(d); DBGFUN(->);
-  ensure(mo <= d->mo, "invalid order (exceeds maximum order)");
+  if (mo == mad_tpsa_default) mo = d->mo;
+  ensure(mo <= d->mo, "invalid order %d (exceeds maximum order %d)", mo, d->mo);
   ssz_t ret = d->ord2idx[mo+1];
   DBGFUN(<-); return ret;
 }
@@ -1231,71 +1216,75 @@ mad_desc_newv (int nv, ord_t mo)
          "invalid maximum order: %d (0<?<=%d)", mo, DESC_MAX_ORD);
 
 #if DEBUG_DESC > 1
-  printf(">> nv=%d,mo=%d\n", nv, mo);
+  printf(">> nv=%d, mo=%d\n", nv, mo);
 #endif
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wnonnull"
-  const desc_t* ret = get_desc(nv, mo, NULL, 0, 0);
+  const desc_t* ret = get_desc(nv, mo, 0, 0, NULL);
 #pragma GCC diagnostic pop
 
   DBGFUN(<-); return ret;
 }
 
 const desc_t*
-mad_desc_newvp(int nv, int np, ord_t mo, ord_t po_)
+mad_desc_newvp(int nv, ord_t mo, int np_, ord_t po_)
 {
-  DBGFUN(->);
-  if (!np) {
-    const desc_t* ret = mad_desc_newv(nv, mo); DBGFUN(<-); return ret;
-  }
-  int nn = nv+np;
+  if (np_ <= 0) return mad_desc_newv(nv, mo);
 
+  DBGFUN(->);
+  int np = MAX(np_,0);
+  int nn = nv+np;
   ensure(0 < nn && nn <= DESC_MAX_VAR,
          "invalid number of variables+parameters: %d (0<?<=%d)", nn, DESC_MAX_VAR);
   ensure(0 < mo && mo <= DESC_MAX_ORD,
          "invalid maximum order: %d (0<?<=%d)", mo, DESC_MAX_ORD);
 
-  ord_t po = po_ ? MIN(mo,po_) : mo;
+  ord_t po = MAX(po_,1);
+  ensure(0 < po && po <= mo,
+         "invalid parameter order: %d (0<?<=%d)", po, mo);
 
 #if DEBUG_DESC > 1
-  printf(">> nn=%d,mo=%d,np=%d,po=%d[%d]\n", nn, mo, np, po,po_);
+  printf(">> nn=%d, mo=%d, np=%d, po=%d[%d]\n", nn, mo, np, po, po_);
 #endif
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wnonnull"
-  const desc_t* ret = get_desc(nn, mo, NULL, np, po);
+  const desc_t* ret = get_desc(nn, mo, np, po, NULL);
 #pragma GCC diagnostic pop
 
   DBGFUN(<-); return ret;
 }
 
 const desc_t*
-mad_desc_newvpo(int nv, int np, const ord_t no[/*nv+np*/], ord_t po_)
+mad_desc_newvpo(int nv, ord_t mo, int np_, ord_t po_, const ord_t no_[nv+np_])
 {
-  DBGFUN(->);
-  assert(no);
-  int nn = nv+np;
+  if (!no_) return mad_desc_newvp(nv, mo, np_, po_);
 
+  DBGFUN(->);
+  int np = MAX(np_,0);
+  int nn = nv+np;
   ensure(0 < nn && nn <= DESC_MAX_VAR,
          "invalid number of variables & parameters: %d (0<?<=%d)", nn, DESC_MAX_VAR);
-  ensure(mad_mono_min(nn, no) > 0,
-         "some variables have invalid zero order");
+  ensure(mad_mono_min(nn, no_) > 0,
+         "some variables (or parameters) have invalid zero order");
 
-  ord_t mo = mad_mono_max(nn, no), po = mo;
+  ord_t mo_ = mad_mono_max(nn, no_); mo = MAX(mo, mo_);
   ensure(0 < mo && mo <= DESC_MAX_ORD,
          "invalid maximum order: %d (0<?<=%d)", mo, DESC_MAX_ORD);
 
+  ord_t po = MAX(po_,1);
   if (np) {
-    po = mad_mono_max(np, no+nv);
-    po = MIN(mo,MAX(po_,po));
+    ord_t po_ = mad_mono_max(np, no_+nv); po = MAX(po, po_);
+    ensure(0 < po && po <= mo,
+           "invalid parameter order: %d (0<?<=%d)", po, mo);
   }
 
 #if DEBUG_DESC > 1
-  printf(">> nn=%d,mo=%d,np=%d,po=%d[%d]\n", nn, mo, np, po,po_);
+  printf(">> nn=%d, mo=%d, np=%d, po=%d[%d]\n", nn, mo, np, po, po_);
 #endif
 
-  const desc_t* ret = get_desc(nn, mo, no, np, po);
+  const desc_t* ret = get_desc(nn, mo, np, po, no_);
   DBGFUN(<-); return ret;
 }
 

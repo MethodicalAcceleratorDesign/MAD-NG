@@ -217,29 +217,32 @@ module GTPSA
     ! -- Constructors (all constructors return a descriptor)
 
     function mad_desc_newv(nv,mo_) result(desc) bind(C)
+      ! mo = max(1, mo)
       import ; implicit none
       type(c_ptr) :: desc                          ! descriptor
       integer(c_int), value, intent(in) :: nv      ! #vars
       integer(c_ord_t), value, intent(in) :: mo_   ! order of tpsa, mo=max(1,mo_)
     end function mad_desc_newv
 
-    function mad_desc_newvp(nv,np,mo_,po_) result(desc) bind(C)
+    function mad_desc_newvp(nv,mo_,np_,po_) result(desc) bind(C)
       ! if np == 0, same as mad_desc_newv, otherwise
-      ! mo = max(1,mo_) and po = po_ ? min(mo,po_) : mo
+      ! mo = max(1, mo)
+      ! po = max(1, po_)
       import ; implicit none
       type(c_ptr) :: desc                             ! descriptor
-      integer(c_int), value, intent(in) :: nv, np     ! #vars, #params
+      integer(c_int), value, intent(in) :: nv, np_    ! #vars, #params
       integer(c_ord_t), value, intent(in) :: mo_, po_ ! order of tpsa and params x-orders
     end function mad_desc_newvp
 
-    function mad_desc_newvpo(nv,np,no,po_) result(desc) bind(C)
-      ! mo = max(no[0:nv+np-1])
-      ! po = np>0 ? min(mo, max(po_, max( no[nv:nv+np-1] ))) : mo
+    function mad_desc_newvpo(nv,mo_,np_,po_,no_) result(desc) bind(C)
+      ! if no == null, same as mad_desc_newvp, otherwise
+      ! mo = max(mo , no[0 :nn-1]), nn = nv+np
+      ! po = max(po_, no[nv:nn-1]), po <= mo
       import ; implicit none
-      type(c_ptr) :: desc                         ! descriptor
-      integer(c_int), value, intent(in) :: nv, np ! #vars, #params (i.e. mo=max(no))
-      integer(c_ord_t), value, intent(in) :: po_  ! max params x-orders
-      integer(c_ord_t), intent(in) :: no(*)       ! orders of vars & params
+      type(c_ptr) :: desc                          ! descriptor
+      integer(c_int), value, intent(in) :: nv, np_ ! #vars, #params (i.e. mo=max(no))
+      integer(c_ord_t), value, intent(in) :: mo_, po_ ! max params x-orders
+      integer(c_ord_t), intent(in) :: no_(*)       ! orders of vars & params
     end function mad_desc_newvpo
 
     ! -- Destructor -------------------
@@ -263,32 +266,20 @@ module GTPSA
       integer(c_ord_t), optional, intent(out) :: mo_, po_ ! tpsa order, params x-orders
     end function mad_desc_getnv
 
-    function mad_desc_getno(desc,nn,no_) result(mo) bind(C)
+    function mad_desc_maxord(desc,nn,no_) result(mo) bind(C)
       import ; implicit none
       integer(c_ord_t) :: mo                   ! tpsa max order
       type(c_ptr), value, intent(in) :: desc   ! descriptor
       integer(c_int), value, intent(in) :: nn  ! #variables+parameters, no_[1..nn]
       integer(c_ord_t), intent(out) :: no_(*)  ! orders to be filled if provided
-    end function mad_desc_getno
-
-    function mad_desc_maxord(desc) result(mo) bind(C)
-      import ; implicit none
-      integer(c_ord_t) :: mo                   ! tpsa max order
-      type(c_ptr), value, intent(in) :: desc   ! descriptor
     end function mad_desc_maxord
 
-    function mad_desc_maxlen(desc) result(mlen) bind(C)
-      import ; implicit none
-      integer(c_ssz_t) :: mlen                 ! #monomials in 0..maxorder
-      type(c_ptr), value, intent(in) :: desc   ! descriptor
-    end function mad_desc_maxlen
-
-    function mad_desc_ordlen(desc,mo) result(olen) bind(C)
+    function mad_desc_maxlen(desc,mo) result(olen) bind(C)
       import ; implicit none
       integer(c_ssz_t) :: olen                  ! #monomials in 0..order
       type(c_ptr), value, intent(in) :: desc    ! descriptor
       integer(c_ord_t), value, intent(in) :: mo ! ordlen(maxord) == maxlen
-    end function mad_desc_ordlen
+    end function mad_desc_maxlen
 
     function mad_desc_gtrunc(desc,to) result(oldto) bind(C)
       import ; implicit none
@@ -363,7 +354,7 @@ module GTPSA
       integer(c_ord_t), intent(out) :: m(*)    ! monomial
     end function mad_desc_nxtbyord
 
-    function mad_desc_mono(desc,n,m_,i) result(ord) bind(C)
+    function mad_desc_mono(desc,i,n,m_) result(ord) bind(C)
       import ; implicit none
       integer(c_ord_t) :: ord                  ! monomial order
       type(c_ptr), value, intent(in) :: desc   !
@@ -548,7 +539,7 @@ module GTPSA
       integer(c_int), intent(in) :: m(*)       ! sparse monomial (idx,ord)
     end function mad_tpsa_idxsm
 
-    function mad_tpsa_cycle(tpsa,n,m_,i,v_) result(idx) bind(C)
+    function mad_tpsa_cycle(tpsa,i,n,m_,v_) result(idx) bind(C)
       import ; implicit none                   ! scan for non-zero coefs starting at i
       integer(c_idx_t) :: idx                  ! next index to start searching or -1
       type(c_ptr), value, intent(in) :: tpsa   !
@@ -1336,7 +1327,7 @@ module GTPSA
       integer(c_int), intent(in) :: m(*)       ! sparse monomial (idx,ord)
     end function mad_ctpsa_idxsm
 
-    function mad_ctpsa_cycle(ctpsa,n,m_,i,v_) result(idx) bind(C)
+    function mad_ctpsa_cycle(ctpsa,i,n,m_,v_) result(idx) bind(C)
       import ; implicit none                   ! scan for non-zero coefs starting at i
       integer(c_idx_t) :: idx                  ! next index to start searching or -1
       type(c_ptr), value, intent(in) :: ctpsa  !
