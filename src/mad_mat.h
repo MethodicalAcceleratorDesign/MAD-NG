@@ -47,8 +47,8 @@ void  mad_mat_muld     (const num_t x[], const num_t y[],       num_t r[], ssz_t
 void  mad_mat_muldm    (const num_t x[], const cpx_t y[],       cpx_t r[], ssz_t m, ssz_t n, ssz_t p);              //  mat * diag(cmat)
 int   mad_mat_det      (const num_t x[],                        num_t *r ,          ssz_t n);                       //  det(mat)
 int   mad_mat_invn     (const num_t y[],       num_t x,         num_t r[], ssz_t m, ssz_t n,          num_t rcond); //  num /  mat
-int   mad_mat_invc     (const num_t y[],       cpx_t x,         cpx_t r[], ssz_t m, ssz_t n,          num_t rcond); // cpx /  mat
-int   mad_mat_invc_r   (const num_t y[], num_t x_re,num_t x_im, cpx_t r[], ssz_t m, ssz_t n,          num_t rcond); // cpx /  mat
+int   mad_mat_invc     (const num_t y[],       cpx_t x,         cpx_t r[], ssz_t m, ssz_t n,          num_t rcond); //  cpx /  mat
+int   mad_mat_invc_r   (const num_t y[], num_t x_re,num_t x_im, cpx_t r[], ssz_t m, ssz_t n,          num_t rcond); //  cpx /  mat
 int   mad_mat_div      (const num_t x[], const num_t y[],       num_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond); //  mat /  mat
 int   mad_mat_divm     (const num_t x[], const cpx_t y[],       cpx_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond); //  mat / cmat
 int   mad_mat_solve    (const num_t a[], const num_t b[],       num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond); //  min|b-ax| (QR)
@@ -87,9 +87,9 @@ void  mad_cmat_dmulm   (const cpx_t x[], const num_t y[],       cpx_t r[], ssz_t
 void  mad_cmat_muld    (const cpx_t x[], const cpx_t y[],       cpx_t r[], ssz_t m, ssz_t n, ssz_t p);              //  cmat * diag(cmat)
 void  mad_cmat_muldm   (const cpx_t x[], const num_t y[],       cpx_t r[], ssz_t m, ssz_t n, ssz_t p);              //  cmat * diag( mat)
 int   mad_cmat_det     (const cpx_t x[],                        cpx_t *r ,          ssz_t n);                       //  det(cmat)
-int   mad_cmat_invn    (const cpx_t y[],       num_t x  ,       cpx_t r[], ssz_t m, ssz_t n,          num_t rcond); //   num / cmat
-int   mad_cmat_invc    (const cpx_t y[],       cpx_t x  ,       cpx_t r[], ssz_t m, ssz_t n,          num_t rcond); //  cpx / cmat
-int   mad_cmat_invc_r  (const cpx_t y[], num_t x_re,num_t x_im, cpx_t r[], ssz_t m, ssz_t n,          num_t rcond); //  cpx / cmat
+int   mad_cmat_invn    (const cpx_t y[],       num_t x  ,       cpx_t r[], ssz_t m, ssz_t n,          num_t rcond); //  num  / cmat
+int   mad_cmat_invc    (const cpx_t y[],       cpx_t x  ,       cpx_t r[], ssz_t m, ssz_t n,          num_t rcond); //  cpx  / cmat
+int   mad_cmat_invc_r  (const cpx_t y[], num_t x_re,num_t x_im, cpx_t r[], ssz_t m, ssz_t n,          num_t rcond); //  cpx  / cmat
 int   mad_cmat_div     (const cpx_t x[], const cpx_t y[],       cpx_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond); //  cmat / cmat
 int   mad_cmat_divm    (const cpx_t x[], const num_t y[],       cpx_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond); //  cmat /  mat
 int   mad_cmat_solve   (const cpx_t a[], const cpx_t b[],       cpx_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond); //  min|b-ax| (QR)
