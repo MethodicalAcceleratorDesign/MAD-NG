@@ -72,20 +72,12 @@ end
 
 -- debug ----------------------------------------------------------------------o
 
---[[ Unix command to retrieve debug=4 values in a matrix
-./mad script_dump.mad | \
-  awk 'BEGIN{printf("MAD.matrix{")} END{printf("}")}
-  /@@/{printf("{");for(i=4;i<=NF;i++)printf("%s, ",$i);printf("},\n")}'
---]]
+local fmt = "% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e "
+local nodump = {marker=true}
 
-local shtfmt1 = "% -.6e "
-local lngfmt1 = "% -.16e "
-local shtfmt  = "% -.6e  % -.6e  % -.6e  % -.6e  % -.6e  % -.6e "
-local lngfmt  = "% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e "
-local nodump  = {marker=true}
-
-local function mdump (elm, mflw, lw_, str) -- print mflw[1], require debug >= 4
-  if mflw.debug < 4 then return end
+local function mdump (elm, mflw, lw_, str)
+  local dbg = mflw.debug
+  if dbg < 4 then return end -- print mflw[1], require debug >= 4
 
   if is_number(elm) then
     printf("@: %-15s %-15s ", '  "', str)
@@ -96,42 +88,31 @@ local function mdump (elm, mflw, lw_, str) -- print mflw[1], require debug >= 4
 
   if mflw.npar == 0 then io.write("no particle found\n") return end
 
-  local fmt = mflw.debug >= 5 and lngfmt or shtfmt
-  local X   = mflw[1]
+  local X = mflw[1]
 
-  if not is_damap(X) then
-    printf(fmt, X.x, X.px, X.y, X.py, X.t, X.pt)
-    io.write('\n') ; return
+  -- orbit output
+  if is_damap(X) then
+    printf(fmt,X.x:get0(),X.px:get0(),X.y:get0(),X.py:get0(),X.t:get0(),X.pt:get0())
+  else
+    printf(fmt, X.x, X.px, X.y, X.py, X.t, X.pt) ; dbg = 4
   end
 
-  local X, R, n = X:get0(), X:get1() ; n = R.nrow
-  printf(fmt, X[1], X[2], X[3], X[4], X[5], X[6])
-
-  for i=1,n do
-    io.write(' ')
-    printf(fmt,R:get(i,1),R:get(i,2),R:get(i,3),R:get(i,4),R:get(i,5),R:get(i,6))
-  end
-  io.write('\n')
-
-  if mflw.debug >= 6 and string.sub(str,-2) == ':1' then
-    if mflw.debug >= 7 then -- output symplectic errors
-      local eval = R:symperr(R)
-      local estr = abs(eval) >= 1e-10 and 'symperr***' or
-                   abs(eval) >= 1e-12 and 'symperr**'  or
-                   abs(eval) >= 1e-14 and 'symperr*'   or 'symperr'
-      printf("@@ %-15s %-15s ", is_number(elm) and '  "' or elm.name, estr)
-      printf(lngfmt1, eval) ; io.write(' ') ; printf(lngfmt1, lw_ or 0)
-      io.write('                                                  ',
-               '                                                  ')
-      for i=1,n do
-        io.write(' ')
-        printf(lngfmt,R:get(i,1),R:get(i,2),R:get(i,3),R:get(i,4),R:get(i,5),R:get(i,6))
-      end
-      io.write('\n')
+  if dbg >= 5 then
+    -- linear output
+    local R = X:get1()
+    for i=1,R.nrow do
+      io.write(' ')
+      printf(fmt,R:get(i,1),R:get(i,2),R:get(i,3),R:get(i,4),R:get(i,5),R:get(i,6))
     end
 
-    mflw[1]:print("no-header")
+    -- full map output on exit
+    if dbg >= 6 and string.sub(str,-2) == ':1' then
+      io.write('\n')
+      mflw[1]:print("no-header")
+    end
   end
+
+  io.write('\n')
 end
 
 local function xdump (elm, mflw, X, str_) -- print tpsa X, require debug >= 5
