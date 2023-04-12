@@ -125,7 +125,7 @@ mad_str_split (str_t str, ssz_t arg[4], str_t sep)
     case 2: while (i < k && str[i] != sep[j=0] && str[i] != sep[j=1]) ++i; break;
     case 3: while (i < k && str[i] != sep[j=0] && str[i] != sep[j=1] && str[i] != sep[j=2]) ++i; break;
     case 4: while (i < k && str[i] != sep[j=0] && str[i] != sep[j=1] && str[i] != sep[j=2] && str[i] != sep[j=3]) ++i; break;
-    default: for (; i < k; ++i) for (j=0; j<l; ++j) if (str[i] == sep[j]) goto found;
+    default: for (;i < k; ++i) for (j=0; j<l; ++j) if (str[i] == sep[j]) goto found;
   }
 
 found:

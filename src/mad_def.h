@@ -34,15 +34,15 @@
 
 // --- types -----------------------------------------------------------------o
 
-typedef const char*      str_t;
-typedef const void*      ptr_t;
 typedef _Bool            log_t;
 typedef int32_t          idx_t;
 typedef int32_t          ssz_t;
 typedef uint32_t         u32_t;
 typedef uint64_t         u64_t;
 typedef double           num_t;
-typedef double _Complex cnum_t;
+typedef double _Complex  cpx_t;
+typedef const char*      str_t;
+typedef const void*      ptr_t;
 
 // --- constants -------------------------------------------------------------o
 
@@ -67,9 +67,14 @@ typedef double _Complex cnum_t;
 #define MAX_3(a,b,c,d)   ((b)>(a) ? MAX_2(b,c,d) : MAX_2(a,c,d))
 
 #define FOR(i,...)       MKNAME(FOR_,NARG(__VA_ARGS__))(i,__VA_ARGS__)
-#define FOR_1(i,n)       for (idx_t i= 0; i<(n); i++)
-#define FOR_2(i,i0,n)    for (idx_t i=i0; i<(n); i++)
-#define FOR_3(i,i0,n,s)  for (idx_t i=i0; i<(n); i+=s)
+#define FOR_1(i,n)       for (idx_t i=  0 ; i<(n); i++)
+#define FOR_2(i,i0,n)    for (idx_t i=(i0); i<(n); i++)
+#define FOR_3(i,i0,n,s)  for (idx_t i=(i0); i<(n); i+=(s))
+
+#define RFOR(i,...)      MKNAME(RFOR_,NARG(__VA_ARGS__))(i,__VA_ARGS__)
+#define RFOR_1(i,n)      for (idx_t i=  0 ; i>(n); i--)
+#define RFOR_2(i,i0,n)   for (idx_t i=(i0); i>(n); i--)
+#define RFOR_3(i,i0,n,s) for (idx_t i=(i0); i>(n); i-=(s))
 
 #define MKSTR(...)       MKSTR_OP_(__VA_ARGS__)
 #define MKSTR_OP_(...)   #__VA_ARGS__

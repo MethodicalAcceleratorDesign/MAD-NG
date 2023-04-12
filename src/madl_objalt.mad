@@ -99,6 +99,9 @@ local function freadonly (a)
 end
 
 local function set_fclass (a)
+  if ftst(a.__flg, oflg.final) then
+    error("invalid object creation, '"..name(a).."' is final", 2)
+  end
   a.__flg = fset(a.__flg, oflg.class)
 end
 
@@ -115,12 +118,13 @@ local function copy_methods (a, m)
 end
 
 local function copy_metamethods (a, m)
-  local c = table.new(0,8)
-  for k,v in pairs(m) do c[k] = v end
-  m.__metatable = nil -- unprotect change
-  setmetatable(a, c) -- set new metamethods
-  m.__metatable, c.__metatable = m, c -- restore/set protection(s)
-  return c
+  local nm = table.new(0,8)
+  for k,v in pairs(m) do nm[k] = v end
+  local am = getmetatable(a)
+  am.__metatable = nil -- unprotect change
+  setmetatable(a, nm)  -- set new metamethods
+  am.__metatable, nm.__metatable = am, nm -- restore/set protection(s)
+  return nm
 end
 
 -- metamethods ----------------------------------------------------------------o
@@ -264,30 +268,23 @@ function MF:set_readonly (st_)
   return self
 end
 
-local function efinal (self)
-  error("invalid object creation ('"..name(self).."' is final)", 2)
-end
-
 function MF:set_final (st_)
   assert(is_object(self), "invalid argument #1 (object expected)")
-  if st_ ~= false then
-    if fclass(self) then
-      errorf("cannot set final to '%s' (unexpected class)", name(self))
-    end
-    self:set_metamethods {__call=efinal}
-    self.__flg = fset(self.__flg, oflg.final)
-  else
-    self.__flg = fclr(self.__flg, oflg.final)
+  if st_ ~= false
+  then self.__flg = fset(self.__flg, oflg.final)
+  else self.__flg = fclr(self.__flg, oflg.final)
   end
   return self
 end
 
-function MF:get_varkeys ()
+function MF:get_varkeys (nofun_)
   assert(is_object(self), "invalid argument #1 (object expected)")
   local lst, key = table.new(8,0), table.new(0,8)
   for k,v in kpairs(self) do
-    if not (key[k] or is_functor(v)) and is_string(k) and string.sub(k,1,2) ~= '__'
-    then lst[#lst+1], key[k] = k, k end
+    if not (key[k] or nofun_ ~= false and is_functor(v))
+       and is_string(k) and string.sub(k,1,2) ~= '__' then
+      lst[#lst+1], key[k] = k, k
+    end
   end
   return lst, key
 end
@@ -338,7 +335,7 @@ function MF:copy_variables (set, lst_, ovrd_)
   assert(is_iterable(lst), "invalid list of attributes (iterable expected)")
   for _,k in ipairs(lst) do
     assertf(ovrd or type(k) ~= 'string' or string.sub(k,1,2) ~= '__' or
-            is_nil(var[k]), "cannot override variable '%s'",k)
+            is_nil(var[k]), "cannot override variable '%s'", k)
     var[k] = rawget(svar, k)
   end
   local nvl = lst.noeval -- to remove if noeval is suppressed...
@@ -346,7 +343,7 @@ function MF:copy_variables (set, lst_, ovrd_)
     assert(is_iterable(nvl), "invalid list of noeval attributes (iterable expected)")
     for _,k in ipairs(nvl) do
       assertf(ovrd or type(k) ~= 'string' or string.sub(k,1,2) ~= '__' or
-              is_nil(var[k]), "cannot override variable '%s'",k)
+              is_nil(var[k]), "cannot override variable '%s'", k)
       var[k] = rawget(svar, k) -- idem first loop, for compatibilty with object
     end
   end
@@ -376,7 +373,7 @@ function MF:wrap_variables (set, ovrd_)
 end
 
 function MF:clear_array ()
-  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(is_object(self), "invalid argument #1 (object expected)")
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
@@ -386,7 +383,7 @@ function MF:clear_array ()
 end
 
 function MF:clear_variables ()
-  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(is_object(self), "invalid argument #1 (object expected)")
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
@@ -400,7 +397,7 @@ function MF:clear_variables ()
 end
 
 function MF:clear_all ()
-  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(is_object(self), "invalid argument #1 (object expected)")
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
@@ -459,7 +456,7 @@ function MF:set_metamethods (set, ovrd_)
 end
 
 function MF:insert (idx_, val)
-  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(is_object(self), "invalid argument #1 (object expected)")
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
@@ -468,7 +465,7 @@ function MF:insert (idx_, val)
 end
 
 function MF:remove (idx_)
-  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(is_object(self), "invalid argument #1 (object expected)")
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end
@@ -477,8 +474,8 @@ end
 
 function MF:move (idx1, idx2, idxto, dest_)
   dest_ = dest_ or self
-  assert(is_object(self)     , "invalid argument #1 (object expected)")
-  assert(is_object(dest_)    , "invalid argument #2 (object expected)")
+  assert(is_object(self) , "invalid argument #1 (object expected)")
+  assert(is_object(dest_), "invalid argument #2 (object expected)")
   if not freadonly(dest_) then
     errorf("forbidden write access to readonly object '%s'", name(dest_))
   end
@@ -487,7 +484,7 @@ function MF:move (idx1, idx2, idxto, dest_)
 end
 
 function MF:sort (cmp_)
-  assert(is_object(self)    , "invalid argument #1 (object expected)")
+  assert(is_object(self), "invalid argument #1 (object expected)")
   if freadonly(self) then
     errorf("forbidden write access to readonly object '%s'", name(self))
   end

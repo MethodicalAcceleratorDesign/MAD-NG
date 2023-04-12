@@ -17,7 +17,6 @@
  o-----------------------------------------------------------------------------o
 */
 
-#include <math.h>
 #include <assert.h>
 
 #include "mad_log.h"
@@ -185,7 +184,7 @@ der_coef(idx_t ia, idx_t idx, ord_t ord, const D* d)
     return d->To[ia][idx-1];
   }
   const ord_t *srcm = d->To[ia], *derm = d->To[idx];
-  if (mad_mono_gt(d->nv,derm,srcm))
+  if (mad_mono_lt(d->nv,srcm,derm))
     return 0;
 
   num_t c = 1;
@@ -284,12 +283,6 @@ do { \
   for (; i < MIN(end_a,end_b)  ; ++i) c->coef[i] = (OPA a->coef[i] OPB b->coef[i]) OPC; \
   for (; i <     end_a         ; ++i) c->coef[i] = (OPA a->coef[i]               ) OPC; \
   for (; i <           end_b   ; ++i) c->coef[i] = (               OPB b->coef[i]) OPC; \
-} while(0)
-
-#define TPSA_CLEAR(ORD) \
-do { \
-  const idx_t *o2i = c->d->ord2idx; \
-  for (idx_t i = o2i[ORD]; i < o2i[c_hi+1]; ++i) c->coef[i] = 0; \
 } while(0)
 
 void
@@ -484,9 +477,12 @@ FUN(mul) (const T *a, const T *b, T *r)
   if (c->hi > 1) {
     ord_t c_hi = c->hi, ab_hi = MAX(a->hi,b->hi);
     if (a0 != 0 && b0 != 0) TPSA_LINOP(2, b0*, +a0*, );
-    else if       (b0 == 0) TPSA_LINOP(2,  0*, +a0*, );
-    else                    TPSA_LINOP(2, b0*, + 0*, );
-    TPSA_CLEAR(ab_hi+1);
+    else if       (b0 != 0) TPSA_LINOP(2, b0*, + 0*, );
+    else if       (a0 != 0) TPSA_LINOP(2,  0*, +a0*, );
+    else                    TPSA_LINOP(2,  0*, + 0*, );
+
+    const idx_t *o2i = c->d->ord2idx;
+    for (idx_t i = o2i[ab_hi+1]; i < o2i[c_hi+1]; ++i) c->coef[i] = 0;
 
     if (a0 != 0) { c->nz |= mad_bit_lcut(b->nz,2); }
     if (b0 != 0) { c->nz |= mad_bit_lcut(a->nz,2); }
@@ -504,11 +500,9 @@ FUN(mul) (const T *a, const T *b, T *r)
     // order 3+
     if (c->hi > 2) {
 #ifdef _OPENMP
-//#ifdef MAD_TPSA_MUL_PAR
       if (d->ord2idx[c->hi+1] - d->ord2idx[c->lo] > 10000)
         hpoly_mul_par(a,b,c);
       else
-//#endif
 #endif
         hpoly_mul_ser(a,b,c);
     }
@@ -534,7 +528,7 @@ FUN(div) (const T *a, const T *b, T *c)
 
   if (b->hi == 0) {
 #ifdef MAD_CTPSA_IMPL
-    FUN(scl)(a,mad_cnum_inv(b0),c);
+    FUN(scl)(a, mad_cpx_inv(b0), c);
 #else
     FUN(scl)(a,1/b0,c);
 #endif
@@ -708,7 +702,7 @@ FUN(integ) (const T *a, T *r, int iv)
   T *t = GET_TMPX(r);
 
   FUN(setvar)(t, 0, iv, 0);
-  FUN(mul)(a, t, c);        // integrate
+  FUN(mul)(a, t, c);    // integrate
 
   ord_t **mono = d->To;
   for (ord_t o = MAX(c->lo,2); o <= c->hi; ++o)
@@ -1038,48 +1032,48 @@ FUN(logxdy) (const T *x, const T *y, T *r)
 #ifdef MAD_CTPSA_IMPL
 
 void FUN(acc_r) (const T *a, num_t v_re, num_t v_im, T *c)
-{ FUN(acc)(a, CNUM(v), c); }
+{ FUN(acc)(a, CPX(v), c); }
 
 void FUN(scl_r) (const T *a, num_t v_re, num_t v_im, T *c)
-{ FUN(scl)(a, CNUM(v), c); }
+{ FUN(scl)(a, CPX(v), c); }
 
 void FUN(axpb_r) (num_t a_re, num_t a_im, const T *x,
                   num_t b_re, num_t b_im, T *r)
-{ FUN(axpb)(CNUM(a), x, CNUM(b), r); }
+{ FUN(axpb)(CPX(a), x, CPX(b), r); }
 
 void FUN(axpbypc_r) (num_t a_re, num_t a_im, const T *x,
                      num_t b_re, num_t b_im, const T *y,
                      num_t c_re, num_t c_im, T *r)
-{ FUN(axpbypc)(CNUM(a), x, CNUM(b), y, CNUM(c), r); }
+{ FUN(axpbypc)(CPX(a), x, CPX(b), y, CPX(c), r); }
 
 void FUN(axypb_r) (num_t a_re, num_t a_im, const T *x, const T *y,
                    num_t b_re, num_t b_im, T *r)
-{ FUN(axypb)(CNUM(a), x, y, CNUM(b), r); }
+{ FUN(axypb)(CPX(a), x, y, CPX(b), r); }
 
 void FUN(axypbzpc_r) (num_t a_re, num_t a_im, const T *x, const T *y,
                       num_t b_re, num_t b_im, const T *z,
                       num_t c_re, num_t c_im, T *r)
-{ FUN(axypbzpc)(CNUM(a), x, y, CNUM(b), z, CNUM(c), r); }
+{ FUN(axypbzpc)(CPX(a), x, y, CPX(b), z, CPX(c), r); }
 
 void FUN(axypbvwpc_r) (num_t a_re, num_t a_im, const T *x, const T *y,
                        num_t b_re, num_t b_im, const T *v, const T *w,
                        num_t c_re, num_t c_im, T *r)
-{ FUN(axypbvwpc)(CNUM(a), x, y, CNUM(b), v, w, CNUM(c), r); }
+{ FUN(axypbvwpc)(CPX(a), x, y, CPX(b), v, w, CPX(c), r); }
 
 void FUN(ax2pby2pcz2_r)(num_t a_re, num_t a_im, const T *x,
                         num_t b_re, num_t b_im, const T *y,
                         num_t c_re, num_t c_im, const T *z, T *r)
-{ FUN(ax2pby2pcz2)(CNUM(a), x, CNUM(b), y, CNUM(c), z, r); }
+{ FUN(ax2pby2pcz2)(CPX(a), x, CPX(b), y, CPX(c), z, r); }
 
 void FUN(axpsqrtbpcx2_r)(const T *x, num_t a_re, num_t a_im,
                                      num_t b_re, num_t b_im,
                                      num_t c_re, num_t c_im, T *r)
-{ FUN(axpsqrtbpcx2)(x, CNUM(a), CNUM(b), CNUM(c), r); }
+{ FUN(axpsqrtbpcx2)(x, CPX(a), CPX(b), CPX(c), r); }
 
 void FUN(logaxpsqrtbpcx2_r) (const T *x, num_t a_re, num_t a_im,
                                          num_t b_re, num_t b_im,
                                          num_t c_re, num_t c_im, T *r)
-{ FUN(logaxpsqrtbpcx2)(x, CNUM(a), CNUM(b), CNUM(c), r); }
+{ FUN(logaxpsqrtbpcx2)(x, CPX(a), CPX(b), CPX(c), r); }
 
 #endif // MAD_CTPSA_IMPL
 

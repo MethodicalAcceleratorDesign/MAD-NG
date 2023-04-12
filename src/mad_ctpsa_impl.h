@@ -32,8 +32,8 @@ struct ctpsa {   // warning: must be identical to LuaJIT def (see mad_cmad.mad)
   int32_t     uid;  // special user field for external use (and padding)
   ord_t mo, lo, hi; // max ord (allocated), lowest/highest used ord
   bit_t nz;         // zero/non-zero homogeneous polynomials
-  char   nam[NAMSZ]; // tpsa name
-  cnum_t coef[]; // warning: must be identical to tpsa up to coef excluded
+  char  nam[NAMSZ]; // tpsa name
+  cpx_t coef[]; // warning: must be identical to tpsa up to coef excluded
 };
 
 // --- macros -----------------------------------------------------------------o
@@ -41,7 +41,7 @@ struct ctpsa {   // warning: must be identical to LuaJIT def (see mad_cmad.mad)
 #ifndef MAD_TPSA_NOHELPER
 
 #define T                ctpsa_t
-#define NUM              cnum_t
+#define NUM              cpx_t
 #define FUN(name)        MKNAME(mad_ctpsa_,name)
 #define PFX(name)        MKNAME(c,name)
 #define VAL(num)         creal(num), cimag(num)
@@ -50,7 +50,7 @@ struct ctpsa {   // warning: must be identical to LuaJIT def (see mad_cmad.mad)
 #define FMT              "%+6.4lE%+6.4lEi"
 #define SELECT(R,C)      C
 
-#define CNUM(a) (* (cnum_t*) & (num_t[2]) { MKNAME(a,_re), MKNAME(a,_im) })
+#define CPX(a) (* (cpx_t*) & (num_t[2]) { MKNAME(a,_re), MKNAME(a,_im) })
 
 #endif
 
@@ -90,7 +90,7 @@ mad_ctpsa_update0 (ctpsa_t *t, ord_t lo, ord_t hi)
   for (ord_t o = lo; o <= hi; ++o)
     if (mad_bit_tst(t->nz, o)) {
       idx_t i = o2i[o], ni = o2i[o+1]-1;
-      cnum_t c = t->coef[ni]; t->coef[ni] = 1; // set stopper
+      cpx_t c = t->coef[ni]; t->coef[ni] = 1; // set stopper
       while (t->coef[i] == 0) ++i;
       if (i == ni && c == 0) t->nz = mad_bit_clr(t->nz, o);
       t->coef[ni] = c; // restore value

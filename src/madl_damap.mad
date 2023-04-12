@@ -174,7 +174,7 @@ local function map_ctor (arg, mt)
     for i=1,np do no[6+i] = po end
   end
 
-  local td = gtpsad{nv=nv, mo=mo, np=np, no=no, po=po}
+  local td = gtpsad{nv=nv, mo=mo, np=np, po=po, no=no}
   return map_alloc(td, vn, mt)
 end
 
@@ -253,7 +253,7 @@ function MR.cplx (re_, im_, y_) -- (re,im) -> r
     assert(re.__td == y_.__td, "incompatible damaps")
   end
   re_, im_ = re_ or {}, im_ or {}
-  for i=1,y.__td.nn do
+  for i=1,y_.__td.nn do
     _C.mad_ctpsa_cplx(re_[i], im_[i], y_[i])
   end
   return y_
@@ -379,13 +379,13 @@ function MR.set0 (x, v, a_)
   assert(is_number(v) or is_iterable(v),
          "invalid argument #2 (number or iterable expected)")
   local a = a_ or 0
-  if is_iterable(v) then
-    for i=1,min(#x,#v) do
-      _C.mad_tpsa_set0(x[i], a, v[i])
-    end
-  else
+  if is_number(v) then
     for i=1,#x do
       _C.mad_tpsa_set0(x[i], a, v)
+    end
+  else
+    for i=1,min(#x,#v) do
+      _C.mad_tpsa_set0(x[i], a, v[i])
     end
   end
   return x
@@ -395,14 +395,14 @@ function MC.set0 (x, v, a_)
   assert(is_scalar(v) or is_iterable(v),
          "invalid argument #2 (is_scalar or iterable expected)")
   local a = complex(a_ or 0)
-  if is_iterable(v) then
-    for i=1,min(#x,#v) do
-      local b = complex(v[i])
+  if is_scalar(v) then
+    local b = complex(v)
+    for i=1,#x do
       _C.mad_ctpsa_set0_r(x[i], a.re, a.im, b.re, b.im)
     end
   else
-    local b = complex(v)
-    for i=1,#x do
+    for i=1,min(#x,#v) do
+      local b = complex(v[i])
       _C.mad_ctpsa_set0_r(x[i], a.re, a.im, b.re, b.im)
     end
   end
@@ -429,7 +429,7 @@ function MR.get1 (x, m)
   assert(is_matrix(m), "invalid argument #2 (matrix expected)")
   local nr, nc = m:sizes()
   for i=1,min(#x,nr) do
-    _C.mad_tpsa_getv(x[i], 1, nc, m.data+(i-1)*nc)
+    _C.mad_tpsa_getv(x[i], 1, nc, m._dat+(i-1)*nc)
   end
   return m
 end
@@ -439,7 +439,7 @@ function MC.get1 (x, m)
   assert(is_cmatrix(m), "invalid argument #2 (cmatrix expected)")
   local nr, nc = m:sizes()
   for i=1,min(#x,nr) do
-    _C.mad_ctpsa_getv(x[i], 1, nc, m.data+(i-1)*nc)
+    _C.mad_ctpsa_getv(x[i], 1, nc, m._dat+(i-1)*nc)
   end
   return m
 end
@@ -448,7 +448,7 @@ function MR.set1 (x, m)
   assert(is_matrix(m), "invalid argument #2 (matrix expected)")
   local nr, nc = m:sizes()
   for i=1,min(#x,nr) do
-    _C.mad_tpsa_setv(x[i], 1, nc, m.data+(i-1)*nc)
+    _C.mad_tpsa_setv(x[i], 1, nc, m._dat+(i-1)*nc)
   end
   return x
 end
@@ -457,7 +457,7 @@ function MC.set1 (x, m)
   assert(is_cmatrix(m), "invalid argument #2 (cmatrix expected)")
   local nr, nc = m:sizes()
   for i=1,min(#x,nr) do
-    _C.mad_ctpsa_setv(x[i], 1, nc, m.data+(i-1)*nc)
+    _C.mad_ctpsa_setv(x[i], 1, nc, m._dat+(i-1)*nc)
   end
   return x
 end
@@ -847,7 +847,7 @@ function MR.eval (x, h, r)
   if is_string(r) and r == 'in' then r = v end
   r = r or v:same()
   assert(is_vector(r), "invalid argument #3 (vector expected)")
-  _C.mad_tpsa_eval(#x, x.__ta, #v, v.data, r.data) return r
+  _C.mad_tpsa_eval(#x, x.__ta, #v, v._dat, r._dat) return r
 end
 
 function MC.eval (x, h, r)
@@ -855,7 +855,7 @@ function MC.eval (x, h, r)
   if is_string(r) and r == 'in' then r = v end
   r = r or v:same()
   assert(is_cvector(r), "invalid argument #3 (cvector expected)")
-  _C.mad_ctpsa_eval(#x, x.__ta, #v, v.data, r.data) return r
+  _C.mad_ctpsa_eval(#x, x.__ta, #v, v._dat, r._dat) return r
 end
 
 -- maps translation r = x * v (special case of composition)
@@ -867,7 +867,7 @@ function MR.translate (x, t, r)
   assert(is_damap(r), "invalid argument #3 (damap expected)")
   assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible damap lengths")
-  _C.mad_tpsa_translate(#x, x.__ta, #v, v.data, r.__ta) return r
+  _C.mad_tpsa_translate(#x, x.__ta, #v, v._dat, r.__ta) return r
 end
 
 function MC.translate (x, t, r)
@@ -877,7 +877,7 @@ function MC.translate (x, t, r)
   assert(is_cdamap(r), "invalid argument #3 (cdamap expected)")
   assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
   assert(#r == #x, "incompatible cdamap lengths")
-  _C.mad_ctpsa_translate(#x, x.__ta, #v, v.data, r.__ta) return r
+  _C.mad_ctpsa_translate(#x, x.__ta, #v, v._dat, r.__ta) return r
 end
 
 -- maps composition : r = x * y
@@ -940,23 +940,17 @@ function MC.convert (x, r, tbl_, pb_)
   return r
 end
 
-function MR.fromptc (x, r)
-  if is_nil(r) and x:nv() < 6 then r = damap{nv=6, mo=x:maxord()} end
-  if x:nv() <= 4 then x:copy(r) else x:convert(r, {1,2,3,4,6,5}, 1) end
+local function fromptc (x, r, ctor)
+  if is_nil(r) and x:nv() < 6 then r = ctor{nv=6, mo=x:maxord()} end
+  if x:nv() <= 4 then r = x:copy(r) else r = x:convert(r, {1,2,3,4,6,5}, 1) end
   for i=4,r:nv() do if r[i]:isnul() then r[i]:setvar(nil,i) end end
   return r
 end
 
-function MC.fromptc (x, r)
-  if is_nil(r) and x:nv() < 6 then r = cdamap{nv=6, mo=x:maxord()} end
-  if x:nv() <= 4 then x:copy(r) else x:convert(r, {1,2,3,4,6,5}, 1) end
-  for i=4,r:nv() do if r[i]:isnul() then r[i]:setvar(nil,i) end end
-  return r
-end
+MR.fromptc = \x,r -> fromptc(x, r,  damap)
+MC.fromptc = \x,r -> fromptc(x, r, cdamap)
 
-function MR.toptc (x, r)
-  return x:nv() > 4 and x:convert(r, {1,2,3,4,6,5}, -1) or x:copy(r)
-end
+MR.toptc   = \x,r -> x:nv() > 4 and x:convert(r, {1,2,3,4,6,5}, -1) or x:copy(r)
 
 -- operators ------------------------------------------------------------------o
 
@@ -1214,16 +1208,19 @@ MC.__pow = MR.__pow -- fully polymorphic
 
 -- dif : r_i = (x_i - y_i) / max(|x_i|, 1)
 
-function MR.dif (x, y, r)
-  assert(is_damap(y), "invalid argument #2 (damap expected)")
-  r = r or map_alloc(x)
-  for i=1,#r do x[i]:dif(y[i], r[i]) end return r
+-- _, s = m1:dif(m2,true) ; s:print()
+local function prtsum (s)
+  for _,v in ipairs(s) do io.write("\n") ; v:print() end
+  return s
 end
 
-function MC.dif (x, y, r)
-  assert(is_cdamap(y), "invalid argument #2 (cdamap expected)")
-  r = r or map_alloc(x)
-  for i=1,#r do x[i]:dif(y[i], r[i]) end return r
+function MR.dif (x, y, r_, sum)
+  if is_boolean(r_) then sum, r_ = r_ end -- right shift
+  local r, s = r_ or x:same(), {print=prtsum}
+  assert(isa_damap(y), "invalid argument #2 (damap expected)")
+  assert(isa_damap(r), "invalid argument #3 (damap expected)")
+  local dum for i=1,#r do dum, s[i] = x[i]:dif(y[i], r[i], sum) end
+  return r, sum and s or nil
 end
 
 -- I/O ------------------------------------------------------------------------o
@@ -1238,9 +1235,9 @@ function MR.write (x, filnam, name_, all_, eps_)
 
   local file = assert(openfile(filnam, 'w', '.dat'),
                       "unable to open DA map file in write mode")
---  if name_ then
-  file:write('[', #x, is_damap(x) and 'R' or 'C', '] ', name_ or "-UNNAMED-", ' =\n\n')
---  end
+  if name_ ~= "no-header" then
+    file:write('[', #x, is_damap(x) and 'R' or 'C', '] ', name_ or "-UNNAMED-", ' =\n')
+  end
 
   local nn = all_ and min(#x.__vn, x.__td.nn) or #x
   for i=1,nn do
@@ -1265,9 +1262,9 @@ function MR.read (x_, filnam_, kind_, vname_)
   local file, x = assert(openfile(filnam_, 'r'),
                          "unable to open DA map file in read mode")
 
-  local hdr = file:read() or ""
-  local cnt, knd, nam = (kind_ or hdr):match("[[ ]*(%d*)([RC]?)[] ]*([^=]*)")   -- sub(6,-3)
---io.write("\ndamap read -> cnt=", cnt, ", knd=", knd, ", nam=", nam, ", hdr='", hdr, "'\n")
+  local hdr = kind_ or file:read() or ""
+  local cnt, knd, nam = hdr:match("%s*%[?(%d+)([RC])%]?%s*([^= ]*)")   -- sub(6,-3)
+  -- io.write("\ndamap:read -> cnt=", cnt or 'nil', ", knd=", knd or 'nil', ", nam=", nam or 'nil', ", hdr='", hdr, "'\n")
   local x1 = x_[1]:read(file, knd)
   -- print('\n1', x1) ; if x1 then print("X1=") ; x1:print() end
   if x1 ~= nil then  -- valid input
@@ -1288,9 +1285,10 @@ function MR.read (x_, filnam_, kind_, vname_)
       x[i] = x1
     end
   end
+
   if is_string(filnam_) then file:close() end
---io.write("\ndamap read <- cnt=", cnt, ", knd=", knd, ", nam=", nam, "\n")
-  return x, strtrim(nam)
+
+  return x, strtrim(nam or "")
 end
 
 -- metamethods ----------------------------------------------------------------o

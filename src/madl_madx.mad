@@ -24,312 +24,438 @@
 -- locals ---------------------------------------------------------------------o
 
 local object, option, warn                                        in MAD
-local assertf, openfile, fileisnewer                              in MAD.utility
+local assertf, openfile, fileisnewer, strsplitall                 in MAD.utility
 local bind1st                                                     in MAD.gfunc
-local is_nil, is_number, is_string, is_callable                   in MAD.typeid
+local is_nil, is_boolean, is_number, is_string, is_callable       in MAD.typeid
 
 local type, getmetatable, assert, rawget, rawset, table, string, io, os =
       type, getmetatable, assert, rawget, rawset, table, string, io, os
 
 assert(is_nil(rawget(_G,'MADX')), "MADX environment already defined")
 
--- TODO: handle default value of element attribute defined in MADX dict
---   "elm: class, attr;" or "elm, attr;" where no value is specified for attr
+-- MAD-X "Grammar" ------------------------------------------------------------o
 
--- implementation -------------------------------------------------------------o
+--[[
+- qualifiers (removed):
+  const, int, real, shared
+
+- identifier:
+  [%a_][%w.$_]*
+
+- statement selection from first operator:
+    [%]   => beam%sequence
+    [=]   => variable assignment
+    [:=]  => variable deferred assignment
+    [:]   => element creation
+    [,]   => element update
+    [->]  => element attribute access
+    [(]   => control or macro or beam-line (not supported)
+    []    => execute (not supported)
+
+- variable-assignment:
+  [qualifier] extended-identifier  = expression ;
+  [qualifier] extended-identifier := expression ;
+
+- element-creation:
+  identifier : identifier [,] attribute-list ;
+
+- element-update:
+  identifier [,] attribute-list ;
+
+- attribute-list:
+  identifier              , attribute-list ;
+  identifier  = expression, attribute-list ;
+  identifier := expression, attribute-list ;
+
+- argument-list:
+  identifier, ..., identifier
+
+- expression:
+  - literal array: {...}
+  - literal string: "..." or '...'
+  - numerical expr: expression with extended-identifier
+
+----- unsupported constructions -----
+
+- command-execute:
+  identifier [,] attribute-list ;
+
+- macro:
+  identifier (argument-list) : macro = { ... }
+
+- line:
+  identifier (argument-list) : line = (element-list) ;
+
+- while:
+  while (logical-test) { ... }
+
+- if-elseif-else:
+  if (logical-test) { ... } [elseif (logical-test) { ... }] [else { ... }]
+--]]
+
+-- helper ---------------------------------------------------------------------o
+
+local capf = \i,j,... -> {...}
+local trim = \str -> ((str:gsub("^%s*(.-)%s*$", "%1")))
+
+-- chunks ---------------------------------------------------------------------o
 
 local BEGOFCHUNK = "do  -- BEGOFCHUNK"
 local ENDOFCHUNK = "end -- ENDOFCHUNK"
-local MINSZCHUNK = 1000
+local MINSZCHUNK = 4000
 
-local cmt = { ['//'] = '--', ['/*'] = '--[[', ['*/'] = '--]]' }
-
-local function convert_ident (str)
-  return string.lower(str) -- string.gsub(str, '([.$])', '_'))
-end
-
-local function convert_comments (line)
-  line = string.gsub(line, '/%*', "--[[")
-  line = string.gsub(line, '%*/', "--]]")
-  line = string.gsub(line, '//' , "--"  )
-  return line
-end
-
-local tok = { int='', real='', const='', shared='', nst='nslice',
-              INT='', REAL='', CONST='', SHARED='', NST='nslice', }
-
-local function convert_tokens (line)
-  line = string.gsub(line, '(%w+)', tok)
-  line = string.gsub(line, '->', '.')
-  line = string.gsub(line, '%%', '.')
-  line = string.gsub(line, '&', ' ')
-  return line
-end
-
-local function convert_name (env, str)
-  local c = string.sub(str,1,1)
-  if c == '"' or c == "'" then
-    assertf(c == string.sub(str,-1), "unterminated string, line %d", env and env.lin or -1)
-    return str
-  else
-    return convert_ident(str)
+local function check_chunk (out, doit)
+  if out.n ~= out.nchk and (doit or out.n-out.nchk >= MINSZCHUNK) then
+    if option.debug >= 2 then io.write("chunk size=", out.n-out.nchk, "\n") end
+    out[out.n], out.n = ENDOFCHUNK, out.n+1 -- close previous chunk
+    out[out.n], out.n = ''        , out.n+1 -- empty line
+    out[out.n], out.n = BEGOFCHUNK, out.n+1 -- open  new      chunk
+    out.nchk = out.n
+    return true -- chunk has been closed/opened
   end
 end
 
-local function convert_names (env, str)
-  return (string.gsub(str, "(['\"]?[%a_][%w%._$]*['\"]?)", bind1st(convert_name, env)))
+-- comments -------------------------------------------------------------------o
+
+local function remove_comments (lst)
+  local c, l, j = false
+  for i=1,#lst do
+    l = lst[i]:gsub("/%*.-%*/", '')
+    j = l:find("!" , 1, true) ; if j then l = l:sub(1,j-1) end
+    j = l:find("//", 1, true) ; if j then l = l:sub(1,j-1) end
+
+    if c then
+      j = l:find("*/", 1, true)
+      if j then l = l:sub(j+2) ; c = false else l = '' end
+    else
+      j = l:find("/*", 1, true)
+      if j then l = l:sub(1,j-1) ; c = true end
+    end
+
+    lst[i] = l
+  end
+  return lst
 end
 
-local convert_from   = \str -> "from='"  ..string.upper(str).."'"
-local convert_refpos = \str -> "refpos='"..string.upper(str).."'"
+-- names, madx names, extended names ------------------------------------------o
 
-local function convert_eref (str)
-  str = string.gsub(str, "[Ff][Rr][Oo][Mm]%s*=%s*([%a_][%w%._$]*)",convert_from)
-  str = string.gsub(str, "[Rr][Ee][Ff][Pp][Oo][Ss]%s*=%s*([%a_][%w%._$]*)",convert_refpos)
-  return str
+local name_patt = "%s*%f[%w_]([%a_][%w.$_]*)"                 -- identifier
+local qnam_patt = "%s*%f[%w_]['\"]?([%a_][%w.$_]*)['\"]?"     -- optional quotes
+local beam_patt = "%s*%f[%w_]([%a_][%w_]*)%s*%%([%a_][%w_]*)" -- attached beam
+
+local kwd = { int='', real='', const='', shared='', }
+
+local function convert_name (str)            --; io.write("str-1:[", str, "]\n")
+  str = str:lower()                          --; io.write("str-2:[", str, "]\n")
+  str = str:gsub(name_patt, kwd)             --; io.write("str-3:[", str, "]\n")
+  str = str:gsub('([.$])', '_')              --; io.write("str-4:[", str, "]\n")
+  return trim(str)
 end
 
--- variable -------------------------------------------------------------------o
--- var = expr;
--- var := expr;
-                    --   [1]  [2]             [3]  [4]  [5]  [6]
-local variable_patt = "^(%s*)([%a_][%w%._$]*)(%s*)(:?=)(%s*)([^;]*);"
+local function convert_xname (str)
+  str = str:lower()                          --; io.write("str-1:[", str, "]\n")
+  str = str:gsub(name_patt, kwd)             --; io.write("str-2:[", str, "]\n")
+  return trim(str):upper()
+end
 
-local function convert_variable (env, line, cap)
-  cap[2] = convert_name (env, cap[2])
-  cap[6] = convert_names(env, cap[6])
+local function convert_ename (str)
+  str = str:gsub(name_patt, convert_name)    --; io.write("str-5:[", str, "]\n")
+  str = str:gsub(beam_patt, '%2.%1')         --; io.write("str-6:[", str, "]\n")
+  str = str:gsub("(->)", '.')                --; io.write("str-7:[", str, "]\n")
+  return trim(str)
+end
+
+-- variable-def ---------------------------------------------------------------o
+-- var  = expr
+-- var := expr
+                    --  [1] var   [2] op  [3] expr
+local variable_patt = "^([^:=,(]+)(:?=)%s*(.*)$"
+
+local function convert_variable (env, str, cap)
+  if option.debug >= 2 then io.write("conv-var: [", str, "]\n") end
   assertf(env.cur == 0, "unsupported variable %s assignment in %s, line %d",
-    cap[2], env[env.cur], env.lin)
-  if cap[4] == ':=' then
-    cap[4] = '=\\ '
-    if string.sub(cap[6],1,1) == '(' then
-      cap[6] = '(' .. cap[6] .. ')'
+                                             cap[1], env[env.cur], env.out.n)
+  cap[1] = convert_ename(cap[1])
+  cap[3] = convert_ename(cap[3])
+  if cap[2] == ':=' then
+    cap[2] = '=\\'
+    if cap[3]:sub(1,1) == '(' then   -- lambda starts with brackets
+      cap[3] = '(' .. cap[3] .. ')'  -- i.e. add surrounding brackets
     end
   end
-  return table.concat( cap )
+  return table.concat(cap, ' ')
 end
 
--- command --------------------------------------------------------------------o
--- cmd, attr-list;
--- cmd attr-list;
-                   --   [1]  [2]             [3]       [4]
-local command_patt = "^(%s*)([%a_][%w%._$]*)([^,;%a_]*)()"
-local command_attr = "(%s*)([^;]*);"
+-- attribute-list -------------------------------------------------------------o
+-- attr  = expr
+-- attr := expr
+--                            [1] flag  [2] attr         [3] op      [4] rest [5] open
+local attribute_patt = "^,?%s*(%-?)" .. name_patt .. "%s*(:?[=,]?)%s*(([{'\"]?).*)$"
+local attrlst_patt = "%s*([%a,]?.*)$"
 
-local function convert_command (env, line, cap)
-  cap[2] = string.upper(cap[2])
-  local cmd = convert_name(env, cap[2])
+local attr = { slice='nslice', nst='nslice' }
+
+local function convert_attrlist (str_)
+  local res, str, flg, opn = {}, str_ or ''
+  while str ~= '' do
+    if option.debug >= 2 then io.write("attr-lst: [", str, "]\n") end
+    local cap = capf(str:find(attribute_patt))
+    if #cap == 0 then break end
+    if option.debug >= 2 then
+      io.write(#res+1,": [",cap[1],"], [",cap[2],"], [",cap[3],
+                                   "], [",cap[4],"], [",cap[5],"]\n")
+    end
+    cap[2] = convert_name(cap[2]):gsub(name_patt, attr)
+    flg, opn = cap[1], cap[5]
+
+    if cap[2] == "from" or cap[2] == "refpos" then
+      local scap = capf(cap[4]:find("^" .. qnam_patt .. attrlst_patt))
+      cap[4], str = convert_xname(scap[1]), scap[2]
+      cap[4] = '"'..cap[4]..'"'
+
+    elseif cap[3] == "," or cap[3] == '' and cap[4] == '' then -- boolean
+      cap[4], str = 'true', cap[4] ; cap[3] = '='
+
+    elseif opn == '"' or opn == "'" then                       -- string
+      local scap = capf(cap[4]:find("^((['\"]).-%2)" .. attrlst_patt))
+      cap[4], str = scap[1], scap[3]
+
+    elseif opn == '{' then                                     -- array of expr
+      local scap = capf(cap[4]:find("^(%b{})" .. attrlst_patt))
+      cap[4], str = convert_ename(scap[1]), scap[2]
+
+    else                                                       -- expression
+      local scap = capf(cap[4]:find("^([^,]+)" .. attrlst_patt))
+      cap[4], str = convert_ename(scap[1]), scap[2]
+    end
+    res[#res+1] = table.concat(cap, ' ', 2, 4)
+  end
+
+  return table.concat(res, ', ')
+end
+
+-- element-def ----------------------------------------------------------------o
+-- elm:cls, attr-list;
+-- elm:cls  attr-list;
+--                     [1] elm         [2] class    [3] attr-list
+local element_patt = "^([^:=,(]+):" .. name_patt .. attrlst_patt
+
+local function convert_element (env, str, cap)
+  if option.debug >= 2 then io.write("conv-elm: [", str, "]\n") end
+  local nam = convert_name(cap[1])
+  local cls = convert_name(cap[2])
+  local out, sid, clo, pfx = env.out, env.elm[nam]
+
+  cap[1] = convert_xname(cap[1]) -- remove "shared" (undocumented)
+
+  if cls == 'sequence' then -- sequence
+    assertf(env.cur == 0, "invalid sequence %s definition in %s, line %d",
+                                           cap[1], env[env.cur], out.n)
+    check_chunk(out, true)
+    pfx, clo     = nam .. ' = ', ','
+    env[#env+1]  = nam
+    env.seq[nam] = #env
+    env.cur      = #env
+
+  elseif env.cur == 0 then  -- class
+    pfx, clo     = nam .. ' = ', ' }'
+    env.cls[nam] = cls
+    env.elm[nam] = 0
+
+  else                      -- element
+    pfx, clo     = '', ' },'
+    if sid then             -- sequence index
+      if env.wrn then
+        if env.cur == 0 then
+          warn("%03d: element redefined, ignored: %s", out.n, cap[1])
+        else
+          warn("%03d: element redefined in %s, ignored: %s",
+               out.n, env[env.cur], cap[1])
+        end
+      end
+    else
+      env.cls[nam] = cls
+      env.elm[nam] = env.cur
+    end
+  end
+
+  cap[3] = convert_attrlist(cap[3])
+
+  return string.format("%s%s '%s' { %s%s", pfx, cls, cap[1], cap[3], clo)
+end
+
+-- element-update -------------------------------------------------------------o
+-- cmd[, attr-list]
+-- cmd[  attr-list]
+                   --       [1] name     [2] attr-list
+local command_patt = "^" .. name_patt .. attrlst_patt
+
+local function convert_command (env, str, cap)
+  if option.debug >= 2 then io.write("conv-cmd: [", str, "]\n") end
+  local cmd = convert_name(cap[1])
+
   if cmd == 'endsequence' then
     local out in env
-    env.cur = 0
-    out[out.n], out.n = '}', out.n+1
-    if out.n-out.nchk >= MINSZCHUNK then
-      out[out.n], out.n = ENDOFCHUNK, out.n+1 -- close previous chunk
-      out.nchk = out.n+1
-      return BEGOFCHUNK                       -- open  new      chunk
-    end
-    return ''
-  end
-  local c = string.sub(line,cap[4],cap[4])
-  if c == ',' or c == ';' then
-    cap[4] = cap[4]+1
+    env.cur, out[out.n], out.n = 0, '}', out.n+1
+    check_chunk(out, true)
+    return
+  elseif cmd == 'return' then
+    env.stp = true
+    return
   end
 
   env.opt.warn = false   -- disable madx warnings when looking for an element
   local cmdx = env.madx[cmd] ~= 0
+  local sid  = cmdx or env.elm[cmd] or env.seq[cmd] and 1 or nil
   env.opt.warn = env.wrn -- restore madx warnings
 
-  local sid = cmdx or env.elm[cmd] or env.seq[cmd] and 1 or nil
-  if c ~= ';' and sid then                    -- element or sequence update
-    local spc, pfx, opn, clo
-    spc, cap[3] = string.match(line, command_attr, cap[4])
-    if env.cur == 0 then                      -- outside sequence definition, update
-      pfx = sid > 0 and "MADX['" .. cap[2] .. "'] " or cmd
-      opn, cap[3], clo = ':setvar { ', convert_names(env, cap[3] or ''), ' }'
-    elseif cmdx or env.seq[cmd] then -- sharing sequence (keep only at, from, refpos)
-!     if env.wrn then -- now checked by MAD-X
-!       warn("%03d: sequence updated in %s: %s", env.lin, env[env.cur], cap[2])
-!     end
-      pfx = convert_names(env, cap[2] or '')
-      opn, cap[3], clo = ' { ', convert_names(env, convert_eref(cap[3] or '')), ' },'
-    else                                  -- sharing element (keep only at, from, refpos)
-!     if env.wrn then -- now checked by MAD-X
-!       warn("%03d: element updated in %s: %s", env.lin, env[env.cur], cap[2])
-!     end
-      pfx = convert_name(env, cap[2]) .. " '" .. cap[2] .. "' "
-      opn, cap[3], clo = ' { ', convert_names(env, convert_eref(cap[3] or '')), ', shared=true },'
-    end           -- was ':setvar { '
-    return string.format("%s%s %s%s%s%s", cap[1],pfx,spc or '', opn,cap[3],clo)
-  else                                    -- command, ignored
-    line = '-- ' .. line
+  if not sid then -- ignore command
+    warn("%03d: unsupported command, ignored: %s", env.out.n, str)
+    return '-- ' .. str
   end
-  return line
-end
 
--- element --------------------------------------------------------------------o
--- elem:class, attr-list;
--- elem:class attr-list;
+  cap[1] = convert_xname(cap[1])
 
-                   --   [1]  [2]                    [3]             [4]       [5]
-local element_patt = "^(%s*)([%a_][%w%._$]*)%s*:%s*([%a_][%w%._$]*)([^,=;%a_]*)()"
-local element_attr = "(%s*)([^;]*);"
-local element_line = "(%s*)(%b())%s*;"
-
-local function convert_line (str)
-  local cap = string.sub(str, 2, -2)
-  if cap ~= '' then cap = '{ ' .. cap end -- closing '}' is appened
-  return cap
-end
-
-local function convert_element (env, line, cap)
-  cap[2] = string.upper(cap[2])
-  local nam = convert_name(env, cap[2])
-  local cmd = convert_name(env, cap[3])
-  local out, sid, spc, clo, pfx = env.out, env.elm[nam]
-  if cmd == 'sequence' then -- sequence
-    assertf(env.cur == 0, "invalid sequence %s definition in %s, line %d",
-            cap[2], env[env.cur], env.lin)
-    if out.n-out.nchk >= MINSZCHUNK then
-      out[out.n], out.n = ENDOFCHUNK, out.n+1 -- close previous chunk
-      out[out.n], out.n = BEGOFCHUNK, out.n+1 -- open  new      chunk
-      out.nchk = out.n
-    end
-    pfx, clo     = nam .. ' = ', ','
-    env[#env+1]  = nam      -- cap[2]
-    env.seq[nam] = #env
-    env.cur      = #env
-  elseif env.cur == 0 then  -- class
-    pfx, clo     = nam .. ' = ', ' }'
-    env.cls[nam] = cmd
-    env.elm[nam] = 0
-  else                      -- element
-    pfx, clo     = '', ' },'
-    if sid then
-      if env.wrn then
-        if env.cur == 0 then
-          warn("%03d: element redefined, ignored: %s", env.lin, cap[2])
-        else
-          warn("%03d: element redefined in %s, ignored: %s",
-               env.lin, env[env.cur], cap[2])
-        end
-      end
-    else
-      env.cls[nam] = cmd
-      env.elm[nam] = env.cur
-    end
+  local pfx, opn, clo
+  if env.cur == 0 then             -- outside sequence definition, update
+    pfx = sid > 0 and "MADX['" .. cap[1] .. "']" or cmd
+    opn, clo = ':setvar { ', ' }'
+  elseif cmdx or env.seq[cmd] then -- sharing sequence (keep only at, from, refpos)
+    pfx = cmd
+    opn, clo = '{ ', ' },'
+  else                             -- sharing element (keep only at, from, refpos)
+    pfx = cmd .. " '" .. cap[1] .. "'"
+    opn, clo = '{ ', ', shared=true },'
   end
-  local c = string.sub(line,cap[5],cap[5])
-  if c == ',' or c == ';' then
-    cap[5] = cap[5]+1
-  end
-  if c == '=' then -- line -- TODO: line arguments
-    assertf(cmd == 'line', "'line' definition expected, line %d", env.lin)
-    spc, cap[4] = string.match(line, element_line, cap[5])
-    cap[4] = convert_names(env, convert_line(cap[4] or ''))
-  elseif c ~= ';' then -- attribute
-    assertf(cmd ~= 'line', "unexpected 'line' definition, line %d", env.lin)
-    spc, cap[4] = string.match(line, element_attr, cap[5])
-    cap[4] = convert_names(env, convert_eref(cap[4] or ''))
-  else
-    cap[4] = ''
-  end
-  return string.format("%s%s%s '%s' %s{ %s%s",
-                       cap[1], pfx, cmd, cap[2], spc or '', cap[4], clo)
+
+  cap[2] = convert_attrlist(cap[2])
+
+  return string.format("%s %s%s%s", pfx, opn, cap[2], clo)
 end
 
 -- statement ------------------------------------------------------------------o
 
-local capf = \i,j,... -> {...}
-local function convert_statements (env, line)
+local function convert_statements (str, env)
   local cap
-  cap = capf( string.find(line, variable_patt) )
-  if #cap > 0 then return convert_variable(env, line, cap) end
-  cap = capf( string.find(line, element_patt ) )
-  if #cap > 0 then return convert_element (env, line, cap) end
-  cap = capf( string.find(line, command_patt ) )
-  if #cap > 0 then return convert_command (env, line, cap) end
-  return line
+
+  -- order of matching matters! order constraints from + to -
+  cap = capf(string.find(str, variable_patt))
+  if #cap > 0 then return convert_variable(env, str, cap) end
+
+  cap = capf(string.find(str, element_patt))
+  if #cap > 0 then return convert_element (env, str, cap) end
+
+  cap = capf(string.find(str, command_patt))
+  if #cap > 0 then return convert_command (env, str, cap) end
+
+  warn("%03d: unsupported construction, ignored: %s", env.out.n, str)
+  return '-- ' .. str -- str ignored
 end
 
---[[
+--[=[
   env content:
   ------------
-  [idx]    = seq_name : list of sequences in current translation
+  [idx]    = seq_nam  : list of sequence names in current translation
   cur      = seq_idx  : current sequence index (0 -> not in seq)
-  elm[str] = seq_idx  : element sequence index (0 -> elm is a class)
-  seq[str] = seq_idx  : sequence index         (from name)
-  cls[elm] = cls_name : class of element
-]]--
+  elm[nam] = seq_idx  : element sequence index (0 -> elm is a class)
+  seq[nam] = seq_idx  : sequence index
+  cls[nam] = cls_nam  : element's class name, i.e. (elm[cls[nam]] -> cls_idx)
+--]=]
 
 local function load2madx (madx, src, dst, reload_)
   assert(madx == MADX or object.is_instanceOf(madx, MADX), "invalid MADX environment")
-  local out = table.new(8192,1) ; out.n, out.nchk = 1, 1
-
-  local env = { out=out, seq={}, elm={}, cls={}, cur=0, lin=0,
-                wrn=madx.option.warn, opt=madx.option, madx=madx }
-
-  -- compile directly in memory (no translation)
-  if is_callable(src) or is_string(src) and string.sub(src, -4) == '.mad' then
-    for line in io.lines(src) do out[out.n], out.n = line, out.n+1 end -- madx:load_env(src)
-    goto compile
+  if is_boolean(dst) and is_nil(reload_) then
+    reload_, dst = dst, nil -- right shift
   end
 
-  -- compile directly in memory if dst newer than src (no translation)
-  if reload_ ~= true and is_string(src) and               -- reload not enforced
-     is_string(dst) and string.sub(dst, -4) == '.mad' and -- dst is a mad file
-     fileisnewer(dst, src) then                           -- dst newer than src
-    for line in io.lines(dst) do out[out.n], out.n = line, out.n+1 end-- madx:load_env(dst)
+  local out = table.new(65536,2) ; out.n, out.nchk = 1, 1
+  local env = { out=out, seq={}, elm={}, cls={}, cur=0, stp=false,
+                wrn=madx.option.warn, opt=madx.option, madx=madx }
+
+  -- if dst (MAD-NG) is newer than src (MAD-X), use dst (no translation)
+  if reload_ ~= true                                      -- reload not enforced
+     and is_string(dst) and string.sub(dst, -4) == '.mad' -- dst is a mad file
+     and is_string(src) and fileisnewer(dst, src) then    -- dst newer than src
+     src, dst = dst, nil
+  end
+
+  -- load src
+  for line in io.lines(src) do
+    out[out.n], out.n = line, out.n+1
+  end
+
+  -- only src is provided (MAD-NG), compile directly in memory (no translation)
+  if is_nil(dst) and is_string(src) and string.sub(src, -4) == '.mad' then
     goto compile
   end
 
   -- translate source file
   do
-    env.cur, env.lin = 0, 0
-
-    -- load file
-    out[out.n], out.n = string.format("-- Generated by MAD %s %s\ndo",
-                                      MAD.env.version, os.date()), out.n+1
-    for line in io.lines(src) do
-      env.lin = env.lin + 1
-      line = convert_comments   (line)
-      line = convert_tokens     (line)
-      line = convert_statements (env, line)
-      out[out.n], out.n = line, out.n+1
+    -- remove comments, concat lines then split by ";", reset out
+    local str = table.concat(remove_comments(out), ' ')
+    local inp, n = strsplitall(str, ";", 1, table.new(out.n,2))
+    for i=n,1,-1 do
+      if inp[i] == '' then table.remove(inp, i) ; n = n-1 end
     end
-    if out[out.n-1] == BEGOFCHUNK then
-      out[out.n-1], out.n = nil, out.n-2
-    else
-      out[out.n] = ENDOFCHUNK
+    table.clear(out) ; out.n, out.nchk = 1, 1
+
+    -- header, open first chunk
+    local hdr = "-- Generated by MAD " .. MAD.env.version .. ", " .. os.date()
+    out[out.n], out.n = hdr       , out.n+1
+    out[out.n], out.n = BEGOFCHUNK, out.n+1
+
+    -- translate
+    for _,str in ipairs(inp) do
+      str = convert_statements(str, env)
+      if str then out[out.n], out.n = str, out.n+1 end -- add non-empty lines
+      if env.cur == 0 then check_chunk(out) end        -- outside sequence
+      if env.stp then break end                        -- "return" found
+    end
+
+    -- close last chunk
+    if out[out.n-1] == BEGOFCHUNK
+    then out[out.n-1], out.n = nil, out.n-2
+    else out[out.n] = ENDOFCHUNK
     end
 
     -- save to file
     if dst then
       local outf = assert(openfile(dst, 'w', '.mad'),
                           "unable to open MAD file in write mode")
-      for i,s in ipairs(out) do outf:write(s, '\n') end
+      for _,l in ipairs(out) do outf:write(l, '\n') end
       if is_string(dst) then outf:close() else outf:flush() end
       if option.debug > 0 then
-        io.write(src, ' converted and saved to ', dst, '\n')
+        local src = is_string(src) and src or '?'
+        local dst = is_string(dst) and dst or '?'
+        io.write(src, ' translated and saved to ', dst, '\n')
       end
     end
+
+    src, inp, str = dst, nil, nil
   end
 
-::compile::
-  -- compile in memory by chunk or sequence
-  local li, lj, eoc = 0, 0, false
+::compile:: -- compile chunks in memory
+  local li, eoc = 0, false
   local loadchunk = \ =>
     if eoc then eoc=false ; return nil end
-    li = li+1 ; eoc = out[li] == ENDOFCHUNK
+    li, eoc = li+1, out[li] == ENDOFCHUNK
     return out[li] and out[li]..'\n' or nil
   end
-  while li < out.n do
-    object.load_env(madx, assert( load(loadchunk) ))
-  end
-  -- madx:load_env(assert( load( table.concat(out,'\n') ) ))
 
+  while li < out.n do
+    local fct, err = load(loadchunk)
+    if fct == nil and err ~= nil then
+      local fil = is_string(src) and src or "?"
+      io.stderr:write("MADX parse error:", fil,':',li,': ', out[li], '\n')
+      error(err)
+    end
+    madx:load_env(assert( fct, err ))
+  end
+
+  -- release memory
   out, env = nil, nil
   collectgarbage() -- mark and sweep
-  collectgarbage() -- release memory
+  collectgarbage() -- collect
 end
 
 -- MADX env -------------------------------------------------------------------o
@@ -350,23 +476,23 @@ end
 
 -- MADX helpers ---------------------------------------------------------------o
 
-local sinc in MAD.gmath
+local cord2arc, arc2cord in MAD.gmath
 
--- from cord to arc
-local cord2arc = function (e)
+-- wrap element length: from cord to arc (unused)
+local function cord2arc_w (e)
   local l = e:var_get 'l'
   if is_callable(l)
-  then e.l = \s l(s)/sinc(0.5*s.angle)
-  else e.l = \s l   /sinc(0.5*s.angle)
+  then e.l = \s -> cord2arc(l(s), s.angle)
+  else e.l = \s -> cord2arc(l   , s.angle)
   end
 end
 
--- from arc to cord
-local arc2cord = function (e)
+-- wrap element length: from arc to cord (unused)
+local function arc2cord_w (e)
   local l = e:var_get 'l'
   if is_callable(l)
-  then e.l = \s l(s)*sinc(0.5*s.angle)
-  else e.l = \s l   *sinc(0.5*s.angle)
+  then e.l = \s -> arc2cord(l(s), s.angle)
+  else e.l = \s -> arc2cord(l   , s.angle)
   end
 end
 
@@ -389,8 +515,6 @@ MADX:set_methods {
 -- math functions, see mad_dict.c from MAD-X source
 local xrng = MAD.gmath.xrandnew()
 
-MADX.global_prng = xrng
-
 MADX:set_methods {
   abs     = math.abs,
   sqrt    = math.sqrt,
@@ -409,8 +533,8 @@ MADX:set_methods {
   asinh   = MAD.gmath.asinh,
   acosh   = MAD.gmath.acosh,
   atanh   = MAD.gmath.atanh,
-  ranf    = \ -> xrng:rand(),
-  gauss   = \ -> xrng:randn(),
+  ranf    = \     -> xrng:rand(),
+  gauss   = \     -> xrng:randn(),
   tgauss  = \cut_ -> xrng:randtn(cut_),
   poisson = \lmb_ -> xrng:randp(lmb_),
   seed    = \seed -> xrng:randseed(seed),
@@ -424,8 +548,10 @@ MADX:set_methods {
   sinc    = MAD.gmath.sinc,
 
 -- extra functions
-  cord2arc = cord2arc,
-  arc2cord = arc2cord,
+  cord2arc = MAD.gmath.cord2arc,
+  arc2cord = MAD.gmath.arc2cord,
+  cord2arc_w = cord2arc_w,
+  arc2cord_w = arc2cord_w,
 }
 
 -- constants
@@ -469,14 +595,16 @@ end
 -- build dict or existing keys
 local _, dict = MADX:get_varkeys(object)
 
+-- for k,v in pairs(dict) do print(k,v) end
+
 -- undefined variables have value zero
 -- names are converted to identifiers (lower case, $. -> _)
 -- names starting by __ are not protected
 local      index = getmetatable(MADX).__index    -- catch from parent
 local   newindex = getmetatable(MADX).__newindex -- catch from parent
-local __newindex = \s,k,v -> rawset(s.__var, convert_name(nil,k), v)
+local __newindex = \s,k,v -> rawset(s.__var, convert_name(k), v)
 local    __index = \s,k =>
-  k = dict[k] or convert_name(nil,k)
+  k = dict[k] or convert_name(k)
   local v = index(s,k)
   if type(v) ~= 'nil' then return v end
   if s.option.warn then warn("undefined variable used (zero): " .. k) end
@@ -487,7 +615,7 @@ end
 MADX:set_metamethods { __index=__index, __newindex=__newindex } :set_readonly()
 
 -- global MADX is a read-write child.
-_G.MADX = MADX(table.new(0,1000))
+_G.MADX = MADX(table.new(0,10000))
 
 -- end ------------------------------------------------------------------------o
 return { MADX = _G.MADX }

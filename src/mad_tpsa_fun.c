@@ -110,17 +110,15 @@ sincos_taylor (const T *a, T *s, T *c,
   assert(a && s && c && sin_coef && cos_coef);
   assert(n_s >= 1 && n_c >= 1);
 
-  T *acp;
-  ord_t n = MAX(n_s,n_c);
-  if (n >= 2) acp = GET_TMPX(c), FUN(copy)(a,acp);
-
   // n=1
   FUN(scl)(a, sin_coef[1], s); FUN(set0)(s, 0, sin_coef[0]);
   FUN(scl)(a, cos_coef[1], c); FUN(set0)(c, 0, cos_coef[0]);
 
   // n=2
+  ord_t n = MAX(n_s,n_c);
   if (n >= 2) {
-    T *pow = GET_TMPX(c);
+    T *acp = GET_TMPX(c), *pow = GET_TMPX(c);
+    FUN(copy)(a,acp);
     FUN(set0)(acp,0,0);
     FUN(mul)(acp,acp,pow);
     if (n_s >= 2) FUN(acc)(pow,sin_coef[2],s);
@@ -140,6 +138,7 @@ sincos_taylor (const T *a, T *s, T *c,
       if (n & 1) SWAP(pow,tmp,t); // enforce even number of swaps
       REL_TMPX(tmp);
     }
+
     REL_TMPX(pow), REL_TMPX(acp);
   }
 }
@@ -170,7 +169,7 @@ FUN(inv) (const T *a, NUM v, T *c) // c = v/a    // checked for real and complex
   NUM a0 = a->coef[0];
   ensure(a0 != 0, "invalid domain inv("FMT")", VAL(a0));
 #ifdef MAD_CTPSA_IMPL
-  NUM f0 = mad_cnum_inv(a0);
+  NUM f0 = mad_cpx_inv(a0);
 #else
   NUM f0 = 1/a0;
 #endif
@@ -198,8 +197,8 @@ FUN(invsqrt) (const T *a, NUM v, T *c) // v/sqrt(a),checked for real and complex
   NUM a0 = a->coef[0];
   ensure(SELECT(a0 > 0, a0 != 0), "invalid domain invsqrt("FMT")", VAL(a0));
 #ifdef MAD_CTPSA_IMPL
-  NUM _a0 = mad_cnum_inv(a0);
-  NUM  f0 = mad_cnum_inv(sqrt(a0));
+  NUM _a0 = mad_cpx_inv(a0);
+  NUM  f0 = mad_cpx_inv(sqrt(a0));
 #else
   NUM _a0 = 1/a0;
   NUM  f0 = 1/sqrt(a0);
@@ -235,7 +234,7 @@ FUN(sqrt) (const T *a, T *c)                     // checked for real and complex
   }
 
 #ifdef MAD_CTPSA_IMPL
-  NUM _a0 = mad_cnum_inv(a0);
+  NUM _a0 = mad_cpx_inv(a0);
 #else
   NUM _a0 = 1/a0;
 #endif
@@ -492,7 +491,7 @@ FUN(sinc) (const T *a, T *c)
 
   if (!to || a->hi == 0) {
 #ifdef MAD_CTPSA_IMPL
-    NUM f0 = mad_cnum_sinc(a0);
+    NUM f0 = mad_cpx_sinc(a0);
 #else
     NUM f0 = mad_num_sinc (a0);
 #endif
@@ -659,7 +658,7 @@ FUN(coth) (const T *a, T *c)                     // checked for real and complex
   NUM a0 = a->coef[0], f0 = tanh(a0);
   ensure(f0 != 0, "invalid domain coth("FMT")", VAL(a0));
 #ifdef MAD_CTPSA_IMPL
-  f0 = mad_cnum_inv(f0);
+  f0 = mad_cpx_inv(f0);
 #else
   f0 = 1/f0;
 #endif
@@ -705,7 +704,7 @@ FUN(sinhc) (const T *a, T *c)
 
   if (!to || a->hi == 0) {
 #ifdef MAD_CTPSA_IMPL
-    NUM f0 = mad_cnum_sinhc(a0);
+    NUM f0 = mad_cpx_sinhc(a0);
 #else
     NUM f0 = mad_num_sinhc (a0);
 #endif
@@ -885,7 +884,7 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
   NUM a0 = a->coef[0];
   ensure(a0 != 0, "invalid domain acot("FMT")", VAL(a0));
 #ifdef MAD_CTPSA_IMPL
-  NUM f0 = atan(mad_cnum_inv(a0));
+  NUM f0 = atan(mad_cpx_inv(a0));
 #else
   NUM f0 = atan(1/a0);
 #endif
@@ -947,7 +946,7 @@ FUN(asinc) (const T *a, T *c)
 
   if (!to || a->hi == 0) {
 #ifdef MAD_CTPSA_IMPL
-    NUM f0 = mad_cnum_asinc(a0);
+    NUM f0 = mad_cpx_asinc(a0);
 #else
     NUM f0 = mad_num_asinc (a0);
 #endif
@@ -1097,7 +1096,7 @@ FUN(acoth) (const T *a, T *c)                    // checked for real and complex
   NUM a0 = a->coef[0];
   ensure(fabs(a0) SELECT(> 1, != 1 && a0 != 0), "invalid domain acoth("FMT")", VAL(a0));
 #ifdef MAD_CTPSA_IMPL
-  NUM f0 = atanh(mad_cnum_inv(a0));
+  NUM f0 = atanh(mad_cpx_inv(a0));
 #else
   NUM f0 = atanh(1/a0);
 #endif
@@ -1148,7 +1147,7 @@ FUN(asinhc) (const T *a, T *c)
 
   if (!to || a->hi == 0) {
 #ifdef MAD_CTPSA_IMPL
-    NUM f0 = mad_cnum_asinhc(a0);
+    NUM f0 = mad_cpx_asinhc(a0);
 #else
     NUM f0 = mad_num_asinhc (a0);
 #endif
@@ -1184,7 +1183,7 @@ FUN(erf) (const T *a, T *c)
   // erf(z) = 2/sqrt(pi) \int_0^z exp(-t^2) dt
   NUM a0 = a->coef[0];
 #ifdef MAD_CTPSA_IMPL
-  NUM f0 = mad_cnum_erf(a0, 0);
+  NUM f0 = mad_cpx_erf(a0, 0);
 #else
   NUM f0 = mad_num_erf (a0);
 #endif
@@ -1218,13 +1217,13 @@ FUN(erfc) (const T *a, T *c)
 #ifdef MAD_CTPSA_IMPL
 
 void FUN(inv_r) (const T *a, num_t v_re, num_t v_im, T *c)
-{ FUN(inv)(a, CNUM(v), c); }
+{ FUN(inv)(a, CPX(v), c); }
 
 void FUN(invsqrt_r) (const T *a, num_t v_re, num_t v_im, T *c)
-{ FUN(invsqrt)(a, CNUM(v), c); }
+{ FUN(invsqrt)(a, CPX(v), c); }
 
 void FUN(pown_r) (const T *a, num_t v_re, num_t v_im, T *c)
-{ FUN(pown)(a, CNUM(v), c); }
+{ FUN(pown)(a, CPX(v), c); }
 
 #endif
 

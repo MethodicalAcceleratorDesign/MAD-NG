@@ -34,17 +34,18 @@ local type, getmetatable, setmetatable, assert, error, load =
 local ipairs, pairs, tostring, tonumber =
       ipairs, pairs, tostring, tonumber
 
-local option, gfunc, fun, _C in MAD
-local totable, iter   in fun
+local option, gfunc, lfun, _C in MAD
+local totable, iter   in lfun
 local abs, min, max   in math
 
-local is_nil, is_boolean, is_number, is_string, is_table,
+local is_nil, is_logical, is_number, is_string, is_table,
       is_emptytable, is_value, is_integer, is_natural, is_iterable,
       is_mappable, is_callable, is_stringable, is_tablable,
       is_copiable, is_sameable, get_metatable, get_metamethod,
       is_openfile, wprotect, set_concept, concept                 in MAD.typeid
 local attributes                                                  in MAD.filesys
-local opstr                                                       in MAD.gfunc
+local opstr, rshift                                               in MAD.gfunc
+local sign                                                        in MAD.gmath
 
 local not_mappable, not_extendable, not_mutable                   in concept
 
@@ -121,7 +122,8 @@ local rep_mt = set_concept({
 }, not_mappable + not_extendable + not_mutable)
 
 function utility.rep (x, n_) -- repeater
-  return setmetatable({[_repx]=x, [_repn]=n_ or 2^30}, rep_mt)
+  return setmetatable({[_repx]=assert(not is_nil(x), "invalid 'nil' in repeater") and x,
+                       [_repn]=n_ or 2^30}, rep_mt)
 end
 
 -- run once
@@ -152,6 +154,7 @@ function utility.collectlocal (f_, env_)
 end
 
 -- iterator: pairs = ipairs + kpairs, unless n_ is provided, e.g. #tbl
+-- note: #tbl may not see nil(s) in the array part!
 
 local function kpairs_iter (tbl, key)
   local k, v = key
@@ -165,10 +168,10 @@ function utility.kpairs (tbl, n_)
   local nxt, dat, ini = pairs(tbl)
   local n = n_
   if not n and is_iterable(tbl) then
-    for i in ipairs(tbl) do n = i end -- not the same as #tbl !
+    for i in ipairs(tbl) do n = i end -- not the same as #tbl !!
   end
-  if not n then return nxt, dat, ini end
-  return kpairs_iter, { nxt=nxt, dat=dat, n=n }, ini
+  if not n then return nxt, dat, ini, 0 end
+  return kpairs_iter, { nxt=nxt, dat=dat, n=n }, ini, n
 end
 
 -- key/indexes set
@@ -248,7 +251,7 @@ function utility.val2keys (a)
 end
 
 function utility.lst2tbl (l, t_)
-  assert(is_iterable(a), "invalid argument #1 (iterable expected)")
+  assert(is_iterable(l), "invalid argument #1 (iterable expected)")
   local n = #l
   local t = t_ or table.new(0,n)
   for i=1,n do t[l[i]] = true end
@@ -256,7 +259,7 @@ function utility.lst2tbl (l, t_)
 end
 
 function utility.tbl2lst (t, l_)
-  assert(is_mappable(a), "invalid argument #1 (mappable expected)")
+  assert(is_mappable(t), "invalid argument #1 (mappable expected)")
   local l = l_ or table.new(4,0)
   local n = #l
   for k,_ in kpairs(t) do l[n+1], n = k, n+1 end
@@ -495,13 +498,8 @@ function utility.tbl2str (tbl, sep_)
   local ir = #r+1
   for k,v in kpairs(tbl) do -- hash part
     if is_string(v) then v = '"'..v..'"' end
-    if is_number(k) then
-      r[ir] = '[' ..k.. ']='..tostring_(v)
-    elseif is_identifier(k) then
-      r[ir] =       k..  '='..tostring_(v)
-    else
-      r[ir] = '["'..k..'"]='..tostring_(v)
-    end
+    if is_string(k) then k = '"'..k..'"' else k = tostring_(k) end
+    r[ir] = '[' ..k.. ']='..tostring_(v)
     ir = ir+1
   end
   return '{'..table.concat(r, sep_ or ', ')..'}'
@@ -620,7 +618,7 @@ local function interp_fun (arg, tag)
       error(string.format("Invalid policy: '%s'", lst or arg.policy), 2)
     end
   end
-  return tostring(val)
+  return tostring_(val)
 end
 
 local bind1st in MAD.gfunc
@@ -787,17 +785,19 @@ end
 function utility.bsearch (tbl, val, cmp_, low_, high_)
   assert(is_iterable(tbl), "invalid argument #1 (iterable expected)")
   if is_number(cmp_) and is_nil(high_) then
-    cmp_, low_, high_ = nil, cmp_, low_ -- right shift
+    low_, high_, cmp_ = cmp_, low_, nil -- right shift
   end
-  local low  = max(low_  or    1,    1)
-  local high = min(high_ or #tbl, #tbl)
-  local cmp = is_string(cmp_) and opstr[cmp_] or cmp_ or
-              tbl[low] <= tbl[high] and gfunc.le or gfunc.ge
+  local nel  = #tbl
+  local low  = max(low_  or   1,   1)
+  local high = min(high_ or nel, nel)
+  assert(low <= high, "invalid boundaries (low > high)")
+  local cmp  = is_string(cmp_) and opstr[cmp_] or cmp_ or
+               tbl[low] <= tbl[high] and gfunc.le or gfunc.ge
   assert(is_callable(cmp), "invalid argument #3 (callable expected)")
 
   local len, mid, stp, tst = high-low+1
   while len > 0 do
-    stp = rshift(len,1) -- [len/2]
+    stp = rshift(len,1)
     mid = low+stp
     if cmp(val, tbl[mid])
     then len = stp
@@ -810,17 +810,59 @@ end
 function utility.lsearch (tbl, val, cmp_, low_, high_)
   assert(is_iterable(tbl), "invalid argument #1 (iterable expected)")
   if is_number(cmp_) and is_nil(high_) then
-    cmp_, low_, high_ = nil, cmp_, low_ -- right shift
+    low_, high_, cmp_ = cmp_, low_, nil -- right shift
   end
-  local cmp = is_string(cmp_) and gfunc[cmp_] or cmp_ or gfunc.eq
+  local nel  = #tbl
+  local low  = max(low_  or   1,   1)
+  local high = min(high_ or nel, nel)
+  assert(low <= high, "invalid boundaries (low > high)")
+  local cmp  = is_string(cmp_) and gfunc[cmp_] or cmp_ or gfunc.eq
   assert(is_callable(cmp), "invalid argument #3 (callable expected)")
 
-  local low  = max(low_  or    1,    1)
-  local high = min(high_ or #tbl, #tbl)
   for idx=low,high do
     if cmp(val, tbl[idx]) then return idx end
   end
   return high+1
+end
+
+-- detect ordering, descending=-1, ascending=1, constant=0, otherwise=nil
+
+function utility.monotonic (tbl, strict_, cmp_, low_, high_)
+  assert(is_iterable(tbl), "invalid argument #1 (iterable expected)")
+  local nel = #tbl
+  if nel <= 0 then return nil end
+
+  if not is_logical(strict_) and is_nil(high_) then
+    cmp_, low_, high_, strict_ = strict_, cmp_, low_, nil -- right shift
+  end
+  if is_number(cmp_) and is_nil(high_) then
+    low_, high_, cmp_ = cmp_, low_, nil -- right shift
+  end
+
+  local low  = max(low_  or   1,   1)
+  local high = min(high_ or nel, nel)
+  assert(low <= high, "invalid boundaries (low > high)")
+
+  local cmp = cmp_ or gfunc.cmp
+  assert(is_callable(cmp), "invalid argument #2 (callable expected)")
+
+  local ord = cmp(tbl[high],tbl[low])
+  assert(ord == 0 or ord == 1 or ord == -1,
+         "invalid argument #3 (cmp must return -1,0,1)")
+
+  if strict_ then
+    if ord == 0 then return nil end
+    for k=low+1,high do
+      if cmp(tbl[k],tbl[k-1]) ~= ord then return nil end
+    end
+  else
+    for k=low+1,high do
+      local c = cmp(tbl[k],tbl[k-1])
+      if c ~= ord and c ~= 0 then return nil end
+    end
+  end
+
+  return ord
 end
 
 -- env ------------------------------------------------------------------------o

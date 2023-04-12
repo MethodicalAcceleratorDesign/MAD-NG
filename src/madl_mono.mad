@@ -42,7 +42,7 @@ local type, assert, error, tostring, table, string =
 -- types ----------------------------------------------------------------------o
 
 ffi.cdef[[
-struct monomial { const ssz_t n; ord_t data[?]; };
+struct monomial { const ssz_t n; ord_t _dat[?]; };
 ]]
 
 local mono_ctor = ffi.typeof 'struct monomial'
@@ -68,9 +68,7 @@ local function monomial (len, ord)
   return mono_alloc(len):fill(ord)
 end
 
--- size, same, copy -----------------------------------------------------------o
-
-M.size  = \a -> a.n
+-- same, copy -----------------------------------------------------------------o
 
 function M.__same (a, n_)
   local n = n_ or a.n
@@ -85,7 +83,7 @@ function M.__copy (a, b_)
     assert(is_monomial(b_), "invalid argument #1 (monomial expected)")
     n = min(a.n,b_.n)
   end
-  ffi.copy(b_.data, a.data, ord_sz*n)
+  ffi.copy(b_._dat, a._dat, ord_sz*n)
   return b_
 end
 
@@ -98,26 +96,34 @@ local code_a = string.byte("a")
 function M.fill (a, ord)
   ord = ord or 0
   if is_integer(ord) then
-    ffi.fill(a.data, ord_sz*a.n, ord)
+    ffi.fill(a._dat, ord_sz*a.n, ord)
   elseif is_string(ord) then
     for i=1,min(a.n,#ord) do
       local v = string.byte(ord,i)
-      a.data[i-1] = v - (v < code_A and code_0    or
+      a._dat[i-1] = v - (v < code_A and code_0    or
                          v < code_a and code_A-10 or code_a-36)
     end
   elseif is_iterable(ord) then
-    for i=1,min(a.n,#ord) do a.data[i-1] = ord[i] end
+    for i=1,min(a.n,#ord) do a._dat[i-1] = ord[i] end
   else
     error("invalid argument #2 (integer, string or iterable expected)")
   end
   return a
 end
 
-M.min   = \a    -> _C.mad_mono_min  (a.n, a.data)
-M.max   = \a    -> _C.mad_mono_max  (a.n, a.data)
-M.ord   = \a    -> _C.mad_mono_ord  (a.n, a.data)
-M.ordp  = \a, s -> _C.mad_mono_ordp (a.n, a.data, s or 1)
-M.ordpf = \a, s -> _C.mad_mono_ordpf(a.n, a.data, s or 1)
+M.min   = \a    -> _C.mad_mono_min  (a.n, a._dat)
+M.max   = \a    -> _C.mad_mono_max  (a.n, a._dat)
+M.ord   = \a    -> _C.mad_mono_ord  (a.n, a._dat)
+M.ordp  = \a, s -> _C.mad_mono_ordp (a.n, a._dat, s or 1)
+M.ordpf = \a, s -> _C.mad_mono_ordpf(a.n, a._dat, s or 1)
+
+function M.reverse (a, r_)
+  local r = r_ or mono_alloc(a.n)
+  assert(is_monomial(r), "invalid argument #2 (monomial expected)")
+  assert(r.n == a.n, "incompatible monomial sizes")
+  _C.mad_mono_rev(a.n, a._dat, r._dat)
+  return r
+end
 
 --  io.write("== : a='", tostring(a), "', b='", tostring(b), "'\n")
 
@@ -127,23 +133,23 @@ function M.__eq (a, b)
   assert(is_monomial(a), "invalid argument #1 (monomial expected)")
   assert(is_monomial(b), "invalid argument #2 (monomial expected)")
   if a.n == b.n then
-    return _C.mad_mono_eq(a.n, a.data, b.data)
+    return _C.mad_mono_eq(a.n, a._dat, b._dat)
   end
   if a.n > b.n then a, b = b, a end -- swap to make b longer than a
-  return _C.mad_mono_eq (a.n, a.data, b.data) and
-         _C.mad_mono_ord(b.n-a.n, b.data+a.n) == 0
+  return _C.mad_mono_eq (a.n, a._dat, b._dat) and
+         _C.mad_mono_ord(b.n-a.n, b._dat+a.n) == 0
 end
 
 function M.__lt (a, b)
   assert(is_monomial(a), "invalid argument #1 (monomial expected)")
   assert(is_monomial(b), "invalid argument #2 (monomial expected)")
   if a.n == b.n then
-    return _C.mad_mono_lt(a.n, a.data, b.data)
+    return _C.mad_mono_lt(a.n, a._dat, b._dat)
   elseif a.n > b.n then
     return false
   else
-    return _C.mad_mono_lt(a.n, a.data, b.data) and
-           _C.mad_mono_min(b.n-a.n, b.data+a.n) > 0
+    return _C.mad_mono_lt(a.n, a._dat, b._dat) and
+           _C.mad_mono_min(b.n-a.n, b._dat+a.n) > 0
   end
 end
 
@@ -151,12 +157,12 @@ function M.__le (a, b)
   assert(is_monomial(a), "invalid argument #1 (monomial expected)")
   assert(is_monomial(b), "invalid argument #2 (monomial expected)")
   if a.n == b.n then
-    return _C.mad_mono_le(a.n, a.data, b.data)
+    return _C.mad_mono_le(a.n, a._dat, b._dat)
   elseif a.n > b.n then
-    return _C.mad_mono_le (b.n, a.data, b.data) and
-           _C.mad_mono_ord(a.n-b.n, a.data+b.n) == 0
+    return _C.mad_mono_le (b.n, a._dat, b._dat) and
+           _C.mad_mono_ord(a.n-b.n, a._dat+b.n) == 0
   else
-    return _C.mad_mono_le(a.n, a.data, b.data)
+    return _C.mad_mono_le(a.n, a._dat, b._dat)
   end
 end
 
@@ -167,13 +173,13 @@ function M.__add (a, b, r_)
   local r = r_ or mono_alloc(n)
   assert(r.n == n, "incompatible monomial sizes")
   if a.n == b.n then
-    _C.mad_mono_add(n, a.data, b.data, r.data)
+    _C.mad_mono_add(n, a._dat, b._dat, r._dat)
   elseif a.n > b.n then
-    _C.mad_mono_add(b.n, a.data, b.data, r.data)
-    ffi.copy(r.data+b.n, a.data+b.n, ord_sz*(a.n-b.n))
+    _C.mad_mono_add(b.n, a._dat, b._dat, r._dat)
+    ffi.copy(r._dat+b.n, a._dat+b.n, ord_sz*(a.n-b.n))
   else
-    _C.mad_mono_add(a.n, a.data, b.data, r.data)
-    ffi.copy(r.data+a.n, b.data+a.n, ord_sz*(b.n-a.n))
+    _C.mad_mono_add(a.n, a._dat, b._dat, r._dat)
+    ffi.copy(r._dat+a.n, b._dat+a.n, ord_sz*(b.n-a.n))
   end
   return r
 end
@@ -185,13 +191,13 @@ function M.__sub (a, b, r_)
   local r = r_ or mono_alloc(n)
   assert(r.n == n, "incompatible monomial sizes")
   if a.n == b.n then
-    _C.mad_mono_sub(a.n, a.data, b.data, r.data)
+    _C.mad_mono_sub(a.n, a._dat, b._dat, r._dat)
   elseif a.n > b.n then
-    _C.mad_mono_sub(b.n, a.data, b.data, r.data)
-    ffi.copy(r.data+b.n, a.data+b.n, ord_sz*(a.n-b.n))
+    _C.mad_mono_sub(b.n, a._dat, b._dat, r._dat)
+    ffi.copy(r._dat+b.n, a._dat+b.n, ord_sz*(a.n-b.n))
   else
-    ffi.copy(r.data, a.data, ord_sz*a.n)
-    _C.mad_mono_sub(b.n, r.data, b.data, r.data)
+    ffi.copy(r._dat, a._dat, ord_sz*a.n)
+    _C.mad_mono_sub(b.n, r._dat, b._dat, r._dat)
   end
   return r
 end
@@ -202,20 +208,20 @@ function M.__concat (a, b, r_)
   local n = a.n+b.n
   local r = r_ or mono_alloc(n)
   assert(r.n == a.n+b.n, "incompatible monomial sizes")
-  _C.mad_mono_cat(a.n, a.data, b.n, b.data, r.data)
+  _C.mad_mono_cat(a.n, a._dat, b.n, b._dat, r._dat)
   return r
 end
 
 function M.__totable (a)
   local r = table.new(a.n,0)
-  for i=1,a.n do r[i] = a.data[i-1] end
+  for i=1,a.n do r[i] = a._dat[i-1] end
   return r
 end
 
 function M.__tostring (a, sep_)
   local r = table.new(a.n,0)
   for i=1,a.n do
-    local v = a.data[i-1]
+    local v = a._dat[i-1]
     r[i] = string.char(v + (v < 10 and code_0    or
                             v < 36 and code_A-10 or code_a-36))
   end
@@ -231,15 +237,14 @@ M.  same, M.  copy =
 M.__same, M.__copy
 
 local function iter (a, i)
-  if i < a.n then return i+1, a.data[i] end
+  if i < a.n then return i+1, a._dat[i] end
 end
 
 M.__ipairs = \s -> (iter, s, 0)
-M.__pairs  = \s -> (iter, s, 0)
 
 function M.__index (a, k)
   if type(k) == 'number'
-  then return k >= 1 and k <= a.n and a.data[k-1] or nil
+  then return k >= 1 and k <= a.n and a._dat[k-1] or nil
   else return M[k]
   end
 end
@@ -247,7 +252,7 @@ end
 function M.__newindex (a, k, v)
   if type(k) == 'number' then
     assert(k >= 1 and k <= a.n, "1-index out of bounds")
-    a.data[k-1] = v
+    a._dat[k-1] = v
   else
     error("invalid monomial member '"..tostring(k).."'")
   end

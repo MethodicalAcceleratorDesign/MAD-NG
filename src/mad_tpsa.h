@@ -67,6 +67,7 @@ void    mad_tpsa_copy    (const tpsa_t *t, tpsa_t *r);
 void    mad_tpsa_sclord  (const tpsa_t *t, tpsa_t *r, log_t inv); // t[i]*o[i]
 void    mad_tpsa_getord  (const tpsa_t *t, tpsa_t *r, ord_t ord);
 void    mad_tpsa_cutord  (const tpsa_t *t, tpsa_t *r, int   ord); // ord..mo = 0 or 0..-ord=0
+idx_t   mad_tpsa_maxord  (const tpsa_t *t,            ssz_t n, idx_t idx_[n]);
 void    mad_tpsa_convert (const tpsa_t *t, tpsa_t *r, ssz_t n, idx_t t2r_[n], int pb);
 void    mad_tpsa_setvar  (      tpsa_t *t, num_t v, idx_t iv_, num_t scl_);
 void    mad_tpsa_setnam  (      tpsa_t *t, str_t nam);
@@ -74,11 +75,11 @@ void    mad_tpsa_clear   (      tpsa_t *t);
 log_t   mad_tpsa_isnul   (const tpsa_t *t);
 
 // indexing / monomials (return idx_t = -1 if invalid)
-ord_t   mad_tpsa_mono    (const tpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i);
-idx_t   mad_tpsa_idxs    (const tpsa_t *t, ssz_t n,       str_t s    ); // string mono "[0-9]*"
-idx_t   mad_tpsa_idxm    (const tpsa_t *t, ssz_t n, const ord_t m [n]);
-idx_t   mad_tpsa_idxsm   (const tpsa_t *t, ssz_t n, const int   m [n]); // sparse mono [(i,o)]
-idx_t   mad_tpsa_cycle   (const tpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i, num_t *v_);
+ord_t   mad_tpsa_mono    (const tpsa_t *t, idx_t i, ssz_t n,       ord_t m_[n]);
+idx_t   mad_tpsa_idxs    (const tpsa_t *t,          ssz_t n,       str_t s    ); // string mono "[0-9]*"
+idx_t   mad_tpsa_idxm    (const tpsa_t *t,          ssz_t n, const ord_t m [n]);
+idx_t   mad_tpsa_idxsm   (const tpsa_t *t,          ssz_t n, const int   m [n]); // sparse mono [(i,o)]
+idx_t   mad_tpsa_cycle   (const tpsa_t *t, idx_t i, ssz_t n,       ord_t m_[n], num_t *v_);
 
 // accessors
 num_t   mad_tpsa_get0    (const tpsa_t *t);

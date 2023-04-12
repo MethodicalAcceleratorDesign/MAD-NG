@@ -42,8 +42,8 @@ fact(int n)
 
 #define CHKR  assert( r )
 
-#define CNUM(a)    CNUM2(MKNAME(a,_re), MKNAME(a,_im))
-#define CNUM2(a,b) (* (cnum_t*) & (num_t[2]) { a, b })
+#define CPX(a)    CPX2(MKNAME(a,_re), MKNAME(a,_im))
+#define CPX2(a,b) (* (cpx_t*) & (num_t[2]) { a, b })
 
 // --- num
 
@@ -64,15 +64,6 @@ num_t mad_num_fact (int n)
   if (n < 0) n = -n, s = n & 1 ? -s : s;
 
   return s*fact(n);
-}
-
-num_t mad_num_invfact (int n)
-{
-  int s = 1;
-
-  if (n < 0) n = -n, s = n & 1 ? -s : s;
-
-  return s/fact(n);
 }
 
 num_t mad_num_sinc (num_t x)
@@ -106,9 +97,9 @@ num_t mad_num_powi (num_t x, int n)
   return r;
 }
 
-// --- cnum
+// --- cpx
 
-cnum_t mad_cnum_div (cnum_t x, cnum_t y)
+cpx_t mad_cpx_div (cpx_t x, cpx_t y)
 {
 // REFERENCES
 //
@@ -176,7 +167,7 @@ cnum_t mad_cnum_div (cnum_t x, cnum_t y)
       r_im = (x_im - (y_im * (x_re / y_re))) / denom;
     }
   }
-  return CNUM(r);
+  return CPX(r);
 
 #undef RBIG
 #undef RMIN
@@ -184,39 +175,39 @@ cnum_t mad_cnum_div (cnum_t x, cnum_t y)
 #undef RMINSCAL
 }
 
-cnum_t mad_cnum_inv (cnum_t x)
+cpx_t mad_cpx_inv (cpx_t x)
 {
-  return mad_cnum_div(1, x);
+  return mad_cpx_div(1, x);
 }
 
-cnum_t mad_cnum_sinc  (cnum_t x)
+cpx_t mad_cpx_sinc  (cpx_t x)
 {
   return cabs(x)<1e-4 ? 1 - 0.1666666666666666666667*x*x
-                      : mad_cnum_div(csin(x), x);
+                      : mad_cpx_div(csin(x), x);
 }
 
-cnum_t mad_cnum_sinhc (cnum_t x)
+cpx_t mad_cpx_sinhc (cpx_t x)
 {
   return cabs(x)<1e-4 ? 1 + 0.1666666666666666666667*x*x
-                      : mad_cnum_div(csinh(x), x);
+                      : mad_cpx_div(csinh(x), x);
 }
 
-cnum_t mad_cnum_asinc  (cnum_t x)
+cpx_t mad_cpx_asinc  (cpx_t x)
 {
   return cabs(x)<1e-4 ? 1 + 0.1666666666666666666667*x*x
-                      : mad_cnum_div(casin(x), x);
+                      : mad_cpx_div(casin(x), x);
 }
 
-cnum_t mad_cnum_asinhc (cnum_t x)
+cpx_t mad_cpx_asinhc (cpx_t x)
 {
   return cabs(x)<1e-4 ? 1 - 0.1666666666666666666667*x*x
-                      : mad_cnum_div(casinh(x), x);
+                      : mad_cpx_div(casinh(x), x);
 }
 
-cnum_t mad_cnum_powi (cnum_t x, int n)
+cpx_t mad_cpx_powi (cpx_t x, int n)
 {
-  cnum_t r = 1;
-  if (n < 0) n = -n, x = mad_cnum_inv(x);
+  cpx_t r = 1;
+  if (n < 0) n = -n, x = mad_cpx_inv(x);
   for (;;) {
     if (n &   1) r *= x;
     if (n >>= 1) x *= x; else break;
@@ -224,98 +215,100 @@ cnum_t mad_cnum_powi (cnum_t x, int n)
   return r;
 }
 
-num_t mad_cnum_abs_r  (num_t x_re, num_t x_im) { return cabs( CNUM(x) ); }
-num_t mad_cnum_arg_r  (num_t x_re, num_t x_im) { return carg( CNUM(x) ); }
+num_t mad_cpx_abs_r  (num_t x_re, num_t x_im) { return cabs( CPX(x) ); }
+num_t mad_cpx_arg_r  (num_t x_re, num_t x_im) { return carg( CPX(x) ); }
 
-void mad_cnum_sqrt_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = csqrt  ( CNUM(x) ); }
-void mad_cnum_exp_r   (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = cexp   ( CNUM(x) ); }
-void mad_cnum_log_r   (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = clog   ( CNUM(x) ); }
-void mad_cnum_log10_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = clog   ( CNUM(x) )/log(10); }
+void mad_cpx_sqrt_r  (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = csqrt  ( CPX(x) ); }
+void mad_cpx_exp_r   (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = cexp   ( CPX(x) ); }
+void mad_cpx_log_r   (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = clog   ( CPX(x) ); }
+void mad_cpx_log10_r (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = clog   ( CPX(x) )/log(10); }
 
-void mad_cnum_sin_r   (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = csin   ( CNUM(x) ); }
-void mad_cnum_cos_r   (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = ccos   ( CNUM(x) ); }
-void mad_cnum_tan_r   (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = ctan   ( CNUM(x) ); }
-void mad_cnum_sinh_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = csinh  ( CNUM(x) ); }
-void mad_cnum_cosh_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = ccosh  ( CNUM(x) ); }
-void mad_cnum_tanh_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = ctanh  ( CNUM(x) ); }
+void mad_cpx_sin_r   (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = csin   ( CPX(x) ); }
+void mad_cpx_cos_r   (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = ccos   ( CPX(x) ); }
+void mad_cpx_tan_r   (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = ctan   ( CPX(x) ); }
+void mad_cpx_sinh_r  (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = csinh  ( CPX(x) ); }
+void mad_cpx_cosh_r  (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = ccosh  ( CPX(x) ); }
+void mad_cpx_tanh_r  (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = ctanh  ( CPX(x) ); }
 
-void mad_cnum_asin_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = casin  ( CNUM(x) ); }
-void mad_cnum_acos_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = cacos  ( CNUM(x) ); }
-void mad_cnum_atan_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = catan  ( CNUM(x) ); }
-void mad_cnum_asinh_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = casinh ( CNUM(x) ); }
-void mad_cnum_acosh_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = cacosh ( CNUM(x) ); }
-void mad_cnum_atanh_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = catanh ( CNUM(x) ); }
+void mad_cpx_asin_r  (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = casin  ( CPX(x) ); }
+void mad_cpx_acos_r  (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = cacos  ( CPX(x) ); }
+void mad_cpx_atan_r  (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = catan  ( CPX(x) ); }
+void mad_cpx_asinh_r (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = casinh ( CPX(x) ); }
+void mad_cpx_acosh_r (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = cacosh ( CPX(x) ); }
+void mad_cpx_atanh_r (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = catanh ( CPX(x) ); }
 
-void mad_cnum_proj_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = cproj  ( CNUM(x) ); }
+void mad_cpx_proj_r  (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = cproj  ( CPX(x) ); }
 
-void mad_cnum_sinc_r  (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = mad_cnum_sinc  ( CNUM(x) ); }
-void mad_cnum_sinhc_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = mad_cnum_sinhc ( CNUM(x) ); }
-void mad_cnum_asinc_r (num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = mad_cnum_asinc ( CNUM(x) ); }
-void mad_cnum_asinhc_r(num_t x_re, num_t x_im, cnum_t *r) { CHKR; *r = mad_cnum_asinhc( CNUM(x) ); }
+void mad_cpx_sinc_r  (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = mad_cpx_sinc  ( CPX(x) ); }
+void mad_cpx_sinhc_r (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = mad_cpx_sinhc ( CPX(x) ); }
+void mad_cpx_asinc_r (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = mad_cpx_asinc ( CPX(x) ); }
+void mad_cpx_asinhc_r(num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = mad_cpx_asinhc( CPX(x) ); }
 
-void mad_cnum_invsqrt_r (num_t x_re, num_t x_im, cnum_t *r)
-{ CHKR; *r = csqrt(mad_cnum_inv(CNUM(x))); }
+void mad_cpx_invsqrt_r (num_t x_re, num_t x_im, cpx_t *r)
+{ CHKR; *r = csqrt(mad_cpx_inv(CPX(x))); }
 
-void mad_cnum_inv_r (num_t x_re, num_t x_im, cnum_t *r)
-{ CHKR; *r = mad_cnum_inv(CNUM(x)); }
+void mad_cpx_inv_r (num_t x_re, num_t x_im, cpx_t *r)
+{ CHKR; *r = mad_cpx_inv(CPX(x)); }
 
-void mad_cnum_powi_r  (num_t x_re, num_t x_im, int n, cnum_t *r)
-{ CHKR; *r = mad_cnum_powi( CNUM(x), n ); }
+void mad_cpx_powi_r  (num_t x_re, num_t x_im, int n, cpx_t *r)
+{ CHKR; *r = mad_cpx_powi( CPX(x), n ); }
 
-void mad_cnum_unit_r (num_t x_re, num_t x_im, cnum_t *r)
-{ CHKR; *r = CNUM(x) / cabs( CNUM(x) ); }
+void mad_cpx_unit_r (num_t x_re, num_t x_im, cpx_t *r)
+{ CHKR; *r = CPX(x) / cabs( CPX(x) ); }
 
-void mad_cnum_rect_r (num_t rho, num_t ang, cnum_t *r)
-{ CHKR; *r = CNUM2( rho * cos(ang), rho * sin(ang) ); }
+void mad_cpx_rect_r (num_t rho, num_t ang, cpx_t *r)
+{ CHKR; *r = CPX2( rho * cos(ang), rho * sin(ang) ); }
 
-void mad_cnum_polar_r (num_t x_re, num_t x_im, cnum_t *r)
-{ CHKR; *r = CNUM2( cabs(CNUM(x)), carg(CNUM(x)) ); }
+void mad_cpx_polar_r (num_t x_re, num_t x_im, cpx_t *r)
+{ CHKR; *r = CPX2( cabs(CPX(x)), carg(CPX(x)) ); }
 
-void mad_cnum_div_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
-{ CHKR; *r = mad_cnum_div(CNUM(x), CNUM(y)); }
+void mad_cpx_div_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cpx_t *r)
+{ CHKR; *r = mad_cpx_div(CPX(x), CPX(y)); }
 
-void mad_cnum_mod_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
-{ CHKR; cnum_t cr = mad_cnum_div(CNUM(x), CNUM(y));
-  *r = CNUM(x) - CNUM(y) * CNUM2(round(creal(cr)), round(cimag(cr))); }
+// This function uses floor() for compliance with the real modulo of Lua 5.
+// See https://en.wikipedia.org/wiki/Modulo_operation for other languages.
+void mad_cpx_mod_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cpx_t *r)
+{ CHKR; cpx_t cr = mad_cpx_div(CPX(x), CPX(y));
+  *r = CPX(x) - CPX(y) * CPX2(floor(creal(cr)), floor(cimag(cr))); }
 
-void mad_cnum_pow_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r)
-{ CHKR; *r = cpow( CNUM(x), CNUM(y) ); }
+void mad_cpx_pow_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cpx_t *r)
+{ CHKR; *r = cpow( CPX(x), CPX(y) ); }
 
 // --- Faddeeva function and variants from MIT --------------------------------o
 
 #include "mad_erfw.h"
 
-num_t  mad_num_wf     (num_t x) { return Faddeeva_w_im     (x); }
-num_t  mad_num_erf    (num_t x) { return Faddeeva_erf_re   (x); }
-num_t  mad_num_erfc   (num_t x) { return Faddeeva_erfc_re  (x); }
-num_t  mad_num_erfi   (num_t x) { return Faddeeva_erfi_re  (x); }
-num_t  mad_num_erfcx  (num_t x) { return Faddeeva_erfcx_re (x); }
-num_t  mad_num_dawson (num_t x) { return Faddeeva_Dawson_re(x); }
+num_t mad_num_wf    (num_t x) { return Faddeeva_w_im     (x); }
+num_t mad_num_erf   (num_t x) { return Faddeeva_erf_re   (x); }
+num_t mad_num_erfc  (num_t x) { return Faddeeva_erfc_re  (x); }
+num_t mad_num_erfi  (num_t x) { return Faddeeva_erfi_re  (x); }
+num_t mad_num_erfcx (num_t x) { return Faddeeva_erfcx_re (x); }
+num_t mad_num_dawson(num_t x) { return Faddeeva_Dawson_re(x); }
 
-cnum_t mad_cnum_wf    (cnum_t x, num_t relerr) { return Faddeeva_w     (x, relerr); }
-cnum_t mad_cnum_erf   (cnum_t x, num_t relerr) { return Faddeeva_erf   (x, relerr); }
-cnum_t mad_cnum_erfc  (cnum_t x, num_t relerr) { return Faddeeva_erfc  (x, relerr); }
-cnum_t mad_cnum_erfi  (cnum_t x, num_t relerr) { return Faddeeva_erfi  (x, relerr); }
-cnum_t mad_cnum_erfcx (cnum_t x, num_t relerr) { return Faddeeva_erfcx (x, relerr); }
-cnum_t mad_cnum_dawson(cnum_t x, num_t relerr) { return Faddeeva_Dawson(x, relerr); }
+cpx_t mad_cpx_wf    (cpx_t x, num_t relerr) { return Faddeeva_w     (x, relerr); }
+cpx_t mad_cpx_erf   (cpx_t x, num_t relerr) { return Faddeeva_erf   (x, relerr); }
+cpx_t mad_cpx_erfc  (cpx_t x, num_t relerr) { return Faddeeva_erfc  (x, relerr); }
+cpx_t mad_cpx_erfi  (cpx_t x, num_t relerr) { return Faddeeva_erfi  (x, relerr); }
+cpx_t mad_cpx_erfcx (cpx_t x, num_t relerr) { return Faddeeva_erfcx (x, relerr); }
+cpx_t mad_cpx_dawson(cpx_t x, num_t relerr) { return Faddeeva_Dawson(x, relerr); }
 
-void mad_cnum_wf_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
-{ CHKR; *r = Faddeeva_w (CNUM(x), relerr); }
+void mad_cpx_wf_r (num_t x_re, num_t x_im, num_t relerr, cpx_t *r)
+{ CHKR; *r = Faddeeva_w (CPX(x), relerr); }
 
-void mad_cnum_erf_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
-{ CHKR; *r = Faddeeva_erf (CNUM(x), relerr); }
+void mad_cpx_erf_r (num_t x_re, num_t x_im, num_t relerr, cpx_t *r)
+{ CHKR; *r = Faddeeva_erf (CPX(x), relerr); }
 
-void mad_cnum_erfc_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
-{ CHKR; *r = Faddeeva_erfc (CNUM(x), relerr); }
+void mad_cpx_erfc_r (num_t x_re, num_t x_im, num_t relerr, cpx_t *r)
+{ CHKR; *r = Faddeeva_erfc (CPX(x), relerr); }
 
-void mad_cnum_erfi_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
-{ CHKR; *r = Faddeeva_erfi (CNUM(x), relerr); }
+void mad_cpx_erfi_r (num_t x_re, num_t x_im, num_t relerr, cpx_t *r)
+{ CHKR; *r = Faddeeva_erfi (CPX(x), relerr); }
 
-void mad_cnum_erfcx_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
-{ CHKR; *r = Faddeeva_erfcx (CNUM(x), relerr); }
+void mad_cpx_erfcx_r (num_t x_re, num_t x_im, num_t relerr, cpx_t *r)
+{ CHKR; *r = Faddeeva_erfcx (CPX(x), relerr); }
 
-void mad_cnum_dawson_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r)
-{ CHKR; *r = Faddeeva_Dawson (CNUM(x), relerr); }
+void mad_cpx_dawson_r (num_t x_re, num_t x_im, num_t relerr, cpx_t *r)
+{ CHKR; *r = Faddeeva_Dawson (CPX(x), relerr); }
 
 // -- RNG XoShiRo256** --------------------------------------------------------o
 

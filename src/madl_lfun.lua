@@ -16,30 +16,22 @@ local unpack = rawget(table, "unpack") or unpack
 -- MAD extensions
 --------------------------------------------------------------------------------
 
-local get_metatable = getmetatable
-
-local ffi = require 'ffi'
-
-if ffi.miscmap ~= nil then
-
-    function get_metatable (a)
-        return type(a) == 'cdata' and (a.__metatable or miscmap[-tonumber(typeof(a))])
-               or getmetatable(a)
-    end
-
+local function get_metatable (a) -- must be the same as in typeid!
+  return type(a) == 'cdata' and a.__metatable or getmetatable(a)
 end
 
-local function get_metamethod (a, f)
-    local mt = get_metatable(a)
-    return mt and rawget(mt,f)
+local function get_metamethod (a, f) -- must be the same as in typeid!
+  local mt = get_metatable(a)
+  return mt and rawget(mt,f)
 end
+
 
 local function is_lengthable (a)
-    return get_metamethod(a, '__len') ~= nil
+  return get_metamethod(a, '__len') ~= nil
 end
 
 local function is_iterable (a)
-    return get_metamethod(a, '__ipairs') ~= nil
+  return get_metamethod(a, '__ipairs') ~= nil
 end
 
 --------------------------------------------------------------------------------
@@ -803,8 +795,8 @@ local max_by = function(cmp, gen_x, param_x, state_x)
 end
 methods.max_by = method1(max_by)
 exports.max_by = export1(max_by)
-methods.maximum_by = methods.maximum_by
-exports.maximum_by = exports.maximum_by
+methods.maximum_by = methods.max_by
+exports.maximum_by = exports.max_by
 
 local totable = function(gen_x, param_x, state_x)
     local tab, key, val = {}
@@ -1126,4 +1118,4 @@ setmetatable(exports, {
 })
 
 -- return exports
-return { fun = exports } -- MAD
+return { lfun = exports } -- MAD

@@ -30,26 +30,23 @@ local ffi = require 'ffi'
 local istype   in ffi
 local min, max in math
 
-local _C, option, tostring, complex, vector, cvector, monomial in MAD
+local _C, option, tostring, complex, vector, cvector, ivector,
+      monomial                                                 in MAD
 local log, exp                                                 in MAD.gmath
 local openfile, strtrim                                        in MAD.utility
 
 -- To review
-local is_nil, is_number, is_integer, is_complex, is_scalar,
-      is_string, is_table, is_matrix, is_cmatrix, is_vector,
-      is_cvector, is_monomial, is_lengthable, is_iterable,
-      is_mappable, get_metamethod                                  in MAD.typeid
+local is_nil, is_boolean, is_number, is_integer, is_complex, is_scalar,
+      is_matrix, is_cmatrix, is_vector, is_ivector, is_cvector,
+      is_monomial, is_string, is_table, is_lengthable,
+      is_iterable, is_mappable, get_metamethod                 in MAD.typeid
 
 -- tmp for returned values
-local  res = ffi.new  'num_t[1]'
-local cres = ffi.new 'cnum_t[1]'
-
--- constants
-local dbl_sz = ffi.sizeof  'num_t'
-local cpx_sz = ffi.sizeof 'cnum_t'
+local  res = ffi.new 'num_t[1]'
+local cres = ffi.new 'cpx_t[1]'
 
 -- array of indexes
-local int_arr = ffi.typeof 'idx_t [?]'
+local int_arr = ffi.typeof 'idx_t[?]'
 
 -- tpsa names
 local chr_arr = ffi.typeof 'char [?]'
@@ -86,7 +83,7 @@ struct ctpsa { // warning: must be kept identical to C definition and tpsa
   const ord_t mo, lo, hi; // max ord (allocated), lowest/highest used ord
   const bit_t nz;         // zero/non-zero homogeneous polynomials
   const char  nam_[16];   // tpsa name (hidden)
-  const cnum_t coef[?];
+  const cpx_t coef[?];
 };
 ]]
 
@@ -107,10 +104,10 @@ local isa_tpsa  = \x -> is_tpsa(x) or is_ctpsa(x)
 
 -- locals for arg and ret
 
-local  int = ffi.new    'int[1]'
-local  ord = ffi.new  'ord_t[1]'
-local  val = ffi.new  'num_t[1]'
-local cval = ffi.new 'cnum_t[1]'
+local  int = ffi.new   'int[1]'
+local  ord = ffi.new 'ord_t[1]'
+local  val = ffi.new 'num_t[1]'
+local cval = ffi.new 'cpx_t[1]'
 
 -- descriptors ----------------------------------------------------------------o
 
@@ -134,24 +131,24 @@ local cval = ffi.new 'cnum_t[1]'
   gtpsad{nv=4,mo=2,np=2,po=1}            : ..2 parameters of order 1.
   gtpsad{nv=6,mo=2,np=94,po=1}           : 6 vars of order 2 and..
                                          : ..94 parameters of order 1.
-  gtpsad{nv=2,np=2,no={3,3,1,1},po=1}    : 2 vars + 2 params of orders 3,3,1,1..
+  gtpsad{nv=2,np=2,po=1,no={3,3,1,1}}    : 2 vars + 2 params of orders 3,3,1,1..
          -> mo=3                         : with x-order limited to 1.
 --]=]
 
-local function gtpsad (nv_, mo_, np_, po_)
+local function gtpsad (nv_, mo_, np_, po_, no_)
   local is = is_mappable(nv_)
   local nv = is and nv_.nv or nv_ or 6   -- number of variables
-  local mo = is and nv_.mo or mo_ or 1   -- variables order
+  local mo = is and nv_.mo or mo_ or 1   -- variables max order
   local np = is and nv_.np or np_ or 0   -- number of parameters
-  local po = is and nv_.po or po_ or 0   -- parameters max cross-order
-  local no = is and nv_.no or nil        -- variables orders
+  local po = is and nv_.po or po_ or 0   -- parameters max order
+  local no = is and nv_.no or no_ or nil -- variables and parameters orders
   local d
   if is_nil(no) then
-    d = _C.mad_desc_newvp(nv,np,mo,po)
+    d = _C.mad_desc_newvp(nv,mo,np,po)
   else
     if not is_monomial(no) then no = monomial(no) end
     assert(#no == nv+np, "invalid number of orders (#no ~= nv+np)")
-    d = _C.mad_desc_newvpo(nv,np,no.data,po)
+    d = _C.mad_desc_newvpo(nv,mo,np,po,no._dat)
   end
   return assert(d, "unexpected null descriptor")
 end
@@ -165,7 +162,7 @@ gtpsad() -- build and set default desc to nv=6,mo=1
 -- allocators -----------------------------------------------------------------o
 
 local function tpsa_alloc (d, mo)
-  local len = _C.mad_desc_ordlen(d, mo)
+  local len = _C.mad_desc_maxlen(d, mo)
   assert(len <= 2^30, "tpsa is too large")
   local tpsa = tpsa_ctor(len) -- VLA (hooked immediately before calling C)
   _C.mad_tpsa_init(tpsa, d, mo)
@@ -173,7 +170,7 @@ local function tpsa_alloc (d, mo)
 end
 
 local function ctpsa_alloc (d, mo)
-  local len = _C.mad_desc_ordlen(d, mo)
+  local len = _C.mad_desc_maxlen(d, mo)
    assert(len <= 2^29, "ctpsa is too large")
   local ctpsa = ctpsa_ctor(len) -- VLA (hooked immediately before calling C)
   _C.mad_ctpsa_init(ctpsa, d, mo)
@@ -246,8 +243,7 @@ MC.ord    = \x     -> _C.mad_ctpsa_ord(x)
 MR.nv     = \x     -> _C.mad_desc_getnv (x.d,nil,nil,nil)
 MR.np     = \x     => _C.mad_desc_getnv (x.d,nil,int,ord) return int[0],ord[0] end
 MR.maxord = \x     -> _C.mad_desc_maxord(x.d)
-MR.maxlen = \x     -> _C.mad_desc_maxlen(x.d)
-MR.ordlen = \x,mo_ -> _C.mad_desc_ordlen(x.d,mo_ or x.mo)
+MR.maxlen = \x,mo_ -> _C.mad_desc_maxlen(x.d,mo_ or x.mo)
 MR.gtrunc = \x,to_ -> _C.mad_desc_gtrunc(x.d,to_ or _C.mad_tpsa_same)
 
 MR.nam    = \x     -> ffi.string(_C.mad_tpsa_nam (x))
@@ -264,12 +260,12 @@ MC.debug = \x,nam_,fnam_,lin_,fil_ => _C.mad_ctpsa_debug(x,nam_,fnam_,lin_ or 0,
 
 function MR.nxtbyvar (x, m) -- mono -> idx (-1 means invalid or no more)
   if not is_monomial(m) then m = monomial(m) end
-  return _C.mad_desc_nxtbyvar(x.d, m.n, m.data), m
+  return _C.mad_desc_nxtbyvar(x.d, m.n, m._dat), m
 end
 
 function MR.nxtbyord (x, m) -- mono -> idx (-1 means invalid or no more)
   if not is_monomial(m) then m = monomial(m) end
-  return _C.mad_desc_nxtbyord(x.d, m.n, m.data), m
+  return _C.mad_desc_nxtbyord(x.d, m.n, m._dat), m
 end
 
 -- same, copy, getord, cutord, convert, setvar, clear -------------------------o
@@ -392,6 +388,22 @@ function MC.cutord (x, o, y_)
   return y_
 end
 
+function MR.maxbyord (x, v_)
+  local v = v_ or ivector(x.mo+1)
+  assert(is_ivector(v), "invalid argument #2 (ivector expected)")
+  local i = _C.mad_tpsa_maxord(x, #v, v._dat)
+  for o=1,#v do v[o] = v[o]+1 end
+  return i+1, v
+end
+
+function MC.maxbyord (x, v_)
+  local v = v_ or ivector(x.mo+1)
+  assert(is_ivector(v), "invalid argument #2 (ivector expected)")
+  local i = _C.mad_ctpsa_maxord(x, #v, v._dat)
+  for o=1,#v do v[o] = v[o]+1 end
+  return i+1, v
+end
+
 function MR.convert (x, y, tbl_, pb_)
   assert(is_tpsa(y), "invalid argument #2 (tpsa expected)")
   local pb, n, m = pb_ or 0, 0, nil
@@ -441,13 +453,13 @@ MC.isnul = \x -> _C.mad_ctpsa_isnul(x)
 function MR.get_idx (x, m) -- mono -> idx (0 means invalid)
   if is_string(m) then return _C.mad_tpsa_idxs(x, #m, m)+1 end
   if not is_monomial(m) then m = monomial(m) end
-  return _C.mad_tpsa_idxm(x, m.n, m.data)+1
+  return _C.mad_tpsa_idxm(x, m.n, m._dat)+1
 end
 
 function MC.get_idx (x, m) -- mono -> idx (0 means invalid)
   if is_string(m) then return _C.mad_ctpsa_idxs(x, #m, m)+1 end
   if not is_monomial(m) then m = monomial(m) end
-  return _C.mad_ctpsa_idxm(x, m.n, m.data)+1
+  return _C.mad_ctpsa_idxm(x, m.n, m._dat)+1
 end
 
 function MR.get_idx_sparse (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... } -> idx
@@ -468,32 +480,32 @@ function MR.get_mono (x, i, r) -- idx -> mono
   assert(is_integer(i), "invalid argument #2 (index expected)")
   local m = r or monomial(x.d.nn)
   assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-  return _C.mad_tpsa_mono(t, m.n, m.data, i) -- set m, return order
+  return m, _C.mad_tpsa_mono(x, i-1, m.n, m._dat) -- return mono and order
 end
 
 function MC.get_mono (x, i, r) -- idx -> mono
   assert(is_integer(i), "invalid argument #2 (index expected)")
   local m = r or monomial(x.d.nn)
   assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-  return _C.mad_ctpsa_mono(t, m.n, m.data, i) -- set m, return order
+  return m, _C.mad_ctpsa_mono(x, i-1, m.n, m._dat) -- return mono and order
 end
 
-function MR.cycle (x, i, m_) -- loop over indexes for non-zero value, (0 means end)
+function MR.cycle (x, i, m_) -- loop over indexes for non-zero value, (i=0 means end)
   if m_ then
     if not is_monomial(m_) then m_ = monomial(m_) end
-    i = _C.mad_tpsa_cycle(x, m_.n, m_.data, i-1, val)
+    i = _C.mad_tpsa_cycle(x, i-1, m_.n, m_._dat, val)
   else
-    i = _C.mad_tpsa_cycle(x, 0   , nil    , i-1, val)
+    i = _C.mad_tpsa_cycle(x, i-1, 0   , nil    , val)
   end
   return i+1, val[0], m_
 end
 
-function MC.cycle (x, i, m_) -- loop over indexes for non-zero value, (0 means end)
+function MC.cycle (x, i, m_) -- loop over indexes for non-zero value, (i=0 means end)
   if m_ then
     if not is_monomial(m_) then m_ = monomial(m_) end
-    i = _C.mad_ctpsa_cycle(x, m_.n, m_.data, i-1, cval)
+    i = _C.mad_ctpsa_cycle(x, i-1, m_.n, m_._dat, cval)
   else
-    i = _C.mad_ctpsa_cycle(x, 0   , nil    , i-1, cval)
+    i = _C.mad_ctpsa_cycle(x, i-1, 0   , nil    , cval)
   end
   return i+1, cval[0], m_
 end
@@ -509,6 +521,11 @@ function MR.totable (x, p)
     t[n], t[s], n = s, v, n+1
   end
   return t
+end
+
+function MR.fromtable (x, t)
+  for i,s in ipairs(t) do x:set(s, t[s]) end
+  return x
 end
 
 -- getters and setters --------------------------------------------------------o
@@ -539,11 +556,11 @@ function MR.get (x, m) -- idx or str or mono -> num
     return _C.mad_tpsa_gets(x, #m, m)
   else
     if not is_monomial(m) then m = monomial(m) end
-    return _C.mad_tpsa_getm(x, m.n, m.data)
+    return _C.mad_tpsa_getm(x, m.n, m._dat)
   end
 end
 
-function MC.get (x, m) -- idx or str or mono -> cnum
+function MC.get (x, m) -- idx or str or mono -> cpx
   if is_integer(m) then
     if m == 1
     then return x.coef[0]
@@ -553,7 +570,7 @@ function MC.get (x, m) -- idx or str or mono -> cnum
     _C.mad_ctpsa_gets_r(x, #m, m, cres)
   else
     if not is_monomial(m) then m = monomial(m) end
-    _C.mad_ctpsa_getm_r(x, m.n, m.data, cres)
+    _C.mad_ctpsa_getm_r(x, m.n, m._dat, cres)
   end
   return cres[0]
 end
@@ -569,7 +586,7 @@ function MR.set (x, m, a, b)
     _C.mad_tpsa_sets(x, #m, m, a, b)
   else
     if not is_monomial(m) then m = monomial(m) end
-    _C.mad_tpsa_setm(x, m.n, m.data, a, b)
+    _C.mad_tpsa_setm(x, m.n, m._dat, a, b)
   end
   return x
 end
@@ -586,7 +603,7 @@ function MC.set (x, m, a, b)
     _C.mad_ctpsa_sets_r(x, #m, m, a.re, a.im, b.re, b.im)
   else
     if not is_monomial(m) then m = monomial(m) end
-    _C.mad_ctpsa_setm_r(x, m.n, m.data, a.re, a.im, b.re, b.im)
+    _C.mad_ctpsa_setm_r(x, m.n, m._dat, a.re, a.im, b.re, b.im)
   end
   return x
 end
@@ -600,7 +617,7 @@ function MR.get_sparse (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... } -> num
   return _C.mad_tpsa_getsm(x, n, m)
 end
 
-function MC.get_sparse (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... } -> cnum
+function MC.get_sparse (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... } -> cpx
   assert(is_table(tbl), "invalid argument #2 (table expected)")
   local n = #tbl
   local m = int_arr(n) ; for i=1,n do m[i-1] = tbl[i] end
@@ -630,40 +647,40 @@ function MR.getvec (x, i, a)
   assert(is_integer(i), "invalid argument #2 (integer expected)")
   if is_integer(a) then a = vector(a) end
   assert(is_matrix (a), "invalid argument #3 (integer or vector expected)")
-  _C.mad_tpsa_getv(x, i-1, a:size(), a.data) return a
+  _C.mad_tpsa_getv(x, i-1, a:size(), a._dat) return a
 end
 
 function MC.getvec (x, i, a)
   assert(is_integer(i), "invalid argument #2 (integer expected)")
   if is_integer(a) then a = cvector(a) end
   assert(is_cmatrix(a), "invalid argument #3 (integer or cvector expected)")
-  _C.mad_ctpsa_getv(x, i-1, a:size(), a.data) return a
+  _C.mad_ctpsa_getv(x, i-1, a:size(), a._dat) return a
 end
 
 function MR.setvec (x, i, a)
   assert(is_integer(i), "invalid argument #2 (integer expected)")
   if not is_matrix(a) and is_iterable(a) then a = vector(#a):fill(a) end
   assert(is_vector(a), "invalid argument #3 (iterable or vector expected)")
-  _C.mad_tpsa_setv(x, i-1, a:size(), a.data) return x
+  _C.mad_tpsa_setv(x, i-1, a:size(), a._dat) return x
 end
 
 function MC.setvec (x, i, a)
   assert(is_integer(i), "invalid argument #2 (integer expected)")
   if not is_cmatrix(a) and is_iterable(a) then a = cvector(#a):fill(a) end
   assert(is_cvector(a), "invalid argument #3 (iterable or cvector expected)")
-  _C.mad_ctpsa_setv(x, i-1, a:size(), a.data) return x
+  _C.mad_ctpsa_setv(x, i-1, a:size(), a._dat) return x
 end
 
 function MR.fill (x, a)
   if not is_matrix(a) and is_iterable(a) then a = vector(#a):fill(a) end
   assert(is_vector(a), "invalid argument #2 (iterable or vector expected)")
-  _C.mad_tpsa_setv(x, 0, a:size(), a.data) return x
+  _C.mad_tpsa_setv(x, 0, a:size(), a._dat) return x
 end
 
 function MC.fill (x, a)
   if not is_cmatrix(a) and is_iterable(a) then a = cvector(#a):fill(a) end
   assert(is_cvector(a), "invalid argument #2 (iterable or cvector expected)")
-  _C.mad_ctpsa_setv(x, 0, a:size(), a.data) return x
+  _C.mad_ctpsa_setv(x, 0, a:size(), a._dat) return x
 end
 
 -- evaluate x at a+h ----------------------------------------------------------o
@@ -852,7 +869,7 @@ function MR.__add (x, y, r)
     _C.mad_ctpsa_set0_r(r, 1, 0, y.re, y.im)
   elseif is_ctpsa(y) then                        -- tpsa + ctpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
-    _C.mad_ctpsa_tadd(x, y, r)
+    _C.mad_ctpsa_addt(y, x, r)
   else                                           -- tpsa + ?
     return assert(gmm(y,'__add_tpsa'), "invalid 'tpsa + ?' operation")(x, y, r)
   end
@@ -1177,7 +1194,10 @@ end
 
 -- dif : r_i = (x_i - y_i) / max(|x_i|, 1)
 
-function MR.dif (x, y, r)
+local difsum, prtsum
+
+function MR.dif (x, y, r, sum)
+  if is_boolean(r) then sum, r = r end
   if is_tpsa(y) and is_tpsa(x) then              -- tpsa ~ tpsa
     r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_tpsa_dif(x, y, r)
@@ -1187,10 +1207,11 @@ function MR.dif (x, y, r)
   else
     error("invalid 'tpsa ~ ?' operation")
   end
-  return r
+  return r, sum and difsum(r) or nil
 end
 
-function MC.dif (x, y, r)
+function MC.dif (x, y, r, sum)
+  if is_boolean(r) then sum, r = r end
   if is_ctpsa(y) and is_ctpsa(x) then            -- ctpsa ~ ctpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_dif(x, y, r)
@@ -1200,7 +1221,44 @@ function MC.dif (x, y, r)
   else
     error("invalid 'ctpsa ~ ?' operation")
   end
-  return r
+  return r, sum and difsum(r) or nil
+end
+
+-- dif summary
+
+function difsum (x)
+  local i, v = x:maxbyord()
+  local s = { nam = x:nam(), mi = i, c={}, m={}, print=prtsum }
+  for i=1,#v do
+    s[i] = v[i]
+    if v[i] > 0 then
+      s.c[i] = x:get     (v[i])
+      s.m[i] = x:get_mono(v[i])
+    end
+  end
+  return s
+end
+
+-- print dif summary (method of summary)
+
+function prtsum (s)
+  local printf in MAD.utility
+
+  printf(" %s = \n", s.nam:upper())
+  if s.mi == 0 then
+    io.write("         ALL COMPONENTS ZERO\n")
+    return s
+  end
+
+  local fmt = option.numfmt ; option.numfmt = "% -.16e"
+  for i=1,#s do
+    if s[i]>0 then
+      printf(" %-6d %s%-2d  %s  %s\n", s[i], s[i] == s.mi and "*" or " ",
+             s.m[i]:ord(), s.c[i]:tostring(), s.m[i]:tostring())
+    end
+  end
+  option.numfmt = fmt
+  return s
 end
 
 -- tpsa functions -------------------------------------------------------------o
@@ -1228,7 +1286,7 @@ function MR.deriv (x, m, r)
     _C.mad_tpsa_deriv(x, r, m)
   else
     if not is_monomial(m) then m = monomial(m) end
-    _C.mad_tpsa_derivm(x, r, m.n, m.data)
+    _C.mad_tpsa_derivm(x, r, m.n, m._dat)
   end
   return r
 end
@@ -1467,7 +1525,7 @@ function MC.deriv (x, m, r)
     _C.mad_ctpsa_deriv(x, r, m)
   else
     if not is_monomial(m) then m = monomial(m) end
-    _C.mad_cpsa_derivm(x, r, m.n, m.data)
+    _C.mad_cpsa_derivm(x, r, m.n, m._dat)
   end
   return r
 end

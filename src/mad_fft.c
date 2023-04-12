@@ -29,25 +29,25 @@
 
 // --- implementation ---------------------------------------------------------o
 
-#define CHKX   assert( x )
-#define CHKXR  assert( x && r )
+#define CHKX  assert( x )
+#define CHKXR assert( x && r )
 
 // -- FFT ---------------------------------------------------------------------o
 
 #include <fftw3.h>
 
 void // x [n] -> r [n]
-mad_vec_fft (const num_t x[], cnum_t r[], ssz_t n)
+mad_vec_fft (const num_t x[], cpx_t r[], ssz_t n)
 {
   CHKXR;
-  mad_alloc_tmp(cnum_t, cx, n);
-  mad_vec_copyv(x, cx, n, 1);
+  mad_alloc_tmp(cpx_t, cx, n);
+  mad_vec_copyv(x, cx, n);
   mad_cvec_fft(cx, r, n);
   mad_free_tmp(cx);
 }
 
 void // x [n] -> r [n/2+1]
-mad_vec_rfft (const num_t x[], cnum_t r[], ssz_t n)
+mad_vec_rfft (const num_t x[], cpx_t r[], ssz_t n)
 {
   CHKXR;
   fftw_plan p = fftw_plan_dft_r2c_1d(n, (num_t*)x, r, FFTW_ESTIMATE);
@@ -56,50 +56,50 @@ mad_vec_rfft (const num_t x[], cnum_t r[], ssz_t n)
 }
 
 void
-mad_cvec_fft (const cnum_t x[], cnum_t r[], ssz_t n)
+mad_cvec_fft (const cpx_t x[], cpx_t r[], ssz_t n)
 {
   CHKXR;
-  fftw_plan p = fftw_plan_dft_1d(n, (cnum_t*)x, r, FFTW_FORWARD, FFTW_ESTIMATE);
+  fftw_plan p = fftw_plan_dft_1d(n, (cpx_t*)x, r, FFTW_FORWARD, FFTW_ESTIMATE);
   fftw_execute(p);
   fftw_destroy_plan(p);
 }
 
 void
-mad_cvec_ifft(const cnum_t x[], cnum_t r[], ssz_t n)
+mad_cvec_ifft(const cpx_t x[], cpx_t r[], ssz_t n)
 {
   CHKXR;
-  fftw_plan p = fftw_plan_dft_1d(n, (cnum_t*)x, r, FFTW_BACKWARD, FFTW_ESTIMATE);
+  fftw_plan p = fftw_plan_dft_1d(n, (cpx_t*)x, r, FFTW_BACKWARD, FFTW_ESTIMATE);
   fftw_execute(p);
   fftw_destroy_plan(p);
-  mad_cvec_muln(r, 1.0/n, r, n, 1);
+  mad_cvec_muln(r, 1.0/n, r, n);
 }
 
 void // x [n/2+1] -> r [n]
-mad_cvec_irfft (const cnum_t x[], num_t r[], ssz_t n)
+mad_cvec_irfft (const cpx_t x[], num_t r[], ssz_t n)
 {
   CHKXR;
   ssz_t nn = n/2+1;
-  mad_alloc_tmp(cnum_t, cx, nn);
-  mad_cvec_copy(x, cx, nn, 1);
+  mad_alloc_tmp(cpx_t, cx, nn);
+  mad_cvec_copy(x, cx, nn);
   fftw_plan p = fftw_plan_dft_c2r_1d(n, cx, r, FFTW_ESTIMATE);
   fftw_execute(p);
   fftw_destroy_plan(p);
   mad_free_tmp(cx);
-  mad_vec_muln(r, 1.0/n, r, n, 1);
+  mad_vec_muln(r, 1.0/n, r, n);
 }
 
 void // x [m x n] -> r [m, n/2+1]
-mad_mat_fft (const num_t x[], cnum_t r[], ssz_t m, ssz_t n)
+mad_mat_fft (const num_t x[], cpx_t r[], ssz_t m, ssz_t n)
 {
   CHKXR;
-  mad_alloc_tmp(cnum_t, cx, m*n);
-  mad_vec_copyv(x, cx, m*n, 1);
+  mad_alloc_tmp(cpx_t, cx, m*n);
+  mad_vec_copyv(x, cx, m*n);
   mad_cmat_fft(cx, r, m, n);
   mad_free_tmp(cx);
 }
 
 void // x [m x n] -> r [m, n/2+1]
-mad_mat_rfft (const num_t x[], cnum_t r[], ssz_t m, ssz_t n)
+mad_mat_rfft (const num_t x[], cpx_t r[], ssz_t m, ssz_t n)
 {
   CHKXR;
   fftw_plan p = fftw_plan_dft_r2c_2d(m, n, (num_t*)x, r, FFTW_ESTIMATE);
@@ -108,36 +108,36 @@ mad_mat_rfft (const num_t x[], cnum_t r[], ssz_t m, ssz_t n)
 }
 
 void
-mad_cmat_fft (const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n)
+mad_cmat_fft (const cpx_t x[], cpx_t r[], ssz_t m, ssz_t n)
 {
   CHKXR;
-  fftw_plan p = fftw_plan_dft_2d(m, n, (cnum_t*)x, r, FFTW_FORWARD, FFTW_ESTIMATE);
+  fftw_plan p = fftw_plan_dft_2d(m, n, (cpx_t*)x, r, FFTW_FORWARD, FFTW_ESTIMATE);
   fftw_execute(p);
   fftw_destroy_plan(p);
 }
 
 void
-mad_cmat_ifft(const cnum_t x[], cnum_t r[], ssz_t m, ssz_t n)
+mad_cmat_ifft(const cpx_t x[], cpx_t r[], ssz_t m, ssz_t n)
 {
   CHKXR;
-  fftw_plan p = fftw_plan_dft_2d(m, n, (cnum_t*)x, r, FFTW_BACKWARD, FFTW_ESTIMATE);
+  fftw_plan p = fftw_plan_dft_2d(m, n, (cpx_t*)x, r, FFTW_BACKWARD, FFTW_ESTIMATE);
   fftw_execute(p);
   fftw_destroy_plan(p);
-  mad_cvec_muln(r, 1.0/(m*n), r, m*n, 1);
+  mad_cvec_muln(r, 1.0/(m*n), r, m*n);
 }
 
 void // x [m x n/2+1] -> r [m x n]
-mad_cmat_irfft (const cnum_t x[], num_t r[], ssz_t m, ssz_t n)
+mad_cmat_irfft (const cpx_t x[], num_t r[], ssz_t m, ssz_t n)
 {
   CHKXR;
   ssz_t nn = m*(n/2+1);
-  mad_alloc_tmp(cnum_t, cx, nn);
-  mad_cvec_copy(x, cx, nn, 1);
+  mad_alloc_tmp(cpx_t, cx, nn);
+  mad_cvec_copy(x, cx, nn);
   fftw_plan p = fftw_plan_dft_c2r_2d(m, n, cx, r, FFTW_ESTIMATE);
   fftw_execute(p);
   fftw_destroy_plan(p);
   mad_free_tmp(cx);
-  mad_vec_muln(r, 1.0/(m*n), r, m*n, 1);
+  mad_vec_muln(r, 1.0/(m*n), r, m*n);
 }
 
 /* -- NFFT --------------------------------------------------------------------o
@@ -193,17 +193,17 @@ static nfft_plan p;
 static ssz_t p_n, p_n1, p_n2, p_m;
 
 void
-mad_vec_nfft (const num_t x[], const num_t x_node[], cnum_t r[], ssz_t n, ssz_t nr)
+mad_vec_nfft (const num_t x[], const num_t x_node[], cpx_t r[], ssz_t n, ssz_t nr)
 {
   CHKX;
-  mad_alloc_tmp(cnum_t, cx, n);
-  mad_vec_copyv(x, cx, n, 1);
+  mad_alloc_tmp(cpx_t, cx, n);
+  mad_vec_copyv(x, cx, n);
   mad_cvec_nfft(cx, x_node, r, n, nr);
   mad_free_tmp(cx);
 }
 
 void // time to frequency
-mad_cvec_nfft (const cnum_t x[], const num_t x_node[], cnum_t r[], ssz_t n, ssz_t nr)
+mad_cvec_nfft (const cpx_t x[], const num_t x_node[], cpx_t r[], ssz_t n, ssz_t nr)
 {
   assert( x && r );
   int precomp = 0;
@@ -217,16 +217,16 @@ mad_cvec_nfft (const cnum_t x[], const num_t x_node[], cnum_t r[], ssz_t n, ssz_
       p.x[i] = x_node[i] == -0.5 ? 0.4999999999999999 : -x_node[i];
     if(p.flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
   }
-  mad_cvec_copy(x, p.f, n, 1);
+  mad_cvec_copy(x, p.f, n);
   const char *error_str = nfft_check(&p);
   if (error_str) error("%s", error_str);
   nfft_adjoint(&p); // nfft_adjoint_direct(&p);
-  mad_cvec_copy(p.f_hat+nr/2, r, nr/2, 1); // for compatibility with FFTW
-  mad_cvec_copy(p.f_hat, r+nr/2, nr/2, 1);
+  mad_cvec_copy(p.f_hat+nr/2, r, nr/2); // for compatibility with FFTW
+  mad_cvec_copy(p.f_hat, r+nr/2, nr/2);
 }
 
 void // frequency to time
-mad_cvec_infft (const cnum_t x[], const num_t r_node[], cnum_t r[], ssz_t n, ssz_t nx)
+mad_cvec_infft (const cpx_t x[], const num_t r_node[], cpx_t r[], ssz_t n, ssz_t nx)
 {
   assert( x && r );
   int precomp = 0;
@@ -240,27 +240,27 @@ mad_cvec_infft (const cnum_t x[], const num_t r_node[], cnum_t r[], ssz_t n, ssz
       p.x[i] = r_node[i] == -0.5 ? 0.4999999999999999 : -r_node[i];
     if(p.flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
   }
-  mad_cvec_copy(x+nx/2, p.f_hat, nx/2, 1); // for compatibility with FFTW
-  mad_cvec_copy(x, p.f_hat+nx/2, nx/2, 1);
+  mad_cvec_copy(x+nx/2, p.f_hat, nx/2); // for compatibility with FFTW
+  mad_cvec_copy(x, p.f_hat+nx/2, nx/2);
   const char *error_str = nfft_check(&p);
   if (error_str) error("%s", error_str);
   nfft_trafo(&p); // nfft_trafo_direct(&p);
-  mad_cvec_copy(p.f, r, n, 1);
-  mad_cvec_muln(r, 1.0/n, r, n, 1);
+  mad_cvec_copy(p.f, r, n);
+  mad_cvec_muln(r, 1.0/n, r, n);
 }
 
 void
-mad_mat_nfft (const num_t x[], const num_t x_node[], cnum_t r[], ssz_t m, ssz_t n, ssz_t nr)
+mad_mat_nfft (const num_t x[], const num_t x_node[], cpx_t r[], ssz_t m, ssz_t n, ssz_t nr)
 {
   CHKX;
-  mad_alloc_tmp(cnum_t, cx, m*n);
-  mad_vec_copyv(x, cx, m*n, 1);
+  mad_alloc_tmp(cpx_t, cx, m*n);
+  mad_vec_copyv(x, cx, m*n);
   mad_cmat_nfft(cx, x_node, r, m, n, nr);
   mad_free_tmp(cx);
 }
 
 void // space to frequency
-mad_cmat_nfft (const cnum_t x[], const num_t x_node[], cnum_t r[], ssz_t m, ssz_t n, ssz_t nr)
+mad_cmat_nfft (const cpx_t x[], const num_t x_node[], cpx_t r[], ssz_t m, ssz_t n, ssz_t nr)
 {
   assert( x && r );
   int precomp = 0;
@@ -274,17 +274,16 @@ mad_cmat_nfft (const cnum_t x[], const num_t x_node[], cnum_t r[], ssz_t m, ssz_
       p.x[i] = x_node[i] == -0.5 ? 0.4999999999999999 : -x_node[i];
     if(p.flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
   }
-  mad_cvec_copy(x, p.f, m*n, 1);
+  mad_cvec_copy(x, p.f, m*n);
   const char *error_str = nfft_check(&p);
   if (error_str) error("%s", error_str);
   nfft_adjoint(&p); // nfft_adjoint_direct(&p);
-//  mad_cvec_copy(p.f_hat, r, nr);
-  mad_cvec_copy(p.f_hat+nr/2, r, nr/2, 1); // for compatibility with FFTW ?? (TBC)
-  mad_cvec_copy(p.f_hat, r+nr/2, nr/2, 1);
+  mad_cvec_copy(p.f_hat+nr/2, r, nr/2); // for compatibility with FFTW ?? (TBC)
+  mad_cvec_copy(p.f_hat, r+nr/2, nr/2);
 }
 
 void // frequency to space
-mad_cmat_infft (const cnum_t x[], const num_t r_node[], cnum_t r[], ssz_t m, ssz_t n, ssz_t nx)
+mad_cmat_infft (const cpx_t x[], const num_t r_node[], cpx_t r[], ssz_t m, ssz_t n, ssz_t nx)
 {
   assert( x && r );
   int precomp = 0;
@@ -298,14 +297,13 @@ mad_cmat_infft (const cnum_t x[], const num_t r_node[], cnum_t r[], ssz_t m, ssz
       p.x[i] = r_node[i] == -0.5 ? 0.4999999999999999 : -r_node[i];
     if(p.flags & PRE_ONE_PSI) nfft_precompute_one_psi(&p);
   }
-  // mad_cvec_copy(x, p.f_hat, nx);
-  mad_cvec_copy(x+nx/2, p.f_hat, nx/2, 1); // for compatibility with FFTW ?? (TBC)
-  mad_cvec_copy(x, p.f_hat+nx/2, nx/2, 1);
+  mad_cvec_copy(x+nx/2, p.f_hat, nx/2); // for compatibility with FFTW ?? (TBC)
+  mad_cvec_copy(x, p.f_hat+nx/2, nx/2);
   const char *error_str = nfft_check(&p);
   if (error_str) error("%s", error_str);
   nfft_trafo(&p); // nfft_trafo_direct(&p);
-  mad_cvec_copy(p.f, r, m*n, 1);
-  mad_cvec_muln(r, 1.0/(m*n), r, m*n, 1);
+  mad_cvec_copy(p.f, r, m*n);
+  mad_cvec_muln(r, 1.0/(m*n), r, m*n);
 }
 
 #endif // MAD_NO_NFFT

@@ -29,87 +29,86 @@
 
 // --- interface --------------------------------------------------------------o
 
-int    mad_num_sign     (num_t x); // -1, 0, 1
-int    mad_num_sign1    (num_t x); // -1, 1
+int   mad_num_sign     (num_t x); // -1, 0, 1
+int   mad_num_sign1    (num_t x); // -1, 1
 
-num_t  mad_num_fact     (int n);   // n in Z -> n!
-num_t  mad_num_invfact  (int n);   // n in Z -> 1/n!
+num_t mad_num_fact     (int n);   // n in Z -> n!
 
-num_t  mad_num_sinc     (num_t x);
-num_t  mad_num_sinhc    (num_t x);
-num_t  mad_num_asinc    (num_t x);
-num_t  mad_num_asinhc   (num_t x);
-num_t  mad_num_powi     (num_t x, int n);
+num_t mad_num_sinc     (num_t x);
+num_t mad_num_sinhc    (num_t x);
+num_t mad_num_asinc    (num_t x);
+num_t mad_num_asinhc   (num_t x);
+num_t mad_num_powi     (num_t x, int n);
 
-cnum_t mad_cnum_div     (cnum_t x, cnum_t y);
-cnum_t mad_cnum_inv     (cnum_t x);
-cnum_t mad_cnum_sinc    (cnum_t x);
-cnum_t mad_cnum_sinhc   (cnum_t x);
-cnum_t mad_cnum_asinc   (cnum_t x);
-cnum_t mad_cnum_asinhc  (cnum_t x);
-cnum_t mad_cnum_powi    (cnum_t x, int n);
+cpx_t mad_cpx_div      (cpx_t x, cpx_t y);
+cpx_t mad_cpx_inv      (cpx_t x);
+cpx_t mad_cpx_sinc     (cpx_t x);
+cpx_t mad_cpx_sinhc    (cpx_t x);
+cpx_t mad_cpx_asinc    (cpx_t x);
+cpx_t mad_cpx_asinhc   (cpx_t x);
+cpx_t mad_cpx_powi     (cpx_t x, int n);
 
-num_t mad_cnum_abs_r    (num_t x_re, num_t x_im);
-num_t mad_cnum_arg_r    (num_t x_re, num_t x_im);
+num_t mad_cpx_abs_r    (num_t x_re, num_t x_im);
+num_t mad_cpx_arg_r    (num_t x_re, num_t x_im);
 
-void  mad_cnum_sqrt_r   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_exp_r    (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_log_r    (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_log10_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cpx_sqrt_r   (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_exp_r    (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_log_r    (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_log10_r  (num_t x_re, num_t x_im, cpx_t *r);
 
-void  mad_cnum_sin_r    (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_cos_r    (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_tan_r    (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_sinh_r   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_cosh_r   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_tanh_r   (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cpx_sin_r    (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_cos_r    (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_tan_r    (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_sinh_r   (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_cosh_r   (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_tanh_r   (num_t x_re, num_t x_im, cpx_t *r);
 
-void  mad_cnum_asin_r   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_acos_r   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_atan_r   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_asinh_r  (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_acosh_r  (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_atanh_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cpx_asin_r   (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_acos_r   (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_atan_r   (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_asinh_r  (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_acosh_r  (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_atanh_r  (num_t x_re, num_t x_im, cpx_t *r);
 
-void  mad_cnum_sinc_r   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_sinhc_r  (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_asinc_r  (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_asinhc_r (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cpx_sinc_r   (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_sinhc_r  (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_asinc_r  (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_asinhc_r (num_t x_re, num_t x_im, cpx_t *r);
 
-void  mad_cnum_unit_r   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_proj_r   (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_rect_r   (num_t  rho, num_t  ang, cnum_t *r);
-void  mad_cnum_polar_r  (num_t x_re, num_t x_im, cnum_t *r);
+void  mad_cpx_unit_r   (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_proj_r   (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_rect_r   (num_t  rho, num_t  ang, cpx_t *r);
+void  mad_cpx_polar_r  (num_t x_re, num_t x_im, cpx_t *r);
 
-void  mad_cnum_invsqrt_r(num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_inv_r    (num_t x_re, num_t x_im, cnum_t *r);
-void  mad_cnum_div_r    (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
-void  mad_cnum_mod_r    (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
-void  mad_cnum_pow_r    (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cnum_t *r);
-void  mad_cnum_powi_r   (num_t x_re, num_t x_im, int   n,                cnum_t *r);
+void  mad_cpx_invsqrt_r(num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_inv_r    (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_div_r    (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cpx_t *r);
+void  mad_cpx_mod_r    (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cpx_t *r);
+void  mad_cpx_pow_r    (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cpx_t *r);
+void  mad_cpx_powi_r   (num_t x_re, num_t x_im, int   n,                cpx_t *r);
 
 // --- Faddeeva based functions -----------------------------------------------o
 
-num_t  mad_num_wf       (num_t x);
-num_t  mad_num_erf      (num_t x);
-num_t  mad_num_erfc     (num_t x);
-num_t  mad_num_erfi     (num_t x);
-num_t  mad_num_erfcx    (num_t x);
-num_t  mad_num_dawson   (num_t x);
+num_t mad_num_wf       (num_t x);
+num_t mad_num_erf      (num_t x);
+num_t mad_num_erfc     (num_t x);
+num_t mad_num_erfi     (num_t x);
+num_t mad_num_erfcx    (num_t x);
+num_t mad_num_dawson   (num_t x);
 
-cnum_t mad_cnum_wf      (cnum_t x, num_t relerr);
-cnum_t mad_cnum_erf     (cnum_t x, num_t relerr);
-cnum_t mad_cnum_erfc    (cnum_t x, num_t relerr);
-cnum_t mad_cnum_erfi    (cnum_t x, num_t relerr);
-cnum_t mad_cnum_erfcx   (cnum_t x, num_t relerr);
-cnum_t mad_cnum_dawson  (cnum_t x, num_t relerr);
+cpx_t mad_cpx_wf       (cpx_t x, num_t relerr);
+cpx_t mad_cpx_erf      (cpx_t x, num_t relerr);
+cpx_t mad_cpx_erfc     (cpx_t x, num_t relerr);
+cpx_t mad_cpx_erfi     (cpx_t x, num_t relerr);
+cpx_t mad_cpx_erfcx    (cpx_t x, num_t relerr);
+cpx_t mad_cpx_dawson   (cpx_t x, num_t relerr);
 
-void  mad_cnum_wf_r     (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
-void  mad_cnum_erf_r    (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
-void  mad_cnum_erfc_r   (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
-void  mad_cnum_erfi_r   (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
-void  mad_cnum_erfcx_r  (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
-void  mad_cnum_dawson_r (num_t x_re, num_t x_im, num_t relerr, cnum_t *r);
+void  mad_cpx_wf_r     (num_t x_re, num_t x_im, num_t relerr, cpx_t *r);
+void  mad_cpx_erf_r    (num_t x_re, num_t x_im, num_t relerr, cpx_t *r);
+void  mad_cpx_erfc_r   (num_t x_re, num_t x_im, num_t relerr, cpx_t *r);
+void  mad_cpx_erfi_r   (num_t x_re, num_t x_im, num_t relerr, cpx_t *r);
+void  mad_cpx_erfcx_r  (num_t x_re, num_t x_im, num_t relerr, cpx_t *r);
+void  mad_cpx_dawson_r (num_t x_re, num_t x_im, num_t relerr, cpx_t *r);
 
 // --- RNG --------------------------------------------------------------------o
 

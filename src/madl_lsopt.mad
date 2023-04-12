@@ -29,8 +29,9 @@ local is_callable                                                in MAD.typeid
 local assertf, errorf, printf                                    in MAD.utility
 local eps, inf                                                   in MAD.constant
 local abs, rand                                                  in MAD.gmath
+local eq                                                         in MAD.gfunc
 
-local max, sqrt in math
+local min, max, sqrt in math
 
 --[[
   Notes about strategies:
@@ -62,14 +63,6 @@ enum {
 ]]
 
 -- helper ---------------------------------------------------------------------o
-
-local function dspmat(mat, nam)
-  -- duplicate from madl_match.mad ;-(
-  if mat ~= nil then
-    local fmt = option.numfmt;
-    option.numfmt = "% -.16e" ; mat:print(nam) ; option.numfmt = fmt
-  end
-end
 
 local function eval_fun (env)
   local var = env.__var
@@ -299,7 +292,7 @@ local function ld_lmdif (env)
     -- debug info
     if env.debug >= 2 then
       printf("N-JAC =\n  % -.16e\n", nrm)
-      dspmat(A, "A") ; dspmat(g, "g")
+      A:print"A" ; g:print"g"
     end
 
     -- backup current state
@@ -311,9 +304,13 @@ local function ld_lmdif (env)
     end
 
     -- compute A + mu.diag(A)
-    local Amu = A:mapij \x,i,j -> i==j and x*(1+mu) or x
+    local Amu = A + (mu * A:getdiag()):diag()
+--  local Amu = A:copy():setdiag(A:getdiag()*(1+mu))             -- alt method
+--  local Amu = A:copy():map(A:getdidx(), \x,ij -> x*(1+mu))     -- alt method
+--  local Amu = A:map \x,ij -> eq(A:getij(ij)) and x*(1+mu) or x -- alt method
+--  local Amu = A:map \x,i,j -> i == j and x*(1+mu) or x         -- old method
 
-    if env.debug >= 2 then dspmat(Amu, "Amu") end
+    if env.debug >= 2 then Amu:print"Amu" end
 
     -- solve (and reduce) damped system
     local itr, iv, rx, rdx, rk, sv = 1, {n=0}, x:copy()
@@ -329,7 +326,7 @@ local function ld_lmdif (env)
                rank=%d, rcond=%-.3e, scond=%-.3e\n",
                rk, obj.rcond or eps, sv[1]/(sv[rk] or 0))
       end
-      if env.debug >= 2 then dspmat(sv, "LMDIF-SV") end
+      if env.debug >= 2 then sv:print"LMDIF-SV" end
 
       -- no variable reduction
       if jstra == 0 then break end
@@ -343,7 +340,7 @@ local function ld_lmdif (env)
     disp_adjrej(env, save_adjrej(xrej, iv), "rejecting variables")
 
     -- update variables, rejected variables don't move
-    rdx:copy(h):insvec(iv,0) ; x:add(h,x)
+    h:setvec(1..#rdx,rdx):insvec(iv,0) ; x:add(h,x)
 
     -- change strategy if jiter reached (madx-like)
     if itr > jiter and jstra >= 3 then
@@ -443,7 +440,7 @@ local function ld_jacobian (env)
                rank=%d, rcond=%-.3e, scond=%-.3e\n",
                rk, obj.rcond or eps, sv[1]/(sv[rk] or 0))
       end
-      if env.debug >= 2 then dspmat(sv, "JACOBIAN-SV") end
+      if env.debug >= 2 then sv:print"JACOBIAN-SV" end
 
       -- no variable reduction
       if jstra == 0 then break end
@@ -457,7 +454,7 @@ local function ld_jacobian (env)
     disp_adjrej(env, save_adjrej(xrej, iv), "rejecting variables")
 
     -- update variables, rejected variables don't move
-    rdx:copy(h):insvec(iv,0) ; x:add(h,x)
+    h:setvec(1..#rdx,rdx):insvec(iv,0) ; x:add(h,x)
 
     -- change strategy if jiter reached (madx-like)
     if itr > jiter and jstra >= 3 then

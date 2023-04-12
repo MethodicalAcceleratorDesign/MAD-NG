@@ -34,7 +34,7 @@ local ffi = require 'ffi'
 local bit = require 'bit'
 
 local band, rol       in bit
-local typeof, miscmap in ffi
+local typeof          in ffi
 local abs, huge       in math  -- math.huge is infinity
 
 local type, getmetatable, setmetatable, assert, error, table, io =
@@ -44,8 +44,6 @@ local ipairs, pairs, rawget, rawequal, tostring, tonumber =
       ipairs, pairs, rawget, rawequal, tostring, tonumber
 
 -- implementation -------------------------------------------------------------o
-
-assert(miscmap, "missing MAD extension (no cdata metatable access)")
 
 --[[
 Metamethods notes:
@@ -68,8 +66,7 @@ local function invalid_use (a)
 end
 
 local function get_metatable (a)
-  return type(a) == 'cdata' and (a.__metatable or miscmap[-tonumber(typeof(a))])
-         or getmetatable(a)
+  return type(a) == 'cdata' and a.__metatable or getmetatable(a)
 end
 
 local function has_metatable (a)
@@ -105,21 +102,32 @@ Concept notes:
 ]]
 
 local concept = {                             --     1,        2,       4
-  not_lengthable   = 2^0,         '__len',    -- __len,         ,
-  not_iterable     = 2^1,         '__ipairs', --      , __ipairs,
-  not_mappable     = 2^1+2^2,     '__pairs',  --      , __ipairs, __pairs
-  not_scannable    = 2^0+2^1+2^2,             -- __len, __ipairs, __pairs
-  not_indexable    = 2^3,         '__index',
-  not_extendable   = 2^4,         '__newindex',
+  not_lengthable     = 2^0,         '__len',    -- __len,         ,
+  not_iterable       = 2^1,         '__ipairs', --      , __ipairs,
+  not_mappable       = 2^1+2^2,     '__pairs',  --      , __ipairs, __pairs
+  not_scannable      = 2^0+2^1+2^2,             -- __len, __ipairs, __pairs
+  not_indexable      = 2^3,         '__index',
+  not_extendable     = 2^4,         '__newindex',
 
-  not_callable     = 2^5,         '__call',   -- from here, default is nil
-  not_orderable    = 2^6+2^7,     '__lt', '__le',
-  not_comparable   = 2^6+2^7+2^8, '__eq',     -- __lt, __le, __eq
-  not_concatenable = 2^9,         '__concat',
-  not_copiable     = 2^10+2^11,   '__copy', '__same',
-  not_tablable     = 2^12,        '__totable',
-  not_stringable   = 2^13,        '__tostring',
-  not_mutable      = 2^14,        '__metatable',
+  not_callable       = 2^5,         '__call',   -- from here, default is nil
+  not_equalable      = 2^6,         '__eq',
+  not_orderable      = 2^7+2^8,     '__lt', '__le',
+  not_comparable     = 2^6+2^7+2^8,             -- __lt, __le, __eq
+  not_concatenable   = 2^9,         '__concat',
+  not_copiable       = 2^10+2^11,   '__copy', '__same',
+  not_tablable       = 2^12,        '__totable',
+  not_stringable     = 2^13,        '__tostring',
+  not_mutable        = 2^14,        '__metatable',
+
+  not_negatable      = 2^15,        '__unm',
+  not_addable        = 2^16,        '__add',
+  not_subtractable   = 2^17,        '__sub',
+  not_additive       = 2^16+2^17,               -- __add, __sub
+  not_multipliable   = 2^18,        '__mul',
+  not_dividable      = 2^19,        '__div',
+  not_multiplicative = 2^18+2^19,               -- __mul, __div
+  not_modulable      = 2^20,        '__mod',
+  not_powerable      = 2^21,        '__pow',
 }
 for _,v in ipairs(concept) do -- build dict of concepts
   concept[v] = invalid_use
@@ -128,18 +136,19 @@ end
 
 local not_iterable, not_mappable, not_mutable in concept
 
-local function set_concept (mt, cncpt, strict_)
+local function set_concept (mt, cpt_, strict_)
   local mt = mt or {}
+  local cpt = cpt_ or 0
   assert(mt.__metatable == nil, "invalid argument #1 (mutable metatable expected)")
   for i,v in ipairs(concept) do
-    if band(cncpt, rol(1, i-1)) ~= 0 and (mt[v] == nil or strict_ == false) then
+    if band(cpt, rol(1, i-1)) ~= 0 and (mt[v] == nil or strict_ == false) then
       mt[v] = concept[v]
     end
   end
-  if band(cncpt, not_mappable) ~= 0 and mt.__ipairs ~= nil then
+  if band(cpt, not_mappable) ~= 0 and mt.__ipairs ~= nil then
     mt.__pairs = mt.__ipairs -- pairs is a superset of ipairs
   end
-  if band(cncpt, not_mutable) ~= 0 then
+  if band(cpt, not_mutable) ~= 0 then
     mt.__metatable = mt
     setmetatable(mt, {__newindex=invalid_use, __metatable=false})
   end
@@ -182,6 +191,7 @@ local typeid = {
 
   is_true        = \a -> rawequal(a, true ),
   is_false       = \a -> rawequal(a, false),
+  is_logical     = \a -> type(a) == 'boolean' or type(a) == 'nil',
 
   is_nan         = \a -> type(a) == 'number' and a ~= a,
   is_finite      = \a -> type(a) == 'number' and abs(a) <  huge,
@@ -194,6 +204,8 @@ local typeid = {
   is_decimal     = \a -> type(a) == 'number' and (a < -2^52 or  a >  2^52 or  (a%1) ~= 0),
   is_integer     = \a -> type(a) == 'number' and a >= -2^52 and a <= 2^52 and (a%1) == 0,
   is_natural     = \a -> type(a) == 'number' and a >= 0     and a <= 2^52 and (a%1) == 0,
+  is_nznatural   = \a -> type(a) == 'number' and a >  0     and a <= 2^52 and (a%1) == 0,
+  is_int32       = \a -> type(a) == 'number' and a >= -2^31 and a <  2^31 and (a%1) == 0,
   is_even        = \a -> type(a) == 'number' and a >= -2^52 and a <= 2^52 and (a%2) == 0,
   is_odd         = \a -> type(a) == 'number' and a >= -2^52 and a <= 2^52 and (a%2) == 1,
 
@@ -209,19 +221,20 @@ local typeid = {
   is_emptyfile   = \a -> io.type(a) == 'file' and a:seek('end') == 0,
   is_closedfile  = \a -> io.type(a) == 'closed file',
 
-  is_value       = \a -> typeclass[type(a)],
-
-  is_metaname    = \a -> metaname[a] == a,
-
   -- metamethods
 
   get_metatable  = get_metatable,
   has_metatable  = has_metatable,
   get_metamethod = get_metamethod,
   has_metamethod = has_metamethod,
-  set_concept    = set_concept,
+  is_metaname    = \a -> metaname[a] == a,
 
   -- concepts
+
+  set_concept     = set_concept,
+
+  is_value        = \a -> typeclass[type(a)] == true,
+  is_reference    = \a -> typeclass[type(a)] ~= true,
 
   is_lengthable   = \a -> type(a) == 'string'   or
                           type(a) == 'table'    or has_metamethod (a,'__len'),
@@ -231,16 +244,16 @@ local typeid = {
   is_extendable   = \a -> type(a) == 'table'    or has_metamethod (a,'__newindex'),
 
   is_callable     = \a -> type(a) == 'function' or has_metamethod_(a,'__call'),
+  is_equalable    = \a -> type(a) == 'number'   or
+                          type(a) == 'string'   or has_metamethod_(a,'__eq'),
   is_orderable    = \a -> type(a) == 'number'   or
                           type(a) == 'string'   or has_metamethod_(a,'__lt'),
-  is_comparable   = \a -> type(a) == 'number'   or
-                          type(a) == 'string'   or has_metamethod_(a,'__eq'),
   is_concatenable = \a -> type(a) == 'string'   or has_metamethod_(a,'__concat'),
   is_copiable     = \a ->                          has_metamethod_(a,'__copy'),
   is_sameable     = \a ->                          has_metamethod_(a,'__same'),
   is_tablable     = \a ->                          has_metamethod_(a,'__totable'),
   is_stringable   = \a ->                          has_metamethod_(a,'__tostring'),
-  is_mutable      = \a ->                          has_metamethod_(a,'__metametable'),
+  is_mutable      = \a ->                          has_metamethod_(a,'__metatable'),
 
   -- concepts for numeric
 
@@ -253,12 +266,23 @@ local typeid = {
   is_powerable    = \a -> type(a) == 'number'   or has_metamethod_(a,'__pow'),
 
   -- concepts for containers
-  is_empty        = \a ->          has_metamethod(a,'__pairs') and
-                          rawequal(get_metamethod(a,'__pairs')(a),nil)
-                       or type(a) == 'table' and rawequal(next(a),nil),
+  is_empty        = \a -> type(a) == 'table' and (rawequal(next(a),nil) or false)
+                          or       has_metamethod(a,'__pairs') and
+                          rawequal(get_metamethod(a,'__pairs')(a),nil),
 
   -- comparison of types
   is_same = \a,b -> type(a) == type(b) and get_metatable(a) == get_metatable(b),
+
+  -- C types sizes
+  ctsz_log = ffi.sizeof 'log_t',
+  ctsz_idx = ffi.sizeof 'idx_t',
+  ctsz_ssz = ffi.sizeof 'ssz_t',
+  ctsz_u32 = ffi.sizeof 'u32_t',
+  ctsz_u64 = ffi.sizeof 'u64_t',
+  ctsz_num = ffi.sizeof 'num_t',
+  ctsz_cpx = ffi.sizeof 'cpx_t',
+  ctsz_str = ffi.sizeof 'str_t',
+  ctsz_ptr = ffi.sizeof 'ptr_t',
 }
 
 -- extra typeid
@@ -355,6 +379,16 @@ local function wunprotect (a)
                 "invalid argument #1 (protected object expected)")
 end
 
+local function is_restricted (a)
+  local mt = getmetatable(a)
+  return mt and type(mt[mm_obj]) == 'function' and mt.__newindex ~= mm_erp
+end
+
+local function is_protected (a)
+  local mt = getmetatable(a)
+  return mt and type(mt[mm_obj]) == 'function' and mt.__newindex ~= mm_erp
+end
+
 -- env ------------------------------------------------------------------------o
 
 setmetatable(typeid   , {__tostring := "MAD.typeid"   })
@@ -365,12 +399,14 @@ typeid            = wrestrict(typeid   ) -- extendable
 typeid.concept    = wprotect (concept  ) -- readonly
 typeid.typeclass  = wrestrict(typeclass) -- extendable
 
-typeid.wprotect   = wprotect
-typeid.wrestrict  = wrestrict
-typeid.wunprotect = wunprotect
+typeid.wprotect      = wprotect
+typeid.wrestrict     = wrestrict
+typeid.wunprotect    = wunprotect
+typeid.is_restricted = is_restricted
+typeid.is_protected  = is_protected
 
-typeid.deferred    = deferred
-typeid.is_deferred = is_deferred
+typeid.deferred      = deferred
+typeid.is_deferred   = is_deferred
 
 -- end ------------------------------------------------------------------------o
 return { typeid = typeid }
