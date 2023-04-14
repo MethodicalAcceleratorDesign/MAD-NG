@@ -39,7 +39,7 @@
 local M = {}
 
 -- settings
-local new_bend_thick = true -- false (take old maps)
+local new_bend_thick = false -- true (take new maps, worst)
 
 --[=[
 Notes about directions and quantities:
@@ -104,13 +104,13 @@ local function bxby (nmul, knl, ksl, x, y)
   return bx, by
 end
 
-local function bxbyh (nmul, bfx, bfy, x, y)
-  local bx, by, k, nm = 0, 0, 0, nmul -- +2
+local function bxbyh (snm, bfx, bfy, x, y)
+  local bx, by, k = 0, 0, 0
 
-  for a = nm,1,-1 do
+  for a = snm,1,-1 do
     local btx, bty = 0, 0
 
-    for j = nm-a,1,-1 do
+    for j = snm-a,1,-1 do
       k = k+1
       btx = (btx + bfx[k]) * y
       bty = (bty + bfy[k]) * y
@@ -122,7 +122,7 @@ local function bxbyh (nmul, bfx, bfy, x, y)
   end
 
   local btx, bty = 0, 0
-  for j = nm,1,-1 do
+  for j = snm,1,-1 do
     k = k+1
     btx = (btx + bfx[k]) * y
     bty = (bty + bfy[k]) * y
@@ -613,14 +613,18 @@ end
 function M.curex_kick (elm, m, lw, no_k0l) -- [SKICK]                        -- checked
   m.atdebug(elm, m, lw, 'curex_kick:0', no_k0l)
 
-  local el, eh, tdir, nmul, knl, bfx, bfy, beam in m
+  local el, eh, tdir, snm, knl, bfx, bfy, beam in m
   local bdir = tdir*beam.charge
 
   for i=1,m.npar do
     local x, px, y, py, beam in m[i]
     local bdir = beam and tdir*beam.charge or bdir
-    local bx, by = bxbyh(nmul, bfx, bfy, x, y)
-    local r = 1+eh*x
+    local r, bx, by = 1+eh*x
+
+    if snm == 0 -- i.e. nmul == 1 and ksl[1] == 0
+    then bx, by = 0, knl[1]
+    else bx, by = bxbyh(snm, bfx, bfy, x, y)
+    end
 
     m[i].px = px - (lw*bdir)*by*r
     m[i].py = py + (lw*bdir)*bx*r
@@ -656,7 +660,7 @@ local function curex_drift0 (elm, m, lw, i, ld, ca, sa, sa2, rho)
   m.atdebug(elm, m, lw, 'curex_drift0:1')
 end
 
-local function sbend_thick_new (elm, m, lw) -- [SSEC]                            -- checked
+local function sbend_thick_new (elm, m, lw) -- [SSEC]                        -- checked
   m.atdebug(elm, m, lw, 'sbend_thick:0')
 
   local el, eld, eh, tdir, knl, beam, T in m
@@ -709,7 +713,7 @@ local function sbend_thick_new (elm, m, lw) -- [SSEC]                           
   m.atdebug(elm, m, lw, 'sbend_thick:1')
 end
 
-local function sbend_thick_old (elm, m, lw) -- [SSEC]                                -- checked
+local function sbend_thick_old (elm, m, lw) -- [SSEC]                        -- checked
   m.atdebug(elm, m, lw, 'sbend_thick:0')
   
   local el, eld, eh, tdir, knl, beam, T in m
@@ -753,18 +757,13 @@ local function sbend_thick_old (elm, m, lw) -- [SSEC]                           
   m.atdebug(elm, m, lw, 'sbend_thick:1')
 end
 
-if new_bend_thick then 
-  M.sbend_thick = sbend_thick_new
-else
-  M.sbend_thick = sbend_thick_old
-end
-
-M.sbend_kick = \el,m,lw -> M.curex_kick(el,m,lw,true) ;                      -- checked
+M.sbend_thick = new_bend_thick and sbend_thick_new or sbend_thick_old
+M.sbend_kick  = \el,m,lw -> M.curex_kick(el,m,lw,true) ;                     -- checked
 
 -- TKT [INTER_STREX] ----------------------------------------------------------o
 
 
-local function rbend_thick_new (elm, m, lw) -- [SPAR]                            -- checked
+local function rbend_thick_new (elm, m, lw) -- [SPAR]                        -- checked
   m.atdebug(elm, m, lw, 'rbend_thick:0')
 
   local el, eld, knl, beam, T in m
@@ -801,7 +800,7 @@ local function rbend_thick_new (elm, m, lw) -- [SPAR]                           
   m.atdebug(elm, m, lw, 'rbend_thick:1')
 end
 
-local function rbend_thick_old (elm, m, lw) -- [SPAR]                                -- checked
+local function rbend_thick_old (elm, m, lw) -- [SPAR]                        -- checked
   m.atdebug(elm, m, lw, 'rbend_thick:0')
 
   local el, eld, knl, beam, T in m
@@ -832,14 +831,9 @@ local function rbend_thick_old (elm, m, lw) -- [SPAR]                           
   m.atdebug(elm, m, lw, 'rbend_thick:1')
 end
 
-if new_bend_thick then 
-  M.rbend_thick = rbend_thick_new
-else
-  M.rbend_thick = rbend_thick_old
-end
-
-M.rbend_strex = \el,m,lw -> M.strex_kick(el,m,(m.el/m.eld)*lw) 
-M.rbend_kick = \el,m,lw -> M.strex_kick(el,m,lw,true)                          -- checked
+M.rbend_thick = new_bend_thick and rbend_thick_new or rbend_thick_old
+M.rbend_strex = \el,m,lw -> M.strex_kick(el,m,(m.el/m.eld)*lw)
+M.rbend_kick  = \el,m,lw -> M.strex_kick(el,m,lw,true)                       -- checked
 
 -- TKT [INTER_TKTF] -----------------------------------------------------------o
 
@@ -915,6 +909,8 @@ function M.quad_kick (elm, m, lw, ii) -- [KICKTKT7]                          -- 
   if ii <= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
 end
 
+M.quad_kick_ysh = \elm, m, lw -> M.quad_kick(elm, m, lw, 0)
+
 -- skew (tilted by k1s)
 
 function M.quad_thicks (elm, m, lw) -- [PUSHTKT7]                            -- checked
@@ -986,6 +982,8 @@ function M.quad_kicks (elm, m, lw, ii) -- [KICKTKT7]                         -- 
 
   if ii <= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
 end
+
+M.quad_kicks_ysh = \elm, m, lw -> M.quad_kicks(elm, m, lw, 0)
 
 -- curved (eh ~= 0)
 
@@ -1208,6 +1206,8 @@ function M.quad_kickh (elm, m, lw, ii) -- [KICKTKT7]                         -- 
 
   if ii <= 0 then drift_adj(elm, m, ii == 0 and l/2 or l) end
 end
+
+M.quad_kickh_ysh = \elm, m, lw -> M.quad_kickh(elm, m, lw, 0)
 
 -- DKD, TKT [INTER_SOL5] ------------------------------------------------------o
 
@@ -1517,16 +1517,15 @@ local tobit, fbit, fset, fcut, ftst in MAD.gfunc
   -- fringe fields (elements fringe attribute)
 M.fringe = {
   none  = tobit(0),
-  bend  =  fbit(0),               -- bending     fringe fields
-  mult  =  fbit(1),               -- multipolar  fringe fields
-  solen =  fbit(2),               -- solenoid    fringe fields
-  rfcav =  fbit(3),               -- rfcavity    fringe fields
-  fsad  =  fbit(4),               -- SAD quad    fringe fields
-  qsad  =  fset(fbit(1),fbit(4)), -- quadrupolar fringe fields (complementary)
+  bend  =  fbit(0),               -- bending    fringe fields
+  mult  =  fbit(1),               -- multipolar fringe fields
+  qsad  =  fset(fbit(1),fbit(2)), -- multipolar fringe fields with quad SAD
+  solen =  fbit(3),               -- solenoid   fringe fields
+  rfcav =  fbit(4),               -- rfcavity   fringe fields
 
   -- sbend+quadrupole
   comb   = fset(fbit(0),fbit(1)),
-  combqs = fset(fbit(0),fbit(1),fbit(4)), -- with fsad
+  combqs = fset(fbit(0),fbit(1),fbit(2)), -- with fsad
 }
 
 local fringe in M
@@ -1557,7 +1556,7 @@ FRINGE_TEAPOT:
   FACE, FRINGE_DIPOLE, MULTIPOLE_FRINGE, FRINGE2QUAD
 
 FRINGE_DIPOLE[BEND_FRINGE=TRUE]
-FRINGE2QUAD[PERMFRINGE=2]
+FRINGE2QUAD[PERMFRINGE=2.or.3]
 MULTIPOLE_FRINGE[PERMFRINGE=1.or.3]
 
 NEWFACE[EXACT] / FACE[.not.EXACT]
@@ -1645,6 +1644,8 @@ function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]                     -- 
   else e, h = m.e2*tdir, elm.h2*tdir
   end
 
+  local w8 = m.frng == 0 and 0 or 0.25
+
   if sdir*lw == 1 then
 -- print(lw == 1 and 'forward entry' or 'backward exit')
     yrotation (-e, m, 1)
@@ -1653,21 +1654,17 @@ function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]                     -- 
       if ftst(m.frng, fringe.bend) then bend_fringe(elm, m, 1) end
       if ftst(m.frng, fringe.mult) then mult_fringe(elm, m, 1) end
       if ftst(m.frng, fringe.qsad) then qsad_fringe(elm, m, 1) end
-      mad8_wedge(e, m, 1, 0.25)
-    else
-      mad8_wedge(e, m, 1, 0)
     end
+    mad8_wedge( e, m, 1, w8)
     bend_wedge(-e, m, 1)
   else
 -- print(lw == -1 and 'forward exit' or 'backward entry')
     bend_wedge(-e, m, -1)
+    mad8_wedge( e, m, -1, w8)
     if m.frng ~= 0 then
-      mad8_wedge(e, m, -1, 0.25)
       if ftst(m.frng, fringe.qsad) then qsad_fringe(elm, m, -1) end
       if ftst(m.frng, fringe.mult) then mult_fringe(elm, m, -1) end
       if ftst(m.frng, fringe.bend) then bend_fringe(elm, m, -1) end
-    else
-      mad8_wedge(e, m, -1, 0)
     end
     bend_face ( h, m, -1)
     yrotation ( e, m, -1)
