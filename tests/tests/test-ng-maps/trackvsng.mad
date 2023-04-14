@@ -21,13 +21,17 @@ local X0s = {{x=0   , px=0    , y=0    , py=0   , t=0   , pt=0   }, -- zero
              {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=2e-5}} -- 6D
 ]]
 local track_str = [[
+local X0 = MAD.damap{nv = 6, mo = ${order}}
+for i, c in ipairs({"x", "px", "y", "py", "t", "pt"}) do 
+  X0[c]:set0(X0s[${x0i}][c])
+end
 local seq = MAD.sequence "seq" {dir = ${edir}, l=1.5, MAD.element.${elm}}
 return MAD.track { -- see ref_cfg for list of values
   dir      = ${sdir},
   beam     = MAD.beam {energy = ${energy}, charge=${chg}},
   sequence = seq,
-  X0       = X0s[${x0i}],
-  mapdef   = ${order},
+  X0       = X0,
+! mapdef   = ${order},
   model    = models[${model}],
   method   = ${method},
   nslice   = ${nslice},
@@ -36,7 +40,6 @@ return MAD.track { -- see ref_cfg for list of values
 ]]
 
 local backtrack_str = [[
-local seq = MAD.sequence "seq" {dir = ${edir}, l=1.5, MAD.element.${elm}}
 local _, mflw = MAD.track { -- see ref_cfg for list of values
   dir      = ${sdir},
   beam     = MAD.beam {energy = ${energy}, charge=${chg}},
@@ -47,7 +50,7 @@ local _, mflw = MAD.track { -- see ref_cfg for list of values
   nslice   = ${nslice},
   debug    = ${debug},
 }
-return mflw, X0s[${x0i}]
+return mflw, X0
 ]]
 
 local in_dir  = \s -> 'input/' ..(s or '')
@@ -143,14 +146,9 @@ local function backtrack(cfg, results)
   -- Do backward tracking
   local script = cfg.ref_script:gsub("return", "local _, mflw0 = ") .. backtrack_str
   local bck_trck = create_run(cfg, bck_cfg, script)
-  print(bck_trck)
-  local bck_map, init_coords = loadstring(bck_trck)()
+  local bck_map, exp = loadstring(bck_trck)()
 
   -- Compare backward maps to initial coordinates
-  local exp = damap{nv = 6, mo = cfg.order}
-  for i, c in ipairs({"x", "px", "y", "py", "t", "pt"}) do 
-    exp[c]:set0(init_coords[c])
-  end
   local dif = get_diff(exp, bck_map[1], cfg.order)
   cfg.cur_cfg.test_type = "backtrack"  -- Set test type
   save_results(cfg, dif, results)
