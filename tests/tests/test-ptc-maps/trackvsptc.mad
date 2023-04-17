@@ -1,7 +1,7 @@
 -- locals ---------------------------------------------------------------------o
 local matrix, mtable, tostring, damap, vector, object, plot      in MAD
 local eps                                                        in MAD.constant
-local is_number, is_string, is_vector                            in MAD.typeid
+local is_number, is_string, is_vector, is_table                  in MAD.typeid
 local openfile, tblcpy, val2keys, fileexists, tblcat, strinter   in MAD.utility
 local pi, abs, floor, log, max                                   in math         
 local round                                                      in MAD.gmath                   
@@ -30,6 +30,7 @@ pt0 = ${pt};
 ]]
 
 local test_ctx = [[
+snm    = ${snm};
 order  = ${order};
 icase  = ${icase};
 debug  = ${debug};
@@ -254,11 +255,11 @@ local function show_res(res, cfg, attr_cols, tol)
   end
 end
 
-local function show_prev_res(test_name, tol)
+local function show_prev_res(test_name, tol, order)
   -- Read the previous results
   local cfg = mtable:read(out_dir(test_name.."_cfg.tfs"))
   local res = mtable:read(out_dir(test_name.."_res.tfs"))
-  
+  res.max_order = order
   -- Show the previous results
   show_res(res, cfg, cfg:colnames(), tol)
   return cfg, res
@@ -271,6 +272,8 @@ local plot_template = plot {
   legendpos = "right top",
   ylabel = "Error",
   yrange = {1e-16, 1e1}, 
+  wsizex = 1080,
+  wsizey = 720,
   exec = false
 }
 
@@ -284,7 +287,7 @@ local function plot_res(res_cfg_tbl, cfg, cfg_tbl_)
   local cfg_plot = plot_template { 
     sid = newSID(),
     title   = cfg.name,
-    scrdump = out_dir(cfg.name .. "plot"),
+    output = plot_info.filename and out_dir(plot_info.filename .. ".pdf") or 2, 
     xlabel = to_text(x_axis_attr),
     exec = false
   }
@@ -301,11 +304,11 @@ local function plot_res(res_cfg_tbl, cfg, cfg_tbl_)
     for j = 1, n_points do
       if loadstring("return " .. series[i] % cfg_tbl[j])() then
         x_data[i][cnt] = loadstring("return " .. x_axis_attr % cfg_tbl[j])()
-        local y_value = math.max(
-          res_tbl[j].x_eps, res_tbl[j].px_eps,
-          res_tbl[j].y_eps, res_tbl[j].py_eps,
-          res_tbl[j].t_eps, res_tbl[j].pt_eps    
-        ) * eps
+        local y_value = 0
+        for i = 1, res_tbl.max_order do
+          y_value = max(y_value, res_tbl[j]["order"..i.."_eps"])
+        end
+        y_value = y_value * eps
         y_data[i][cnt] = y_value > 1e-16 and y_value or 1e-16
         cnt = cnt + 1
       end
@@ -338,7 +341,7 @@ local function run_test(cfg)
   -- If the user does not want to run the test, 
   -- just show results from previous run
   if not cfg.dorun then 
-    local cfg_tbl, res_tbl = show_prev_res(cfg.name, cfg.tol) 
+    local cfg_tbl, res_tbl = show_prev_res(cfg.name, cfg.tol, cfg.order) 
     if cfg.doplot then plot_res(res_tbl, cfg, cfg_tbl) end
     return 
   end
