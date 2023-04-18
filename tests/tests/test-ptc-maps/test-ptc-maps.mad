@@ -31,127 +31,6 @@ local ref_cfg = object "ref" {
 -------------------------------------------------------------------------------o
 
 -- The actual test functions --------------------------------------------------o
-local function testQUAD() -- Test the body (~2 min)
-  local cfg = ref_cfg "quad" {
-    elm = "QUADRUPOLE, at=0.75, l=1.5, k1=${k1}, k1s=${k1s},",
-    model  = 1..2,
-    method = 2..6..2,    
-    nslice = 1..3,
-    energy = {1, 6500},  -- {1, 450, 6500}
-
-    tol = 50,
-
-    k1     = {-0.15, 0, 0.2},
-    k1s    = {-0.15, 0, 0.2},
-    alist = tblcat(ref_cfg.alist, {"k1", "k1s"}),
-  }
-  run_test(cfg)
-end
-
--- NOTE: FAILS for knl[2] ~= 0 or ksl[2] ~= 0
-local function testQUADm() -- Test the multipole (~2 min)
-  local cfg = ref_cfg "quadm" {
-    elm = [[
-      QUADRUPOLE, at=0.75, l=1.5, k1=${k1}, k1s=${k1s}, tilt=${tilt}*pi/8,
-      knl=${knl}, ksl=${ksl}
-    ]],
-    
-    tol = 300,
-
-    model  = {1},  -- DKD slow as it does ~300 rotations producing ~4 MB of data (WEDGE)
-    method = {2},
-    nslice = {1},
-    energy = {1},       
-
-    k1   = {0, 0.2},  -- Test just multipole first
-    k1s  = \s->s.k1, !{0, -0.15, 0.2},  -- Test just multipole first
-    knl  = {
-      { }, 
-      -- {0.05, 0  , 0, 0 }, ! MAD-X ignores knl[1], ksl[1], knl[2] and ksl[2]
-      -- {0   , 0.5, 0, 0 }, ! MAD-X ignores knl[1], ksl[1], knl[2] and ksl[2]
-      {0   , 0  , 5, 0 }, 
-      {0   , 0  , 0, 50},
-      -- {0.05, 0  , 5, 50}, ! MAD-X ignores knl[1], ksl[1], knl[2] and ksl[2]
-      {0   , 0  , 5, 50},
-    },
-    ksl  = \s-> s.knl,
-    tilt = 0..2,
-    alist = tblcat(ref_cfg.alist, {"tilt", "k1s", "k1", "ksl", "knl"}),
-  }
-  run_test(cfg)
-end
-
-local function testQUADf() -- Test the fringe (~1 min)
-  local cfg = ref_cfg "quadf" {
-    elm = [[
-      QUADRUPOLE, at=0.75, l=1.5, k1=${k1}, k1s=${k1s}, tilt=${tilt}*pi/8,
-      fringe=${fringe}
-    ]],
-    
-    tol = 25,
-
-    model  = {2}, -- Use TKT as faster
-    method = {2},    
-    nslice = {1},
-    energy = {1},
-
-    tilt   = 0..4,
-    fringe = 0..3..3,
-    k1   = {0, 0.2},
-    k1s  = \s->s.k1,
-    alist = tblcat(ref_cfg.alist, {"tilt", "fringe", "k1", "k1s"}),
-  }
-  run_test(cfg)
-end
-
-local function testQUADh()
-  local cfg = ref_cfg "quadh" {
-    elm = [[
-      QUADRUPOLE, at=0.75, l=1.5, k1=${k1}, k1s=${k1s}, tilt=${tilt}*pi/8,
-      k0=${k0}
-    ]],
-    
-    tol = 25,
-    
-    model  = {1}, -- Use DKD as otherwise PTC broken
-    method = {2},    
-    nslice = {1},
-    energy = {1},
-
-    tilt   = 0..4,
-    k1     = {0, 0.2},
-    k1s    = \s->s.k1,
-    k0     = {-0.05, 0, 0.05},
-   
-    alist = tblcat(ref_cfg.alist, {"tilt", "k1", "k1s", "k0"}),
-  }
-  run_test(cfg)
-end
-
-local function testQUADfh() -- MAD-NG does bend fringe for fringe=3
-  local cfg = ref_cfg "quadfh" {
-    elm = [[
-      QUADRUPOLE, at=0.75, l=1.5, k1=${k1}, k1s=${k1s}, fringe=${fringe},
-      k0=${k0}, bend_fringe=${bend_fringe}
-    ]],
-    
-    tol = 25,
-    
-    model  = {1}, -- Use DKD as otherwise PTC broken
-    method = {2},
-    nslice = {1},
-    energy = {1},
-
-    fringe      = 0..3..3,
-    k1          = {0, 0.2},
-    k1s         = \s->s.k1,
-    k0          = {0, 0.05},
-    bend_fringe = \s-> {s.cur_cfg.fringe and s.cur_cfg.fringe > 0 and true or false},
-    alist = tblcat(ref_cfg.alist, {"k1", "k1s", "k0", "fringe", "bend_fringe"}),
-  }
-  run_test(cfg)
-end
-
 local function testDRIFT()
   local cfg = ref_cfg "drift" { 
     elm = "DRIFT, at=${at}, l=${l}",
@@ -167,36 +46,6 @@ local function testDRIFT()
     at    = \s->{s.cur_cfg.l/2},
     -- tilt  = 0..4, ! Illegal keyword in MAD-X
     alist = tblcat(ref_cfg.alist, {"l", "at"}),
-  }
-  run_test(cfg)
-end
-
-local function testMULT() -- Test multipole (1 min)
-  local cfg = ref_cfg "mult" {
-    elm =  [[
-      MULTIPOLE, at=0.75, lrad=1.5, 
-      knl=${knl}, ksl=${ksl}, angle=${angle}, tilt=${tilt}*pi/8
-    ]],
-    
-    tol = 100,
-    
-    energy = {1},
-    model  = {1, 2},
-    method = {2},
-    nslice = {3},
-
-    knl = {
-      {0   , 0  , 0, 0 }, 
-      {0.05, 0  , 0, 0 }, 
-      {0   , 0.5, 0, 0 }, 
-      {0   , 0  , 5, 0 }, 
-      {0   , 0  , 0, 50},
-      {0.05, 0.5, 5, 50},
-    },
-    tilt  = 0..4,
-    ksl   = \s-> s.knl,
-    angle = \s-> {s.cur_cfg.knl[1]*1.5}, -- No effect?
-    alist = tblcat(ref_cfg.alist, {"knl", "ksl", "tilt", "angle"}),
   }
   run_test(cfg)
 end
@@ -606,13 +455,6 @@ end ]=]
 !testDRIFT()
 -- testRBEND()
 
--- Quadrupoles 
-!testQUAD()
-!testQUADm()
-!testQUADf()
-!testQUADh()
-!testQUADfh()
-
 -- Sextupoles
 !testSEXT()
 !testSEXTfr()
@@ -637,4 +479,6 @@ end ]=]
 -- testCAV()
 -- testRFMULT()
 -- testCCAV() !Fails as MAD-X defines a k0 for the crab cavity based on volt
--- read_mtbl(quadrupole, 10, 2) -- For reading the results
+
+require "test-sbend-maps"
+require "test-mult-maps"
