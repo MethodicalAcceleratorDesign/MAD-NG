@@ -49,15 +49,23 @@ ${test_ctx}
 ]]
 
 local in_dir  = \s -> 'input/' ..(s or '')
-local mad_file = loadfile(in_dir("ref.mad"))
+local ref_file = openfile(in_dir("ref.madx"), "r")
+local madx_ref = ref_file:read("*a")
+ref_file:close()
+local ref_file = openfile(in_dir("ref.mad"), "r")
+local mad_ref, mad_file = ref_file:read("*a")
+ref_file:close()
+
 local out_dir = \s -> 'output/'..(s or '')
+local plt_dir = \s -> out_dir('plots/'..(s or ''))
 
 os.execute("mkdir -p "..out_dir()) -- Create output dir if it doesn't exist
+os.execute("mkdir -p "..plt_dir()) -- Create image dir if it doesn't exist
 -------------------------------------------------------------------------------o
 
 -- Write MAD-X script to elmseq.seq and generate a MAD-NG script and return it-o
 local function create_seq(cfg)
-  openfile(in_dir("elmseq.seq"), "w"):write(
+  openfile(in_dir(cfg.name.."_seq.seq"), "w"):write(
     strinter(strinter(madx_script, {
       test_ctx = test_ctx  % cfg, -- Relies on cfg.cur_cfg
       coords   = coord_str % X0s[cfg.cur_cfg.x0i],
@@ -91,9 +99,10 @@ local function do_trck(cfg)
   create_seq(cfg)
 
   -- Run MAD-X-PTC
-  os.execute(
-    '../madx64 '..in_dir("ref.madx") ..' >' .. out_dir(cfg.name .. "_p.txt")
-  )
+  assert(os.execute(
+    '../madx64 '.. in_dir(cfg.name .. "_ref.madx") 
+    ..' >' .. out_dir(cfg.name .. "_p.txt")
+  ))
   MADX.elm = nil -- Remove element so that next test can be run with new values
 
   -- Run MAD-NG track
@@ -164,8 +173,11 @@ local function run_cfg (cfg, results)
         print("Max dif greater than tolerance, stopping...")
         -- Run mad in debug mode and set the program to stop
         create_seq(cfg {debug = 6})
+
+        openfile(in_dir(cfg.name.."_ref.mad"), "w"):write(mad_ref):close()
         os.execute(
-          '../mad '.. in_dir("ref.mad") ..' >' .. out_dir(cfg.name .. "_n.txt")
+          '../mad '.. in_dir(cfg.name.."_ref.mad") 
+          ..' >' .. out_dir(cfg.name .. "_n.txt")
         )
         create_dif({nam=out_dir(cfg.name)})
         cfg.stop = true
@@ -287,7 +299,7 @@ local function plot_res(res_cfg_tbl, cfg, cfg_tbl_)
   local cfg_plot = plot_template { 
     sid = newSID(),
     title   = cfg.name,
-    output = plot_info.filename and out_dir(plot_info.filename .. ".pdf") or 2, 
+    output = plot_info.filename and plt_dir(plot_info.filename) or 2, 
     xlabel = to_text(x_axis_attr),
     exec = false
   }
@@ -346,6 +358,15 @@ local function run_test(cfg)
     return 
   end
 
+  -- Generate the reference file
+  openfile(in_dir(cfg.name .. "_ref.madx"), "w"):write(
+    madx_ref % {seq_file = in_dir(cfg.name.."_seq.seq")}
+  ):close()
+
+  -- Load the MAD reference file
+  mad_ref = mad_ref % {seq_file = in_dir(cfg.name.."_seq.seq")}
+  mad_file = loadstring(mad_ref)
+
   -- Create new table for cur_cfg for each cfg set
   cfg.cur_cfg = {cfgid = 0}
   
@@ -403,8 +424,9 @@ local function run_test(cfg)
 
   -- Cleanup excess files if the program is not stopped mid-test
   if not cfg.stop then  
-    os.remove(out_dir(cfg.name .. "_p.txt"))
-    os.remove(in_dir("elmseq.seq"))
+    os.remove(in_dir( cfg.name .. "_ref.madx"))
+    os.remove(out_dir(cfg.name .. "_p.txt"   ))
+    os.remove(in_dir( cfg.name .. "_seq.seq" ))
     os.remove("internal_mag_pot.txt")
     os.remove("fort.18")
   end
