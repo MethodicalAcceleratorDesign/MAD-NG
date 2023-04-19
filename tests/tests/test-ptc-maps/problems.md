@@ -29,6 +29,8 @@
 
 - MAD-NG does not support the same syntax for the rf cavity as MAD-X for totalpath
 - MAD-NG does not support the same syntax for the elseparator as MAD-X for exl and eyl
+- Crab cavity is not identical as a rfmultipole, instead k0 and lag are redefined.
+- If volt = 0 on an rf multipole, the effects on the multipole (thick only) is not the same as if it went through rfcav_thick map
 
 What needs to be tested for MAD-NG vs MAD-NG:
 - General
