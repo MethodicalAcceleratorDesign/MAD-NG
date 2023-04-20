@@ -12,7 +12,7 @@ local ref_cfg = object "ref" {
   dorun  = true, -- Default: true 
   dosave = true, -- Default: false
   doprnt = false, -- Default: false
-  dodbg  = true, -- Default: false
+  dodbg  = false, -- Default: false
   doplot = true, -- Default: false
   
   -- list of variables in the tests
@@ -65,12 +65,12 @@ local function testSEXT() -- Test the body (~2 min)
   run_test(cfg)
 end
 
--- NOTE: FAILS for knl[2] ~= 0 or ksl[2] ~= 0
+-- This test needs testing w/ fringe and fringe_max
 local function testSEXTm() -- Test the multipole (~2 min)
   local cfg = ref_cfg "sextm" {
     elm = [[
       SEXTUPOLE, at=0.75, l=1.5, k2=${k2}, k2s=${k2s}, tilt=${tilt}*pi/12,
-      knl=${knl}, ksl=${ksl}, fringe=7, bend_fringe=true,
+      knl=${knl}, ksl=${ksl}, fringe_max=${fringe_max}, fringe=7, bend_fringe=true
     ]],
     
     tol = 300,
@@ -84,16 +84,20 @@ local function testSEXTm() -- Test the multipole (~2 min)
     k2s  = \s->s.k2, !{0, -0.15, 0.2},  -- Test just multipole first
     knl  = {
       { }, 
-      {0.05, 0  , 0, 0 }, ! MAD-X ignores knl[1], ksl[1]
+      {0.05, 0  , 0, 0 },
       {0   , 0.5, 0, 0 },
       {0   , 0  , 5, 0 }, 
       {0   , 0  , 0, 50},
-      {0.05, 0.5, 5, 50}, ! MAD-X ignores knl[1], ksl[1]
+      {0.05, 0.5, 5, 50},
       {0   , 0  , 5, 50},
     },
     ksl  = \s-> s.knl,
     tilt = 0..2,
-    alist = tblcat(ref_cfg.alist, {"tilt", "k2s", "k2", "ksl", "knl"}),
+    fringe_max = 2..5,
+    alist = tblcat(
+      ref_cfg.alist, 
+      {"tilt", "k2s", "k2", "ksl", "knl", "fringe_max"}
+    ),
 
     plot_info = \s-> {
       series = {
@@ -112,7 +116,7 @@ local function testSEXTm() -- Test the multipole (~2 min)
         y4 = "knl = \\{" .. tostring(s.knl[4]) .. "\\}",
         y5 = "knl = \\{" .. tostring(s.knl[5]) .. "\\}",
         y6 = "knl = \\{" .. tostring(s.knl[6]) .. "\\}",
-        y7 = "knl = {" .. tostring(s.knl[7]) .. "}",
+        y7 = "knl = \\{" .. tostring(s.knl[7]) .. "\\}",
       },
       title = "Sextupole Multipole Comparison",
       filename = "sext-mult-comparision.png",
@@ -125,7 +129,7 @@ local function testSEXTf() -- Test the fringe (~1 min)
   local cfg = ref_cfg "sextf" {
     elm = [[
       SEXTUPOLE, at=0.75, l=1.5, k2=${k2}, k2s=${k2s}, tilt=${tilt}*pi/12,
-      fringe=${fringe}
+      fringe=${fringe}, f1=${f1}, f2=${f2}
     ]],
     
     tol = 25,
@@ -139,10 +143,10 @@ local function testSEXTf() -- Test the fringe (~1 min)
     fringe = {0, 7},
     k2   = {0, 0.2},
     k2s  = \s->s.k2,
-    alist = tblcat(ref_cfg.alist, {"tilt", "fringe", "k2", "k2s"}),
-
+    f1   = {0, 0.5, -0.7},
+    f2   = {0, -0.5, 0.7},
+    alist = tblcat(ref_cfg.alist, {"tilt", "fringe", "k2", "k2s", "f1", "f2"}),
     plot_info = {
-      x_axis_attr = "${tilt}",
       title       = "Sextupole Fringe Comparison",
       series      = {
         "${k2} == 0",
@@ -152,8 +156,6 @@ local function testSEXTf() -- Test the fringe (~1 min)
         y1 = "k2 = 0",
         y2 = "k2 = 0.2",
       },
-      x_label     = "tilt [pi/12]",
-      xrange      = {-0.1, 4.1},
       filename    = "sext-fringe-comparision.png",
     }
   }
@@ -182,7 +184,6 @@ local function testSEXTh()
     alist = tblcat(ref_cfg.alist, {"tilt", "k2", "k2s", "k0"}),
 
     plot_info = {
-      x_axis_attr = "${tilt}",
       title       = "Sextupole with k0 Comparison",
       series      = {
         "${k0} == -0.05",
@@ -194,24 +195,23 @@ local function testSEXTh()
         y2 = "k0 = 0",
         y3 = "k0 = 0.05",
       },
-      x_label     = "tilt [pi/12]",
-      xrange      = {-0.1, 4.1},
       filename    = "sext-k0-comparision.png",
     }
   }
   run_test(cfg)
 end
 
+-- Need fint(x) and hgap here
 local function testSEXTfh() -- MAD-NG does bend fringe for fringe=3
   local cfg = ref_cfg "sextfh" {
     elm = [[
       SEXTUPOLE, at=0.75, l=1.5, k2=${k2}, k2s=${k2s}, fringe=${fringe},
-      knl={${k0}}, bend_fringe=true
+      knl={${k0}}, fint=${fint}, fintx=${fintx}, hgap=${hgap}, bend_fringe=true
     ]],
     
     tol = 25,
     
-    model  = {1}, -- Use DKD as otherwise PTC broken
+    model  = {1},
     method = {2},
     nslice = {1},
     energy = {1},
@@ -220,10 +220,15 @@ local function testSEXTfh() -- MAD-NG does bend fringe for fringe=3
     k2          = {0, 0.2},
     k2s         = \s->s.k2,
     k0          = {0, 0.05},
-    alist = tblcat(ref_cfg.alist, {"k2", "k2s", "k0", "fringe"}),
+    fint        = {0, 0.4, 0.7}, 
+    fintx       = {0, 0.3, 0.8},
+    hgap        = {0, 0.04, 0.05},
+    alist = tblcat(
+      ref_cfg.alist, 
+      {"k2", "k2s", "k0", "fringe", "fint", "fintx", "hgap"}
+    ),
 
     plot_info = {
-      x_axis_attr = "${k2}",
       title       = "Sextupole with k0 and fringe Comparison",
       series      = {
         "${k0} == 0",
@@ -233,9 +238,49 @@ local function testSEXTfh() -- MAD-NG does bend fringe for fringe=3
         y1 = "k0 = 0",
         y2 = "k0 = 0.05",
       },
-      xrange      = {-0.01, 0.21},
       filename    = "sext-k0-fringe-comparision.png",
+    }
+  }
+  run_test(cfg)
+end
+
+local function testSEXThe ()
+  local cfg = ref_cfg "sexthe" {
+    elm = [[
+      SEXTUPOLE, at=0.75, l=1.5, k2=${k2}, k2s=${k2s}, fringe=7,
+      knl={${k0}}, e1=${e1}, e2=${e2}, h1=${h1}, h2=${h2}, bend_fringe=true
+    ]],
     
+    tol = 600,
+    
+    model  = {1},
+    method = {2},
+    nslice = {1},
+    energy = {1},
+
+    k2          = {0, 0.2},
+    k2s         = \s->s.k2,
+    k0          = {0, 0.05},
+    e1          = {0, 0.4, 0.7}, 
+    e2          = {0, 0.3, 0.8},
+    h1          = {0, 0.04, 0.05},
+    h2          = {0, 0.04, 0.05},
+    alist = tblcat(
+      ref_cfg.alist, 
+      {"k2", "k2s", "k0", "e1", "e2", "h1", "h2"}
+    ),
+
+    plot_info = {
+      title       = "Sextupole with k0 and fringe Comparison",
+      series      = {
+        "${e1} == 0 and ${e2} == 0",
+        "${e1} ~= 0 or ${e2} ~= 0",
+      },
+      legend      = {
+        y1 = "e1 = e2 = 0",
+        y2 = "e1 != 0 or e2 != 0",
+      },
+      filename    = "sext-face-fringe-comparision.png",
     }
   }
   run_test(cfg)
@@ -246,3 +291,4 @@ testSEXTm()
 testSEXTf()
 testSEXTh()
 testSEXTfh()
+testSEXThe()
