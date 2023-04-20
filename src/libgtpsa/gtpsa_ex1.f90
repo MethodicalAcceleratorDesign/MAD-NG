@@ -58,6 +58,6 @@ program gtpsa_ex1
   call mad_tpsa_del(t2); t2=c_null
 
   ! destroy all created descriptors (optional cleanup)
-  call mad_desc_cleanup()
+  call mad_desc_del(c_null)
 
 end program gtpsa_ex1

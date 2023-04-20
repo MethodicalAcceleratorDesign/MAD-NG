@@ -252,10 +252,6 @@ module GTPSA
       type(c_ptr), value, intent(in) :: desc      ! descriptor to delete
     end subroutine mad_desc_del
 
-    subroutine mad_desc_cleanup() bind(C)
-      ! global cleanup (warning: no GTSPA must still be in use!)
-    end subroutine mad_desc_cleanup
-
     ! -- Introspection ----------------
 
     function mad_desc_getnv(desc,mo_,np_,po_) result(nv) bind(C)
