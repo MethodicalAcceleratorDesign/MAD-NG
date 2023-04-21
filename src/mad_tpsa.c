@@ -234,7 +234,7 @@ FUN(newd) (const D *d, ord_t mo)
   if (mo == mad_tpsa_default) mo = d->mo;
   else ensure(mo <= d->mo, "GTPSA order exceeds descriptor maximum order");
 
-  ssz_t nc = mad_desc_ordlen(d, mo);
+  ssz_t nc = mad_desc_maxlen(d, mo);
   T *t = mad_malloc(sizeof(T) + nc * sizeof(NUM));
   t->d = d, t->uid = 0, t->mo = mo, t->nam[0] = 0;
   FUN(reset0)(t);
@@ -436,7 +436,7 @@ FUN(maxord) (const T *t, ssz_t n, idx_t idx_[n])
   const idx_t *o2i = t->d->ord2idx;
   num_t mv =  0; // max of all values
   idx_t mi = -1; // idx of max for all
-  for (ord_t o = t->lo; o <= MIN(n,t->hi); ++o)
+  for (ord_t o = t->lo; o < MIN(n,t->hi+1); ++o)
     if (mad_bit_tst(t->nz,o)) {
       num_t mo = 0; // max of this order
       for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
@@ -494,7 +494,7 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
   ord_t t_hi = MIN(t->hi, r->mo, t->d->to);
   for (idx_t ti = o2i[t->lo]; ti < o2i[t_hi+1]; ++ti) {
     if (t->coef[ti] == 0) goto skip;
-    mad_desc_mono(t->d, tn, tm, ti);              // get tm mono at index ti
+    mad_desc_mono(t->d, ti, tn, tm);              // get tm mono at index ti
     mad_mono_fill(rn, rm, 0);
     int sgn = 0;
     for (idx_t i = 0; i < tn; ++i) {              // set rm mono
@@ -520,10 +520,10 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
 // --- indexing / monomials ---------------------------------------------------o
 
 ord_t
-FUN(mono) (const T *t, ssz_t n, ord_t m_[n], idx_t i)
+FUN(mono) (const T *t, idx_t i, ssz_t n, ord_t m_[n])
 {
   assert(t); DBGTPSA(t);
-  ord_t ret = mad_desc_mono(t->d, n, m_, i);
+  ord_t ret = mad_desc_mono(t->d, i, n, m_);
   DBGFUN(<-); return ret;
 }
 
@@ -552,7 +552,7 @@ FUN(idxsm) (const T *t, ssz_t n, const idx_t m[n])
 }
 
 idx_t
-FUN(cycle) (const T *t, ssz_t n, ord_t m_[n], idx_t i, NUM *v_)
+FUN(cycle) (const T *t, idx_t i, ssz_t n, ord_t m_[n], NUM *v_)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
   const D *d = t->d;

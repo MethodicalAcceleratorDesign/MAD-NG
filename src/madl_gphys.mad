@@ -720,7 +720,7 @@ local function nf_anh (nf, ord, x, y)
   local ms = table.concat(mn)
   local ks = nf_ks(nf, ord[4])
   local rv = nf.anh[ms..ks]
-  return rv and rv/(max(1,mn[1])*max(1,mn[3])) or nil
+  return rv -- and rv/(max(1,mn[1])*max(1,mn[3])) or nil
 end
 
 -- tunes --
@@ -775,34 +775,85 @@ end
 
 -- analyse anh, gnf, ham --
 
-local function nfana (nf, k_, m_)
-  if is_damap(k_) and is_nil(m_) then m_, k_ = k_ end -- right shift
+local function nfana (nf, k_, a_)
+  if is_damap(k_) and is_nil(a_) then a_, k_ = k_ end -- right shift
 
   assert(is_nf (nf), "invalid argument #1 (normal form expected)")
   assert(is_nil(k_) or nf_knd[k_]   , "invalid argument #2 (kind expected)" )
-  assert(is_nil(m_) or isa_damap(m_), "invalid argument #3 (A-damap expected)")
+  assert(is_nil(a_) or isa_damap(a_), "invalid argument #3 (A-damap expected)")
 
   local kind = nf_knd[k_ or 'all']
   local mono = monomial(nf.nn)
 
   -- propagated normal form, put in CS form
-  if m_ then                   -- mu1 = atan2(A12, A11)
-    local mu1 =                atan2(m_.x:get(3), m_.x:get(2))
-    local mu2 =                atan2(m_.y:get(5), m_.y:get(4))
-    local mu3 = nf.nt == 0 and atan2(m_.t:get(7), m_.t:get(6)) or 0
+  if a_ and false then
+    assert(not a_, "unexpected use of trkrdt")
+    local nv, nt, npt in nf
+    if npt ~= 0 then nv = 4 end                       -- process t,pt as params
+
+    local mu1 =            atan2(a_.x:get(3), a_.x:get(2))
+    local mu2 =            atan2(a_.y:get(5), a_.y:get(4))
+    local mu3 = nv > 4 and atan2(a_.t:get(7), a_.t:get(6)) or 0
 
     if abs(mu1)+abs(mu2)+abs(mu3) > 0 then
-      local ri = m_:same():eye()
+      local r = a_:same():eye()
+      for i=2,nv,2 do                                   -- rephase to CS
+        local a11, a12 = a_[i-1]:deriv(i-1), a_[i-1]:deriv(i)
+        local d = hypot(a11, a12)
+        if a11 < 0 then d = -d end  -- add pi (needed for comparison with PTC...)
+        assertf(d > 1e-14, "invalid eigenvectors (unexpected denom |% -.16e|>0)", d:get0())
+        local ca, sa = a11/d, a12/d
+        local nq = ca*r[i-1] + sa*r[i  ] -- [ a11/d  a12/d] = [ cos a  sin a]
+        local np = ca*r[i  ] - sa*r[i-1] -- [-a12/d  a11/d]   [-sin a  cos a]
+
+        if npt ~= 0 then
+          local t = -0.5*(-1i*log(ca + sa*1i)):deriv(npt):real()
+          r.pt = r.pt + (-1^nt) * t * (r[i-1]^2 + r[i]^2)
+        end
+
+        r[i-1], r[i] = nq, np
+      end
+      nf = nf:copy((a_*r^-1):cplx():set0(0))
+--      io.write("mu1=", mu1, ", mu2=", mu2, ", mu3=", mu3, "\n") ;
+--      r:print("R")
+    end
+  end
+
+--[[
+  for i=2,min(nr,nc),2 do
+    local a11, a12 = A:get(i-1,i-1), A:get(i-1,i) -- mu = atan2(a12, a11) / 2pi
+    local d = hypot(a11,a12)
+!   if a11 < 0 then d = -d end  -- add pi (sometimes needed for comparison with PTC...)
+    assertf(d > 1e-14, "invalid eigenvectors (unexpected denom |% -.16e|>0)", d)
+    a11, a12 = a11/d, a12/d
+    P:set(i-1,i-1,  a11) -- P = [ a11/d  -a12/d ] = [ cos a  -sin a ]
+    P:set(i-1,i  , -a12) --     [ a12/d   a11/d ]   [ sin a   cos a ] = rot(-a)
+    P:set(i  ,i-1,  a12) -- a = angle(a11, a12)
+    P:set(i  ,i  ,  a11)
+  end
+
+-- A*P=[ a11  a12 ][ a11/d  -a12/d ]=[      d (>0)                0          ]
+--     [ a21  a22 ][ a12/d   a11/d ] [ (a11a21+a12a22)/d  (-a12a21+a11a22)/d ]
+--]]
+  if a_ and true then          -- mu1 = atan2(A12, A11)
+    -- assert(not a_, "unexpected use of old trkrdt")
+
+    local mu1 =                 atan2(a_.x:get(3), a_.x:get(2))
+    local mu2 =                 atan2(a_.y:get(5), a_.y:get(4))
+    local mu3 = nf.npt == 0 and atan2(a_.t:get(7), a_.t:get(6)) or 0
+
+    if abs(mu1)+abs(mu2)+abs(mu3) > 0 then
+      local ri = a_:same():eye()
       ri. x:set(2, cos(mu1)) ; ri. x:set(3,-sin(mu1))
       ri.px:set(2, sin(mu1)) ; ri.px:set(3, cos(mu1))
       ri. y:set(4, cos(mu2)) ; ri. y:set(5,-sin(mu2))
       ri.py:set(4, sin(mu2)) ; ri.py:set(5, cos(mu2))
       ri. t:set(6, cos(mu3)) ; ri. t:set(7,-sin(mu3))
       ri.pt:set(6, sin(mu3)) ; ri.pt:set(7, cos(mu3))
-      m_ = m_*ri
+      a_ = a_*ri
     end
 
-    nf = nf:copy(m_:cplx():set0(0))
+    nf = nf:copy(a_:cplx():set0(0))
   end
 
   -- GNF and HAM
@@ -1041,8 +1092,8 @@ local function phasor (nf, inv_)
   local c, rk = m_n:same(0i):eye(), npt ~= 0 and 4 or 6
 
   for i=2,rk,2 do -- 2,4,6,..
-    c[i-1]:clear():set(i, 0, v[1]):set(i+1, 0, v[2]) -- c[1]
-    c[i  ]:clear():set(i, 0, v[3]):set(i+1, 0, v[4]) -- c[2]
+    c[i-1]:clear():set(i, 0, v[1]):set(i+1, 0, v[2]) -- c[1] -- clear?
+    c[i  ]:clear():set(i, 0, v[3]):set(i+1, 0, v[4]) -- c[2] -- clear?
   end
 
   return c, r

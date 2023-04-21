@@ -40,9 +40,10 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local M = {DKD={}, TKT={}, MKM={}}
+local M = {DKD={}, TKT={}, KMK={}}
 
-local max in math
+local vector in MAD
+local max, sqrt in math
 local is_number, is_function in MAD.typeid
 
 -- Yoshida coefficients -------------------------------------------------------o
@@ -53,10 +54,16 @@ local function make_yoshida (w, nam)
   for i=1,n-1 do k[i] = w[n-i] ; s = s+w[i] end
   d[1], k[n] = k[1]/2, 1-2*s
   for i=2,n do d[i] = (k[i]+k[i-1])/2 end
-  -- local printf in MAD.utility
-  -- printf("%-5s ", nam)
-  -- for i=1,#d do printf("[%d]={% -.6f, % -.6f} ", i, d[i], k[i]) end
-  -- printf("\n")
+--[[
+  local vector in MAD
+  local printf in MAD.utility
+  printf("%-5s\n", nam)
+  for i=1,#d do printf("[%d]={% -.6f, % -.6f}\n", i, d[i], k[i]) end
+  local vd = vector(2*#d  ):setvec(d):rev():setvec(1..#d  ,d):print("D")
+  local vk = vector(2*#k-1):setvec(k):rev():setvec(1..#k-1,k):print("K")
+  printf("sum-1 = {% -.6e, % -.6e}\n", vd:ksum()-1,vk:ksum()-1)
+  printf("stdev = {% -.6f, % -.6f}\n", sqrt(vd:variance()), sqrt(vk:variance()))
+--]]
   return d, k
 end
 
@@ -66,26 +73,26 @@ local yosh4_w = { -- 4th order (eq. 2.11)
 
 local yosh6_w = { -- 6th order (table1)
   A = { -0.117767998417887E1 ,  0.235573213359357E0 , 0.784513610477560E0 },
---  B = { -0.213228522200144E1 ,  0.426068187079180E-2, 0.143984816797678E1 },
---  C = {  0.152886228424922E-2, -0.214403531630539E1 , 0.144778256239930E1 },
+  B = { -0.213228522200144E1 ,  0.426068187079180E-2, 0.143984816797678E1 },
+  C = {  0.152886228424922E-2, -0.214403531630539E1 , 0.144778256239930E1 },
 }
 
 local yosh8_w = { -- 8th order (table2)
---  A = { -0.161582374150097E1 , -0.244699182370524E1, -0.716989419708120E-2,
---         0.244002732616735E1 ,  0.157739928123617E0,  0.182020630970714E1 ,
---         0.104242620869991E1 },
---  B = { -0.169248587770116E-2,  0.289195744315849E1,  0.378039588360192E-2,
---        -0.289688250328827E1 ,  0.289105148970595E1, -0.233864815101035E1 ,
---         0.148819229202922E1 },
---  C = {  0.311790812418427E0 , -0.155946803821447E1, -0.167896928259640E1 ,
---         0.166335809963315E1 , -0.106458714789183E1,  0.136934946416871E1 ,
---         0.629030650210433E0 },
+  A = { -0.161582374150097E1 , -0.244699182370524E1, -0.716989419708120E-2,
+         0.244002732616735E1 ,  0.157739928123617E0,  0.182020630970714E1 ,
+         0.104242620869991E1 },
+  B = { -0.169248587770116E-2,  0.289195744315849E1,  0.378039588360192E-2,
+        -0.289688250328827E1 ,  0.289105148970595E1, -0.233864815101035E1 ,
+         0.148819229202922E1 },
+  C = {  0.311790812418427E0 , -0.155946803821447E1, -0.167896928259640E1 ,
+         0.166335809963315E1 , -0.106458714789183E1,  0.136934946416871E1 ,
+         0.629030650210433E0 },
   D = {  0.102799849391985E0 , -0.196061023297549E1,  0.193813913762276E1 ,
         -0.158240635368243E0 , -0.144485223686048E1,  0.253693336566229E0 ,
          0.914844246229740E0 },
---  E = {  0.227738840094906E-1,  0.252778927322839E1, -0.719180053552772E-1,
---         0.536018921307285E-2, -0.204809795887393E1,  0.107990467703699E0 ,
---         0.130300165760014E1 },
+  E = {  0.227738840094906E-1,  0.252778927322839E1, -0.719180053552772E-1,
+         0.536018921307285E-2, -0.204809795887393E1,  0.107990467703699E0 ,
+         0.130300165760014E1 },
 }
 
 local yosh4_d, yosh4_k = make_yoshida(yosh4_w.A, 'A4')
@@ -132,14 +139,13 @@ local function get_slc (elm, mflw, lw)
     slc = slc(elm, mflw, lw)
   end
 
+  local sdir in mflw
   if is_number(slc) then
-    local nsl = max(slc, mflw.nslc)
-    mflw.nsl = nsl
-    return nsl, lw/nsl
+    local nsl = max(slc, mflw.nslc) ; mflw.nsl = nsl
+    return nsl, lw/nsl, nil, nil, sdir
   else
-    local nsl, dir = #slc, mflw.sdir
-    mflw.nsl = nsl
-    return nsl, nil, slc, dir > 0 and 0 or nsl+1, dir
+    local nsl = #slc ; mflw.nsl = nsl
+    return nsl, nil, slc, sdir > 0 and 0 or nsl+1, sdir
   end
 end
 
@@ -185,6 +191,7 @@ end
 -- 2nd order: [Burkhardt13] table 1, p. 946
 local function teapot (elm, mflw, lw, thick, kick)
   local nsl = max(2, elm.nslice or mflw.nslice)
+  local dir = mflw.sdir
   local lwn = lw/nsl
   local lwd = lw/(2*(nsl+1))
   local lwD = lw*nsl/(nsl^2-1)/2
@@ -192,17 +199,17 @@ local function teapot (elm, mflw, lw, thick, kick)
   mflw.nsl = nsl
 
  -- nsl*(1 kick + 2 thicks)
-     fsl(elm, mflw, 0  ,  0)
-   thick(elm, mflw, lwd, -1)
+     fsl(elm, mflw, 0  ,  0    )
+   thick(elm, mflw, lwd, -1*dir)
  for i=1,nsl-1 do
-    kick(elm, mflw, lwn,  0)
-   thick(elm, mflw, lwD,  0) ; mflw.clw = mflw.clw + lwn
-     fsl(elm, mflw, lwn,  i)
-   thick(elm, mflw, lwD,  0)
+    kick(elm, mflw, lwn,  0    )
+   thick(elm, mflw, lwD,  0    ) ; mflw.clw = mflw.clw + lwn
+     fsl(elm, mflw, lwn,  i    )
+   thick(elm, mflw, lwD,  0    )
  end
     kick(elm, mflw, lwn,  0)
-   thick(elm, mflw, lwd,  1) ; mflw.clw = mflw.clw + lwn
-     fsl(elm, mflw, lwn, nsl)
+   thick(elm, mflw, lwd,  1*dir) ; mflw.clw = mflw.clw + lwn
+     fsl(elm, mflw, lwn, nsl   )
 end
 
 -- DKD integrators [Yoshida90] ------------------------------------------------o
@@ -216,9 +223,9 @@ local function DKD2 (elm, mflw, lw, thick, kick)
       fsl(elm, mflw, 0, 0)
   for i=1,nsl do
     local lwi = lwn or lw*slc[sln+i*dir] ; mflw.clw = mflw.clw + lwi
-    thick(elm, mflw, lwi*0.5, -1)
-     kick(elm, mflw, lwi    ,  0) -- middle
-    thick(elm, mflw, lwi*0.5,  1)
+    thick(elm, mflw, lwi*0.5, -1*dir)
+     kick(elm, mflw, lwi    ,  0    ) -- middle
+    thick(elm, mflw, lwi*0.5,  1*dir)
       fsl(elm, mflw, lwi, i)
   end
 end
@@ -232,13 +239,13 @@ local function DKD4 (elm, mflw, lw, thick, kick)
       fsl(elm, mflw, 0, 0)
   for i=1,nsl do
     local lwi = lwn or lw*slc[sln+i*dir] ; mflw.clw = mflw.clw + lwi
-    thick(elm, mflw, lwi * yosh4_d[1], -3)
-     kick(elm, mflw, lwi * yosh4_k[1], -2)
-    thick(elm, mflw, lwi * yosh4_d[2], -1)
-     kick(elm, mflw, lwi * yosh4_k[2],  0) -- middle
-    thick(elm, mflw, lwi * yosh4_d[2],  1)
-     kick(elm, mflw, lwi * yosh4_k[1],  2)
-    thick(elm, mflw, lwi * yosh4_d[1],  3)
+    thick(elm, mflw, lwi * yosh4_d[1], -3*dir) -- 2
+     kick(elm, mflw, lwi * yosh4_k[1], -2*dir)
+    thick(elm, mflw, lwi * yosh4_d[2], -1*dir) -- 1
+     kick(elm, mflw, lwi * yosh4_k[2],  0    ) -- middle
+    thick(elm, mflw, lwi * yosh4_d[2],  1*dir)
+     kick(elm, mflw, lwi * yosh4_k[1],  2*dir)
+    thick(elm, mflw, lwi * yosh4_d[1],  3*dir)
       fsl(elm, mflw, lwi, i)
   end
 end
@@ -252,21 +259,21 @@ local function DKD6 (elm, mflw, lw, thick, kick)
       fsl(elm, mflw, 0, 0)
   for i=1,nsl do
     local lwi = lwn or lw*slc[sln+i*dir] ; mflw.clw = mflw.clw + lwi
-    thick(elm, mflw, lwi * yosh6_d[1], -7)
-     kick(elm, mflw, lwi * yosh6_k[1], -6)
-    thick(elm, mflw, lwi * yosh6_d[2], -5)
-     kick(elm, mflw, lwi * yosh6_k[2], -4)
-    thick(elm, mflw, lwi * yosh6_d[3], -3)
-     kick(elm, mflw, lwi * yosh6_k[3], -2)
-    thick(elm, mflw, lwi * yosh6_d[4], -1)
-     kick(elm, mflw, lwi * yosh6_k[4],  0) -- middle
-    thick(elm, mflw, lwi * yosh6_d[4],  1)
-     kick(elm, mflw, lwi * yosh6_k[3],  2)
-    thick(elm, mflw, lwi * yosh6_d[3],  3)
-     kick(elm, mflw, lwi * yosh6_k[2],  4)
-    thick(elm, mflw, lwi * yosh6_d[2],  5)
-     kick(elm, mflw, lwi * yosh6_k[1],  6)
-    thick(elm, mflw, lwi * yosh6_d[1],  7)
+    thick(elm, mflw, lwi * yosh6_d[1], -7*dir) -- 4
+     kick(elm, mflw, lwi * yosh6_k[1], -6*dir)
+    thick(elm, mflw, lwi * yosh6_d[2], -5*dir) -- 3
+     kick(elm, mflw, lwi * yosh6_k[2], -4*dir)
+    thick(elm, mflw, lwi * yosh6_d[3], -3*dir) -- 2
+     kick(elm, mflw, lwi * yosh6_k[3], -2*dir)
+    thick(elm, mflw, lwi * yosh6_d[4], -1*dir) -- 1
+     kick(elm, mflw, lwi * yosh6_k[4],  0    ) -- middle
+    thick(elm, mflw, lwi * yosh6_d[4],  1*dir)
+     kick(elm, mflw, lwi * yosh6_k[3],  2*dir)
+    thick(elm, mflw, lwi * yosh6_d[3],  3*dir)
+     kick(elm, mflw, lwi * yosh6_k[2],  4*dir)
+    thick(elm, mflw, lwi * yosh6_d[2],  5*dir)
+     kick(elm, mflw, lwi * yosh6_k[1],  6*dir)
+    thick(elm, mflw, lwi * yosh6_d[1],  7*dir)
       fsl(elm, mflw, lwi , i)
   end
 end
@@ -280,45 +287,45 @@ local function DKD8 (elm, mflw, lw, thick, kick)
       fsl(elm, mflw, 0, 0)
   for i=1,nsl do
     local lwi = lwn or lw*slc[sln+i*dir] ; mflw.clw = mflw.clw + lwi
-    thick(elm, mflw, lwi * yosh8_d[1], -15)
-     kick(elm, mflw, lwi * yosh8_k[1], -14)
-    thick(elm, mflw, lwi * yosh8_d[2], -13)
-     kick(elm, mflw, lwi * yosh8_k[2], -12)
-    thick(elm, mflw, lwi * yosh8_d[3], -11)
-     kick(elm, mflw, lwi * yosh8_k[3], -10)
-    thick(elm, mflw, lwi * yosh8_d[4], - 9)
-     kick(elm, mflw, lwi * yosh8_k[4], - 8)
-    thick(elm, mflw, lwi * yosh8_d[5], - 7)
-     kick(elm, mflw, lwi * yosh8_k[5], - 6)
-    thick(elm, mflw, lwi * yosh8_d[6], - 5)
-     kick(elm, mflw, lwi * yosh8_k[6], - 4)
-    thick(elm, mflw, lwi * yosh8_d[7], - 3)
-     kick(elm, mflw, lwi * yosh8_k[7], - 2)
-    thick(elm, mflw, lwi * yosh8_d[8], - 1)
-     kick(elm, mflw, lwi * yosh8_k[8],   0) -- middle
-    thick(elm, mflw, lwi * yosh8_d[8],   1)
-     kick(elm, mflw, lwi * yosh8_k[7],   2)
-    thick(elm, mflw, lwi * yosh8_d[7],   3)
-     kick(elm, mflw, lwi * yosh8_k[6],   4)
-    thick(elm, mflw, lwi * yosh8_d[6],   5)
-     kick(elm, mflw, lwi * yosh8_k[5],   6)
-    thick(elm, mflw, lwi * yosh8_d[5],   7)
-     kick(elm, mflw, lwi * yosh8_k[4],   8)
-    thick(elm, mflw, lwi * yosh8_d[4],   9)
-     kick(elm, mflw, lwi * yosh8_k[3],  10)
-    thick(elm, mflw, lwi * yosh8_d[3],  11)
-     kick(elm, mflw, lwi * yosh8_k[2],  12)
-    thick(elm, mflw, lwi * yosh8_d[2],  13)
-     kick(elm, mflw, lwi * yosh8_k[1],  14)
-    thick(elm, mflw, lwi * yosh8_d[1],  15)
+    thick(elm, mflw, lwi * yosh8_d[1], -15*dir) -- 8
+     kick(elm, mflw, lwi * yosh8_k[1], -14*dir)
+    thick(elm, mflw, lwi * yosh8_d[2], -13*dir) -- 7
+     kick(elm, mflw, lwi * yosh8_k[2], -12*dir)
+    thick(elm, mflw, lwi * yosh8_d[3], -11*dir) -- 6
+     kick(elm, mflw, lwi * yosh8_k[3], -10*dir)
+    thick(elm, mflw, lwi * yosh8_d[4], - 9*dir) -- 5
+     kick(elm, mflw, lwi * yosh8_k[4], - 8*dir)
+    thick(elm, mflw, lwi * yosh8_d[5], - 7*dir) -- 4
+     kick(elm, mflw, lwi * yosh8_k[5], - 6*dir)
+    thick(elm, mflw, lwi * yosh8_d[6], - 5*dir) -- 3
+     kick(elm, mflw, lwi * yosh8_k[6], - 4*dir)
+    thick(elm, mflw, lwi * yosh8_d[7], - 3*dir) -- 2
+     kick(elm, mflw, lwi * yosh8_k[7], - 2*dir)
+    thick(elm, mflw, lwi * yosh8_d[8], - 1*dir) -- 1
+     kick(elm, mflw, lwi * yosh8_k[8],   0    ) -- middle
+    thick(elm, mflw, lwi * yosh8_d[8],   1*dir)
+     kick(elm, mflw, lwi * yosh8_k[7],   2*dir)
+    thick(elm, mflw, lwi * yosh8_d[7],   3*dir)
+     kick(elm, mflw, lwi * yosh8_k[6],   4*dir)
+    thick(elm, mflw, lwi * yosh8_d[6],   5*dir)
+     kick(elm, mflw, lwi * yosh8_k[5],   6*dir)
+    thick(elm, mflw, lwi * yosh8_d[5],   7*dir)
+     kick(elm, mflw, lwi * yosh8_k[4],   8*dir)
+    thick(elm, mflw, lwi * yosh8_d[4],   9*dir)
+     kick(elm, mflw, lwi * yosh8_k[3],  10*dir)
+    thick(elm, mflw, lwi * yosh8_d[3],  11*dir)
+     kick(elm, mflw, lwi * yosh8_k[2],  12*dir)
+    thick(elm, mflw, lwi * yosh8_d[2],  13*dir)
+     kick(elm, mflw, lwi * yosh8_k[1],  14*dir)
+    thick(elm, mflw, lwi * yosh8_d[1],  15*dir)
       fsl(elm, mflw, lwi , i)
   end
 end
 
--- MKM integrators (Biased) [Boole's rule] ------------------------------------o
+-- KMK integrators (Biased) [Boole's rule] ------------------------------------o
 
 -- 2nd order: [Abramowitz72] p885 25.4.2
-local function MKM2 (elm, mflw, lw, thick, kick)
+local function KMK2 (elm, mflw, lw, thick, kick)
   local nsl, lwn, slc, sln, dir = get_slc(elm, mflw, lw)
   local fsl = mflw.atslice
 
@@ -326,17 +333,18 @@ local function MKM2 (elm, mflw, lw, thick, kick)
       fsl(elm, mflw, 0, 0)
   for i=1,nsl do
     local lwi = lwn or lw*slc[sln+i*dir] ; mflw.clw = mflw.clw + lwi
-     kick(elm, mflw, lwi*0.5, -1)
-    thick(elm, mflw, lwi    ,  0) -- (no) middle
-     kick(elm, mflw, lwi*0.5,  1)
+     kick(elm, mflw, lwi*0.5, -1*dir)
+    thick(elm, mflw, lwi    ,  0    ) -- (no) middle
+     kick(elm, mflw, lwi*0.5,  1*dir)
       fsl(elm, mflw, lwi, i)
   end
 end
 
 -- 4th order: [Abramowitz72] p886 25.4.5
 local boole4_k = {1/6, 4/6}
+local boole4_d = 1/2
 
-local function MKM4 (elm, mflw, lw, thick, kick)
+local function KMK4 (elm, mflw, lw, thick, kick)
   local nsl, lwn, slc, sln, dir = get_slc(elm, mflw, lw)
   local fsl = mflw.atslice
 
@@ -344,19 +352,20 @@ local function MKM4 (elm, mflw, lw, thick, kick)
       fsl(elm, mflw, 0, 0)
   for i=1,nsl do
     local lwi = lwn or lw*slc[sln+i*dir] ; mflw.clw = mflw.clw + lwi
-     kick(elm, mflw, lwi * boole4_k[1], -2)
-    thick(elm, mflw, lwi * 0.5        , -1)
-     kick(elm, mflw, lwi * boole4_k[2],  0) -- middle
-    thick(elm, mflw, lwi * 0.5        ,  1)
-     kick(elm, mflw, lwi * boole4_k[1],  2)
+     kick(elm, mflw, lwi * boole4_k[1], -2*dir)
+    thick(elm, mflw, lwi * boole4_d   , -1*dir)
+     kick(elm, mflw, lwi * boole4_k[2],  0    ) -- middle
+    thick(elm, mflw, lwi * boole4_d   ,  1*dir)
+     kick(elm, mflw, lwi * boole4_k[1],  2*dir)
       fsl(elm, mflw, lwi, i)
   end
 end
 
 -- 6th order: [Abramowitz72] p886 25.4.14
 local boole6_k = {7/90, 32/90, 12/90}
+local boole6_d = 1/4
 
-local function MKM6 (elm, mflw, lw, thick, kick)
+local function KMK6 (elm, mflw, lw, thick, kick)
   local nsl, lwn, slc, sln, dir = get_slc(elm, mflw, lw)
   local fsl = mflw.atslice
 
@@ -364,15 +373,15 @@ local function MKM6 (elm, mflw, lw, thick, kick)
       fsl(elm, mflw, 0, 0)
   for i=1,nsl do
     local lwi = lwn or lw*slc[sln+i*dir] ; mflw.clw = mflw.clw + lwi
-     kick(elm, mflw, lwi * boole6_k[1], -4)
-    thick(elm, mflw, lwi * 0.25       , -3)
-     kick(elm, mflw, lwi * boole6_k[2], -2)
-    thick(elm, mflw, lwi * 0.25       , -1)
-     kick(elm, mflw, lwi * boole6_k[3],  0) -- middle
-    thick(elm, mflw, lwi * 0.25       ,  1)
-     kick(elm, mflw, lwi * boole6_k[2],  2)
-    thick(elm, mflw, lwi * 0.25       ,  3)
-     kick(elm, mflw, lwi * boole6_k[1],  4)
+     kick(elm, mflw, lwi * boole6_k[1], -4*dir)
+    thick(elm, mflw, lwi * boole6_d   , -3*dir)
+     kick(elm, mflw, lwi * boole6_k[2], -2*dir)
+    thick(elm, mflw, lwi * boole6_d   , -1*dir)
+     kick(elm, mflw, lwi * boole6_k[3],  0    ) -- middle
+    thick(elm, mflw, lwi * boole6_d   ,  1*dir)
+     kick(elm, mflw, lwi * boole6_k[2],  2*dir)
+    thick(elm, mflw, lwi * boole6_d   ,  3*dir)
+     kick(elm, mflw, lwi * boole6_k[1],  4*dir)
       fsl(elm, mflw, lwi, i)
   end
 end
@@ -381,7 +390,7 @@ end
 local boole8_k = {41/840, 216/840, 27/840, 272/840}
 local boole8_d = 1/6
 
-local function MKM8 (elm, mflw, lw, thick, kick)
+local function KMK8 (elm, mflw, lw, thick, kick)
   local nsl, lwn, slc, sln, dir = get_slc(elm, mflw, lw)
   local fsl = mflw.atslice
 
@@ -389,19 +398,90 @@ local function MKM8 (elm, mflw, lw, thick, kick)
       fsl(elm, mflw, 0, 0)
   for i=1,nsl do
     local lwi = lwn or lw*slc[sln+i*dir] ; mflw.clw = mflw.clw + lwi
-     kick(elm, mflw, lwi * boole8_k[1], -6)
-    thick(elm, mflw, lwi * boole8_d   , -5)
-     kick(elm, mflw, lwi * boole8_k[2], -4)
-    thick(elm, mflw, lwi * boole8_d   , -3)
-     kick(elm, mflw, lwi * boole8_k[3], -2)
-    thick(elm, mflw, lwi * boole8_d   , -1)
-     kick(elm, mflw, lwi * boole8_k[4],  0) -- middle
-    thick(elm, mflw, lwi * boole8_d   ,  1)
-     kick(elm, mflw, lwi * boole8_k[3],  2)
-    thick(elm, mflw, lwi * boole8_d   ,  3)
-     kick(elm, mflw, lwi * boole8_k[2],  4)
-    thick(elm, mflw, lwi * boole8_d   ,  5)
-     kick(elm, mflw, lwi * boole8_k[1],  6)
+     kick(elm, mflw, lwi * boole8_k[1], -6*dir)
+    thick(elm, mflw, lwi * boole8_d   , -5*dir)
+     kick(elm, mflw, lwi * boole8_k[2], -4*dir)
+    thick(elm, mflw, lwi * boole8_d   , -3*dir)
+     kick(elm, mflw, lwi * boole8_k[3], -2*dir)
+    thick(elm, mflw, lwi * boole8_d   , -1*dir)
+     kick(elm, mflw, lwi * boole8_k[4],  0    ) -- middle
+    thick(elm, mflw, lwi * boole8_d   ,  1*dir)
+     kick(elm, mflw, lwi * boole8_k[3],  2*dir)
+    thick(elm, mflw, lwi * boole8_d   ,  3*dir)
+     kick(elm, mflw, lwi * boole8_k[2],  4*dir)
+    thick(elm, mflw, lwi * boole8_d   ,  5*dir)
+     kick(elm, mflw, lwi * boole8_k[1],  6*dir)
+      fsl(elm, mflw, lwi, i)
+  end
+end
+
+-- 10th order: [Abramowitz72] p886 25.4.18
+local boole10_k = {989/28350, 5888/28350, -928/28350, 10496/28350, -4540/28350}
+local boole10_d = 1/8
+
+local function KMK10 (elm, mflw, lw, thick, kick)
+  local nsl, lwn, slc, sln, dir = get_slc(elm, mflw, lw)
+  local fsl = mflw.atslice
+
+  -- nsl*(9 kicks + 7 thicks)
+      fsl(elm, mflw, 0, 0)
+  for i=1,nsl do
+    local lwi = lwn or lw*slc[sln+i*dir] ; mflw.clw = mflw.clw + lwi
+     kick(elm, mflw, lwi * boole10_k[1], -8*dir)
+    thick(elm, mflw, lwi * boole10_d   , -7*dir)
+     kick(elm, mflw, lwi * boole10_k[2], -6*dir)
+    thick(elm, mflw, lwi * boole10_d   , -5*dir)
+     kick(elm, mflw, lwi * boole10_k[3], -4*dir)
+    thick(elm, mflw, lwi * boole10_d   , -3*dir)
+     kick(elm, mflw, lwi * boole10_k[4], -2*dir)
+    thick(elm, mflw, lwi * boole10_d   , -1*dir)
+     kick(elm, mflw, lwi * boole10_k[5],  0    ) -- middle
+    thick(elm, mflw, lwi * boole10_d   ,  1*dir)
+     kick(elm, mflw, lwi * boole10_k[4],  2*dir)
+    thick(elm, mflw, lwi * boole10_d   ,  3*dir)
+     kick(elm, mflw, lwi * boole10_k[3],  4*dir)
+    thick(elm, mflw, lwi * boole10_d   ,  5*dir)
+     kick(elm, mflw, lwi * boole10_k[2],  6*dir)
+    thick(elm, mflw, lwi * boole10_d   ,  7*dir)
+     kick(elm, mflw, lwi * boole10_k[1],  8*dir)
+      fsl(elm, mflw, lwi, i)
+  end
+end
+
+-- 12th order: [Abramowitz72] p887 25.4.20
+local boole12_k = {16067/598752, 106300/598752, -48525/598752, 272400/598752,
+                                                -260550/598752, 427368/598752}
+local boole12_d = 1/10
+
+local function KMK12 (elm, mflw, lw, thick, kick)
+  local nsl, lwn, slc, sln, dir = get_slc(elm, mflw, lw)
+  local fsl = mflw.atslice
+
+  -- nsl*(11 kicks + 9 thicks)
+      fsl(elm, mflw, 0, 0)
+  for i=1,nsl do
+    local lwi = lwn or lw*slc[sln+i*dir] ; mflw.clw = mflw.clw + lwi
+     kick(elm, mflw, lwi * boole12_k[1], -10*dir)
+    thick(elm, mflw, lwi * boole12_d   , - 9*dir)
+     kick(elm, mflw, lwi * boole12_k[2], - 8*dir)
+    thick(elm, mflw, lwi * boole12_d   , - 7*dir)
+     kick(elm, mflw, lwi * boole12_k[3], - 6*dir)
+    thick(elm, mflw, lwi * boole12_d   , - 5*dir)
+     kick(elm, mflw, lwi * boole12_k[4], - 4*dir)
+    thick(elm, mflw, lwi * boole12_d   , - 3*dir)
+     kick(elm, mflw, lwi * boole12_k[5], - 2*dir)
+    thick(elm, mflw, lwi * boole12_d   , - 1*dir)
+     kick(elm, mflw, lwi * boole12_k[6],   0    ) -- middle
+    thick(elm, mflw, lwi * boole12_d   ,   1*dir)
+     kick(elm, mflw, lwi * boole12_k[5],   2*dir)
+    thick(elm, mflw, lwi * boole12_d   ,   3*dir)
+     kick(elm, mflw, lwi * boole12_k[4],   4*dir)
+    thick(elm, mflw, lwi * boole12_d   ,   5*dir)
+     kick(elm, mflw, lwi * boole12_k[3],   6*dir)
+    thick(elm, mflw, lwi * boole12_d   ,   7*dir)
+     kick(elm, mflw, lwi * boole12_k[2],   8*dir)
+    thick(elm, mflw, lwi * boole12_d   ,   9*dir)
+     kick(elm, mflw, lwi * boole12_k[1],  10*dir)
       fsl(elm, mflw, lwi, i)
   end
 end
@@ -418,18 +498,18 @@ M.thickonly = thickonly
 
 -- 2nd order integrator scheme
 M.DKD.simple = DKD2
-M.DKD.collim = MKM2
+M.DKD.collim = KMK2
 M.DKD.teapot = teapot
 
 -- 2nd order integrator scheme
-M.TKT.simple = DKD2           -- for PTC compatibility...
-M.TKT.collim = MKM2
+M.TKT.simple = DKD2           -- for MADX compatibility...
+M.TKT.collim = KMK2
 M.TKT.teapot = teapot
 
 -- 2nd order integrator scheme
-M.MKM.simple = DKD2           -- for PTC compatibility...
-M.MKM.collim = MKM2
-M.MKM.teapot = teapot
+M.KMK.simple = DKD2           -- for MADX compatibility...
+M.KMK.collim = KMK2
+M.KMK.teapot = teapot
 
 -- integrators by order -------------------------------------------------------o
 
@@ -439,17 +519,19 @@ M.DKD[3], M.DKD[4] = DKD4, DKD4
 M.DKD[5], M.DKD[6] = DKD6, DKD6
 M.DKD[7], M.DKD[8] = DKD8, DKD8
 
--- TKT is mainly a map choice, not an integrator scheme
+-- TKT is mainly a map choice, use Yoshida scheme as DKD
 M.TKT[1], M.TKT[2] = DKD2, DKD2
 M.TKT[3], M.TKT[4] = DKD4, DKD4
 M.TKT[5], M.TKT[6] = DKD6, DKD6
 M.TKT[7], M.TKT[8] = DKD8, DKD8
 
--- MKM is a TKT integrator scheme for 2nd order thick maps (QUAD, SEP)
-M.MKM[1], M.MKM[2] = DKD2, DKD2 -- for PTC compatibility...
-M.MKM[3], M.MKM[4] = MKM4, MKM4
-M.MKM[5], M.MKM[6] = MKM6, MKM6
-M.MKM[7], M.MKM[8] = MKM8, MKM8
+-- KMK is a scheme for 2nd order thick maps (QUAD, SEP)
+M.KMK[ 1], M.KMK[ 2] = DKD2 , DKD2 -- for PTC compatibility...
+M.KMK[ 3], M.KMK[ 4] = KMK4 , KMK4
+M.KMK[ 5], M.KMK[ 6] = KMK6 , KMK6
+M.KMK[ 7], M.KMK[ 8] = KMK8 , KMK8
+M.KMK[ 9], M.KMK[10] = KMK10, KMK10
+M.KMK[11], M.KMK[12] = KMK12, KMK12
 
 -- slices selectors -----------------------------------------------------------o
 
