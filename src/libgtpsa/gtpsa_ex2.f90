@@ -49,6 +49,6 @@ program gtpsa_ex2
   call mad_tpsa_del  (t2); t2=c_null     ! see the accuracy of asin(sin)
 
   ! destroy all created descriptors (optional cleanup)
-  call mad_desc_cleanup();
+  call mad_desc_del(c_null);
 
 end program gtpsa_ex2

@@ -46,6 +46,6 @@ int main(void)
   mad_tpsa_del(t2);
 
   // destroy all created descriptors (optional cleanup)
-  mad_desc_cleanup();
+  mad_desc_del(0);
   return 0;
 }

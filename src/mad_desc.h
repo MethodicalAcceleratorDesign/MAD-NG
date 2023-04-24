@@ -45,7 +45,7 @@ extern const desc_t *mad_desc_curr;
 
 // --- interface --------------------------------------------------------------o
 
-// -- ctor: new general interface
+// -- ctor: new general interface (warning: unique descriptor per structure/input)
 // mo = max(1, mo)
 const desc_t* mad_desc_newv(int nv, ord_t mo);
 
@@ -58,8 +58,8 @@ const desc_t* mad_desc_newvp(int nv, ord_t mo, int np_, ord_t po_);
 // po = max(po_, no[nv:nn-1]), po <= mo
 const desc_t* mad_desc_newvpo(int nv, ord_t mo, int np_, ord_t po_, const ord_t no_[nv+np_]);
 
-// -- dtor
-void  mad_desc_del    (const desc_t *d);
+// -- dtor (warning: no GTSPA must still be in use!)
+void  mad_desc_del (const desc_t *d_); // delete all registered desc if d_=null
 
 // -- introspection
 int   mad_desc_getnv  (const desc_t *d, ord_t *mo_, int *np_, ord_t *po_); // return nv
@@ -80,9 +80,6 @@ ord_t mad_desc_mono      (const desc_t *d, idx_t i, ssz_t n,       ord_t m_[n]);
 
 // for debugging
 void  mad_desc_info      (const desc_t *d, FILE *fp_);
-
-// global cleanup (warning: no GTSPA must still be in use!)
-void  mad_desc_cleanup(void);
 
 // --- end --------------------------------------------------------------------o
 
