@@ -1288,42 +1288,51 @@ mad_desc_newvpo(int nv, ord_t mo, int np_, ord_t po_, const ord_t no_[nv+np_])
   DBGFUN(<-); return ret;
 }
 
-void
-mad_desc_del (const D *d)
+static void
+mad_desc_cleanup (void)
 {
-  assert(d); DBGFUN(->);
-  D *d_ = (void*)d;
+  for (idx_t i=0; i < desc_max; ++i)
+    if (Ds[i]) mad_desc_del(Ds[i]);
+}
 
-  mad_free((void*)d_->no);
-  mad_free(d_->monos);
-  mad_free(d_->ords);
-  mad_free(d_->To);
-  mad_free(d_->Tv);
-  mad_free(d_->ord2idx);
-  mad_free(d_->tv2to);
-  mad_free(d_->to2tv);
-  mad_free(d_->H);
+void
+mad_desc_del (const D *d_)
+{
+  if (d_ == NULL) { mad_desc_cleanup(); return; }
+
+  DBGFUN(->);
+  D *d = (void*)d_;
+
+  mad_free((void*)d->no);
+  mad_free(d->monos);
+  mad_free(d->ords);
+  mad_free(d->To);
+  mad_free(d->Tv);
+  mad_free(d->ord2idx);
+  mad_free(d->tv2to);
+  mad_free(d->to2tv);
+  mad_free(d->H);
 
   if (d->L) {  // if L exists, then L_idx exists too
     for (idx_t i=0; i < 1 + d->mo * (d->mo/2); ++i) {
       mad_free(d_->L[i]);
       if (d->L_idx[i]) {
-        mad_free(*d_->L_idx[i]);  // allocated as single block
-        mad_free( d_->L_idx[i]);
+        mad_free(*d->L_idx[i]);  // allocated as single block
+        mad_free( d->L_idx[i]);
       }
     }
-    mad_free(d_->L);
-    mad_free(d_->L_idx);
+    mad_free(d->L);
+    mad_free(d->L_idx);
   }
 
   if (d->ocs) {
     int nth = d->nth + (d->nth > 1);
-    for (int t=0; t < nth; ++t) mad_free(d_->ocs[t]);
-    mad_free(d_->ocs);
+    for (int t=0; t < nth; ++t) mad_free(d->ocs[t]);
+    mad_free(d->ocs);
   }
 
   // destroy temporaries
-  del_temps(d_);
+  del_temps(d);
 
   // remove descriptor from global array
   if (d == mad_desc_curr) mad_desc_curr = NULL;
@@ -1333,15 +1342,8 @@ mad_desc_del (const D *d)
     desc_max = i;
   }
   Ds[d->id] = NULL;
-  mad_free(d_);
+  mad_free(d);
   DBGFUN(<-);
-}
-
-void
-mad_desc_cleanup (void)
-{
-  for (idx_t i=0; i < desc_max; ++i)
-    if (Ds[i]) mad_desc_del(Ds[i]);
 }
 
 // --- end --------------------------------------------------------------------o
