@@ -335,32 +335,36 @@ end
 local function track_rbend (elm, m)
   local angle, e1, e2, true_rbend in elm
 
-  e1, e2 = e1+angle/2, e2+angle/2
+  if not true_rbend then return track_sbend(elm, m, e1+angle/2, e2+angle/2) end
 
-  if not true_rbend then return track_sbend(elm, m, e1, e2) end               -- checked
-
-  get_mult(elm, m, 3)                                                         -- unchecked
+  get_mult(elm, m, 3)                                                         -- checked
 
   local ds, tdir, nmul, knl, ksl in m
   local k0, k0s, k1, k1s, k2, k2s in elm
-  local l = abs(ds)
 
-  if l < minlen then
+  if abs(ds) < minlen then
     errorf("invalid rbend '%s' length=%.4e [m] (>0 expected)", elm.name, l)
   end
   if abs(angle) < minang then
     errorf("invalid rbend '%s' angle=%.4e [rad] (~=0 expected)", elm.name, angle)
   end
+  if (e1 == 0 and e2 == 0) or (e1 ~= 0 and e2 ~= 0) then
+    m.e1, m.e2 = e1 + angle/2, e2 + angle/2
+    m.el, m.eld = arc2cord(ds,angle), ds
+    m.elc = m.el
+  else -- True parallel situation
+    if e1 == 0 then m.e1, m.e2 = angle - e2, e2
+    else            m.e1, m.e2 = e1, angle - e1 end
+    m.eld = ds
+    m.elc = arc2cord(ds, angle)
+    m.el = m.elc * math.cos(angle/2 - m.e1)
+  end
+  local l = abs(m.el)
+  m.eh = angle/ds*tdir
 
   knl[1], ksl[1] = knl[1]+k0*l  , ksl[1]+k0s*l
   knl[2], ksl[2] = knl[2]+k1*l  , ksl[2]+k1s*l
   knl[3], ksl[3] = knl[3]+k2*l/2, ksl[3]+k2s*l/2
-
--- m.el  = ds
--- m.elc = len2cord(ds, angle)
--- m.eld = len2arc (ds, angle)
-  m.el, m.eld, m.eh = arc2cord(ds,angle), ds, angle/ds*tdir
-  m.e1, m.e2, m.elc = e1, e2, m.el
 
   adj_mult(m)
 
@@ -371,7 +375,7 @@ local function track_rbend (elm, m)
   local inter, thick, kick
 
   if model == 'DKD' then
-    inter, thick, kick = DKD[method], strex_drift, rbend_strex
+    inter, thick, kick = DKD[method], strex_drift, strex_kick
   elseif m.nmul == 1 and ksl[1] == 0 then
     inter, thick, kick = thickonly  , rbend_thick , fnil
   else
