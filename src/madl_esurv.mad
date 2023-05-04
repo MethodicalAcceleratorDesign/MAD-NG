@@ -52,49 +52,54 @@ local xrotation, yrotation, srotation, translate,
 
 -- element tracking -----------------------------------------------------------o
 
-local function trackone (elm, m, track, thick, thin)
+local function trackone (elm, m, inter, thick, thin, fringe)
   local sdir, atentry, atexit in m
 
   atentry(elm, m,  sdir, -1)
-  track  (elm, m,    1 , thick, thin)
+  inter  (elm, m,    1 , thick, thin)
   atexit (elm, m, -sdir, -2)
 end
 
-local function trackelm (elm, m, track, thick, thin)
+local function trackelm (elm, m, inter, thick, thin, fringe)
   local sdir, atentry, atexit in m
   local algn = elm.misalign
   local tlt  = elm.tilt*m.tdir
   local mis  = (m.misalign or algn) and misalign or fnil
   local rot  = abs(tlt) >= minang and srotation or fnil
+  local fng  = fringe or fnil
   m.tlt, m.algn = tlt, algn
 
   atentry(elm, m,  sdir, -1)
   mis    (elm, m,  sdir)
   rot    (tlt, m,  sdir)
-  track  (elm, m,    1 , thick, thin)
+  fng    (elm, m,  sdir)
+  inter  (elm, m,    1 , thick, thin)
+  fng    (elm, m, -sdir)
   rot    (tlt, m, -sdir)
   mis    (elm, m, -sdir)
   atexit (elm, m, -sdir, -2)
 end
 
-local function tracksub (elm, m, track, thick, thin)
+local function tracksub (elm, m, inter, thick, thin, fringe)
   local sdir, atentry, atexit, __sdat in m
   local algn = elm.misalign
   local tlt  = elm.tilt*m.tdir
   local mis  = (m.misalign or algn) and misalign or fnil
   local rot  = abs(tlt) >= minang and srotation or fnil
+  local fng  = fringe or fnil
   m.tlt, m.algn = tlt, algn
 
   atentry(elm, m, sdir, -1)
   mis    (elm, m, sdir)
   rot    (tlt, m, sdir)
+  fng    (elm, m, sdir)
 
   if sdir > 0 then
     local at, lw = 0
     for i=1,#elm do
       at, lw = elm[i].sat, elm[i].sat - at
       if abs(lw) >= minlen then -- body step
-        track(elm, m, lw, thick, thin)
+        inter(elm, m, lw, thick, thin)
       end
       __sdat.clw = at
       elm[i]:track(__sdat)
@@ -102,7 +107,7 @@ local function tracksub (elm, m, track, thick, thin)
     end
     lw = 1 - at
     if abs(lw) >= minlen then  -- last body step
-      track(elm, m, lw, thick, thin)
+      inter(elm, m, lw, thick, thin)
     end
 
   else -- backtrack
@@ -110,7 +115,7 @@ local function tracksub (elm, m, track, thick, thin)
     for i=#elm,1,-1 do
       at, lw = elm[i].sat, at - elm[i].sat
       if abs(lw) >= minlen then -- body step
-        track(elm, m, lw, thick, thin)
+        inter(elm, m, lw, thick, thin)
       end
       __sdat.clw = at
       elm[i]:track(__sdat)
@@ -118,10 +123,11 @@ local function tracksub (elm, m, track, thick, thin)
     end
     lw = at
     if abs(lw) >= minlen then -- first body step
-      track(elm, m, lw, thick, thin)
+      inter(elm, m, lw, thick, thin)
     end
   end
 
+  fng   (elm, m, -sdir)
   rot   (tlt, m, -sdir)
   mis   (elm, m, -sdir)
   atexit(elm, m, -sdir, -2)
@@ -141,7 +147,7 @@ end
 
 local function track_marker (elm, m)
   m.el, m.ang = 0, 0
-  trackone(elm, m, thinonly, nil, fnil)
+  trackone(elm, m, thinonly, fnil, fnil)
 end
 
 local function track_drift (elm, m)
@@ -150,11 +156,11 @@ local function track_drift (elm, m)
 
   if is_implicit(elm) then
     local inter = m.implicit and thickonly or driftonly
-    trackone(elm, m, inter, strex_thick, nil)
+    trackone(elm, m, inter, strex_thick, fnil)
   else
     local track = #elm == 0 and trackelm or tracksub
     local inter = abs(ds) >= minlen and thickonly or driftonly
-    track(elm, m, inter, strex_thick, nil)
+    track(elm, m, inter, strex_thick, fnil)
   end
 end
 
@@ -163,13 +169,13 @@ local function track_thin (elm, m)
   m.el, m.ang = 0, angle*m.tdir
 
   local kick = abs(angle) >= minang and curex_thin or fnil
-  trackelm(elm, m, thinonly, nil, kick)
+  trackelm(elm, m, thinonly, fnil, kick)
 end
 
-local function track_thick (elm, m)
+local function track_thick (elm, m, fng_)
   local ds in m
   local angle in elm
-  local no_ang = abs(angle) < minang
+  local no_ang = abs(angle) < minang or fng_
   m.el, m.ang = ds, angle*m.tdir
 
   local inter, track, thick
@@ -180,7 +186,17 @@ local function track_thick (elm, m)
   end
 
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, inter, thick, nil)
+  track(elm, m, inter, thick, fnil, fng_)
+end
+
+local function track_rbend (elm, m)
+  local fng = nil
+
+  if elm.true_rbend then
+    fng = fnil
+  end
+
+  track_thick(elm, m, fng)
 end
 
 -- load maps into elements ----------------------------------------------------o
@@ -196,6 +212,7 @@ E.drift_element :set_methods {survey = track_drift}
 
 -- thick elements
 E.thick_element :set_methods {survey = track_thick}
+--E.rbend_element :set_methods {survey = track_rbend}
 
 -- thin elements
 E.thin_element  :set_methods {survey = track_thin}
