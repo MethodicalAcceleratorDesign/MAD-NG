@@ -638,13 +638,13 @@ end
 
 -- TKT [INTER_TEAPOT] ---------------------------------------------------------o
 
- -- version for charge=0 to avoid NaN
+-- version for k0*charge == 0 to avoid NaN
 
 local function curex_drift0 (elm, m, lw, i, ld, ca, sa, sa2, rho)
   m.atdebug(elm, m, lw, 'curex_drift0:0')
 
-  local x, px, y, py, t, pt, beam in m[i]
-  local beta = beam.beta
+  local x, px, y, py, t, pt in m[i]
+  local beta = (m[i].beam or m.beam).beta
   local   pz = sqrt(1 + (2/beta)*pt + pt^2 - px^2 - py^2)
   local  _pz = 1/pz
   local  pxt = px*_pz
@@ -670,14 +670,14 @@ local function sbend_thick_new (elm, m, lw) -- [SSEC]                        -- 
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
+    local beta = beam and beam.beta or beta
+    local  k0q = beam and k0*beam.charge or k0q
 
-    if beam and beam.charge == 0 then
+    if k0q == 0 then
       curex_drift0 (elm, m, lw, i, ld, ca, sa, sa2, rho)
       goto continue
     end
 
-    local beta = beam and beam.beta or beta
-    local  k0q = beam and k0*beam.charge or k0q
     local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
     local   pz = sqrt(pw2 - px^2)                                      -- PZ
     local   xr = x+rho
@@ -693,8 +693,10 @@ local function sbend_thick_new (elm, m, lw) -- [SSEC]                        -- 
     local  sxi = sqrt(1-xi^2)
     local    w = (ca*xi + sa*sxi) * sqrt(1-zeta^2)
     local    v = (sa*xi - ca*sxi) * zeta
-    local  xt2 = (s2a*px + sa^2*(2*pz - k0q*xr)) * xr*_ptt^2 / (w - v) -- Error arises from / (w - v) -> 1/(w-v)["040000"] = ~1e10 then reduces to ~1e-2, error of 1e-8
+    local  xt2 = (s2a*px + sa^2*(2*pz - k0q*xr)) * xr*_ptt^2 / (w - v)
     local  dxs = asinc(xt2*k0q)*xt2
+
+-- Error arises from 1/(w-v) -> ["040000"] = ~1e10 then reduces to ~1e-2, error of 1e-8
 
 --  printf("beta= %-.16e, k0q= %-.16e, rho=%-.16e, ang=%-.16e\n", beta, k0q, rho, ang)
 --  m.xdump(elm, m, pzs    , "pzs=")
@@ -723,14 +725,14 @@ local function sbend_thick_old (elm, m, lw) -- [SSEC]                        -- 
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
+    local beta = beam and beam.beta or beta
+    local  k0q = beam and k0*beam.charge or k0q
 
-    if beam and beam.charge == 0 then
+    if k0q == 0 then
       curex_drift0 (elm, m, lw, i, ld, ca, sa, sa2, rho)
       goto continue
     end
 
-    local beta = beam and beam.beta or beta
-    local  k0q = beam and k0*beam.charge or k0q
     local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
     local   pz = sqrt(pw2 - px^2)                                      -- PZ
     local  pzx = pz - k0q*(rho+x)      -- could be numerically unstable
@@ -762,6 +764,21 @@ M.sbend_kick  = \el,m,lw -> M.curex_kick(el,m,lw,true) ;                     -- 
 
 -- TKT [INTER_STREX] ----------------------------------------------------------o
 
+-- version for k0*charge == 0 to avoid NaN
+
+function M.strex_drift0 (elm, m, lw, i, l, ld)                               -- checked
+  m.atdebug(elm, m, lw, 'strex_drift0:0')
+
+  local x, px, y, py, t, pt in m[i]
+  local beta = (m[i].beam or m.beam).beta
+  local l_pz = l/sqrt(1 + (2/beta)*pt + pt^2 - px^2 - py^2)
+
+  m[i].x = x + px*l_pz
+  m[i].y = y + py*l_pz
+  m[i].t = t - l_pz*(1/beta+pt) + (1-m.T)*(ld/beta)
+
+  m.atdebug(elm, m, lw, 'strex_drift0:1')
+end
 
 local function rbend_thick_new (elm, m, lw) -- [SPAR]                        -- checked
   m.atdebug(elm, m, lw, 'rbend_thick:0')
@@ -774,8 +791,13 @@ local function rbend_thick_new (elm, m, lw) -- [SPAR]                        -- 
     local x, px, y, py, t, pt, beam in m[i]
     local beta = beam and beam.beta or beta
     local k0q  = beam and k0*beam.charge or k0q
-    local k0lq = beam and knl[1]*lw*beam.charge or k0lq
 
+    if k0q == 0 then
+      strex_drift0 (elm, m, lw, i, l, ld)
+      goto continue
+    end
+
+    local k0lq = beam and knl[1]*lw*beam.charge or k0lq
     local  npx = px - k0lq
     local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
     local _ptt = invsqrt(pw2)
@@ -792,6 +814,8 @@ local function rbend_thick_new (elm, m, lw) -- [SPAR]                        -- 
     m[i].px = npx
     m[i].y  = y + dxs*py
     m[i].t  = t - dxs*(1/beta+pt) + (1-T)*ld/beta
+
+    ::continue::
   end
 
   m.atdebug(elm, m, lw, 'rbend_thick:1')
@@ -801,15 +825,20 @@ local function rbend_thick_old (elm, m, lw) -- [SPAR]                        -- 
   m.atdebug(elm, m, lw, 'rbend_thick:0')
 
   local el, eld, knl, beam, T in m
-  local ld, k0 = (eld or el)*lw, knl[1]/abs(el)
+  local l, ld, k0 = el*lw, (eld or el)*lw, knl[1]/abs(el)
   local beta, k0q, k0lq = beam.beta, k0*beam.charge, knl[1]*lw*beam.charge
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
     local beta = beam and beam.beta or beta
     local k0q  = beam and k0*beam.charge or k0q
-    local k0lq = beam and knl[1]*lw*beam.charge or k0lq
 
+    if k0q == 0 then
+      strex_drift0 (elm, m, lw, i, l, ld)
+      goto continue
+    end
+
+    local k0lq = beam and knl[1]*lw*beam.charge or k0lq
     local  npx = px - k0lq
     local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
     local _ptt = invsqrt(pw2)
@@ -822,6 +851,8 @@ local function rbend_thick_old (elm, m, lw) -- [SPAR]                        -- 
     m[i].px = npx
     m[i].y  = y + dxs*py
     m[i].t  = t - dxs*(1/beta+pt) + (1-T)*ld/beta
+
+    ::continue::
   end
 
   m.atdebug(elm, m, lw, 'rbend_thick:1')
