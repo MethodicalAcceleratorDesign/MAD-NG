@@ -784,9 +784,7 @@ local function rbend_thick_new (elm, m, lw) -- [SPAR]                        -- 
   m.atdebug(elm, m, lw, 'rbend_thick:0')
 
   local el, eld, knl, beam, T in m
-  -- local ld, k0 = (eld or el)*lw, knl[1]/abs(el)
-  local l, ld, k0 = el*lw, (eld or el)*lw, knl[1]/abs(eld)
-  local lw = (el/eld)*lw
+  local l, ld, k0 = el*lw, (eld or el)*lw, knl[1]/abs(el)
   local beta, k0q, k0lq = beam.beta, k0*beam.charge, knl[1]*lw*beam.charge
 
   for i=1,m.npar do
@@ -811,7 +809,6 @@ local function rbend_thick_new (elm, m, lw) -- [SPAR]                        -- 
     local   xt = l*(2*px - k0lq)*_ptt^2 / xtd
     local  dxs = asinc(xt*k0q)*xt
 
-    -- MAD.dbg() 
     -- eq. 129 in Forest06 with modif. from Sagan
     m[i].x  = x + l*(2*px - k0lq) / (pz+pzs)
     m[i].px = npx
@@ -828,8 +825,7 @@ local function rbend_thick_old (elm, m, lw) -- [SPAR]                        -- 
   m.atdebug(elm, m, lw, 'rbend_thick:0')
 
   local el, eld, knl, beam, T in m
-  local l, ld, k0 = el*lw, (eld or el)*lw, knl[1]/abs(eld)
-  local lw = (el/eld)*lw
+  local l, ld, k0 = el*lw, (eld or el)*lw, knl[1]/abs(el)
   local beta, k0q, k0lq = beam.beta, k0*beam.charge, knl[1]*lw*beam.charge
 
   for i=1,m.npar do
@@ -863,7 +859,6 @@ local function rbend_thick_old (elm, m, lw) -- [SPAR]                        -- 
 end
 
 M.rbend_thick = new_bend_thick and rbend_thick_new or rbend_thick_old
-M.rbend_strex = \el,m,lw -> M.strex_kick(el,m,(m.el/m.eld)*lw)
 M.rbend_kick  = \el,m,lw -> M.strex_kick(el,m,lw,true)                       -- checked
 
 -- TKT [INTER_TKTF] -----------------------------------------------------------o
@@ -1616,14 +1611,15 @@ function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]                     -- 
   local e1, e2 = (m.e1 or elm.e1)*tdir, (m.e2 or elm.e2)*tdir
   local h1, h2 =          elm.h1 *tdir,          elm.h2 *tdir
 
-  if lw == -1 then e1, e2, h1, h2 = e2, e1, h2, h1 end -- swap
+  if sdir == -1 then e1, e2, h1, h2 = e2, e1, h2, h1 end -- swap
 
   if sdir*lw == 1 then
 ! print(lw == 1 and 'forward entry' or 'backward exit')
-    local w = true
     yrotation(-e1, m, 1)
-    if lw == -1 and m.elc ~= nil then
-      m.x, w = m.x+m.elc*sin((e2-e1)/2), false     -- EDGE_TRUE_PARALLEL
+    if m.etp_dir and m.etp_dir == lw then          -- Exiting magnet
+      for i=1,m.npar do
+        m[i].x = m[i].x+m.elc*sin((e2-e1)/2)       -- EDGE_TRUE_PARALLEL
+      end
     end
     bend_face(h1, m, 1)
     if m.frng ~= 0 then
@@ -1631,15 +1627,14 @@ function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]                     -- 
       if ftst(m.frng, fringe.mult) then mult_fringe(elm, m, 1) end
       if ftst(m.frng, fringe.qsad) then qsad_fringe(elm, m, 1) end
     end
-    if w then                                      -- ! EDGE_TRUE_PARALLEL
+    if not m.etp_dir then                 -- ! EDGE_TRUE_PARALLEL
       local a = 0.5*m.eh*(m.eld or m.el) - e1
       bend_wedge(a, m, 1)
     end
   else
 ! print(lw == -1 and 'forward exit' or 'backward entry')
-    local w = false
-    if lw == 1 and m.elc == nil then               -- ! EDGE_TRUE_PARALLEL
-      local a, w = 0.5*m.eh*(m.eld or m.el) - e2, true
+    if not m.etp_dir then                 -- ! EDGE_TRUE_PARALLEL
+      local a = 0.5*m.eh*(m.eld or m.el) - e2
       bend_wedge(a, m, -1)
     end
     if m.frng ~= 0 then
@@ -1648,8 +1643,10 @@ function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]                     -- 
       if ftst(m.frng, fringe.bend) then bend_fringe(elm, m, -1) end
     end
     bend_face(h2, m, -1)
-    if w then
-      m.x, w = m.x+m.elc*sin((e2-e1)/2)            -- EDGE_TRUE_PARALLEL
+    if m.etp_dir and m.etp_dir == lw then               -- Exiting magnet
+      for i=1,m.npar do
+        m[i].x = m[i].x+m.elc*sin((e2-e1)/2)            -- EDGE_TRUE_PARALLEL
+      end
     end
     yrotation(e2, m, -1)
   end
@@ -1878,7 +1875,7 @@ function bend_fringe (elm, m, lw) -- [FRINGE_DIPOLE]                         -- 
   local el, eld, sdir, tdir, beam in m
   local    fh = elm.hgap*(sdir*lw == -1 and elm.fintx or elm.fint)
   local  fsad = fh ~= 0 and 1/(72*fh) or 0
-  local   k0w = m.knl[1]/abs(eld or el)*tdir*lw
+  local   k0w = m.knl[1]/abs(el)*tdir*lw
   local    b0 = k0w*beam.charge
   local _beta = 1/beam.beta
 
