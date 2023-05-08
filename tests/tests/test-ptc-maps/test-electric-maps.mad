@@ -29,7 +29,7 @@ local ref_cfg = object "ref" {
 }
 
 local function testCAV() -- ~15 mins
-  local cfg = ref_cfg "cavity" {
+  local cfg = ref_cfg "cav" {
     elm =  [[
       RFCAVITY, at=0.75, l=1.5, 
       volt=${volt}, lag=${lag}, harmon=${harmon}, freq=${freq}, 
@@ -54,18 +54,60 @@ local function testCAV() -- ~15 mins
     harmon    = \s-> s.cur_cfg.freq == 0 and {2} or {0},
 
     plot_info = {
-      x_axis_attr = "${volt}",
       legend = {
-        y1 = "Total path on",
-        y2 = "Total path off",
+        y1 = "Voltage = 8",
+        y2 = "Voltage = 0",
+        y3 = "Voltage = -8",
       },
       series = {
-        "${no_totalpath} == true",
-        "not ${no_totalpath} == true",
+        "${volt} == 8",
+        "${volt} == 0",
+        "${volt} == -8",
       },
       title = "Cavity body NG vs PTC",
       filename = "cavity-body.png",
-      xrange = {-8.1, 8.1},
+    }
+  }
+  run_test(cfg)
+end
+
+local function testCAVf() -- ~5 mins
+  local cfg = ref_cfg "cavf" {
+    elm =  [[
+      RFCAVITY, at=0.75, l=1.5, fringe = ${fringe},
+      volt=${volt}, lag=${lag}, harmon=${harmon}, freq=${freq}, 
+      no_cavity_totalpath=${no_totalpath};
+    ]],
+
+    model  = {1},
+    method = {2},    
+    nslice = {1},
+    energy = {1},  -- {1, 450, 6500}
+
+    tol = 50,
+
+    alist = tblcat(
+      ref_cfg.alist, 
+      {"no_totalpath", "volt", "lag", "freq", "harmon", "fringe"}
+    ),
+    no_totalpath = {true, false},
+    volt      = -8 ..8  ..8   ,
+    lag       =  0 ..0.9..0.45,
+    freq      =  0 ..150 ..75,
+    fringe    =  {16, 0},
+    harmon    = \s-> s.cur_cfg.freq == 0 and {2} or {0},
+
+    plot_info = {
+      legend = {
+        y1 = "Fringe on",
+        y2 = "Fringe off",
+      },
+      series = {
+        "${fringe} == 16",
+        "${fringe} == 0",  
+      },
+      title = "Cavity body NG vs PTC",
+      filename = "cavity-fringe.png",
     }
   }
   run_test(cfg)
@@ -94,18 +136,61 @@ local function testCCAV() -- ~10 mins
     harmon    = \s-> s.cur_cfg.freq == 0 and {2} or {0},
 
     plot_info = {
-      x_axis_attr = "${volt}",
       legend = {
-        y1 = "Total path on",
-        y2 = "Total path off",
+        y1 = "Voltage = 8",
+        y2 = "Voltage = 0",
+        y3 = "Voltage = -8",
       },
       series = {
-        "${no_totalpath} == true",
-        "not ${no_totalpath} == true",
+        "${volt} == 8",
+        "${volt} == 0",
+        "${volt} == -8",
       },
       title = "Crab cavity body NG vs PTC",
       filename = "crabcavity-body.png",
-      xrange = {-8.1, 8.1},
+    }
+  }
+  run_test(cfg)
+end
+
+-- Fringe has no effect on crab cavity due to implementation in MAD-X (voltage is turned off and converted to a k0)
+local function testCCAVf() -- ~10 mins
+  local cfg = ref_cfg "crabcavityf" {
+    elm =  [[
+      CRABCAVITY, at=0.75, l=1.5, fringe = ${fringe},
+      volt=${volt}, lag=${lag}, harmon=${harmon}, freq=${freq}, 
+      no_cavity_totalpath=${no_totalpath};
+    ]],
+
+    model  = {1},
+    method = {2},
+    nslice = {1},
+    energy = {1, 6500},
+
+    tol = 50,
+
+    alist = tblcat(
+      ref_cfg.alist, 
+      {"volt", "lag", "freq", "harmon", "no_totalpath", "fringe"}
+    ),
+    no_totalpath = {true, false},
+    volt      = {8, 0, -8},
+    lag       =  0 ..0.9..0.45,
+    freq      =  75 ..150 ..75,
+    fringe    =  {16, 0},
+    harmon    = \s-> s.cur_cfg.freq == 0 and {2} or {0},
+
+    plot_info = {
+      legend = {
+        y1 = "Fringe on",
+        y2 = "Fringe off",
+      },
+      series = {
+        "${fringe} == 16",
+        "${fringe} == 0",  
+      },
+      title = "Crab cavity body NG vs PTC",
+      filename = "crabcavity-fringe.png",
     }
   }
   run_test(cfg)
@@ -167,6 +252,67 @@ local function testRFMULT() -- ~40 mins
   run_test(cfg)
 end 
 
+
+local function testRFMULTf() -- ~2 mins
+  local cfg = ref_cfg "rfmultipolef" {
+    elm =  [[
+      RFMULTIPOLE, at=0.75, lrad=1.5, fringe = ${fringe},
+      volt=${volt}, lag=${lag}, harmon=${harmon}, freq=${freq}, 
+      pnl=${pnl}, psl=${psl}, knl=${knl}, ksl=${ksl},
+      no_cavity_totalpath=${no_totalpath};
+      ;
+      ]],
+
+      model  = {1},
+      method = {2},    
+      nslice = {1},
+      energy = {1}, 
+  
+      tol = 11000,
+
+      alist = tblcat(
+      ref_cfg.alist, 
+      {"lag", "freq", "harmon", "no_totalpath", "knl", "ksl", "pnl", "psl", "volt", "fringe"}
+    ),
+    no_totalpath = {true, false},
+    volt      = {-8, 8}       ,
+    lag       =  {0, 0.45},
+    freq      =  0 ..75 ..75 ,
+    knl       = {
+      {0   ,  0, 0 ,  0   }, 
+      {0.5, 5, -50,  500, -1500 },
+    },
+    ksl       = {
+      {0   ,  0, 0 ,  0   }, 
+      {0.5, 5, -50, -500,  1500 },
+    },    
+    pnl       =  {
+      {}, 
+      {0.2, -0.2, 0.2, -0.2},
+    },
+    psl       = \s-> s.pnl,
+    fringe    =  {16, 0},
+    harmon    = \s-> s.cur_cfg.freq == 0 and {2} or {0},
+
+    plot_info =  \s -> {
+      series = {
+        "${volt} == " .. s.volt[1],
+        "${volt} == " .. s.volt[2],
+      },
+      legend = {
+        y1 = "Voltage =" .. s.volt[1],
+        y2 = "Voltage =" .. s.volt[2],
+      },
+      title  = "Multipole NG vs PTC tilt, no lrad",
+      filename = "rfmult-fringe.png",
+    }
+  }
+  run_test(cfg)
+end 
+
 testCAV()
+testCAVf()
 testCCAV()
+testCCAVf()
 testRFMULT()
+testRFMULTf()
