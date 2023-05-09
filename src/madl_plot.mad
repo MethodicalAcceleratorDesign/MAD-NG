@@ -516,14 +516,25 @@ local function layout_process_in (param, pseq)
   local shift   
   for i, line in srv:iter() do
     local ext_line = srv[max(1, i-1)]
+    local elm = seq[line.eidx]
     shift = vector{ext_line.x, ext_line.y, ext_line.z}
-    local elm_rot = (line.kind=="sbend" or 
-                     line.kind=="rbend" and seq[line.eidx].true_rbend == false)
-                    and matrix(3):roty(-line.angle/2)
-                    or 1
-    local rot = ext_line.__map * elm_rot
+    local rot =  ext_line.__map
+    local translation = vector(3)
+    if elm then
+      local kind, e1, e2 in elm
+      if kind=="rbend" and not (e1 and e2) then 
+        if e1 then 
+          rot:mul(matrix(3):roty(-e1), rot)
+        else
+          rot:mul(matrix(3):roty(e2 - elm.angle), rot)
+          translation[1] = -arc2cord(elm.l, elm.angle)*sin((e2-elm.angle/2))
+        end
+      elseif kind=="sbend" or kind=="rbend" then
+        rot:mul(matrix(3):roty(-line.angle/2), rot)
+      end
+    end
 
-    data[i] = {rot, shift}     -- Save the rotation and shift
+    data[i] = {rot, shift + translation}     -- Save the rotation and shift
     shift = layproj * shift    -- Rotate the shift to x-y plane for the bline
     pseq.xmin, pseq.xmax = min(pseq.xmin, shift[1]), max(pseq.xmax, shift[1])
     pseq.ymin, pseq.ymax = min(pseq.ymin, shift[2]), max(pseq.ymax, shift[2])
