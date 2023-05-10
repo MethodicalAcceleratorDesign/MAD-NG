@@ -63,7 +63,7 @@ local ongoing_init  = -2e9
 
 -- defined in elements
 sequence :setvar { dir=1, l=uninitialized,
-                   __dat={eidx={}, spos={}, upos={}, ds={}, algn={}, ne=0,}, }
+           __dat={eidx={}, spos={}, upos={}, ds={}, algn={}, elgn={}, ne=0,}, }
 
 -- identity -------------------------------------------------------------------o
 
@@ -498,6 +498,7 @@ local function sequ_pos (seq, sseq, idx, dir)
 !    data.upos[idx] = sdata.upos[1] + pos
 !    data.ds  [idx] = sdata.ds  [1]
 !    data.algn[idx] = sdata.algn[1]
+!    data.elgn[idx] = sdata.elgn[1]
 !    idx = idx + 1
 !  end
 
@@ -509,6 +510,7 @@ local function sequ_pos (seq, sseq, idx, dir)
       data.upos[ix] = sdata.upos[i] + pos
       data.ds  [ix] = sdata.ds  [i]
       data.algn[ix] = sdata.algn[i]
+      data.elgn[ix] = sdata.elgn[i]
       assert(data[ix] == sdata[i], "unexpected corrupted flat sequence")
     end
   elseif dir < 0 then
@@ -520,6 +522,7 @@ local function sequ_pos (seq, sseq, idx, dir)
       data.upos[ix] = l - (sp + ds - sdata.upos[ii] + sp) + pos
       data.ds  [ix] = ds
       data.algn[ix] = sdata.algn[ii]
+      data.elgn[ix] = sdata.elgn[ii]
       assert(data[ix] == sdata[ii], "unexpected corrupted flat sequence")
     end
   else
@@ -531,6 +534,7 @@ local function sequ_pos (seq, sseq, idx, dir)
 !    data.upos[idx+n] = sdata.upos[n] + pos
 !    data.ds  [idx+n] = sdata.ds  [n]
 !    data.algn[idx+n] = sdata.algn[n]
+!    data.elgn[idx+n] = sdata.elgn[n]
 !    idx = idx + 1
 !  end
 
@@ -688,20 +692,21 @@ end
 local function clear_sub (seq, sref)
   if is_nil(next(sref.sdir)) then return end
   local data = seq.__dat
-  local spos, upos, ds, algn, ne in data
+  local spos, upos, ds, algn, elgn, ne in data
   local j, n, nam = 2, ne
   for i=2,n-1 do
     nam = data[i].name
     if not (nam == '$start' and is_instanceOf(data[i], mkstart) or
             nam == '$end'   and is_instanceOf(data[i], mkend))  then
-      data[j], spos[j], upos[j], ds[j], algn[j], j =
-      data[i], spos[i], upos[i], ds[i], algn[i], j+1
+      data[j], spos[j], upos[j], ds[j], algn[j], elgn[j], j =
+      data[i], spos[i], upos[i], ds[i], algn[i], elgn[i], j+1
     end
   end
-  data[j], spos[j], upos[j], ds[j], algn[j], data.ne =
-  data[n], spos[n], upos[n], ds[n], algn[n], j
+  data[j], spos[j], upos[j], ds[j], algn[j], elgn[j], data.ne =
+  data[n], spos[n], upos[n], ds[n], algn[n], elgn[n], j
   for i=j+1,n do -- clear remaining slots
-    data[i], spos[i], upos[i], ds[i], algn[i] = nil, nil, nil, nil, nil
+    data[i], spos[i], upos[i], ds[i], algn[i], elgn[i] =
+        nil,     nil,     nil,   nil,     nil,     nil
   end
   build_idx(data)
 end
@@ -744,6 +749,7 @@ local function init_mm (seq)
   data.upos = table.new(ne,0)
   data.ds   = table.new(ne,0)
   data.algn = table.new(ne,0)
+  data.elgn = table.new(ne,0)
   data.ne   = ne
   seq.__dat = data
 
@@ -777,13 +783,14 @@ local function copy_mm (seq, name_)
   cdat.upos  = table.new(ne,0)
   cdat.ds    = table.new(ne,0)
   cdat.algn  = table.new(ne,0)
+  cdat.elgn  = table.new(ne,0)
   cdat.ne    = ne
   cpy.__dat  = cdat
 
   for i=1,ne do
     cdat[i] = data[i]:copy()
-    cdat.spos[i], cdat.upos[i], cdat.ds[i], cdat.algn[i] =
-    data.spos[i], data.upos[i], data.ds[i], data.algn[i]
+    cdat.spos[i], cdat.upos[i], cdat.ds[i], cdat.algn[i], cdat.elgn[i] =
+    data.spos[i], data.upos[i], data.ds[i], data.algn[i], data.elgn[i]
   end
 
   build_idx(cdat)
@@ -1042,15 +1049,20 @@ local function rmsubelm (ei, ne)
   for i=1,ne do
     if not is_integer(ei[i]) then table.remove(ei, i) ; n = n+1 end
   end
-  if n > 0 then warn("sub-elements discarded") end
   return ne-n
 end
 
 -- methods (R/W), no dict change ----------------------------------------------o
 
-local function misalign (seq, mis, rng_, sel_)
+local function misalign (seq, knd_, mis, rng_, sel_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  local data = seq.__dat
+  if not is_string(knd_) and is_nil(sel_) then
+    knd_, mis, rng_, sel_ = nil, knd_, mis, rng_ -- right shift
+  end
+  local knd = knd_ or 'error'
+  assert(knd == 'error' or knd == 'place',
+                           "invalid argument #2 (misalignment kind expected)")
+  local data = knd == 'error' and seq.__dat.elgn or seq.__dat.algn
 
   -- collect indexes of elements to misalign
   local idx_m, ne = filter(seq, rng_, sel_)
@@ -1065,36 +1077,36 @@ local function misalign (seq, mis, rng_, sel_)
   if idx_m[1 ] == 1    then table.remove(idx_m, 1) ; ne = ne-1 end
 
   -- set/update elements misalignment
-  if is_mappable(mis) then
+  if is_callable(mis) then     -- specific (functional) misalignment for all
+    for i=1,ne do
+      local algn = mis(idx_m[i])
+      if algn then
+        data[idx_m[i]] = {
+          dx    =algn.dx    , dy  =algn.dy  , ds  =algn.ds,
+          dtheta=algn.dtheta, dphi=algn.dphi, dpsi=algn.dpsi
+        }
+      end
+    end
+  elseif is_mappable(mis) then
     if #mis == 0 then              -- same (random) misalignment for all
       for i=1,ne do
-        data.algn[idx_m[i]] = {
-          dx    =mis.dx     or 0, dy  =mis.dy   or 0, ds  =mis.ds   or 0,
-          dtheta=mis.dtheta or 0, dphi=mis.dphi or 0, dpsi=mis.dpsi or 0
+        data[idx_m[i]] = {
+          dx    =mis.dx    , dy  =mis.dy  , ds  =mis.ds,
+          dtheta=mis.dtheta, dphi=mis.dphi, dpsi=mis.dpsi
         }
       end
     else                           -- specific (random) misalignment for all
       for i=1,ne do
         local algn = mis[idx_m[i]]
         if algn then
-          data.algn[idx_m[i]] = {
-            dx    =algn.dx     or 0, dy  =algn.dy   or 0, ds  =algn.ds   or 0,
-            dtheta=algn.dtheta or 0, dphi=algn.dphi or 0, dpsi=algn.dpsi or 0
+          data[idx_m[i]] = {
+            dx    =algn.dx    , dy  =algn.dy  , ds  =algn.ds,
+            dtheta=algn.dtheta, dphi=algn.dphi, dpsi=algn.dpsi
           }
         end
       end
     end
-  elseif is_callable(mis) then     -- specific (functional) misalignment for all
-    for i=1,ne do
-      local algn = mis(idx_m[i])
-      if algn then
-        data.algn[idx_m[i]] = {
-          dx    =algn.dx     or 0, dy  =algn.dy   or 0, ds  =algn.ds   or 0,
-          dtheta=algn.dtheta or 0, dphi=algn.dphi or 0, dpsi=algn.dpsi or 0
-        }
-      end
-    end
-  else error("invalid argument #2 (iterable or callable expected)") end
+  else error("invalid argument #3 (iterable or callable expected)") end
 
   return seq
 end
@@ -1170,6 +1182,7 @@ local function remove (seq, rng_, sel_)
       table.remove(data.upos, ii)
       table.remove(data.ds  , ii)
       table.remove(data.algn, ii)
+      table.remove(data.elgn, ii)
     else
       local ii, sat = modf(idx_r[i])
       if dbg then
@@ -1323,6 +1336,7 @@ local function install (seq, elm, rng_, sel_, cmp_)
       table.move(data.upos, idx, data.ne, idx+sdata.ne-2)
       table.move(data.ds  , idx, data.ne, idx+sdata.ne-2)
       table.move(data.algn, idx, data.ne, idx+sdata.ne-2)
+      table.move(data.elgn, idx, data.ne, idx+sdata.ne-2)
       for j=2,sdata.ne-1 do -- see sequ_pos
         if dbg then
           io.write("seq: installing element '", sdata[j].name, "'\n")
@@ -1332,6 +1346,7 @@ local function install (seq, elm, rng_, sel_, cmp_)
         data.upos[idx+j-2] = sdata.upos[j]+spos[ie]
         data.ds  [idx+j-2] = sdata.ds  [j]
         data.algn[idx+j-2] = sdata.algn[j]
+        data.elgn[idx+j-2] = sdata.elgn[j]
       end
       data.ne = data.ne + sdata.ne - 2
       check_drift(seq, idx+sdata.ne - 3) -- check surrounding drifts of lst
@@ -1351,6 +1366,7 @@ local function install (seq, elm, rng_, sel_, cmp_)
       table.insert(data.upos, idx, upos[ie])
       table.insert(data.ds  , idx, ins [ie].l)
       table.insert(data.algn, idx, nil)
+      table.insert(data.elgn, idx, nil)
       data.ne = data.ne + 1
       if data[idx].shared == true then   -- shared element
         data[idx] = check_shared(seq, idx)
@@ -1708,6 +1724,7 @@ sequence :set_methods {
   upos          = \s,i -> s.__dat.upos[i],
   ds            = \s,i -> s.__dat.ds  [i],
   align         = \s,i -> s.__dat.algn[i],
+  ealign        = \s,i -> s.__dat.elgn[i],
   index         = index,
 
   -- elements manipulation
