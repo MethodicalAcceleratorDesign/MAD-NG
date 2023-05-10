@@ -4,7 +4,11 @@ local eps                                                        in MAD.constant
 local is_number, is_string, is_vector, is_table                  in MAD.typeid
 local openfile, tblcpy, val2keys, fileexists, tblcat, strinter   in MAD.utility
 local pi, abs, floor, log, max                                   in math         
-local round                                                      in MAD.gmath                   
+local round                                                      in MAD.gmath    
+
+package.path = package.path .. ";../tools-test-maps/?.mad"
+local get_diff, save_results, gen_cfg, add_gen_cols, show_res,
+      plot_res, get_prev_res                                     in require "track-tool"
 
 local create_dif = require "madl_dbgmap".cmpmdump
 local plot_id = 0
@@ -110,33 +114,7 @@ local function do_trck(cfg)
 
   -- Grab PTC last map from out file and get diff with mflw[1]
   local ptc_res = getlastmap(out_dir(cfg.name .. "_p.txt")):fromptc()
-  local dif = mflw[1]:dif(ptc_res)
-  
-  -- Setup max matrix (coords x order)
-  local max_difs = matrix(6, cfg.order+1)   
-  
-  for i, c in ipairs({"x", "px", "y", "py", "t", "pt"}) do 
-    -- Get max idx for each coordinate at each order
-    local _, max_idxs = dif[c]:maxbyord()
-    
-    -- Create dummy vector to store max values
-    local max_vals = vector(#max_idxs)
-
-    -- Get max value for each order
-    max_idxs:map(\x-> x~=0 and abs(dif[c]:get(x))/eps or 0, max_vals)
-    
-    -- Add max values to row of matrix
-    max_difs:setrow(i, max_vals)
-
-    -- Get and add coordinate max to results table
-    res[c.."_eps"] = max_vals:max()
-  end
-  
-  -- Get and add order max to results table
-  for i = 1, max_difs.ncol do
-    res["order"..i-1.."_eps"] = max_difs:getcol(i):max()
-  end
-  return res
+  return get_diff(mflw[1], ptc_res, cfg.order)
 end
 
 local function run_cfg (cfg, results)
@@ -144,28 +122,7 @@ local function run_cfg (cfg, results)
   local res = do_trck(cfg)
 
   -- Add results and configuration to table
-  results:addrow{
-    __cfg=tblcpy(cfg.cur_cfg), 
-    __res=res,
-  }
-  
-  if cfg.doprnt then -- If print mode is on, print results
-    io.write(cfg.cur_cfg.cfgid, "\t")
-    -- Print max dif for each order
-    for i = 1, cfg.order+1 do
-      local ord_max_dif = res["order"..i-1.."_eps"]
-      io.write(
-        ord_max_dif > cfg.tol and (">e+" .. floor(log(ord_max_dif, 10)))
-        or string.format("%d", ord_max_dif),
-        "\t"
-      )
-    end
-    -- Print current configuration
-    for i, attr in ipairs(cfg.alist) do 
-      io.write(attr, "=", tostring(cfg.cur_cfg[attr]), ",  ")
-    end
-    io.write("\n")
-  end
+  save_results(cfg, res, results)
 
   if cfg.dodbg then -- If debug mode is on, stop when max dif is greater than tol
     for i = 1, cfg.order+1 do
@@ -183,169 +140,6 @@ local function run_cfg (cfg, results)
       end
     end
   end
-end
-
--- From cfg object, create every configuration through recursion --------------o
-local function gen_cfg(cfg, idx, gen_fun) 
-  if cfg.stop then return end -- Stop if the stop flag is set
-  local k = cfg.alist[idx]    
-  if not k then
-    cfg.cur_cfg.cfgid = cfg.cur_cfg.cfgid + 1
-    return gen_fun() -- Could be changed to any function
-  end
-  for i, v in ipairs(cfg[k]) do
-    cfg.cur_cfg[k] = v
-    gen_cfg(cfg, idx+1, gen_fun) -- Index required as this needs to stay constant during each call
-  end
-end
-
--- Add the generator columns to the table ---------------------------------------o
-local function add_gen_cols(results, cfg)
-  -- Create the result column names as a list
-  local ord_lst = {}
-  for i = 0, cfg.order do ord_lst[i+1] = "order"..i.."_eps" end
-  results.res_cols = tblcat(
-    ord_lst, {"x_eps", "px_eps", "y_eps", "py_eps", "t_eps", "pt_eps"}
-  )
-  
-  -- Add the cfg columns to the mtable
-  results:addcol("cfgid", \ri, m -> m.__cfg[ri].cfgid)
-  for _, k in ipairs(cfg.alist) do
-    results:addcol(k, \ri, m => 
-      local v = m.__cfg[ri][k] 
-      return is_table(v) and MAD.tostring(v) or v 
-    end)
-  end
-
-  -- Add the result columns to the mtable
-  for _, k in ipairs(results.res_cols) do
-    results:addcol(k, \ri, m -> round(m.__res[ri][k], 2))
-  end
-end
--------------------------------------------------------------------------------o
-
---  Output results of test ----------------------------------------------------o
-local function get_lower_bnds(res, tol)
-  if is_string(tol) then
-    local bnds_file = mtable:read(tol)
-    assert(
-      #bnds_file == #res, 
-      "The tolerance file must have the same number of rows as the configuration file"
-    )
-    return \o, ri->bnds_file[ri]["order"..o.."_eps"]
-  elseif is_number(tol) then
-    return \->tol
-  else 
-    return \o->tol[o]
-  end
-end
-
-local function show_res(res, cfg, attr_cols, tol) 
-  local tol = get_lower_bnds(res, tol)
-  local col_tbl = {}; for i = 0, res.max_order do col_tbl[i] = {} end
-  local dum_tbl = mtable(tblcpy(attr_cols))
-  dum_tbl.novector = true
-
-  io.write("For each order, the number of configurations that failed:\n")
-  for o = 0, res.max_order do
-    local err_tbl = dum_tbl:copy()
-    local max_err = 0
-    res:foreach(\r, ri =>
-      max_err = max(max_err, abs(res[ri]["order"..o.."_eps"]))
-      if res[ri]["order"..o.."_eps"] > tol(o, ri) then 
-        for i, v in ipairs(attr_cols) do
-          err_tbl[v][ri] = cfg[ri][v]
-        end 
-      end end)
-
-    -- Printing
-    io.write("\norder ", o, " (max error = ", max_err, ", tol = ", cfg.run_tol, "):\n")
-    for _, col_name in ipairs(attr_cols) do
-      if not (col_name == "cfgid") then
-        local _, key_cnt = val2keys(err_tbl:getcol(col_name))
-        io.write(col_name, "\t= ", tostring(key_cnt), "\n")
-      end
-    end
-  end
-end
-
-local function get_prev_res(test_name)
-  -- Read the previous results
-  local cfg = mtable:read(out_dir(test_name.."_cfg.tfs"))
-  local res = mtable:read(out_dir(test_name.."_res.tfs"))
-  return cfg, res
-end
--------------------------------------------------------------------------------o
-
--- Plot the results -----------------------------------------------------------o
-local to_text = \str-> str:gsub("{", ""):gsub("}", ""):gsub("%$", "")
-local plot_template = plot {
-  legendpos = "right top",
-  prolog = "reset",
-  ylabel = "Error",
-  yrange = {1e-16, 1e1}, 
-  wsizex = 1080,
-  wsizey = 720,
-  exec = false
-}
-
-local colours = {
-  "red", "blue", "green", "orange", "purple", "brown", "pink", "grey", "black"
-}
-
-local function plot_res(res_cfg_tbl, cfg, cfg_tbl_)
-  local plot_info = cfg.plot_info or {}
-  local x_axis_attr = plot_info.x_axis_attr or "${cfgid}"
-  local cfg_plot = plot_template { 
-    sid = newSID(),
-    title   = cfg.name,
-    output = plot_info.filename and plt_dir(plot_info.filename) or 2, 
-    xlabel = to_text(x_axis_attr),
-    exec = false
-  }
-  local cfg_tbl = cfg_tbl_ or res_cfg_tbl
-  local res_tbl = res_cfg_tbl
-  local n_points = #res_tbl
-  local series = plot_info.series or {"${cfgid} > 0"}
-  local n_series = #series
-  local x_data = table.new(n_series, 0)
-  local y_data = table.new(n_series, 0)
-  for i = 1, n_series do 
-    x_data[i], y_data[i] = {}, {}
-    local cnt = 1
-    for j = 1, n_points do
-      if loadstring("return " .. series[i] % cfg_tbl[j])() then
-        x_data[i][cnt] = loadstring("return " .. x_axis_attr % cfg_tbl[j])()
-        local y_value = 0
-        for i = 1, res_tbl.max_order do
-          y_value = max(y_value, res_tbl[j]["order"..i.."_eps"])
-        end
-        y_value = y_value * eps
-        y_data[i][cnt] = y_value > 1e-16 and y_value or 1e-16
-        cnt = cnt + 1
-      end
-    end
-  end
-
-  cfg_plot.data, cfg_plot.datastyles, cfg_plot.x1y1, cfg_plot.legend = {}, {}, {}, {}
-  for i = 1, n_series do
-    cfg_plot.data["x"..i] = x_data[i]
-    cfg_plot.data["y"..i] = y_data[i]
-    cfg_plot.x1y1["x"..i] = "y"..i
-    cfg_plot.datastyles["y"..i] = {
-      style = "points",
-      pointtype = i,
-      color = colours[i],
-    }
-    cfg_plot.legend["y"..i] = to_text(series[i])
-  end
-
-  plot_info.plotcfg = 
-  [[
-    set logscale y
-  ]] .. (plot_info.plotcfg or "")
-
-  cfg_plot (plot_info)
 end
 
 -- Run test -------------------------------------------------------------------o
