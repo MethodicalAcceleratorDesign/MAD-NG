@@ -1,12 +1,18 @@
 -- locals ---------------------------------------------------------------------o
-local matrix, mtable, tostring, damap, vector, object            in MAD
+local matrix, mtable, tostring, damap, vector, object, plot      in MAD
 local eps                                                        in MAD.constant
-local is_number, is_string, is_vector                            in MAD.typeid
+local is_number, is_string, is_vector, is_table                  in MAD.typeid
 local openfile, tblcpy, val2keys, fileexists, tblcat, strinter   in MAD.utility
 local pi, abs, floor, log, max                                   in math         
 local round                                                      in MAD.gmath                   
 
 local create_dif = require "madl_dbgmap".cmpmdump
+local plot_id = 0
+-- unique plot_id generator
+local function newSID ()
+  plot_id = plot_id % 25 + 1
+  return plot_id
+end
 
 local dum = damap() -- get a dummy damap object for reading
 local X0s = {{x=0   , px=0    , y=0    , py=0   , t=0   , pt=0   }, -- zero
@@ -24,6 +30,7 @@ pt0 = ${pt};
 ]]
 
 local test_ctx = [[
+snm    = ${snm};
 order  = ${order};
 icase  = ${icase};
 debug  = ${debug};
@@ -42,19 +49,27 @@ ${test_ctx}
 ]]
 
 local in_dir  = \s -> 'input/' ..(s or '')
-local mad_file = loadfile(in_dir("ref.mad"))
+local ref_file = openfile(in_dir("ref.madx"), "r")
+local madx_ref = ref_file:read("*a")
+ref_file:close()
+local ref_file = openfile(in_dir("ref.mad"), "r")
+local mad_ref, mad_file = ref_file:read("*a")
+ref_file:close()
+
 local out_dir = \s -> 'output/'..(s or '')
+local plt_dir = \s -> out_dir('plots/'..(s or ''))
 
 os.execute("mkdir -p "..out_dir()) -- Create output dir if it doesn't exist
+os.execute("mkdir -p "..plt_dir()) -- Create image dir if it doesn't exist
 -------------------------------------------------------------------------------o
 
 -- Write MAD-X script to elmseq.seq and generate a MAD-NG script and return it-o
 local function create_seq(cfg)
-  openfile(in_dir("elmseq.seq"), "w"):write(
-    strinter(madx_script, {
+  openfile(in_dir(cfg.name.."_seq.seq"), "w"):write(
+    strinter(strinter(madx_script, {
       test_ctx = test_ctx  % cfg, -- Relies on cfg.cur_cfg
       coords   = coord_str % X0s[cfg.cur_cfg.x0i],
-    }, "=") % cfg.cur_cfg
+    }, "="), cfg.cur_cfg, "=") % cfg
     ):close()
 end
 -------------------------------------------------------------------------------o
@@ -72,7 +87,7 @@ local function getlastmap(filename)
   local dam = dum:read(file)
   file:close()
   return dam
-  end
+end
 -------------------------------------------------------------------------------o
 
 -- Run track and PTC from cur_cfg and create results --------------------------o
@@ -84,9 +99,10 @@ local function do_trck(cfg)
   create_seq(cfg)
 
   -- Run MAD-X-PTC
-  os.execute(
-    '../madx64 '..in_dir("ref.madx") ..' >' .. out_dir(cfg.name .. "_p.txt")
-  )
+  assert(os.execute(
+    '../madx64 '.. in_dir(cfg.name .. "_ref.madx") 
+    ..' >' .. out_dir(cfg.name .. "_p.txt")
+  ))
   MADX.elm = nil -- Remove element so that next test can be run with new values
 
   -- Run MAD-NG track
@@ -157,8 +173,10 @@ local function run_cfg (cfg, results)
         print("Max dif greater than tolerance, stopping...")
         -- Run mad in debug mode and set the program to stop
         create_seq(cfg {debug = 6})
+        openfile(in_dir(cfg.name.."_ref.mad"), "w"):write(mad_ref%cfg):close()
         os.execute(
-          '../mad '.. in_dir("ref.mad") ..' >' .. out_dir(cfg.name .. "_n.txt")
+          '../mad '.. in_dir(cfg.name.."_ref.mad") 
+          ..' >' .. out_dir(cfg.name .. "_n.txt")
         )
         create_dif({nam=out_dir(cfg.name)})
         cfg.stop = true
@@ -193,7 +211,10 @@ local function add_gen_cols(results, cfg)
   -- Add the cfg columns to the mtable
   results:addcol("cfgid", \ri, m -> m.__cfg[ri].cfgid)
   for _, k in ipairs(cfg.alist) do
-    results:addcol(k, \ri, m -> m.__cfg[ri][k])
+    results:addcol(k, \ri, m => 
+      local v = m.__cfg[ri][k] 
+      return is_table(v) and MAD.tostring(v) or v 
+    end)
   end
 
   -- Add the result columns to the mtable
@@ -248,23 +269,103 @@ local function show_res(res, cfg, attr_cols, tol)
   end
 end
 
-local function show_prev_res(test_name, tol)
+local function get_prev_res(test_name)
   -- Read the previous results
   local cfg = mtable:read(out_dir(test_name.."_cfg.tfs"))
   local res = mtable:read(out_dir(test_name.."_res.tfs"))
-  
-  -- Show the previous results
-  show_res(res, cfg, cfg:colnames(), tol)
+  return cfg, res
 end
 -------------------------------------------------------------------------------o
+
+-- Plot the results -----------------------------------------------------------o
+local to_text = \str-> str:gsub("{", ""):gsub("}", ""):gsub("%$", "")
+local plot_template = plot {
+  legendpos = "right top",
+  prolog = "reset",
+  ylabel = "Error",
+  yrange = {1e-16, 1e1}, 
+  wsizex = 1080,
+  wsizey = 720,
+  exec = false
+}
+
+local colours = {
+  "red", "blue", "green", "orange", "purple", "brown", "pink", "grey", "black"
+}
+
+local function plot_res(res_cfg_tbl, cfg, cfg_tbl_)
+  local plot_info = cfg.plot_info or {}
+  local x_axis_attr = plot_info.x_axis_attr or "${cfgid}"
+  local cfg_plot = plot_template { 
+    sid = newSID(),
+    title   = cfg.name,
+    output = plot_info.filename and plt_dir(plot_info.filename) or 2, 
+    xlabel = to_text(x_axis_attr),
+    exec = false
+  }
+  local cfg_tbl = cfg_tbl_ or res_cfg_tbl
+  local res_tbl = res_cfg_tbl
+  local n_points = #res_tbl
+  local series = plot_info.series or {"${cfgid} > 0"}
+  local n_series = #series
+  local x_data = table.new(n_series, 0)
+  local y_data = table.new(n_series, 0)
+  for i = 1, n_series do 
+    x_data[i], y_data[i] = {}, {}
+    local cnt = 1
+    for j = 1, n_points do
+      if loadstring("return " .. series[i] % cfg_tbl[j])() then
+        x_data[i][cnt] = loadstring("return " .. x_axis_attr % cfg_tbl[j])()
+        local y_value = 0
+        for i = 1, res_tbl.max_order do
+          y_value = max(y_value, res_tbl[j]["order"..i.."_eps"])
+        end
+        y_value = y_value * eps
+        y_data[i][cnt] = y_value > 1e-16 and y_value or 1e-16
+        cnt = cnt + 1
+      end
+    end
+  end
+
+  cfg_plot.data, cfg_plot.datastyles, cfg_plot.x1y1, cfg_plot.legend = {}, {}, {}, {}
+  for i = 1, n_series do
+    cfg_plot.data["x"..i] = x_data[i]
+    cfg_plot.data["y"..i] = y_data[i]
+    cfg_plot.x1y1["x"..i] = "y"..i
+    cfg_plot.datastyles["y"..i] = {
+      style = "points",
+      pointtype = i,
+      color = colours[i],
+    }
+    cfg_plot.legend["y"..i] = to_text(series[i])
+  end
+
+  plot_info.plotcfg = 
+  [[
+    set logscale y
+  ]] .. (plot_info.plotcfg or "")
+
+  cfg_plot (plot_info)
+end
 
 -- Run test -------------------------------------------------------------------o
 local function run_test(cfg)    
   -- If the user does not want to run the test, 
   -- just show results from previous run
   if not cfg.dorun then 
-    return show_prev_res(cfg.name, cfg.tol) 
+    local cfg_tbl, res_tbl = get_prev_res(cfg.name)
+    res_tbl.max_order = cfg.order
+    if cfg.doprnt then show_res(res_tbl, cfg_tbl, cfg_tbl:colnames(), cfg.tol) end
+    if cfg.doplot then plot_res(res_tbl, cfg, cfg_tbl) end
+    return 
   end
+
+  -- Generate the reference file
+  cfg.seq_file = in_dir(cfg.name.."_seq.seq")
+  openfile(in_dir(cfg.name .. "_ref.madx"), "w"):write(madx_ref % cfg):close()
+
+  -- Load the MAD reference file
+  mad_file = loadstring(mad_ref % cfg)
 
   -- Create new table for cur_cfg for each cfg set
   cfg.cur_cfg = {cfgid = 0}
@@ -316,13 +417,19 @@ local function run_test(cfg)
     show_res(results, results, cfg.alist, cfg.tol)
   end 
 
+  -- Plot the results
+  if cfg.doplot then 
+    plot_res(results, cfg)
+  end
+
   -- Cleanup excess files if the program is not stopped mid-test
   if not cfg.stop then  
-    os.remove(out_dir(cfg.name .. "_p.txt"))
-    os.remove(in_dir("elmseq.seq"))
+    os.remove(in_dir( cfg.name .. "_ref.madx"))
+    os.remove(out_dir(cfg.name .. "_p.txt"   ))
+    os.remove(in_dir( cfg.name .. "_seq.seq" ))
     os.remove("internal_mag_pot.txt")
     os.remove("fort.18")
   end
 end
 -------------------------------------------------------------------------------o
-return { run_test = run_test, show_prev_res=show_prev_res }
+return { run_test = run_test }
