@@ -4,8 +4,8 @@ local tblcpy, fileexists, tblcat, strinter                       in MAD.utility
 local max                                                        in math         
 
 package.path = package.path .. ";../tools/?.mad"
-local get_diff, save_results, gen_cfg, add_gen_cols, show_res,
-      plot_res, get_prev_res                                     in require "track-tool"      
+local get_diff, save_results, prnt_results, gen_cfg,
+      add_trk_gen_cols, show_res, plot_trk_res, get_prev_res     in require "track-tool"      
 
 local create_dif = require "madl_dbgmap".cmpmdump
 
@@ -82,6 +82,13 @@ local function debug_chk(cfg, dif, script2)
   end
 end
 
+local function dif_save_prnt_dbg(cfg, exp, res, result_mtbl, script)
+  local dif_tbl = get_diff(exp, res, cfg.order)
+  save_results(cfg, dif_tbl, result_mtbl)
+  prnt_results(cfg, dif_tbl)
+  debug_chk(cfg, dif_tbl, script)
+end
+
 local function backtrack(cfg, results)
   -- Setup backward tracking
   local bck_cfg = tblcpy(cfg.cur_cfg)
@@ -89,14 +96,12 @@ local function backtrack(cfg, results)
 
   -- Do backward tracking
   local script = cfg.ref_script:gsub("return", "local _, mflw0 = ") .. backtrack_str
-  local bck_trck = create_run(cfg, bck_cfg, script)
-  local bck_map, exp = loadstring(bck_trck)()
+  local bck_trk = create_run(cfg, bck_cfg, script)
+  local bck_map, exp = loadstring(bck_trk)()
 
   -- Compare backward maps to initial coordinates
-  local dif = get_diff(exp, bck_map[1], cfg.order)
   cfg.cur_cfg.test_type = "backtrack"  -- Set test type
-  save_results(cfg, dif, results)
-  debug_chk(cfg, dif, bck_trck)
+  dif_save_prnt_dbg(cfg, exp, bck_map[1], results, bck_trk)
 end
 
 local function reverse_attr(cfg, results, attr)
@@ -107,9 +112,7 @@ local function reverse_attr(cfg, results, attr)
   cfg[attr] = -cfg[attr]
 
   cfg.cur_cfg.test_type = attr  -- Set test type
-  local dif = get_diff(cfg.ref_map, attr_res[1], cfg.order)
-  save_results(cfg, dif, results)
-  debug_chk(cfg, dif, attr_script)
+  dif_save_prnt_dbg(cfg, cfg.ref_map, attr_res[1], results, attr_script)
 end
 
   
@@ -139,11 +142,7 @@ local function run_cfg(cfg, equiv, results)
       
       local setup2_script = create_run(cfg, other_cfg)
       local _, res = loadstring(setup2_script)()
-      local dif = get_diff(ref[1], res[1], cfg.order)
-      save_results(cfg, dif, results)
-
-      -- If debug mode is on, stop when max dif is greater than tolerance
-      debug_chk(cfg, dif, setup2_script)
+      dif_save_prnt_dbg(cfg, ref[1], res[1], results, setup2_script)
     end
   end
 end
@@ -156,7 +155,7 @@ local function run_test(cfg, equiv)
     local cfg_tbl, res_tbl = get_prev_res(cfg.name, out_dir)
     res_tbl.max_order = cfg.order
     if cfg.doprnt then show_res(res_tbl, cfg_tbl, cfg_tbl:colnames(), cfg.tol) end
-    if cfg.doplot then plot_res(res_tbl, cfg, plt_dir, cfg_tbl) end
+    if cfg.doplot then plot_trk_res(res_tbl, cfg, plt_dir, cfg_tbl) end
     return 
   end
 
@@ -183,7 +182,7 @@ local function run_test(cfg, equiv)
   
   -- Add the generator columns to the results table
   cfg.alist = tblcat(cfg.alist, {"test_type"})
-  add_gen_cols(results, cfg)
+  add_trk_gen_cols(results, cfg)
   
   -- Decide whether to save the results
   local dosave = cfg.dosave or not (
@@ -213,7 +212,7 @@ local function run_test(cfg, equiv)
 
   -- Plot the results
   if cfg.doplot then 
-    plot_res(results, cfg, plt_dir)
+    plot_trk_res(results, cfg, plt_dir)
   end
 
   -- Cleanup excess files if the program is not stopped mid-test
@@ -225,4 +224,4 @@ local function run_test(cfg, equiv)
   end
 end
 -------------------------------------------------------------------------------o
-return { run_test = run_test, show_prev_res=show_prev_res }
+return { run_test = run_test }
