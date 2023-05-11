@@ -4,22 +4,17 @@ local openfile, fileexists, tblcat, strinter                     in MAD.utility
 local max                                                        in math         
 
 package.path = package.path .. ";../tools/?.mad"
-local get_diff, save_results, gen_cfg, add_trk_gen_cols, show_res,
-      plot_trk_res, get_prev_res, prnt_results                   in require "track-tool"
+local get_diff, save_results, gen_cfg, in_dir, out_dir, plt_dir,
+      plot_trk_res, get_prev_res, prnt_results, add_trk_gen_cols,
+      show_res                                                   in require "track-tool"
 
 local create_dif = require "madl_dbgmap".cmpmdump
-local plot_id = 0
--- unique plot_id generator
-local function newSID ()
-  plot_id = plot_id % 25 + 1
-  return plot_id
-end
 
 local dum = damap() -- get a dummy damap object for reading
 local X0s = {{x=0   , px=0    , y=0    , py=0   , t=0   , pt=0   }, -- zero
-       {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=0   }, -- 4D
-       {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=2e-5}, -- 5D
-       {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=2e-5}} -- 6D
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=0   }, -- 4D
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=2e-5}, -- 5D
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=2e-5}} -- 6D
 
 local coord_str = [[
 x0  = ${x};
@@ -49,19 +44,12 @@ energy = ${energy};
 ${test_ctx}
 ]]
 
-local in_dir  = \s -> 'input/' ..(s or '')
 local ref_file = openfile(in_dir("ref.madx"), "r")
 local madx_ref = ref_file:read("*a")
 ref_file:close()
 local ref_file = openfile(in_dir("ref.mad"), "r")
 local mad_ref, mad_file = ref_file:read("*a")
 ref_file:close()
-
-local out_dir = \s -> 'output/'..(s or '')
-local plt_dir = \s -> out_dir('plots/'..(s or ''))
-
-os.execute("mkdir -p "..out_dir()) -- Create output dir if it doesn't exist
-os.execute("mkdir -p "..plt_dir()) -- Create image dir if it doesn't exist
 -------------------------------------------------------------------------------o
 
 -- Write MAD-X script to elmseq.seq and generate a MAD-NG script and return it-o
@@ -118,24 +106,22 @@ local function run_cfg (cfg, results)
   -- Run track for a single configuration
   local res = do_trck(cfg)
 
-  -- Add results and configuration to table
   save_results(cfg, res, results)
   prnt_results(cfg, res)
-
-  if cfg.dodbg then -- If debug mode is on, stop when max dif is greater than tol
-    for i = 1, cfg.order+1 do
-      if res["order"..i-1.."_eps"] > cfg.tol then
-        print("Max dif greater than tolerance, stopping...")
-        -- Run mad in debug mode and set the program to stop
-        create_seq(cfg {debug = 6})
-        openfile(in_dir(cfg.name.."_ref.mad"), "w"):write(mad_ref%cfg):close()
-        os.execute(
-          '../mad '.. in_dir(cfg.name.."_ref.mad") 
-          ..' >' .. out_dir(cfg.name .. "_n.txt")
-        )
-        create_dif({nam=out_dir(cfg.name)})
-        cfg.stop = true
-      end
+  if not cfg.dodbg then return end-- If debug mode is on, stop when max dif is greater than tol
+  for i = 1, cfg.order+1 do
+    if res["order"..i-1.."_eps"] > cfg.tol then
+      io.write("Max dif greater than tolerance, stopping...\n")
+      -- Run mad in debug mode and set the program to stop
+      create_seq(cfg {debug = 6})
+      openfile(in_dir(cfg.name.."_ref.mad"), "w"):write(mad_ref%cfg):close()
+      os.execute(
+        '../mad '.. in_dir(cfg.name.."_ref.mad") 
+        ..' >' .. out_dir(cfg.name .. "_n.txt")
+      )
+      create_dif({nam=out_dir(cfg.name)})
+      cfg.stop = true
+      return
     end
   end
 end
@@ -170,10 +156,8 @@ local function run_test(cfg)
   }
   
   if cfg.doprnt then 
-    io.write("Running ", cfg.name, " (tol = ", cfg.tol, ")\n")
-  -- Print the header
-    io.write("cfgid\t")
-    for i = 0, cfg.order do io.write("order "..i.."\t") end
+    io.write("Running ", cfg.name, " (tol = ", cfg.tol, ")\n", "cfgid\t")
+    for i = 0, cfg.order do io.write("order ", i, "\t") end
     io.write("\n")
   end
 
