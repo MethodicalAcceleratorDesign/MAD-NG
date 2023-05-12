@@ -1,0 +1,227 @@
+-- locals ---------------------------------------------------------------------o
+local mtable, damap                                              in MAD
+local tblcpy, fileexists, tblcat, strinter                       in MAD.utility
+local max                                                        in math         
+
+package.path = package.path .. ";../tools/?.mad"
+local get_diff, save_results, prnt_results, gen_cfg,
+      add_trk_gen_cols, show_res, plot_trk_res, get_prev_res     in require "track-tool"      
+
+local create_dif = require "madl_dbgmap".cmpmdump
+
+local dum = damap() -- get a dummy damap object for reading
+
+
+-- Very useful for debugging
+local const_str = [[
+-- Constants
+local models = {'DKD', 'TKT'}
+local X0s = {{x=0   , px=0    , y=0    , py=0   , t=0   , pt=0   }, -- zero
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=0   }, -- 4D
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=2e-5}, -- 5D
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=2e-5}} -- 6D
+]]
+local track_str = [[
+local X0 = MAD.damap{nv = 6, mo = ${order}}
+for i, c in ipairs({"x", "px", "y", "py", "t", "pt"}) do 
+  X0[c]:set0(X0s[${x0i}][c])
+end
+local seq = MAD.sequence "seq" {dir = ${edir}, l=1.5, MAD.element.${elm}}
+return MAD.track { -- see ref_cfg for list of values
+  dir      = ${sdir},
+  beam     = MAD.beam {energy = ${energy}, charge=${chg}},
+  sequence = seq,
+  X0       = X0,
+! mapdef   = ${order},
+  model    = models[${model}],
+  method   = ${method},
+  nslice   = ${nslice},
+  debug    = ${debug},
+}
+]]
+
+local backtrack_str = [[
+local _, mflw = MAD.track { -- see ref_cfg for list of values
+  dir      = ${sdir},
+  beam     = MAD.beam {energy = ${energy}, charge=${chg}},
+  sequence = seq,
+  X0       = mflw0[1],
+  model    = models[${model}],
+  method   = ${method},
+  nslice   = ${nslice},
+  debug    = ${debug},
+}
+return mflw, X0
+]]
+
+local in_dir  = \s -> 'input/' ..(s or '')
+local out_dir = \s -> 'output/'..(s or '')
+local plt_dir = \s -> out_dir('plots/'..(s or ''))
+
+os.execute("mkdir -p "..out_dir()) -- Create output dir if it doesn't exist
+os.execute("mkdir -p "..plt_dir()) -- Create image dir if it doesn't exist
+-------------------------------------------------------------------------------o
+
+-- Generate a MAD-NG script from the cfg and return it-------------------------o
+local function create_run(cfg, cur_cfg, track_str_)
+  return (track_str_ and "" or const_str) .. strinter(strinter(track_str_ or track_str, {elm = cfg.elm}, "="), cur_cfg, "=") % cfg
+end
+-------------------------------------------------------------------------------o
+
+-- Run track and PTC from cur_cfg and create results --------------------------o
+local function debug_chk(cfg, dif, script2)
+  if not cfg.dodbg then return end 
+  for i = 1, cfg.order+1 do
+    if dif["order"..i-1.."_eps"] > cfg.tol then
+      print("Max dif greater than tolerance, stopping...")
+      io.open(out_dir("setup1.mad"), "w"):write(cfg.ref_script):close()
+      io.open(out_dir("setup2.mad"), "w"):write(script2):close()
+      cfg.stop = true
+      return
+    end
+  end
+end
+
+local function dif_save_prnt_dbg(cfg, exp, res, result_mtbl, script)
+  local dif_tbl = get_diff(exp, res, cfg.order)
+  save_results(cfg, dif_tbl, result_mtbl)
+  prnt_results(cfg, dif_tbl)
+  debug_chk(cfg, dif_tbl, script)
+end
+
+local function backtrack(cfg, results)
+  -- Setup backward tracking
+  local bck_cfg = tblcpy(cfg.cur_cfg)
+  bck_cfg.sdir = -1         -- Override direction
+
+  -- Do backward tracking
+  local script = cfg.ref_script:gsub("return", "local _, mflw0 = ") .. backtrack_str
+  local bck_trk = create_run(cfg, bck_cfg, script)
+  local bck_map, exp = loadstring(bck_trk)()
+
+  -- Compare backward maps to initial coordinates
+  cfg.cur_cfg.test_type = "backtrack"  -- Set test type
+  dif_save_prnt_dbg(cfg, exp, bck_map[1], results, bck_trk)
+end
+
+local function reverse_attr(cfg, results, attr)
+  -- Run reversed attribute tracking
+  cfg[attr] = -cfg[attr] 
+  local attr_script = create_run(cfg, cfg.cur_cfg)
+  local _, attr_res = loadstring(attr_script)()
+  cfg[attr] = -cfg[attr]
+
+  cfg.cur_cfg.test_type = attr  -- Set test type
+  dif_save_prnt_dbg(cfg, cfg.ref_map, attr_res[1], results, attr_script)
+end
+
+  
+local function run_cfg(cfg, equiv, results)
+  -- Get the mflow for the main config
+  cfg.ref_script = create_run(cfg, cfg.cur_cfg)
+  local _, ref = loadstring(cfg.ref_script)()
+  cfg.ref_map = ref[1]
+  
+  -- Do default checks
+  backtrack(cfg, results)            -- Backtrack
+  reverse_attr(cfg, results, "chg")  -- Change sign of chg
+  reverse_attr(cfg, results, "edir") -- Change sign of edir
+
+  -- Copy main config to make comparable config and then compare
+
+  -- Generate similar configs
+  for i, change_type in ipairs(equiv.alist) do      -- Go through list of equivalences
+    for j = 1, equiv[change_type].n do              -- Go through each equivalence
+      cfg.cur_cfg.test_type = change_type.."_"..j   -- Set test type
+      local other_cfg = tblcpy(cfg.cur_cfg)
+      
+      -- Change each attribute for the equivalence 
+      for _, attr in ipairs(equiv[change_type]) do
+        other_cfg[attr] = equiv[change_type][attr][j]
+      end
+      
+      local setup2_script = create_run(cfg, other_cfg)
+      local _, res = loadstring(setup2_script)()
+      dif_save_prnt_dbg(cfg, ref[1], res[1], results, setup2_script)
+    end
+  end
+end
+
+-- Run test -------------------------------------------------------------------o
+local function run_test(cfg, equiv)    
+  -- If the user does not want to run the test, 
+  -- just show results from previous run
+  if not cfg.dorun then 
+    local cfg_tbl, res_tbl = get_prev_res(cfg.name, out_dir)
+    res_tbl.max_order = cfg.order
+    if cfg.doprnt then show_res(res_tbl, cfg_tbl, cfg_tbl:colnames(), cfg.tol) end
+    if cfg.doplot then plot_trk_res(res_tbl, cfg, plt_dir, cfg_tbl) end
+    return 
+  end
+
+  -- Create new table for cur_cfg for each cfg set
+  cfg.cur_cfg = {cfgid = 0}
+  
+  -- Create the mtable to store the results
+  local results = mtable(cfg.name){
+    "__cfg", "__res", 
+    max_order = cfg.order, 
+    run_tol   = cfg.tol,
+  }
+  
+  if cfg.doprnt then 
+    io.write("Running ", cfg.name, " (tol = ", cfg.tol, ")\n")
+  -- Print the header
+    io.write("cfgid\t")
+    for i = 0, cfg.order do io.write("order "..i.."\t") end
+    io.write("\n")
+  end
+
+  -- Fill the mtable with the cfg and results
+  gen_cfg(cfg, 1, \-> run_cfg(cfg, equiv, results))
+  
+  -- Add the generator columns to the results table
+  cfg.alist = tblcat(cfg.alist, {"test_type"})
+  add_trk_gen_cols(results, cfg)
+  
+  -- Decide whether to save the results
+  local dosave = cfg.dosave or not (
+           fileexists(out_dir(results.name.."_cfg.tfs")) and 
+           fileexists(out_dir(results.name.."_res.tfs"))
+        )
+  
+  -- Save the results (if required)
+  if dosave then 
+    local hdr_lst = {"name", "date", "time", "origin", "max_order", "run_tol"}
+    results:write(
+      out_dir(results.name.."_cfg.tfs"), 
+      tblcat({"cfgid"}, cfg.alist), 
+      hdr_lst
+    )
+    results:write(
+      out_dir(results.name.."_res.tfs"), 
+      tblcat({"cfgid"}, results.res_cols), 
+      hdr_lst
+    ) 
+  end
+
+  -- Print the results
+  if cfg.doprnt then 
+    show_res(results, results, cfg.alist, cfg.tol)
+  end 
+
+  -- Plot the results
+  if cfg.doplot then 
+    plot_trk_res(results, cfg, plt_dir)
+  end
+
+  -- Cleanup excess files if the program is not stopped mid-test
+  if not cfg.stop then  
+    os.remove(out_dir(cfg.name .. "_p.txt"))
+    os.remove(in_dir("elmseq.seq"))
+    os.remove("internal_mag_pot.txt")
+    os.remove("fort.18")
+  end
+end
+-------------------------------------------------------------------------------o
+return { run_test = run_test }
