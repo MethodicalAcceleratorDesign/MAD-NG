@@ -170,103 +170,82 @@ end
 
 -- misalignments --------------------------------------------------------------o
 
-local T  = vector(3) -- misalignment translation
-local R  = matrix(3) -- misalignment rotation
-local Tb = vector(3) -- misalignment translation at exit (Tbar)
-local Rb = matrix(3) -- misalignment rotation    at exit (Rbar)
+local _T  = vector(3) -- misalignment translation
+local _R  = matrix(3) -- misalignment rotation
+local _Tb = vector(3) -- misalignment translation at exit (Tbar)
+local _Rb = matrix(3) -- misalignment rotation    at exit (Rbar)
 
 local misalignent, misalignexi -- forward declaration
 
 -- Misalign (lw_>0: entry, lw_<0: exit)
 
 function M.misalign (elm, m, lw_)                                            -- unchecked
-  local eal, mal = m.sequ:align(m.eidx), m.algn
-  if not (eal or mal) then return end
-
-  local etrn, erot, edx, edy, eds, edthe, edphi, edpsi
-  local mtrn, mrot, mdx, mdy, mds, mdthe, mdphi, mdpsi
-
-  if eal then
-    edx  , edy  , eds   = eal.dx     or 0, eal.dy   or 0, eal.ds   or 0
-    edthe, edphi, edpsi = eal.dtheta or 0, eal.dphi or 0, eal.dpsi or 0
-
-    etrn = abs(edx  )+abs(edy  )+abs(eds  ) >= minlen
-    erot = abs(edthe)+abs(edphi)+abs(edpsi) >= minang
-  end
-
-  if mal then
-    mdx  , mdy  , mds   = mal.dx     or 0, mal.dy   or 0, mal.ds   or 0
-    mdthe, mdphi, mdpsi = mal.dtheta or 0, mal.dphi or 0, mal.dpsi or 0
-
-    mtrn = abs(mdx  )+abs(mdy  )+abs(mds  ) >= minlen
-    mrot = abs(mdthe)+abs(mdphi)+abs(mdpsi) >= minang
-  end
-
-  if (lw_ or 1) >= 0 then
-    misalignent(elm, m,  1, etrn, erot, edx, edy, eds, edthe, edphi, edpsi)
-    misalignent(elm, m,  1, mtrn, mrot, mdx, mdy, mds, mdthe, mdphi, mdpsi)
-  else
-    misalignexi(elm, m, -1,mtrn, mrot, mdx, mdy, mds, mdthe, mdphi, mdpsi)
-    misalignexi(elm, m, -1,etrn, erot, edx, edy, eds, edthe, edphi, edpsi)
+  if (lw_ or 1) >= 0
+  then misalignent(elm, m,  1)
+  else misalignexi(elm, m, -1)
   end
 end
 
-function misalignent (elm, m, lw, trn, rot, dx, dy, ds, dthe, dphi, dpsi)
-  if not (trn or rot) then return end
+function misalignent (elm, m, lw)
   m.atdebug(elm, m, lw, 'misalign:0')
 
-  local sdir, V, W in m
+  local sdir, algn, V, W in m
 
   -- misalignment at entry and global frame
   -- forward : x1' = R*x1+T      => V = V+W*T   ; W = W*R
   -- backward: x1  = R^t*(x1'-T) => W = W*R:t() ; V = V-W*T
 
   -- translate
-  if trn and sdir > 0 then
-    T:fill{dx, dy, ds}
-    V:add(W:mul(T, U), V)  -- V = V+W*T
+  if algn.trn and sdir > 0 then
+    _T:fill{algn.dx, algn.dy, algn.ds}
+    V:add(W:mul(_T, U), V)  -- V = V+W*T
   end
 
   -- rotate
-  if rot then
-    R:rotzxy(-dphi, dthe, dpsi, sdir<0)
-    W:mul(R, W)            -- W = W*R or W*R:t()
+  if algn.rot then
+    _R:rotzxy(-algn.dphi, algn.dthe, algn.dpsi, sdir<0)
+    W:mul(_R, W)            -- W = W*R or W*R:t()
   end
 
   -- translate
-  if trn and sdir < 0 then
-    T:fill{dx, dy, ds}
-    V:sub(W:mul(T, U), V)  -- V = V-W*T
+  if algn.trn and sdir < 0 then
+    _T:fill{algn.dx, algn.dy, algn.ds}
+    V:sub(W:mul(_T, U), V)  -- V = V-W*T
   end
 
   m.atdebug(elm, m, lw, 'misalign:1')
 end
 
-function misalignexi (elm, m, lw, trn, rot, dx, dy, ds, dthe, dphi, dpsi)
-  if not (trn or rot) then return end
+function misalignexi (elm, m, lw)
   m.atdebug(elm, m, lw, 'misalignexi:0')
 
-  local el, ang, tlt, sdir, V, W in m
+  local el, ang, tlt, sdir, algn, V, W in m
+  local mang = m.mang or ang
 
   -- translation
-  if trn then T:fill{dx, dy, ds} else T:zeros() end
+  if algn.trn then _T:fill{algn.dx, algn.dy, algn.ds} else T:zeros() end
 
   -- rotation
-  if rot then R:rotzxy(-dphi, dthe, dpsi) end
+  if algn.rot then _R:rotzxy(-algn.dphi, algn.dthe, algn.dpsi) end
 
   -- compute Rbar, Tbar
-  _C.mad_mat_rtbar(Rb._dat, Tb._dat, abs(el), ang, tlt, rot and R._dat or nil, T._dat)
+  _C.mad_mat_rtbar(_Rb._dat, _Tb._dat, abs(el), mang, tlt, algn.rot and _R._dat or nil, _T._dat)
 
   -- misalignment at exit and global frame
   -- forward : x2  = Rb^t*(x2'-Tb) => W = W*Rb:t() ; V = V-W*Tb
   -- backward: x2' = Rb*x2+Tb      => V = V+W*Tb   ; W = W*Rb
 
+  -- _T:print("T")
+  -- _R:print("R")
+  -- _Tb:print("Tb")
+  -- _Rb:print("Rb")
+
   if sdir > 0 then
-    W:mult(Rb, W)          -- W = W*Rb:t()
-    V:sub(W:mul(Tb, U), V) -- V = V - W*Tb
+    W:mult(_Rb, W)          -- W = W*Rb:t()
+    V:sub(W:mul(_Tb, U), V) -- V = V - W*Tb
   else
-    V:add(W:mul(Tb, U), V) -- V = V + W*Tb
-    W:mul(Rb, W)           -- W = W*Rb
+    V:add(W:mul(_Tb, U), V) -- V = V + W*Tb
+    W:mul(_Rb, W)           -- W = W*Rb
   end
 
   m.atdebug(elm, m, lw, 'misalignexi:1')

@@ -51,6 +51,39 @@ local strex_thick, curex_thick, curex_thin                       in MAD.geomap
 local xrotation, yrotation, srotation, translate,
       changeref, changedir, changenrj, misalign                  in MAD.geomap
 
+-- misalignments --------------------------------------------------------------o
+
+local function get_algn (e, m)
+  local al = e.misalign or  m.sequ:align(m.eidx)
+  local el = m.misalign and m.sequ:elign(m.eidx) or nil
+
+  if not (al or el) then return nil end
+
+  local dx, dy, ds, dthe, dphi, dpsi = 0, 0, 0, 0, 0, 0
+
+  if al then -- element abolute/permanent misalignments
+    dx, dthe = dx+(al.dx or 0), dthe+(al.dtheta or 0) -- horizontal/azimutal
+    dy, dphi = dy+(al.dy or 0), dphi+(al.dphi   or 0) -- vertical/elevation
+    ds, dpsi = ds+(al.ds or 0), dpsi+(al.dpsi   or 0) -- longitudinal/roll
+  end
+
+  if el then -- element relative/error misalignments
+    dx, dthe = dx+(el.dx or 0), dthe+(el.dtheta or 0) -- horizontal/azimutal
+    dy, dphi = dy+(el.dy or 0), dphi+(el.dphi   or 0) -- vertical/elevation
+    ds, dpsi = ds+(el.ds or 0), dpsi+(el.dpsi   or 0) -- longitudinal/roll
+  end
+
+  local trn = abs(dx  )+abs(dy  )+abs(ds  ) >= minlen
+  local rot = abs(dthe)+abs(dphi)+abs(dpsi) >= minang
+
+  if not (trn or rot) then return nil end
+
+--local len = m.el + m.ang*dx
+--print("***** el=", m.el, "dx=", dx, "ang=", m.ang)
+
+  return {trn=trn, rot=rot, dx=dx, dy=dy, ds=ds, dthe=dthe, dphi=dphi, dpsi=dpsi}
+end
+
 -- element tracking -----------------------------------------------------------o
 
 local function trackone (elm, m, inter, thick, thin, fringe)
@@ -62,10 +95,10 @@ local function trackone (elm, m, inter, thick, thin, fringe)
 end
 
 local function trackelm (elm, m, inter, thick, thin, fringe)
-  local eidx, sdir, atentry, atexit in m
-  local algn = m.sequ:align(eidx) or elm.misalign
+  local sdir, atentry, atexit in m
+  local algn = get_algn(elm, m)
   local tlt  = elm.tilt*m.tdir
-  local mis  = (m.misalign and eidx or algn) and misalign or fnil
+  local mis  = algn and misalign or fnil
   local rot  = abs(tlt) >= minang and srotation or fnil
   local fng  = fringe or fnil
   m.tlt, m.algn = tlt, algn
@@ -79,13 +112,15 @@ local function trackelm (elm, m, inter, thick, thin, fringe)
   rot    (tlt, m, -sdir)
   mis    (elm, m, -sdir)
   atexit (elm, m, -sdir, -2)
+
+  m.tlt, m.algn = nil, nil
 end
 
 local function tracksub (elm, m, inter, thick, thin, fringe)
   local eidx, sdir, atentry, atexit, __sdat in m
-  local algn = m.sequ:align(eidx) or elm.misalign
+  local algn = get_algn(elm, m)
   local tlt  = elm.tilt*m.tdir
-  local mis  = (m.misalign and eidx or algn) and misalign or fnil
+  local mis  = algn and misalign or fnil
   local rot  = abs(tlt) >= minang and srotation or fnil
   local fng  = fringe or fnil
   m.tlt, m.algn, m.eidx = tlt, algn, nil
@@ -137,7 +172,7 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
   mis   (elm, m, -sdir)
   atexit(elm, m, -sdir, -2)
 
-  m.eidx = eidx
+  m.tlt, m.algn, m.eidx = nil, nil, eidx
 end
 
 -- kinds ----------------------------------------------------------------------o
@@ -155,6 +190,7 @@ end
 local function track_marker (elm, m)
   m.el, m.ang = 0, 0
   trackone(elm, m, thinonly, fnil, fnil)
+  m.el, m.ang = nil, nil
 end
 
 local function track_drift (elm, m)
@@ -169,6 +205,8 @@ local function track_drift (elm, m)
     local inter = abs(ds) >= minlen and thickonly or driftonly
     track(elm, m, inter, strex_thick, fnil)
   end
+
+  m.el, m.ang = nil, nil
 end
 
 local function track_thin (elm, m)
@@ -177,6 +215,8 @@ local function track_thin (elm, m)
 
   local kick = abs(angle) >= minang and curex_thin or fnil
   trackelm(elm, m, thinonly, fnil, kick)
+
+  m.el, m.ang = nil, nil
 end
 
 local function track_thick (elm, m, fng_)
@@ -194,6 +234,8 @@ local function track_thick (elm, m, fng_)
 
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, fnil, fng_)
+
+  m.el, m.ang = nil, nil
 end
 
 -- rbend special --------------------------------------------------------------o
@@ -227,6 +269,8 @@ local fng_e  = \e, m, s -> yrotation(e, m, -0.5)
 local function track_rbend (elm, m)
   local fng = nil -- default: curved rbend aka sbend with parallel pole faces
 
+  m.mang = 0
+
   if elm.true_rbend then
     local e1, e2, angle in elm
     m.elc = arc2cord(m.ds, angle)
@@ -246,7 +290,7 @@ local function track_rbend (elm, m)
   end
 
   track_thick(elm, m, fng)
-  m.e1, m.e2, m.elc = nil, nil, nil
+  m.e1, m.e2, m.el, m.elc, m.mang = nil, nil, nil, nil, nil
 end
 
 -- load maps into elements ----------------------------------------------------o

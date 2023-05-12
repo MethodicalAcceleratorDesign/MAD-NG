@@ -237,18 +237,30 @@ local function translate (elm, m, lw_) -- [TRANS]                            -- 
 
   m.atdebug(elm, m, lw_, 'translate:0')
 
-  local sdir, tdir, beam in m
+  local tdir in m
   local lw = lw_ or 1
-  local _beta = 1/beam.beta
-  local dx, dy, ds = dx*lw*tdir, dy*lw*tdir, ds*lw*sdir
+  local dx, dy = dx*lw*tdir, dy*lw*tdir
 
+  if abs(ds) < minlen then
+   for i=1,m.npar do
+     local x, y in m[i]
+     m[i].x = x - dx
+     m[i].y = y - dy
+   end
+   return
+  end
+
+  -- ds is treated as a drift without correction for the time of flight
+  local l = ds*lw*m.sdir
+  local _beta = 1/m.beam.beta
   for i=1,m.npar do
-    local x, y, t, beam in m[i]
-    local _beta = beam and 1/beam.beta or _beta
+   local x, px, y, py, t, pt, beam in m[i]
+   local _beta = beam and 1/beam.beta or _beta
+   local  l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
 
-    m[i].x = x - dx
-    m[i].y = y - dy
-    m[i].t = t - ds*_beta
+   m[i].x = x + px*l_pz - dx
+   m[i].y = y + py*l_pz - dy
+   m[i].t = t - l_pz*(_beta+pt)
   end
 
   m.atdebug(elm, m, lw_, 'translate:1')
@@ -334,101 +346,79 @@ end
 
 -- misalignments --------------------------------------------------------------o
 
+local _T  = vector(3) -- misalignment translation
+local _R  = matrix(3) -- misalignment rotation
+local _Tb = vector(3) -- misalignment translation at exit (Tbar)
+local _Rb = matrix(3) -- misalignment rotation    at exit (Rbar)
+
 local misalignent, misalignexi -- forward declaration
 
 -- Misalign (lw_>0: entry, lw_<0: exit)
 
 function M.misalign (elm, m, lw_)                                            -- unchecked
-  local eal, mal = m.sequ:align(m.eidx), m.algn
-  if not (eal or mal) then return end
-
-  local etrn, erot, edx, edy, eds, edthe, edphi, edpsi
-  local mtrn, mrot, mdx, mdy, mds, mdthe, mdphi, mdpsi
-
-  if eal then
-    edx  , edy  , eds   = eal.dx     or 0, eal.dy   or 0, eal.ds   or 0
-    edthe, edphi, edpsi = eal.dtheta or 0, eal.dphi or 0, eal.dpsi or 0
-
-    etrn = abs(edx  )+abs(edy  )+abs(eds  ) >= minlen
-    erot = abs(edthe)+abs(edphi)+abs(edpsi) >= minang
-  end
-
-  if mal then
-    mdx  , mdy  , mds   = mal.dx     or 0, mal.dy   or 0, mal.ds   or 0
-    mdthe, mdphi, mdpsi = mal.dtheta or 0, mal.dphi or 0, mal.dpsi or 0
-
-    mtrn = abs(mdx  )+abs(mdy  )+abs(mds  ) >= minlen
-    mrot = abs(mdthe)+abs(mdphi)+abs(mdpsi) >= minang
-  end
-
-  if (lw_ or 1) >= 0 then
-    misalignent(elm, m,  1, etrn, erot, edx, edy, eds, edthe, edphi, edpsi)
-    misalignent(elm, m,  1, mtrn, mrot, mdx, mdy, mds, mdthe, mdphi, mdpsi)
-  else
-    misalignexi(elm, m, -1, mtrn, mrot, mdx, mdy, mds, mdthe, mdphi, mdpsi)
-    misalignexi(elm, m, -1, etrn, erot, edx, edy, eds, edthe, edphi, edpsi)
+  if (lw_ or 1) >= 0
+  then misalignent(elm, m,  1)
+  else misalignexi(elm, m, -1)
   end
 end
 
-function misalignent (elm, m, lw, trn, rot, dx, dy, ds, dthe, dphi, dpsi)                                            -- unchecked
-  if not (trn or rot) then return end
+function misalignent (elm, m, lw)                                            -- unchecked
   m.atdebug(elm, m, lw, 'misalign:0')
 
-  local sdir, tdir in m
+  local sdir, tdir, algn in m
 
   -- misalignment at entry and local/global frames
   -- forward : x1' = R*x1+T
   -- backward: x1  = R^-1*(x1'-T)
 
   -- rotate
-  if rot and sdir > 0 then
-    yrotation( dthe, m,  1)
-    xrotation(-dphi, m,  1)
-    srotation( dpsi, m,  1)
+  if algn.rot and sdir > 0 then
+    yrotation( algn.dthe, m,  1)
+    xrotation(-algn.dphi, m,  1)
+    srotation( algn.dpsi, m,  1)
   end
 
   -- translate
-  if trn then
-    translate({dx=dx*tdir, dy=dy*tdir, ds=ds*sdir}, m, sdir)
+  if algn.trn then
+    translate({dx=algn.dx*tdir, dy=algn.dy*tdir, ds=algn.ds*sdir}, m, sdir)
   end
 
   -- rotate
-  if rot and sdir < 0 then
-    srotation( dpsi, m, -1)
-    xrotation(-dphi, m, -1)
-    yrotation( dthe, m, -1)
+  if algn.rot and sdir < 0 then
+    srotation( algn.dpsi, m, -1)
+    xrotation(-algn.dphi, m, -1)
+    yrotation( algn.dthe, m, -1)
   end
 
   m.atdebug(elm, m, lw, 'misalign:1')
 end
 
-local _T  = vector(3) -- misalignment translation
-local _R  = matrix(3) -- misalignment rotation
-local _Tb = vector(3) -- misalignment translation at exit (Tbar)
-local _Rb = matrix(3) -- misalignment rotation    at exit (Rbar)
-
-function misalignexi (elm, m, lw, trn, rot, dx, dy, ds, dthe, dphi, dpsi)                                            -- unchecked
-  if not (trn or rot) then return end
+function misalignexi (elm, m, lw)                                            -- unchecked
   m.atdebug(elm, m, lw, 'misalignexi:0')
 
-  local el, eh, tlt, sdir, tdir in m
-  local ang = elm.angle*tdir
+  local el, ang, tlt, sdir, tdir, algn in m
+  local mang = m.mang or ang
 
   -- translation
-  if trn then _T:fill{dx, dy, ds} else _T:zeros() end
+  if algn.trn then _T:fill{algn.dx, algn.dy, algn.ds} else _T:zeros() end
 
   -- rotation
-  if rot then _R:rotzxy(-dphi, dthe, dpsi) end
+  if algn.rot then _R:rotzxy(-algn.dphi, algn.dthe, algn.dpsi) end
 
   -- compute Rbar, Tbar
-  _C.mad_mat_rtbar(_Rb._dat, _Tb._dat, abs(el), ang, tlt, rot and _R._dat or nil, _T._dat)
+  _C.mad_mat_rtbar(_Rb._dat, _Tb._dat, abs(el), mang, tlt, algn.rot and _R._dat or nil, _T._dat)
 
   -- misalignment at exit and local/global frames
   -- forward : x2  = Rb^-1*(x2'-Tb)
   -- backward: x2' = Rb*x2+Tb
 
+  -- _T:print("T")
+  -- _R:print("R")
+  -- _Tb:print("Tb")
+  -- _Rb:print("Rb")
+
   -- rotate
-  if rot and sdir > 0 then
+  if algn.rot and sdir > 0 then
     local ax, ay, az = _Rb:torotzxy()
     srotation(az, m, -1)
     xrotation(ax, m, -1)
@@ -436,12 +426,12 @@ function misalignexi (elm, m, lw, trn, rot, dx, dy, ds, dthe, dphi, dpsi)       
   end
 
   -- translate
-  if trn then
+  if algn.trn then
     translate({dx=_Tb[1]*tdir, dy=_Tb[2]*tdir, ds=_Tb[3]*sdir}, m, -sdir)
   end
 
   -- rotate
-  if rot and sdir < 0 then
+  if algn.rot and sdir < 0 then
     local ax, ay, az = _Rb:torotzxy()
     yrotation(ay, m, 1)
     xrotation(ax, m, 1)
