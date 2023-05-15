@@ -36,8 +36,9 @@ local fnil, bind3rd          in MAD.gfunc
 local errorf                 in MAD.utility
 local minlen, minang         in MAD.constant
 local is_implicit            in element.drift
+local arc2cord, arc2len      in MAD.gmath
 
-local abs                    in math
+local abs, sin               in math
 
 -- integrator schemes ---------------------------------------------------------o
 
@@ -49,6 +50,39 @@ local strex_thick, curex_thick, curex_thin                       in MAD.geomap
 
 local xrotation, yrotation, srotation, translate,
       changeref, changedir, changenrj, misalign                  in MAD.geomap
+
+-- misalignments --------------------------------------------------------------o
+
+local function get_algn (e, m)
+  local al = e.misalign or  m.sequ:align(m.eidx)
+  local el = m.misalign and m.sequ:elign(m.eidx) or nil
+
+  if not (al or el) then return nil end
+
+  local dx, dy, ds, dthe, dphi, dpsi = 0, 0, 0, 0, 0, 0
+
+  if al then -- element abolute/permanent misalignments
+    dx, dthe = dx+(al.dx or 0), dthe+(al.dtheta or 0) -- horizontal/azimutal
+    dy, dphi = dy+(al.dy or 0), dphi+(al.dphi   or 0) -- vertical/elevation
+    ds, dpsi = ds+(al.ds or 0), dpsi+(al.dpsi   or 0) -- longitudinal/roll
+  end
+
+  if el then -- element relative/error misalignments
+    dx, dthe = dx+(el.dx or 0), dthe+(el.dtheta or 0) -- horizontal/azimutal
+    dy, dphi = dy+(el.dy or 0), dphi+(el.dphi   or 0) -- vertical/elevation
+    ds, dpsi = ds+(el.ds or 0), dpsi+(el.dpsi   or 0) -- longitudinal/roll
+  end
+
+  local trn = abs(dx  )+abs(dy  )+abs(ds  ) >= minlen
+  local rot = abs(dthe)+abs(dphi)+abs(dpsi) >= minang
+
+  if not (trn or rot) then return nil end
+
+--local len = m.el + m.ang*dx
+--print("***** el=", m.el, "dx=", dx, "ang=", m.ang)
+
+  return {trn=trn, rot=rot, dx=dx, dy=dy, ds=ds, dthe=dthe, dphi=dphi, dpsi=dpsi}
+end
 
 -- element tracking -----------------------------------------------------------o
 
@@ -62,9 +96,9 @@ end
 
 local function trackelm (elm, m, inter, thick, thin, fringe)
   local sdir, atentry, atexit in m
-  local algn = elm.misalign
+  local algn = get_algn(elm, m)
   local tlt  = elm.tilt*m.tdir
-  local mis  = (m.misalign or algn) and misalign or fnil
+  local mis  = algn and misalign or fnil
   local rot  = abs(tlt) >= minang and srotation or fnil
   local fng  = fringe or fnil
   m.tlt, m.algn = tlt, algn
@@ -78,16 +112,22 @@ local function trackelm (elm, m, inter, thick, thin, fringe)
   rot    (tlt, m, -sdir)
   mis    (elm, m, -sdir)
   atexit (elm, m, -sdir, -2)
+
+  m.tlt, m.algn = nil, nil
 end
 
 local function tracksub (elm, m, inter, thick, thin, fringe)
-  local sdir, atentry, atexit, __sdat in m
-  local algn = elm.misalign
+  local eidx, sdir, atentry, atexit, __sdat in m
+  local algn = get_algn(elm, m)
   local tlt  = elm.tilt*m.tdir
-  local mis  = (m.misalign or algn) and misalign or fnil
+  local mis  = algn and misalign or fnil
   local rot  = abs(tlt) >= minang and srotation or fnil
   local fng  = fringe or fnil
-  m.tlt, m.algn = tlt, algn
+  m.tlt, m.algn, m.eidx = tlt, algn, nil
+
+  if not eidx then
+    errorf("invalid subelement survey %s (contain subelements)", elm.name)
+  end
 
   atentry(elm, m, sdir, -1)
   mis    (elm, m, sdir)
@@ -131,6 +171,8 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
   rot   (tlt, m, -sdir)
   mis   (elm, m, -sdir)
   atexit(elm, m, -sdir, -2)
+
+  m.tlt, m.algn, m.eidx = nil, nil, eidx
 end
 
 -- kinds ----------------------------------------------------------------------o
@@ -148,6 +190,7 @@ end
 local function track_marker (elm, m)
   m.el, m.ang = 0, 0
   trackone(elm, m, thinonly, fnil, fnil)
+  m.el, m.ang = nil, nil
 end
 
 local function track_drift (elm, m)
@@ -162,6 +205,8 @@ local function track_drift (elm, m)
     local inter = abs(ds) >= minlen and thickonly or driftonly
     track(elm, m, inter, strex_thick, fnil)
   end
+
+  m.el, m.ang = nil, nil
 end
 
 local function track_thin (elm, m)
@@ -170,13 +215,15 @@ local function track_thin (elm, m)
 
   local kick = abs(angle) >= minang and curex_thin or fnil
   trackelm(elm, m, thinonly, fnil, kick)
+
+  m.el, m.ang = nil, nil
 end
 
 local function track_thick (elm, m, fng_)
   local ds in m
   local angle in elm
   local no_ang = abs(angle) < minang or fng_
-  m.el, m.ang = ds, angle*m.tdir
+  m.el, m.ang = fng_ and m.el or ds, angle*m.tdir
 
   local inter, track, thick
   if abs(ds) >= minlen then -- trick: driftonly+thick <=> thinonly+thin
@@ -187,16 +234,63 @@ local function track_thick (elm, m, fng_)
 
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, fnil, fng_)
+
+  m.el, m.ang = nil, nil
 end
 
+-- rbend special --------------------------------------------------------------o
+
+local function fng_e1 (e, m, s)
+  local e1, e2, elc, sdir in m
+  local d = s*sdir
+  if d == -1 then
+    local e_ = {name=e.name, dx=elc*sin((e2-e1)/2), dy=0, ds=0}
+    translate(e_, m, -1) -- translation independant of direction
+    yrotation(e2, m, -1)
+  elseif e1 ~= 0 then
+    yrotation(e1, m, -1)
+  end
+end
+
+local function fng_e2 (e, m, s)
+  local e1, e2, elc, sdir in m
+  local d = s*sdir
+  if d == 1 then
+    local e_ = {name=e.name, dx=elc*sin((e2-e1)/2), dy=0, ds=0}
+    yrotation(e1, m, -1)
+    translate(e_, m, -1) -- translation independant of direction
+  elseif e2 ~= 0 then
+    yrotation(e2 , m, -1)
+  end
+end
+
+local fng_e  = \e, m, s -> yrotation(e, m, -0.5)
+
 local function track_rbend (elm, m)
-  local fng = nil
+  local fng = nil -- default: curved rbend aka sbend with parallel pole faces
+
+  m.mang = 0
 
   if elm.true_rbend then
-    fng = fnil
+    local e1, e2, angle in elm
+    m.elc = arc2cord(m.ds, angle)
+    if e1 and e2 then -- MAD-like wedge rbend
+      m.el = m.elc
+      fng = fng_e
+    else              -- true parallel rbend
+      m.el = arc2len(m.ds, angle)
+      if e1 then
+        m.e1, m.e2 = e1, angle - e1
+        fng = fng_e1
+      else
+        m.e1, m.e2 = angle - e2, e2
+        fng = fng_e2
+      end
+    end
   end
 
   track_thick(elm, m, fng)
+  m.e1, m.e2, m.el, m.elc, m.mang = nil, nil, nil, nil, nil
 end
 
 -- load maps into elements ----------------------------------------------------o

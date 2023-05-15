@@ -1,0 +1,216 @@
+-- ../mad test-ng-maps.mad
+-- assume ../madx64 to be present...
+
+local object                                                    in MAD
+local tblcat                                                    in MAD.utility
+local run_test in require("trackvsng")
+
+-- The setup for the tests ----------------------------------------------------o
+
+--[[
+      edir  sdir  chg  |  tdir  bdir
+FODO   1     1     1   |   1     1
+FODO  -1     1     1   |  -1    -1
+ODOF   1    -1     1   |  -1    -1
+ODOF  -1    -1     1   |   1     1
+s
+DOFO   1     1    -1   |   1    -1
+DOFO  -1     1    -1   |  -1     1
+OFOD   1    -1    -1   |  -1     1
+OFOD  -1    -1    -1   |   1    -1
+
+Usage of directions:
+  - lengths        are multiplied by sdir
+  - bending angles are multiplied by tdir
+  - strengths      are multiplied by bdir
+--]]
+
+local ref_cfg = object "ref" {
+  -- How to run the tests
+  dorun  = true, -- Default: true 
+  dosave = true, -- Default: false
+  doplot = true, -- Default: false
+  doprnt = true, -- Default: false
+  dodbg  = false, -- Default: false
+  
+  -- list of variables in the tests
+  alist = {"model", "energy", "method", "nslice", "x0i"}, --attributes list
+  tol = 1000,
+
+  -- list of values that are used to run test but are not changed throughout
+  order  = 4,        -- 2/4
+  icase  = 56,       -- 56/6
+  debug  = 0,        -- 0/6
+
+  -- list of core values that are changed manually throughout the tests
+  edir   = 1,        -- 1/-1 (element direction)
+  sdir   = 1,        -- 1/-1 (tracking direction)
+  chg    = 1,        -- 1/-1 (charge)
+  tdir   = \s-> s.edir * s.sdir,          -- tracking time direction
+  bdir   = \s-> s.edir * s.sdir * s.chg,  -- tracking beam direction
+
+  x0i    = 1..4,       -- 0, 4D, 5D, 6D (see get_mad_str)
+}
+
+
+-- The actual test functions --------------------------------------------------o
+local function testQUAD() -- Test the body (~2 min)
+  local cfg = ref_cfg "quad" {
+    elm = "quadrupole 'quad' {at=0.75, l=1.5, k1=${bdir}*${k1}, k1s=${bdir}*${k1s},tilt=${tilt}, fringe=0}",
+    model  = 1..2,
+    method = 2..6..2,    
+    nslice = 1..3,
+    energy = {1, 6500},  -- {1, 450, 6500}
+
+    tol = 100,
+
+    k1     = {-0.15, 0, 0.2},
+    k1s    = {-0.15, 0, 0.2},
+    tilt   = 0,
+    alist = tblcat(ref_cfg.alist, {"k1", "k1s"}),
+
+    plot_info = {
+      title       = "Quadrupole NG v NG Maps",
+      series      = {
+        "'${test_type}' == 'edir'",
+        "'${test_type}' == 'chg'",
+        "'${test_type}' == 'backtrack'",
+        "'${test_type}' == 'rotate_1'",
+        "'${test_type}' == 'rotate_2'",
+      },
+      legend      = {
+        y1 = "Reverse edir",
+        y2 = "Reverse charge",
+        y3 = "Backtrack",
+        y4 = "Rotate by pi/4",
+        y5 = "Rotate by -pi/4",
+      },
+      filename = "quad-ngvng.png",
+    }
+  }
+  local equiv = object "quad" {
+    rotate = object { -- Requires deferred expression
+      "tilt", "k1", "k1s",
+      tilt = {"math.pi/4", "-math.pi/4"}, 
+      k1  := {-cfg.cur_cfg.k1s,  cfg.cur_cfg.k1s}, 
+      k1s := { cfg.cur_cfg.k1 , -cfg.cur_cfg.k1 },
+      
+      n = 2,
+    },
+
+    alist = {"rotate"},
+  }
+  run_test(cfg, equiv)
+end
+
+local function testSBEND() -- Test the body (~2 min)
+  local cfg = ref_cfg "sbend" {
+    elm = "sbend 'sbend' {at=0.75, l=1.5, k0=${bdir}*math.pi/${angle_div}, angle=${tdir}*math.pi/${angle_div}*1.5, fringe=0}",
+    model  = {1, 2},
+    method = 2..6..2,    
+    nslice = 1..3,
+    energy = {1, 6500},  -- {1, 450, 6500}
+
+    tol = 600,
+
+    angle_div = {50, 100, 200, 500, 1000},
+    alist = tblcat(ref_cfg.alist, {"angle_div"}),
+
+    plot_info = {
+      title       = "SBend NG v NG Maps",
+      series      = {
+        "'${test_type}' == 'edir'",
+        "'${test_type}' == 'chg'",
+        "'${test_type}' == 'backtrack'",
+      },
+      legend      = {
+        y1 = "Reverse edir",
+        y2 = "Reverse charge",
+        y3 = "Backtrack",
+      },
+      filename = "sbend-ngvng.png",
+    }
+  }
+  run_test(cfg, {alist = {}})
+end
+
+local function testRBEND() -- Test the body (~2 min)
+  local cfg = ref_cfg "rbend" {
+    elm = [[rbend 'rbend' {
+      at=0.75, l=1.5, k0=${bdir}*math.pi/${angle_div}, angle=${tdir}*math.pi/${angle_div}*1.5, fringe=0, 
+      e1 = ${edir}*${e1}*math.pi/${angle_div}*1.5, e2 = ${edir}*${e2}*math.pi/${angle_div}*1.5
+    }]],
+    model  = {1, 2},
+    method = 2..6..2,    
+    nslice = 1..3,
+    energy = {1, 6500},  -- {1, 450, 6500}
+
+    tol = 2000,
+
+    angle_div = {50, 100, 200, 500, 1000},
+    e1 = {-0.15, 0, 0.2},
+    e2 = {-0.2, 0, 0.15},
+    alist = tblcat(ref_cfg.alist, {"angle_div", "e1", "e2"}),
+
+    plot_info = {
+      title       = "RBend NG v NG Maps",
+      series      = {
+        "'${test_type}' == 'edir'",
+        "'${test_type}' == 'chg'",
+        "'${test_type}' == 'backtrack'",
+      },
+      legend      = {
+        y1 = "Reverse edir",
+        y2 = "Reverse charge",
+        y3 = "Backtrack",
+      },
+      filename = "rbend-ngvng.png",
+    }
+  }
+  run_test(cfg, {alist = {}})
+end
+
+local function testRFMULTIPOLE()
+  local cfg = ref_cfg "rfmultipole" {
+    elm = "${element} 'rfm' {at=0.75, l=${l}, volt=0, freq=75, knl=${knl}, fringe=0}",
+    model  = {1, 2},
+    method = 2..6..2,
+    nslice = 1..3,
+    energy = {1, 6500},  -- {1, 450, 6500}
+
+    element = "rfmultipole",
+    l = 1.5,
+
+    tol = 100,
+
+    knl = {
+      {0, 0, 0, 0},
+      {0.5, 0, 0, 0},
+      {0, 5, 0, 0},
+      {0, 0, 50, 0},
+      {0, 0, 0, 500},
+      {0.5, 5, 50, 500},
+    },
+    alist = tblcat(ref_cfg.alist, {"knl"}),
+  }
+
+  local equiv = object "rfm" {
+    multipole = object {
+      "element", "l",
+      element := {
+        "multipole"
+      },
+      l = {0},
+
+      n = 1,
+    },
+
+    alist = {"multipole"},
+  }
+  run_test(cfg, equiv)
+end
+
+testQUAD()
+testSBEND()
+testRBEND()
+-- testRFMULTIPOLE()

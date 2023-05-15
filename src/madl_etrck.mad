@@ -141,6 +141,36 @@ local function get_multphas (elm, m, n)
   end
 end
 
+-- misalignments --------------------------------------------------------------o
+
+local function get_algn (e, m)
+  local al = e.misalign or  m.sequ:align(m.eidx)
+  local el = m.misalign and m.sequ:elign(m.eidx) or nil
+
+  if not (al or el) then return nil end
+
+  local dx, dy, ds, dthe, dphi, dpsi = 0, 0, 0, 0, 0, 0
+
+  if al then -- element abolute/permanent misalignments
+    dx, dthe = dx+(al.dx or 0), dthe+(al.dtheta or 0) -- horizontal/azimutal
+    dy, dphi = dy+(al.dy or 0), dphi+(al.dphi   or 0) -- vertical/elevation
+    ds, dpsi = ds+(al.ds or 0), dpsi+(al.dpsi   or 0) -- longitudinal/roll
+  end
+
+  if el then -- element relative/error misalignments
+    dx, dthe = dx+(el.dx or 0), dthe+(el.dtheta or 0) -- horizontal/azimutal
+    dy, dphi = dy+(el.dy or 0), dphi+(el.dphi   or 0) -- vertical/elevation
+    ds, dpsi = ds+(el.ds or 0), dpsi+(el.dpsi   or 0) -- longitudinal/roll
+  end
+
+  local trn = abs(dx  )+abs(dy  )+abs(ds  ) >= minlen
+  local rot = abs(dthe)+abs(dphi)+abs(dpsi) >= minang
+
+  if not (trn or rot) then return nil end
+
+  return {trn=trn, rot=rot, dx=dx, dy=dy, ds=ds, dthe=dthe, dphi=dphi, dpsi=dpsi}
+end
+
 -- element tracking -----------------------------------------------------------o
 
 local function trackone (elm, m, inter, thick, thin, fringe)
@@ -153,9 +183,9 @@ end
 
 local function trackelm (elm, m, inter, thick, thin, fringe)
   local sdir, atentry, atexit in m
-  local algn = elm.misalign
+  local algn = get_algn(elm, m)
   local tlt  = elm.tilt*m.tdir
-  local mis  = (m.misalign or algn) and misalign or fnil
+  local mis  = algn and misalign or fnil
   local rot  = abs(tlt) >= minang and srotation or fnil
   local fng  = fringe or fnil
   m.tlt, m.algn = tlt, algn
@@ -169,16 +199,22 @@ local function trackelm (elm, m, inter, thick, thin, fringe)
   rot    (tlt, m, -sdir)
   mis    (elm, m, -sdir)
   atexit (elm, m, -sdir, -2)
+
+  m.tlt, m.algn = nil, nil
 end
 
 local function tracksub (elm, m, inter, thick, thin, fringe)
-  local sdir, atentry, atexit, __sdat in m
-  local algn = elm.misalign
+  local eidx, sdir, atentry, atexit, __sdat in m
+  local algn = get_algn(elm, m)
   local tlt  = elm.tilt*m.tdir
-  local mis  = (m.misalign or algn) and misalign or fnil
+  local mis  = algn and misalign or fnil
   local rot  = abs(tlt) >= minang and srotation or fnil
   local fng  = fringe or fnil
-  m.tlt, m.algn = tlt, algn
+  m.tlt, m.algn, m.eidx = tlt, algn, nil
+
+  if not eidx then
+    errorf("invalid subelement track %s (contain subelements)", elm.name)
+  end
 
   atentry(elm, m, sdir, -1)
   mis    (elm, m, sdir)
@@ -222,6 +258,8 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
   rot   (tlt, m, -sdir)
   mis   (elm, m, -sdir)
   atexit(elm, m, -sdir, -2)
+
+  m.tlt, m.algn, m.eidx = nil, nil, eidx
 end
 
 -- kinds ----------------------------------------------------------------------o
@@ -309,8 +347,9 @@ local function track_sbend (elm, m, e1_, e2_)
   knl[1], ksl[1] = knl[1]+k0*l  , ksl[1]+k0s*l
   knl[2], ksl[2] = knl[2]+k1*l  , ksl[2]+k1s*l
   knl[3], ksl[3] = knl[3]+k2*l/2, ksl[3]+k2s*l/2
-  m.el, m.eh = ds, angle/ds*tdir
+  m.el, m.eh = ds, angle*tdir/ds
   m.e1, m.e2 = (e1_ or elm.e1), (e2_ or elm.e2)
+  m.ang      = angle*tdir
 
   local model  = elm.model   or m.model
   local method = elm.method  or m.method
@@ -331,13 +370,14 @@ local function track_sbend (elm, m, e1_, e2_)
 
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, kick, curex_fringe)
-  m.snm, m.e1, m.e2 = nil, nil, nil
+  m.snm, m.e1, m.e2, m.ang = nil, nil, nil, nil
 end
 
 local function track_rbend (elm, m)
   local angle, e1, e2, true_rbend in elm
 
   e1, e2 = e1 and e1+angle/2, e2 and e2+angle/2                               -- Could potentially be false.
+  m.mang  = 0
 
   if not true_rbend then return track_sbend(elm, m, e1, e2) end               -- checked
 
@@ -390,7 +430,7 @@ local function track_rbend (elm, m)
 
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, kick, strex_fringe)
-  m.e1, m.e2, m.eld, m.elc, m.etp_dir = nil, nil, nil, nil, nil
+  m.e1, m.e2, m.ang, m.eld, m.elc, m.etp_dir = nil, nil, nil, nil, nil, nil
 end
 
 local function track_quadrupole (elm, m)

@@ -2631,7 +2631,7 @@ mad_mat_rtbar (num_t Rb[NN],       num_t Tb[N], num_t el, num_t ang, num_t tlt,
     } else { // R = I
       mad_vec_copy(T, Tb, N);                 // Tb = T
       mad_mat_eye (Rb, 1, N, N, N);           // Rb = I
-     }
+    }
 
   } else {                                    // -- curved --------------------o
     num_t rho = el/ang;
@@ -2658,7 +2658,7 @@ mad_mat_rtbar (num_t Rb[NN],       num_t Tb[N], num_t el, num_t ang, num_t tlt,
     } else { // R = I
       mad_mat_tmul(We, T , Tb, N, 1, N);      // Tb = We:t()*T
       mad_mat_eye (Rb,      1, N, N, N);      // Rb = I
-     }
+    }
   }
 }
 
