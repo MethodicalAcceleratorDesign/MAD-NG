@@ -35,7 +35,7 @@ local fset                                                       in MAD.gfunc
 local kpairs, strinter, setkeys, tblcpy, runonce, fileexists,
       pause, atexit                                              in MAD.utility
 local is_nil, is_number, is_table, is_mtable, is_string,
-      is_sequence, is_rawtable                                   in MAD.typeid
+      is_sequence, is_rawtable, is_function                      in MAD.typeid
 
 local min, max in math
 
@@ -346,13 +346,15 @@ local adjust_in = \size -> \xs,ys,surv,l,proj ->
 
 -- return the shape of an element in x and y
 local function eShap (param, elem, dir)
-  local kindcolor in param
+  local kindcolor, laypos in param
   local shape = dat[elem.kind]
   if not shape then
     error("element of kind: '" .. elem.kind
           .. "' doesn't have a corresponding shape")
   end
-  local el, dash, sh = shape.ellipse, shape.dashtype, shape.shape
+  local el, dash = shape.ellipse, shape.dashtype
+  local sh = (laypos == "in" or laypos == "middle" or laypos == "middle0") and 
+             shape.inshape or shape.shape
   local color, style, linecolor
 
   if is_table(kindcolor) and kindcolor[elem.kind] then
@@ -362,7 +364,8 @@ local function eShap (param, elem, dir)
     linecolor = is_table(cs) and cs.linecolor or shape.linecolor
     dash      = is_table(cs) and cs.dashtype  or dash
   elseif kindcolor then
-    color, style, linecolor = shape.fillcolor, shape.fillstyle, shape.linecolor
+    color = is_function(shape.fillcolor) and shape.fillcolor(elem) or shape.fillcolor
+    style, linecolor = shape.fillstyle, shape.linecolor
   else
     color, style, linecolor = _dflt.ocolor, _dflt.ostyle, _dflt.olstyle
   end
@@ -388,7 +391,7 @@ local function eShap (param, elem, dir)
     }
   else
     local fv = sign(elem[ysym] or 1)
-    ysym = (ysym == "angle") and fv*dir or fv
+    ysym = ysym == "angle" and fv*dir or fv
     func = {\y -> yscl*(yshft + ysym*y)}
   end
   return el, eStyle, sh.x, sh.y, func
@@ -404,13 +407,13 @@ local function layout_poly (param, len, data, x_sh, y_sh, eStyle, func)
       fpwrite("set object %d polygon front fc rgb '%s' fs %s \z
         border rgb '%s' %s %s \\\n",
         param.oid, eStyle.color, eStyle.style, eStyle.linecolor, dashtype,
-        layonly and "" or "behind")
+        layonly and "" or "back")
       local cmd = "from"
 
       for k=1,#xj do
         local xk, yk = xj[k], func[i](yj[k])
         local pts  = adjust(xk, yk, data, len, layproj)
-        local next = (k == #xj) and "" or " \\"
+        local next = k == #xj and "" or " \\"
         fpwrite("  %s %.5e, %s %.5e%s\n", cmd, pts[1], ref, pts[2], next)
         cmd = "to"
       end
@@ -455,7 +458,7 @@ local function layout_bline (param, bline)
   end
   for i=size-1,1,-1 do
     local xi, yi = bline.x[i], bline.y[i]
-    local next   = (i == 1) and "" or " \\"
+    local next   = i == 1 and "" or " \\"
     fpwrite("  to %.5e, %s %.5e%s\n", xi, ref, yi, next)
   end
   param.oid = param.oid + 1
@@ -471,7 +474,7 @@ local function layout_process (param, pseq)
   local deltaY   = disty
   local prevs_sh, angle, j, dir = 0, 0, 1, seq.dir
   local fstx, l2, s_sh, xs, ys
-  for i, elem, s in seq:siter(range, nturn) do
+  for i, elem, s in seq:iter(range, nturn) do
     l2           = elem.l/2
     s_sh         = s + l2
     deltaY       = deltaY - tan(dir*angle)*(s_sh-prevs_sh)
@@ -496,46 +499,51 @@ local function layout_process (param, pseq)
   pseq.data, pseq.bline = data, bline
 end
 
-local ssel = \e -> not e:is_implicit()
 local projections = {
-  XZ = matrix(3):fill{ 1, 0, 0 ; 0, 0, 1 ; 0, 0, 0 },
-  ZX = matrix(3):fill{ 0, 0, 1 ; 1, 0, 0 ; 0, 0, 0 },
+  XZ       = matrix(3):fill{ 1, 0, 0 ; 0, 0, 1 ; 0, 0, 0 },
+  ["-XZ"]  = matrix(3):fill{-1, 0, 0 ; 0, 0, 1 ; 0, 0, 0 },
+  ["X-Z"]  = matrix(3):fill{ 1, 0, 0 ; 0, 0,-1 ; 0, 0, 0 },
+  ["-X-Z"] = matrix(3):fill{-1, 0, 0 ; 0, 0,-1 ; 0, 0, 0 },
+  ZX       = matrix(3):fill{ 0, 0, 1 ; 1, 0, 0 ; 0, 0, 0 },
+  ["-ZX"]  = matrix(3):fill{ 0, 0,-1 ; 1, 0, 0 ; 0, 0, 0 },
+  ["Z-X"]  = matrix(3):fill{ 0, 0, 1 ; 0, 0,-1 ; 0, 0, 0 },
+  ["-Z-X"] = matrix(3):fill{ 0, 0,-1 ; 0, 0,-1 ; 0, 0, 0 },
 }
 
 -- process data "in plot" layout (see help for formula)
 local function layout_process_in (param, pseq)
   local nturn, layproj                  in param
   local range, seq, s0, X0, A0, W0, mis in pseq
-  local srv, mflw = survey { sequence=seq, range=range, nturn=nturn, 
-                         s0=s0, X0=X0, A0=A0, W0=W0, misalign=mis, savemap=true }
+  local srv, mflw = survey { sequence=seq, range=range, nturn=nturn,
+                         s0=s0, X0=X0, A0=A0, W0=W0, misalign=mis, savemap=true,
+                         save="atbound",
+                        }
   local data  = table.new(#srv, 0)
   local bline = { x=table.new(#srv, 0), y=table.new(#srv, 0) }
 
   layproj = projections[layproj] or layproj or projections.XZ
 
-  local shift   
+  local idx, shift = 1
   for i, line in srv:iter() do
-    local ext_line = srv[max(1, i-1)]
+    shift = vector{line.x, line.y, line.z}
     local elm = seq[line.eidx]
-    shift = vector{ext_line.x, ext_line.y, ext_line.z}
-    local rot =  ext_line.__map
-    local translation = vector(3)
-    if elm then
-      local kind, e1, e2 in elm
-      if kind=="rbend" and not (e1 and e2) then 
-        if e1 then 
-          rot:mul(matrix(3):roty(-e1), rot)
-        else
-          rot:mul(matrix(3):roty(e2 - elm.angle), rot)
-          translation[1] = -arc2cord(elm.l, elm.angle)*sin((e2-elm.angle/2))
+    if not is_nil(elm) then
+      if line.slc == 0 then
+        local kind, e1, e2, true_rbend, angle in elm
+        local rot, patch = line.__map, matrix(3):eye()
+        if kind=="rbend" and true_rbend and e1 and e2 then                    -- For straight rbend, we don't want any angle
+          patch:rotzxy(0,  angle/2, 0)
+        elseif kind=="sbend" or kind=="rbend" and not true_rbend then         -- For sbend and curved rbend, we want half the angle
+          patch:rotzxy(0, -angle/2, 0)
         end
-      elseif kind=="sbend" or kind=="rbend" then
-        rot:mul(matrix(3):roty(-line.angle/2), rot)
+        data[idx] = {rot:mul(patch), shift}                                   -- Save the rotation and shift at slc == 0
+        idx = idx + 1
+      elseif line.slc == 1 and elm.kind == "rbend" then                       -- Patch to bline, rbend bline should go through the magnet center
+        shift[1] = srv[i-1].x
       end
     end
 
-    data[i] = {rot, shift + translation}     -- Save the rotation and shift
-    shift = layproj * shift    -- Rotate the shift to x-y plane for the bline
+    shift = layproj * shift                                                   -- Rotate the shift to x-y plane for the bline
     pseq.xmin, pseq.xmax = min(pseq.xmin, shift[1]), max(pseq.xmax, shift[1])
     pseq.ymin, pseq.ymax = min(pseq.ymin, shift[2]), max(pseq.ymax, shift[2])
     table.insert(bline.x, shift[1]); table.insert(bline.y, shift[2])
@@ -551,7 +559,7 @@ local function layout (param, pseq)
   local dir, j  = seq.dir, 1
 
   layout_bline(param, bline)
-  for i, elem, s in seq:siter(range, nturn) do
+  for i, elem, s in seq:iter(range, nturn) do
     local len, ekind = elem.l, elem.kind
     local dj = data[j]
 
@@ -585,9 +593,12 @@ local function layout_post (param, pseqs, xmin, xmax, ymin, ymax)
   elemwidth     = (elemwidth or _dflt.elemwidth) * elemscale
   local ybbox   = abs(ymax - ymin) + 2*maxew*elemwidth + 2*padding
   local yfactor = param.laysize / ybbox
-  if laypos=="top"    then laypos=1-( ymax+maxew*elemwidth+padding)*yfactor end
-  if laypos=="bottom" then laypos=  (-ymin+maxew*elemwidth+padding)*yfactor end
-  if laypos=="middle" then laypos=middle                                    end
+  print("yfactor", yfactor, param.laysize, ybbox, ymax, ymin)
+  if     laypos=="top"     then laypos=1-( ymax+maxew*elemwidth+padding)*yfactor 
+  elseif laypos=="bottom"  then laypos=  (-ymin+maxew*elemwidth+padding)*yfactor
+  elseif laypos=="middle"  then laypos=middle                                    
+  elseif laypos=="middle0" then laypos=0
+  end
   param.elemwidth = elemwidth * yfactor
   for i=1,#pseqs do
     local pseq = pseqs[i]
@@ -616,8 +627,9 @@ end
 local function multi_layout (param)
   local sequence, s0, X0, A0, W0, fpwrite, range, misalign, laydistx,
         laydisty, elemwidth, laypos in param
-  local is_in = (laypos == "in")
-  param.ref = is_in and "" or "screen"
+  local is_in = laypos == "in"
+  local is_middle0 = laypos == "middle0"
+  param.ref = is_in and "" or is_middle0 and "first" or "screen"
   local xmin, xmax, ymin, ymax = inf, -inf, inf, -inf
   local pseqs = { }
   local seqs = is_rawtable(sequence) and sequence or
@@ -650,7 +662,7 @@ local function multi_layout (param)
   then layout_post_in(param, xmin, xmax, ymin, ymax)
   else layout_post(param, pseqs, xmin, xmax, ymin, ymax)
   end
-  param.adjust = is_in and adjust_in(param.elemwidth) or adjust(param.elemwidth)
+  param.adjust = is_in and adjust_in(elemwidth) or adjust(elemwidth)
 
   for i=1,#pseqs do
     local pseq = pseqs[i]
@@ -920,6 +932,8 @@ local function composed_plot (param)
   local laysize in param
   if laypos == "top" or laypos == "bottom" then
     param.psizey = psizey or _dflt.psizey - laysize
+  elseif laypos == "middle0" then 
+    param.psizey = laysize
   end
   param.originy = originy or laypos == "bottom" and laysize
                           or _dflt.originy
@@ -1028,7 +1042,7 @@ local plot = command "plot" {
   W0          = nil,        -- W0                | {W0, W0, ...}
 
   -- layout style
-  laypos      = "top",      -- "top" | "bottom" | "middle" | "in" | 0 < y < 1
+  laypos      = "top",      -- "top" | "bottom" | "middle" | "middle0" | "in" | 0 < y < 1
   laysize     = nil,        -- 0 < y < 1
   layonly     = nil,        -- boolean
   laydisty    = 0,          -- y >= 0 | { y1, y2, ... }
