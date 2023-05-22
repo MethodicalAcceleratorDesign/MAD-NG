@@ -265,23 +265,41 @@ MAD_SET_TERM     = " \
 
 ]]
 
+local kill_sids = {}
+local function kill_plots()
+  pause("Closing plots, ") 
+  for sid, term in pairs(kill_sids) do
+    gplot:set_sid(sid)
+    gplot:printf("set term %s close", term)
+  end
+end
+
+local kill_atexit = \ atexit(kill_plots)
 -- dump header and set terminal to script file
 local function setup_cmd (self)
-  local output, scrdump in self
-  local file, fname = get_tmpfile(self.sid)
-  gplot:set_sid(self.sid)
+  local output, default, scrdump, font, fontsize, sid, term, close_plots in self
+  local file, fname = get_tmpfile(sid)
+  gplot:set_sid(sid)
   file:write(init_cmd % self)
 
-  self.font     = self.font     or ""
-  self.fontsize = self.fontsize or ""
+  self.font     = font     or ""
+  self.fontsize = fontsize or ""
 
   if is_nil(output) then
     file:write("@MAD_INC_WID\n")
-    file:write("MAD_TERM = \"set term ${term} MAD_WID size ${wsizex},\z
-      ${wsizey} enhanced font '${font},${fontsize}'\"\n" % self)
-  elseif is_number(output) then
-    file:write("MAD_TERM = \"set term ${term} ${output} size ${wsizex},\z
-      ${wsizey} enhanced font '${font},${fontsize}'\"\n" % self)
+    output = "MAD_WID"                                                        -- So as not to mutate the object                                         
+  end
+  if is_number(output) or output == "MAD_WID" then
+    file:write(
+      strinter(
+        "MAD_TERM = \"set term ${term} ${output} size ${wsizex},\z
+        ${wsizey} enhanced font '${font},${fontsize}'\"\n", {output = output}, "="
+      ) % self
+    )
+    if close_plots then
+      runonce(kill_atexit)
+      kill_sids[sid] = term
+    end
   elseif is_string(output) then
     local ext = output:sub(-3, -1)
     if ext == "png" then
@@ -313,29 +331,14 @@ local function gnuplot_mv (fname, uname)
   end
 end
 
-local not_paused = true
-local kill_sids = {}
-local function kill_plots(self)
-  if not_paused then -- Pause only once, independent of the number of streams
-    pause("Closing plots, ") 
-    not_paused = false
-  end
-  gplot:set_sid(self.sid)
-  gplot:printf("set term %s close", self.term)
-end
-
 local function teardown_cmd (self, file, fname)
-  local scrdump, output, close_plots, sid in self
+  local scrdump, output in self
   file:close()
   if output ~= false then
     gplot:printf("load('%s')", fname)
     if is_string(scrdump)
     then gnuplot_mv(fname, scrdump)
     else gnuplot_rm(fname)
-    end
-    if close_plots and (is_number(output) or is_nil(output)) and not kill_sids[sid] then 
-      atexit(\-> kill_plots(self)) 
-      kill_sids[sid] = true
     end
   else
     if is_string(scrdump) then
