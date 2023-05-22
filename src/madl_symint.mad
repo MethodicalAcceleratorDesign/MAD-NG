@@ -42,9 +42,10 @@
 
 local M = {DKD={}, TKT={}, KMK={}}
 
-local vector in MAD
-local max, sqrt in math
+local vector                 in MAD
 local is_number, is_function in MAD.typeid
+local tobit                  in MAD.gfunc
+local max, sqrt, ceil        in math
 
 -- Yoshida coefficients -------------------------------------------------------o
 
@@ -535,21 +536,60 @@ M.KMK[11], M.KMK[12] = KMK12, KMK12
 
 -- slices selectors -----------------------------------------------------------o
 
-M.atall   = \_,_,_,_ -> true
+local atbody -- fwd decl
 
-M.atentry = \_,_,_,i -> i == -1
-M.atbegin = \_,_,_,i -> i ==  0
-M.atbody  = \_,_,_,i -> i >   0
-M.atbound = \_,m,_,i -> i ==  0 or  i == m.nsl
-M.atend   = \_,m,_,i ->             i == m.nsl
-M.atexit  = \_,_,_,i -> i == -2
+M.slcsel = {                                                                 -- bits
+  -- single slice
+  atentry  = \_,_,_,i -> i == -1,               -- entry                        [1]
+  atfirst  = \_,_,_,i -> i ==  0,               -- slice 0                      [4]
+  atmid    = \_,m,_,i -> i ==  ceil(m.nsl/2),   -- slice mid                    [4]
+  atlast   = \_,m,_,i -> i ==  m.nsl,           -- slice nsl                    [4]
+  atexit   = \_,_,_,i -> i == -2,               -- exit                         [2]
 
-M.atmid   = \_,m,_,i ->           2*i == m.nsl
-M.atmid1  = \_,m,_,i ->           2*i == m.nsl or i == 1 and i == m.nsl
-M.atins   = \_,m,_,i -> i >   0 and i <  m.nsl
-M.atins1  = \_,m,_,i -> i >   0 and i <  m.nsl or i == 1 and i == m.nsl
-M.atstd   = \_,m,_,i -> i >   0 and i <  m.nsl or                          i == -2
-M.atstd1  = \_,m,_,i -> i >   0 and i <  m.nsl or i == 1 and i == m.nsl or i == -2
+  -- multiple slices
+  atentex  = \_,_,_,i -> i <  0,                -- entry, exit                  [3]
+  atslice  = \_,_,_,i -> i >= 0,                -- slices 0..nsl                [4]
+  atcore   = \_,m,_,i -> i >  0 and i <  m.nsl, -- slices 1..nsl-1              [4]
+  atbody   = \_,m,_,i -> i >  0 and i <  m.nsl or i == 1 and i == m.nsl, --     [4]
+  atborder = \_,m,_,i -> i == 0 or  i == m.nsl, -- slices 0, nsl                [4]
+
+  -- composed slices (further compositions can be built with ochain and achain)
+  atfull   = \_,_,_,i -> i >= 0                or i == -2, --       slice +exit [6]
+  atstd    = \_,m,_,i -> i >  0 and i <  m.nsl or i == -2, --       core  +exit [6]
+  atstd1   = \_,m,_,i -> atbody(nil,m,nil,i)   or i == -2, --       body  +exit [6]
+  atbound  = \_,m,_,i -> i <= 0 or  i == m.nsl,            -- entry+border+exit [7]
+  atsample = \_,m,_,i -> i <= 0 or  i == m.nsl or i == ceil(m.nsl/2), --        [7]
+                                                           -- entry+mid+border+exit
+  -- special cases
+  atall    = \_,_,_,_ -> true,                             -- entry+slice +exit [7]
+  atnone   = \_,_,_,_ -> false,                            --                   [0]
+}
+
+-- same as atcore but ensure one slice in the body for nsl == 1
+atbody = M.slcsel.atbody
+
+-- function returning bit patterns for a given selector
+local function getslcbit (sel)
+  local b, m = 0, {nsl=2}
+  if sel(nil, m, nil, -1) then b = b+1 end -- entry
+  if sel(nil, m, nil, -2) then b = b+2 end -- exit
+  if sel(nil, m, nil,  0) or
+     sel(nil, m, nil,  1) or
+     sel(nil, m, nil,  2) then b = b+4 end -- slices
+  return tobit(b)
+end
+
+-- build bit patterns of slice selectors
+local slcbit = {}
+for nam, sel in pairs(M.slcsel) do
+  slcbit[nam] = getslcbit(sel)
+  -- print(nam, slcbit[nam])
+end
+
+slcbit[true ] = slcbit.atall
+slcbit[false] = slcbit.atnone
+
+M.slcbit, M.getslcbit = slcbit, getslcbit
 
 -- actions selectors ----------------------------------------------------------o
 

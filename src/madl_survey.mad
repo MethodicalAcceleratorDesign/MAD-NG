@@ -33,15 +33,15 @@ Notes about directions and quantities:
 
 local vector, matrix, mtable, command, element, show            in MAD
 
-local is_sequence, is_boolean, is_number, is_integer,
+local is_sequence, is_boolean, is_number, is_integer, is_nznatural,
       is_callable, is_mappable, is_matrix                       in MAD.typeid
 local fnil, ffalse, chain, achain, swapv                        in MAD.gfunc
 local rangle                                                    in MAD.gmath
-local atins, atins1, action, actionat                           in MAD.symint
+local slcsel, slcbit, action, actionat                          in MAD.symint
 local printf                                                    in MAD.utility
 local tobit, band                                               in MAD.gfunc
 local is_implicit                                               in element.drift
-
+   -- atins, atins1
 local io, type, assert =
       io, type, assert
 
@@ -183,11 +183,6 @@ end
 
 -- survey mflow ---------------------------------------------------------------o
 
--- see (track)
-local slicebit = { [false]=tobit(0), [true]=tobit(4),
-                   atentry=tobit(1), atslice=tobit(2), atexit=tobit(4),
-                   atbound=tobit(5), atbody =tobit(6), atall =tobit(7) }
-
 local function make_mflow (self)
   -- check sequence
   local sequ = assert(self.sequence, "missing sequence")
@@ -206,16 +201,13 @@ local function make_mflow (self)
 
   -- saving data, build mtable
   local save, implicit, observe in self
-  local savebit = slicebit[save]
+  local savebit = slcbit[save]
 
   assert(is_number(savebit)  ,
               "invalid save directive (boolean or valid atxxx string expected)")
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
   assert(is_integer(observe) and observe >= 0
                              , "invalid observe (positive integer expected)")
-
-  local savesel = self:var_get'savesel'
-  assert(is_callable(savesel), "invalid savesel (callable expected)")
 
   -- sequence and time direction
   local edir = sequ.dir
@@ -226,7 +218,7 @@ local function make_mflow (self)
   local nslice = self:var_get 'nslice'
   local nslc = is_number(nslice) and nslice or is_callable(nslice) and 1
                                             or is_iterable(nslice) and #nslice
-  assert(is_integer(nslc) and nslc > 0,
+  assert(is_nznatural(nslc),
          "invalid nslice (integer>0 or iterable of or generator of slice weights expected)")
 
   -- setup default misalign
@@ -239,13 +231,16 @@ local function make_mflow (self)
   local atexit  = self:var_get 'atexit'
   local atsave  = self:var_get 'atsave'
   local atdebug = self:var_get 'atdebug'
+  local savesel = self:var_get'savesel'
 
   assert(is_callable(atentry), "invalid atentry (callable expected)")
   assert(is_callable(atslice), "invalid atslice (callable expected)")
   assert(is_callable(atexit ), "invalid atexit (callable expected)")
   assert(is_callable(atsave ), "invalid atsave (callable expected)")
   assert(is_callable(atdebug), "invalid atdebug (callable expected)")
+  assert(is_callable(savesel), "invalid savesel (callable expected)")
 
+  -- saving data, build mtable
   local mtbl
   if save then
     mtbl = make_mtable(self, range)
@@ -255,15 +250,16 @@ local function make_mflow (self)
 
       if savebit > 0 then
         local saveact, ex = action 'atsave'
-        if band(savebit, slicebit.atentry) ~= 0 then
+        if band(savebit, slcbit.atentry) ~= 0 then
           atentry = chain(atentry, saveact)
         end
-        if band(savebit, slicebit.atexit) ~= 0 then
+        if band(savebit, slcbit.atexit) ~= 0 then
           atexit = chain(atexit, saveact)
           ex = true
         end
-        if band(savebit, slicebit.atslice) ~= 0 then
-          local saveact = actionat('atsave', ex and atins or atins1)
+        if band(savebit, slcbit.atslice) ~= 0 then
+          local saveact = actionat('atsave',
+            savesel ~= fnil and savesel or ex and slcsel.atcore or slcsel.atbody)
           atslice = chain(atslice, saveact)
         end
       end
@@ -377,7 +373,7 @@ end
 
 local _id = {} -- identity (unique)
 
-local function is_geomflow (a)
+local function is_geomflw (a)
   return type(a) == "table" and a.__surv == _id
 end
 
@@ -472,7 +468,7 @@ local survey = command 'survey' {
 
 -- env ------------------------------------------------------------------------o
 
-MAD.typeid.is_geomflow = is_geomflow
+MAD.typeid.is_geomflw = is_geomflw
 
 -- end ------------------------------------------------------------------------o
 return { survey = survey }
