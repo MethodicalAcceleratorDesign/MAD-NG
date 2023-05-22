@@ -40,12 +40,12 @@ local is_nil, is_beam, is_sequence, is_boolean, is_number,
 local fnil, ffalse, chain, achain                               in MAD.gfunc
 local dp2pt, bet2map, par2vec                                   in MAD.gphys
 local errorf, assertf, printf                                   in MAD.utility
-local tobit, band, bor                                          in MAD.gfunc
+local band                                                      in MAD.gfunc
 local apercheck                                                 in MAD.aperture
 local srad_save, srad_damp, srad_quant                          in MAD.synrad
 local is_implicit                                               in element.drift
-local atbegin, atbody, atend, atins, atins1, action, actionat   in symint
-
+local slcsel, slcbit, action, actionat                          in symint
+   -- atbegin, atbody, atend, atins, atins1
 local abs, max in math
 
 local io, type, setmetatable, assert =
@@ -241,11 +241,6 @@ end
 
 local modint = {DKD=true, TKT=true}
 
--- see (survey)
-local slicebit = { [false]=tobit(0), [true]=tobit(4),
-                   atentry=tobit(1), atslice=tobit(2), atexit=tobit(4),
-                   atbound=tobit(5), atbody =tobit(6), atall =tobit(7) }
-
 local function make_mflow (self)
   -- check sequence
   local sequ = assert(self.sequence, "missing sequence")
@@ -268,7 +263,7 @@ local function make_mflow (self)
 
   -- check more attributes
   local save, implicit, observe, fringe, radiate in self
-  local savebit = slicebit[save]
+  local savebit = slcbit[save]
   if is_boolean(fringe ) then fringe  = fringe  and -1 or 0 end
   if is_boolean(radiate) then radiate = radiate and "damp" or nil end
 
@@ -279,15 +274,12 @@ local function make_mflow (self)
   assert(is_natural(fringe+1), "invalid fringe (boolean or fringe flag expected)")
   assert(is_natural(observe) , "invalid observe (positive integer expected)")
 
-  local savesel = self:var_get 'savesel'
-  assert(is_callable(savesel), "invalid savesel (callable expected)")
-
   -- sequence and time direction
   local edir = sequ.dir
   local tdir = dir*edir
   assert(tdir == 1 or tdir == -1, "invalid time direction (1 or -1 expected)")
 
-  -- setup default sclicing
+  -- setup default slicing
   local nslice = self:var_get 'nslice'
   local nslc = is_number(nslice) and nslice or is_callable(nslice) and 1
                                             or is_iterable(nslice) and #nslice
@@ -316,6 +308,8 @@ local function make_mflow (self)
   local ataper  = self:var_get 'ataper'
   local atsave  = self:var_get 'atsave'
   local atdebug = self:var_get 'atdebug'
+  local apersel = self:var_get 'apersel'
+  local savesel = self:var_get 'savesel'
 
   assert(is_callable(atentry), "invalid atentry (callable expected)")
   assert(is_callable(atslice), "invalid atslice (callable expected)")
@@ -323,6 +317,8 @@ local function make_mflow (self)
   assert(is_callable(ataper ), "invalid ataper (callable expected)")
   assert(is_callable(atsave ), "invalid atsave (callable expected)")
   assert(is_callable(atdebug), "invalid atdebug (callable expected)")
+  assert(is_callable(apersel), "invalid apersel (callable expected)")
+  assert(is_callable(savesel), "invalid savesel (callable expected)")
 
   -- saving data, build mtable
   local mtbl
@@ -334,15 +330,16 @@ local function make_mflow (self)
 
       if savebit > 0 then
         local saveact, ex = action 'atsave'
-        if band(savebit, slicebit.atentry) ~= 0 then
+        if band(savebit, slcbit.atentry) ~= 0 then
           atentry = chain(atentry, saveact)
         end
-        if band(savebit, slicebit.atexit) ~= 0 then
+        if band(savebit, slcbit.atexit) ~= 0 then
           atexit = chain(atexit, saveact)
           ex = true
         end
-        if band(savebit, slicebit.atslice) ~= 0 then
-          local saveact = actionat('atsave', ex and atins or atins1)
+        if band(savebit, slcbit.atslice) ~= 0 then
+          local saveact = actionat('atsave',
+            savesel ~= fnil and savesel or ex and slcsel.atcore or slcsel.atbody)
           atslice = chain(atslice, saveact)
         end
       end
@@ -351,7 +348,7 @@ local function make_mflow (self)
 
   -- activate aperture checks
   if ataper ~= ffalse then
-    local aperact = actionat('ataper', atend)
+    local aperact = actionat('ataper', slcsel.atlast)
     atslice = chain(aperact, atslice) -- chain ataper to atslice for last slice
     ataper = achain(apercheck, ataper)
   end
@@ -365,15 +362,15 @@ local function make_mflow (self)
 
   -- activate radiation
   if radiate then
-    atslice = chain(achain(atbegin, srad_save), atslice)
+    atslice = chain(achain(slcsel.atfirst, srad_save), atslice)
     if string.find(radiate, "photon", 1, true) then
-      atslice = chain(achain(atbody, srad_quant), atslice)
+      atslice = chain(achain(slcsel.atbody, srad_quant), atslice)
       radiate = "photon"
     elseif string.find(radiate, "quantum", 1, true) then
-      atslice = chain(achain(atbody, srad_quant), atslice)
+      atslice = chain(achain(slcsel.atbody, srad_quant), atslice)
       radiate = "quantum"
     elseif string.find(radiate, "damp", 1, true) then
-      atslice = chain(achain(atbody, srad_damp), atslice)
+      atslice = chain(achain(slcsel.atbody, srad_damp), atslice)
       radiate = "damp"
     else
       error("invalid radiate value '"..radiate.."'")
@@ -506,7 +503,6 @@ local function make_mflow (self)
 
   mflw.save=save             -- save data
   mflw.observe=observe       -- save observed elements every n turns
-  mflw.savesel=savesel       -- save selector
 
   mflw.atentry=atentry       -- action called when entering an element
   mflw.atslice=atslice       -- action called after each element slices (ataper)
@@ -514,6 +510,9 @@ local function make_mflow (self)
   mflw.ataper=ataper         -- action called when checking aperture
   mflw.atsave=atsave         -- action called when saving in mtable
   mflw.atdebug=atdebug       -- action called when debugging the maps
+
+  mflw.apersel=apersel       -- aper selector
+  mflw.savesel=savesel       -- save selector
 
   mflw.method=method         -- default integration method
   mflw.model=model           -- default integration model
@@ -588,7 +587,7 @@ end
 
 local _id = {} -- identity (unique)
 
-local function is_dynmflow (a)
+local function is_dynmflw (a)
   return type(a) == "table" and a.__trck == _id
 end
 
@@ -667,18 +666,20 @@ local track = command 'track' {
   radiate=false,    -- radiate at slices "damp", "quantum", "photon"      (mflw)
   totalpath=false,  -- variable 't' is the totalpath                      (mflw)
 
-  save=true,        -- create mtable and save results                     (mtbl)
+  save=true,        -- create mtable and save results (default atsave)    (mtbl)
   title=nil,        -- title of mtable (default seq.name)                 (mtbl)
   observe=1,        -- save only in observed elements (every n turns)     (mtbl)
-  savesel=fnil,     -- save selector (predicate)                          (mtbl)
-  savemap=false,    -- save damap in the in the column __map              (mflw)
+  savemap=false,    -- save damap in the in the column __map              (mtbl)
 
   atentry=fnil,     -- action called when entering an element             (mflw)
-  atslice=fnil,     -- action called after each element slices (ataper)   (mflw)
-  atexit=fnil,      -- action called when exiting an element   (atsave)   (mflw)
-  ataper=fnil,      -- action called when checking for aperture           (mflw)
-  atsave=fnil,      -- action called when saving in mtable                (mflw)
+  atslice=fnil,     -- action called after each element slices            (mflw)
+  atexit=fnil,      -- action called when exiting an element              (mflw)
+  ataper=fnil,      -- action called last when checking for aperture      (mflw)
+  atsave=fnil,      -- action called last when saving in mtable           (mflw)
   atdebug=fnil,     -- action called when debugging the maps              (mflw)
+
+  apersel=fnil,     -- aper selector (predicate, default atentry)         (mflw)
+  savesel=fnil,     -- save selector (predicate, default atexit)          (mflw)
 
   info=nil,         -- information level (output on terminal)             (mflw)
   debug=nil,        -- debugging information level (output on terminal)   (mflw)
@@ -692,14 +693,14 @@ local track = command 'track' {
     'nturn', 'nstep', 'mapdef', 'method', 'model', 'secnmul', 'ptcmodel',
     'implicit', 'misalign', 'aperture', 'fringe', 'radiate', 'totalpath',
     'save', 'title', 'observe', 'savemap', 'info', 'debug', 'usrdef',
-    noeval = {'nslice', 'savesel',
+    noeval = {'nslice', 'apersel', 'savesel',
               'atentry', 'atslice', 'atexit', 'ataper', 'atsave', 'atdebug'},
   }
 } :set_readonly()   -- reference track command is readonly
 
 -- env ------------------------------------------------------------------------o
 
-MAD.typeid.is_dynmflow = is_dynmflow
+MAD.typeid.is_dynmflw = is_dynmflw
 
 -- end ------------------------------------------------------------------------o
 return { track = track }
