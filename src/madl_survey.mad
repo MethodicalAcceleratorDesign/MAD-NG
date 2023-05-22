@@ -33,8 +33,8 @@ Notes about directions and quantities:
 
 local vector, matrix, mtable, command, element, show            in MAD
 
-local is_sequence, is_boolean, is_number, is_integer, is_nznatural,
-      is_callable, is_mappable, is_matrix                       in MAD.typeid
+local is_sequence, is_boolean, is_number, is_integer, is_natural,
+      is_nznatural, is_callable, is_mappable, is_matrix         in MAD.typeid
 local fnil, ffalse, chain, achain, swapv                        in MAD.gfunc
 local rangle                                                    in MAD.gmath
 local slcsel, slcbit, action, actionat                          in MAD.symint
@@ -201,13 +201,8 @@ local function make_mflow (self)
 
   -- saving data, build mtable
   local save, implicit, observe in self
-  local savebit = slcbit[save]
-
-  assert(is_number(savebit)  ,
-              "invalid save directive (boolean or valid atxxx string expected)")
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
-  assert(is_integer(observe) and observe >= 0
-                             , "invalid observe (positive integer expected)")
+  assert(is_natural(observe) , "invalid observe (positive integer expected)")
 
   -- sequence and time direction
   local edir = sequ.dir
@@ -231,7 +226,7 @@ local function make_mflow (self)
   local atexit  = self:var_get 'atexit'
   local atsave  = self:var_get 'atsave'
   local atdebug = self:var_get 'atdebug'
-  local savesel = self:var_get'savesel'
+  local savesel = self:var_get 'savesel'
 
   assert(is_callable(atentry), "invalid atentry (callable expected)")
   assert(is_callable(atslice), "invalid atslice (callable expected)")
@@ -248,19 +243,29 @@ local function make_mflow (self)
       local fill = observe > 0 and save_obs or save_dat
       atsave = achain(fill, atsave)
 
+      local savebit
+      if savesel ~= fnil then
+        savebit = getslcbit(savesel)
+      elseif save == true then
+        savebit = slcbit.exit
+        savesel = slcsel.exit
+      else
+        savebit = slcbit[save]
+        savesel = slcsel[save]
+        assert(is_number(savebit)  ,
+              "invalid save directive (boolean or valid atxxx string expected)")
+      end
+
       if savebit > 0 then
-        local saveact, ex = action 'atsave'
+        local saveact = action 'atsave'
         if band(savebit, slcbit.atentry) ~= 0 then
           atentry = chain(atentry, saveact)
         end
         if band(savebit, slcbit.atexit) ~= 0 then
           atexit = chain(atexit, saveact)
-          ex = true
         end
         if band(savebit, slcbit.atslice) ~= 0 then
-          local saveact = actionat('atsave',
-            savesel ~= fnil and savesel or ex and slcsel.atcore or slcsel.atbody)
-          atslice = chain(atslice, saveact)
+          atslice = chain(atslice, actionat('atsave', savesel))
         end
       end
     end

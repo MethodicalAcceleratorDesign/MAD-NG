@@ -263,16 +263,13 @@ local function make_mflow (self)
 
   -- check more attributes
   local save, implicit, observe, fringe, radiate in self
-  local savebit = slcbit[save]
   if is_boolean(fringe ) then fringe  = fringe  and -1 or 0 end
   if is_boolean(radiate) then radiate = radiate and "damp" or nil end
 
-  assert(is_number(savebit)  ,
-              "invalid save directive (boolean or valid atxxx string expected)")
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
+  assert(is_natural(observe) , "invalid observe (positive integer expected)")
   assert(is_string(radiate) or radiate == nil, "invalid radiate (string expected)")
   assert(is_natural(fringe+1), "invalid fringe (boolean or fringe flag expected)")
-  assert(is_natural(observe) , "invalid observe (positive integer expected)")
 
   -- sequence and time direction
   local edir = sequ.dir
@@ -308,8 +305,8 @@ local function make_mflow (self)
   local ataper  = self:var_get 'ataper'
   local atsave  = self:var_get 'atsave'
   local atdebug = self:var_get 'atdebug'
-  local apersel = self:var_get 'apersel'
   local savesel = self:var_get 'savesel'
+  local apersel = self:var_get 'apersel'
 
   assert(is_callable(atentry), "invalid atentry (callable expected)")
   assert(is_callable(atslice), "invalid atslice (callable expected)")
@@ -317,8 +314,8 @@ local function make_mflow (self)
   assert(is_callable(ataper ), "invalid ataper (callable expected)")
   assert(is_callable(atsave ), "invalid atsave (callable expected)")
   assert(is_callable(atdebug), "invalid atdebug (callable expected)")
-  assert(is_callable(apersel), "invalid apersel (callable expected)")
   assert(is_callable(savesel), "invalid savesel (callable expected)")
+  assert(is_callable(apersel), "invalid apersel (callable expected)")
 
   -- saving data, build mtable
   local mtbl
@@ -328,29 +325,65 @@ local function make_mflow (self)
       local fill = observe > 0 and fill_obs or fill_row
       atsave = achain(fill, atsave)
 
+      local savebit
+      if savesel ~= fnil then
+        savebit = getslcbit(savesel)
+      elseif save == true then
+        savebit = slcbit.exit
+        savesel = slcsel.exit
+      else
+        savebit = slcbit[save]
+        savesel = slcsel[save]
+        assert(is_number(savebit)  ,
+              "invalid save directive (boolean or valid atxxx string expected)")
+      end
+
       if savebit > 0 then
-        local saveact, ex = action 'atsave'
+        local saveact = action 'atsave'
         if band(savebit, slcbit.atentry) ~= 0 then
           atentry = chain(atentry, saveact)
         end
         if band(savebit, slcbit.atexit) ~= 0 then
           atexit = chain(atexit, saveact)
-          ex = true
         end
         if band(savebit, slcbit.atslice) ~= 0 then
-          local saveact = actionat('atsave',
-            savesel ~= fnil and savesel or ex and slcsel.atcore or slcsel.atbody)
-          atslice = chain(atslice, saveact)
+          atslice = chain(atslice, actionat('atsave', savesel))
         end
       end
     end
   end
 
   -- activate aperture checks
-  if ataper ~= ffalse then
-    local aperact = actionat('ataper', slcsel.atlast)
-    atslice = chain(aperact, atslice) -- chain ataper to atslice for last slice
-    ataper = achain(apercheck, ataper)
+  if aper then
+    if ataper ~= ffalse then
+      ataper = achain(apercheck, ataper)
+
+      local aperbit
+      if apersel ~= fnil then
+        aperbit = getslcbit(apersel)
+      elseif aper == true then
+        aperbit = slcbit.last
+        apersel = slcsel.last
+      else
+        aperbit = slcbit[aper]
+        apersel = slcsel[aper]
+        assert(is_number(aperbit)  ,
+              "invalid aper directive (boolean or valid atxxx string expected)")
+      end
+
+      if aperbit > 0 then
+        local aperact = action 'ataper'
+        if band(aperbit, slcbit.atentry) ~= 0 then
+          atentry = chain(atentry, aperact)
+        end
+        if band(aperbit, slcbit.atexit) ~= 0 then
+          atexit = chain(atexit, aperact)
+        end
+        if band(aperbit, slcbit.atslice) ~= 0 then
+          atslice = chain(atslice, actionat('ataper', apersel))
+        end
+      end
+    end
   end
 
   -- activate maps debugging
@@ -502,6 +535,7 @@ local function make_mflow (self)
   mflw.nphot=0               -- number of tracked photons
 
   mflw.save=save             -- save data
+  mflw.aper=aper             -- check aperture
   mflw.observe=observe       -- save observed elements every n turns
 
   mflw.atentry=atentry       -- action called when entering an element
@@ -667,6 +701,7 @@ local track = command 'track' {
   totalpath=false,  -- variable 't' is the totalpath                      (mflw)
 
   save=true,        -- create mtable and save results (default atsave)    (mtbl)
+  aper=true,        -- check for aperture (default atsave)                (mtbl)
   title=nil,        -- title of mtable (default seq.name)                 (mtbl)
   observe=1,        -- save only in observed elements (every n turns)     (mtbl)
   savemap=false,    -- save damap in the in the column __map              (mtbl)
@@ -674,12 +709,12 @@ local track = command 'track' {
   atentry=fnil,     -- action called when entering an element             (mflw)
   atslice=fnil,     -- action called after each element slices            (mflw)
   atexit=fnil,      -- action called when exiting an element              (mflw)
-  ataper=fnil,      -- action called last when checking for aperture      (mflw)
   atsave=fnil,      -- action called last when saving in mtable           (mflw)
+  ataper=fnil,      -- action called last when checking for aperture      (mflw)
   atdebug=fnil,     -- action called when debugging the maps              (mflw)
 
-  apersel=fnil,     -- aper selector (predicate, default atentry)         (mflw)
   savesel=fnil,     -- save selector (predicate, default atexit)          (mflw)
+  apersel=fnil,     -- aper selector (predicate, default atentry)         (mflw)
 
   info=nil,         -- information level (output on terminal)             (mflw)
   debug=nil,        -- debugging information level (output on terminal)   (mflw)
@@ -692,9 +727,9 @@ local track = command 'track' {
     'sequence', 'beam', 'range', 'dir', 's0', 'X0', 'O0', 'deltap',
     'nturn', 'nstep', 'mapdef', 'method', 'model', 'secnmul', 'ptcmodel',
     'implicit', 'misalign', 'aperture', 'fringe', 'radiate', 'totalpath',
-    'save', 'title', 'observe', 'savemap', 'info', 'debug', 'usrdef',
-    noeval = {'nslice', 'apersel', 'savesel',
-              'atentry', 'atslice', 'atexit', 'ataper', 'atsave', 'atdebug'},
+    'save', 'aper', 'title', 'observe', 'savemap', 'info', 'debug', 'usrdef',
+    noeval = {'nslice', 'savesel', 'apersel',
+              'atentry', 'atslice', 'atexit', 'atsave', 'ataper', 'atdebug'},
   }
 } :set_readonly()   -- reference track command is readonly
 
