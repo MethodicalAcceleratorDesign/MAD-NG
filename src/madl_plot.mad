@@ -265,23 +265,39 @@ MAD_SET_TERM     = " \
 
 ]]
 
+local kill_sids = {}
+local function kill_plots()
+  pause("Closing plots, ") 
+  for sid, term in pairs(kill_sids) do
+    gplot:set_sid(sid)
+    gplot:printf("set term %s close", term)
+  end
+end
+
+local kill_atexit = \ atexit(kill_plots)
 -- dump header and set terminal to script file
 local function setup_cmd (self)
-  local output, scrdump in self
-  local file, fname = get_tmpfile(self.sid)
-  gplot:set_sid(self.sid)
+  local output, default, scrdump, font, fontsize, sid, term, close_plots in self
+  local file, fname = get_tmpfile(sid)
+  gplot:set_sid(sid)
   file:write(init_cmd % self)
 
-  self.font     = self.font     or ""
-  self.fontsize = self.fontsize or ""
+  self.font     = font     or ""
+  self.fontsize = fontsize or ""
 
   if is_nil(output) then
     file:write("@MAD_INC_WID\n")
-    file:write("MAD_TERM = \"set term ${term} MAD_WID size ${wsizex},\z
-      ${wsizey} enhanced font '${font},${fontsize}'\"\n" % self)
-  elseif is_number(output) then
-    file:write("MAD_TERM = \"set term ${term} ${output} size ${wsizex},\z
-      ${wsizey} enhanced font '${font},${fontsize}'\"\n" % self)
+    output = "MAD_WID"                                                        -- So as not to mutate the object                                         
+  end
+  if is_number(output) or output == "MAD_WID" then
+    file:write(
+      ("MAD_TERM = \"set term ${term} " .. output .. " size ${wsizex},\z
+      ${wsizey} enhanced font '${font},${fontsize}'\"\n") % self
+    )
+    if close_plots then
+      runonce(kill_atexit)
+      kill_sids[sid] = term
+    end
   elseif is_string(output) then
     local ext = output:sub(-3, -1)
     if ext == "png" then
@@ -1019,6 +1035,7 @@ local plot = command "plot" {
 
   -- output
   output      = nil,        -- ("filename") -> pdf | number -> wid
+  close_plots = true,       -- boolean, close all plots on exit of MAD-NG or not
   scrdump     = nil,        -- ("filename")
 
   -- title
