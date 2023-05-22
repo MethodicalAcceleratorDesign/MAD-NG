@@ -474,7 +474,7 @@ local function layout_process (param, pseq)
   local deltaY   = disty
   local prevs_sh, angle, j, dir = 0, 0, 1, seq.dir
   local fstx, l2, s_sh, xs, ys
-  for i, elem, s in seq:siter(range, nturn) do
+  for i, elem, s in seq:iter(range, nturn) do
     l2           = elem.l/2
     s_sh         = s + l2
     deltaY       = deltaY - tan(dir*angle)*(s_sh-prevs_sh)
@@ -524,29 +524,28 @@ local function layout_process_in (param, pseq)
   layproj = projections[layproj] or layproj or projections.XZ
 
   local idx, shift = 1
-  srv:write("srv.dat")
   for i, line in srv:iter() do
     shift = vector{line.x, line.y, line.z}
     local rot = line.__map
     local elm = seq[line.eidx]
-    if line.slc == 0 then
-      if elm then
+    if not is_nil(elm) then
+      if line.slc == 0 then
         local kind, e1, e2, true_rbend, angle in elm
         local patch = matrix(3):eye()
-        if true_rbend and kind=="rbend" and e1 and e2 then                    -- For straight rbend, we don't want any angle
+        if kind=="rbend" and true_rbend and e1 and e2 then                    -- For straight rbend, we don't want any angle
           patch:rotzxy(0,  angle/2, 0)
-        elseif kind=="sbend" or (not true_rbend and kind=="rbend") then       -- For sbend and curved rbend, we want half the angle
+        elseif kind=="sbend" or kind=="rbend" and not true_rbend then         -- For sbend and curved rbend, we want half the angle
           patch:rotzxy(0, -angle/2, 0)
         end
         rot:mul(patch, rot)
+        data[idx] = {rot, shift}                                              -- Save the rotation and shift at slc == 0
+        idx = idx + 1
+      elseif line.slc == 1 and elm.kind == "rbend" then                       -- Patch to bline, rbend bline should go through the magnet center
+        shift[1] = srv[i-1].x
       end
-      data[idx] = {rot, shift}                                                -- Save the rotation and shift at slc == 0
-      idx = idx + 1
-    elseif line.slc == 1 and elm and elm.kind == "rbend" then                 -- Patch to bline, rbend bline should go through the ma
-      shift[1] = srv[i-1].x
     end
 
-    shift = layproj * shift    -- Rotate the shift to x-y plane for the bline
+    shift = layproj * shift                                                   -- Rotate the shift to x-y plane for the bline
     pseq.xmin, pseq.xmax = min(pseq.xmin, shift[1]), max(pseq.xmax, shift[1])
     pseq.ymin, pseq.ymax = min(pseq.ymin, shift[2]), max(pseq.ymax, shift[2])
     table.insert(bline.x, shift[1]); table.insert(bline.y, shift[2])
@@ -562,7 +561,7 @@ local function layout (param, pseq)
   local dir, j  = seq.dir, 1
 
   layout_bline(param, bline)
-  for i, elem, s in seq:siter(range, nturn) do
+  for i, elem, s in seq:iter(range, nturn) do
     local len, ekind = elem.l, elem.kind
     local dj = data[j]
 
