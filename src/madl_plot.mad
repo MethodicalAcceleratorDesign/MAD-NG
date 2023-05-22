@@ -498,7 +498,7 @@ local function layout_process (param, pseq)
   pseq.data, pseq.bline = data, bline
 end
 
-local ssel = \e -> not e:is_implicit()
+local ssel = \_, mflw, _, islc -> islc <= 0 or islc == mflw.nsl  
 local projections = {
   XZ       = matrix(3):fill{ 1, 0, 0 ; 0, 0, 1 ; 0, 0, 0 },
   ["-XZ"]  = matrix(3):fill{-1, 0, 0 ; 0, 0, 1 ; 0, 0, 0 },
@@ -514,35 +514,38 @@ local projections = {
 local function layout_process_in (param, pseq)
   local nturn, layproj                  in param
   local range, seq, s0, X0, A0, W0, mis in pseq
-  local srv, mflw = survey { sequence=seq, range=range, nturn=nturn, 
-                         s0=s0, X0=X0, A0=A0, W0=W0, misalign=mis, savemap=true }
+  local srv, mflw = survey { sequence=seq, range=range, nturn=nturn,
+                         s0=s0, X0=X0, A0=A0, W0=W0, misalign=mis, savemap=true,
+                         save="atall", savesel=ssel,
+                        }
   local data  = table.new(#srv, 0)
   local bline = { x=table.new(#srv, 0), y=table.new(#srv, 0) }
 
   layproj = projections[layproj] or layproj or projections.XZ
 
-  local shift   
+  local idx, shift = 1
+  srv:write("srv.dat")
   for i, line in srv:iter() do
-    local ext_line = srv[max(1, i-1)]
+    shift = vector{line.x, line.y, line.z}
+    local rot = line.__map -- exit of the previous magnet for the bline angle
     local elm = seq[line.eidx]
-    shift = vector{ext_line.x, ext_line.y, ext_line.z}
-    local rot =  ext_line.__map
-    local translation = vector(3)
-    if elm then
-      local kind, e1, e2 in elm
-      if kind=="rbend" and not (e1 and e2) then 
-        if e1 then 
-          rot:mul(matrix(3):roty(-e1), rot)
-        else
-          rot:mul(matrix(3):roty(e2 - elm.angle), rot)
-          translation[1] = -arc2cord(elm.l, elm.angle)*sin((e2-elm.angle/2))
+    if line.slc == 0 then
+      if elm then
+        local kind, e1, e2, true_rbend, angle in elm
+        local patch = matrix(3):eye()
+        if true_rbend and kind=="rbend" and e1 and e2 then
+          patch:rotzxy(0,  angle/2, 0)
+        elseif kind=="sbend" or (not true_rbend and kind=="rbend") then
+          patch:rotzxy(0, -angle/2, 0)
         end
-      elseif kind=="sbend" or kind=="rbend" then
-        rot:mul(matrix(3):roty(-line.angle/2), rot)
+        rot:mul(patch, rot)
       end
+      data[idx] = {rot, shift}     -- Save the rotation and shift
+      idx = idx + 1
+    elseif line.slc == 1 and elm and elm.kind == "rbend" then -- Patchh to bline
+      shift[1] = srv[i-1].x
     end
 
-    data[i] = {rot, shift + translation}     -- Save the rotation and shift
     shift = layproj * shift    -- Rotate the shift to x-y plane for the bline
     pseq.xmin, pseq.xmax = min(pseq.xmin, shift[1]), max(pseq.xmax, shift[1])
     pseq.ymin, pseq.ymax = min(pseq.ymin, shift[2]), max(pseq.ymax, shift[2])
