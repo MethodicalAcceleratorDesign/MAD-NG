@@ -490,33 +490,11 @@ function MC.get_mono (x, i, r) -- idx -> mono
   return m, _C.mad_ctpsa_mono(x, i-1, m.n, m._dat) -- return mono and order
 end
 
-function MR.cycle (x, i, m_) -- loop over indexes for non-zero value, (i=0 means end)
-  if m_ then
-    if not is_monomial(m_) then m_ = monomial(m_) end
-    i = _C.mad_tpsa_cycle(x, i-1, m_.n, m_._dat, val)
-  else
-    i = _C.mad_tpsa_cycle(x, i-1, 0   , nil    , val)
-  end
-  return i+1, val[0], m_
-end
-
-function MC.cycle (x, i, m_) -- loop over indexes for non-zero value, (i=0 means end)
-  if m_ then
-    if not is_monomial(m_) then m_ = monomial(m_) end
-    i = _C.mad_ctpsa_cycle(x, i-1, m_.n, m_._dat, cval)
-  else
-    i = _C.mad_ctpsa_cycle(x, i-1, 0   , nil    , cval)
-  end
-  return i+1, cval[0], m_
-end
-
 function MR.totable (x, p)
   local m = monomial(p == true and x.d.nn or x.d.nv)
   local t = table.new(#x,#x)
-  local i, n, v = 0, 1
-  while true do
-    i, v = x:cycle(i, m)
-    if i == 0 then break end
+  local n = 1
+  for i, v in x:iter(m) do
     local s = m:tostring()
     t[n], t[s], n = s, v, n+1
   end
@@ -1923,6 +1901,41 @@ function MR.read (x_, filnam_, kind_)
   if is_string(filnam_) then file:close() end
   return x -- return nil if no GTPSA found
 end
+
+-- iterators ------------------------------------------------------------------o
+
+local function riterx (x, i)
+  i = _C.mad_tpsa_cycle(x, i, 0, nil, val)
+  if i >= 0 then return i, val[0] end
+end
+
+local function citerx (x, i)
+  i = _C.mad_ctpsa_cycle(x, i, 0, nil, cval)
+  if i >= 0 then return i, cval[0] end
+end
+
+local function riters (s, i)
+  i = _C.mad_tpsa_cycle(s.x, i, s.m.n, s.m._dat, val)
+  if i >= 0 then return i, val[0], s.m end
+end
+
+local function citers (s, i)
+  i = _C.mad_ctpsa_cycle(s.x, i, s.m.n, s.m._dat, cval)
+  if i >= 0 then return i, cval[0], s.m end
+end
+
+local function mkiter (x, m_, i_)
+  if is_number(m_) and is_nil(i_) then i_, m_ = m_, nil end -- right shift
+  if m_ then
+    if not is_monomial(m_) then m_ = monomial(m_) end
+    return is_tpsa(x) and riters or citers, {x=x, m=m_}, (i_ or 0)-1
+  else
+    return is_tpsa(x) and riterx or citerx, x, (i_ or 0)-1
+  end
+end
+
+MR.__ipairs, MR.iter = mkiter, mkiter
+MC.__ipairs, MC.iter = mkiter, mkiter
 
 -- metamethods ----------------------------------------------------------------o
 
