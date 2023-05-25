@@ -29,15 +29,15 @@ local vector, cvector, matrix, monomial, damap, cdamap,
 local assertf, errorf, printf, num2str, tbl2str, setkeys, tblcat,
       mockfile, openfile                                         in MAD.utility
 local lbool                                                      in MAD.gfunc
-local twopi                                                      in MAD.constant
-local abs, sqrt, exp, log, sin, cos, tan, atan2,
+local pi, twopi                                                  in MAD.constant
+local abs, sqrt, exp, log, sin, cos, tan, atan2, tgamma, lgamma,
       sinh, cosh, real, imag, cplx, fact, rangle, hypot          in MAD.gmath
     
 local is_nil, is_boolean, is_number, is_positive, is_nonzero, is_integer,
       is_natural, is_nznatural, is_even, is_odd, is_string, is_table,
       is_mappable, is_indexable,
       is_matrix, is_cmatrix, isa_matrix, is_vector, is_cvector,
-      is_damap, is_cdamap, isa_damap, wrestrict                  in MAD.typeid
+      is_tpsa, is_damap, is_cdamap, isa_damap, wrestrict         in MAD.typeid
 
 local min, max in math
 
@@ -207,7 +207,7 @@ end
 
 -- sort particles/damaps, adjust npar
 function gphys.msort (mflw, cmp_)
-  assert(typeid.is_dynmflow(mflw),"invalid argument #1 (dynamic mflow expected)")
+  assert(typeid.is_dynmflw(mflw),"invalid argument #1 (dynamic mflow expected)")
 
   mflw.npar = #mflw
   if mflw.npar > 1 then table.sort(mflw, cmp_ or gphys.mcmp) end
@@ -775,6 +775,8 @@ end
 
 -- analyse anh, gnf, ham --
 
+local normal_a0 -- forward local decl
+
 local function nfana (nf, k_, a_)
   if is_damap(k_) and is_nil(a_) then a_, k_ = k_ end -- right shift
 
@@ -786,10 +788,11 @@ local function nfana (nf, k_, a_)
   local mono = monomial(nf.nn)
 
   -- propagated normal form, put in CS form
-  if a_ and false then
-    assert(not a_, "unexpected use of trkrdt")
+  if a_ then
+    local nfa = normal_a0(a_) ; a_ = nfa.m_n
+  if false then
     local nv, nt, npt in nf
-    if npt ~= 0 then nv = 4 end                       -- process t,pt as params
+    if npt ~= 0 then nv = 4 end -- process t,pt as params
 
     local mu1 =            atan2(a_.x:get(3), a_.x:get(2))
     local mu2 =            atan2(a_.y:get(5), a_.y:get(4))
@@ -797,11 +800,9 @@ local function nfana (nf, k_, a_)
 
     if abs(mu1)+abs(mu2)+abs(mu3) > 0 then
       local r = a_:same():eye()
-      for i=2,nv,2 do                                   -- rephase to CS
+      for i=2,nv,2 do -- rephase to CS
         local a11, a12 = a_[i-1]:deriv(i-1), a_[i-1]:deriv(i)
         local d = hypot(a11, a12)
-        if a11 < 0 then d = -d end  -- add pi (needed for comparison with PTC...)
-        assertf(d > 1e-14, "invalid eigenvectors (unexpected denom |% -.16e|>0)", d:get0())
         local ca, sa = a11/d, a12/d
         local nq = ca*r[i-1] + sa*r[i  ] -- [ a11/d  a12/d] = [ cos a  sin a]
         local np = ca*r[i  ] - sa*r[i-1] -- [-a12/d  a11/d]   [-sin a  cos a]
@@ -814,31 +815,11 @@ local function nfana (nf, k_, a_)
         r[i-1], r[i] = nq, np
       end
       nf = nf:copy((a_*r^-1):cplx():set0(0))
---      io.write("mu1=", mu1, ", mu2=", mu2, ", mu3=", mu3, "\n") ;
---      r:print("R")
+--    io.write("mu1=", mu1, ", mu2=", mu2, ", mu3=", mu3, "\n") ;
+--    r:print("R")
     end
-  end
-
---[[
-  for i=2,min(nr,nc),2 do
-    local a11, a12 = A:get(i-1,i-1), A:get(i-1,i) -- mu = atan2(a12, a11) / 2pi
-    local d = hypot(a11,a12)
-!   if a11 < 0 then d = -d end  -- add pi (sometimes needed for comparison with PTC...)
-    assertf(d > 1e-14, "invalid eigenvectors (unexpected denom |% -.16e|>0)", d)
-    a11, a12 = a11/d, a12/d
-    P:set(i-1,i-1,  a11) -- P = [ a11/d  -a12/d ] = [ cos a  -sin a ]
-    P:set(i-1,i  , -a12) --     [ a12/d   a11/d ]   [ sin a   cos a ] = rot(-a)
-    P:set(i  ,i-1,  a12) -- a = angle(a11, a12)
-    P:set(i  ,i  ,  a11)
-  end
-
--- A*P=[ a11  a12 ][ a11/d  -a12/d ]=[      d (>0)                0          ]
---     [ a21  a22 ][ a12/d   a11/d ] [ (a11a21+a12a22)/d  (-a12a21+a11a22)/d ]
---]]
-  if a_ and true then          -- mu1 = atan2(A12, A11)
-    -- assert(not a_, "unexpected use of old trkrdt")
-
-    local mu1 =                 atan2(a_.x:get(3), a_.x:get(2))
+  else
+    local mu1 =                 atan2(a_.x:get(3), a_.x:get(2))-- mu1 = atan2(A12, A11)
     local mu2 =                 atan2(a_.y:get(5), a_.y:get(4))
     local mu3 = nf.npt == 0 and atan2(a_.t:get(7), a_.t:get(6)) or 0
 
@@ -854,7 +835,7 @@ local function nfana (nf, k_, a_)
     end
 
     nf = nf:copy(a_:cplx():set0(0))
-  end
+  end end
 
   -- GNF and HAM
   if is_nil(nf.gnf) and (kind == 'all' or kind == 'gnf') then
@@ -865,10 +846,7 @@ local function nfana (nf, k_, a_)
 
     if nt ~= 0 then nv = 4 end -- t,pt are parameters
 
-    local i, v = 0
-    while true do
-      i, v = g:cycle(i, mono)
-      if i == 0 then break; end
+    for i,v in g:iter(mono) do
       local ms = mono:tostring()
       gnf[#gnf+1], gnf[ms] = ms, v                                  -- gnf terms
 
@@ -885,10 +863,7 @@ local function nfana (nf, k_, a_)
     local anh = {}
     for o=2,#t_op do
       for n=1,nv,2 do
-        local k, i, v = t_op[o][n], 0
-        while true do
-          i, v = k:cycle(i, mono)
-          if i == 0 then break; end
+        for _,v in t_op[o][n]:iter(mono) do
           local ms, pf = mono:tostring(), mono:ordpf(2)
           anh[#anh+1], anh[ms] = ms, -v:imag()*pf/twopi             -- anh terms
         end
@@ -975,7 +950,7 @@ end
 
 -- closed form (fix point) = a0^-1 * m * a0 -----------------------------------o
 
-local function normal_a0 (nf, ord_)
+function normal_a0 (nf, ord_)
   if is_damap(nf) then nf = normal_init(nf) end
   assert(is_nf(nf), "invalid argument #1 (normal form expected)")
 
@@ -1037,6 +1012,7 @@ local function normal_a0 (nf, ord_)
 -- end
 
 -- io.write("a0 out\n") -- debug pnf
+  return nf
 end
 
 -- linear normal form = a1^-1 * a0^-1 * m * a0 * a1 ---------------------------o
@@ -1203,13 +1179,9 @@ function gphys.normal (m, urdt_)
         io.stderr:write("****************************************\n")
         io.stderr:write("Field ",k,", fid=", option.fortid, "\n")
       end
-      local i, v = 0
 
       -- select/reject resonances
-      while true do
-        i, v = n_n[k]:cycle(i, mono)
-        if i == 0 then break; end
-
+      for i,v in n_n[k]:iter(mono) do
         local ms = mono:tostring()
         local mt = mono:totable()
 
@@ -1240,7 +1212,7 @@ function gphys.normal (m, urdt_)
         else
           t_n[k]:set(mono, 1, v)
         end
-      end -- cycle
+      end -- iter
     end -- for k
 
     -- save vector fields
@@ -1340,13 +1312,9 @@ function gphys.normal_ng (m, urdt_)
     -- compute pseudo-hamiltonian
     local g_n = n_n:convert(tc):fld2vec()                !; g_n:print("g_n @ "..n)
     local f_pb, t_pb = g_n:same(), g_n:same()
-    local i, v = 0
 
     -- select/reject resonances
-    while true do
-      i, v = g_n:cycle(i, mono)
-      if i == 0 then break; end
-
+    for i,v in g_n:iter(mono) do
       local ms = mono:tostring()
 
       local s = 0
@@ -1382,7 +1350,7 @@ function gphys.normal_ng (m, urdt_)
         anh[#anh+1], anh[ms] = ms, -mono:ordpf(2)*v:imag()/twopi              -- anh terms
         fil:write("anh[",ms,"]=", num2str(anh[ms]), ", v=", v:tostring(), "\n")
       end
-    end -- cycle
+    end -- iter
 
     -- f_pb:print("f_pb @ "..n)
 
@@ -1829,6 +1797,58 @@ function gphys.syn2bet(bb0, mflw, elm) -- TODO: move to beta0?
            synch_1, synch_2, synch_3, synch_4, synch_5, synch_6, synch_8)
     print('')
   end
+end
+
+-- beam size extraction -------------------------------------------------------o
+
+local pi2 = pi^2
+
+-- compute eq. 7 from
+-- R. Tomas, "Nonlinear optimization of beam lines", PhysRev. Accel&Beams, 2006
+
+local function is_even (m)
+  for k=1,#m do
+    if m[k]%2 ~= 0 then return false end
+  end
+  return true
+end
+
+function gphys.beamsize(x, sig)
+  assert(is_tpsa(x), "invalid argument #1 (real TPSA expected)")
+
+  local n  = x:nv()
+  local s  = vector(sig)
+  local mi = monomial(n)
+  local mj = monomial(n)
+  local mm = monomial(n)
+  local xs = 0
+
+  assert(#s == 5, "invalid argument #2 (iterable with 5 values expected")
+
+  x:print("X")
+  printf(" i  j mm      xi              xj              xx              xs\n")
+
+  for i,xi in x:iter(mi)   do
+  for j,xj in x:iter(mj,i) do
+    if mj >= mi and is_even(mi:add(mj,mm)) then
+      local xx = (i == j and 1 or 2)*xi*xj
+      local sk, mk = 0
+      for k=1,4 do
+        mk = mm[k]
+        xx = xx * s[k]^mk * tgamma((1+mk)/2)
+        sk = sk + mk
+--      print(k, mk, sk/2, xx)
+      end
+      mk = mm[6]
+      xx = xx * s[5]^mk * 2^(sk/2-mk) / ((1+mk)*pi2)
+      xs = xs + xx
+--    print(6, mk, sk/2, xx)
+      printf("%2d %2d %s % -.8e % -.8e % -.8e % -.8e\n",
+                i,  j, mm:tostring(), xi, xj, xx, xs)
+    end
+  end end
+
+  return sqrt(xs)
 end
 
 -- env ------------------------------------------------------------------------o
