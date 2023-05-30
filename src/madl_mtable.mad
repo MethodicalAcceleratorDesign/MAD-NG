@@ -728,7 +728,6 @@ local function expand (data, tbl, extra)
   local rmax = ceil(max(tbl.reserve, data.rmax*1.5, data.rmax+extra))
   assert(rmax <= 2e8, "too big mtable") -- should see 'out of memory' first
   local nr, nc, cvec = data.nr, data.nc-data.ng, false
-
   -- nth expand, expand only vectors
   if data.rmax > 1 then
     for i=1,nc do
@@ -873,16 +872,17 @@ local function ins_col (tbl, key_, kval, val, nvec_)
     if ci < cg then ci = cg end
     table.insert(data, ci, setmetatable({__col=val, __dat=data, __slf=tbl}, gen_mt) )
     data.ng = data.ng+1
-  elseif is_iterable(val) then -- iterable  TODO: if nr == 0 specialize again...
+  elseif is_iterable(val) then -- iterable
     local nr = data.nr
     if ci > cg then ci = cg end
-    if is_vector(val) or is_number(val[1]) and not nvec_ and data.nvec ~= data.cidx then
+    if is_vector(val) or is_number(val[1]) and nr > 0 and not nvec_ and data.nvec ~= data.cidx then
       table.insert(data, ci,  vector(data.rmax):reshape(nr):fill(val))
-    elseif is_cvector(val) or is_complex(val[1]) and not nvec_ and data.nvec ~= data.cidx then
+    elseif is_cvector(val) or is_complex(val[1]) and nr > 0 and not nvec_ and data.nvec ~= data.cidx then
       table.insert(data, ci, cvector(data.rmax):reshape(nr):fill(val))
     else
-      table.insert(data, ci, table.new(nr,0))
-      for ri=1,nr do data[ci][ri] = val[ri] end
+      local nn = max(nr,#val)
+      table.insert(data, ci, table.new(nn,0))
+      for ri=1,nn do data[ci][ri] = val[ri] end
     end
     if nvec_ and data.nvec ~= data.cidx then
       data.nvec[kval] = ci
@@ -988,7 +988,7 @@ local function add_row (tbl, val)
                                     "invalid argument #3 (nil reference value)")
   local nr = data.nr+1
   if nr > data.rmax then expand(data, tbl, 1) end
-  for ci=1,data.nc-data.ng do
+  for ci=1,min(#val,data.nc-data.ng) do
     local v = val[ci]
     if is_nil(v) then v = val[data.cidx[ci]] end
     if isa_matrix(data[ci])
