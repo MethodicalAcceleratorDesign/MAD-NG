@@ -346,6 +346,9 @@ local function teardown_cmd (self, file, fname)
       print("MAD Plot Warning : no scrdump nor output provided - Nothing done")
     end
   end
+  if fname ~= scrdump then -- Why would this ever pass?
+    while fileexists(fname) do pause(200) end -- File takes about 200 ms to be deleted
+  end
 end
 
 -- layout ---------------------------------------------------------------------o
@@ -362,7 +365,7 @@ local adjust_in = \size -> \xs,ys,surv,l,proj ->
 
 -- return the shape of an element in x and y
 local function eShap (param, elem, dir)
-  local kindcolor, laypos in param
+  local kindcolor, laypos, elemshift in param
   local shape = dat[elem.kind]
   if not shape then
     error("element of kind: '" .. elem.kind
@@ -397,7 +400,7 @@ local function eShap (param, elem, dir)
   -- if only a ellipse
   if not is_table(sh) then return el, eStyle end
 
-  local ysym, yscl, func = shape.ysym, (shape.yscl or 1), nil
+  local ysym, yscl, func = elemshift and shape.ysym or 0, (shape.yscl or 1), nil
   local yshft = elem[shape.yshft] and sign(elem[shape.yshft]) or 0
   yshft = yshft * (shape.yfact or 1)
   if is_number(ysym) then -- for symmetric shapes
@@ -420,10 +423,11 @@ local function layout_poly (param, len, data, x_sh, y_sh, eStyle, func)
     for j=1,#x_sh do
       local xj, yj = x_sh[j], y_sh[j]
       local dashtype = eStyle.dash and "dashtype '" .. eStyle.dash .. "'" or ""
-      fpwrite("set object %d polygon front fc rgb '%s' fs %s \z
-        border rgb '%s' %s %s \\\n",
-        param.oid, eStyle.color, eStyle.style, eStyle.linecolor, dashtype,
-        (layonly or laypos ~= "in") and "" or "back")
+      fpwrite("set object %d polygon %s fc rgb '%s' fs %s \z
+        border rgb '%s' %s \\\n",
+        param.oid, 
+        (not layonly and (laypos == "in" or laypos == "middle")) and "back" or "front",
+        eStyle.color, eStyle.style, eStyle.linecolor, dashtype)
       local cmd = "from"
 
       for k=1,#xj do
@@ -848,9 +852,10 @@ local function cmd_interpolate (param)
   else
     local cmdi = "${cmd${id}}${data${id}}${index${id}}${using${id}}\z
                   with ${style${id}}${lines${id}}${points${id}}\z
-                  ${color${id}}${title${id}}${axes${id}}${smooth${id}},\\\n"
+                  ${color${id}}${title${id}}${axes${id}}${smooth${id}}"
     for i=1,intpol.id-1 do
       cmd = cmd .. strinter(cmdi, { id = i }, '=')
+      if i == intpol.id-1 then cmd = cmd .. "\n" else cmd = cmd .. ",\\\n" end
     end
   end
   if is_table(plotvar) then intpol:setvar(plotvar) end
@@ -1071,6 +1076,7 @@ local plot = command "plot" {
   elemname    = true,       -- boolean
   elemwidth   = nil,        -- unsigned size of element before elemscale
   elemscale   = 1,          -- multiplier or default size
+  elemshift   = true,       -- boolean (shift element based on strength (quadrupole etc.))
   kindcolor   = true,       -- {
                             --   quadrupole = "blue",
                             --   sbend = {
