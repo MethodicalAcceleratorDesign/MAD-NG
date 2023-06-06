@@ -75,7 +75,7 @@ end
 -- backup initial px, py
 
 function M.srad_save (elm, m, lw, islc)
- print("srad_save", elm.name, elm.l, lw, islc)
+--print("srad_save", elm.name, elm.l, lw, islc)
   for i=1,m.npar do
     local beam in m[i]
     if beam and beam.charge == 0 then goto continue end
@@ -84,6 +84,7 @@ function M.srad_save (elm, m, lw, islc)
     m[i].px0, m[i].py0 = px, py
     ::continue::
   end
+  m.pclw = 0
 end
 
 -- damping synchrotron radiation, backup px, py
@@ -91,8 +92,9 @@ end
 function M.srad_damp (elm, m, lw, islc)
 --print("srad_damp", elm.name, elm.l, lw, islc)
   local eh, sdir, info in m
-  local elw = lw*elm.lrad
+  local elw = islc>0 and lw*elm.lrad or m.clw-m.pclw
   local aelw = abs(elw)
+  m.pclw = m.clw
 
   for i=1,m.npar do
     local beam in m[i]
@@ -106,6 +108,8 @@ function M.srad_damp (elm, m, lw, islc)
     local dpy  = py-py0
     local kck2 = dpx^2+dpy^2
 
+--print("npar=", i, "kck2=", kck2, "elw=", elw, px, px0, py, py0)
+
     if kck2 > 0 then
       local  beam = beam or m.beam
       local _bet0 = 1/beam.beta
@@ -116,15 +120,15 @@ function M.srad_damp (elm, m, lw, islc)
 
       if sdir < 0 then damp, rfac = 1/damp, -rfac end
 
-      if info >= 2 and rfac ~= 0 then
-        printf("synrad: particle #%d lost %.2e GeV in slice %d of %s (rfac=%.5e, pt=%.5e)\n",
-               m[i].id, rfac*beam.energy, islc, elm.name, rfac, pt)
-      end
-
       -- scalar or tpsa
       m[i].px, px = m[i].px*damp , px*damp
       m[i].py, py = m[i].py*damp , py*damp
       m[i].pt     = m[i].pt*(1-rfac) - rfac*_bet0
+
+      if info >= 2 and rfac ~= 0 then
+        printf("synrad: particle #%d lost %.2e GeV in slice %d of %s (rfac=%.16e, pt=%.5e)\n",
+               m[i].id, rfac*beam.energy, islc, elm.name, rfac, pt*(1-rfac) - rfac*_bet0)
+      end
     end
 
     -- backup
@@ -141,8 +145,9 @@ local kcrit = 1.5*hbar*clight
 function M.srad_quant (elm, m, lw, islc)
 --print("srad_quant", elm.name, elm.l, lw, islc)
   local eh, sdir, radiate, info in m
-  local elw  = lw*elm.lrad
+  local elw = islc>0 and lw*elm.lrad or m.clw-m.pclw
   local aelw = abs(elw)
+  m.pclw = m.clw
 
   for i=1,m.npar do
     local beam in m[i]
