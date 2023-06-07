@@ -31,7 +31,7 @@ Notes about directions and quantities:
 
 -- locals ---------------------------------------------------------------------o
 
-local command, element, mtable, damap, symint, option, show    in MAD
+local command, element, mtable, damap, symint, option, show     in MAD
 
 local is_nil, is_beam, is_sequence, is_boolean, is_number,
       is_natural, is_nznatural, is_integer, is_string, is_true,
@@ -45,7 +45,6 @@ local apercheck                                                 in MAD.aperture
 local srad_save, srad_damp, srad_quant                          in MAD.synrad
 local is_implicit                                               in element.drift
 local slcsel, slcbit, action, actionat, getslcbit               in symint
-   -- atbegin, atbody, atend, atins, atins1
 local abs, max in math
 
 local io, type, setmetatable, assert =
@@ -140,7 +139,7 @@ local function fill_row (elm, mflw, lw, islc)
   local name, kind in elm
   local ds, eidx, clw, sdir, tdir, spos, turn, beam, mtbl, savemap in mflw
 
-  local lw  = islc<0 and -1-islc or clw
+  local lw  = islc<0 and 1-islc%2 or clw
   local dsw = ds*lw
   local pc  = beam.pc
 
@@ -340,7 +339,7 @@ local function make_mflow (self)
       end
 
       if savebit > 0 then
-        local saveact = action 'atsave'
+        local saveact = actionat('atsave', savesel)
         if band(savebit, slcbit.atentry) ~= 0 then
           atentry = chain(atentry, saveact)
         end
@@ -348,7 +347,7 @@ local function make_mflow (self)
           atexit = chain(atexit, saveact)
         end
         if band(savebit, slcbit.atslice) ~= 0 then
-          atslice = chain(atslice, actionat('atsave', savesel))
+          atslice = chain(atslice, saveact)
         end
       end
     end
@@ -364,8 +363,8 @@ local function make_mflow (self)
       if apersel ~= fnil then
         aperbit = getslcbit(apersel)
       elseif aper == true then
-        aperbit = slcbit.atlast
-        apersel = slcsel.atlast
+        aperbit = slcbit.atend
+        apersel = slcsel.atend
       else
         aperbit = slcbit[aper]
         apersel = slcsel[aper]
@@ -374,7 +373,7 @@ local function make_mflow (self)
       end
 
       if aperbit > 0 then
-        local aperact = action 'ataper'
+        local aperact = actionat('ataper', apersel)
         if band(aperbit, slcbit.atentry) ~= 0 then
           atentry = chain(atentry, aperact)
         end
@@ -382,7 +381,7 @@ local function make_mflow (self)
           atexit = chain(atexit, aperact)
         end
         if band(aperbit, slcbit.atslice) ~= 0 then
-          atslice = chain(atslice, actionat('ataper', apersel))
+          atslice = chain(atslice, aperact)
         end
       end
     end
@@ -397,20 +396,19 @@ local function make_mflow (self)
 
   -- activate radiation
   if radiate then
-    atslice = chain(achain(slcsel.atfirst, srad_save), atslice)
-    if string.find(radiate, "photon", 1, true) then
-      atslice = chain(achain(slcsel.atbody, srad_quant), atslice)
-      radiate = "photon"
-    elseif string.find(radiate, "quantum", 1, true) then
-      atslice = chain(achain(slcsel.atbody, srad_quant), atslice)
-      radiate = "quantum"
-    elseif string.find(radiate, "damp", 1, true) then
-      atslice = chain(achain(slcsel.atbody, srad_damp), atslice)
-      radiate = "damp"
-    else
-      error("invalid radiate value '"..radiate.."'")
-    end
+    local radact
+    atentry = chain(achain(slcsel.atbegin, srad_save), atentry)
+    if string.find(radiate, "damp", 1, true) then
+      radact = srad_damp
+    elseif string.find(radiate, "quant", 1, true) or
+           string.find(radiate, "phot" , 1, true) then
+      radact = srad_quant
+    else error("invalid radiate value '"..radiate.."'") end
+    atslice = chain(achain(slcsel.atcore, radact), atslice)
+    atexit  = chain(achain(slcsel.atend,  radact), atexit )
+
     if save then mtbl.radiate = radiate end -- update mtbl
+    if string.find(radiate, "phot", 1, true) then radiate = "photon" end
   end
 
   -- totalpath
