@@ -1100,19 +1100,19 @@ function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                            -- 
   local el, eh, sdir, edir, tdir, knl, beam in m
   local l = el*lw
   local chg = beam.charge
-  local beta = beam.beta
+  local _beta = 1/beam.beta           -- Should be _beta not beta
 
   -- [GETMAT7, w ~= 0]
-  local kx  = (knl[2]+eh*knl[1])/el*edir
-  local ky  = -knl[2]/el*edir
-  local wxs = kx*sdir < 0 and -1 or 1
-  local wys = ky*sdir < 0 and -1 or 1
-  local wx, cx, sx, wy, cy, sy
+  local kx  = (knl[2]+eh*knl[1])/el   -- No need to include sign of edir here (see below)
+  local ky  = -knl[2]/el
+  local wxs = kx*tdir < 0 and -1 or 1 --w(x/y)s determines sign after sqrt
+  local wys = ky*tdir < 0 and -1 or 1 
+  local wx, cx, sx, wy, cy, sy 
   local mx11, mx12, mx13, mx21, mx22, mx23, mx31, mx32, mx33
   local my11, my12,       my21, my22
 
   if abs(kx) >= minstr then
-    wx = sqrt(abs(kx))*tdir*wxs
+    wx = sqrt(abs(kx))*wxs -- only wxs is needed for the sign of kx
   else
     wx = 0
     mx11, mx12, mx13 = 1   , l   , eh*l^2/2
@@ -1121,7 +1121,7 @@ function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                            -- 
   end
 
   if abs(ky) >= minstr then
-    wy = sqrt(abs(ky))*tdir*wys
+    wy = sqrt(abs(ky))*wys -- only wys is needed for the sign of ky
   else
     wy = 0
     my11, my12 = 1, l
@@ -1129,17 +1129,16 @@ function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                            -- 
   end
 
   -- trig 1st GETMAT7, no need to reverse wxs and wys
-  local dox, doy = true, true
-  wx, wy = -wx, -wy
+  -- Removed reverse of wx and wy as they were just reversed later on
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
     local  chg = beam and beam.charge or chg
-    local beta = beam and beam.beta or beta
+    local _beta = beam and 1/beam.beta or _beta
 
     local cx, sx
-    if wx ~= 0 and wxs ~= chg or dox then -- [GETMAT7]
-      wx, wxs, dox = -wx, -wxs, nil
+    if wx ~= 0 then -- [GETMAT7]
+      wx, wxs = wx*chg, -wxs*chg
       if wx > 0
       then cx, sx = cos (wx*l), sin (wx*l)
       else cx, sx = cosh(wx*l), sinh(wx*l)
@@ -1150,8 +1149,8 @@ function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                            -- 
     end
 
     local cy, sy
-    if wy ~= 0 and wys ~= chg or doy then -- [GETMAT7]
-      wy, wys, doy = -wy, -wys, nil
+    if wy ~= 0 then -- [GETMAT7]
+      wy, wys = wy*chg, -wys*chg
       if wy > 0
       then cy, sy = cos (wy*l), sin (wy*l)
       else cy, sy = cosh(wy*l), sinh(wy*l)
@@ -1176,12 +1175,13 @@ function M.quad_thickh (elm, m, lw) -- [PUSHTKT7]                            -- 
     -- print("mx21=", mx21) print("mx22=", mx22) print("mx23=", mx23)
     -- print("my11=", my11) print("my12=", my12)
     -- print("my21=", my21) print("my22=", my22)
+    -- print("mx31=", mx31) print("mx32=", mx32) print("mx33=", mx33)
 
-    local nx  = x*mx11 + px*mx12 + pt*(mx13*beta)
-    local npx = x*mx21 + px*mx22 + pt*(mx23*beta)
+    local nx  = x*mx11 + px*mx12 + pt*(mx13*_beta)
+    local npx = x*mx21 + px*mx22 + pt*(mx23*_beta)
     local ny  = y*my11 + py*my12
     local npy = y*my21 + py*my22
-    local dt  = x*(mx31*beta) + px*(mx32*beta) + pt*mx33
+    local dt  = x*(mx31*_beta) + px*(mx32*_beta) + pt*mx33
 
     m[i].x   = nx
     m[i].y   = ny
@@ -1211,7 +1211,7 @@ function M.quad_kickh (elm, m, lw, ii) -- [KICKTKT7]                         -- 
       local    pz = sqrt(1 + (2*_beta)*pt + pt^2)
       local bx,by = bxby(nmul, knl, ksl, x, y)
 
-      m[i].px = px - wchg*(by - knl[2]*x - eh*knl[1]*(pz-_beta*pt))
+      m[i].px = px - wchg*(by - knl[2]*x) + l*eh*(pz-(_beta*pt)) -- eh has tdir included
       m[i].py = py + wchg*(bx - knl[2]*y)
       m[i].t  =  t - (l*eh)*((_beta+pt)/pz - _beta)*x
     end
