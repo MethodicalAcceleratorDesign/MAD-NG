@@ -31,10 +31,11 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 // --- types -----------------------------------------------------------------o
 
-typedef _Bool            log_t;
+typedef bool             log_t;
 typedef int32_t          idx_t;
 typedef int32_t          ssz_t;
 typedef uint32_t         u32_t;
