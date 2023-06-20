@@ -98,9 +98,9 @@ mad_trk_strex_drift_r (elem_t *e, mflw_t *m, num_t lw, int istp)
     par_t &p = m->par[i];
     num_t l_pz = l/pz(p);
 
-    p.x = p.x + p.px*l_pz;
-    p.y = p.y + p.py*l_pz;
-    p.t = p.t - l_pz*(1/p.beta+p.pt) + (1-T)*(ld/p.beta);
+    p.x += p.px*l_pz;
+    p.y += p.py*l_pz;
+    p.t -= l_pz*(1/p.beta+p.pt) + (1-T)*(ld/p.beta);
   }
 }
 
@@ -117,10 +117,9 @@ mad_trk_strex_drift_t (elem_t *e, mflw_t *m, num_t lw, int istp)
     map_t &p = m->map[i];
     const tpsa l_pz = l/pz(p);
 
-    const tpsa x = p.x + p.px*l_pz;
-    const tpsa y = p.y + p.py*l_pz;
-    const tpsa t = p.t - l_pz*(1/p.beta+*p.pt) + (1-T)*(ld/p.beta);
-    cpy(x,p.x), cpy(y,p.y), cpy(t,p.t);
+    ref(p.x) += p.px*l_pz;
+    ref(p.y) += p.py*l_pz;
+    ref(p.t) -= l_pz*(1/p.beta+*p.pt) + (1-T)*(ld/p.beta);
   }
 }
 
