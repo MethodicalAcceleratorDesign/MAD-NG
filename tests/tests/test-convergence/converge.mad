@@ -1,6 +1,6 @@
 -- locals ---------------------------------------------------------------------o
 local mtable, damap, plot, tostring                              in MAD
-local openfile, fileexists, tblcat                               in MAD.utility
+local openfile, fileexists, tblcat, tblcpy                       in MAD.utility
 local max, abs                                                   in math         
 local eps                                                        in MAD.constant
 
@@ -11,9 +11,8 @@ local get_diff, save_results, gen_cfg, in_dir, out_dir, plt_dir,
       create_madx_seq, get_last_ptc_map                   in require "track-tool"
 
 local create_dif = require "madl_dbgmap".cmpmdump
-
-local dum = damap() -- get a dummy damap object for reading
 local coord_str, test_ctx, madx_script in ptc_strs
+local method_list = {2, 4, 6, 8, "'teapot'"}
 
 local ref_file = openfile(in_dir("ref.madx"), "r")
 local madx_ref = ref_file:read("*a")
@@ -50,7 +49,7 @@ end
 
 local function run_cfg (cfg, results)
   -- Run track for a single configuration 
-  if cfg.cur_cfg.nslice == 1 then   -- All of one configuration about to start
+  if cfg.cur_cfg.nslice == 1 and cfg.cur_cfg.method == method_list[1] then   -- All of one configuration about to start
     local cur_cfg = cfg.cur_cfg     -- Cache the current cfg
 
     cfg.cur_cfg   = cfg.converge_to -- Set the cfg to converge to
@@ -69,16 +68,31 @@ local function run_cfg (cfg, results)
       break
     end
   end
-
+  ng_dif.ptc_or_ng = "ng"
   save_results(cfg, ng_dif, results)
-  if ptc_res then save_results(cfg, ptc_dif, results) end
-  if ptc_res then prnt_results(cfg, ptc_dif, results) end 
   prnt_results(cfg, ng_dif, results)
+  if ptc_res then 
+    ptc_dif["converged"] = true
+    for i = 0, cfg.order do 
+      if abs(ptc_dif["order"..i.."_eps"]) > cfg.tol then 
+        ptc_dif["converged"] = false
+        break
+      end
+    end  
+    ptc_dif.ptc_or_ng = "ptc"
+    save_results(cfg, ptc_dif, results)
+    prnt_results(cfg, ptc_dif, results) 
+  end 
 end
 
 -- Plot the results -----------------------------------------------------------o
 local to_text = \str-> str:gsub("{", ""):gsub("}", ""):gsub("%$", "")
-
+local series = {}
+local legend = {}
+for i, method in ipairs(method_list) do 
+  series[i] = "${method} == "..method
+  legend["y"..i] = "Method "..tostring(method):gsub("'teapot'", "t")
+end
 local plot_template = plot {
   prolog = [[
 reset
@@ -87,26 +101,14 @@ FIT_LIMIT = 1e-20
 set format "%.1t{\327}10^{%T}"
 set key noautotitle
 ]],
-  ylabel = "Error",
-  yrange = {1e-16, 1e1}, 
-  wsizex = 1080,
-  wsizey = 720,
-  series      = {
-    "${method} == 2", 
-    "${method} == 'teapot'",
-    "${method} == 4",
-    "${method} == 6",
-    "${method} == 8",
-  },
-  legend      = {
-    y1 = "Method t",
-    y2 = "Method 2",
-    y3 = "Method 4",
-    y4 = "Method 6",
-    y5 = "Method 8",
-  },
-  scrdump     = "plot.gp",
-  exec = false,
+  ylabel  = "Error",
+  yrange  = {1e-16, 1e1}, 
+  wsizex  = 1080,
+  wsizey  = 720,
+  series  = series,
+  legend  = legend,
+  scrdump = "plot.gp",
+  exec    = false,
 }
 
 local colours = {
@@ -115,64 +117,69 @@ local colours = {
 
 -- Plot the results -----------------------------------------------------------o
 local function plot_res(res_cfg_tbl, cfg, plt_dir, cfg_tbl_)
-  local plot_info = cfg.plot_info or {}
-  local x_axis_attr, filename, pointtype in plot_info
-  local cfg_plot = plot_template { 
-    sid    = newSID(),
-    title  = cfg.name,
-    output = filename and plt_dir(filename) or 2, 
-    exec   = false,
-  }
-  local series in cfg_plot
+  local legend, series = tblcpy(plot_template.legend), plot_template.series
   local cfg_tbl, dif_tbl = cfg_tbl_ or res_cfg_tbl, res_cfg_tbl
-  local n_points, n_series = #dif_tbl, #series ! Should be 5
-  local x_data, y_data = table.new(n_series, 0), table.new(n_series, 0)
-  local converge_points = {} -- Set default instead?
-  for i = 1, n_series do 
-    x_data[i], y_data[i] = {}, {}
-    local cnt = 1
-    for j = 1, n_points do
-      if assert(loadstring("return " .. series[i] % cfg_tbl[j]))() then
-        x_data[i][cnt] = assert(loadstring("return " .. x_axis_attr % cfg_tbl[j]))()
-        local y_value = get_trk_y_val(dif_tbl[j], cfg)
-        y_data[i][cnt] = y_value > 1e-16 and y_value or 1e-16
-        if dif_tbl[j].converged then 
-          converge_points[i] = math.max(x_data[i][cnt], converge_points[i] or 0)
+  for _, ptc_or_ng in ipairs {"ng", cfg.doptc and "ptc" or nil} do
+    local is_ptc = ptc_or_ng == "ptc"
+    local plot_info = cfg.plot_info or {}
+    local x_axis_attr, filename, pointtype in plot_info
+    local cfg_plot = plot_template { 
+      sid    = newSID(),
+      title  = cfg.name,
+      output = filename and plt_dir(ptc_or_ng .. "_" .. filename) or 2, 
+      exec   = false,
+    }
+    local n_points, n_series = #dif_tbl, is_ptc and 4 or #series ! Should be 5
+    local x_data, y_data = table.new(n_series, 0), table.new(n_series, 0)
+    local converge_points = {} -- Set default instead?
+    for i = 1, n_series do 
+      x_data[i], y_data[i] = {}, {}
+      local cnt = 1
+      for j = 1, n_points do
+        if dif_tbl[j].ptc_or_ng == ptc_or_ng and
+        assert(loadstring("return " .. series[i] % cfg_tbl[j]))() then
+          x_data[i][cnt] = assert(loadstring("return " .. x_axis_attr % cfg_tbl[j]))()
+          local y_value = get_trk_y_val(dif_tbl[j], cfg)
+          y_data[i][cnt] = y_value > 1e-16 and y_value or 1e-16
+          if dif_tbl[j].converged then 
+            converge_points[i] = math.max(x_data[i][cnt], converge_points[i] or 0)
+          end
+          cnt = cnt + 1
         end
-        cnt = cnt + 1
       end
     end
-  end
 
-  cfg_plot.data, cfg_plot.datastyles, cfg_plot.x1y1 = {}, {}, {}
-  local plotcfg, epilog = "", ""
-  for i = 1, n_series do
-    cfg_plot.data["x"..i] = x_data[i]
-    cfg_plot.data["y"..i] = y_data[i]
-    cfg_plot.x1y1["x"..i] = "y"..i
-    cfg_plot.datastyles["y"..i] = {
-      style = "points",
-      pointtype = i,!assert(loadstring("return " .. (pointtype or i) % cfg_tbl[j]))(),
-      color = colours[i],
-    }
-    cfg_plot.legend["y"..i] = cfg_plot.legend["y"..i] .. 
-                              "'.sprintf('= %.2g x^{%.2g}', a"..i..", b"..i..").'"
-    plotcfg = plotcfg .. string.format("b%d=%d\nf%d(x) = a%d*x**b%d\n", i, 4, i, i, i)
-    plotcfg = plotcfg .. string.format("fit [%.3f:10] f%d(x) '$MAD_DATA' index %d using 1:2:($2) via a%d, b%d\n", converge_points[i] or 0, i, i-1, i, i)
-    epilog  = epilog  .. "replot ["..(converge_points[i] or eps)..":10] f"..i.."(x) linecolor '"..colours[i].."'\n"
-  end
-  plot_info.plotcfg = plotcfg ..
-  [[
-set logscale y
-  ]] .. (plot_info.plotcfg or "")
-  plot_info.prolog = cfg_plot.prolog .. (plot_info.prolog or "")
-  plot_info.epilog = epilog .. [[
-    set term png enhanced font ',' size 1080,720; 
-    set out "]]..cfg_plot.output..[[";
-    replot
-  ]] 
+    cfg_plot.data, cfg_plot.datastyles, cfg_plot.x1y1 = {}, {}, {}
+    local plotcfg, epilog = "", ""
+    for i = 1, n_series do
+      cfg_plot.data["x"..i] = x_data[i]
+      cfg_plot.data["y"..i] = y_data[i]
+      cfg_plot.x1y1["x"..i] = "y"..i
+      cfg_plot.datastyles["y"..i] = {
+        style = "points",
+        pointtype = i,!assert(loadstring("return " .. (pointtype or i) % cfg_tbl[j]))(),
+        color = colours[i],
+      }
+      cfg_plot.legend["y"..i] = legend["y"..i] .. 
+                                "'.sprintf('= %.2g x^{%.2g}', a"..i..", b"..i..").'"
+      plotcfg = plotcfg .. string.format("b%d=%d\nf%d(x) = a%d*x**b%d\n", i, 4, i, i, i)
+      plotcfg = plotcfg .. string.format("fit [%.3f:10] f%d(x) '$MAD_DATA' index %d using 1:2:($2) via a%d, b%d\n", converge_points[i] or 0, i, i-1, i, i)
+      epilog  = epilog  .. "replot ["..(converge_points[i] or eps)..":10] f"..i.."(x) linecolor '"..colours[i].."'\n"
+    end
+    plot_info.plotcfg = plotcfg ..
+    [[
+  set logscale y
+    ]] .. (plot_info.plotcfg or "")
+    plot_info.prolog = cfg_plot.prolog .. (plot_info.prolog or "")
+    plot_info.epilog = epilog .. [[
+      set term png enhanced font ',' size 1080,720; 
+      set out "]]..cfg_plot.output..[[";
+      replot
+    ]] 
+    plot_info.title = plot_info.title and ptc_or_ng:upper() .. " " .. plot_info.title or nil
 
-  cfg_plot (plot_info)
+    cfg_plot (plot_info)
+  end
 end
 -- Run test -------------------------------------------------------------------o
 local function run_test(cfg)    
@@ -209,6 +216,7 @@ local function run_test(cfg)
     io.write("\n")
   end
 
+  cfg.alist[#cfg.alist+1] = "method"
   cfg.alist[#cfg.alist+1] = "nslice"
   cfg.nslice = {
     1,2,4,6,8,10,
@@ -216,6 +224,7 @@ local function run_test(cfg)
     125,150,175,200,500,1000,
     -- 2000,5000,10000
   }
+  cfg.method = method_list
 
   -- Fill the mtable with the cfg and results
   gen_cfg(cfg, 1, \-> run_cfg(cfg, results))
@@ -223,6 +232,7 @@ local function run_test(cfg)
   -- Add the generator columns to the results table
   add_trk_gen_cols(results, cfg)
   results:addcol("converged", \ri,m->m.__res[ri].converged)
+  results:addcol("ptc_or_ng", \ri,m->m.__res[ri].ptc_or_ng)
   
   -- Decide whether to save the results
   local dosave = cfg.dosave or not (
@@ -240,7 +250,7 @@ local function run_test(cfg)
     )
     results:write(
       out_dir(results.name.."_res.tfs"), 
-      tblcat({"cfgid", "converged"}, results.res_cols), 
+      tblcat({"cfgid", "converged", "ptc_or_ng"}, results.res_cols), 
       hdr_lst
     ) 
   end
