@@ -25,7 +25,7 @@ extern "C" {
 // --- implementation ---------------------------------------------------------o
 
 void
-mad_trk_strex_drift (void)
+mad_trk_strex_drift ()
 {
   const mad::tpsa a(mad::newt());
   const mad::tpsa b(mad::newt());
@@ -33,9 +33,29 @@ mad_trk_strex_drift (void)
 }
 
 void
-mad_trk_strex_kick (void)
+mad_trk_strex_kick ()
 {
 
 }
+
+void
+mad_trk_curex_drift ()
+{
+  const mad::tpsa a(mad::newt());
+  const mad::tpsa b(mad::newt());
+  mad::tpsa c = a+b;
+}
+
+void
+mad_trk_curex_kick ()
+{
+
+}
+
+void mad_trk_slice ()
+{
+
+}
+
 
 // ----------------------------------------------------------------------------o

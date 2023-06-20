@@ -30,6 +30,10 @@
 
 void mad_trk_strex_drift (void);
 void mad_trk_strex_kick  (void);
+void mad_trk_curex_drift (void);
+void mad_trk_curex_kick  (void);
+
+void mad_trk_slice ();
 
 // --- end --------------------------------------------------------------------o
 
