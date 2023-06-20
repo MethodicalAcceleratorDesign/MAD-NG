@@ -32,11 +32,47 @@
 namespace mad {
 
 struct tpsa_del {
-  // --- dtor ---
   void operator()(tpsa_t *t) { mad_tpsa_del(t); }
 };
 
 using tpsa = std::unique_ptr<tpsa_t, tpsa_del>;
+
+struct ref {
+  ref(tpsa_t *a) : t(*a) {}
+  ref(tpsa_t &a) : t( a) {}
+
+  ref()                 = delete;
+  ref(ref&&)            = delete;
+  ref(const ref&)       = delete;
+  void operator=(ref&&) = delete;
+
+  void operator =(const tpsa   &a) { mad_tpsa_copy(   &*a,&t); }
+  void operator =(const tpsa_t &a) { mad_tpsa_copy(   & a,&t); }
+  void operator =(const tpsa_t *a) { mad_tpsa_copy(     a,&t); }
+
+  void operator+=(const tpsa   &a) { mad_tpsa_add (&t,&*a,&t); }
+  void operator+=(const tpsa_t &a) { mad_tpsa_add (&t,& a,&t); }
+  void operator+=(const tpsa_t *a) { mad_tpsa_add (&t,  a,&t); }
+  void operator+=(       num_t  a) { mad_tpsa_set0(&t,  1, a); }
+
+  void operator-=(const tpsa   &a) { mad_tpsa_sub (&t,&*a,&t); }
+  void operator-=(const tpsa_t &a) { mad_tpsa_sub (&t,& a,&t); }
+  void operator-=(const tpsa_t *a) { mad_tpsa_sub (&t,  a,&t); }
+  void operator-=(       num_t  a) { mad_tpsa_set0(&t,  1,-a); }
+
+  void operator*=(const tpsa   &a) { mad_tpsa_mul (&t,&*a,&t); }
+  void operator*=(const tpsa_t &a) { mad_tpsa_mul (&t,& a,&t); }
+  void operator*=(const tpsa_t *a) { mad_tpsa_mul (&t,  a,&t); }
+  void operator*=(       num_t  a) { mad_tpsa_scl (&t,  a,&t); }
+
+  void operator/=(const tpsa   &a) { mad_tpsa_div (&t,&*a,&t); }
+  void operator/=(const tpsa_t &a) { mad_tpsa_div (&t,& a,&t); }
+  void operator/=(const tpsa_t *a) { mad_tpsa_div (&t,  a,&t); }
+  void operator/=(       num_t  a) { mad_tpsa_scl (&t,1/a,&t); }
+
+private:
+  tpsa_t &t;
+};
 
 }
 
@@ -57,19 +93,6 @@ newt (const tpsa_t &a)
 {
   return tpsa(mad_tpsa_new(&a, mad_tpsa_default));
 }
-
-// --- copy ---
-
-inline void
-cpy (const tpsa_t &a, tpsa_t &b)
-{
-  mad_tpsa_copy(&a, &b);
-}
-
-inline void cpy (const tpsa_t &a, tpsa_t *b) { cpy( a,*b); }
-inline void cpy (const tpsa_t *a, tpsa_t &b) { cpy(*a, b); }
-inline void cpy (const tpsa   &a, tpsa_t &b) { cpy(*a, b); }
-inline void cpy (const tpsa   &a, tpsa_t *b) { cpy(*a,*b); }
 
 // --- unary ---
 
