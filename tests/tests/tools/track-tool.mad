@@ -2,7 +2,7 @@
 local matrix, mtable, tostring, vector, object, plot, filesys    in MAD
 local eps                                                        in MAD.constant
 local is_number, is_string , is_vector, is_table                 in MAD.typeid
-local tblcpy, val2keys, tblcat                                   in MAD.utility
+local tblcpy, val2keys, tblcat, openfile, strinter               in MAD.utility
 local pi, abs, floor, log, max                                   in math         
 local round                                                      in MAD.gmath
 
@@ -15,6 +15,47 @@ os.execute("mkdir -p "..out_dir()) -- Create output dir if it doesn't exist
 os.execute("mkdir -p "..plt_dir()) -- Create image dir if it doesn't exist
 -------------------------------------------------------------------------------o
 
+-- Constants ------------------------------------------------------------------o
+local X0s = {{x=0   , px=0    , y=0    , py=0   , t=0   , pt=0   }, -- zero
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=0   }, -- 4D
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=2e-5}, -- 5D weak
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=3e-2}, -- 5D strong
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=2e-5}} -- 6D
+
+local coord_str = [[
+x0  = ${x};
+px0 = ${px};
+y0  = ${y};
+py0 = ${py};
+t0  = ${t};
+pt0 = ${pt};
+]]
+
+local test_ctx = [[
+snm    = ${snm};
+order  = ${order};
+icase  = ${icase};
+debug  = ${debug};
+seq: sequence, l=2 ;
+  elm: ${elm};
+endsequence ;
+]]
+local madx_script = [[
+${coords}
+model  = ${model};
+method = ${method};
+nslice = ${nslice};
+energy = ${energy};
+ptcmodel = ${ptcmodel};
+${test_ctx}
+]]
+local ptc_strs = {
+  coord_str   = coord_str,
+  test_ctx    = test_ctx,
+  madx_script = madx_script,
+}
+
+local coords = {"x", "px", "y", "py", "t", "pt"}
 -- unique plot_id generator ---------------------------------------------------o
 local plot_id = 0
 local function newSID ()
@@ -23,16 +64,43 @@ local function newSID ()
 end
 -------------------------------------------------------------------------------o
 
+-- Write MAD-X script to elmseq.seq and generate a MAD-NG script and return it-o
+local function create_madx_seq(cfg)
+  openfile(in_dir(cfg.name.."_seq.seq"), "w"):write(
+    strinter(strinter(madx_script, {
+      test_ctx = test_ctx  % cfg, -- Relies on cfg.cur_cfg
+      coords   = coord_str % X0s[cfg.cur_cfg.x0i],
+    }, "="), cfg.cur_cfg, "=") % cfg
+    ):close()
+end
+-------------------------------------------------------------------------------o
+
+-- Grab the final map from the madx dump file ---------------------------------o
+local function get_last_ptc_map(filename)
+  local file = openfile(filename, "r")
+  local final_pos = 0
+  for line in file:lines() do
+    if line:sub(1, 2) == "@@" then
+    final_pos = file:seek("cur")
+    end
+  end
+  file:seek("set", final_pos)
+  local dam = dum:read(file)
+  file:close()
+  return dam
+end
+-------------------------------------------------------------------------------o
+
 -- Run track and PTC from cur_cfg and create results --------------------------o
 local function get_diff(ref, res, order)
   -- Create results table
  local dif_tbl = {}
- local dif = ref:dif(res)
+ local dif = ref:dif(res):write("dif"..order)
  
  -- Setup max matrix (coords x order)
  local max_difs = matrix(6, order+1)   
  
- for i, c in ipairs({"x", "px", "y", "py", "t", "pt"}) do 
+ for i, c in ipairs(coords) do 
    -- Get max idx for each coordinate at each order
    local _, max_idxs = dif[c]:maxbyord()
    
@@ -71,8 +139,9 @@ local function prnt_results(cfg, res)
   -- Print max dif for each order
   for i = 1, cfg.order+1 do
     local ord_max_dif = res["order"..i-1.."_eps"]
+    local tol = is_table(cfg.tol) and cfg.tol[i] or cfg.tol
     io.write(
-      ord_max_dif > cfg.tol and (">e+" .. floor(log(ord_max_dif, 10)))
+      ord_max_dif > tol and (">e+" .. floor(log(ord_max_dif, 10)))
       or string.format("%d", ord_max_dif),
       "\t"
     )
@@ -137,7 +206,7 @@ local function get_lower_bnds(res, tol)
   elseif is_number(tol) then
     return \->tol
   else 
-    return \o->tol[o]
+    return \o->tol[o+1]
   end
 end
 
@@ -160,7 +229,7 @@ local function show_res(res, cfg, attr_cols, tol)
       end end)
 
     -- Printing
-    io.write("\norder ", o, " (max error = ", max_err, ", tol = ", cfg.run_tol, "):\n")
+    io.write("\norder ", o, " (max error = ", max_err, ", tol = ", tostring(cfg.run_tol), "):\n")
     for _, col_name in ipairs(attr_cols) do
       if not (col_name == "cfgid") then
         local _, key_cnt = val2keys(err_tbl:getcol(col_name))
@@ -215,8 +284,8 @@ local function plot_res(get_y_val, res_cfg_tbl, cfg, plt_dir, cfg_tbl_)
     x_data[i], y_data[i] = {}, {}
     local cnt = 1
     for j = 1, n_points do
-      if loadstring("return " .. series[i] % cfg_tbl[j])() then
-        x_data[i][cnt] = loadstring("return " .. x_axis_attr % cfg_tbl[j])()
+      if assert(loadstring("return " .. series[i] % cfg_tbl[j]))() then
+        x_data[i][cnt] = assert(loadstring("return " .. x_axis_attr % cfg_tbl[j]))()
         local y_value = get_y_val(dif_tbl[j], cfg) -- So can be used for trk and srv
         y_data[i][cnt] = y_value > 1e-16 and y_value or 1e-16
         cnt = cnt + 1
@@ -224,7 +293,8 @@ local function plot_res(get_y_val, res_cfg_tbl, cfg, plt_dir, cfg_tbl_)
     end
   end
 
-  cfg_plot.data, cfg_plot.datastyles, cfg_plot.x1y1, cfg_plot.legend = {}, {}, {}, {}
+  cfg_plot.legend = cfg_plot.legend or {} ! Could be user set.
+  cfg_plot.data, cfg_plot.datastyles, cfg_plot.x1y1 = {}, {}, {}
   for i = 1, n_series do
     cfg_plot.data["x"..i] = x_data[i]
     cfg_plot.data["y"..i] = y_data[i]
@@ -258,17 +328,25 @@ local function plot_trk_res(res_cfg_tbl, cfg, plt_dir, cfg_tbl_)
 end
 
 return {
-  get_diff       = get_diff,
-  save_results   = save_results,
-  prnt_results   = prnt_results,
-  gen_cfg        = gen_cfg,
-  add_gen_cols   = add_gen_cols,
+  get_diff         = get_diff,
+  save_results     = save_results,
+  prnt_results     = prnt_results,
+  gen_cfg          = gen_cfg,
+  add_gen_cols     = add_gen_cols,
   add_trk_gen_cols = add_trk_gen_cols,
-  show_res       = show_res,
-  plot_res       = plot_res,
-  plot_trk_res   = plot_trk_res,
-  get_prev_res   = get_prev_res,
-  in_dir         = in_dir,
-  out_dir        = out_dir,
-  plt_dir        = plt_dir,
+  show_res         = show_res,
+  plot_res         = plot_res,
+  plot_trk_res     = plot_trk_res,
+  get_trk_y_val    = get_trk_y_val,
+  get_prev_res     = get_prev_res,
+  newSID           = newSID,
+  in_dir           = in_dir,
+  out_dir          = out_dir,
+  plt_dir          = plt_dir,
+  get_lower_bnds   = get_lower_bnds,
+  ptc_strs         = ptc_strs,
+  X0s              = X0s,
+  create_madx_seq  = create_madx_seq,
+  get_last_ptc_map = get_last_ptc_map,
+
 }
