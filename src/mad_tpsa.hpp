@@ -222,6 +222,19 @@ inline tpsa pow(const tpsa   &a,        int    b) { return pow(ref(a),     b ); 
 inline tpsa pow(const tpsa   &a,        num_t  b) { return pow(ref(a),     b ); }
 inline tpsa pow(       num_t  a, const tpsa   &b) { return pow(    a , ref(b)); }
 
+// warning: the operator ^ hasn't the expected precedence and associativity...
+
+inline tpsa operator^(const tpsa_t &a, const tpsa_t &b) { return pow(a,b); }
+inline tpsa operator^(const tpsa   &a, const tpsa_t &b) { return pow(a,b); }
+inline tpsa operator^(const tpsa_t &a, const tpsa   &b) { return pow(a,b); }
+inline tpsa operator^(const tpsa   &a, const tpsa   &b) { return pow(a,b); }
+inline tpsa operator^(const tpsa_t &a,        int    b) { return pow(a,b); }
+inline tpsa operator^(const tpsa_t &a,        num_t  b) { return pow(a,b); }
+inline tpsa operator^(const tpsa   &a,        int    b) { return pow(a,b); }
+inline tpsa operator^(const tpsa   &a,        num_t  b) { return pow(a,b); }
+inline tpsa operator^(       num_t  a, const tpsa   &b) { return pow(a,b); }
+inline tpsa operator^(       num_t  a, const tpsa_t &b) { return pow(a,b); }
+
 } // mad
 
 // --- functions ---
