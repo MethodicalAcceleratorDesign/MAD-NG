@@ -231,11 +231,13 @@ namespace mad {
 // --- unary ---
 
 #define FUN(F) \
+\
 inline tpsa F (const tpsa_t &a) { \
   tpsa c(newt(a)); \
   mad_tpsa_ ## F (&a, c.get()); \
   return c; \
 } \
+\
 inline tpsa F (const tpsa &a) { return F(ref(a)); }
 
 FUN(abs   );
