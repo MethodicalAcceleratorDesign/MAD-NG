@@ -58,13 +58,18 @@ newt (const tpsa_t &a)
   return tpsa(mad_tpsa_new(&a, mad_tpsa_default));
 }
 
-// --- getter ---
+// --- copy ---
 
-inline tpsa_t&
-ref (const tpsa &a)
+inline void
+cpy (const tpsa_t &a, tpsa_t &b)
 {
-  return *a.get();
+  mad_tpsa_copy(&a, &b);
 }
+
+inline void cpy (const tpsa_t &a, tpsa_t *b) { cpy( a,*b); }
+inline void cpy (const tpsa_t *a, tpsa_t &b) { cpy(*a, b); }
+inline void cpy (const tpsa   &a, tpsa_t &b) { cpy(*a, b); }
+inline void cpy (const tpsa   &a, tpsa_t *b) { cpy(*a,*b); }
 
 // --- unary ---
 
@@ -75,7 +80,7 @@ operator- (const tpsa_t &a) {
   return c;
 }
 
-inline tpsa operator-(const tpsa &a) { return -ref(a); }
+inline tpsa operator-(const tpsa &a) { return -*a; }
 
 // --- add ---
 
@@ -94,12 +99,16 @@ operator+ (const tpsa_t &a, num_t b) {
   return c;
 }
 
-inline tpsa operator+(const tpsa   &a, const tpsa_t &b) { return ref(a) +     b ; }
-inline tpsa operator+(const tpsa_t &a, const tpsa   &b) { return     a  + ref(b); }
-inline tpsa operator+(const tpsa   &a, const tpsa   &b) { return ref(a) + ref(b); }
-inline tpsa operator+(const tpsa   &a,        num_t  b) { return ref(a) +     b ; }
-inline tpsa operator+(       num_t  a, const tpsa   &b) { return ref(b) +     a ; }
-inline tpsa operator+(       num_t  a, const tpsa_t &b) { return     b  +     a ; }
+inline tpsa operator+(const tpsa   &a, const tpsa   &b) { return *a + *b; }
+inline tpsa operator+(const tpsa   &a, const tpsa_t &b) { return *a +  b; }
+inline tpsa operator+(const tpsa   &a, const tpsa_t *b) { return *a + *b; }
+inline tpsa operator+(const tpsa_t &a, const tpsa   &b) { return  a + *b; }
+inline tpsa operator+(const tpsa_t *a, const tpsa   &b) { return *a + *b; }
+inline tpsa operator+(const tpsa_t &a, const tpsa_t *b) { return  a + *b; }
+inline tpsa operator+(const tpsa_t *a, const tpsa_t &b) { return *a +  b; }
+inline tpsa operator+(const tpsa   &a,        num_t  b) { return *a +  b; }
+inline tpsa operator+(       num_t  a, const tpsa   &b) { return *b +  a; }
+inline tpsa operator+(       num_t  a, const tpsa_t &b) { return  b +  a; }
 
 // --- sub ---
 
@@ -126,11 +135,15 @@ operator- (num_t a, const tpsa_t &b) {
   return c;
 }
 
-inline tpsa operator-(const tpsa_t &a, const tpsa   &b) { return     a  - ref(b); }
-inline tpsa operator-(const tpsa   &a, const tpsa_t &b) { return ref(a) -     b ; }
-inline tpsa operator-(const tpsa   &a, const tpsa   &b) { return ref(a) - ref(b); }
-inline tpsa operator-(const tpsa   &a,        num_t  b) { return ref(a) -     b ; }
-inline tpsa operator-(       num_t  a, const tpsa   &b) { return     a  - ref(b); }
+inline tpsa operator-(const tpsa   &a, const tpsa   &b) { return *a - *b; }
+inline tpsa operator-(const tpsa   &a, const tpsa_t &b) { return *a -  b; }
+inline tpsa operator-(const tpsa   &a, const tpsa_t *b) { return *a - *b; }
+inline tpsa operator-(const tpsa_t &a, const tpsa   &b) { return  a - *b; }
+inline tpsa operator-(const tpsa_t *a, const tpsa   &b) { return *a - *b; }
+inline tpsa operator-(const tpsa_t &a, const tpsa_t *b) { return  a - *b; }
+inline tpsa operator-(const tpsa_t *a, const tpsa_t &b) { return *a -  b; }
+inline tpsa operator-(const tpsa   &a,        num_t  b) { return *a -  b; }
+inline tpsa operator-(       num_t  a, const tpsa   &b) { return  a - *b; }
 
 // --- mul ---
 
@@ -148,12 +161,16 @@ operator* (const tpsa_t &a, num_t b) {
   return c;
 }
 
-inline tpsa operator*(const tpsa_t &a, const tpsa   &b) { return     a  * ref(b); }
-inline tpsa operator*(const tpsa   &a, const tpsa_t &b) { return ref(a) *     b ; }
-inline tpsa operator*(const tpsa   &a, const tpsa   &b) { return ref(a) * ref(b); }
-inline tpsa operator*(const tpsa   &a,        num_t  b) { return ref(a) *     b ; }
-inline tpsa operator*(       num_t  a, const tpsa   &b) { return ref(b) *     a ; }
-inline tpsa operator*(       num_t  a, const tpsa_t &b) { return     b  *     a ; }
+inline tpsa operator*(const tpsa   &a, const tpsa   &b) { return *a * *b; }
+inline tpsa operator*(const tpsa   &a, const tpsa_t &b) { return *a *  b; }
+inline tpsa operator*(const tpsa   &a, const tpsa_t *b) { return *a * *b; }
+inline tpsa operator*(const tpsa_t &a, const tpsa   &b) { return  a * *b; }
+inline tpsa operator*(const tpsa_t *a, const tpsa   &b) { return *a * *b; }
+inline tpsa operator*(const tpsa_t &a, const tpsa_t *b) { return  a * *b; }
+inline tpsa operator*(const tpsa_t *a, const tpsa_t &b) { return *a *  b; }
+inline tpsa operator*(const tpsa   &a,        num_t  b) { return *a *  b; }
+inline tpsa operator*(       num_t  a, const tpsa   &b) { return *b *  a; }
+inline tpsa operator*(       num_t  a, const tpsa_t &b) { return  b *  a; }
 
 // --- div ---
 
@@ -178,11 +195,15 @@ operator/ (num_t a, const tpsa_t &b) {
   return c;
 }
 
-inline tpsa operator/(const tpsa_t &a, const tpsa   &b) { return     a  / ref(b); }
-inline tpsa operator/(const tpsa   &a, const tpsa_t &b) { return ref(a) /     b ; }
-inline tpsa operator/(const tpsa   &a, const tpsa   &b) { return ref(a) / ref(b); }
-inline tpsa operator/(const tpsa   &a,        num_t  b) { return ref(a) /     b ; }
-inline tpsa operator/(       num_t  a, const tpsa   &b) { return     a  / ref(b); }
+inline tpsa operator/(const tpsa   &a, const tpsa   &b) { return *a / *b; }
+inline tpsa operator/(const tpsa   &a, const tpsa_t &b) { return *a /  b; }
+inline tpsa operator/(const tpsa   &a, const tpsa_t *b) { return *a / *b; }
+inline tpsa operator/(const tpsa_t &a, const tpsa   &b) { return  a / *b; }
+inline tpsa operator/(const tpsa_t *a, const tpsa   &b) { return *a / *b; }
+inline tpsa operator/(const tpsa_t &a, const tpsa_t *b) { return  a / *b; }
+inline tpsa operator/(const tpsa_t *a, const tpsa_t &b) { return *a /  b; }
+inline tpsa operator/(const tpsa   &a,        num_t  b) { return *a /  b; }
+inline tpsa operator/(       num_t  a, const tpsa   &b) { return  a / *b; }
 
 // --- pow ---
 
@@ -215,19 +236,27 @@ pow (num_t a, const tpsa_t &b) {
   return c;
 }
 
-inline tpsa pow(const tpsa   &a, const tpsa_t &b) { return pow(ref(a),     b ); }
-inline tpsa pow(const tpsa_t &a, const tpsa   &b) { return pow(    a , ref(b)); }
-inline tpsa pow(const tpsa   &a, const tpsa   &b) { return pow(ref(a), ref(b)); }
-inline tpsa pow(const tpsa   &a,        int    b) { return pow(ref(a),     b ); }
-inline tpsa pow(const tpsa   &a,        num_t  b) { return pow(ref(a),     b ); }
-inline tpsa pow(       num_t  a, const tpsa   &b) { return pow(    a , ref(b)); }
+inline tpsa pow(const tpsa   &a, const tpsa   &b) { return pow(*a,*b); }
+inline tpsa pow(const tpsa_t &a, const tpsa_t *b) { return pow( a,*b); }
+inline tpsa pow(const tpsa_t *a, const tpsa_t &b) { return pow(*a, b); }
+inline tpsa pow(const tpsa   &a, const tpsa_t &b) { return pow(*a, b); }
+inline tpsa pow(const tpsa   &a, const tpsa_t *b) { return pow(*a,*b); }
+inline tpsa pow(const tpsa_t &a, const tpsa   &b) { return pow( a,*b); }
+inline tpsa pow(const tpsa_t *a, const tpsa   &b) { return pow(*a,*b); }
+inline tpsa pow(const tpsa   &a,        int    b) { return pow(*a, b); }
+inline tpsa pow(const tpsa   &a,        num_t  b) { return pow(*a, b); }
+inline tpsa pow(       num_t  a, const tpsa   &b) { return pow( a,*b); }
 
 // warning: the operator ^ hasn't the expected precedence and associativity...
 
-inline tpsa operator^(const tpsa_t &a, const tpsa_t &b) { return pow(a,b); }
-inline tpsa operator^(const tpsa   &a, const tpsa_t &b) { return pow(a,b); }
-inline tpsa operator^(const tpsa_t &a, const tpsa   &b) { return pow(a,b); }
 inline tpsa operator^(const tpsa   &a, const tpsa   &b) { return pow(a,b); }
+inline tpsa operator^(const tpsa_t &a, const tpsa_t &b) { return pow(a,b); }
+inline tpsa operator^(const tpsa_t &a, const tpsa_t *b) { return pow(a,b); }
+inline tpsa operator^(const tpsa_t *a, const tpsa_t &b) { return pow(a,b); }
+inline tpsa operator^(const tpsa   &a, const tpsa_t &b) { return pow(a,b); }
+inline tpsa operator^(const tpsa   &a, const tpsa_t *b) { return pow(a,b); }
+inline tpsa operator^(const tpsa_t &a, const tpsa   &b) { return pow(a,b); }
+inline tpsa operator^(const tpsa_t *a, const tpsa   &b) { return pow(a,b); }
 inline tpsa operator^(const tpsa_t &a,        int    b) { return pow(a,b); }
 inline tpsa operator^(const tpsa_t &a,        num_t  b) { return pow(a,b); }
 inline tpsa operator^(const tpsa   &a,        int    b) { return pow(a,b); }
@@ -251,7 +280,7 @@ inline tpsa F (const tpsa_t &a) { \
   return c; \
 } \
 \
-inline tpsa F (const tpsa &a) { return F(ref(a)); }
+inline tpsa F (const tpsa &a) { return F(*a); }
 
 FUN(abs   );
 FUN(sqrt  );

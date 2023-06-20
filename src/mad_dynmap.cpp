@@ -17,45 +17,155 @@
 */
 
 extern "C" {
+#include "mad_cst.h"
+#include "mad_tpsa.h"
 #include "mad_dynmap.h"
 }
 
 #include "mad_tpsa.hpp"
 
+// --- types ------------------------------------------------------------------o
+
+extern "C" {
+
+struct mflw {
+  num_t el, eld;
+  int npar, T;
+  par_t *par;
+  map_t *map;
+};
+
+struct part {
+  num_t x, px, y, py, t, pt;
+  num_t beta;
+};
+
+struct damap {
+  tpsa_t *x, *px, *y, *py, *t, *pt;
+  num_t beta;
+};
+
+}
+
 // --- implementation ---------------------------------------------------------o
 
+using namespace mad;
+
+// --- helpers ---
+
+const num_t minlen = mad_cst_MINLEN;
+const num_t minang = mad_cst_MINANG;
+const num_t minstr = mad_cst_MINSTR;
+
+inline num_t sqr (num_t a) {
+  return a*a;
+}
+
+inline tpsa sqr (const tpsa &a) {
+  return a*a;
+}
+
+inline tpsa sqr (const tpsa_t &a) {
+  return a*a;
+}
+
+inline tpsa sqr (const tpsa_t *a) {
+  return sqr(*a);
+}
+
+inline num_t dp (par_t &p) {
+  return std::sqrt(1 + (2/p.beta)*p.pt + sqr(p.pt));
+}
+
+inline tpsa dp (map_t &p) {
+  return mad::sqrt(1 + (2/p.beta)* *p.pt + sqr(p.pt));
+}
+
+inline num_t pz (par_t &p)
+{
+  return std::sqrt(1 + (2/p.beta)*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
+}
+
+inline tpsa pz (map_t &p)
+{
+  return mad::sqrt(1 + (2/p.beta)* *p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
+}
+
+// --- DKD maps ---
+
 void
-mad_trk_strex_drift ()
+mad_trk_strex_drift_r (elem_t *e, mflw_t *m, num_t lw, int istp)
 {
-  const mad::tpsa a(mad::newt());
-  const mad::tpsa b(mad::newt());
-  mad::tpsa c = a+b;
+  if (std::abs(m->el*lw) < minlen) return;
+
+  num_t l = m->el*lw, ld = m->eld*lw;
+  int T = m->T;
+
+  FOR(i,m->npar) {
+    par_t &p = m->par[i];
+    num_t l_pz = l/pz(p);
+
+    p.x = p.x + p.px*l_pz;
+    p.y = p.y + p.py*l_pz;
+    p.t = p.t - l_pz*(1/p.beta+p.pt) + (1-T)*(ld/p.beta);
+  }
+
+  (void)e; (void)istp;
 }
 
 void
-mad_trk_strex_kick ()
+mad_trk_strex_drift_t (elem_t *e, mflw_t *m, num_t lw, int istp)
 {
+  if (std::abs(m->el*lw) < minlen) return;
 
+  num_t l = m->el*lw, ld = m->eld*lw;
+  int T = m->T;
+
+  FOR(i,m->npar) {
+    map_t &p = m->map[i];
+    const tpsa l_pz = l/pz(p);
+
+    const tpsa x = p.x + p.px*l_pz;
+    const tpsa y = p.y + p.py*l_pz;
+    const tpsa t = p.t - l_pz*(1/p.beta+*p.pt) + (1-T)*(ld/p.beta);
+    cpy(x,p.x), cpy(y,p.y), cpy(t,p.t);
+  }
+
+  (void)e; (void)istp;
 }
 
 void
-mad_trk_curex_drift ()
+mad_trk_strex_kick_t (elem_t *e, mflw_t *m, num_t lw, int istp)
 {
-  const mad::tpsa a(mad::newt());
-  const mad::tpsa b(mad::newt());
-  mad::tpsa c = a+b;
+  (void)e; (void)m; (void)lw; (void)istp;
 }
 
 void
-mad_trk_curex_kick ()
+mad_trk_curex_drift_t (elem_t *e, mflw_t *m, num_t lw, int istp)
 {
-
+  (void)e; (void)m; (void)lw; (void)istp;
 }
 
-void mad_trk_slice ()
+void
+mad_trk_curex_kick_r (elem_t *e, mflw_t *m, num_t lw, int istp)
 {
-
+  (void)e; (void)m; (void)lw; (void)istp;
 }
 
+void
+mad_trk_curex_kick_t (elem_t *e, mflw_t *m, num_t lw, int istp)
+{
+  (void)e; (void)m; (void)lw; (void)istp;
+}
+
+void mad_trk_slice_r (elem_t *e, mflw_t *m, num_t lw, trkfun *dft, trkfun *kck)
+{
+  (void)e; (void)m; (void)lw; (void)dft; (void)kck;
+}
+
+void mad_trk_slice_t (elem_t *e, mflw_t *m, num_t lw, trkfun *dft, trkfun *kck)
+{
+  (void)e; (void)m; (void)lw; (void)dft; (void)kck;
+}
 
 // ----------------------------------------------------------------------------o
