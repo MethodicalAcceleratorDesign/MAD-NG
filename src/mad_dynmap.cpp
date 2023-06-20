@@ -57,45 +57,38 @@ const num_t minlen = mad_cst_MINLEN;
 const num_t minang = mad_cst_MINANG;
 const num_t minstr = mad_cst_MINSTR;
 
-inline num_t sqr (num_t a) {
-  return a*a;
+inline num_t sqr (       num_t  a) { return a*a; }
+inline tpsa  sqr (const tpsa_t &a) { return a*a; }
+inline tpsa  sqr (const tpsa_t *a) { return sqr(*a); }
+inline tpsa  sqr (const tpsa   &a) { return sqr(*a); }
+
+inline num_t dp2 (par_t &p) {
+  return 1 + (2/p.beta)*p.pt + sqr(p.pt);
 }
 
-inline tpsa sqr (const tpsa &a) {
-  return a*a;
+inline tpsa dp2 (map_t &p) {
+  return 1 + (2/p.beta)**p.pt + sqr(p.pt);
 }
 
-inline tpsa sqr (const tpsa_t &a) {
-  return a*a;
+inline num_t pz2 (par_t &p) {
+  return 1 + (2/p.beta)*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py);
 }
 
-inline tpsa sqr (const tpsa_t *a) {
-  return sqr(*a);
+inline tpsa pz2 (map_t &p) {
+  return 1 + (2/p.beta)**p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py);
 }
 
-inline num_t dp (par_t &p) {
-  return std::sqrt(1 + (2/p.beta)*p.pt + sqr(p.pt));
-}
-
-inline tpsa dp (map_t &p) {
-  return mad::sqrt(1 + (2/p.beta)**p.pt + sqr(p.pt));
-}
-
-inline num_t pz (par_t &p)
-{
-  return std::sqrt(1 + (2/p.beta)*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
-}
-
-inline tpsa pz (map_t &p)
-{
-  return mad::sqrt(1 + (2/p.beta)**p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
-}
+inline num_t dp (par_t &p) { return std::sqrt(dp2(p)); }
+inline num_t pz (par_t &p) { return std::sqrt(pz2(p)); }
+inline tpsa  dp (map_t &p) { return mad::sqrt(dp2(p)); }
+inline tpsa  pz (map_t &p) { return mad::sqrt(pz2(p)); }
 
 // --- DKD maps ---
 
 void
 mad_trk_strex_drift_r (elem_t *e, mflw_t *m, num_t lw, int istp)
 {
+  (void)e; (void)istp;
   if (std::abs(m->el*lw) < minlen) return;
 
   num_t l = m->el*lw, ld = m->eld*lw;
@@ -109,13 +102,12 @@ mad_trk_strex_drift_r (elem_t *e, mflw_t *m, num_t lw, int istp)
     p.y = p.y + p.py*l_pz;
     p.t = p.t - l_pz*(1/p.beta+p.pt) + (1-T)*(ld/p.beta);
   }
-
-  (void)e; (void)istp;
 }
 
 void
 mad_trk_strex_drift_t (elem_t *e, mflw_t *m, num_t lw, int istp)
 {
+  (void)e; (void)istp;
   if (std::abs(m->el*lw) < minlen) return;
 
   num_t l = m->el*lw, ld = m->eld*lw;
@@ -130,8 +122,6 @@ mad_trk_strex_drift_t (elem_t *e, mflw_t *m, num_t lw, int istp)
     const tpsa t = p.t - l_pz*(1/p.beta+*p.pt) + (1-T)*(ld/p.beta);
     cpy(x,p.x), cpy(y,p.y), cpy(t,p.t);
   }
-
-  (void)e; (void)istp;
 }
 
 void
