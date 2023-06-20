@@ -27,7 +27,9 @@ extern "C" {
 void
 mad_trk_strex_drift (void)
 {
-  mad::tpsa a(mad_tpsa_newd(mad_desc_curr, mad_tpsa_default));
+  const mad::tpsa a(mad::newt());
+  const mad::tpsa b(mad::newt());
+  mad::tpsa c = a+b;
 }
 
 void
