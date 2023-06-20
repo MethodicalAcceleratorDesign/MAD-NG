@@ -16,34 +16,47 @@
 #
 
 # project
-PRJ     := mad
+PRJ      := mad
 
 # lua/mad modules to NOT embed
-NOT     := # $(wildcard *.mad help/*.mad)
+NOT      := # $(wildcard *.mad help/*.mad)
 
 # setup
-CC      := gcc
-FC      := gfortran
-DIR     := build
-LIB     := ../lib
-BIN     := ../bin/macosx
-AR      := ar -ruv
-LJ      := $(firstword $(wildcard ./mad $(LIB)/luajit/bin/luajit))
+CC       := gcc
+CXX      := g++
+FC       := gfortran
+DIR      := build
+LIB      := ../lib
+BIN      := ../bin/macosx
+AR       := ar -ruv
+LJ       := $(firstword $(wildcard ./mad $(LIB)/luajit/bin/luajit))
 
 # depend
-DFLAGS  := -std=c99 -MM
+DFLAGS   := -std=c99 -MM
 
-# compiler
-CFLAGS  := -std=c99 -W -Wall -Wextra -pedantic
-CFLAGS  += -O3 -ftree-vectorize -fPIC -flto -march=native #-fopt-info
-CFLAGS  += -Waggregate-return -Wcast-align -Wdisabled-optimization \
-					 -Wpointer-arith -Wsign-compare -Wwrite-strings \
-					 -Wbad-function-cast -Wmissing-prototypes -Wnested-externs \
-					 -Wstrict-prototypes -Wunreachable-code \
-					 $(CCOPTIONS) -fopenmp #-DDEBUG
+# C
+CFLAGS   := -std=c99 -W -Wall -Wextra -pedantic
+CFLAGS   += -O3 -ftree-vectorize -fPIC -flto -march=native #-fopt-info
+CFLAGS   += -Waggregate-return -Wcast-align -Wdisabled-optimization \
+					  -Wpointer-arith -Wsign-compare -Wwrite-strings \
+					  -Wbad-function-cast -Wmissing-prototypes -Wnested-externs \
+					  -Wstrict-prototypes -Wunreachable-code \
+					  $(CCOPTIONS) -fopenmp #-DDEBUG
 # https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html
 # https://gcc.gnu.org/wiki/FloatingPointMath
-CFLAGS  += -fno-math-errno -fno-builtin-cproj -ffast-math
+CFLAGS   += -fno-math-errno -fno-builtin-cproj -ffast-math
+				  # -fno-cx-limited-range
+				  # -fassociative-math -freciprocal-math -ffinite-math-only
+
+# C++
+CXXFLAGS := -std=c++17 -W -Wall -Wextra -pedantic
+CXXFLAGS += -O3 -ftree-vectorize -fPIC -flto -march=native #-fopt-info
+CXXFLAGS += -Waggregate-return -Wcast-align -Wdisabled-optimization \
+						-Wpointer-arith -Wsign-compare -Wwrite-strings -Wunreachable-code \
+						$(CXXOPTIONS) -fopenmp #-DDEBUG
+# https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html
+# https://gcc.gnu.org/wiki/FloatingPointMath
+CXXFLAGS += -fno-math-errno -fno-builtin-cproj -ffast-math
 				 # -fno-cx-limited-range
 				 # -fassociative-math -freciprocal-math -ffinite-math-only
 
@@ -65,20 +78,24 @@ LDFLAGS += $(BIN)/liblpeg.a   $(BIN)/liblfs.a     $(BIN)/libluajit.a \
 					 $(or $(wildcard $(shell gcc -print-file-name=libgfortran.a)),-lgfortran) \
 					 $(or $(wildcard $(shell gcc -print-file-name=libquadmath.a)),-lquadmath) \
 					 $(or $(wildcard $(shell gcc -print-file-name=libgomp.a))    ,-lgomp) \
+					 $(or $(wildcard $(shell gcc -print-file-name=libstdc++.a))  ,-lstdc++) \
 					 $(LDOPTIONS)
 
 # files setup
-ASRC    := $(wildcard *.lua *.mad help/*.mad *.c sse/*.c *.f90) # all sources
-RSRC    := $(filter-out $(NOT),$(ASRC))                       # retained sources
-CSRC    := $(filter %.c,$(RSRC))                              # .c   sources
-FSRC    := $(filter %.f90,$(RSRC))                            # .f90 sources
-LSRC    := $(filter %.lua,$(RSRC))                            # .lua sources
-MSRC    := $(filter %.mad,$(RSRC))                            # .mad sources
+ASRC    := $(wildcard *.lua *.mad help/*.mad *.c sse/*.c *.cpp *.f90) # all sources
+RSRC    := $(filter-out $(NOT),$(ASRC))                               # skip sources
+CSRC    := $(filter %.c,$(RSRC))                                      # .c   sources
+CXXSRC  := $(filter %.cpp,$(RSRC))                                    # .cpp sources
+FSRC    := $(filter %.f90,$(RSRC))                                    # .f90 sources
+LSRC    := $(filter %.lua,$(RSRC))                                    # .lua sources
+MSRC    := $(filter %.mad,$(RSRC))                                    # .mad sources
 
 DEP     := $(patsubst %.c,%.d,$(filter-out mad_main.c,$(CSRC)))
+DEP     += $(patsubst %.cpp,%.d,$(CXXSRC))
 DEP     := $(addprefix $(DIR)/,$(DEP))
 
 OBJ     := $(patsubst %.c,%.o,$(CSRC))
+OBJ     := $(patsubst %.cpp,%.o,$(CXXSRC))
 OBJ     += $(patsubst %.f90,%.o,$(FSRC))
 OBJ     += $(patsubst %.lua,%.o,$(LSRC))
 OBJ     += $(patsubst %.mad,%.o,$(MSRC))
@@ -111,7 +128,10 @@ $(DIR)/%.o: %.f90
 $(DIR)/%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(DIR)/%.d: %.c
+$(DIR)/%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(DIR)/%.d: %.c %.cpp
 	$(CC) $(DFLAGS) $< > $@
 	@sed -i.bak -e 's,\($*\)\.o[ :]*,$(DIR)/\1.o $@ : ,g' $@
 	@rm $@.bak
