@@ -78,7 +78,7 @@ inline num_t dp (par_t &p) {
 }
 
 inline tpsa dp (map_t &p) {
-  return mad::sqrt(1 + (2/p.beta)* *p.pt + sqr(p.pt));
+  return mad::sqrt(1 + (2/p.beta)**p.pt + sqr(p.pt));
 }
 
 inline num_t pz (par_t &p)
@@ -88,7 +88,7 @@ inline num_t pz (par_t &p)
 
 inline tpsa pz (map_t &p)
 {
-  return mad::sqrt(1 + (2/p.beta)* *p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
+  return mad::sqrt(1 + (2/p.beta)**p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
 }
 
 // --- DKD maps ---
