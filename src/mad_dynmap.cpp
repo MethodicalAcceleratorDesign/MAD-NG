@@ -22,6 +22,7 @@ extern "C" {
 }
 
 #include "mad_tpsa.hpp"
+//#include "mad_tpsa_notmp.hpp"
 
 // --- types ------------------------------------------------------------------o
 
@@ -165,8 +166,109 @@ void mad_trk_test (int n)
 //mad_tpsa_print(&*b, "B", 0,0,0);
 
   FOR(i,n) {
-    tpsa c = (a+1)*(b+2)+a*2;
+//    tpsa c = a+1+b+2+a+2;
+    tpsa c = (a+1)*sqr(b+2)+a*2;
   }
+
+/*
+-----------------------------------------------------------
+tpsa c = (a+1)*sqr(b+2)+a*2;  WITH TMP
+-> a
+mad_tpsa.hpp:116:        newt: void                   => t1
+mad_tpsa.hpp: 60:   tpsa_tmp_: tpsa_t* 0x6000029c8008
+-> b
+mad_tpsa.hpp:116:        newt: void                   => t2
+mad_tpsa.hpp: 60:   tpsa_tmp_: tpsa_t* 0x6000029c8078
+-> a*2
+mad_tpsa.hpp:325:   operator*: tpa,num
+mad_tpsa.hpp: 68:    tpsa_ref: tpsa_t& 0x6000029c8008
+mad_tpsa.hpp:288:   operator*: ref,num
+mad_tpsa.hpp:126:        newt: ref                    => t3
+mad_tpsa.hpp: 60:   tpsa_tmp_: tpsa_t* 0x6000029c80e8
+-> b+2
+mad_tpsa.hpp:206:   operator+: tpa,num
+mad_tpsa.hpp: 68:    tpsa_ref: tpsa_t& 0x6000029c8078
+mad_tpsa.hpp:189:   operator+: ref,num
+mad_tpsa.hpp:126:        newt: ref                    => t4
+mad_tpsa.hpp: 60:   tpsa_tmp_: tpsa_t* 0x6000029c8158
+-> sqr(b+2)
+mad_tpsa.hpp:501:         sqr: tpa
+mad_tpsa.hpp:322:   operator*: tpa,tpa
+mad_tpsa.hpp: 68:    tpsa_ref: tpsa_t& 0x6000029c8158
+mad_tpsa.hpp: 68:    tpsa_ref: tpsa_t& 0x6000029c8158
+mad_tpsa.hpp:281:   operator*: ref,ref
+mad_tpsa.hpp:126:        newt: ref                    => t5
+mad_tpsa.hpp: 60:   tpsa_tmp_: tpsa_t* 0x6000029c81c8
+-> a+1
+mad_tpsa.hpp:206:   operator+: tpa,num
+mad_tpsa.hpp: 68:    tpsa_ref: tpsa_t& 0x6000029c8008
+mad_tpsa.hpp:189:   operator+: ref,num
+mad_tpsa.hpp:126:        newt: ref                    => t6
+mad_tpsa.hpp: 60:   tpsa_tmp_: tpsa_t* 0x6000029c8238
+-> (a+1)*sqr(b+2)
+mad_tpsa.hpp:295:   operator*: tmp,tmp
+mad_tpsa.hpp: 60:   tpsa_tmp_: tpsa_t* 0x6000029c8238 -> t6
+-> (a+1)*sqr(b+2)+a*2
+mad_tpsa.hpp:168:   operator+: tmp,tmp
+mad_tpsa.hpp: 60:   tpsa_tmp_: tpsa_t* 0x6000029c8238 -> t6
+-> dtor
+mad_tpsa.hpp: 51:  operator(): tpsa_t* 0x6000029c81c8
+mad_tpsa.hpp: 51:  operator(): tpsa_t* 0x6000029c8158
+mad_tpsa.hpp: 51:  operator(): tpsa_t* 0x6000029c80e8
+mad_tpsa.hpp: 51:  operator(): tpsa_t* 0x6000029c8238
+mad_tpsa.hpp: 51:  operator(): tpsa_t* 0x6000029c8078
+mad_tpsa.hpp: 51:  operator(): tpsa_t* 0x6000029c8008
+
+-----------------------------------------------------------
+tpsa c = (a+1)*sqr(b+2)+a*2;  WITHOUT TMP
+-> a
+mad_tpsa_notmp.hpp:109:        newt: void             => t1
+-> b
+mad_tpsa_notmp.hpp:109:        newt: void             => t2
+-> a*2
+mad_tpsa.hpp:211:   operator*: tpa,num
+mad_tpsa.hpp: 61:    tpsa_ref: tpsa_t& 0x6000020e8008
+mad_tpsa.hpp:202:   operator*: ref,num
+mad_tpsa.hpp:119:        newt: ref                    => t3
+-> b+2
+mad_tpsa.hpp:157:   operator+: tpa,num
+mad_tpsa.hpp: 61:    tpsa_ref: tpsa_t& 0x6000020e8078
+mad_tpsa.hpp:147:   operator+: ref,num
+mad_tpsa.hpp:119:        newt: ref                    => t4
+-> sqr(b+2)
+mad_tpsa.hpp:302:         sqr: tpa
+mad_tpsa.hpp:208:   operator*: tpa,tpa
+mad_tpsa.hpp: 61:    tpsa_ref: tpsa_t& 0x6000020e8158
+mad_tpsa.hpp: 61:    tpsa_ref: tpsa_t& 0x6000020e8158
+mad_tpsa.hpp:195:   operator*: ref,ref
+mad_tpsa.hpp:119:        newt: ref                    => t5
+-> a+1
+mad_tpsa.hpp:157:   operator+: tpa,num
+mad_tpsa.hpp: 61:    tpsa_ref: tpsa_t& 0x6000020e8008
+mad_tpsa.hpp:147:   operator+: ref,num
+mad_tpsa.hpp:119:        newt: ref                    => t6
+-> (a+1)*sqr(b+2)
+mad_tpsa.hpp:208:   operator*: tpa,tpa
+mad_tpsa.hpp: 61:    tpsa_ref: tpsa_t& 0x6000020e81c8
+mad_tpsa.hpp: 61:    tpsa_ref: tpsa_t& 0x6000020e8238
+mad_tpsa.hpp:195:   operator*: ref,ref
+mad_tpsa.hpp:119:        newt: ref                    => t7
+-> (a+1)*sqr(b+2)+a*2
+mad_tpsa.hpp:154:   operator+: tpa,tpa
+mad_tpsa.hpp: 61:    tpsa_ref: tpsa_t& 0x6000020e80e8
+mad_tpsa.hpp: 61:    tpsa_ref: tpsa_t& 0x6000020e82a8
+mad_tpsa.hpp:140:   operator+: ref,ref
+mad_tpsa.hpp:119:        newt: ref                    => t8
+-> dtor
+mad_tpsa.hpp: 51:  operator(): tpsa_t* 0x6000020e82a8
+mad_tpsa.hpp: 51:  operator(): tpsa_t* 0x6000020e8238
+mad_tpsa.hpp: 51:  operator(): tpsa_t* 0x6000020e81c8
+mad_tpsa.hpp: 51:  operator(): tpsa_t* 0x6000020e8158
+mad_tpsa.hpp: 51:  operator(): tpsa_t* 0x6000020e80e8
+mad_tpsa.hpp: 51:  operator(): tpsa_t* 0x6000020e8318
+mad_tpsa.hpp: 51:  operator(): tpsa_t* 0x6000020e8078
+mad_tpsa.hpp: 51:  operator(): tpsa_t* 0x6000020e8008
+*/
 }
 
 // ----------------------------------------------------------------------------o
