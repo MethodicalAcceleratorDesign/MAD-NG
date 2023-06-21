@@ -34,12 +34,12 @@ extern "C" {
 
 // --- debug ------------------------------------------------------------------o
 
-#define TRC(...)
-
-#ifndef TRC
+#if 0
 #define TRC(...) \
   (printf("%s:%3d:%12s: ", __FILE__, __LINE__, __func__), \
    printf(__VA_ARGS__), printf("\n"));
+#else
+#define TRC(...)
 #endif
 
 // --- types ------------------------------------------------------------------o
