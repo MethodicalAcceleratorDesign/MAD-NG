@@ -156,93 +156,17 @@ void mad_trk_slice_t (elem_t *e, mflw_t *m, num_t lw, trkfun *dft, trkfun *kck)
 
 void mad_trk_test (int n)
 {
-  (void)n;
   mad_desc_newv(6, 1);
 
-  tpsa a(newt());
-  tpsa b(newt());
-
-  mad_tpsa_setvar(&*a, 10, 1, 0);
-  mad_tpsa_setvar(&*b, 20, 1, 0);
-
-//  (ref(a)) = 10;
-
-  tpsa c = (a+1)*(b+2)+2;
-  tpsa d = a+1+a+2+a+3;
+  tpsa a(newt());    mad_tpsa_setvar(&*a, 10, 1, 0);
+  tpsa b(newt());    mad_tpsa_setvar(&*b, 20, 1, 0);
 
 //mad_tpsa_print(&*a, "A", 0,0,0);
 //mad_tpsa_print(&*b, "B", 0,0,0);
-//mad_tpsa_print(&*c, "C", 0,0,0);
-//mad_tpsa_print(&*d, "C", 0,0,0);
 
-/*
-> MAD._C.mad_trk_test()
-a
-mad_tpsa.hpp:117:        newt: void
-mad_tpsa.hpp: 61:   tpsa_tmp_: tpsa_t* 0x7fbdb8062608
-
-b
-mad_tpsa.hpp:117:        newt: void
-mad_tpsa.hpp: 61:   tpsa_tmp_: tpsa_t* 0x7fbdb8062e08
-
-a+1
-mad_tpsa.hpp:200:   operator+: tpa,num
-mad_tpsa.hpp: 69:    tpsa_ref: tpsa_t& 0x7fbdb8062e08
-mad_tpsa.hpp:183:   operator+: ref,num
-mad_tpsa.hpp:127:        newt: ref
-mad_tpsa.hpp: 61:   tpsa_tmp_: tpsa_t* 0x7fbdb8063608
-
-b+2
-mad_tpsa.hpp:200:   operator+: tpa,num
-mad_tpsa.hpp: 69:    tpsa_ref: tpsa_t& 0x7fbdb8062608
-mad_tpsa.hpp:183:   operator+: ref,num
-mad_tpsa.hpp:127:        newt: ref
-mad_tpsa.hpp: 61:   tpsa_tmp_: tpsa_t* 0x7fbdb8063e08
-
-(a+1)*(b+2)
-mad_tpsa.hpp:316:   operator*: tpa,tpa                 <---
-mad_tpsa.hpp: 69:    tpsa_ref: tpsa_t& 0x7fbdb8063608
-mad_tpsa.hpp: 69:    tpsa_ref: tpsa_t& 0x7fbdb8063e08
-mad_tpsa.hpp:275:   operator*: ref,ref
-mad_tpsa.hpp:127:        newt: ref
-mad_tpsa.hpp: 61:   tpsa_tmp_: tpsa_t* 0x7fbdb8808208
-
-(a+1)*(b+2) + 2
-mad_tpsa.hpp:200:   operator+: tpa,num
-mad_tpsa.hpp: 69:    tpsa_ref: tpsa_t& 0x7fd8e5064608
-mad_tpsa.hpp:183:   operator+: ref,num
-mad_tpsa.hpp:127:        newt: ref
-mad_tpsa.hpp: 61:   tpsa_tmp_: tpsa_t* 0x7fd8e6008208
-
-dtor
-mad_tpsa.hpp: 52:  operator(): tpsa_t* 0x7fd8e5064608
-mad_tpsa.hpp: 52:  operator(): tpsa_t* 0x7fd8e5063e08
-mad_tpsa.hpp: 52:  operator(): tpsa_t* 0x7fd8e5063608
-
-mad_tpsa.hpp: 52:  operator(): tpsa_t* 0x7fd8e6008208
-mad_tpsa.hpp: 52:  operator(): tpsa_t* 0x7fd8e5062e08
-mad_tpsa.hpp: 52:  operator(): tpsa_t* 0x7fd8e5062608
-
-----
-mad_tpsa.hpp:115:        newt: void
-mad_tpsa.hpp: 59:   tpsa_tmp_: tpsa_t* 0x7fabc8062608
-mad_tpsa.hpp:198:   operator+: tpa,num
-mad_tpsa.hpp: 67:    tpsa_ref: tpsa_t& 0x7fabc8062608
-mad_tpsa.hpp:181:   operator+: ref,num
-mad_tpsa.hpp:125:        newt: ref
-mad_tpsa.hpp: 59:   tpsa_tmp_: tpsa_t* 0x7fabc8062e08
-mad_tpsa.hpp:495:         sqr: tmp
-mad_tpsa.hpp:314:   operator*: tpa,tpa
-mad_tpsa.hpp: 67:    tpsa_ref: tpsa_t& 0x7fabc8062e08
-mad_tpsa.hpp: 67:    tpsa_ref: tpsa_t& 0x7fabc8062e08
-mad_tpsa.hpp:273:   operator*: ref,ref
-mad_tpsa.hpp:125:        newt: ref
-mad_tpsa.hpp: 59:   tpsa_tmp_: tpsa_t* 0x7fabc8063608
-mad_tpsa.hpp: 50:  operator(): tpsa_t* 0x7fabc8062e08
-mad_tpsa.hpp: 50:  operator(): tpsa_t* 0x7fabc8063608
-mad_tpsa.hpp: 50:  operator(): tpsa_t* 0x7fabc8062608
-*/
-
+  FOR(i,n) {
+    tpsa c = (a+1)*(b+2)+a*2;
+  }
 }
 
 // ----------------------------------------------------------------------------o
