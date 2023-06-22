@@ -22,7 +22,6 @@ extern "C" {
 }
 
 #include "mad_tpsa.hpp"
-//#include "mad_tpsa_notmp.hpp"
 
 // --- types ------------------------------------------------------------------o
 
