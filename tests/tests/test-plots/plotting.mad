@@ -34,7 +34,7 @@ local plot_template = plot {
   wsizex     = 1080,
   wsizey     = 1080,
   laysize    = 0.5,
-  elemwidth  = \s -> s.laysize * 2,
+  elemwidth  = \s -> s.laysize * 2, -- Not quite perfect...
   fontsize   = 14, !legendsize = 16, titlesize = 18,
   styles     = "line",
   linewidths = 2,
@@ -43,7 +43,7 @@ local plot_template = plot {
 }
 
 local coord_str, madx_script in ptc_strs
-local function create_madx_seq(cfg)
+local function create_madx_seq(cfg) -- Create the MADX sequence file
   openfile(cfg.seq_file, "w"):write(
     strinter(madx_script, {
       seq_ctx  = seq_ctx   % cfg,
@@ -53,7 +53,7 @@ local function create_madx_seq(cfg)
     ):close()
 end
 
-local function get_global_coord(tr, sv)
+local function get_global_coord(tr, sv) -- Get the global coordinates from track and survey
   local global_frame = {X = vector(#sv), Y = vector(#sv), Z = vector(#sv)}
   for i = 1, #sv do
     local v  = vector{sv.x[i],0      , sv.z[i]}
@@ -66,6 +66,7 @@ local function get_global_coord(tr, sv)
   return global_frame
 end
 
+-- Get the coordinates based on global or local frame
 local function get_coords(in_global_frame, x_coord, y_coord, tr, sv)
   if in_global_frame then
     local global_frame = get_global_coord(tr, sv)
@@ -75,6 +76,7 @@ local function get_coords(in_global_frame, x_coord, y_coord, tr, sv)
   end
 end
 
+-- Reset the sequences, create the MADX sequence file, load it and set the beam
 local function create_seq (cfg)
   if MADX.seq ~= 0 then for _, elm in MADX.seq:iter() do MADX[elm.name] = nil end end
   MADX.seq = 0
@@ -84,6 +86,7 @@ local function create_seq (cfg)
   MADX.seq.dir  = cfg.edir
 end
 
+-- Remove the temporary files
 local function clean_tmp (cfg)
   if cfg.dodbg then return end
   if cfg.ng_vs_ptc then
@@ -154,6 +157,7 @@ local function run_test (cfg)
 
   if ng_vs_ptc and not in_global_frame then 
     local ptc_cfg = cfg {ptcmodel = true, method=2}
+    -- Create the reference files and run MAD and PTC
     create_madx_seq(ptc_cfg)
     openfile(in_dir(cfg.name .. "_ref.madx"), "w"):write(madx_ref % cfg):close()
     openfile(in_dir(cfg.name .. "_ref.mad" ), "w"):write( mad_ref % cfg):close()
@@ -163,8 +167,12 @@ local function run_test (cfg)
     assert(os.execute(
       '../mad '   .. in_dir(cfg.name .. "_ref.mad" ) ..' >' .. out_dir(cfg.name .. "_n.txt")
     ))
+    
+    -- Turn debug off and run MAD to get the track mtable
     create_madx_seq(ptc_cfg {debug=0})
     local tr = assert(loadstring(mad_ref % cfg))()
+
+    -- Get difference between MAD and PTC and plot it
     local dbg_lst = create_dif {nam = out_dir(cfg.name), sum = true, vec=true}
     local y, tri = vector(#tr), 1
     for mi = 1, #dbg_lst do
@@ -206,11 +214,16 @@ local function run_test (cfg)
   if ng_conv then
     local dkd_x, dkd_y, ref_x, ref_y 
     repeat 
+      -- Run track in TKT and DKD
       local dkd_tr, _ = trk_ref { model = "DKD" }
       local tr, _     = trk_ref { model = "TKT" }
       if in_global_frame then sv = srv_ref { } end
+      
+      -- Get the coordinates
       ref_x, ref_y = get_coords(    tr, sv)
       dkd_x, dkd_y = get_coords(dkd_tr, sv)
+
+      -- Check convergence and plot once converged
       local converged = (ref_y - dkd_y):maxabs() < cfg.tol * eps
       if not converged then nslice = round(nslice * 1.1) end
     until (converged or nslice >= cfg.max_nslice)
