@@ -98,7 +98,7 @@ end
 
 local function run_test (cfg)
   -- Generate the reference files
-  local cfg = cfg {
+  local cfg = cfg { -- Override some values (method may be changed later)
     seq_file = in_dir(cfg.name.."_seq.seq"),
     model    = 2,
     debug    = 7,
@@ -107,7 +107,7 @@ local function run_test (cfg)
   local dir, sv_trk, sv_srv, sv_plt, nslice, ng_conv, ng_vs_ng, ng_vs_ptc, X0 in cfg
   create_seq(cfg)
   
-  local trk_ref = track {
+  local trk_ref = track { -- Cache certain values in the track (used everywhere)
     sequence:= MADX.seq,
     X0       = X0,
     nslice  := nslice,
@@ -117,7 +117,7 @@ local function run_test (cfg)
     implicit = true,
     exec     = false,
   }
-  local srv_ref = survey {
+  local srv_ref = survey { -- Cache certain values in the survey (used everywhere)
     sequence:= MADX.seq,
     save     = "atbody",
     nslice  := nslice,
@@ -127,13 +127,15 @@ local function run_test (cfg)
 }
   local plot_template = plot_template (cfg.plot_info)
   local x_coord, y_coord, filename in cfg.plot_info
-  local in_global_frame, sv = x_coord == x_coord:upper()
+  local in_global_frame = x_coord == x_coord:upper()
+
+  -- Cache in_global_frame, x_coord and y_coord for the get_coords function
   local get_coords = \tr, sv -> get_coords(in_global_frame, x_coord, y_coord, tr, sv)
 
   local title = cfg.plot_info.title .. (in_global_frame and " (global)" or " (local)")
   
-  local data, x1y1, x1y2, legend = {}, {}, {}, {}
-  local set_x1y2 = \x, y, name, series =>  -- Check if data["x1"] is always used in this function?
+  local data, x1y1, x1y2, legend, sv = {}, {}, {}, {}
+  local set_x1y2 = \x, y, name, series =>
     data  ["x_" .. name], data["y_" .. name] = x, y
     x1y2  ["x_" .. name] = "y_" .. name
     legend["y_" .. name] = series
@@ -151,7 +153,8 @@ local function run_test (cfg)
   legend["y1"] = "x = "..X0.x..", px = "..X0.px
 
   if ng_vs_ptc and not in_global_frame then 
-    create_madx_seq(cfg {ptcmodel = true, method=2})
+    local ptc_cfg = cfg {ptcmodel = true, method=2}
+    create_madx_seq(ptc_cfg)
     openfile(in_dir(cfg.name .. "_ref.madx"), "w"):write(madx_ref % cfg):close()
     openfile(in_dir(cfg.name .. "_ref.mad" ), "w"):write( mad_ref % cfg):close()
     assert(os.execute(
@@ -160,7 +163,7 @@ local function run_test (cfg)
     assert(os.execute(
       '../mad '   .. in_dir(cfg.name .. "_ref.mad" ) ..' >' .. out_dir(cfg.name .. "_n.txt")
     ))
-    create_madx_seq(cfg {ptcmodel = true, method=2, debug=0})
+    create_madx_seq(ptc_cfg {debug=0})
     local tr = assert(loadstring(mad_ref % cfg))()
     local dbg_lst = create_dif {nam = out_dir(cfg.name), sum = true, vec=true}
     local y, tri = vector(#tr), 1
@@ -181,16 +184,21 @@ local function run_test (cfg)
 
 
   if ng_vs_ng then
+    -- Change the sign of the edir
     cfg.edir   = -cfg.edir
     create_seq(cfg)
     local tr, _ = trk_ref { }
     local x, y = get_coords(tr, sv)
     set_x1y2(x, data["y1"] - y, "edir", "Diff with edir = " .. cfg.edir)
     cfg.edir, cfg.chg = -cfg.edir, -cfg.chg -- restore edir and reverse chg
+    
+    -- Change the sign of the charge
     create_seq(cfg)
     local tr, _ = trk_ref { }
     local x, y = get_coords(tr, sv)
     set_x1y2(x, data["y1"] - y, "chg", "Diff with charge = " .. cfg.chg)
+    
+    -- Restore the charge and sequence
     cfg.chg = -cfg.chg
     create_seq(cfg)
   end
@@ -207,10 +215,12 @@ local function run_test (cfg)
       if not converged then nslice = round(nslice * 1.1) end
     until (converged or nslice >= cfg.max_nslice)
     if nslice >= cfg.max_nslice then
-      print("WARNING: Maximum number of slices reached!")
+      io.write("WARNING: Maximum number of slices reached!\n")
     end
     set_x1y2(dkd_x, ref_y - dkd_y, "dkd", "TKT - DKD (nslice = " .. nslice .. ")")
   end   
+
+  -- Finally, plot the data
   plot_template { 
     sid = newSID(),
     title = title,
