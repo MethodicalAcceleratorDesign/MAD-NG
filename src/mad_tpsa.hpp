@@ -24,6 +24,12 @@
  o-----------------------------------------------------------------------------o
  */
 
+// comment to disable temporaries and traces
+#define TPSA_USE_TMP 1
+//#define TPSA_USE_TRC 1
+
+// --- includes ---------------------------------------------------------------o
+
 extern "C" {
 #include "mad_tpsa.h"
 }
@@ -32,12 +38,9 @@ extern "C" {
 #include <cstdio>
 #include <memory>
 
-// comment to disable temporaries
-#define USE_TMP 1
+// --- trace ------------------------------------------------------------------o
 
-// --- debug ------------------------------------------------------------------o
-
-#if 0
+#if TPSA_USE_TRC
 #define TRC(...) \
   (printf("%s:%3d:%12s: ", __FILE__, __LINE__, __func__), \
    printf(__VA_ARGS__), printf("\n"));
@@ -101,7 +104,7 @@ private:
   tpsa_t &t;
 };
 
-#ifdef USE_TMP
+#if TPSA_USE_TMP
 
 namespace mad_prv_ {
 
@@ -119,7 +122,7 @@ inline tpsa_tmp_& cct(const tpsa_tmp_ &a) { return const_cast<tpsa_tmp_&>(a); }
 #define T mad_prv_::tpsa_tmp_
 #else
 #define T tpsa
-#endif // USE_TMP
+#endif // TPSA_USE_TMP
 
 } // mad
 
@@ -160,7 +163,7 @@ operator- (const tpsa_ref &a) {  TRC("ref")
 
 inline T operator-(const tpsa &a) { TRC("tpa") return -*a; }
 
-#ifdef USE_TMP
+#if TPSA_USE_TMP
 
 inline T
 operator- (const T &a) {  TRC("tmp")
@@ -169,7 +172,7 @@ operator- (const T &a) {  TRC("tmp")
   return c;
 }
 
-#endif // USE_TMP
+#endif // TPSA_USE_TMP
 
 // --- add ---
 
@@ -195,7 +198,7 @@ inline T operator+(const tpsa     &a,       num_t     b) { TRC("tpa,num") return
 inline T operator+(      num_t     a, const tpsa     &b) { TRC("num,tpa") return *b+ a; }
 inline T operator+(      num_t     a, const tpsa_ref &b) { TRC("num,ref") return  b+ a; }
 
-#ifdef USE_TMP
+#if TPSA_USE_TMP
 
 inline T
 operator+ (const T &a, const T &b) {  TRC("tmp,tmp")
@@ -229,7 +232,7 @@ inline T operator+(const tpsa &a, const T    &b) { TRC("tpa,tmp") return *a+ b; 
 inline T operator+(const T    &a, const tpsa &b) { TRC("tmp,tpa") return  a+*b; }
 inline T operator+(      num_t a, const T    &b) { TRC("num,tmp") return  b+ a; }
 
-#endif // USE_TMP
+#endif // TPSA_USE_TMP
 
 // --- sub ---
 
@@ -262,7 +265,7 @@ inline T operator-(const tpsa_ref &a, const tpsa     &b) { TRC("ref,tpa") return
 inline T operator-(const tpsa     &a,       num_t     b) { TRC("tpa,num") return *a- b; }
 inline T operator-(      num_t     a, const tpsa     &b) { TRC("num,tpa") return  a-*b; }
 
-#ifdef USE_TMP
+#if TPSA_USE_TMP
 
 inline T
 operator- (const T &a, const T &b) {  TRC("tmp,tmp")
@@ -303,7 +306,7 @@ operator- (num_t a, const T &b) {  TRC("num,tmp")
 inline T operator-(const tpsa &a, const T    &b) { TRC("tpa,tmp") return *a- b; }
 inline T operator-(const T    &a, const tpsa &b) { TRC("tmp,tpa") return  a-*b; }
 
-#endif // USE_TMP
+#endif // TPSA_USE_TMP
 
 // --- mul ---
 
@@ -328,7 +331,7 @@ inline T operator*(const tpsa     &a,       num_t     b) { TRC("tpa,num") return
 inline T operator*(      num_t     a, const tpsa     &b) { TRC("num,tpa") return *b* a; }
 inline T operator*(      num_t     a, const tpsa_ref &b) { TRC("num,ref") return  b* a; }
 
-#ifdef USE_TMP
+#if TPSA_USE_TMP
 
 //inline T
 //operator* (const T &a, const T &b) {  TRC("tmp,tmp")
@@ -363,7 +366,7 @@ inline T operator*(      num_t     a, const T &b) { TRC("num,tmp") return  b* a;
 //inline T operator*(const tpsa &a, const T    &b) { TRC("tpa,tmp") return *a* b; }
 //inline T operator*(const T    &a, const tpsa &b) { TRC("tmp,tpa") return  a**b; }
 
-#endif // USE_TMP
+#endif // TPSA_USE_TMP
 
 // --- div ---
 
@@ -394,7 +397,7 @@ inline T operator/(const tpsa_ref &a, const tpsa     &b) { TRC("ref,tpa") return
 inline T operator/(const tpsa     &a,       num_t     b) { TRC("tpa,num") return *a/  b; }
 inline T operator/(      num_t     a, const tpsa     &b) { TRC("num,tpa") return  a/ *b; }
 
-#ifdef USE_TMP
+#if TPSA_USE_TMP
 
 //inline T
 //operator/ (const T &a, const T &b) {  TRC("tmp,tmp")
@@ -434,7 +437,7 @@ operator/ (const T &a, num_t b) {  TRC("tmp,num")
 //inline T operator/(const tpsa &a, const T    &b) { TRC("tpa,tmp") return *a/  b; }
 //inline T operator/(const T    &a, const tpsa &b) { TRC("tmp,tpa") return  a/ *b; }
 
-#endif // USE_TMP
+#endif // TPSA_USE_TMP
 
 // --- pow ---
 
@@ -474,7 +477,7 @@ inline T pow(const tpsa     &a,       int       b) { TRC("tpa,int") return pow(*
 inline T pow(const tpsa     &a,       num_t     b) { TRC("tpa,num") return pow(*a, b); }
 inline T pow(      num_t     a, const tpsa     &b) { TRC("num,tpa") return pow( a,*b); }
 
-#ifdef USE_TMP
+#if TPSA_USE_TMP
 
 //inline T
 //pow (const T &a, const T &b) {  TRC("tmp,tmp")
@@ -522,7 +525,7 @@ pow (num_t a, const T &b) {  TRC("num,tmp")
 //inline T pow(const tpsa &a, const T    &b) { TRC("tpa,tmp") return pow(*a, b); }
 //inline T pow(const T    &a, const tpsa &b) { TRC("tmp,tpa") return pow( a,*b); }
 
-#endif // USE_TMP
+#endif // TPSA_USE_TMP
 
 // warning: the operator ^ hasn't the expected precedence and associativity...
 
@@ -537,7 +540,7 @@ inline T operator^(const tpsa_ref &a,       num_t     b) { TRC("ref,num") return
 inline T operator^(      num_t     a, const tpsa     &b) { TRC("num,tpa") return pow(a,b); }
 inline T operator^(      num_t     a, const tpsa_ref &b) { TRC("num,ref") return pow(a,b); }
 
-#ifdef USE_TMP
+#if TPSA_USE_TMP
 
 inline T operator^(const T &a, int      b) { TRC("tmp,int") return pow(a,b); }
 inline T operator^(const T &a, num_t    b) { TRC("tmp,num") return pow(a,b); }
@@ -549,7 +552,7 @@ inline T operator^(num_t    a, const T &b) { TRC("num,tmp") return pow(a,b); }
 //inline T operator^(const tpsa     &a, const T        &b) { TRC("tpa,tmp") return pow(a,b); }
 //inline T operator^(const T        &a, const tpsa     &b) { TRC("tmp,tpa") return pow(a,b); }
 
-#endif // USE_TMP
+#endif // TPSA_USE_TMP
 
 } // mad
 
@@ -572,7 +575,7 @@ inline T F (const tpsa_ref &a) {  TRC("ref") \
 inline T F (const tpsa &a) { TRC("tpa") return F(*a); } \
 FUN_TMP(F)
 
-#ifdef USE_TMP
+#if TPSA_USE_TMP
 
 #define FUN_TMP(F) \
 inline T F (const T &a) { TRC("tmp") \
@@ -583,7 +586,7 @@ inline T F (const T &a) { TRC("tmp") \
 
 #else
 #define FUN_TMP(F)
-#endif // USE_TMP
+#endif // TPSA_USE_TMP
 
 FUN(abs   );
 FUN(sqrt  );
@@ -618,7 +621,9 @@ FUN(erfc  );
 #undef TRC
 #undef FUN
 #undef FUN_TMP
-#undef USE_TMP
+
+#undef TPSA_USE_TMP
+#undef TPSA_USE_TRC
 
 // --- end --------------------------------------------------------------------o
 
