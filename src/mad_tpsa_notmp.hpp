@@ -120,6 +120,11 @@ newt (const tpsa_ref &a, int mo=mad_tpsa_default) {  TRC("ref")
   return tpsa(mad_tpsa_new(a.get(), mo));
 }
 
+inline tpsa
+newt (const tpsa &a, int mo=mad_tpsa_default) {  TRC("tpa")
+  return tpsa(mad_tpsa_new(a.get(), mo));
+}
+
 // --- unary ---
 
 inline tpsa
@@ -129,10 +134,7 @@ operator- (const tpsa_ref &a) {  TRC("ref")
   return c;
 }
 
-inline tpsa
-operator- (const tpsa &a) {  TRC("tpa")
-  return -tpsa_ref(*a);
-}
+inline tpsa operator-(const tpsa &a) { TRC("tpa") return -*a; }
 
 // --- add ---
 
@@ -306,8 +308,7 @@ inline tpsa  sqr(const tpsa_ref  &a) { TRC("ref") return a*a; }
 
 #define FUN(F) \
 \
-inline tpsa F (const tpsa_ref &a) { \
-  TRC("ref") \
+inline tpsa F (const tpsa_ref &a) {  TRC("ref") \
   tpsa c(newt(a)); \
   mad_tpsa_ ## F (a.get(), c.get()); \
   return c; \
@@ -342,10 +343,9 @@ FUN(asinhc);
 FUN(erf   );
 FUN(erfc  );
 
-#undef FUN
-
 } // mad
 
+#undef FUN
 #undef TRC
 
 // --- end --------------------------------------------------------------------o
