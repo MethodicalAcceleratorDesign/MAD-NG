@@ -282,7 +282,7 @@ mad_mdump (FILE *fp)
   for (idx_t i=0; i < max_mblk; i++)
     if (p->mblk[i].nxt > IDXMAX)         // ptr
       fprintf(fp, "  mblk[%4d] -> %s\n", i, pdump(p->mblk[i].mbp));
-    else if (i+1 == p->free)  // free
+    else if (i+1 == p->free)             // free
       fprintf(fp, "->mblk[%4d] -> [%d]\n", i, (int)p->mblk[i].nxt-1);
     else if (i+2 != (int)p->mblk[i].nxt) // idx
       fprintf(fp, "  mblk[%4d] -> [%d]\n", i, (int)p->mblk[i].nxt-1);

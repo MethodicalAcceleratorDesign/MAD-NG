@@ -24,69 +24,105 @@
  o-----------------------------------------------------------------------------o
  */
 
+// comment to disable temporaries and traces
+#define TPSA_USE_TMP 1
+//#define TPSA_USE_TRC 1
+
+// --- includes ---------------------------------------------------------------o
+
 extern "C" {
 #include "mad_tpsa.h"
 }
 
 #include <cmath>
+#include <cstdio>
 #include <memory>
+
+// --- trace ------------------------------------------------------------------o
+
+#if TPSA_USE_TRC
+#define TRC(...) \
+  (printf("%s:%3d:%12s: ", __FILE__, __LINE__, __func__), \
+   printf(__VA_ARGS__), printf("\n"));
+#else
+#define TRC(...)
+#endif
 
 // --- types ------------------------------------------------------------------o
 
 namespace mad {
 
+namespace mad_prv_ {
+
 // private class to build dtor as a type and avoid extra function ptr in tpsa.
 struct tpsa_del_ {
-  void operator()(tpsa_t *t) { mad_tpsa_del(t); }
+  void operator()(tpsa_t *t) { TRC("tpsa_t* %p", (void*)t) mad_tpsa_del(t); }
 };
 
-// public class to use tpsa, i.e. wrapper to tpsa_t.
-using tpsa = std::unique_ptr<tpsa_t, tpsa_del_>;
+} // mad_prv_
 
-// private class to manage temporaries in expressions, i.e. avoid allocation.
-struct tpsa_tmp_ : tpsa {
-  explicit
-  tpsa_tmp_(tpsa_t    * a) : tpsa(a)       {}
-  tpsa_tmp_(tpsa_tmp_&& a) : tpsa(std::move(a)) {}
-};
+// public class to use tpsa, i.e. wrapper to tpsa_t with memory management.
+using tpsa = std::unique_ptr<tpsa_t, mad_prv_::tpsa_del_>;
 
-// public class to locally wrap tpsa_t and provide assignments operators
-struct ref {
-  ref(tpsa_t *a) : t(*a) {}
-  ref(tpsa_t &a) : t( a) {}
+// public class to *locally* wrap tpsa_t without memory management.
+struct tpsa_ref {
+  explicit tpsa_ref(tpsa_t *a) : t(*a) { TRC("tpsa_t* %p", (void*)a      ) }
+  explicit tpsa_ref(tpsa   &a) : t(*a) { TRC("tpsa& %p"  , (void*)a.get()) }
+           tpsa_ref(tpsa_t &a) : t( a) { TRC("tpsa_t& %p", (void*)&a     ) }
 
-  ref()                 = delete;
-  ref(ref&&)            = delete;
-  ref(const ref&)       = delete;
-  void operator=(ref&&) = delete;
+  tpsa_ref()                     = delete;
+  tpsa_ref(tpsa_ref&&)           = delete;
+  tpsa_ref(const tpsa_ref&)      = delete;
+  tpsa_ref(std::nullptr_t)       = delete;
+  void operator=(tpsa_ref&&)     = delete;
+  void operator=(std::nullptr_t) = delete;
 
-  void operator =(const tpsa   &a) { mad_tpsa_copy(   &*a,&t); }
-  void operator =(const tpsa_t &a) { mad_tpsa_copy(   & a,&t); }
-  void operator =(const tpsa_t *a) { mad_tpsa_copy(     a,&t); }
+  tpsa_t* get()       const { return &t; }
+  tpsa_t& operator*() const { return  t; }
 
-  void operator+=(const tpsa   &a) { mad_tpsa_add (&t,&*a,&t); }
-  void operator+=(const tpsa_t &a) { mad_tpsa_add (&t,& a,&t); }
-  void operator+=(const tpsa_t *a) { mad_tpsa_add (&t,  a,&t); }
-  void operator+=(       num_t  a) { mad_tpsa_set0(&t,  1, a); }
+  void operator= (const tpsa     &a) { mad_tpsa_copy(   &*a,&t); }
+  void operator= (const tpsa_ref &a) { mad_tpsa_copy(   &*a,&t); }
+  void operator= (      num_t     a) { mad_tpsa_set0(&t,  0, a); }
 
-  void operator-=(const tpsa   &a) { mad_tpsa_sub (&t,&*a,&t); }
-  void operator-=(const tpsa_t &a) { mad_tpsa_sub (&t,& a,&t); }
-  void operator-=(const tpsa_t *a) { mad_tpsa_sub (&t,  a,&t); }
-  void operator-=(       num_t  a) { mad_tpsa_set0(&t,  1,-a); }
+  void operator+=(const tpsa     &a) { mad_tpsa_add (&t,&*a,&t); }
+  void operator+=(const tpsa_ref &a) { mad_tpsa_add (&t,&*a,&t); }
+  void operator+=(      num_t     a) { mad_tpsa_set0(&t,  1, a); }
 
-  void operator*=(const tpsa   &a) { mad_tpsa_mul (&t,&*a,&t); }
-  void operator*=(const tpsa_t &a) { mad_tpsa_mul (&t,& a,&t); }
-  void operator*=(const tpsa_t *a) { mad_tpsa_mul (&t,  a,&t); }
-  void operator*=(       num_t  a) { mad_tpsa_scl (&t,  a,&t); }
+  void operator-=(const tpsa     &a) { mad_tpsa_sub (&t,&*a,&t); }
+  void operator-=(const tpsa_ref &a) { mad_tpsa_sub (&t,&*a,&t); }
+  void operator-=(      num_t     a) { mad_tpsa_set0(&t,  1,-a); }
 
-  void operator/=(const tpsa   &a) { mad_tpsa_div (&t,&*a,&t); }
-  void operator/=(const tpsa_t &a) { mad_tpsa_div (&t,& a,&t); }
-  void operator/=(const tpsa_t *a) { mad_tpsa_div (&t,  a,&t); }
-  void operator/=(       num_t  a) { mad_tpsa_scl (&t,1/a,&t); }
+  void operator*=(const tpsa     &a) { mad_tpsa_mul (&t,&*a,&t); }
+  void operator*=(const tpsa_ref &a) { mad_tpsa_mul (&t,&*a,&t); }
+  void operator*=(      num_t     a) { mad_tpsa_scl (&t,  a,&t); }
+
+  void operator/=(const tpsa     &a) { mad_tpsa_div (&t,&*a,&t); }
+  void operator/=(const tpsa_ref &a) { mad_tpsa_div (&t,&*a,&t); }
+  void operator/=(      num_t     a) { mad_tpsa_scl (&t,1/a,&t); }
 
 private:
   tpsa_t &t;
 };
+
+#if TPSA_USE_TMP
+
+namespace mad_prv_ {
+
+// private class to manage temporaries in expressions, i.e. save allocations.
+struct tpsa_tmp_ : tpsa {
+  explicit
+  tpsa_tmp_(tpsa_t     *a) : tpsa(a) { TRC("tpsa_t* %p", (void*)a) }
+  tpsa_tmp_(tpsa_tmp_ &&a) : tpsa(std::move(a)) {}
+};
+
+inline tpsa_tmp_& cct(const tpsa_tmp_ &a) { return const_cast<tpsa_tmp_&>(a); }
+
+} // mad_prv_
+
+#define T mad_prv_::tpsa_tmp_
+#else
+#define T tpsa
+#endif // TPSA_USE_TMP
 
 } // mad
 
@@ -96,406 +132,427 @@ namespace mad {
 
 // --- ctors ---
 
-inline tpsa_tmp_
-newt ()
-{
-  return tpsa_tmp_(mad_tpsa_newd(mad_desc_curr, mad_tpsa_default));
+inline T
+newt () {  TRC("void")
+  return T(mad_tpsa_newd(mad_desc_curr, mad_tpsa_default));
 }
 
-inline tpsa_tmp_
-newt (const tpsa_t &a)
-{
-  return tpsa_tmp_(mad_tpsa_new(&a, mad_tpsa_default));
+inline T
+newt (int mo) {  TRC("int")
+  return T(mad_tpsa_newd(mad_desc_curr, mo));
+}
+
+inline T
+newt (const tpsa_ref &a, int mo=mad_tpsa_default) {  TRC("ref")
+  return T(mad_tpsa_new(a.get(), mo));
+}
+
+inline T
+newt (const tpsa &a, int mo=mad_tpsa_default) {  TRC("tpa")
+  return T(mad_tpsa_new(a.get(), mo));
 }
 
 // --- unary ---
 
-inline tpsa_tmp_
-operator- (const tpsa_t &a) {
-  tpsa_tmp_ c(newt(a));
-  mad_tpsa_scl(&a, -1, c.get());
+inline T
+operator- (const tpsa_ref &a) {  TRC("ref")
+  T c(newt(a));
+  mad_tpsa_scl(a.get(), -1, c.get());
   return c;
 }
 
-inline tpsa_tmp_ operator-(const tpsa &a) { return -*a; }
+inline T operator-(const tpsa &a) { TRC("tpa") return -*a; }
+
+#if TPSA_USE_TMP
+
+inline T
+operator- (const T &a) {  TRC("tmp")
+  T c(cct(a).release());
+  mad_tpsa_scl(c.get(), -1, c.get());
+  return c;
+}
+
+#endif // TPSA_USE_TMP
 
 // --- add ---
 
-inline tpsa_tmp_
-operator+ (const tpsa_t &a, const tpsa_t &b) {
-  tpsa_tmp_ c(newt(a));
-  mad_tpsa_add(&a, &b, c.get());
+inline T
+operator+ (const tpsa_ref &a, const tpsa_ref &b) {  TRC("ref,ref")
+  T c(newt(a));
+  mad_tpsa_add(a.get(), b.get(), c.get());
   return c;
 }
 
-inline tpsa_tmp_
-operator+ (const tpsa_t &a, num_t b) {
-  tpsa_tmp_ c(newt(a));
-  mad_tpsa_copy(&a, c.get());
+inline T
+operator+ (const tpsa_ref &a, num_t b) {  TRC("ref,num")
+  T c(newt(a));
+  mad_tpsa_copy(a.get(), c.get());
   mad_tpsa_set0(c.get(), 1, b);
   return c;
 }
 
-inline tpsa_tmp_
-operator+ (tpsa_tmp_ &a, tpsa_tmp_ &b) {
-  tpsa_tmp_ c(a.release());
+inline T operator+(const tpsa     &a, const tpsa     &b) { TRC("tpa,tpa") return *a+*b; }
+inline T operator+(const tpsa     &a, const tpsa_ref &b) { TRC("tpa,ref") return *a+ b; }
+inline T operator+(const tpsa_ref &a, const tpsa     &b) { TRC("ref,tpa") return  a+*b; }
+inline T operator+(const tpsa     &a,       num_t     b) { TRC("tpa,num") return *a+ b; }
+inline T operator+(      num_t     a, const tpsa     &b) { TRC("num,tpa") return *b+ a; }
+inline T operator+(      num_t     a, const tpsa_ref &b) { TRC("num,ref") return  b+ a; }
+
+#if TPSA_USE_TMP
+
+inline T
+operator+ (const T &a, const T &b) {  TRC("tmp,tmp")
+  T c(cct(a).release());
   mad_tpsa_add(c.get(), b.get(), c.get());
   return c;
 }
 
-inline tpsa_tmp_
-operator+ (tpsa_tmp_ &a, const tpsa_t &b) {
-  tpsa_tmp_ c(a.release());
-  mad_tpsa_add(c.get(), &b, c.get());
+inline T
+operator+ (const T &a, const tpsa_ref &b) {  TRC("tmp,ref")
+  T c(cct(a).release());
+  mad_tpsa_add(c.get(), b.get(), c.get());
   return c;
 }
 
-inline tpsa_tmp_
-operator+ (const tpsa_t &a, tpsa_tmp_ &b) {
-  tpsa_tmp_ c(b.release());
-  mad_tpsa_add(&a, c.get(), c.get());
+inline T
+operator+ (const tpsa_ref &a, const T &b) {  TRC("ref,tmp")
+  T c(cct(b).release());
+  mad_tpsa_add(a.get(), c.get(), c.get());
   return c;
 }
 
-inline tpsa_tmp_
-operator+ (tpsa_tmp_ &a, num_t b) {
-  tpsa_tmp_ c(a.release());
+inline T
+operator+ (const T &a, num_t b) {  TRC("tmp,num")
+  T c(cct(a).release());
   mad_tpsa_set0(c.get(), 1, b);
   return c;
 }
 
-inline tpsa_tmp_ operator+(const tpsa   &a, const tpsa   &b) { return *a + *b; }
-inline tpsa_tmp_ operator+(const tpsa   &a, const tpsa_t &b) { return *a +  b; }
-inline tpsa_tmp_ operator+(const tpsa   &a, const tpsa_t *b) { return *a + *b; }
-inline tpsa_tmp_ operator+(const tpsa_t &a, const tpsa   &b) { return  a + *b; }
-inline tpsa_tmp_ operator+(const tpsa_t *a, const tpsa   &b) { return *a + *b; }
-inline tpsa_tmp_ operator+(const tpsa_t &a, const tpsa_t *b) { return  a + *b; }
-inline tpsa_tmp_ operator+(const tpsa_t *a, const tpsa_t &b) { return *a +  b; }
-inline tpsa_tmp_ operator+(const tpsa   &a,        num_t  b) { return *a +  b; }
-inline tpsa_tmp_ operator+(       num_t  a, const tpsa   &b) { return *b +  a; }
-inline tpsa_tmp_ operator+(       num_t  a, const tpsa_t &b) { return  b +  a; }
+inline T operator+(const tpsa &a, const T    &b) { TRC("tpa,tmp") return *a+ b; }
+inline T operator+(const T    &a, const tpsa &b) { TRC("tmp,tpa") return  a+*b; }
+inline T operator+(      num_t a, const T    &b) { TRC("num,tmp") return  b+ a; }
 
-inline tpsa_tmp_ operator+(   tpsa_tmp_ &a, const tpsa_t *b) { return  a + *b; }
-inline tpsa_tmp_ operator+(const tpsa_t *a,    tpsa_tmp_ &b) { return *a +  b; }
-inline tpsa_tmp_ operator+(       num_t  a,    tpsa_tmp_ &b) { return  b +  a; }
+#endif // TPSA_USE_TMP
 
 // --- sub ---
 
-inline tpsa_tmp_
-operator- (const tpsa_t &a, const tpsa_t &b) {
-  tpsa_tmp_ c(newt(a));
-  mad_tpsa_sub(&a, &b, c.get());
+inline T
+operator- (const tpsa_ref &a, const tpsa_ref &b) {  TRC("ref,ref")
+  T c(newt(a));
+  mad_tpsa_sub(a.get(), b.get(), c.get());
   return c;
 }
 
-inline tpsa_tmp_
-operator- (const tpsa_t &a, num_t b) {
-  tpsa_tmp_ c(newt(a));
-  mad_tpsa_copy(&a, c.get());
+inline T
+operator- (const tpsa_ref &a, num_t b) {  TRC("ref,num")
+  T c(newt(a));
+  mad_tpsa_copy(a.get(), c.get());
   mad_tpsa_set0(c.get(), 1, -b);
   return c;
 }
 
-inline tpsa_tmp_
-operator- (num_t a, const tpsa_t &b) {
-  tpsa_tmp_ c(newt(b));
-  mad_tpsa_scl(&b, -1, c.get());
+inline T
+operator- (num_t a, const tpsa_ref &b) {  TRC("num,ref")
+  T c(newt(b));
+  mad_tpsa_scl (b.get(),-1, c.get());
   mad_tpsa_set0(c.get(), 1, a);
   return c;
 }
 
-inline tpsa_tmp_
-operator- (tpsa_tmp_ &a, tpsa_tmp_ &b) {
-  tpsa_tmp_ c(a.release());
+inline T operator-(const tpsa     &a, const tpsa     &b) { TRC("tpa,tpa") return *a-*b; }
+inline T operator-(const tpsa     &a, const tpsa_ref &b) { TRC("tpa,ref") return *a- b; }
+inline T operator-(const tpsa_ref &a, const tpsa     &b) { TRC("ref,tpa") return  a-*b; }
+inline T operator-(const tpsa     &a,       num_t     b) { TRC("tpa,num") return *a- b; }
+inline T operator-(      num_t     a, const tpsa     &b) { TRC("num,tpa") return  a-*b; }
+
+#if TPSA_USE_TMP
+
+inline T
+operator- (const T &a, const T &b) {  TRC("tmp,tmp")
+  T c(cct(a).release());
   mad_tpsa_sub(c.get(), b.get(), c.get());
   return c;
 }
 
-inline tpsa_tmp_
-operator- (tpsa_tmp_ &a, const tpsa_t &b) {
-  tpsa_tmp_ c(a.release());
-  mad_tpsa_sub(c.get(), &b, c.get());
+inline T
+operator- (const T &a, const tpsa_ref &b) {  TRC("tmp,ref")
+  T c(cct(a).release());
+  mad_tpsa_sub(c.get(), b.get(), c.get());
   return c;
 }
 
-inline tpsa_tmp_
-operator- (const tpsa_t &a, tpsa_tmp_ &b) {
-  tpsa_tmp_ c(b.release());
-  mad_tpsa_sub(&a, c.get(), c.get());
+inline T
+operator- (const tpsa_ref &a, const T &b) {  TRC("ref,tmp")
+  T c(cct(b).release());
+  mad_tpsa_sub(a.get(), c.get(), c.get());
   return c;
 }
 
-inline tpsa_tmp_
-operator- (tpsa_tmp_ &a, num_t b) {
-  tpsa_tmp_ c(a.release());
+inline T
+operator- (const T &a, num_t b) {  TRC("tmp,num")
+  T c(cct(a).release());
   mad_tpsa_set0(c.get(), -1, b);
   return c;
 }
 
-inline tpsa_tmp_
-operator- (num_t a, tpsa_tmp_ &b) {
-  tpsa_tmp_ c(b.release());
+inline T
+operator- (num_t a, const T &b) {  TRC("num,tmp")
+  T c(cct(b).release());
   mad_tpsa_scl (c.get(),-1, c.get());
   mad_tpsa_set0(c.get(), 1, a);
   return c;
 }
 
-inline tpsa_tmp_ operator-(const tpsa   &a, const tpsa   &b) { return *a - *b; }
-inline tpsa_tmp_ operator-(const tpsa   &a, const tpsa_t &b) { return *a -  b; }
-inline tpsa_tmp_ operator-(const tpsa   &a, const tpsa_t *b) { return *a - *b; }
-inline tpsa_tmp_ operator-(const tpsa_t &a, const tpsa   &b) { return  a - *b; }
-inline tpsa_tmp_ operator-(const tpsa_t *a, const tpsa   &b) { return *a - *b; }
-inline tpsa_tmp_ operator-(const tpsa_t &a, const tpsa_t *b) { return  a - *b; }
-inline tpsa_tmp_ operator-(const tpsa_t *a, const tpsa_t &b) { return *a -  b; }
-inline tpsa_tmp_ operator-(const tpsa   &a,        num_t  b) { return *a -  b; }
-inline tpsa_tmp_ operator-(       num_t  a, const tpsa   &b) { return  a - *b; }
+inline T operator-(const tpsa &a, const T    &b) { TRC("tpa,tmp") return *a- b; }
+inline T operator-(const T    &a, const tpsa &b) { TRC("tmp,tpa") return  a-*b; }
 
-inline tpsa_tmp_ operator-(   tpsa_tmp_ &a, const tpsa_t *b) { return  a - *b; }
-inline tpsa_tmp_ operator-(const tpsa_t *a,    tpsa_tmp_ &b) { return *a -  b; }
+#endif // TPSA_USE_TMP
 
 // --- mul ---
 
-inline tpsa_tmp_
-operator* (const tpsa_t &a, const tpsa_t &b) {
-  tpsa_tmp_ c(newt(a));
-  mad_tpsa_mul(&a, &b, c.get());
+inline T
+operator* (const tpsa_ref &a, const tpsa_ref &b) {  TRC("ref,ref")
+  T c(newt(a));
+  mad_tpsa_mul(a.get(), b.get(), c.get());
   return c;
 }
 
-inline tpsa_tmp_
-operator* (const tpsa_t &a, num_t b) {
-  tpsa_tmp_ c(newt(a));
-  mad_tpsa_scl(&a, b, c.get());
+inline T
+operator* (const tpsa_ref &a, num_t b) {  TRC("ref,num")
+  T c(newt(a));
+  mad_tpsa_scl(a.get(), b, c.get());
   return c;
 }
 
-inline tpsa_tmp_
-operator* (tpsa_tmp_ &a, tpsa_tmp_ &b) {
-  tpsa_tmp_ c(a.release());
-  mad_tpsa_mul(c.get(), b.get(), c.get());
-  return c;
-}
+inline T operator*(const tpsa     &a, const tpsa     &b) { TRC("tpa,tpa") return *a**b; }
+inline T operator*(const tpsa     &a, const tpsa_ref &b) { TRC("tpa,ref") return *a* b; }
+inline T operator*(const tpsa_ref &a, const tpsa     &b) { TRC("ref,tpa") return  a**b; }
+inline T operator*(const tpsa     &a,       num_t     b) { TRC("tpa,num") return *a* b; }
+inline T operator*(      num_t     a, const tpsa     &b) { TRC("num,tpa") return *b* a; }
+inline T operator*(      num_t     a, const tpsa_ref &b) { TRC("num,ref") return  b* a; }
 
-inline tpsa_tmp_
-operator* (tpsa_tmp_ &a, const tpsa_t &b) {
-  tpsa_tmp_ c(a.release());
-  mad_tpsa_mul(c.get(), &b, c.get());
-  return c;
-}
+#if TPSA_USE_TMP
 
-inline tpsa_tmp_
-operator* (const tpsa_t &a, tpsa_tmp_ &b) {
-  tpsa_tmp_ c(b.release());
-  mad_tpsa_mul(&a, c.get(), c.get());
-  return c;
-}
+//inline T
+//operator* (const T &a, const T &b) {  TRC("tmp,tmp")
+//  T c(cct(a).release());
+//  mad_tpsa_mul(c.get(), b.get(), c.get());
+//  return c;
+//}
 
-inline tpsa_tmp_
-operator* (tpsa_tmp_ &a, num_t b) {
-  tpsa_tmp_ c(a.release());
+//inline T
+//operator* (const T &a, const tpsa_ref &b) {  TRC("tmp,ref")
+//  T c(cct(a).release());
+//  mad_tpsa_mul(c.get(), b.get(), c.get());
+//  return c;
+//}
+
+//inline T
+//operator* (const tpsa_ref &a, const T &b) {  TRC("ref,tmp")
+//  T c(cct(b).release());
+//  mad_tpsa_mul(a.get(), c.get(), c.get());
+//  return c;
+//}
+
+inline T
+operator* (const T &a, num_t b) {  TRC("tmp,num")
+  T c(cct(a).release());
   mad_tpsa_scl(c.get(), b, c.get());
   return c;
 }
 
-inline tpsa_tmp_ operator*(const tpsa   &a, const tpsa   &b) { return *a * *b; }
-inline tpsa_tmp_ operator*(const tpsa   &a, const tpsa_t &b) { return *a *  b; }
-inline tpsa_tmp_ operator*(const tpsa   &a, const tpsa_t *b) { return *a * *b; }
-inline tpsa_tmp_ operator*(const tpsa_t &a, const tpsa   &b) { return  a * *b; }
-inline tpsa_tmp_ operator*(const tpsa_t *a, const tpsa   &b) { return *a * *b; }
-inline tpsa_tmp_ operator*(const tpsa_t &a, const tpsa_t *b) { return  a * *b; }
-inline tpsa_tmp_ operator*(const tpsa_t *a, const tpsa_t &b) { return *a *  b; }
-inline tpsa_tmp_ operator*(const tpsa   &a,        num_t  b) { return *a *  b; }
-inline tpsa_tmp_ operator*(       num_t  a, const tpsa   &b) { return *b *  a; }
-inline tpsa_tmp_ operator*(       num_t  a, const tpsa_t &b) { return  b *  a; }
+inline T operator*(      num_t     a, const T &b) { TRC("num,tmp") return  b* a; }
 
-inline tpsa_tmp_ operator*(   tpsa_tmp_ &a, const tpsa_t *b) { return  a * *b; }
-inline tpsa_tmp_ operator*(const tpsa_t *a,    tpsa_tmp_ &b) { return *a *  b; }
-inline tpsa_tmp_ operator*(       num_t  a,    tpsa_tmp_ &b) { return  b *  a; }
+//inline T operator*(const tpsa &a, const T    &b) { TRC("tpa,tmp") return *a* b; }
+//inline T operator*(const T    &a, const tpsa &b) { TRC("tmp,tpa") return  a**b; }
+
+#endif // TPSA_USE_TMP
 
 // --- div ---
 
-inline tpsa_tmp_
-operator/ (const tpsa_t &a, const tpsa_t &b) {
-  tpsa_tmp_ c(newt(a));
-  mad_tpsa_div(&a, &b, c.get());
+inline T
+operator/ (const tpsa_ref &a, const tpsa_ref &b) {  TRC("ref,ref")
+  T c(newt(a));
+  mad_tpsa_div(a.get(), b.get(), c.get());
   return c;
 }
 
-inline tpsa_tmp_
-operator/ (const tpsa_t &a, num_t b) {
-  tpsa_tmp_ c(newt(a));
-  mad_tpsa_scl(&a, 1/b, c.get());
+inline T
+operator/ (const tpsa_ref &a, num_t b) {  TRC("ref,num")
+  T c(newt(a));
+  mad_tpsa_scl(a.get(), 1/b, c.get());
   return c;
 }
 
-inline tpsa_tmp_
-operator/ (num_t a, const tpsa_t &b) {
-  tpsa_tmp_ c(newt(b));
-  mad_tpsa_inv(&b, a, c.get());
+inline T
+operator/ (num_t a, const tpsa_ref &b) {  TRC("num,ref")
+  T c(newt(b));
+  mad_tpsa_inv(b.get(), a, c.get());
   return c;
 }
 
-inline tpsa_tmp_
-operator/ (tpsa_tmp_ &a, tpsa_tmp_ &b) {
-  tpsa_tmp_ c(a.release());
-  mad_tpsa_div(c.get(), b.get(), c.get());
-  return c;
-}
+inline T operator/(const tpsa     &a, const tpsa     &b) { TRC("tpa,tpa") return *a/ *b; }
+inline T operator/(const tpsa     &a, const tpsa_ref &b) { TRC("tpa,ref") return *a/  b; }
+inline T operator/(const tpsa_ref &a, const tpsa     &b) { TRC("ref,tpa") return  a/ *b; }
+inline T operator/(const tpsa     &a,       num_t     b) { TRC("tpa,num") return *a/  b; }
+inline T operator/(      num_t     a, const tpsa     &b) { TRC("num,tpa") return  a/ *b; }
 
-inline tpsa_tmp_
-operator/ (tpsa_tmp_ &a, const tpsa_t &b) {
-  tpsa_tmp_ c(a.release());
-  mad_tpsa_div(c.get(), &b, c.get());
-  return c;
-}
+#if TPSA_USE_TMP
 
-inline tpsa_tmp_
-operator/ (const tpsa_t &a, tpsa_tmp_ &b) {
-  tpsa_tmp_ c(b.release());
-  mad_tpsa_div(&a, c.get(), c.get());
-  return c;
-}
+//inline T
+//operator/ (const T &a, const T &b) {  TRC("tmp,tmp")
+//  T c(cct(a).release());
+//  mad_tpsa_div(c.get(), b.get(), c.get());
+//  return c;
+//}
 
-inline tpsa_tmp_
-operator/ (tpsa_tmp_ &a, num_t b) {
-  tpsa_tmp_ c(a.release());
+//inline T
+//operator/ (const T &a, const tpsa_ref &b) {  TRC("tmp,ref")
+//  T c(cct(a).release());
+//  mad_tpsa_div(c.get(), b.get(), c.get());
+//  return c;
+//}
+
+//inline T
+//operator/ (const tpsa_ref &a, const T &b) {  TRC("ref,tmp")
+//  T c(cct(b).release());
+//  mad_tpsa_div(a.get(), c.get(), c.get());
+//  return c;
+//}
+
+inline T
+operator/ (const T &a, num_t b) {  TRC("tmp,num")
+  T c(cct(a).release());
   mad_tpsa_scl(c.get(), 1/b, c.get());
   return c;
 }
 
-inline tpsa_tmp_
-operator/ (num_t a, tpsa_tmp_ &b) {
-  tpsa_tmp_ c(b.release());
-  mad_tpsa_inv(c.get(), a, c.get());
-  return c;
-}
+//inline T
+//operator/ (num_t a, const T &b) {  TRC("num,tmp")
+//  T c(cct(b).release());
+//  mad_tpsa_inv(c.get(), a, c.get());
+//  return c;
+//}
 
-inline tpsa_tmp_ operator/(const tpsa   &a, const tpsa   &b) { return *a / *b; }
-inline tpsa_tmp_ operator/(const tpsa   &a, const tpsa_t &b) { return *a /  b; }
-inline tpsa_tmp_ operator/(const tpsa   &a, const tpsa_t *b) { return *a / *b; }
-inline tpsa_tmp_ operator/(const tpsa_t &a, const tpsa   &b) { return  a / *b; }
-inline tpsa_tmp_ operator/(const tpsa_t *a, const tpsa   &b) { return *a / *b; }
-inline tpsa_tmp_ operator/(const tpsa_t &a, const tpsa_t *b) { return  a / *b; }
-inline tpsa_tmp_ operator/(const tpsa_t *a, const tpsa_t &b) { return *a /  b; }
-inline tpsa_tmp_ operator/(const tpsa   &a,        num_t  b) { return *a /  b; }
-inline tpsa_tmp_ operator/(       num_t  a, const tpsa   &b) { return  a / *b; }
+//inline T operator/(const tpsa &a, const T    &b) { TRC("tpa,tmp") return *a/  b; }
+//inline T operator/(const T    &a, const tpsa &b) { TRC("tmp,tpa") return  a/ *b; }
 
-inline tpsa_tmp_ operator/(   tpsa_tmp_ &a, const tpsa_t *b) { return  a / *b; }
-inline tpsa_tmp_ operator/(const tpsa_t *a,    tpsa_tmp_ &b) { return *a /  b; }
+#endif // TPSA_USE_TMP
 
 // --- pow ---
 
-inline tpsa_tmp_
-pow (const tpsa_t &a, const tpsa_t &b) {
-  tpsa_tmp_ c(newt(a));
-  mad_tpsa_pow(&a, &b, c.get());
+inline T
+pow (const tpsa_ref &a, const tpsa_ref &b) {  TRC("ref,ref")
+  T c(newt(a));
+  mad_tpsa_pow(a.get(), b.get(), c.get());
   return c;
 }
 
-inline tpsa_tmp_
-pow (const tpsa_t &a, int b) {
-  tpsa_tmp_ c(newt(a));
-  mad_tpsa_powi(&a, b, c.get());
+inline T
+pow (const tpsa_ref &a, int b) {  TRC("ref,int")
+  T c(newt(a));
+  mad_tpsa_powi(a.get(), b, c.get());
   return c;
 }
 
-inline tpsa_tmp_
-pow (const tpsa_t &a, num_t b) {
-  tpsa_tmp_ c(newt(a));
-  mad_tpsa_pown(&a, b, c.get());
+inline T
+pow (const tpsa_ref &a, num_t b) {  TRC("ref,num")
+  T c(newt(a));
+  mad_tpsa_pown(a.get(), b, c.get());
   return c;
 }
 
-inline tpsa_tmp_
-pow (num_t a, const tpsa_t &b) {
-  tpsa_tmp_ c(newt(b));
-  mad_tpsa_scl(&b, std::log(a), c.get());
+inline T
+pow (num_t a, const tpsa_ref &b) {  TRC("num,ref")
+  T c(newt(b));
+  mad_tpsa_scl(b.get(), std::log(a), c.get());
   mad_tpsa_exp(c.get(), c.get());
   return c;
 }
 
-inline tpsa_tmp_
-pow (tpsa_tmp_ &a, tpsa_tmp_ &b) {
-  tpsa_tmp_ c(a.release());
-  mad_tpsa_pow(c.get(), b.get(), c.get());
-  return c;
-}
+inline T pow(const tpsa     &a, const tpsa     &b) { TRC("tpa,tpa") return pow(*a,*b); }
+inline T pow(const tpsa     &a, const tpsa_ref &b) { TRC("tpa,ref") return pow(*a, b); }
+inline T pow(const tpsa_ref &a, const tpsa     &b) { TRC("ref,tpa") return pow( a,*b); }
+inline T pow(const tpsa     &a,       int       b) { TRC("tpa,int") return pow(*a, b); }
+inline T pow(const tpsa     &a,       num_t     b) { TRC("tpa,num") return pow(*a, b); }
+inline T pow(      num_t     a, const tpsa     &b) { TRC("num,tpa") return pow( a,*b); }
 
-inline tpsa_tmp_
-pow (tpsa_tmp_ &a, const tpsa_t &b) {
-  tpsa_tmp_ c(a.release());
-  mad_tpsa_pow(c.get(), &b, c.get());
-  return c;
-}
+#if TPSA_USE_TMP
 
-inline tpsa_tmp_
-pow (const tpsa_t &a, tpsa_tmp_ &b) {
-  tpsa_tmp_ c(b.release());
-  mad_tpsa_pow(&a, c.get(), c.get());
-  return c;
-}
+//inline T
+//pow (const T &a, const T &b) {  TRC("tmp,tmp")
+//  T c(cct(a).release());
+//  mad_tpsa_pow(c.get(), b.get(), c.get());
+//  return c;
+//}
 
-inline tpsa_tmp_
-pow (tpsa_tmp_ &a, int b) {
-  tpsa_tmp_ c(a.release());
+//inline T
+//pow (const T &a, const tpsa_ref &b) {  TRC("tmp,ref")
+//  T c(cct(a).release());
+//  mad_tpsa_pow(c.get(), b.get(), c.get());
+//  return c;
+//}
+
+//inline T
+//pow (const tpsa_ref &a, const T &b) {  TRC("ref,tmp")
+//  T c(cct(b).release());
+//  mad_tpsa_pow(a.get(), c.get(), c.get());
+//  return c;
+//}
+
+inline T
+pow (const T &a, int b) {  TRC("tmp,int")
+  T c(cct(a).release());
   mad_tpsa_powi(c.get(), b, c.get());
   return c;
 }
 
-inline tpsa_tmp_
-pow (tpsa_tmp_ &a, num_t b) {
-  tpsa_tmp_ c(a.release());
+inline T
+pow (const T &a, num_t b) {  TRC("tmp,num")
+  T c(cct(a).release());
   mad_tpsa_pown(c.get(), b, c.get());
   return c;
 }
 
-inline tpsa_tmp_
-pow (num_t a, tpsa_tmp_ &b) {
-  tpsa_tmp_ c(b.release());
+inline T
+pow (num_t a, const T &b) {  TRC("num,tmp")
+  T c(cct(b).release());
   mad_tpsa_scl(c.get(), std::log(a), c.get());
   mad_tpsa_exp(c.get(), c.get());
   return c;
 }
 
-inline tpsa_tmp_ pow(const tpsa   &a, const tpsa   &b) { return pow(*a,*b); }
-inline tpsa_tmp_ pow(const tpsa_t &a, const tpsa_t *b) { return pow( a,*b); }
-inline tpsa_tmp_ pow(const tpsa_t *a, const tpsa_t &b) { return pow(*a, b); }
-inline tpsa_tmp_ pow(const tpsa   &a, const tpsa_t &b) { return pow(*a, b); }
-inline tpsa_tmp_ pow(const tpsa   &a, const tpsa_t *b) { return pow(*a,*b); }
-inline tpsa_tmp_ pow(const tpsa_t &a, const tpsa   &b) { return pow( a,*b); }
-inline tpsa_tmp_ pow(const tpsa_t *a, const tpsa   &b) { return pow(*a,*b); }
-inline tpsa_tmp_ pow(const tpsa   &a,        int    b) { return pow(*a, b); }
-inline tpsa_tmp_ pow(const tpsa   &a,        num_t  b) { return pow(*a, b); }
-inline tpsa_tmp_ pow(       num_t  a, const tpsa   &b) { return pow( a,*b); }
+//inline T pow(const tpsa &a, const T    &b) { TRC("tpa,tmp") return pow(*a, b); }
+//inline T pow(const T    &a, const tpsa &b) { TRC("tmp,tpa") return pow( a,*b); }
 
-inline tpsa_tmp_ pow(   tpsa_tmp_ &a, const tpsa_t *b) { return pow( a,*b); }
-inline tpsa_tmp_ pow(const tpsa_t *a,    tpsa_tmp_ &b) { return pow(*a, b); }
+#endif // TPSA_USE_TMP
 
 // warning: the operator ^ hasn't the expected precedence and associativity...
 
-inline tpsa_tmp_ operator^(const tpsa   &a, const tpsa   &b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(const tpsa_t &a, const tpsa_t &b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(const tpsa_t &a, const tpsa_t *b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(const tpsa_t *a, const tpsa_t &b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(const tpsa   &a, const tpsa_t &b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(const tpsa   &a, const tpsa_t *b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(const tpsa_t &a, const tpsa   &b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(const tpsa_t *a, const tpsa   &b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(const tpsa_t &a,        int    b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(const tpsa_t &a,        num_t  b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(const tpsa   &a,        int    b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(const tpsa   &a,        num_t  b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(       num_t  a, const tpsa   &b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(       num_t  a, const tpsa_t &b) { return pow(a,b); }
+inline T operator^(const tpsa     &a, const tpsa     &b) { TRC("tpa,tpa") return pow(a,b); }
+inline T operator^(const tpsa     &a, const tpsa_ref &b) { TRC("tpa,ref") return pow(a,b); }
+inline T operator^(const tpsa_ref &a, const tpsa     &b) { TRC("ref,tpa") return pow(a,b); }
+inline T operator^(const tpsa_ref &a, const tpsa_ref &b) { TRC("ref,ref") return pow(a,b); }
+inline T operator^(const tpsa     &a,       int       b) { TRC("tpa,int") return pow(a,b); }
+inline T operator^(const tpsa_ref &a,       int       b) { TRC("ref,int") return pow(a,b); }
+inline T operator^(const tpsa     &a,       num_t     b) { TRC("tpa,num") return pow(a,b); }
+inline T operator^(const tpsa_ref &a,       num_t     b) { TRC("ref,num") return pow(a,b); }
+inline T operator^(      num_t     a, const tpsa     &b) { TRC("num,tpa") return pow(a,b); }
+inline T operator^(      num_t     a, const tpsa_ref &b) { TRC("num,ref") return pow(a,b); }
 
-inline tpsa_tmp_ operator^(   tpsa_tmp_ &a,    tpsa_tmp_ &b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(   tpsa_tmp_ &a, const tpsa_t &b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(const tpsa_t &a,    tpsa_tmp_ &b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(   tpsa_tmp_ &a,        int    b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(   tpsa_tmp_ &a,        num_t  b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(       num_t  a,    tpsa_tmp_ &b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(   tpsa_tmp_ &a, const tpsa_t *b) { return pow(a,b); }
-inline tpsa_tmp_ operator^(const tpsa_t *a,    tpsa_tmp_ &b) { return pow(a,b); }
+#if TPSA_USE_TMP
+
+inline T operator^(const T &a, int      b) { TRC("tmp,int") return pow(a,b); }
+inline T operator^(const T &a, num_t    b) { TRC("tmp,num") return pow(a,b); }
+inline T operator^(num_t    a, const T &b) { TRC("num,tmp") return pow(a,b); }
+
+//inline T operator^(const tpsa_ref &a, const T        &b) { TRC("ref,tmp") return pow(a,b); }
+//inline T operator^(const T        &a, const tpsa_ref &b) { TRC("tmp,ref") return pow(a,b); }
+//inline T operator^(const T        &a, const T        &b) { TRC("tmp,tmp") return pow(a,b); }
+//inline T operator^(const tpsa     &a, const T        &b) { TRC("tpa,tmp") return pow(a,b); }
+//inline T operator^(const T        &a, const tpsa     &b) { TRC("tmp,tpa") return pow(a,b); }
+
+#endif // TPSA_USE_TMP
 
 } // mad
 
@@ -503,22 +560,33 @@ inline tpsa_tmp_ operator^(const tpsa_t *a,    tpsa_tmp_ &b) { return pow(a,b); 
 
 namespace mad {
 
+inline num_t sqr(      num_t     a) { TRC("num") return a*a; }
+inline T     sqr(const tpsa     &a) { TRC("tpa") return a*a; }
+inline T     sqr(const tpsa_ref &a) { TRC("ref") return a*a; }
+
 // --- unary ---
 
 #define FUN(F) \
-\
-inline tpsa_tmp_ F (const tpsa_t &a) { \
-  tpsa_tmp_ c(newt(a)); \
-  mad_tpsa_ ## F (&a, c.get()); \
+inline T F (const tpsa_ref &a) {  TRC("ref") \
+  T c(newt(a)); \
+  mad_tpsa_ ## F (a.get(), c.get()); \
   return c; \
 } \
-\
-inline tpsa_tmp_ F (tpsa_tmp_ &a) { \
-  tpsa_tmp_ c(a.release()); \
+inline T F (const tpsa &a) { TRC("tpa") return F(*a); } \
+FUN_TMP(F)
+
+#if TPSA_USE_TMP
+
+#define FUN_TMP(F) \
+inline T F (const T &a) { TRC("tmp") \
+  T c(cct(a).release()); \
   mad_tpsa_ ## F (c.get(), c.get()); \
   return c; \
-} \
-inline tpsa_tmp_ F (const tpsa &a) { return F(*a); }
+}
+
+#else
+#define FUN_TMP(F)
+#endif // TPSA_USE_TMP
 
 FUN(abs   );
 FUN(sqrt  );
@@ -547,9 +615,15 @@ FUN(asinhc);
 FUN(erf   );
 FUN(erfc  );
 
-#undef FUN
-
 } // mad
+
+#undef T
+#undef TRC
+#undef FUN
+#undef FUN_TMP
+
+#undef TPSA_USE_TMP
+#undef TPSA_USE_TRC
 
 // --- end --------------------------------------------------------------------o
 
