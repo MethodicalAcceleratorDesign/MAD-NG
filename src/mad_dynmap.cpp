@@ -16,12 +16,12 @@
  o-----------------------------------------------------------------------------o
 */
 
+#include "mad_tpsa.hpp"
+
 extern "C" {
 #include "mad_cst.h"
 #include "mad_dynmap.h"
 }
-
-#include "mad_tpsa.hpp"
 
 // --- types ------------------------------------------------------------------o
 
@@ -158,11 +158,8 @@ void mad_trk_test (int n)
 {
   mad_desc_newv(6, 1);
 
-  tpsa a(newt());    mad_tpsa_setvar(&*a, 10, 1, 0);
-  tpsa b(newt());    mad_tpsa_setvar(&*b, 20, 1, 0);
-
-//mad_tpsa_print(&*a, "A", 0,0,0);
-//mad_tpsa_print(&*b, "B", 0,0,0);
+  tpsa a(newt("A")); mad_tpsa_setvar(&*a, 10, 1, 0); stdout << a;
+  tpsa b(newt("B")); mad_tpsa_setvar(&*b, 20, 1, 0); stdout << b;
 
   FOR(i,n) {
 //    tpsa c = a+1+b+2+a+2;
