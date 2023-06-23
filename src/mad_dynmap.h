@@ -24,12 +24,29 @@
  o-----------------------------------------------------------------------------o
  */
 
-#include "mad_tpsa.h"
+#include "mad_def.h"
+
+typedef struct elem elem_t;
+typedef struct mflw mflw_t;
 
 // --- interface --------------------------------------------------------------o
 
-void mad_trk_strex_drift (void);
-void mad_trk_strex_kick  (void);
+typedef void (trkfun) (elem_t*, mflw_t*, num_t, int);
+
+void mad_trk_strex_drift_r (elem_t *e, mflw_t *m, num_t lw, int i);
+void mad_trk_strex_drift_t (elem_t *e, mflw_t *m, num_t lw, int i);
+void mad_trk_strex_kick_r  (elem_t *e, mflw_t *m, num_t lw, int i);
+void mad_trk_strex_kick_t  (elem_t *e, mflw_t *m, num_t lw, int i);
+
+void mad_trk_curex_drift_r (elem_t *e, mflw_t *m, num_t lw, int i);
+void mad_trk_curex_drift_t (elem_t *e, mflw_t *m, num_t lw, int i);
+void mad_trk_curex_kick_r  (elem_t *e, mflw_t *m, num_t lw, int i);
+void mad_trk_curex_kick_t  (elem_t *e, mflw_t *m, num_t lw, int i);
+
+void mad_trk_slice_r       (elem_t *e, mflw_t *m, num_t lw, trkfun *dft, trkfun *kck);
+void mad_trk_slice_t       (elem_t *e, mflw_t *m, num_t lw, trkfun *dft, trkfun *kck);
+
+void mad_trk_test          (int n);
 
 // --- end --------------------------------------------------------------------o
 

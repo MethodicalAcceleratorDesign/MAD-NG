@@ -40,7 +40,7 @@ enum { DESC_WARN_MONO  = 1000000, // warn if tpsa can have 1e6 coefs or more
 
 // --- types ------------------------------------------------------------------o
 
-struct desc { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
+struct desc_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
   int   id;          // index in list of registered descriptors
   int   nn, nv, np;  // #variables, #parameters, nn=nv+np <= 100000
   ord_t mo, po, to;  // max order of vars & params, global order of truncation
