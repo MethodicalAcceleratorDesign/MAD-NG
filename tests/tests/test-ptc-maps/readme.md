@@ -116,3 +116,11 @@ The next steps are up to you, however the best way I found to debug the tests is
 4. Make changes and repeat step 3 until you have found/resolved the issue.
 
 5. Once you have resolved the issue, you can turn off `dodbg` and `doprnt` and run the test again to get the final results. (Not a necessary step, but it makes the output cleaner)
+
+To run all the tests (not unit tests run)
+```bash
+../mad -q test-electric-maps.mad & ../mad -q test-misc-maps.mad & ../mad -q test-mult-maps.mad &\
+../mad -q test-octupole-maps.mad & ../mad -q test-patch-maps.mad & ../mad -q test-quad-maps.mad &\
+../mad -q test-rbend-maps.mad & ../mad -q test-sbend-maps.mad & ../mad -q test-sextupole-maps.mad &\
+../mad -q test-sol-maps.mad && fg
+```
