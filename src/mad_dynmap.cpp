@@ -158,8 +158,10 @@ void mad_trk_test (int n)
 {
   mad_desc_newv(6, 1);
 
-  tpsa a(newt("A")); mad_tpsa_setvar(&*a, 10, 1, 0); stdout << a;
-  tpsa b(newt("B")); mad_tpsa_setvar(&*b, 20, 1, 0); stdout << b;
+  tpsa a; a.set("A").set(10, 1);
+  tpsa b; b.set("B").set(20, 2);
+
+  stdout << a << b;
 
   FOR(i,n) {
 //    tpsa c = a+1+b+2+a+2;
