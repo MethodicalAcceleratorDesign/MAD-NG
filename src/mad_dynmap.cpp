@@ -27,11 +27,14 @@ extern "C" {
 
 extern "C" {
 
+typedef  num_t  par6_t[6];
+typedef tpsa_t *map6_t[6];
+
 struct mflw {
   num_t el, eld, beta, T;
   int    npar;
-  num_t   *par[6];
-  tpsa_t **map[6];
+  par6_t *par;
+  map6_t *map;
 };
 
 }
@@ -39,7 +42,8 @@ struct mflw {
 struct par_t {
   par_t(num_t *a, num_t b)
     : x(a[0]), px(a[1]), y(a[2]), py(a[3]), t(a[4]), pt(a[5]), beta(b) {}
-  num_t x, px, y, py, t, pt, beta;
+  num_t &x, &px, &y, &py, &t, &pt;
+  num_t beta;
 };
 
 struct map_t {
@@ -95,9 +99,9 @@ mad_trk_strex_drift_r (elem_t *e, mflw_t *m, num_t lw, int istp)
     par_t p { m->par[i], m->beta };
     num_t l_pz = l/pz(p);
 
-    p.x += p.px*l_pz;
-    p.y += p.py*l_pz;
-    p.t -= l_pz*(1/p.beta+p.pt) + (1-T)*(ld/p.beta);
+    p.x = p.x + p.px*l_pz;
+    p.y = p.y + p.py*l_pz;
+    p.t = p.t - l_pz*(1/p.beta+p.pt) + (1-T)*(ld/p.beta);
   }
 }
 
@@ -114,9 +118,9 @@ mad_trk_strex_drift_t (elem_t *e, mflw_t *m, num_t lw, int istp)
     map_t p { m->map[i], m->beta };
     const tpsa l_pz = l/pz(p);
 
-    p.x += p.px*l_pz;
-    p.y += p.py*l_pz;
-    p.t -= l_pz*(1/p.beta+p.pt) + (1-T)*(ld/p.beta);
+    p.x = p.x + p.px*l_pz;
+    p.y = p.y + p.py*l_pz;
+    p.t = p.t - l_pz*(1/p.beta+p.pt) + (1-T)*(ld/p.beta);
   }
 }
 
@@ -154,7 +158,7 @@ void mad_trk_slice_t (elem_t *e, mflw_t *m, num_t lw, trkfun *dft, trkfun *kck)
   (void)e; (void)m; (void)lw; (void)dft; (void)kck;
 }
 
-// --- unit tests -------------------------------------------------------------o
+// --- speed tests ------------------------------------------------------------o
 
 #if TPSA_USE_TRC
 #define TRC(...) printf(#__VA_ARGS__ "\n"); __VA_ARGS__
@@ -162,26 +166,76 @@ void mad_trk_slice_t (elem_t *e, mflw_t *m, num_t lw, trkfun *dft, trkfun *kck)
 #define TRC(...) __VA_ARGS__
 #endif
 
-void mad_trk_spdtest (int n)
+void mad_trk_spdtest (int n, int k)
 {
   mad_desc_newv(6, 1);
 
-  tpsa a("A"); a.set(10, 1);
-  tpsa b("B"); b.set(20, 2);
+  tpsa x ( "X"); x .set( 0   , 1);
+  tpsa px("PX"); px.set( 1e-7, 2);
+  tpsa y ( "Y"); y .set( 0   , 3);
+  tpsa py("PY"); py.set(-1e-7, 4);
+  tpsa t ( "T"); t .set( 0   , 5);
+  tpsa pt("PT"); pt.set( 0   , 6);
 
-  stdout << a << b;
+  par6_t par1 = { x[0], px[0], y[0], py[0], t[0], pt[0] };
+  map6_t map1 = { x.ptr(), px.ptr(), y.ptr(), py.ptr(), t.ptr(), pt.ptr() };
 
-  FOR(i,n) {
-//  const tpsa c { a+1+b+2+a+2 };
-//  const tpsa c { (a+1)*sqr(b+2)+a*2 };
+  struct mflw m = {
+    .el=1, .eld=1, .beta=1, .T=0,
+    .npar=1, .par=&par1, .map=&map1,
+  };
 
-//  const tpsa c = a+1+b+2+a+2;
-//  const tpsa c = (a+1)*sqr(b+2)+a*2;
+  switch(k) {
+  case 0: {
+    FOR(i,n) mad_trk_strex_drift_r (nullptr, &m, 1, 1);
+    par_t p { m.par[0], m.beta };
+    printf("x =% -.16e\npx=% -.16e\ny =% -.16e\npy=% -.16e\nt =% -.16e\npt=% -.16e\n",
+            p.x, p.px, p.y, p.py, p.t, p.pt);
+  } break;
 
-//  tpsa c = a+1+b+2+a+2;
-  tpsa c = (a+1)*sqr(b+2)+a*2;
+  case 1: {
+    FOR(i,n) mad_trk_strex_drift_t (nullptr, &m, 1, 1);
+    map_t p { m.map[0], m.beta };
+    stdout << p.x << p.px << p.y << p.py << p.t << p.pt;
+  } break;
+
+  default:
+    printf("unknown use case %d\n", k);
   }
 }
+
+/*
+time: 0.014369 sec
+local t=os.clock() MAD._C.mad_trk_spdtest(1e6,0) print(os.clock()-t, "sec")
+
+time: 0.444638 sec
+MAD._C.mad_mcollect()
+local t=os.clock() MAD._C.mad_trk_spdtest(1e6,1) print(os.clock()-t, "sec")
+MAD._C.mad_mdump(nil)
+
+time: 0.005795 sec
+do
+local m = {el=1, eld=1, beam={beta=1}, T=0, atdebug=\->(), npar=1,
+{x=0,px=1e-7,y=0,py=-1e-7,t=0,pt=0}}
+local f =\n=> for i=1,n do MAD.dynmap.strex_drift(nil,m,1,1) end end
+m[1].px, m[1].py = 1e-7, -1e-7
+local t=os.clock() f(1e6) print(os.clock()-t, "sec")
+MAD.utility.printf("x =% -.16e\npx=% -.16e\ny =% -.16e\npy=% -.16e\nt =% -.16e\npt=% -.16e\n",
+m[1].x, m[1].px, m[1].y, m[1].py, m[1].t, m[1].pt)
+end
+
+time: 2.766905 sec
+do
+local m = {el=1, eld=1, beam={beta=1}, T=0, atdebug=\->(), npar=1, MAD.damap()}
+m[1].px, m[1].py = 1e-7, -1e-7
+local f =\n=> for i=1,n do MAD.dynmap.strex_drift(nil,m,1,1) end end
+local t=os.clock() f(1e6) print(os.clock()-t, "sec")
+m[1]:print()
+end
+*/
+
+
+// --- unit tests -------------------------------------------------------------o
 
 void mad_trk_cpptest (void)
 {
