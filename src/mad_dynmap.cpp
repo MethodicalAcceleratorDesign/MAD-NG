@@ -40,49 +40,26 @@ struct mflw {
 }
 
 struct par_t {
-  par_t(num_t *a, num_t b)
-    : x(a[0]), px(a[1]), y(a[2]), py(a[3]), t(a[4]), pt(a[5]), beta(b) {}
+  par_t(num_t *a)
+    : x(a[0]), px(a[1]), y(a[2]), py(a[3]), t(a[4]), pt(a[5]) {}
   num_t &x, &px, &y, &py, &t, &pt;
-  num_t beta;
 };
 
 struct map_t {
-  map_t(tpsa_t **a, num_t b)
-    : x(a[0]), px(a[1]), y(a[2]), py(a[3]), t(a[4]), pt(a[5]), beta(b) {}
+  map_t(tpsa_t **a)
+    : x(a[0]), px(a[1]), y(a[2]), py(a[3]), t(a[4]), pt(a[5]) {}
   mad::tpsa_ref x, px, y, py, t, pt;
-  num_t beta;
 };
 
 // --- implementation ---------------------------------------------------------o
 
 using namespace mad;
 
-// --- helpers ---
+// --- constants ---
 
 const num_t minlen = mad_cst_MINLEN;
 const num_t minang = mad_cst_MINANG;
 const num_t minstr = mad_cst_MINSTR;
-
-inline num_t dp2 (par_t &p) {
-  return 1 + (2/p.beta)*p.pt + sqr(p.pt);
-}
-
-inline tpsa dp2 (map_t &p) {
-  return 1 + (2/p.beta)*p.pt + sqr(p.pt);
-}
-
-inline num_t pz2 (par_t &p) {
-  return 1 + (2/p.beta)*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py);
-}
-
-inline tpsa pz2 (map_t &p) {
-  return 1 + (2/p.beta)*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py);
-}
-
-inline num_t dp (par_t &p) { return std::sqrt(dp2(p)); }
-inline num_t pz (par_t &p) { return std::sqrt(pz2(p)); }
-inline tpsa  dp (map_t &p) { return mad::sqrt(dp2(p)); }
-inline tpsa  pz (map_t &p) { return mad::sqrt(pz2(p)); }
 
 // --- DKD maps ---
 
@@ -92,16 +69,16 @@ mad_trk_strex_drift_r (elem_t *e, mflw_t *m, num_t lw, int istp)
   (void)e; (void)istp;
   if (std::abs(m->el*lw) < minlen) return;
 
-  num_t l = m->el*lw, ld = m->eld*lw;
+  num_t l = m->el*lw, ld = m->eld*lw, beta = m->beta;
   int T = m->T;
 
   FOR(i,m->npar) {
-    par_t p { m->par[i], m->beta };
-    num_t l_pz = l/pz(p);
+    par_t p { m->par[i] };
+    num_t l_pz = l/sqrt(1+(2/beta)*p.pt+p.pt*p.pt - p.px*p.px - p.py*p.py);
 
     p.x = p.x + p.px*l_pz;
     p.y = p.y + p.py*l_pz;
-    p.t = p.t - l_pz*(1/p.beta+p.pt) + (1-T)*(ld/p.beta);
+    p.t = p.t - l_pz*(1/beta+p.pt) + (1-T)*(ld/beta);
   }
 }
 
@@ -111,16 +88,16 @@ mad_trk_strex_drift_t (elem_t *e, mflw_t *m, num_t lw, int istp)
   (void)e; (void)istp;
   if (std::abs(m->el*lw) < minlen) return;
 
-  num_t l = m->el*lw, ld = m->eld*lw;
+  num_t l = m->el*lw, ld = m->eld*lw, beta = m->beta;
   int T = m->T;
 
   FOR(i,m->npar) {
-    map_t p { m->map[i], m->beta };
-    const tpsa l_pz = l/pz(p);
+    map_t p { m->map[i] };
+    const tpsa l_pz = l/sqrt(1+(2/beta)*p.pt+p.pt*p.pt - p.px*p.px - p.py*p.py);
 
     p.x = p.x + p.px*l_pz;
     p.y = p.y + p.py*l_pz;
-    p.t = p.t - l_pz*(1/p.beta+p.pt) + (1-T)*(ld/p.beta);
+    p.t = p.t - l_pz*(1/beta+p.pt) + (1-T)*(ld/beta);
   }
 }
 
@@ -188,14 +165,14 @@ void mad_trk_spdtest (int n, int k)
   switch(k) {
   case 0: {
     FOR(i,n) mad_trk_strex_drift_r (nullptr, &m, 1, 1);
-    par_t p { m.par[0], m.beta };
+    par_t p { m.par[0] };
     printf("x =% -.16e\npx=% -.16e\ny =% -.16e\npy=% -.16e\nt =% -.16e\npt=% -.16e\n",
             p.x, p.px, p.y, p.py, p.t, p.pt);
   } break;
 
   case 1: {
     FOR(i,n) mad_trk_strex_drift_t (nullptr, &m, 1, 1);
-    map_t p { m.map[0], m.beta };
+    map_t p { m.map[0] };
     stdout << p.x << p.px << p.y << p.py << p.t << p.pt;
   } break;
 
@@ -205,10 +182,10 @@ void mad_trk_spdtest (int n, int k)
 }
 
 /*
-time: 0.014369 sec
+time: 0.001262 sec
 local t=os.clock() MAD._C.mad_trk_spdtest(1e6,0) print(os.clock()-t, "sec")
 
-time: 0.444638 sec
+time: 0.425756 sec
 MAD._C.mad_mcollect()
 local t=os.clock() MAD._C.mad_trk_spdtest(1e6,1) print(os.clock()-t, "sec")
 MAD._C.mad_mdump(nil)
@@ -233,7 +210,6 @@ local t=os.clock() f(1e6) print(os.clock()-t, "sec")
 m[1]:print()
 end
 */
-
 
 // --- unit tests -------------------------------------------------------------o
 
