@@ -117,13 +117,13 @@ struct tpsa_base {
   }
 
 protected:
-  tpsa_base<D>()                              = default; // abstract class
-  tpsa_base<D>(tpsa_base<D>&&)                = delete;  // move    ctor
-  tpsa_base<D>(const tpsa_base<D>&)           = delete;  // copy    ctor
-  tpsa_base<D>(std::nullptr_t)                = delete;  // nullptr ctor
-  tpsa_base<D> operator=(tpsa_base<D>&&)      = delete;  // move    assign
-  tpsa_base<D> operator=(const tpsa_base<D>&) = delete;  // copy    assign
-  tpsa_base<D> operator=(std::nullptr_t)      = delete;  // nullptr assign
+  tpsa_base()                              = default; // abstract class
+  tpsa_base(tpsa_base<D>&&)                = delete;  // move    ctor
+  tpsa_base(const tpsa_base<D>&)           = delete;  // copy    ctor
+  tpsa_base(std::nullptr_t)                = delete;  // nullptr ctor
+  tpsa_base operator=(tpsa_base<D>&&)      = delete;  // move    assign
+  tpsa_base operator=(const tpsa_base<D>&) = delete;  // copy    assign
+  tpsa_base operator=(std::nullptr_t)      = delete;  // nullptr assign
 };
 
 // public class to wrap tpsa_t *without* memory management.
@@ -141,13 +141,13 @@ struct tpsa_ref : tpsa_base<tpsa_ref> {
   tpsa_ref& operator=(      num_t         a) { TRC("ref,num") mad_tpsa_set0(ptr(),  0,  a); return *this; }
 
 private:
-  tpsa_ref()                                  = delete;  // final   class
-  tpsa_ref(tpsa_ref&&)                        = delete;  // move    ctor
-  tpsa_ref(const tpsa_ref&)                   = delete;  // copy    ctor
-  tpsa_ref(std::nullptr_t)                    = delete;  // nullptr ctor
-//tpsa_ref& operator=(tpsa_ref&&)             = delete;  // move    assign
-//tpsa_ref& operator=(const tpsa_ref&)        = delete;  // copy    assign
-  tpsa_ref& operator=(std::nullptr_t)         = delete;  // nullptr assign
+  tpsa_ref()                               = delete;  // final   class
+  tpsa_ref(tpsa_ref&&)                     = delete;  // move    ctor
+  tpsa_ref(const tpsa_ref&)                = delete;  // copy    ctor
+  tpsa_ref(std::nullptr_t)                 = delete;  // nullptr ctor
+//tpsa_ref& operator=(tpsa_ref&&)          = delete;  // move    assign
+//tpsa_ref& operator=(const tpsa_ref&)     = delete;  // copy    assign
+  tpsa_ref& operator=(std::nullptr_t)      = delete;  // nullptr assign
 
 private:
   tpsa_t &t;
@@ -180,13 +180,13 @@ struct tpsa : tpsa_base<tpsa> {
   tpsa (const mad_prv_::tpsa_tmp_&); // forward decl
 
 private:
-//tpsa()                                      = delete;  // dflt    ctor
-  tpsa(tpsa&&)                                = delete;  // move    ctor
-  tpsa(const tpsa&)                           = delete;  // copy    ctor
-  tpsa(std::nullptr_t)                        = delete;  // nullptr ctor
-//tpsa& operator=(tpsa&&)                     = delete;  // move    assign
-//tpsa& operator=(const tpsa&)                = delete;  // copy    assign
-  tpsa& operator=(std::nullptr_t)             = delete;  // nullptr assign
+//tpsa()                                   = delete;  // dflt    ctor
+  tpsa(tpsa&&)                             = delete;  // move    ctor
+  tpsa(const tpsa&)                        = delete;  // copy    ctor
+  tpsa(std::nullptr_t)                     = delete;  // nullptr ctor
+//tpsa& operator=(tpsa&&)                  = delete;  // move    assign
+//tpsa& operator=(const tpsa&)             = delete;  // copy    assign
+  tpsa& operator=(std::nullptr_t)          = delete;  // nullptr assign
 
   struct tpsa_del_ {
     void operator()(tpsa_t *t) { TRC("tpa %p", (void*)t) mad_tpsa_del(t); }
@@ -211,13 +211,13 @@ struct tpsa_tmp_ : tpsa {
   tpsa_tmp_(const tpsa_base<A> &a) : tpsa(a)    { TRC("&baz") }
 
 private:
-  tpsa_tmp_()                                 = delete; // final   class
-//tpsa_tmp_(tpsa_tmp_ &&)                     = delete; // move    ctor
-//tpsa_tmp_(const tpsa_tmp_ &)                = delete; // copy    ctor
-  tpsa_tmp_(std::nullptr_t)                   = delete; // nullptr ctor
-  tpsa_tmp_& operator=(tpsa_tmp_&&)           = delete; // move    assign
-  tpsa_tmp_& operator=(const tpsa_tmp_&)      = delete; // copy    assign
-  tpsa_tmp_& operator=(std::nullptr_t)        = delete; // nullptr assign
+  tpsa_tmp_()                              = delete; // final   class
+//tpsa_tmp_(tpsa_tmp_ &&)                  = delete; // move    ctor
+//tpsa_tmp_(const tpsa_tmp_ &)             = delete; // copy    ctor
+  tpsa_tmp_(std::nullptr_t)                = delete; // nullptr ctor
+  tpsa_tmp_& operator=(tpsa_tmp_&&)        = delete; // move    assign
+  tpsa_tmp_& operator=(const tpsa_tmp_&)   = delete; // copy    assign
+  tpsa_tmp_& operator=(std::nullptr_t)     = delete; // nullptr assign
 };
 
 } // mad_prv_
@@ -519,6 +519,10 @@ inline T operator^(      num_t         a, const T            &b) { return pow(a,
 template <class A>
 inline std::FILE* operator<<(std::FILE *out, const tpsa_base<A> &a) {
   mad_tpsa_print(a.ptr(), 0,0,0, out); return out;
+}
+
+inline std::FILE* operator<<(std::FILE *out, const tpsa_t &a) {
+  mad_tpsa_print(&a, 0,0,0, out); return out;
 }
 
 // --- functions ---
