@@ -154,19 +154,116 @@ void mad_trk_slice_t (elem_t *e, mflw_t *m, num_t lw, trkfun *dft, trkfun *kck)
   (void)e; (void)m; (void)lw; (void)dft; (void)kck;
 }
 
-void mad_trk_test (int n)
+// --- unit tests -------------------------------------------------------------o
+
+#if TPSA_USE_TRC
+#define TRC(...) printf(#__VA_ARGS__ "\n"); __VA_ARGS__
+#else
+#define TRC(...) __VA_ARGS__
+#endif
+
+void mad_trk_spdtest (int n)
 {
   mad_desc_newv(6, 1);
 
-  tpsa a; a.set("A").set(10, 1);
-  tpsa b; b.set("B").set(20, 2);
+  tpsa a("A"); a.set(10, 1);
+  tpsa b("B"); b.set(20, 2);
 
   stdout << a << b;
 
   FOR(i,n) {
-//    tpsa c = a+1+b+2+a+2;
-    tpsa c = (a+1)*sqr(b+2)+a*2;
+//  const tpsa c { a+1+b+2+a+2 };
+//  const tpsa c { (a+1)*sqr(b+2)+a*2 };
+
+//  const tpsa c = a+1+b+2+a+2;
+//  const tpsa c = (a+1)*sqr(b+2)+a*2;
+
+//  tpsa c = a+1+b+2+a+2;
+  tpsa c = (a+1)*sqr(b+2)+a*2;
   }
 }
 
-// ----------------------------------------------------------------------------o
+void mad_trk_cpptest (void)
+{
+  mad_desc_newv(6, 1);
+
+  TRC(tpsa a("A");                             )
+  TRC(tpsa_ref ar(a.ptr());                    )
+
+  TRC( a  = a;                                 )
+  TRC( a += a;                                 )
+  TRC( a  = ar;                                )
+  TRC( a += ar;                                )
+  TRC( a  = a+a;                               )
+  TRC( a += a+a;                               )
+  TRC( a  = 2*a;                               )
+  TRC( a += 2*a;                               )
+  TRC( a  = 1;                                 )
+  TRC( a += 1;                                 )
+  TRC( a  = tpsa();                            ) // tpsa(a);       // error
+  TRC( a += tpsa();                            ) // tpsa(a);       // error
+  TRC( a  = tpsa(a+a);                         )
+  TRC( a += tpsa(a+a);                         )
+  TRC( a  = tpsa_ref(a.ptr());                 ) // tpsa_ref(a);   // error
+  TRC( a += tpsa_ref(a.ptr());                 ) // tpsa_ref(a+b); // error
+
+  TRC( ar  = a;                                )
+  TRC( ar += a;                                )
+  TRC( ar  = ar;                               )
+  TRC( ar += ar;                               )
+  TRC( ar  = a+a;                              )
+  TRC( ar += a+a;                              )
+  TRC( ar  = 2*a;                              )
+  TRC( ar += 2*a;                              )
+  TRC( ar  = 1;                                )
+  TRC( ar += 1;                                )
+  TRC( ar  = tpsa();                           )  // tpsa(a);       // error
+  TRC( ar += tpsa();                           )  // tpsa(a);       // error
+  TRC( ar  = tpsa(a+a);                        )
+  TRC( ar += tpsa(a+a);                        )
+  TRC( ar  = tpsa_ref(a.ptr());                ) // tpsa_ref(a);   // error
+  TRC( ar += tpsa_ref(a.ptr());                ) // tpsa_ref(a+b); // error
+
+  TRC( tpsa()  = a;                            )
+  TRC( tpsa() += a;                            )
+  TRC( tpsa()  = ar;                           )
+  TRC( tpsa() += ar;                           )
+  TRC( tpsa()  = a+a;                          )
+  TRC( tpsa() += a+a;                          )
+  TRC( tpsa()  = 2*a;                          )
+  TRC( tpsa() += 2*a;                          )
+  TRC( tpsa()  = 1;                            )
+  TRC( tpsa() += 1;                            )
+  TRC( tpsa()  = tpsa();                       )  // tpsa(a); // error
+  TRC( tpsa() += tpsa();                       )  // tpsa(a); // error
+  TRC( tpsa()  = tpsa(a+a);                    )
+  TRC( tpsa() += tpsa(a+a);                    )
+  TRC( tpsa()  = tpsa_ref(a.ptr());            ) // tpsa_ref(a);   // error
+  TRC( tpsa() += tpsa_ref(a.ptr());            ) // tpsa_ref(a+b); // error
+
+  TRC( tpsa_ref(a.ptr())  = a;                 )
+  TRC( tpsa_ref(a.ptr()) += a;                 )
+  TRC( tpsa_ref(a.ptr())  = ar;                )
+  TRC( tpsa_ref(a.ptr()) += ar;                )
+  TRC( tpsa_ref(a.ptr())  = a+a;               )
+  TRC( tpsa_ref(a.ptr()) += a+a;               )
+  TRC( tpsa_ref(a.ptr())  = 2*a;               )
+  TRC( tpsa_ref(a.ptr()) += 2*a;               )
+  TRC( tpsa_ref(a.ptr())  = 1;                 )
+  TRC( tpsa_ref(a.ptr()) += 1;                 )
+  TRC( tpsa_ref(a.ptr())  = tpsa();            ) // tpsa(a);       // error
+  TRC( tpsa_ref(a.ptr()) += tpsa();            ) // tpsa(a);       // error
+  TRC( tpsa_ref(a.ptr())  = tpsa(a+a);         )
+  TRC( tpsa_ref(a.ptr()) += tpsa(a+a);         )
+  TRC( tpsa_ref(a.ptr())  = tpsa_ref(a.ptr()); ) // tpsa_ref(a);   // error
+  TRC( tpsa_ref(a.ptr()) += tpsa_ref(a.ptr()); ) // tpsa_ref(a+b); // error
+
+  TRC( const tpsa b {  a+1+a+2+a+3 };          )
+  TRC( const tpsa c { (a+1)*sqr(a+2)+a*2 };    )
+
+  TRC( const tpsa d =  a+1+a+2+a+2;            )
+  TRC( const tpsa e = (a+1)*sqr(a+2)+a*2;      )
+
+  TRC(       tpsa f =  a+1+a+2+a+2;            )
+  TRC(       tpsa g = (a+1)*sqr(a+2)+a*2;      )
+}
