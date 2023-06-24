@@ -46,7 +46,7 @@ void mad_trk_curex_kick_t  (elem_t *e, mflw_t *m, num_t lw, int i);
 void mad_trk_slice_r       (elem_t *e, mflw_t *m, num_t lw, trkfun *dft, trkfun *kck);
 void mad_trk_slice_t       (elem_t *e, mflw_t *m, num_t lw, trkfun *dft, trkfun *kck);
 
-void mad_trk_spdtest       (int n);
+void mad_trk_spdtest       (int n, int k);
 void mad_trk_cpptest       (void);
 
 // --- end --------------------------------------------------------------------o
