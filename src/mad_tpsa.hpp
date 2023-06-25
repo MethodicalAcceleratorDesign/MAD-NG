@@ -335,7 +335,7 @@ inline T operator- (const T &a, const T &b) {  TRC("tmp,tmp")
 }
 
 inline T operator- (const T &a, num_t b) {  TRC("tmp,num")
-  T c=a; mad_tpsa_set0(c.ptr(), -1, b); return c;
+  T c=a; mad_tpsa_set0(c.ptr(), 1, -b); return c;
 }
 
 inline T operator- (num_t a, const T &b) {  TRC("num,tmp")
