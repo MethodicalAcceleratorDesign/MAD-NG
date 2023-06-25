@@ -74,7 +74,7 @@ mad_trk_strex_drift_r (elem_t *e, mflw_t *m, num_t lw, int istp)
 
   FOR(i,m->npar) {
     par_t p { m->par[i] };
-    num_t l_pz = l/sqrt(1+(2/beta)*p.pt+p.pt*p.pt - p.px*p.px - p.py*p.py);
+    num_t l_pz = l/sqrt(1 + (2/beta)*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
 
     p.x += p.px*l_pz;
     p.y += p.py*l_pz;
@@ -93,7 +93,7 @@ mad_trk_strex_drift_t (elem_t *e, mflw_t *m, num_t lw, int istp)
 
   FOR(i,m->npar) {
     map_t p { m->map[i] };
-    const tpsa l_pz = l/sqrt(1+(2/beta)*p.pt+p.pt*p.pt - p.px*p.px - p.py*p.py);
+    tpsa l_pz = l/sqrt(1 + (2/beta)*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
 
     p.x += p.px*l_pz;
     p.y += p.py*l_pz;
@@ -185,7 +185,7 @@ void mad_trk_spdtest (int n, int k)
 time: 0.001262 sec
 local t=os.clock() MAD._C.mad_trk_spdtest(1e6,0) print(os.clock()-t, "sec")
 
-time: 0.425756 sec
+time: 0.397203 sec
 MAD._C.mad_mcollect()
 local t=os.clock() MAD._C.mad_trk_spdtest(1e6,1) print(os.clock()-t, "sec")
 MAD._C.mad_mdump(nil)
@@ -201,7 +201,7 @@ MAD.utility.printf("x =% -.16e\npx=% -.16e\ny =% -.16e\npy=% -.16e\nt =% -.16e\n
 m[1].x, m[1].px, m[1].y, m[1].py, m[1].t, m[1].pt)
 end
 
-time: 2.766905 sec
+time: 2.679041 sec
 do
 local m = {el=1, eld=1, beam={beta=1}, T=0, atdebug=\->(), npar=1, MAD.damap()}
 m[1].px, m[1].py = 1e-7, -1e-7
