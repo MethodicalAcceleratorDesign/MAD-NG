@@ -2092,7 +2092,7 @@ vec_sort (num_t v[], idx_t c[], ssz_t n)
   FOR(i,n) c[i] = i;
 
   // Sort values by ascending order.
-  FOR(i,1,n) RFOR(j,i,0)
+  FOR(i,1,n) RFOR(j,i+1)
     if (v[j-1] > v[j]) {
       SWAP(v[j-1], v[j], tr);
       SWAP(c[j-1], c[j], ti);
@@ -2105,7 +2105,7 @@ ivec_sort (idx_t v[], ssz_t n, log_t rmdup)
   idx_t ti;
 
   // Sort indexes by ascending order.
-  FOR(i,1,n) RFOR(j,i,0)
+  FOR(i,1,n) RFOR(j,i+1)
     if (v[j-1] > v[j]) SWAP(v[j-1], v[j], ti);
 
   // Remove duplicates.
@@ -2195,7 +2195,7 @@ mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
 #define V(i,j) V[(i)*n+(j)]
 
   // Loop over increasing singular values.
-  RFOR(i,mn-1,mn-1-N) {
+  RFOR(i,mn,mn-N) {
     // Singular value is large, stop checking.
     if (S[i] > rcond*S[0]) break;
 
@@ -2261,7 +2261,7 @@ mad_cmat_svdcnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
 #define V(i,j) V[(i)*n+(j)]
 
   // Loop over increasing singular values.
-  RFOR(i,mn-1,mn-1-N) {
+  RFOR(i,mn,mn-N) {
     // Singular value is large, stop checking.
     if (S[i] > rcond*S[0]) break;
 
@@ -2568,7 +2568,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
     }
 
     // Box 7: Recalculate solution vector x. Here, sqr[1..k] = -sigma[1..k].
-    RFOR(i,k,-1) {
+    RFOR(i,k+1) {
       X[i] = B[i];
       FOR(j,i+1,k+1) X[i] -= A(i,j) * X[j];
       X[i] /= sqr[i];
@@ -2576,7 +2576,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
 
     // Box 8: Compute original residual vector by backward transformation.
     mad_vec_copy(B, R, m);
-    RFOR(j,k,-1) {
+    RFOR(j,k+1) {
       R[j] = hh = 0;
       FOR(i,j,m) hh += A(i,j) * R[i];
       hh /= sqr[j] * A(j,j);

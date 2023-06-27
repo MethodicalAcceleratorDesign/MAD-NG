@@ -26,27 +26,50 @@
 
 #include "mad_def.h"
 
-typedef struct elem elem_t;
-typedef struct mflw mflw_t;
+typedef struct mflw_ mflw_t;
 
 // --- interface --------------------------------------------------------------o
 
-typedef void (trkfun) (elem_t*, mflw_t*, num_t, int);
+typedef void (trkfun) (mflw_t*, num_t, int);
 
-void mad_trk_strex_drift_r (elem_t *e, mflw_t *m, num_t lw, int i);
-void mad_trk_strex_drift_t (elem_t *e, mflw_t *m, num_t lw, int i);
-void mad_trk_strex_kick_r  (elem_t *e, mflw_t *m, num_t lw, int i);
-void mad_trk_strex_kick_t  (elem_t *e, mflw_t *m, num_t lw, int i);
+// -- track one slice
+void mad_trk_slice_dkd (mflw_t *m, num_t lw, trkfun *dft, trkfun *kck,
+                        int n, num_t *yosh_d, num_t *yosh_k);
+void mad_trk_slice_tkt (mflw_t *m, num_t lw, trkfun *dft, trkfun *kck,
+                        int n, num_t *yosh_d, num_t *yosh_k);
+void mad_trk_slice_kmk (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick,
+                        int n, num_t  bool_d, num_t *bool_k);
 
-void mad_trk_curex_drift_r (elem_t *e, mflw_t *m, num_t lw, int i);
-void mad_trk_curex_drift_t (elem_t *e, mflw_t *m, num_t lw, int i);
-void mad_trk_curex_kick_r  (elem_t *e, mflw_t *m, num_t lw, int i);
-void mad_trk_curex_kick_t  (elem_t *e, mflw_t *m, num_t lw, int i);
+// -- patches
+void mad_trk_xrotation_r   (mflw_t *m, num_t lw);
+void mad_trk_xrotation_t   (mflw_t *m, num_t lw);
+void mad_trk_yrotation_r   (mflw_t *m, num_t lw);
+void mad_trk_yrotation_t   (mflw_t *m, num_t lw);
+void mad_trk_srotation_r   (mflw_t *m, num_t lw);
+void mad_trk_srotation_t   (mflw_t *m, num_t lw);
+void mad_trk_translate_r   (mflw_t *m, num_t lw);
+void mad_trk_translate_t   (mflw_t *m, num_t lw);
+void mad_trk_changeref_r   (mflw_t *m, num_t lw);
+void mad_trk_changeref_t   (mflw_t *m, num_t lw);
 
-void mad_trk_slice_r       (elem_t *e, mflw_t *m, num_t lw, trkfun *dft, trkfun *kck);
-void mad_trk_slice_t       (elem_t *e, mflw_t *m, num_t lw, trkfun *dft, trkfun *kck);
+// -- misalign
+void mad_trk_misalign_r    (mflw_t *m, num_t lw);
+void mad_trk_misalign_t    (mflw_t *m, num_t lw);
 
-void mad_trk_test          (int n);
+// -- DKD maps
+void mad_trk_strex_drift_r (mflw_t *m, num_t lw, int _);
+void mad_trk_strex_drift_t (mflw_t *m, num_t lw, int _);
+void mad_trk_strex_kick_r  (mflw_t *m, num_t lw, int _);
+void mad_trk_strex_kick_t  (mflw_t *m, num_t lw, int _);
+
+void mad_trk_curex_drift_r (mflw_t *m, num_t lw, int _);
+void mad_trk_curex_drift_t (mflw_t *m, num_t lw, int _);
+void mad_trk_curex_kick_r  (mflw_t *m, num_t lw, int _);
+void mad_trk_curex_kick_t  (mflw_t *m, num_t lw, int _);
+
+// -- benchmark
+void mad_trk_spdtest (int n, int k);
+void mad_trk_cpptest (void);
 
 // --- end --------------------------------------------------------------------o
 
