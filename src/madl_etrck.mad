@@ -36,7 +36,7 @@ local element, damap, symint, option, warn                      in MAD
 local fnil, bind3rd                                             in MAD.gfunc
 local fact, arc2cord, sqrt, sin, cos, atan2                     in MAD.gmath
 local errorf                                                    in MAD.utility
-local minlen, minang, minstr, clight, twopi                     in MAD.constant
+local minlen, minang, minstr, clight, twopi, pi_2               in MAD.constant
 local is_implicit                                               in element.drift
 
 local type = type
@@ -681,7 +681,7 @@ end
 
 -- rf cavities
 
-local function track_rfcavgen (elm, m)
+local function track_rfcavgen (elm, m, crab)
   local ds in m
   local volt in elm
   local l = abs(ds)
@@ -690,28 +690,22 @@ local function track_rfcavgen (elm, m)
 
   adj_mult(m)
 
-  local inter, kick
-
-  if abs(volt) < minvolt and not (m.ptcmodel and m.nmul ~= 0) then
-    inter  = l < minlen  and thinonly or thickonly
-    kick   = m.nmul == 0 and fnil     or strex_kick
-  else
-    m.volt, m.freq = volt*1e-3, elm.freq*1e6
-    m.lag , m.nbsl = elm.lag*twopi, elm.n_bessel
-    if m.freq == 0 then
-      m.freq = elm.harmon*clight*m.beam.beta/m.sequ.l
-    end
-    if m.freq <= 0 then
-      errorf("invalid rfcavity '%s' frequency =%.4e [MHz] (>0 or harmon expected)",
-              elm.name, m.freq)
-    end
-    inter  = l < minlen and thinonly or DKD[elm.method or m.method]
-    kick   = m.nmul+m.nbsl == 0 and rfcav_kick or rfcav_kickn
+  m.volt, m.lag = crab and 0 or volt*1e-3, elm.lag*twopi - (crab and pi_2 or 0)
+  m.freq, m.nbsl= elm.freq*1e6, elm.n_bessel
+  if m.freq == 0 then
+    m.freq = elm.harmon*clight*m.beam.beta/m.sequ.l
   end
+  if m.freq <= 0 then
+    errorf("invalid rfcavity '%s' frequency =%.4e [MHz] (>0 or harmon expected)",
+            elm.name, m.freq)
+  end
+  local inter  = l < minlen and thinonly or DKD[elm.method or m.method]
+  local kick   = m.nmul+m.nbsl == 0 and rfcav_kick or rfcav_kickn
 
   local fringe = l < minlen and fnil     or rfcav_fringe
   local track  = #elm == 0  and trackelm or tracksub
   track(elm, m, inter, strex_drift, kick, fringe)
+  m.volt, m.lag = nil, nil
 end
 
 local function track_rfcavity (elm, m)
@@ -722,6 +716,13 @@ end
 local function track_rfmcavity (elm, m)
   get_multphas  (elm, m)
   track_rfcavgen(elm, m)
+  m.npha = nil
+end
+
+local function track_crabcavity (elm, m)
+  get_multphas  (elm, m, 1)
+  m.knl[1] = m.knl[1] + elm.volt*1e-3*abs(m.ds)
+  track_rfcavgen(elm, m, true)
   m.npha = nil
 end
 
@@ -773,6 +774,7 @@ E.dodecapole :set_methods {track = track_dodecapole} -- straight, k5, k5s
 E.solenoid   :set_methods {track = track_solenoid  } -- straight, ks, ksi
 E.rfcavity   :set_methods {track = track_rfcavity  } -- straight, volt, freq!, lag, harmon
 E.rfmultipole:set_methods {track = track_rfmcavity } -- straight, volt, freq!, lag, harmon, mult, phas
+E.crabcavity :set_methods {track = track_crabcavity} -- straight, volt, freq!, lag, harmon, mult, phas
 
 E.wiggler    :set_methods {track = _nyi         }    -- straight
 E.elseparator:set_methods {track = track_eseptum}    -- straight
