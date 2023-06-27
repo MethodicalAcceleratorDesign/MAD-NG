@@ -26,7 +26,6 @@
 
 #include "mad_def.h"
 
-typedef struct elem_ elem_t;
 typedef struct mflw_ mflw_t;
 
 // --- interface --------------------------------------------------------------o
