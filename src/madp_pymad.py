@@ -31,9 +31,8 @@ data_types = {
   np.dtype("ubyte")       : "mono",
 }
 class mad_process:
-  def __init__(self, mad_path: str, py_name: str = "py", debug: bool = False, ipython_use_jedi: bool = False) -> None:
+  def __init__(self, mad_path: str, py_name: str = "py", debug: bool = False) -> None:
     self.py_name = py_name
-    self.ipython_use_jedi = ipython_use_jedi        # ditto, but not entirely necessary
 
     self.from_mad, mad_write = os.pipe()
     mad_read, self.to_mad = os.pipe()
