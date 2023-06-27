@@ -26,8 +26,8 @@
 
 #include "mad_def.h"
 
-typedef struct elem elem_t;
-typedef struct mflw mflw_t;
+typedef struct elem_ elem_t;
+typedef struct mflw_ mflw_t;
 
 // --- interface --------------------------------------------------------------o
 
@@ -50,6 +50,12 @@ void mad_trk_srotation_r   (mflw_t *m, num_t lw);
 void mad_trk_srotation_t   (mflw_t *m, num_t lw);
 void mad_trk_translate_r   (mflw_t *m, num_t lw);
 void mad_trk_translate_t   (mflw_t *m, num_t lw);
+void mad_trk_changeref_r   (mflw_t *m, num_t lw);
+void mad_trk_changeref_t   (mflw_t *m, num_t lw);
+
+// -- misalign
+void mad_trk_misalign_r    (mflw_t *m, num_t lw);
+void mad_trk_misalign_t    (mflw_t *m, num_t lw);
 
 // -- DKD maps
 void mad_trk_strex_drift_r (mflw_t *m, num_t lw, int _);
