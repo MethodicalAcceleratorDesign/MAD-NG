@@ -34,30 +34,27 @@ typedef tpsa_t *map6_t[6];
 enum { nmul_max=22, snm_max=(nmul_max+1)*(nmul_max+2)/2 };
 
 struct mflw_ {
-  // element ref
-  elem_t *elm;
-
   // element data
-  num_t el, eld, eh, ang;
+  num_t el, eld, eh, ang, mang;
 
-  // patches
-  num_t dx, dy, ds;
-  num_t dthe, dphi, dpsi, tlt;
-
-  // misalign
-  struct {
-    bool  rot, trn;
-    num_t ang;
-    num_t dx, dy, ds;
-    num_t dthe, dphi, dpsi, tlt;
-  } algn;
-
-  // track
+  // directions
   int edir, sdir, tdir, T;
 
   // beam
   num_t beta;
   int charge;
+
+  // patches
+  num_t dx,   dy,   ds;
+  num_t dthe, dphi, dpsi;
+  num_t tlt;
+
+  // misalign
+  struct {
+    bool  rot, trn;
+    num_t dx,   dy,   ds;
+    num_t dthe, dphi, dpsi;
+  } algn;
 
   // multipoles
   int   nmul;
@@ -76,7 +73,7 @@ struct mflw_ {
   map6_t *map;
 };
 
-}
+} // extern "C"
 
 struct par_t {
 //par_t(num_t *a)
@@ -268,9 +265,9 @@ inline void changeref (mflw_t *m, num_t lw)
   if (!trn && !rot) return;
 
   if (rot && lw > 0) {
-    yrotation<P,T>(m, 1);
-    xrotation<P,T>(m,-1);
-    srotation<P,T>(m, 1);
+    yrotation<P,T>(m,  1);
+    xrotation<P,T>(m, -1);
+    srotation<P,T>(m,  1);
   }
 
   if (trn) translate<P,T>(m, lw);
@@ -312,24 +309,24 @@ inline void misalignexi (mflw_t *m, num_t lw) {
     mad_mat_rotyxz(r, m->algn.dphi, -m->algn.dthe, -m->algn.dpsi, true);
 
   // compute Rbar, Tbar
-  mad_mat_rtbar(rb, tb, abs(m->el), m->algn.ang, m->algn.tlt, m->algn.rot ? r:0, t);
+  mad_mat_rtbar(rb, tb, abs(m->el), m->mang, m->tlt, m->algn.rot ? r:0, t);
 
   if (m->algn.rot && m->sdir > 0) {
     num_t v[3];
-    mad_mat_torotxyz(rb, v, false);
-    srotation<P,T>(m, -m->edir, v[2]);
-    xrotation<P,T>(m,  m->edir, v[0]);
-    yrotation<P,T>(m, -m->edir, v[1]);
+    mad_mat_torotyxz(rb, v, true);
+    srotation<P,T>(m, -m->edir, -v[2]);
+    xrotation<P,T>(m,  m->edir, -v[0]);
+    yrotation<P,T>(m, -m->edir, -v[1]);
   }
 
-  if (m->algn.trn) translate<P,T>(m, -m->sdir, t[0], t[1], t[2]);
+  if (m->algn.trn) translate<P,T>(m, -m->sdir, tb[0], tb[1], tb[2]);
 
   if (m->algn.rot && m->sdir < 0) {
     num_t v[3];
-    mad_mat_torotxyz(rb, v, false);
-    yrotation<P,T>(m,  m->edir, v[1]);
-    xrotation<P,T>(m, -m->edir, v[0]);
-    srotation<P,T>(m,  m->edir, v[2]);
+    mad_mat_torotyxz(rb, v, true);
+    yrotation<P,T>(m,  m->edir, -v[1]);
+    xrotation<P,T>(m, -m->edir, -v[0]);
+    srotation<P,T>(m,  m->edir, -v[2]);
   }
 }
 
@@ -595,13 +592,15 @@ void mad_trk_spdtest (int n, int k)
   map6_t map1 = { x.ptr(), px.ptr(), y.ptr(), py.ptr(), t.ptr(), pt.ptr() };
 
   struct mflw_ m = {
-    .elm = nullptr,
-    .el=1, .eld=1, .eh=0, .ang=0,
-    .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0, .tlt=0,
-    .algn = {.rot=false, .trn=false, .ang=0,
-    .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0, .tlt=0},
+    .el=1, .eld=1, .eh=0, .ang=0, .mang=0,
     .edir=1, .sdir=1, .tdir=1, .T=0,
     .beta=1, .charge=1,
+
+    .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0, .tlt=0,
+
+    .algn = {.rot=false, .trn=false,
+    .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0},
+
     .nmul=1, .knl={1e-7}, .ksl={0}, .no_k0l=false,
     .snm=1,  .bfx={0}   , .bfy={0},
     .npar=1, .par=&par1, .map=&map1,
