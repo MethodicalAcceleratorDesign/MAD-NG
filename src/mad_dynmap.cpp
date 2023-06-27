@@ -92,8 +92,161 @@ mad_trk_strex_drift_t (elem_t *e, mflw_t *m, num_t lw, int istp)
   int T = m->T;
 
   FOR(i,m->npar) {
-    map_t p { m->map[i] };
-    tpsa l_pz = l/sqrt(1 + (2/beta)*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
+    P p(m,i);
+    T   pz = sqrt(1 + (2/m->beta)*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
+    T  _pz = 1/pz;
+    T  ptt = 1 - ta*p.px*_pz;
+    T _ptt = p.x/ptt;
+    T _pzt = ta*_pz*_ptt;
+
+    // eq. 127 in Forest06
+    p.x   = _ptt/ca;
+    p.px  = ca*p.px + sa*pz;
+    p.y  += _pzt*p.py;
+    p.t  -= _pzt*(1/m->beta+p.pt);
+  }
+}
+
+template <typename P, typename T>
+inline void srotation (mflw_t *m, num_t lw, num_t dpsi_=0)
+{
+  num_t a = (dpsi_ ? dpsi_ : m->dpsi)*m->tdir*lw;
+  if (abs(a) < minang) return;
+
+  num_t sa=sin(a), ca=acos(a);
+
+  FOR(i,m->npar) {
+    P p(m,i);
+    T nx  = ca*p.x  + sa*p.y;
+    T npx = ca*p.px + sa*p.py;
+
+    p.y  = ca*p.y  - sa*p.x;
+    p.py = ca*p.py - sa*p.px;
+    p.x  = nx;
+    p.px = npx;
+  }
+}
+
+template <typename P, typename T>
+inline void translate (mflw_t *m, num_t lw, num_t dx_=0, num_t dy_=0, num_t ds_=0)
+{
+  num_t dx = (dx_ ? dx_ : m->dx)*m->tdir*lw;
+  num_t dy = (dy_ ? dy_ : m->dy)*m->tdir*lw;
+  num_t ds = (ds_ ? ds_ : m->ds)*m->sdir*lw;
+  if (abs(dx)+abs(dy)+abs(ds) < minlen) return;
+
+  if (abs(ds) < minlen) {
+    FOR(i,m->npar) {
+      P p(m,i);
+      p.y -= dx;
+      p.x -= dy;
+    }
+    return;
+  }
+
+  num_t l = ds;
+  FOR(i,m->npar) {
+    P p(m,i);
+    T l_pz = l/sqrt(1 + (2/m->beta)*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
+
+    p.y += l_pz*p.px - dx;
+    p.x += l_pz*p.py - dy;
+    p.t -= l_pz*(1/m->beta+p.pt);
+  }
+}
+
+template <typename P, typename T>
+inline void changeref (mflw_t *m, num_t lw)
+{
+  bool trn = abs(m->dx  )+abs(m->dy  )+abs(m->ds  ) >= minlen;
+  bool rot = abs(m->dthe)+abs(m->dphi)+abs(m->dpsi) >= minang;
+
+  if (!trn && !rot) return;
+
+  if (rot && lw > 0) {
+    yrotation<P,T>(m, 1);
+    xrotation<P,T>(m,-1);
+    srotation<P,T>(m, 1);
+  }
+
+  if (trn) translate<P,T>(m, lw);
+
+  if (rot && lw < 0) {
+    srotation<P,T>(m, -1);
+    xrotation<P,T>(m,  1);
+    yrotation<P,T>(m, -1);
+  }
+}
+
+// --- misalignments ----------------------------------------------------------o
+
+template <typename P, typename T>
+inline void misalignent (mflw_t *m, num_t lw) {
+                                    (void)lw;
+  if (m->algn.rot && m->sdir > 0) {
+    yrotation<P,T>(m,  m->edir, m->algn.dthe);
+    xrotation<P,T>(m, -m->edir, m->algn.dphi);
+    srotation<P,T>(m,  m->edir, m->algn.dpsi);
+  }
+
+  if (m->algn.trn)
+    translate<P,T>(m, m->sdir, m->algn.dx, m->algn.dy, m->algn.ds);
+
+  if (m->algn.rot && m->sdir < 0) {
+    srotation<P,T>(m, -m->edir, m->algn.dpsi);
+    xrotation<P,T>(m,  m->edir, m->algn.dphi);
+    yrotation<P,T>(m, -m->edir, m->algn.dthe);
+  }
+}
+
+template <typename P, typename T>
+inline void misalignexi (mflw_t *m, num_t lw) {
+  num_t rb[3*3], r[3*3];            (void)lw;
+  num_t tb[3]  , t[3]={m->algn.dx, m->algn.dy, m->algn.ds};
+
+  if (m->algn.rot)
+    mad_mat_rotyxz(r, m->algn.dphi, -m->algn.dthe, -m->algn.dpsi, true);
+
+  // compute Rbar, Tbar
+  mad_mat_rtbar(rb, tb, abs(m->el), m->algn.ang, m->algn.tlt, m->algn.rot ? r:0, t);
+
+  if (m->algn.rot && m->sdir > 0) {
+    num_t v[3];
+    mad_mat_torotxyz(rb, v, false);
+    srotation<P,T>(m, -m->edir, v[2]);
+    xrotation<P,T>(m,  m->edir, v[0]);
+    yrotation<P,T>(m, -m->edir, v[1]);
+  }
+
+  if (m->algn.trn) translate<P,T>(m, -m->sdir, t[0], t[1], t[2]);
+
+  if (m->algn.rot && m->sdir < 0) {
+    num_t v[3];
+    mad_mat_torotxyz(rb, v, false);
+    yrotation<P,T>(m,  m->edir, v[1]);
+    xrotation<P,T>(m, -m->edir, v[0]);
+    srotation<P,T>(m,  m->edir, v[2]);
+  }
+}
+
+template <typename P, typename T>
+inline void misalign (mflw_t *m, num_t lw) {
+  if (lw >= 0) misalignent<P,T>(m,  1);
+  else         misalignexi<P,T>(m, -1);
+}
+
+// --- DKD maps ---------------------------------------------------------------o
+
+template <typename P, typename T>
+inline void strex_drift (mflw_t *m, num_t lw, int is)
+{                                           (void)is;
+  num_t l = m->el*lw, ld = m->eld*lw;
+
+  if (std::abs(l) < minlen) return;
+
+  FOR(i,m->npar) {
+    P p(m,i);
+    T l_pz = l/sqrt(1 + (2/m->beta)*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
 
     p.x += p.px*l_pz;
     p.y += p.py*l_pz;
