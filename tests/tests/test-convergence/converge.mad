@@ -1,0 +1,280 @@
+-- locals ---------------------------------------------------------------------o
+local mtable, damap, plot, tostring                              in MAD
+local openfile, fileexists, tblcat, tblcpy                       in MAD.utility
+local max, abs                                                   in math         
+local eps                                                        in MAD.constant
+
+package.path = package.path .. ";../tools/?.mad"
+local get_diff, save_results, gen_cfg, in_dir, out_dir, plt_dir,
+      plot_trk_res, get_prev_res, prnt_results, add_trk_gen_cols,
+      show_res, get_trk_y_val, newSID, get_lower_bnds, X0s, ptc_strs,
+      create_madx_seq, get_last_ptc_map                   in require "track-tool"
+
+local create_dif = require "madl_dbgmap".cmpmdump
+local coord_str, test_ctx, madx_script in ptc_strs
+local method_list = {2, 4, 6, 8, "'teapot'"}
+
+local ref_file = openfile(in_dir("ref.madx"), "r")
+local madx_ref = ref_file:read("*a")
+ref_file:close()
+local ref_file = openfile(in_dir("ref.mad"), "r")
+local mad_ref, mad_file = ref_file:read("*a")
+ref_file:close()
+-------------------------------------------------------------------------------o
+
+-- Run track and PTC from cur_cfg and create results --------------------------o
+local function do_trck(cfg)
+   -- Create results table
+  local res = {}
+  
+  -- Create element sequence w/ current cfg context
+  create_madx_seq(cfg)
+  local ptc_res 
+  if cfg.doptc and cfg.cur_cfg.method ~= "'teapot'" then
+    -- Run MAD-X-PTC
+    assert(os.execute(
+      '../madx64 '.. in_dir(cfg.name .. "_ref.madx") 
+      ..' >' .. out_dir(cfg.name .. "_p.txt")
+    ))
+    -- Grab PTC last map from out file and get diff with mflw[1]
+    ptc_res = get_last_ptc_map(out_dir(cfg.name .. "_p.txt")):fromptc()
+  end
+  MADX.elm = nil -- Remove element so that next test can be run with new values
+
+  -- Run MAD-NG track
+  local _, mflw = mad_file()
+
+  return mflw[1], ptc_res
+end
+
+local function run_cfg (cfg, results)
+  -- Run track for a single configuration 
+  if cfg.cur_cfg.nslice == 1 and cfg.cur_cfg.method == method_list[1] then   -- All of one configuration about to start
+    local cur_cfg = cfg.cur_cfg     -- Cache the current cfg
+
+    cfg.cur_cfg   = cfg.converge_to -- Set the cfg to converge to
+    cfg.ng_target, cfg.ptc_target = do_trck(cfg)    -- Run track to get the target result
+    cfg.cur_cfg   = cur_cfg         -- Restore the current cfg
+  end
+  local ng_target in cfg
+  local ng_res, ptc_res = do_trck(cfg)
+  local ng_dif = get_diff(ng_target, ng_res, cfg.order)
+  local ptc_dif = ptc_res and get_diff(cfg.ptc_target, ptc_res, cfg.order) 
+  
+  ng_dif["converged"] = true
+  for i = 0, cfg.order do 
+    if abs(ng_dif["order"..i.."_eps"]) > cfg.tol then 
+      ng_dif["converged"] = false
+      break
+    end
+  end
+  ng_dif.ptc_or_ng = "ng"
+  save_results(cfg, ng_dif, results)
+  prnt_results(cfg, ng_dif, results)
+  if ptc_res then 
+    ptc_dif["converged"] = true
+    for i = 0, cfg.order do 
+      if abs(ptc_dif["order"..i.."_eps"]) > cfg.tol then 
+        ptc_dif["converged"] = false
+        break
+      end
+    end  
+    ptc_dif.ptc_or_ng = "ptc"
+    save_results(cfg, ptc_dif, results)
+    prnt_results(cfg, ptc_dif, results) 
+  end 
+end
+
+-- Plot the results -----------------------------------------------------------o
+local to_text = \str-> str:gsub("{", ""):gsub("}", ""):gsub("%$", "")
+local series = {}
+local legend = {}
+for i, method in ipairs(method_list) do 
+  series[i] = "${method} == "..method
+  legend["y"..i] = "Method "..tostring(method):gsub("'teapot'", "t")
+end
+local plot_template = plot {
+  prolog = [[
+reset
+f(x) = a*x**b
+FIT_LIMIT = 1e-20
+set format "%.1t{\327}10^{%T}"
+set key noautotitle
+]],
+  ylabel  = "Error",
+  yrange  = {1e-16, 1e1}, 
+  wsizex  = 1080,
+  wsizey  = 720,
+  series  = series,
+  legend  = legend,
+  scrdump = "plot.gp",
+  exec    = false,
+}
+
+local colours = {
+  "red", "blue", "green", "orange", "purple", "brown", "pink", "grey", "black"
+}
+
+-- Plot the results -----------------------------------------------------------o
+local function plot_res(res_cfg_tbl, cfg, plt_dir, dofit, cfg_tbl_)
+  local legend, series = tblcpy(plot_template.legend), plot_template.series
+  local cfg_tbl, dif_tbl = cfg_tbl_ or res_cfg_tbl, res_cfg_tbl
+  for _, ptc_or_ng in ipairs {"ng", cfg.doptc and "ptc" or nil} do
+    local is_ptc = ptc_or_ng == "ptc"
+    local plot_info = cfg.plot_info or {}
+    local x_axis_attr, filename, pointtype in plot_info
+    local cfg_plot = plot_template { 
+      sid    = newSID(),
+      title  = cfg.name,
+      output = filename and plt_dir(ptc_or_ng .. "_" .. filename) or 2, 
+      exec   = false,
+    }
+    local n_points, n_series = #dif_tbl, is_ptc and 4 or #series ! Should be 5
+    local x_data, y_data = table.new(n_series, 0), table.new(n_series, 0)
+    local converge_points = {} -- Set default instead?
+    for i = 1, n_series do 
+      x_data[i], y_data[i] = {}, {}
+      local cnt = 1
+      for j = 1, n_points do
+        if dif_tbl[j].ptc_or_ng == ptc_or_ng and
+        assert(loadstring("return " .. series[i] % cfg_tbl[j]))() then
+          x_data[i][cnt] = assert(loadstring("return " .. x_axis_attr % cfg_tbl[j]))()
+          local y_value = get_trk_y_val(dif_tbl[j], cfg)
+          y_data[i][cnt] = y_value > 1e-16 and y_value or 1e-16
+          if dif_tbl[j].converged then 
+            converge_points[i] = math.max(x_data[i][cnt], converge_points[i] or 0)
+          end
+          cnt = cnt + 1
+        end
+      end
+    end
+
+    cfg_plot.data, cfg_plot.datastyles, cfg_plot.x1y1 = {}, {}, {}
+    local plotcfg, epilog = "", ""
+    for i = 1, n_series do
+      cfg_plot.data["x"..i] = x_data[i]
+      cfg_plot.data["y"..i] = y_data[i]
+      cfg_plot.x1y1["x"..i] = "y"..i
+      cfg_plot.datastyles["y"..i] = {
+        style = "points",
+        pointtype = i,!assert(loadstring("return " .. (pointtype or i) % cfg_tbl[j]))(),
+        color = colours[i],
+      }
+      cfg_plot.legend["y"..i] = legend["y"..i] .. (dofit and 
+                                "'.sprintf('= %.2g x^{%.2g}', a"..i..", b"..i..").'" or "") 
+      if dofit then
+        plotcfg = plotcfg .. string.format("b%d=%d\nf%d(x) = a%d*x**b%d\n", i, 2, i, i, i)
+        plotcfg = plotcfg .. string.format("fit [%.3f:10] f%d(x) '$MAD_DATA' index %d using 1:2::($2**(0.5)) via a%d, b%d\n", converge_points[i] or 0, i, i-1, i, i)
+        epilog  = epilog  .. "replot ["..(converge_points[i] or eps)..":10] f"..i.."(x) linecolor '"..colours[i].."'\n"
+      end
+    end
+    plot_info.plotcfg = plotcfg ..
+    [[
+  set logscale y
+    ]] .. (plot_info.plotcfg or "")
+    plot_info.prolog = cfg_plot.prolog .. (plot_info.prolog or "")
+    plot_info.epilog = epilog .. [[
+      set term png enhanced font ',' size 1080,720; 
+      set out "]]..cfg_plot.output..[[";
+      replot
+    ]] 
+    plot_info.title = plot_info.title and ptc_or_ng:upper() .. " " .. plot_info.title or nil
+
+    cfg_plot (plot_info)
+  end
+end
+-- Run test -------------------------------------------------------------------o
+local function run_test(cfg)    
+  -- If the user does not want to run the test, 
+  -- just show results from previous run
+  if not cfg.dorun then 
+    local cfg_tbl, res_tbl = get_prev_res(cfg.name, out_dir)
+    res_tbl.max_order = cfg.order
+    if cfg.doprnt then show_res(res_tbl, cfg_tbl, cfg_tbl:colnames(), cfg.tol) end
+    if cfg.doplot then plot_res(res_tbl, cfg, plt_dir, cfg.dofit, cfg_tbl) end
+    return 
+  end
+
+  -- Generate the reference file
+  cfg.seq_file = in_dir(cfg.name.."_seq.seq")
+  openfile(in_dir(cfg.name .. "_ref.madx"), "w"):write(madx_ref % cfg):close()
+
+  -- Load the MAD reference file and set the input sequence name
+  mad_file = loadstring(mad_ref % cfg)
+
+  -- Create new table for cur_cfg for each cfg set
+  cfg.cur_cfg = {cfgid = 0}
+  
+  -- Create the mtable to store the results
+  local results = mtable(cfg.name){
+    "__cfg", "__res", 
+    max_order = cfg.order, 
+    run_tol   = cfg.tol,
+  }
+  
+  if cfg.doprnt then 
+    io.write("Running ", cfg.name, " (tol = ", cfg.tol, ")\n")
+    for i = 0, cfg.order do io.write("order ", i, "\t") end
+    io.write("\n")
+  end
+
+  cfg.alist[#cfg.alist+1] = "method"
+  cfg.alist[#cfg.alist+1] = "nslice"
+  cfg.nslice = {
+    1,2,4,6,8,10,
+    20,40,60,80,100,
+    125,150,175,200,500,1000,
+    -- 2000,5000,10000
+  }
+  cfg.method = method_list
+
+  -- Fill the mtable with the cfg and results
+  gen_cfg(cfg, 1, \-> run_cfg(cfg, results))
+  
+  -- Add the generator columns to the results table
+  add_trk_gen_cols(results, cfg)
+  results:addcol("converged", \ri,m->m.__res[ri].converged)
+  results:addcol("ptc_or_ng", \ri,m->m.__res[ri].ptc_or_ng)
+  
+  -- Decide whether to save the results
+  local dosave = cfg.dosave or not (
+           fileexists(out_dir(results.name.."_cfg.tfs")) and 
+           fileexists(out_dir(results.name.."_res.tfs"))
+        )
+  
+  -- Save the results (if required)
+  if dosave then 
+    local hdr_lst = {"name", "date", "time", "origin", "max_order", "run_tol"}
+    results:write(
+      out_dir(results.name.."_cfg.tfs"), 
+      tblcat({"cfgid"}, cfg.alist), 
+      hdr_lst
+    )
+    results:write(
+      out_dir(results.name.."_res.tfs"), 
+      tblcat({"cfgid", "converged", "ptc_or_ng"}, results.res_cols), 
+      hdr_lst
+    ) 
+  end
+
+  -- Print the results
+  if cfg.doprnt then 
+    show_res(results, results, cfg.alist, cfg.tol)
+  end 
+
+  -- -- Plot the results
+  if cfg.doplot then 
+    plot_res(results, cfg, plt_dir, cfg.dofit)
+  end
+
+  -- Cleanup excess files if the program is not stopped mid-test
+  if not cfg.stop then  
+    os.remove(in_dir( cfg.name .. "_ref.madx"))
+    os.remove(out_dir(cfg.name .. "_p.txt"   ))
+    os.remove(in_dir( cfg.name .. "_seq.seq" ))
+    os.remove("internal_mag_pot.txt")
+    os.remove("fort.18")
+  end
+end
+-------------------------------------------------------------------------------o
+return { run_test = run_test }
