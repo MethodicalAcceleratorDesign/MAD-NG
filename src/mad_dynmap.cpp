@@ -306,10 +306,7 @@ inline void misalignent (mflw_t *m, num_t lw) {
 template <typename P, typename T>
 inline void misalignexi (mflw_t *m, num_t lw) {
   num_t rb[3*3], r[3*3];            (void)lw;
-  num_t tb[3]  , t[3]={0};
-
-  if (m->algn.trn)
-    t[0]=m->algn.dx, t[1]=m->algn.dy, t[2]=m->algn.ds;
+  num_t tb[3]  , t[3]={m->algn.dx, m->algn.dy, m->algn.ds};
 
   if (m->algn.rot)
     mad_mat_rotyxz(r, m->algn.dphi, -m->algn.dthe, -m->algn.dpsi, true);
