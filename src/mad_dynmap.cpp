@@ -19,6 +19,7 @@
 #include "mad_tpsa.hpp"
 
 extern "C" {
+#include "mad_log.h"
 #include "mad_cst.h"
 #include "mad_mat.h"
 #include "mad_dynmap.h"
@@ -60,7 +61,6 @@ struct mflw_ {
   int   nmul;
   num_t knl[nmul_max];
   num_t ksl[nmul_max];
-  bool  no_k0l;
 
   // curved multipoles
   int   snm;
@@ -356,12 +356,12 @@ inline void strex_drift (mflw_t *m, num_t lw, int is)
 }
 
 template <typename P, typename T>
-inline void strex_kick (mflw_t *m, num_t lw, int is)
+inline void strex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
 {                                          (void)is;
   if (m->nmul == 0) return;
 
   num_t wchg = lw*m->tdir*m->charge;
-  num_t dby  = m->no_k0l ? m->knl[1] : 0;
+  num_t dby  = no_k0l ? m->knl[1] : 0;
   T bx=0, by=0;
 
   FOR (i,m->npar) {
@@ -377,7 +377,7 @@ template <typename P, typename T>
 inline void curex_drift (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
   num_t ld = (m->eld ? m->eld : m->el)*lw;
-  num_t ang = m->ang*lw, rho = m->ang; // eh*el*lw, 1/eh -- R=rho, A=ang
+  num_t ang = m->ang*lw, rho = 1/m->eh;
   num_t ca = cos(ang), sa = sin(ang), sa2 = sin(ang/2);
 
   FOR(i,m->npar) {
@@ -397,7 +397,7 @@ inline void curex_drift (mflw_t *m, num_t lw, int is)
 }
 
 template <typename P, typename T>
-inline void curex_kick (mflw_t *m, num_t lw, int is)
+inline void curex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
 {                                          (void)is;
   num_t blw = lw*m->charge*m->tdir;
   T bx = 0, by = m->knl[1];
@@ -411,8 +411,54 @@ inline void curex_kick (mflw_t *m, num_t lw, int is)
     p.px -= blw*by*r;
     p.py += blw*bx*r;
 
-    if (m->no_k0l)
-      p.px += (blw*m->knl[1])*r;
+    if (no_k0l) p.px += (blw*m->knl[1])*r;
+  }
+}
+
+// --- TKT maps ---------------------------------------------------------------o
+
+// --- sbend ---
+
+template <typename P, typename T>
+inline void sbend_thick (mflw_t *m, num_t lw, int is)
+{                                           (void)is;
+  num_t ld = (m->eld ? m->eld : m->el)*lw;
+  num_t ang = m->ang*lw, rho=1/m->eh;
+  num_t k0 = m->knl[1]/m->el*m->tdir, k0q = k0*m->charge;
+  num_t ca = cos(ang), sa = sin(ang), s2a = sin(2*ang);
+
+  FOR(i,m->npar) {
+    P p(m,i);
+
+    if (k0q == 0) {
+      warn("photon tacking not yet supported");
+//    curex_drift0 (elm, m, lw, i, ld, ca, sa, sin(ang/2), rho)
+      continue;
+    }
+
+    T  pw2 = 1 + 2*p.pt/m->beta + sqr(p.pt) - sqr(p.py);
+    T   pz = sqrt(pw2 - sqr(p.px));
+    T   xr = p.x+rho;
+    T  pzx = pz - k0q*xr;
+    T  npx = sa*pzx + ca*p.px;
+    T  dpx = ca*pzx - sa*p.px;
+    T  pzs = sqrt(pw2 - sqr(npx));
+    T _ptt = invsqrt(pw2);
+
+    T  xt1 = -k0q*sqr(p.x) + 2*(pz*xr - (k0q*rho)*p.x) - k0q*sqr(rho);
+    T   xi = p.px*_ptt;
+    T zeta =  npx*_ptt;
+    T  sxi = sqrt(1-sqr(xi));
+    T    w = (ca*xi + sa*sxi) * sqrt(1-sqr(zeta));
+    T    v = (sa*xi - ca*sxi) * zeta;
+    T  xt2 = (s2a*p.px + sqr(sa)*(2*pz - k0q*xr)) * xr*sqr(_ptt) / (w - v);
+    T  dxs = asinc(xt2*k0q)*xt2;
+
+    // eq. 126 in Forest06 with modif. from Sagan
+    p.x   = xt1/(dpx+pzs) - rho;
+    p.px  = npx;
+    p.y  += dxs*p.py;
+    p.t  -= dxs*(1/m->beta+p.pt) + (m->T-1)*(ld/m->beta);
   }
 }
 
@@ -494,6 +540,15 @@ void mad_trk_curex_kick_r (mflw_t *m, num_t lw, int is) {
 }
 void mad_trk_curex_kick_t (mflw_t *m, num_t lw, int is) {
   curex_kick<map_t, tpsa>(m,lw,is);
+}
+
+// --- sbend ---
+
+void mad_trk_sbend_thick_r (mflw_t *m, num_t lw, int is) {
+  sbend_thick<par_t, num_t>(m,lw,is);
+}
+void mad_trk_sbend_thick_t (mflw_t *m, num_t lw, int is) {
+  sbend_thick<map_t, tpsa>(m,lw,is);
 }
 
 // --- track Slice ------------------------------------------------------------o
@@ -601,7 +656,7 @@ void mad_trk_spdtest (int n, int k)
     .algn = {.rot=false, .trn=false,
     .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0},
 
-    .nmul=1, .knl={1e-7}, .ksl={0}, .no_k0l=false,
+    .nmul=1, .knl={1e-7}, .ksl={0},
     .snm=1,  .bfx={0}   , .bfy={0},
     .npar=1, .par=&par1, .map=&map1,
   };
