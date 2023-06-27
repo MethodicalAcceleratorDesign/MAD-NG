@@ -37,6 +37,7 @@
 #include <vector>
 
 extern "C" {
+#include "mad_num.h"
 #include "mad_tpsa.h"
 }
 
@@ -528,16 +529,41 @@ inline std::FILE* operator<<(std::FILE *out, const tpsa_t &a) {
 // --- functions ---
 
 template <class A>
+inline num_t nrm(const tpsa_base<A> &a) { TRC("baz") return mad_tpsa_nrm(a.ptr()); }
+inline num_t nrm(      num_t         a) { TRC("num") return std::abs(a);           }
+
+template <class A>
 inline T     sqr(const tpsa_base<A> &a) { TRC("baz") return a*a; }
 inline num_t sqr(      num_t         a) { TRC("num") return a*a; }
 
-template <class A>
-inline T     inv(const tpsa_base<A> &a) { TRC("baz") return 1/a; }
-inline num_t inv(      num_t         a) { TRC("num") return 1/a; }
+inline num_t inv    (num_t a, num_t v=1) { TRC("num") return v/a; }
+inline num_t invsqrt(num_t a, num_t v=1) { TRC("num") return v/std::sqrt(a); }
 
 template <class A>
-inline num_t nrm(const tpsa_base<A> &a) { TRC("baz") return mad_tpsa_nrm(a.ptr()); }
-inline num_t nrm(      num_t         a) { TRC("num") return std::abs(a);           }
+inline T inv (const tpsa_base<A> &a, num_t v=1) { TRC("baz")
+  T c(a); mad_tpsa_inv(a.ptr(), v, c.ptr()); return c;
+}
+
+template <class A>
+inline T invsqrt (const tpsa_base<A> &a, num_t v=1) { TRC("baz")
+  T c(a); mad_tpsa_invsqrt(a.ptr(), v, c.ptr()); return c;
+}
+
+#if TPSA_USE_TMP
+
+inline T inv(const T &a, num_t v=1) { TRC("tmp")
+  T c(a); mad_tpsa_inv(c.ptr(), v, c.ptr()); return c;
+}
+
+inline T invsqrt(const T &a, num_t v=1) { TRC("tmp")
+  T c(a); mad_tpsa_invsqrt(c.ptr(), v, c.ptr()); return c;
+}
+
+#endif // TPSA_USE_TMP
+
+// --- num-only functions (for compatibility)
+
+inline num_t asinc (num_t a) { return mad_num_asinc(a); }
 
 // --- unary ---
 
@@ -549,9 +575,6 @@ inline T F (const tpsa_base<A> &a) {  TRC("baz") \
 FUN_TMP(F)
 
 #if TPSA_USE_TMP
-
-// specializations for temporaries
-inline T inv(T &a) { TRC("tmp") return 1/a; }
 
 #define FUN_TMP(F) \
 inline T F (const T &a) { TRC("tmp") \
