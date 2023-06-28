@@ -563,6 +563,8 @@ inline T invsqrt(const T &a, num_t v=1) { TRC("tmp")
 
 // --- num-only functions (for compatibility)
 
+inline num_t  sinc (num_t a) { return mad_num_sinc (a); }
+inline num_t sinhc (num_t a) { return mad_num_sinhc(a); }
 inline num_t asinc (num_t a) { return mad_num_asinc(a); }
 
 // --- unary ---
