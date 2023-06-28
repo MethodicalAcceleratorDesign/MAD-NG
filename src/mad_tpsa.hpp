@@ -25,8 +25,8 @@
  */
 
 // comment to disable temporaries and traces
-#define TPSA_USE_TMP 1
-//#define TPSA_USE_TRC 1
+//#define TPSA_USE_TMP 1
+#define TPSA_USE_TRC 1
 
 // --- includes ---------------------------------------------------------------o
 
@@ -163,7 +163,9 @@ struct tpsa : tpsa_base<tpsa> {
   tpsa(int mo, str_t s) : t(mad_tpsa_newd(mad_desc_curr, mo  )) { TRC("int,str %p", (void*)t.get()) this->set(s); }
 
 # if !TPSA_USE_TMP
-  tpsa(const tpsa &a) : t(mad_tpsa_new(a.ptr(), dflt)) { mad_tpsa_copy(a.ptr(),ptr()); }
+  // needed with no temporaries
+  tpsa(tpsa&&);                      // forward decl
+  tpsa(const tpsa&);                 // forward decl
 #endif
 
   template <class A>
@@ -236,6 +238,14 @@ inline tpsa::tpsa(const T &a) { t.swap(const_cast<T&>(a).t); TRC("&tmp") }
 
 #else
 #define T tpsa
+
+// definitions for copy
+inline tpsa::tpsa(T &&a) : t(mad_tpsa_new(a.ptr(), dflt)) { TRC("<tpa %p", (void*)t.get())
+  mad_tpsa_copy(a.ptr(),ptr());
+}
+inline tpsa::tpsa(const T &a) : t(mad_tpsa_new(a.ptr(), dflt)) { TRC("&tpa %p", (void*)t.get())
+  mad_tpsa_copy(a.ptr(),ptr());
+}
 #endif // TPSA_USE_TMP
 
 // --- operators --------------------------------------------------------------o
