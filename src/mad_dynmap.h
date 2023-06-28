@@ -70,6 +70,13 @@ void mad_trk_curex_kick_t  (mflw_t *m, num_t lw, int _);
 // -- TKT maps
 void mad_trk_sbend_thick_r (mflw_t *m, num_t lw, int _);
 void mad_trk_sbend_thick_t (mflw_t *m, num_t lw, int _);
+void mad_trk_sbend_kick_r  (mflw_t *m, num_t lw, int _);
+void mad_trk_sbend_kick_t  (mflw_t *m, num_t lw, int _);
+
+void mad_trk_rbend_thick_r (mflw_t *m, num_t lw, int _);
+void mad_trk_rbend_thick_t (mflw_t *m, num_t lw, int _);
+void mad_trk_rbend_kick_r  (mflw_t *m, num_t lw, int _);
+void mad_trk_rbend_kick_t  (mflw_t *m, num_t lw, int _);
 
 // -- benchmark
 void mad_trk_spdtest (int n, int k);
