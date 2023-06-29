@@ -1083,6 +1083,7 @@ void mad_trk_slice_dkd (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int n)
 {
   int j = MIN(n/2,3);
   int k = -2*n;
+
   FOR(i,n) {
     thick(m, lw*yosh[j].d[i  ], ++k);
      kick(m, lw*yosh[j].k[i  ], ++k);
@@ -1228,20 +1229,16 @@ void mad_trk_spdtest (int n, int k)
   } break;
 
   case 4: {
-    FOR(i,n)
-      mad_trk_slice_tkt(&m, 1, mad_trk_strex_drift_r, mad_trk_strex_kick_r, yosh2_n);
+    FOR(i,n) mad_trk_slice_tkt(&m, 1, mad_trk_strex_drift_r, mad_trk_strex_kick_r, yosh2_n);
     par_t p(&m,0);
     printf("x =% -.16e\npx=% -.16e\ny =% -.16e\npy=% -.16e\nt =% -.16e\npt=% -.16e\n",
             p.x, p.px, p.y, p.py, p.t, p.pt);
   } break;
 
   case 5: {
-    FOR(i,n)
-      mad_trk_slice_tkt(&m, 1, mad_trk_strex_drift_t, mad_trk_strex_kick_t, yosh2_n);
+    FOR(i,n) mad_trk_slice_tkt(&m, 1, mad_trk_strex_drift_t, mad_trk_strex_kick_t, yosh2_n);
     map_t p(&m,0);
     stdout << p.x << p.px << p.y << p.py << p.t << p.pt;
-    tpsa a;
-    stdin >> a;
   } break;
 
   default:
