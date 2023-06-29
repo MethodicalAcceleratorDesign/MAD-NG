@@ -1049,24 +1049,24 @@ num_t yosh2_d[] = {0.5};
 num_t yosh2_k[] = {1};
 
 ssz_t yosh4_n   = 2;
-num_t yosh4_d[] = { 6.7560359597982889e-01, -1.7560359597982889e-01 };
-num_t yosh4_k[] = { 1.3512071919596578e+00, -1.7024143839193155e+00 };
+num_t yosh4_d[] = { 0x1.59e8b6eb96339p-1,-0x1.67a2dbae58ce4p-3 };
+num_t yosh4_k[] = { 0x1.59e8b6eb96339p+0,-0x1.b3d16dd72c672p+0 };
 
 ssz_t yosh6_n   = 4;
-num_t yosh6_d[] = { 3.9225680523877998e-01,  5.1004341191845848e-01,
-                   -4.7105338540975655e-01,  6.8753168252518093e-02 };
-num_t yosh6_k[] = { 7.8451361047755996e-01,  2.3557321335935699e-01,
-                   -1.1776799841788701e+00,  1.3151863206839063e+00 };
+num_t yosh6_d[] = { 0x1.91abc4988937bp-2, 0x1.052468fb75c74p-1,
+                   -0x1.e25bd194051b9p-2, 0x1.199cec1241558p-4 };
+num_t yosh6_k[] = { 0x1.91abc4988937bp-1, 0x1.e2743579895b4p-3,
+                   -0x1.2d7c6f7933b93p+0, 0x1.50b00cfb7be3ep+0 };
 
 ssz_t yosh8_n   = 8;
-num_t yosh8_d[] = { 4.5742212311487002e-01,  5.8426879139798449e-01,
-                   -5.9557945014712543e-01, -8.0154643611436149e-01,
-                    8.8994925112725842e-01, -1.1235547676365032e-02,
-                   -9.2890519179175246e-01,  9.0562646008949144e-01 };
-num_t yosh8_k[] = { 9.1484424622974003e-01,  2.5369333656622900e-01,
-                   -1.4448522368604799e+00, -1.5824063536824301e-01,
-                    1.9381391376227599e+00, -1.9606102329754900e+00,
-                    1.0279984939198500e-01,  1.7084530707869978e+00 };
+num_t yosh8_d[] = { 0x1.d466770cfb237p-2, 0x1.2b25476e416dap-1,
+                   -0x1.30efca291a66ep-1,-0x1.9a644b62ac4e7p-1,
+                    0x1.c7a76da161edap-1,-0x1.702a9ae94c280p-7,
+                   -0x1.db997617a90dfp-1, 0x1.cfae4578f406ep-1 };
+num_t yosh8_k[] = { 0x1.d466770cfb237p-1, 0x1.03c82f9f0f6fbp-2,
+                   -0x1.71e1d610de42dp+0,-0x1.4413aa8e705cep-3,
+                    0x1.f029e2f32ff94p+0,-0x1.f5ea8d5ed529ep+0,
+                    0x1.a5117472c1becp-4, 0x1.b55d2e31c7eafp+0 };
 
 struct {
   ssz_t  n;
@@ -1086,14 +1086,15 @@ void mad_trk_slice_dkd (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int n)
   FOR(i,n) {
     thick(m, lw*yosh[j].d[i  ], ++k);
      kick(m, lw*yosh[j].k[i  ], ++k);
-  } thick(m, lw*yosh[j].d[n-1], ++k);
-  RFOR(i,n-1) {
+  } thick(m, lw*yosh[j].d[--n], ++k);
+  RFOR(i,n) {
      kick(m, lw*yosh[j].k[i  ], ++k);
     thick(m, lw*yosh[j].d[i  ], ++k);
   }
 }
 
-void mad_trk_slice_tkt (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int n) {
+void mad_trk_slice_tkt (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int n)
+{
   mad_trk_slice_dkd(m, lw, thick, kick, n);
 }
 
@@ -1121,7 +1122,7 @@ num_t boole10_k[] = {989./28350, 5888./28350, -928./28350, 10496./28350, -4540./
 
 ssz_t boole12_n   = 6;
 num_t boole12_d   = 1./10;
-num_t boole12_k[] = {16067./598752, 106300./598752, -48525./598752,
+num_t boole12_k[] = { 16067./598752,  106300./598752, -48525./598752,
                      272400./598752, -260550./598752, 427368./598752};
 
 struct {
@@ -1140,14 +1141,14 @@ struct {
 void mad_trk_slice_kmk (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int n)
 {
   int j =  n-1;
-  int k = -2*j;                        if (n==1) --k;
-  FOR(i,n-1) {
-     kick(m, lw*boole[j].k[i  ], k++);
-    thick(m, lw*boole[j].d     , k++);
-  }  kick(m, lw*boole[j].k[n-1], k++); if (n==1) ++n;
-  RFOR(i,n-1) {
-    thick(m, lw*boole[j].d     , k++);
-     kick(m, lw*boole[j].k[i  ], k++);
+  int k = -2*j;                      if (!k) --k;
+  FOR(i,j) {
+     kick(m, lw*boole[j].k[i], k++);
+    thick(m, lw*boole[j].d   , k++);
+  }  kick(m, lw*boole[j].k[j], k++); if (!j) ++j;
+  RFOR(i,j) {
+    thick(m, lw*boole[j].d   , k++);
+     kick(m, lw*boole[j].k[i], k++);
   }
 }
 
