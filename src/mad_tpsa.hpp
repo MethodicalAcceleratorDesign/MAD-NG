@@ -25,8 +25,8 @@
  */
 
 // comment to disable temporaries and traces
-#define TPSA_USE_TMP 1
-//#define TPSA_USE_TRC 1
+//#define TPSA_USE_TMP 1
+#define TPSA_USE_TRC 1
 
 // --- includes ---------------------------------------------------------------o
 
@@ -37,6 +37,7 @@
 #include <vector>
 
 extern "C" {
+#include "mad_num.h"
 #include "mad_tpsa.h"
 }
 
@@ -161,6 +162,12 @@ struct tpsa : tpsa_base<tpsa> {
   tpsa(str_t s)         : t(mad_tpsa_newd(mad_desc_curr, dflt)) { TRC("dft,str %p", (void*)t.get()) this->set(s); }
   tpsa(int mo, str_t s) : t(mad_tpsa_newd(mad_desc_curr, mo  )) { TRC("int,str %p", (void*)t.get()) this->set(s); }
 
+# if !TPSA_USE_TMP
+  // needed with no temporaries
+  tpsa(tpsa&&);                      // forward decl
+  tpsa(const tpsa&);                 // forward decl
+#endif
+
   template <class A>
   tpsa(const tpsa_base<A> &a)         : t(mad_tpsa_new(a.ptr(), dflt)) { TRC("&baz %p", (void*)t.get()) }
   template <class A>
@@ -181,8 +188,10 @@ struct tpsa : tpsa_base<tpsa> {
 
 private:
 //tpsa()                                   = delete;  // dflt    ctor
+# if TPSA_USE_TMP
   tpsa(tpsa&&)                             = delete;  // move    ctor
   tpsa(const tpsa&)                        = delete;  // copy    ctor
+#endif
   tpsa(std::nullptr_t)                     = delete;  // nullptr ctor
 //tpsa& operator=(tpsa&&)                  = delete;  // move    assign
 //tpsa& operator=(const tpsa&)             = delete;  // copy    assign
@@ -199,7 +208,6 @@ protected:
 #if TPSA_USE_TMP
 
 // private class to manage temporaries in expressions, i.e. save allocations.
-// warning: temporaries should never be involved in DAG expression, e.g. sqr.
 namespace mad_prv_ {
 
 struct tpsa_tmp_ : tpsa {
@@ -230,6 +238,14 @@ inline tpsa::tpsa(const T &a) { t.swap(const_cast<T&>(a).t); TRC("&tmp") }
 
 #else
 #define T tpsa
+
+// definitions for copy
+inline tpsa::tpsa(T &&a) : t(mad_tpsa_new(a.ptr(), dflt)) { TRC("<tpa %p", (void*)t.get())
+  mad_tpsa_copy(a.ptr(),ptr());
+}
+inline tpsa::tpsa(const T &a) : t(mad_tpsa_new(a.ptr(), dflt)) { TRC("&tpa %p", (void*)t.get())
+  mad_tpsa_copy(a.ptr(),ptr());
+}
 #endif // TPSA_USE_TMP
 
 // --- operators --------------------------------------------------------------o
@@ -527,17 +543,49 @@ inline std::FILE* operator<<(std::FILE *out, const tpsa_t &a) {
 
 // --- functions ---
 
-template <class A>
-inline T     sqr(const tpsa_base<A> &a) { TRC("baz") return a*a; }
-inline num_t sqr(      num_t         a) { TRC("num") return a*a; }
+inline num_t nrm    (num_t a           ) { TRC("num") return std::abs(a); }
+inline num_t sqr    (num_t a           ) { TRC("num") return a*a; }
+inline num_t inv    (num_t a, num_t v=1) { TRC("num") return v/a; }
+inline num_t invsqrt(num_t a, num_t v=1) { TRC("num") return v/std::sqrt(a); }
+inline num_t sinc   (num_t a           ) { TRC("num") return mad_num_sinc (a); }
+inline num_t sinhc  (num_t a           ) { TRC("num") return mad_num_sinhc(a); }
+inline num_t asinc  (num_t a           ) { TRC("num") return mad_num_asinc(a); }
 
 template <class A>
-inline T     inv(const tpsa_base<A> &a) { TRC("baz") return 1/a; }
-inline num_t inv(      num_t         a) { TRC("num") return 1/a; }
+inline num_t nrm(const tpsa_base<A> &a) { TRC("baz")
+  return mad_tpsa_nrm(a.ptr());
+}
 
 template <class A>
-inline num_t nrm(const tpsa_base<A> &a) { TRC("baz") return mad_tpsa_nrm(a.ptr()); }
-inline num_t nrm(      num_t         a) { TRC("num") return std::abs(a);           }
+inline T sqr(const tpsa_base<A> &a) { TRC("baz")
+  T c=a; mad_tpsa_mul(a.ptr(), a.ptr(), c.ptr()); return c;
+}
+
+template <class A>
+inline T inv (const tpsa_base<A> &a, num_t v=1) { TRC("baz")
+  T c=a; mad_tpsa_inv(a.ptr(), v, c.ptr()); return c;
+}
+
+template <class A>
+inline T invsqrt (const tpsa_base<A> &a, num_t v=1) { TRC("baz")
+  T c=a; mad_tpsa_invsqrt(a.ptr(), v, c.ptr()); return c;
+}
+
+#if TPSA_USE_TMP
+
+inline T sqr(const T &a) { TRC("tmp")
+  T c=a; mad_tpsa_mul(c.ptr(), c.ptr(), c.ptr()); return c;
+}
+
+inline T inv(const T &a, num_t v=1) { TRC("tmp")
+  T c=a; mad_tpsa_inv(c.ptr(), v, c.ptr()); return c;
+}
+
+inline T invsqrt(const T &a, num_t v=1) { TRC("tmp")
+  T c=a; mad_tpsa_invsqrt(c.ptr(), v, c.ptr()); return c;
+}
+
+#endif // TPSA_USE_TMP
 
 // --- unary ---
 
@@ -549,9 +597,6 @@ inline T F (const tpsa_base<A> &a) {  TRC("baz") \
 FUN_TMP(F)
 
 #if TPSA_USE_TMP
-
-// specializations for temporaries
-inline T inv(T &a) { TRC("tmp") return 1/a; }
 
 #define FUN_TMP(F) \
 inline T F (const T &a) { TRC("tmp") \
