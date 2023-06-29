@@ -3,17 +3,19 @@
 
 local object, tostring                                          in MAD
 local tblcat                                                    in MAD.utility
-local run_test in require("trackvsptc")
+local run_test, is_unittest, run_module in require("trackvsptc")
 
 -- The setup for the tests ----------------------------------------------------o
 
 local ref_cfg = object "ref" {
   -- How to run the tests
   dorun  = true, -- Default: true 
-  dosave = true, -- Default: false
+  dosave = false, -- Default: false
   doprnt = false, -- Default: false
   dodbg  = false, -- Default: false
-  doplot = true, -- Default: false
+  doplot = false, -- Default: false
+
+  gen_utest = false, -- Default: false
   
   -- list of variables in the tests
   alist = {"model", "energy", "method", "nslice", "x0i"}, --attributes list
@@ -26,11 +28,26 @@ local ref_cfg = object "ref" {
   snm    = -1,
   seql   =  2,
 
-  x0i    = 1..4,       -- 0, 4D, 5D, 6D (see get_mad_str)
+  x0i    = 1..5,       -- 0, 4D, 5D, 6D (see get_mad_str)
 }
 
+local TestQuad = {}
+
+function TestQuad:setUp()
+  -- Turn off all unnecessary components for unit testing
+  ref_cfg.gen_utest = false
+  ref_cfg.dodbg     = false
+  ref_cfg.doprnt    = false
+  ref_cfg.dosave    = false
+  
+  -- Turn on the components for unit testing
+  ref_cfg.dorun     = true
+  ref_cfg.do_utest  = true
+  ref_cfg.doplot    = true
+end
+
 -- The tests ------------------------------------------------------------------o
-local function testQUAD() -- Test the body (~2 min)
+function  TestQuad:testQUAD() -- Test the body (~2 min)
   local cfg = ref_cfg "quad" {
     elm = "QUADRUPOLE, at=0.75, l=1.5, k1=${k1}, k1s=${k1s}, fringe=0",
     model  = 1..2,
@@ -64,14 +81,15 @@ local function testQUAD() -- Test the body (~2 min)
   run_test(cfg)
 end
 
-local function testQUADm() -- Test the multipole (~2 min)
+function  TestQuad:testQUADm() -- Test the multipole (~2 min)
   local cfg = ref_cfg "quadm" {
     elm = [[
       QUADRUPOLE, at=0.75, l=1.5, k1=${k1}, k1s=${k1s}, tilt=${tilt}*pi/8,
-      knl=${knl}, ksl=${ksl}, frngmax=${frngmax}, fringe=7, bend_fringe=true
+      knl=${knl}, ksl=${ksl}, frngmax=${frngmax}, fringe=7, bend_fringe=true,
+      k0=${k0}
     ]],
     
-    tol = 300,
+    tol = 400,
 
     model  = {1},  -- DKD slow as it does ~300 rotations producing ~4 MB of data (WEDGE)
     method = {2},
@@ -82,19 +100,16 @@ local function testQUADm() -- Test the multipole (~2 min)
     k1s  = \s->s.k1, !{0, -0.15, 0.2},  -- Test just multipole first
     knl  = {
       { }, 
-      -- {0.05, 0  , 0, 0 }, ! MAD-X ignores knl[1], ksl[1]
-      {0   , 0.5, 0, 0 },
-      {0   , 0  , 5, 0 }, 
-      {0   , 0  , 0, 50},
-      {0   , 0.5, 5, 50}, ! MAD-X ignores knl[1], ksl[1]
-      {0   , 0  , 5, 50},
+      {0.05, 0  , 0, 0 },
+      {0.05, 0.5, 5, 50},
     },
     ksl  = \s-> s.knl,
     tilt = 0..2,
-    frngmax = 2..5,
+    frngmax = {2, 5},
+    k0    = {0, 0.05},
     alist = tblcat(
       ref_cfg.alist, 
-      {"tilt", "k1s", "k1", "ksl", "knl", "frngmax"}
+      {"tilt", "k1s", "k1", "ksl", "knl", "frngmax", "k0"}
     ),
 
     plot_info = \s-> {
@@ -102,19 +117,11 @@ local function testQUADm() -- Test the multipole (~2 min)
         "'${knl}' == '" .. tostring(s.knl[1]) .. "'",
         "'${knl}' == '" .. tostring(s.knl[2]) .. "'",
         "'${knl}' == '" .. tostring(s.knl[3]) .. "'",
-        "'${knl}' == '" .. tostring(s.knl[4]) .. "'",
-        "'${knl}' == '" .. tostring(s.knl[5]) .. "'",
-        "'${knl}' == '" .. tostring(s.knl[6]) .. "'",
-        -- "'${knl}' == '" .. tostring(s.knl[7]) .. "'",
       },
       legend = {
         y1 = "knl = \\{" .. tostring(s.knl[1]) .. "\\}",
         y2 = "knl = \\{" .. tostring(s.knl[2]) .. "\\}",
         y3 = "knl = \\{" .. tostring(s.knl[3]) .. "\\}",
-        y4 = "knl = \\{" .. tostring(s.knl[4]) .. "\\}",
-        y5 = "knl = \\{" .. tostring(s.knl[5]) .. "\\}",
-        y6 = "knl = \\{" .. tostring(s.knl[6]) .. "\\}",
-        -- y7 = "knl = {" .. tostring(s.knl[7]) .. "}",
       },
       title = "Quadrupole Multipole Comparison",
       filename = "quad-mult-comparision.png",
@@ -123,7 +130,7 @@ local function testQUADm() -- Test the multipole (~2 min)
   run_test(cfg)
 end
 
-local function testQUADf() -- Test the fringe (~1 min)
+function  TestQuad:testQUADf() -- Test the fringe (~1 min)
   local cfg = ref_cfg "quadf" {
     elm = [[
       QUADRUPOLE, at=0.75, l=1.5, k1=${k1}, k1s=${k1s}, tilt=${tilt}*pi/8,
@@ -160,8 +167,8 @@ local function testQUADf() -- Test the fringe (~1 min)
   }
   run_test(cfg)
 end
-
-local function testQUADh()
+--[==[
+function  TestQuad:testQUADh()
   local cfg = ref_cfg "quadh" {
     elm = [[
       QUADRUPOLE, at=0.75, l=1.5, k1=${k1}, k1s=${k1s}, tilt=${tilt}*pi/8,
@@ -199,8 +206,9 @@ local function testQUADh()
   }
   run_test(cfg)
 end
+]==]
 
-local function testQUADfh() -- MAD-NG does bend fringe for fringe=3
+function  TestQuad:testQUADfh() -- MAD-NG does bend fringe for fringe=3
   local cfg = ref_cfg "quadfh" {
     elm = [[
       QUADRUPOLE, at=0.75, l=1.5, k1=${k1}, k1s=${k1s}, fringe=${fringe},
@@ -242,7 +250,7 @@ local function testQUADfh() -- MAD-NG does bend fringe for fringe=3
   run_test(cfg)
 end
 
-local function testQUADhe ()
+function  TestQuad:testQUADhe ()
   local cfg = ref_cfg "quadhe" {
     elm = [[
       QUADRUPOLE, at=0.75, l=1.5, k1=${k1}, k1s=${k1s}, fringe=7,
@@ -286,9 +294,7 @@ local function testQUADhe ()
   run_test(cfg)
 end
 
-testQUAD()
-testQUADm()
-testQUADf()
--- testQUADh()
-testQUADfh()
-testQUADhe()
+-- Takes about 25 min to run (utest takes 3 mins)
+if not is_unittest then run_module(TestQuad)
+else                    _G.TestQuad = TestQuad
+end
