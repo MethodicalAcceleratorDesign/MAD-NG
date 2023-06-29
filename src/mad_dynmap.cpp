@@ -82,22 +82,24 @@ struct mflw_ {
 } // extern "C"
 
 struct par_t {
-//par_t(num_t *a)
-//  : x(a[0]), px(a[1]), y(a[2]), py(a[3]), t(a[4]), pt(a[5]) {}
+  using T = num_t;
+
   par_t(mflw_t *m, int i)
     : x(m->par[i][0]), px(m->par[i][1]),
       y(m->par[i][2]), py(m->par[i][3]),
       t(m->par[i][4]), pt(m->par[i][5]) {}
+
   num_t &x, &px, &y, &py, &t, &pt;
 };
 
 struct map_t {
-//map_t(tpsa_t **a)
-//  : x(a[0]), px(a[1]), y(a[2]), py(a[3]), t(a[4]), pt(a[5]) {}
+  using T = mad::tpsa;
+
   map_t(mflw_t *m, int i)
     : x(m->map[i][0]), px(m->map[i][1]),
       y(m->map[i][2]), py(m->map[i][3]),
       t(m->map[i][4]), pt(m->map[i][5]) {}
+
   mad::tpsa_ref x, px, y, py, t, pt;
 };
 
@@ -166,7 +168,7 @@ inline void bxbyh (const mflw_t *m, const T1 &x, const T1 &y, T2 &bx, T2 &by)
 
 // --- patches ----------------------------------------------------------------o
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void xrotation (mflw_t *m, num_t lw, num_t dphi_=0)
 {
   num_t a = (dphi_ ? dphi_ : m->dphi)*m->tdir*lw;
@@ -190,7 +192,7 @@ inline void xrotation (mflw_t *m, num_t lw, num_t dphi_=0)
   }
 }
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void yrotation (mflw_t *m, num_t lw, num_t dthe_=0)
 {
   num_t a = -(dthe_ ? dthe_ : m->dthe)*m->tdir*lw;
@@ -214,7 +216,7 @@ inline void yrotation (mflw_t *m, num_t lw, num_t dthe_=0)
   }
 }
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void srotation (mflw_t *m, num_t lw, num_t dpsi_=0)
 {
   num_t a = (dpsi_ ? dpsi_ : m->dpsi)*m->tdir*lw;
@@ -234,7 +236,7 @@ inline void srotation (mflw_t *m, num_t lw, num_t dpsi_=0)
   }
 }
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void translate (mflw_t *m, num_t lw, num_t dx_=0, num_t dy_=0, num_t ds_=0)
 {
   num_t dx = (dx_ ? dx_ : m->dx)*m->tdir*lw;
@@ -262,7 +264,7 @@ inline void translate (mflw_t *m, num_t lw, num_t dx_=0, num_t dy_=0, num_t ds_=
   }
 }
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void changeref (mflw_t *m, num_t lw)
 {
   bool trn = abs(m->dx  )+abs(m->dy  )+abs(m->ds  ) >= minlen;
@@ -271,42 +273,42 @@ inline void changeref (mflw_t *m, num_t lw)
   if (!trn && !rot) return;
 
   if (rot && lw > 0) {
-    yrotation<P,T>(m,  1);
-    xrotation<P,T>(m, -1);
-    srotation<P,T>(m,  1);
+    yrotation<P>(m,  1);
+    xrotation<P>(m, -1);
+    srotation<P>(m,  1);
   }
 
-  if (trn) translate<P,T>(m, lw);
+  if (trn) translate<P>(m, lw);
 
   if (rot && lw < 0) {
-    srotation<P,T>(m, -1);
-    xrotation<P,T>(m,  1);
-    yrotation<P,T>(m, -1);
+    srotation<P>(m, -1);
+    xrotation<P>(m,  1);
+    yrotation<P>(m, -1);
   }
 }
 
 // --- misalignments ----------------------------------------------------------o
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void misalignent (mflw_t *m, num_t lw) {
                                     (void)lw;
   if (m->algn.rot && m->sdir > 0) {
-    yrotation<P,T>(m,  m->edir, m->algn.dthe);
-    xrotation<P,T>(m, -m->edir, m->algn.dphi);
-    srotation<P,T>(m,  m->edir, m->algn.dpsi);
+    yrotation<P>(m,  m->edir, m->algn.dthe);
+    xrotation<P>(m, -m->edir, m->algn.dphi);
+    srotation<P>(m,  m->edir, m->algn.dpsi);
   }
 
   if (m->algn.trn)
-    translate<P,T>(m, m->sdir, m->algn.dx, m->algn.dy, m->algn.ds);
+    translate<P>(m, m->sdir, m->algn.dx, m->algn.dy, m->algn.ds);
 
   if (m->algn.rot && m->sdir < 0) {
-    srotation<P,T>(m, -m->edir, m->algn.dpsi);
-    xrotation<P,T>(m,  m->edir, m->algn.dphi);
-    yrotation<P,T>(m, -m->edir, m->algn.dthe);
+    srotation<P>(m, -m->edir, m->algn.dpsi);
+    xrotation<P>(m,  m->edir, m->algn.dphi);
+    yrotation<P>(m, -m->edir, m->algn.dthe);
   }
 }
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void misalignexi (mflw_t *m, num_t lw) {
   num_t rb[3*3], r[3*3];            (void)lw;
   num_t tb[3]  , t[3]={m->algn.dx, m->algn.dy, m->algn.ds};
@@ -320,31 +322,31 @@ inline void misalignexi (mflw_t *m, num_t lw) {
   if (m->algn.rot && m->sdir > 0) {
     num_t v[3];
     mad_mat_torotyxz(rb, v, true);
-    srotation<P,T>(m, -m->edir, -v[2]);
-    xrotation<P,T>(m,  m->edir, -v[0]);
-    yrotation<P,T>(m, -m->edir, -v[1]);
+    srotation<P>(m, -m->edir, -v[2]);
+    xrotation<P>(m,  m->edir, -v[0]);
+    yrotation<P>(m, -m->edir, -v[1]);
   }
 
-  if (m->algn.trn) translate<P,T>(m, -m->sdir, tb[0], tb[1], tb[2]);
+  if (m->algn.trn) translate<P>(m, -m->sdir, tb[0], tb[1], tb[2]);
 
   if (m->algn.rot && m->sdir < 0) {
     num_t v[3];
     mad_mat_torotyxz(rb, v, true);
-    yrotation<P,T>(m,  m->edir, -v[1]);
-    xrotation<P,T>(m, -m->edir, -v[0]);
-    srotation<P,T>(m,  m->edir, -v[2]);
+    yrotation<P>(m,  m->edir, -v[1]);
+    xrotation<P>(m, -m->edir, -v[0]);
+    srotation<P>(m,  m->edir, -v[2]);
   }
 }
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void misalign (mflw_t *m, num_t lw) {
-  if (lw >= 0) misalignent<P,T>(m,  1);
-  else         misalignexi<P,T>(m, -1);
+  if (lw >= 0) misalignent<P>(m,  1);
+  else         misalignexi<P>(m, -1);
 }
 
 // --- DKD maps ---------------------------------------------------------------o
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void strex_drift (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
   num_t l = m->el*lw, ld = m->eld*lw;
@@ -361,14 +363,14 @@ inline void strex_drift (mflw_t *m, num_t lw, int is)
   }
 }
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void strex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
 {                                          (void)is;
   if (m->nmul == 0) return;
 
   num_t wchg = lw*m->tdir*m->charge;
   num_t dby  = no_k0l ? m->knl[1] : 0;
-  T bx=0, by=0;
+  T bx, by; bx = 0., by = 0.;
 
   FOR (i,m->npar) {
     P p(m,i);
@@ -379,7 +381,7 @@ inline void strex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
   }
 }
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void curex_drift (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
   num_t ld = (m->eld ? m->eld : m->el)*lw;
@@ -402,11 +404,11 @@ inline void curex_drift (mflw_t *m, num_t lw, int is)
   }
 }
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void curex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
 {                                          (void)is;
   num_t blw = lw*m->charge*m->tdir;
-  T bx = 0, by = m->knl[1];
+  T bx, by; bx = 0., by = m->knl[1];
 
   FOR(i,m->npar) {
     P p(m,i);
@@ -425,7 +427,7 @@ inline void curex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
 
 // --- sbend ---
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void sbend_thick_old (mflw_t *m, num_t lw, int is)
 {                                               (void)is;
   num_t ld  = (m->eld ? m->eld : m->el)*lw;
@@ -459,7 +461,7 @@ inline void sbend_thick_old (mflw_t *m, num_t lw, int is)
   }
 }
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void sbend_thick_new (mflw_t *m, num_t lw, int is)
 {                                               (void)is;
   num_t ld  = (m->eld ? m->eld : m->el)*lw;
@@ -504,7 +506,7 @@ inline void sbend_thick_new (mflw_t *m, num_t lw, int is)
 
 // --- rbend ---
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void rbend_thick_old (mflw_t *m, num_t lw, int is)
 {                                               (void)is;
   num_t ld = (m->eld ? m->eld : m->el)*lw;
@@ -535,7 +537,7 @@ inline void rbend_thick_old (mflw_t *m, num_t lw, int is)
   }
 }
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void rbend_thick_new (mflw_t *m, num_t lw, int is)
 {                                               (void)is;
   num_t l  = m->el*lw;
@@ -573,7 +575,7 @@ inline void rbend_thick_new (mflw_t *m, num_t lw, int is)
 
 // --- quadrupole ---
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void drift_adj (mflw_t *m, num_t l)
 {
   FOR(i,m->npar) {
@@ -586,7 +588,7 @@ inline void drift_adj (mflw_t *m, num_t l)
   }
 }
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void quad_thick (mflw_t *m, num_t lw, int is)
 {                                          (void)is;
   num_t l  = m->el*lw;
@@ -626,17 +628,16 @@ inline void quad_thick (mflw_t *m, num_t lw, int is)
   }
 }
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void quad_kick (mflw_t *m, num_t lw, int is)
 {
   num_t l = m->el*lw;
 
-  if (is >= 0) drift_adj<P,T>(m, is ? l : l/2);
+  if (is >= 0) drift_adj<P>(m, is ? l : l/2);
 
   if (m->nmul > 0) {
     num_t wchg = lw*m->tdir*m->charge;
-
-    T bx=0, by=0;
+    T bx, by; bx=0., by=0.;
 
     FOR (i,m->npar) {
       P p(m,i);
@@ -647,10 +648,10 @@ inline void quad_kick (mflw_t *m, num_t lw, int is)
     }
   }
 
-  if (is <= 0) drift_adj<P,T>(m, is ? l : l/2);
+  if (is <= 0) drift_adj<P>(m, is ? l : l/2);
 }
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void quad_thicks (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
   num_t l   = m->el*lw;
@@ -669,6 +670,7 @@ inline void quad_thicks (mflw_t *m, num_t lw, int is)
 
   FOR(i,m->npar) {
     P p(m,i);
+
     // srotation
     T rx  = ca*p.x  + sa*p.y;
     T rpx = ca*p.px + sa*p.py;
@@ -688,17 +690,16 @@ inline void quad_thicks (mflw_t *m, num_t lw, int is)
   }
 }
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void quad_kicks (mflw_t *m, num_t lw, int is)
 {
   num_t l = m->el*lw;
 
-  if (is >= 0) drift_adj<P,T>(m, is ? l : l/2);
+  if (is >= 0) drift_adj<P>(m, is ? l : l/2);
 
   if (m->nmul > 0) {
     num_t wchg = lw*m->tdir*m->charge;
-
-    T bx=0, by=0;
+    T bx, by; bx=0., by=0.;
 
     FOR (i,m->npar) {
       P p(m,i);
@@ -709,10 +710,10 @@ inline void quad_kicks (mflw_t *m, num_t lw, int is)
     }
   }
 
-  if (is <= 0) drift_adj<P,T>(m, is ? l : l/2);
+  if (is <= 0) drift_adj<P>(m, is ? l : l/2);
 }
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void quad_thickh (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
   num_t l = m->el*lw;
@@ -768,17 +769,16 @@ inline void quad_thickh (mflw_t *m, num_t lw, int is)
   }
 }
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void quad_kickh (mflw_t *m, num_t lw, int is)
 {
   num_t l = m->el*lw;
 
-  if (is >= 0) drift_adj<P,T>(m, is ? l : l/2);
+  if (is >= 0) drift_adj<P>(m, is ? l : l/2);
 
   if (m->nmul > 0) {
     num_t wchg = lw*m->tdir*m->charge;
-
-    T bx=0, by=0;
+    T bx, by; bx=0., by=0.;
 
     FOR (i,m->npar) {
       P p(m,i);
@@ -791,12 +791,12 @@ inline void quad_kickh (mflw_t *m, num_t lw, int is)
     }
   }
 
-  if (is <= 0) drift_adj<P,T>(m, is ? l : l/2);
+  if (is <= 0) drift_adj<P>(m, is ? l : l/2);
 }
 
 // --- solenoid ---
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void solen_thick (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
   num_t l = m->el*lw;
@@ -827,7 +827,7 @@ inline void solen_thick (mflw_t *m, num_t lw, int is)
 
 // --- eseptum ---
 
-template <typename P, typename T>
+template <typename P, typename T=P::T>
 inline void esept_thick (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
   num_t  l = m->el*lw;
@@ -836,7 +836,6 @@ inline void esept_thick (mflw_t *m, num_t lw, int is)
 
   FOR (i,m->npar) {
     P p(m,i);
-    T   e1 = 1/m->beta+p.pt;
 
     // srotation
     T  nx  = ca*p.x  + sa*p.y;
@@ -844,6 +843,7 @@ inline void esept_thick (mflw_t *m, num_t lw, int is)
     T  ny  = ca*p.y  - sa*p.x;
     T  npy = ca*p.py - sa*p.px;
 
+    T   e1 = 1/m->beta+p.pt;
     T   dp = e1 + k1*ny;
     T l_pz = l/sqrt(sqr(dp) - 1/sqr(m->betgam) - sqr(npx) - sqr(npy));
     T  arg = k1*l_pz;
@@ -871,231 +871,176 @@ inline void esept_thick (mflw_t *m, num_t lw, int is)
 // --- patches ---
 
 void mad_trk_xrotation_r (mflw_t *m, num_t lw) {
-  xrotation<par_t, num_t>(m, lw);
+  xrotation<par_t>(m, lw);
 }
 void mad_trk_xrotation_t (mflw_t *m, num_t lw) {
-  xrotation<map_t, tpsa >(m, lw);
+  xrotation<map_t>(m, lw);
 }
 
 void mad_trk_yrotation_r (mflw_t *m, num_t lw) {
-  yrotation<par_t, num_t>(m, lw);
+  yrotation<par_t>(m, lw);
 }
 void mad_trk_yrotation_t (mflw_t *m, num_t lw) {
-  yrotation<map_t, tpsa >(m, lw);
+  yrotation<map_t>(m, lw);
 }
 
 void mad_trk_srotation_r (mflw_t *m, num_t lw) {
-  srotation<par_t, num_t>(m, lw);
+  srotation<par_t>(m, lw);
 }
 void mad_trk_srotation_t (mflw_t *m, num_t lw) {
-  srotation<map_t, tpsa >(m, lw);
+  srotation<map_t>(m, lw);
 }
 
 void mad_trk_translate_r (mflw_t *m, num_t lw) {
-  srotation<par_t, num_t>(m, lw);
+  srotation<par_t>(m, lw);
 }
 void mad_trk_translate_t (mflw_t *m, num_t lw) {
-  srotation<map_t, tpsa >(m, lw);
+  srotation<map_t>(m, lw);
 }
 
 void mad_trk_changeref_r (mflw_t *m, num_t lw) {
-  changeref<par_t, num_t>(m, lw);
+  changeref<par_t>(m, lw);
 }
 void mad_trk_changeref_t (mflw_t *m, num_t lw) {
-  changeref<map_t, tpsa >(m, lw);
+  changeref<map_t>(m, lw);
 }
 
 // --- misalignment ---
 
 void mad_trk_misalign_r (mflw_t *m, num_t lw) {
-  misalign<par_t, num_t>(m, lw);
+  misalign<par_t>(m, lw);
 }
 void mad_trk_misalign_t (mflw_t *m, num_t lw) {
-  misalign<map_t, tpsa >(m, lw);
+  misalign<map_t>(m, lw);
 }
 
 // --- DKD straight ---
 
 void mad_trk_strex_drift_r (mflw_t *m, num_t lw, int is) {
-  strex_drift<par_t, num_t>(m,lw,is);
+  strex_drift<par_t>(m,lw,is);
 }
 void mad_trk_strex_drift_t (mflw_t *m, num_t lw, int is) {
-  strex_drift<map_t, tpsa >(m,lw,is);
+  strex_drift<map_t>(m,lw,is);
 }
 
 void mad_trk_strex_kick_r (mflw_t *m, num_t lw, int is) {
-  strex_kick<par_t, num_t>(m,lw,is);
+  strex_kick<par_t>(m,lw,is);
 }
 void mad_trk_strex_kick_t (mflw_t *m, num_t lw, int is) {
-  strex_kick<map_t, tpsa >(m,lw,is);
+  strex_kick<map_t>(m,lw,is);
 }
 
 // --- DKD curved ---
 
 void mad_trk_currex_drift_r (mflw_t *m, num_t lw, int is) {
-  curex_drift<par_t, num_t>(m,lw,is);
+  curex_drift<par_t>(m,lw,is);
 }
 void mad_trk_curex_drift_t (mflw_t *m, num_t lw, int is) {
-  curex_drift<map_t, tpsa >(m,lw,is);
+  curex_drift<map_t>(m,lw,is);
 }
 
 void mad_trk_curex_kick_r (mflw_t *m, num_t lw, int is) {
-  curex_kick<par_t, num_t>(m,lw,is);
+  curex_kick<par_t>(m,lw,is);
 }
 void mad_trk_curex_kick_t (mflw_t *m, num_t lw, int is) {
-  curex_kick<map_t, tpsa >(m,lw,is);
+  curex_kick<map_t>(m,lw,is);
 }
 
 // --- sbend ---
 
 void mad_trk_sbend_thick_r (mflw_t *m, num_t lw, int is) {
-  sbend_thick_old<par_t, num_t>(m,lw,is);
+  sbend_thick_old<par_t>(m,lw,is);
 }
 void mad_trk_sbend_thick_t (mflw_t *m, num_t lw, int is) {
-  sbend_thick_old<map_t, tpsa >(m,lw,is);
+  sbend_thick_old<map_t>(m,lw,is);
 }
 
 void mad_trk_sbend_kick_r (mflw_t *m, num_t lw, int is) {
-  curex_kick<par_t, num_t>(m,lw,is,true);
+  curex_kick<par_t>(m,lw,is,true);
 }
 void mad_trk_sbend_kick_t (mflw_t *m, num_t lw, int is) {
-  curex_kick<map_t, tpsa >(m,lw,is,true);
+  curex_kick<map_t>(m,lw,is,true);
 }
 
 // --- rbend ---
 
 void mad_trk_rbend_thick_r (mflw_t *m, num_t lw, int is) {
-  rbend_thick_old<par_t, num_t>(m,lw,is);
+  rbend_thick_old<par_t>(m,lw,is);
 }
 void mad_trk_rbend_thick_t (mflw_t *m, num_t lw, int is) {
-  rbend_thick_old<map_t, tpsa >(m,lw,is);
+  rbend_thick_old<map_t>(m,lw,is);
 }
 
 void mad_trk_rbend_kick_r (mflw_t *m, num_t lw, int is) {
-  strex_kick<par_t, num_t>(m,lw,is,true);
+  strex_kick<par_t>(m,lw,is,true);
 }
 void mad_trk_rbend_kick_t (mflw_t *m, num_t lw, int is) {
-  strex_kick<map_t, tpsa >(m,lw,is,true);
+  strex_kick<map_t>(m,lw,is,true);
 }
 
 // --- quadrupole ---
 
 void mad_trk_quad_thick_r (mflw_t *m, num_t lw, int is) {
-  quad_thick<par_t, num_t>(m,lw,is);
+  quad_thick<par_t>(m,lw,is);
 }
 void mad_trk_quad_thick_t (mflw_t *m, num_t lw, int is) {
-  quad_thick<map_t, tpsa >(m,lw,is);
+  quad_thick<map_t>(m,lw,is);
 }
 
 void mad_trk_quad_kick_r (mflw_t *m, num_t lw, int is) {
-  quad_kick<par_t, num_t>(m,lw,0); (void)is; // always yoshida
+  quad_kick<par_t>(m,lw,0); (void)is; // always yoshida
 }
 void mad_trk_quad_kick_t (mflw_t *m, num_t lw, int is) {
-  quad_kick<map_t, tpsa >(m,lw,0); (void)is; // always yoshida
+  quad_kick<map_t>(m,lw,0); (void)is; // always yoshida
 }
 
 void mad_trk_quad_thicks_r (mflw_t *m, num_t lw, int is) {
-  quad_thicks<par_t, num_t>(m,lw,is);
+  quad_thicks<par_t>(m,lw,is);
 }
 void mad_trk_quad_thicks_t (mflw_t *m, num_t lw, int is) {
-  quad_thicks<map_t, tpsa >(m,lw,is);
+  quad_thicks<map_t>(m,lw,is);
 }
 
 void mad_trk_quad_kicks_r (mflw_t *m, num_t lw, int is) {
-  quad_kicks<par_t, num_t>(m,lw,0); (void)is; // always yoshida
+  quad_kicks<par_t>(m,lw,0); (void)is; // always yoshida
 }
 void mad_trk_quad_kicks_t (mflw_t *m, num_t lw, int is) {
-  quad_kicks<map_t, tpsa >(m,lw,0); (void)is; // always yoshida
+  quad_kicks<map_t>(m,lw,0); (void)is; // always yoshida
 }
 
 void mad_trk_quad_thickh_r (mflw_t *m, num_t lw, int is) {
-  quad_thickh<par_t, num_t>(m,lw,is);
+  quad_thickh<par_t>(m,lw,is);
 }
 void mad_trk_quad_thickh_t (mflw_t *m, num_t lw, int is) {
-  quad_thickh<map_t, tpsa >(m,lw,is);
+  quad_thickh<map_t>(m,lw,is);
 }
 
 void mad_trk_quad_kickh_r (mflw_t *m, num_t lw, int is) {
-  quad_kickh<par_t, num_t>(m,lw,0); (void)is; // always yoshida
+  quad_kickh<par_t>(m,lw,0); (void)is; // always yoshida
 }
 void mad_trk_quad_kickh_t (mflw_t *m, num_t lw, int is) {
-  quad_kickh<map_t, tpsa >(m,lw,0); (void)is; // always yoshida
+  quad_kickh<map_t>(m,lw,0); (void)is; // always yoshida
 }
 
 // --- solenoid ---
 
 void mad_trk_solen_thickh_r (mflw_t *m, num_t lw, int is) {
-  solen_thick<par_t, num_t>(m,lw,is);
+  solen_thick<par_t>(m,lw,is);
 }
 void mad_trk_solen_thickh_t (mflw_t *m, num_t lw, int is) {
-  solen_thick<map_t, tpsa >(m,lw,is);
+  solen_thick<map_t>(m,lw,is);
 }
 
 // --- eseptum ---
 
 void mad_trk_esept_thickh_r (mflw_t *m, num_t lw, int is) {
-  esept_thick<par_t, num_t>(m,lw,is);
+  esept_thick<par_t>(m,lw,is);
 }
 void mad_trk_esept_thickh_t (mflw_t *m, num_t lw, int is) {
-  esept_thick<map_t, tpsa >(m,lw,is);
+  esept_thick<map_t>(m,lw,is);
 }
 
-// --- track Slice ------------------------------------------------------------o
-
-void mad_trk_slice_dkd (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick,
-                        int n, num_t *yosh_d, num_t *yosh_k)
-{
-  // yosh2 -> 0..0, n=1, k=-1
-  // yosh4 -> 0..1, n=2, k=-3
-  // yosh6 -> 0..3, n=4, k=-7
-  // yosh8 -> 0..7, n=8, k=-15
-
-  int k=-2*n;
-  FOR(i,n) {
-    thick(m, lw*yosh_d[i  ], ++k);
-     kick(m, lw*yosh_k[i  ], ++k);
-  } thick(m, lw*yosh_d[n-1], ++k);
-  RFOR(i,n-1) {
-     kick(m, lw*yosh_k[i  ], ++k);
-    thick(m, lw*yosh_d[i  ], ++k);
-  }
-}
-
-void mad_trk_slice_tkt (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick,
-                        int n, num_t *yosh_d, num_t *yosh_k) {
-  mad_trk_slice_dkd(m, lw, thick, kick, n, yosh_d, yosh_k);
-}
-
-void mad_trk_slice_kmk (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick,
-                        int n, num_t bool_d, num_t *bool_k)
-{
-  // bool2  -> 0..0, n=1, k=-1
-  // bool4  -> 0..1, n=2, k=-2
-  // bool6  -> 0..2, n=3, k=-4
-  // bool8  -> 0..3, n=4, k=-6
-  // bool10 -> 0..4, n=5, k=-8
-  // bool12 -> 0..5, n=6, k=-10
-
-  int k=-2*(n-1);                  if (n==1) --k;
-  FOR(i,n-1) {
-     kick(m, lw*bool_k[i  ], k++);
-    thick(m, lw*bool_d     , k++);
-  }  kick(m, lw*bool_k[n-1], k++); if (n==1) ++n;
-  RFOR(i,n-1) {
-    thick(m, lw*bool_d     , k++);
-     kick(m, lw*bool_k[i  ], k++);
-  }
-}
-
-// --- speed tests ------------------------------------------------------------o
-
-#if 1
-
-#if TPSA_USE_TRC
-#define TRC(...) printf(#__VA_ARGS__ "\n"); __VA_ARGS__
-#else
-#define TRC(...) __VA_ARGS__
-#endif
+// --- track one Yoshida slice ------------------------------------------------o
 
 ssz_t yosh2_n   = 1;
 num_t yosh2_d[] = {0.5};
@@ -1120,6 +1065,99 @@ num_t yosh8_k[] = { 9.1484424622974003e-01,  2.5369333656622900e-01,
                    -1.4448522368604799e+00, -1.5824063536824301e-01,
                     1.9381391376227599e+00, -1.9606102329754900e+00,
                     1.0279984939198500e-01,  1.7084530707869978e+00 };
+
+struct {
+  ssz_t  n;
+  num_t *d;
+  num_t *k;
+} yosh[] = {
+  {yosh2_n, yosh2_d, yosh2_k},   // yosh2 -> 0..0, n=1, j=0, k=-1
+  {yosh4_n, yosh4_d, yosh4_k},   // yosh4 -> 0..1, n=2, j=1, k=-3
+  {yosh6_n, yosh6_d, yosh6_k},   // yosh6 -> 0..3, n=4, j=2, k=-7
+  {yosh8_n, yosh8_d, yosh8_k},   // yosh8 -> 0..7, n=8, j=3, k=-15
+};
+
+void mad_trk_slice_dkd (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int n)
+{
+  int j = MIN(n/2,3);
+  int k = -2*n;
+  FOR(i,n) {
+    thick(m, lw*yosh[j].d[i  ], ++k);
+     kick(m, lw*yosh[j].k[i  ], ++k);
+  } thick(m, lw*yosh[j].d[n-1], ++k);
+  RFOR(i,n-1) {
+     kick(m, lw*yosh[j].k[i  ], ++k);
+    thick(m, lw*yosh[j].d[i  ], ++k);
+  }
+}
+
+void mad_trk_slice_tkt (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int n) {
+  mad_trk_slice_dkd(m, lw, thick, kick, n);
+}
+
+// --- track one Boole slice --------------------------------------------------o
+
+ssz_t boole2_n    = 1;
+num_t boole2_d    = 1.;
+num_t boole2_k[]  = {1./2};
+
+ssz_t boole4_n    = 2;
+num_t boole4_d    = 1./2;
+num_t boole4_k[]  = {1./6, 4./6};
+
+ssz_t boole6_n    = 3;
+num_t boole6_d    = 1./4;
+num_t boole6_k[]  = {7./90, 32./90, 12./90};
+
+ssz_t boole8_n    = 4;
+num_t boole8_d    = 1./6;
+num_t boole8_k[]  = {41./840, 216./840, 27./840, 272./840};
+
+ssz_t boole10_n   = 5;
+num_t boole10_d   = 1./8;
+num_t boole10_k[] = {989./28350, 5888./28350, -928./28350, 10496./28350, -4540./28350};
+
+ssz_t boole12_n   = 6;
+num_t boole12_d   = 1./10;
+num_t boole12_k[] = {16067./598752, 106300./598752, -48525./598752,
+                     272400./598752, -260550./598752, 427368./598752};
+
+struct {
+  ssz_t  n;
+  num_t  d;
+  num_t *k;
+} boole[] = {
+  {boole2_n , boole2_d , boole2_k }, // bool2  -> 0..0, n=1, j=0, k=-1
+  {boole4_n , boole4_d , boole4_k }, // bool4  -> 0..1, n=2, j=1, k=-2
+  {boole6_n , boole6_d , boole6_k }, // bool6  -> 0..2, n=3, j=2, k=-4
+  {boole8_n , boole8_d , boole8_k }, // bool8  -> 0..3, n=4, j=3, k=-6
+  {boole10_n, boole10_d, boole10_k}, // bool10 -> 0..4, n=5, j=4, k=-8
+  {boole12_n, boole12_d, boole12_k}, // bool12 -> 0..5, n=6, j=5, k=-10
+} ;
+
+void mad_trk_slice_kmk (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int n)
+{
+  int j =  n-1;
+  int k = -2*j;                        if (n==1) --k;
+  FOR(i,n-1) {
+     kick(m, lw*boole[j].k[i  ], k++);
+    thick(m, lw*boole[j].d     , k++);
+  }  kick(m, lw*boole[j].k[n-1], k++); if (n==1) ++n;
+  RFOR(i,n-1) {
+    thick(m, lw*boole[j].d     , k++);
+     kick(m, lw*boole[j].k[i  ], k++);
+  }
+}
+
+// --- speed tests ------------------------------------------------------------o
+
+#if 1
+
+#if TPSA_USE_TRC
+#define TRC(...) printf(#__VA_ARGS__ "\n"); __VA_ARGS__
+#else
+#define TRC(...) __VA_ARGS__
+#endif
 
 void mad_trk_spdtest (int n, int k)
 {
@@ -1189,7 +1227,7 @@ void mad_trk_spdtest (int n, int k)
 
   case 4: {
     FOR(i,n)
-      mad_trk_slice_tkt(&m, 1, mad_trk_strex_drift_r, mad_trk_strex_kick_r, yosh2_n, yosh2_d, yosh2_k);
+      mad_trk_slice_tkt(&m, 1, mad_trk_strex_drift_r, mad_trk_strex_kick_r, yosh2_n);
     par_t p(&m,0);
     printf("x =% -.16e\npx=% -.16e\ny =% -.16e\npy=% -.16e\nt =% -.16e\npt=% -.16e\n",
             p.x, p.px, p.y, p.py, p.t, p.pt);
@@ -1197,9 +1235,11 @@ void mad_trk_spdtest (int n, int k)
 
   case 5: {
     FOR(i,n)
-      mad_trk_slice_tkt(&m, 1, mad_trk_strex_drift_t, mad_trk_strex_kick_t, yosh2_n, yosh2_d, yosh2_k);
+      mad_trk_slice_tkt(&m, 1, mad_trk_strex_drift_t, mad_trk_strex_kick_t, yosh2_n);
     map_t p(&m,0);
     stdout << p.x << p.px << p.y << p.py << p.t << p.pt;
+    tpsa a;
+    stdin >> a;
   } break;
 
   default:
@@ -1240,13 +1280,18 @@ end
 
 // --- unit tests -------------------------------------------------------------o
 
-#if 0
+#if 1
 void mad_trk_cpptest (void)
 {
   mad_desc_newv(6, 1);
 
   TRC(tpsa a("A");                             )
   TRC(tpsa_ref ar(a.ptr());                    )
+
+  TRC( a   = 1.;                               )
+  TRC( a  += 1.;                               )
+  TRC( ar  = 1.;                               )
+  TRC( ar += 1.;                               )
 
   TRC( a  = a;                                 )
   TRC( a += a;                                 )
@@ -1256,8 +1301,8 @@ void mad_trk_cpptest (void)
   TRC( a += a+a;                               )
   TRC( a  = 2*a;                               )
   TRC( a += 2*a;                               )
-  TRC( a  = 1;                                 )
-  TRC( a += 1;                                 )
+  TRC( a  = 1.;                                )
+  TRC( a += 1.;                                )
   TRC( a  = tpsa();                            ) // tpsa(a);       // error
   TRC( a += tpsa();                            ) // tpsa(a);       // error
   TRC( a  = tpsa(a+a);                         )
@@ -1273,8 +1318,8 @@ void mad_trk_cpptest (void)
   TRC( ar += a+a;                              )
   TRC( ar  = 2*a;                              )
   TRC( ar += 2*a;                              )
-  TRC( ar  = 1;                                )
-  TRC( ar += 1;                                )
+  TRC( ar  = 1.;                               )
+  TRC( ar += 1.;                               )
   TRC( ar  = tpsa();                           )  // tpsa(a);       // error
   TRC( ar += tpsa();                           )  // tpsa(a);       // error
   TRC( ar  = tpsa(a+a);                        )
@@ -1290,8 +1335,8 @@ void mad_trk_cpptest (void)
   TRC( tpsa() += a+a;                          )
   TRC( tpsa()  = 2*a;                          )
   TRC( tpsa() += 2*a;                          )
-  TRC( tpsa()  = 1;                            )
-  TRC( tpsa() += 1;                            )
+  TRC( tpsa()  = 1.;                           )
+  TRC( tpsa() += 1.;                           )
   TRC( tpsa()  = tpsa();                       )  // tpsa(a); // error
   TRC( tpsa() += tpsa();                       )  // tpsa(a); // error
   TRC( tpsa()  = tpsa(a+a);                    )
@@ -1307,8 +1352,8 @@ void mad_trk_cpptest (void)
   TRC( tpsa_ref(a.ptr()) += a+a;               )
   TRC( tpsa_ref(a.ptr())  = 2*a;               )
   TRC( tpsa_ref(a.ptr()) += 2*a;               )
-  TRC( tpsa_ref(a.ptr())  = 1;                 )
-  TRC( tpsa_ref(a.ptr()) += 1;                 )
+  TRC( tpsa_ref(a.ptr())  = 1.;                )
+  TRC( tpsa_ref(a.ptr()) += 1.;                )
   TRC( tpsa_ref(a.ptr())  = tpsa();            ) // tpsa(a);       // error
   TRC( tpsa_ref(a.ptr()) += tpsa();            ) // tpsa(a);       // error
   TRC( tpsa_ref(a.ptr())  = tpsa(a+a);         )
