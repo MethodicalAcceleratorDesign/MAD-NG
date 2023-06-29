@@ -1083,7 +1083,6 @@ void mad_trk_slice_dkd (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int n)
 {
   int j = MIN(n/2,3);
   int k = -2*n;
-
   FOR(i,n) {
     thick(m, lw*yosh[j].d[i  ], ++k);
      kick(m, lw*yosh[j].k[i  ], ++k);
