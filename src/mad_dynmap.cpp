@@ -272,18 +272,20 @@ inline void changeref (mflw_t *m, num_t lw)
 
   if (!trn && !rot) return;
 
+  lw *= m->sdir;
+
   if (rot && lw > 0) {
-    yrotation<P>(m,  1);
-    xrotation<P>(m, -1);
-    srotation<P>(m,  1);
+    yrotation<P>(m,  m->edir);
+    xrotation<P>(m, -m->edir);
+    srotation<P>(m,  m->edir);
   }
 
-  if (trn) translate<P>(m, lw);
+  if (trn) translate<P>(m, 1);
 
   if (rot && lw < 0) {
-    srotation<P>(m, -1);
-    xrotation<P>(m,  1);
-    yrotation<P>(m, -1);
+    srotation<P>(m, -m->edir);
+    xrotation<P>(m,  m->edir);
+    yrotation<P>(m, -m->edir);
   }
 }
 
