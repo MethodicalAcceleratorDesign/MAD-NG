@@ -509,6 +509,32 @@ function M.strex_kick (elm, m, lw, istp, no_k0l) -- [KICKEX]                 -- 
   m.atdebug(elm, m, lw, 'strex_kick:1', no_k0l)
 end
 
+local function strex_kicks(elm, m, lw, i, wchg, _beta, pz)
+  local ksi, lrad in m
+  if ksi == 0 or lrad == 0 then return end
+
+  local x, px, y, py, pt in m[i]
+
+  local  hss = lw*ksi^2/lrad -- 4 H(s_0)^2/ds
+  local _dpp = 1/pz
+  local _dp  = _dpp^2
+  local  ang = (wchg*0.5*ksi)*_dpp
+  local ca, sa = cos(ang), sin(ang)
+
+  local nx  = ca* x + sa* y
+  local npx = ca*px + sa*py
+  local ny  = ca* y - sa* x
+  local npy = ca*py - sa*px
+  local nt  = m[i].t - ang*(_beta+pt)*(y*px - x*py)*_dp
+
+  m[i].x  = nx
+  m[i].px = npx - (0.25 *hss)*nx*_dpp
+  m[i].y  = ny
+  m[i].py = npy - (0.25 *hss)*ny*_dpp
+  m[i].t  = nt  - (0.125*hss)*(_beta+pt)*(nx^2+ny^2)*_dpp^3
+end
+
+
 function M.strex_kickhs (elm, m, lw, istp) -- [KICKT]                        -- checked
   local lrad, nmul, ksi in m
   if nmul == 0 and ksi == 0 then return end
@@ -516,7 +542,7 @@ function M.strex_kickhs (elm, m, lw, istp) -- [KICKT]                        -- 
   m.atdebug(elm, m, lw, 'strex_kickhs:0')
 
   local sdir, tdir, knl, ksl, beam in m
-  local  wchg = lw*tdir*beam.charge
+  local  wchg = lw*tdir*beam.charge -- lw is always 1 for multipole only (Needed?)
   local _beta = 1/beam.beta
 
   for i=1,m.npar do
@@ -525,47 +551,30 @@ function M.strex_kickhs (elm, m, lw, istp) -- [KICKT]                        -- 
     local _beta = beam and 1/beam.beta or _beta
     local    pz = sqrt(1 + (2*_beta)*pt + pt^2)
 
+    if sdir == -1 then strex_kicks(elm, m, lw, i, wchg, _beta, pz) end
+
     -- multipole
     if nmul ~= 0 then
       local bx,by = bxby(nmul, knl, ksl, x, y)
 
-        m[i].px = m[i].px - wchg*by -- With 0 el and ksi ~= 0, we get problems with the multipole
-        m[i].py = m[i].py + wchg*bx
+      m[i].px = m[i].px - wchg*by -- With 0 el and ksi ~= 0, we get problems with the multipole
+      m[i].py = m[i].py + wchg*bx
 
-        if abs(knl[1]) + abs(ksl[1]) > 0 then
-          m[i].px = m[i].px + (wchg*knl[1])*pz
-          m[i].py = m[i].py - (wchg*ksl[1])*pz
-          m[i].t  = m[i].t  - wchg*(knl[1]*x - ksl[1]*y)*(_beta+pt)/pz
+      if abs(knl[1]) + abs(ksl[1]) > 0 then
+        m[i].px = m[i].px + (wchg*knl[1])*pz
+        m[i].py = m[i].py - (wchg*ksl[1])*pz
+        m[i].t  = m[i].t  - wchg*(knl[1]*x - ksl[1]*y)*(_beta+pt)/pz
 
         -- field curvature
         if lrad ~= 0 then
-          m[i].px = m[i].px - wchg*(knl[1]^2/lrad)*x
-          m[i].py = m[i].py - wchg*(ksl[1]^2/lrad)*y
+          m[i].px = m[i].px - lw*(knl[1]^2/lrad)*x
+          m[i].py = m[i].py - lw*(ksl[1]^2/lrad)*y
         end
       end
     end
 
-    -- solenoid
-    if ksi ~= 0 and lrad ~= 0 then
-      local px, py in m[i]
-      local  hss = lw*sdir*(ksi^2/lrad) -- 4 H(s_0)^2/ds
-      local _dpp = 1/pz
-      local _dp  = _dpp^2
-      local  ang = (wchg*0.5*ksi)*_dpp
-      local ca, sa = cos(ang), sin(ang)
+    if sdir == 1 then strex_kicks(elm, m, lw, i, wchg, _beta, pz) end
 
-      local nx  = ca* x + sa* y
-      local npx = ca*px + sa*py
-      local ny  = ca* y - sa* x
-      local npy = ca*py - sa*px
-      local nt  = m[i].t - ang*(_beta+pt)*(y*px - x*py)*_dp
-
-      m[i].x  = nx
-      m[i].px = npx - (0.25 *hss)*nx*_dpp
-      m[i].y  = ny
-      m[i].py = npy - (0.25 *hss)*ny*_dpp
-      m[i].t  = nt  - (0.125*hss)*(_beta+pt)*(nx^2+ny^2)*_dpp^3
-    end
   end
 
   m.atdebug(elm, m, lw, 'strex_kickhs:1')
