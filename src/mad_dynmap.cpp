@@ -264,7 +264,7 @@ inline void translate (mflw_t *m, num_t lw, num_t dx_=0, num_t dy_=0, num_t ds_=
   }
 }
 
-template <typename P, typename T=P::T>
+template <typename P>
 inline void changeref (mflw_t *m, num_t lw)
 {
   bool trn = abs(m->dx  )+abs(m->dy  )+abs(m->ds  ) >= minlen;
@@ -291,7 +291,7 @@ inline void changeref (mflw_t *m, num_t lw)
 
 // --- misalignments ----------------------------------------------------------o
 
-template <typename P, typename T=P::T>
+template <typename P>
 inline void misalignent (mflw_t *m, num_t lw) {
                                     (void)lw;
   if (m->algn.rot && m->sdir > 0) {
@@ -310,7 +310,7 @@ inline void misalignent (mflw_t *m, num_t lw) {
   }
 }
 
-template <typename P, typename T=P::T>
+template <typename P>
 inline void misalignexi (mflw_t *m, num_t lw) {
   num_t rb[3*3], r[3*3];            (void)lw;
   num_t tb[3]  , t[3]={m->algn.dx, m->algn.dy, m->algn.ds};
