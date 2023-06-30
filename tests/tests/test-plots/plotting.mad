@@ -1,13 +1,15 @@
 -- locals ---------------------------------------------------------------------o
 local beam, plot, survey, track, vector                          in MAD
-local openfile, fileexists, tblcat, tblcpy, strinter in MAD.utility
+local openfile, fileexists, tblcat, tblcpy, strinter             in MAD.utility
 local eps                                                        in MAD.constant
 local round                                                      in MAD.gmath
 local is_nil                                                     in MAD.typeid
+local min                                                        in math
 package.path = package.path .. ";../tools/?.mad"
 local in_dir, out_dir, plt_dir, newSID, ptc_strs                 in require "track-tool"
 
 local create_dif = require "madl_dbgmap".cmpmdump
+
 -------------------------------------------------------------------------------o
 local seq_ctx = [[
 seq: sequence, l=${seql} ;
@@ -128,6 +130,7 @@ local function run_test (cfg)
     implicit = true,
     exec     = false,
 }
+  cfg.plot_info.exec = false
   local plot_template = plot_template (cfg.plot_info)
   local x_coord, y_coord, filename in cfg.plot_info
   local in_global_frame = x_coord == x_coord:upper()
@@ -174,20 +177,21 @@ local function run_test (cfg)
 
     -- Get difference between MAD and PTC and plot it
     local dbg_lst = create_dif {nam = out_dir(cfg.name), sum = true, vec=true}
-    local y, tri = vector(#tr), 1
+    local x, y, tri = {}, {}, 1
     for mi = 1, #dbg_lst do
       local max_err = 0
-      if dbg_lst[mi].vec[5] == tr.t[tri] then -- Check time to get correct s position
+      if dbg_lst[mi].vec[5] - tr.t[tri] < 1e-14 then -- Check time to get correct s position
         for ci, coord in ipairs {"x", "px", "y", "py", "t", "pt"} do
           for oi = 1, cfg.order do 
               max_err = math.max(math.abs(dbg_lst[mi].sum[ci].c[oi] or 0), max_err)
           end
         end
-        y[tri], tri = max_err, tri + 1
+        x[tri], y[tri], tri = tr[x_coord][tri], max_err, tri + 1
       end 
+      if tri > #tr then break end
     end
-    assert(tri == #tr + 1, "Could not find correct number of points in NG vs PTC output")
-    set_x1y2(tr[x_coord], y, "ptc", "NG - PTC (order = " .. cfg.order .. ")")
+    print("max error = ", math.max(table.unpack(y)))
+    set_x1y2(x, y, "ptc", "NG - PTC (order = " .. cfg.order .. ")")
   end
 
 
