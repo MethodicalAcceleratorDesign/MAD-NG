@@ -39,24 +39,12 @@ struct mflw_ {
   num_t el, eld, lrad;
   num_t eh, ang, mang;
 
-  // directions
-  int edir, sdir, tdir, T;
-
   // beam
   num_t pc, beta, betgam;
   int charge;
 
-  // patches
-  num_t dx,   dy,   ds;
-  num_t dthe, dphi, dpsi;
-  num_t tlt;
-
-  // misalign
-  struct {
-    bool  rot, trn;
-    num_t dx,   dy,   ds;
-    num_t dthe, dphi, dpsi;
-  } algn;
+  // directions
+  int edir, sdir, tdir, T;
 
   // solenoid
   num_t ks, ksi;
@@ -78,6 +66,18 @@ struct mflw_ {
   int    npar;
   par6_t *par;
   map6_t *map;
+
+  // patches
+  num_t dx,   dy,   ds;
+  num_t dthe, dphi, dpsi;
+  num_t tlt;
+
+  // misalign
+  struct {
+    bool  rot, trn;
+    num_t dx,   dy,   ds;
+    num_t dthe, dphi, dpsi;
+  } algn;
 };
 
 } // extern "C"
@@ -1336,13 +1336,9 @@ void mad_trk_spdtest (int n, int k)
     .el=1, .eld=1, .lrad=0,
     .eh=0, .ang=0, .mang=0,
 
-    .edir=1, .sdir=1, .tdir=1, .T=0,
     .pc=1, .beta=1, .betgam=0, .charge=1,
 
-    .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0, .tlt=0,
-
-    .algn = {.rot=false, .trn=false,
-    .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0},
+    .edir=1, .sdir=1, .tdir=1, .T=0,
 
     .ks=0, .ksi=0,
     .volt=0, .freq=0, .lag=0, .nbsl=0,
@@ -1350,6 +1346,11 @@ void mad_trk_spdtest (int n, int k)
     .nmul=1, .knl={1e-7}, .ksl={0},
     .snm=1,  .bfx={0}   , .bfy={0},
     .npar=1, .par=&par1, .map=&map1,
+
+    .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0, .tlt=0,
+
+    .algn = {.rot=false, .trn=false,
+    .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0},
   };
 
   switch(k) {
