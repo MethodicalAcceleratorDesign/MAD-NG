@@ -696,7 +696,7 @@ inline void quad_thick (mflw_t *m, num_t lw, int is)
 
 template <typename P, typename T=P::T>
 inline void quad_kick (mflw_t *m, num_t lw, int is)
-{
+{                                         (void)is;
   num_t l = m->el*lw;
 
   if (is >= 0) drift_adj<P>(m, is ? l : l/2);
@@ -758,7 +758,7 @@ inline void quad_thicks (mflw_t *m, num_t lw, int is)
 
 template <typename P, typename T=P::T>
 inline void quad_kicks (mflw_t *m, num_t lw, int is)
-{
+{                                          (void)is;
   num_t l = m->el*lw;
 
   if (is >= 0) drift_adj<P>(m, is ? l : l/2);
@@ -837,7 +837,7 @@ inline void quad_thickh (mflw_t *m, num_t lw, int is)
 
 template <typename P, typename T=P::T>
 inline void quad_kickh (mflw_t *m, num_t lw, int is)
-{
+{                                          (void)is;
   num_t l = m->el*lw;
 
   if (is >= 0) drift_adj<P>(m, is ? l : l/2);
@@ -1074,7 +1074,7 @@ void mad_trk_strex_kickhs_t (mflw_t *m, num_t lw, int is) {
 
 // --- DKD curved ---
 
-void mad_trk_currex_drift_r (mflw_t *m, num_t lw, int is) {
+void mad_trk_curex_drift_r (mflw_t *m, num_t lw, int is) {
   curex_drift<par_t>(m,lw,is);
 }
 void mad_trk_curex_drift_t (mflw_t *m, num_t lw, int is) {
@@ -1166,19 +1166,19 @@ void mad_trk_quad_kickh_t (mflw_t *m, num_t lw, int is) {
 
 // --- solenoid ---
 
-void mad_trk_solen_thickh_r (mflw_t *m, num_t lw, int is) {
+void mad_trk_solen_thick_r (mflw_t *m, num_t lw, int is) {
   solen_thick<par_t>(m,lw,is);
 }
-void mad_trk_solen_thickh_t (mflw_t *m, num_t lw, int is) {
+void mad_trk_solen_thick_t (mflw_t *m, num_t lw, int is) {
   solen_thick<map_t>(m,lw,is);
 }
 
 // --- eseptum ---
 
-void mad_trk_esept_thickh_r (mflw_t *m, num_t lw, int is) {
+void mad_trk_esept_thick_r (mflw_t *m, num_t lw, int is) {
   esept_thick<par_t>(m,lw,is);
 }
-void mad_trk_esept_thickh_t (mflw_t *m, num_t lw, int is) {
+void mad_trk_esept_thick_t (mflw_t *m, num_t lw, int is) {
   esept_thick<map_t>(m,lw,is);
 }
 
@@ -1229,15 +1229,17 @@ struct {
   num_t *d;
   num_t *k;
 } yosh[] = {
-  {yosh2_n, yosh2_d, yosh2_k},   // yosh2 -> 0..0, n=1, j=0, k=-1
-  {yosh4_n, yosh4_d, yosh4_k},   // yosh4 -> 0..1, n=2, j=1, k=-3
-  {yosh6_n, yosh6_d, yosh6_k},   // yosh6 -> 0..3, n=4, j=2, k=-7
-  {yosh8_n, yosh8_d, yosh8_k},   // yosh8 -> 0..7, n=8, j=3, k=-15
+  {yosh2_n, yosh2_d, yosh2_k},   // yosh2 -> 0..0, ord=2, j=0, n=1, k=-1
+  {yosh4_n, yosh4_d, yosh4_k},   // yosh4 -> 0..1, ord=4, j=1, n=2, k=-3
+  {yosh6_n, yosh6_d, yosh6_k},   // yosh6 -> 0..3, ord=6, j=2, n=4, k=-7
+  {yosh8_n, yosh8_d, yosh8_k},   // yosh8 -> 0..7, ord=8, j=3, n=8, k=-15
 };
 
-void mad_trk_slice_dkd (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int n)
+void mad_trk_slice_dkd (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int ord)
 {
-  int j = MIN(n/2,3);
+  ensure(ord >= 2 && ord <= 8, "invalid dkd/tkt order 2..8");
+  int j = ord/2-1;
+  int n = 1<<j;
   int k = -2*n;
   FOR(i,n) {
     thick(m, lw*yosh[j].d[i  ], ++k);
@@ -1286,23 +1288,25 @@ struct {
   num_t  d;
   num_t *k;
 } boole[] = {
-  {boole2_n , boole2_d , boole2_k }, // bool2  -> 0..0, n=1, j=0, k=-1
-  {boole4_n , boole4_d , boole4_k }, // bool4  -> 0..1, n=2, j=1, k=-2
-  {boole6_n , boole6_d , boole6_k }, // bool6  -> 0..2, n=3, j=2, k=-4
-  {boole8_n , boole8_d , boole8_k }, // bool8  -> 0..3, n=4, j=3, k=-6
-  {boole10_n, boole10_d, boole10_k}, // bool10 -> 0..4, n=5, j=4, k=-8
-  {boole12_n, boole12_d, boole12_k}, // bool12 -> 0..5, n=6, j=5, k=-10
+  {boole2_n , boole2_d , boole2_k }, // bool2  -> 0..0, ord=2,  j=0, n=0, k=-1
+  {boole4_n , boole4_d , boole4_k }, // bool4  -> 0..1, ord=4,  j=1, n=1, k=-2
+  {boole6_n , boole6_d , boole6_k }, // bool6  -> 0..2, ord=6,  j=2, n=2, k=-4
+  {boole8_n , boole8_d , boole8_k }, // bool8  -> 0..3, ord=8,  j=3, n=3, k=-6
+  {boole10_n, boole10_d, boole10_k}, // bool10 -> 0..4, ord=10, j=4, n=4, k=-8
+  {boole12_n, boole12_d, boole12_k}, // bool12 -> 0..5, ord=12, j=5, n=5, k=-10
 } ;
 
-void mad_trk_slice_kmk (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int n)
+void mad_trk_slice_kmk (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int ord)
 {
-  int j =  n-1;
-  int k = -2*j;                      if (!k) --k;
-  FOR(i,j) {
+  ensure(ord >= 2 && ord <= 12, "invalid kmk order 2..12");
+  int j = ord/2-1;
+  int n = j;
+  int k = -2*n;                      if (!k) --k;
+  FOR(i,n) {
      kick(m, lw*boole[j].k[i], k++);
     thick(m, lw*boole[j].d   , k++);
-  }  kick(m, lw*boole[j].k[j], k++); if (!j) ++j;
-  RFOR(i,j) {
+  }  kick(m, lw*boole[j].k[n], k++); if (!n) ++n;
+  RFOR(i,n) {
     thick(m, lw*boole[j].d   , k++);
      kick(m, lw*boole[j].k[i], k++);
   }
@@ -1389,18 +1393,31 @@ void mad_trk_spdtest (int n, int k)
   } break;
 
   case 4: {
-    FOR(i,n) mad_trk_slice_tkt(&m, 1, mad_trk_strex_drift_r, mad_trk_strex_kick_r, yosh2_n);
+    FOR(i,n) mad_trk_slice_tkt(&m, 1, mad_trk_strex_drift_r, mad_trk_strex_kick_r, 2);
     par_t p(&m,0);
     printf("x =% -.16e\npx=% -.16e\ny =% -.16e\npy=% -.16e\nt =% -.16e\npt=% -.16e\n",
             p.x, p.px, p.y, p.py, p.t, p.pt);
   } break;
 
   case 5: {
-    FOR(i,n) mad_trk_slice_tkt(&m, 1, mad_trk_strex_drift_t, mad_trk_strex_kick_t, yosh2_n);
+    FOR(i,n) mad_trk_slice_tkt(&m, 1, mad_trk_strex_drift_t, mad_trk_strex_kick_t, 2);
     map_t p(&m,0);
     stdout << p.x << p.px << p.y << p.py << p.t << p.pt;
   } break;
+/*
+  case 6: {
+    FOR(i,n) mad_trk_slice_tkt(&m, 1, mad_trk_curex_drift_r, mad_trk_curex_kick_r, 2);
+    par_t p(&m,0);
+    printf("x =% -.16e\npx=% -.16e\ny =% -.16e\npy=% -.16e\nt =% -.16e\npt=% -.16e\n",
+            p.x, p.px, p.y, p.py, p.t, p.pt);
+  } break;
 
+  case 7: {
+    FOR(i,n) mad_trk_slice_tkt(&m, 1, mad_trk_curex_drift_t, mad_trk_curex_kick_t, 2);
+    map_t p(&m,0);
+    stdout << p.x << p.px << p.y << p.py << p.t << p.pt;
+  } break;
+*/
   default:
     printf("unknown use case %d\n", k);
   }
