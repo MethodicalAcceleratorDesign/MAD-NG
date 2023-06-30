@@ -32,9 +32,9 @@ typedef void (trkfun) (mflw_t*, num_t, int);
 // --- interface --------------------------------------------------------------o
 
 // -- track one slice
-void mad_trk_slice_dkd (mflw_t *m, num_t lw, trkfun *dft, trkfun *kck, int n);
-void mad_trk_slice_tkt (mflw_t *m, num_t lw, trkfun *dft, trkfun *kck, int n);
-void mad_trk_slice_kmk (mflw_t *m, num_t lw, trkfun *dft, trkfun *kck, int n);
+void mad_trk_slice_dkd (mflw_t *m, num_t lw, trkfun *dft, trkfun *kck, int ord);
+void mad_trk_slice_tkt (mflw_t *m, num_t lw, trkfun *dft, trkfun *kck, int ord);
+void mad_trk_slice_kmk (mflw_t *m, num_t lw, trkfun *dft, trkfun *kck, int ord);
 
 // -- patches
 void mad_trk_xrotation_r    (mflw_t *m, num_t lw);
@@ -92,11 +92,11 @@ void mad_trk_quad_kickh_r   (mflw_t *m, num_t lw, int is);
 void mad_trk_quad_kickh_t   (mflw_t *m, num_t lw, int is);
 
 // -- other maps
-void mad_trk_solen_thickh_r (mflw_t *m, num_t lw, int _);
-void mad_trk_solen_thickh_t (mflw_t *m, num_t lw, int _);
+void mad_trk_solen_thick_r  (mflw_t *m, num_t lw, int _);
+void mad_trk_solen_thick_t  (mflw_t *m, num_t lw, int _);
 
-void mad_trk_esept_thickh_r (mflw_t *m, num_t lw, int _);
-void mad_trk_esept_thickh_t (mflw_t *m, num_t lw, int _);
+void mad_trk_esept_thick_r  (mflw_t *m, num_t lw, int _);
+void mad_trk_esept_thick_t  (mflw_t *m, num_t lw, int _);
 
 void mad_trk_rfcav_kick_r   (mflw_t *m, num_t lw, int _);
 void mad_trk_rfcav_kick_t   (mflw_t *m, num_t lw, int _);
