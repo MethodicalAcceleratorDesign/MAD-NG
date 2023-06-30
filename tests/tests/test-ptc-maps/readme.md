@@ -1,29 +1,91 @@
 Purpose
 ==
 
-The purpose of this test suite is to test MAD-NG maps against PTC. The tests are run by calling the element function, for example, `testQUAD()` will run the test `testQUAD` (the quadrupole).
+The purpose of this test suite is to test MAD-NG maps against PTC. 
 
 Prerequisites
 --
 
 A binary of MAD-NG and MAD-X must be in the parent directory of the test directory. The binaries must be named `mad` and `madx` respectively.
 
-Running the test
+Commands to run the tests
 --
 
-To run a category of tests, run the individual files:
+To run all the tests:
 
-```bash
-../mad test-category-maps.mad
+```shell
+../mad test-all-maps.mad -test
 ```
 
-It is possible to run all the tests with a single command:
+To run a category of tests, run the individual files: (Should I have a flag to select?)
 
-```bash
-../mad test-ptc-maps.mad
+```shell
+../mad test-category-maps.mad -test
 ```
 
-Setting up the tests
+To run an individual test: 
+
+```shell
+../mad test-category-maps.mad -test -select TestName
+```
+or
+```shell
+../mad test-all-maps.mad -test -select TestName
+```
+
+If you would like to run a unit test, you must ensure that you have generated the files for the unit tests (these take a bit of time, could be more than 3 hours for them all), to generate these run the following:
+```shell 
+../mad test-all-maps.mad -test -gutest
+```
+
+Once the files have all been generated, now you can run unit tests. To run a unit test, it is identical to how the unit tests in the folder utest are called:
+```shell
+../mad test-all-maps.mad TestModule.TestName
+```
+where TestName is optional, if it is not provided, then all the tests in the module will be run. Also TestModule is optional, if it is not provided, then all the tests in the folder will be run.
+
+Details on Running the Tests
+==
+
+To run the tests you must put the first argument after the file name as `-test` or the file will assume that you are running the file as a unit test. 
+
+
+There are five flags that can be used to control how your tests run and the reported results:
+
+* `doprnt` - If set to `true`, the test will print the differences between PTC and MAD-NG to the console for each order at each config (default: `false`).
+* `dodbg` - If set to `true`, the test will stop if the difference between PTC and MAD-NG is outside the tolerance `tol` (default: `false`).
+* `dosave` - If set to `true`, the test will save the results to a file (default: `false`).
+* `dorun` - If set to `true`, the test will run, if set to `false`, the test will immediately do the save, plot and print steps (default: `true`).
+* `doplot` - If set to `true`, the test will plot the results (default: `false`).
+* `gen_utest` - If set to `true`, the files required for the unit tests are generated (default: `false`).
+
+
+These flags can be set when you call the file. After the file, you can set values to the opposite of the default (shown above and in the file).
+
+* `-print` sets `doprnt` to `true`.
+* `-debug` sets `dodbg` to `true`.
+* `-save` sets `dosave` to `true`.
+* `-norun` sets `dorun` to `false`.
+* `-plot` sets `doplot` to `true`.
+* `-gutest` sets `gen_utest` to `true`.
+
+The following example runs the crab cavity test and saves the cfg and results files. The next line then does the plot, without running the test again by retrieving the results from the cfg and res files.
+```shell
+../mad test-electric-maps.mad -test -select testCCAV -save
+../mad test-electric-maps.mad -test -select testCCAV -plot -norun
+```
+But of course you could just save and plot in the same run:
+```shell
+../mad test-electric-maps.mad -test -select testCCAV -save -plot
+```
+
+> **Note**
+> that the option `-test` **must** be the **first** argument after the file name, otherwise the file will assume that you are running the file as a unit test. 
+
+> **Note**
+> that the option `-select` **must** be the **second** argument after the file name and `-test`, otherwise all the tests in the file will be run.
+
+Defining the Tests
 ==
 
 Within each test, we define an object, inherited from the reference config (which is essentially identical across all files, with changes to order and icase depending on the files need). 
@@ -49,7 +111,7 @@ Once the configuration object is defined, the test is run by calling `run_test(c
 
 All the configurations are placed inside functions, such as `local cfg = ref_cfg "rbend"{ ... }` is the configuration for the rbend and within the function `testRBEND()`, which is called later in the file.
 
-How the tests work
+How the Tests Work
 ==
 
 Using the configuration object, the function `run_test` will do the following:
@@ -67,21 +129,7 @@ Using the configuration object, the function `run_test` will do the following:
 7. If cfg.doplot then the results are plotted and saved to a file if cfg.filename is not nil.
 8. If the test has not been stopped by cfg.dodbg then several excess files are removed.
 
-
-Running the tests
-==
-
-To run the test, just call the element function For example, `testQUAD()` will run the test `testQUAD` (the quadrupole).
-
-There are five flags that can be used to control how your tests run and the reported results:
-
-* `doprnt` - If set to `true`, the test will print the differences between PTC and MAD-NG to the console for each order at each config.
-* `dodbg` - If set to `true`, the test will stop if the difference between PTC and MAD-NG is outside the tolerance `tol`.
-* `dosave` - If set to `true`, the test will save the results to a file.
-* `dorun` - If set to `true`, the test will run, if set to `false`, the test will immediately do the save, plot and print steps.
-* `doplot` - If set to `true`, the test will plot the results.
-
-Debugging the tests
+Debugging the Tests
 ==
 
 When you run the tests, you can check the results in two ways:

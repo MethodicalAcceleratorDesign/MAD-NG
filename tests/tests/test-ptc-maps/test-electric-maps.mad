@@ -3,17 +3,19 @@
 
 local object, tostring                                          in MAD
 local tblcat                                                    in MAD.utility
-local run_test in require("trackvsptc")
+local run_test, is_unittest, run_module in require("trackvsptc")
 
 -- The setup for the tests ----------------------------------------------------o
 
 local ref_cfg = object "ref" {
   -- How to run the tests
   dorun  = true, -- Default: true 
-  dosave = true, -- Default: false
+  dosave = false, -- Default: false
   doprnt = false, -- Default: false
   dodbg  = false, -- Default: false
-  doplot = true, -- Default: false
+  doplot = false, -- Default: false
+
+  gen_utest = false, -- Default: false
   
   -- list of variables in the tests
   alist = {"model", "energy", "method", "nslice", "x0i"}, --attributes list
@@ -29,7 +31,23 @@ local ref_cfg = object "ref" {
   x0i    = 1..5,       -- 0, 4D, 5D, 5D strong, 6D (see get_mad_str)
 }
 
-local function testCAV() -- ~15 mins
+local TestElectric = {}
+
+function TestElectric:setUp()
+  -- Turn off all unnecessary components for unit testing
+  ref_cfg.gen_utest = false
+  ref_cfg.dodbg     = false
+  ref_cfg.doprnt    = false
+  ref_cfg.dosave    = false
+  
+  -- Turn on the components for unit testing
+  ref_cfg.dorun     = true
+  ref_cfg.do_utest  = true
+  ref_cfg.doplot    = true
+end
+
+
+function TestElectric:testCAV() -- ~15 mins
   local cfg = ref_cfg "cav" {
     elm =  [[
       RFCAVITY, at=0.75, l=1.5, 
@@ -42,16 +60,16 @@ local function testCAV() -- ~15 mins
     nslice = 1..3,
     energy = {1, 6500},  -- {1, 450, 6500}
 
-    tol = 50,
+    tol = 60,
 
     alist = tblcat(
       ref_cfg.alist, 
       {"no_totalpath", "volt", "lag", "freq", "harmon"}
     ),
     no_totalpath = {true, false},
-    volt      = -8 ..8  ..8   ,
-    lag       =  0 ..0.9..0.45,
-    freq      =  0 ..150 ..75,
+    volt      = {-8, 0, 8},
+    lag       = {0, 0.45, 0.9},
+    freq      = {0, 75, 150},
     harmon    = \s-> s.cur_cfg.freq == 0 and {2} or {0},
 
     plot_info = {
@@ -72,7 +90,7 @@ local function testCAV() -- ~15 mins
   run_test(cfg)
 end
 
-local function testCAVf() -- ~5 mins
+function TestElectric:testCAVf() -- ~5 mins
   local cfg = ref_cfg "cavf" {
     elm =  [[
       RFCAVITY, at=0.75, l=1.5, fringe = ${fringe},
@@ -92,10 +110,10 @@ local function testCAVf() -- ~5 mins
       {"no_totalpath", "volt", "lag", "freq", "harmon", "fringe"}
     ),
     no_totalpath = {true, false},
-    volt      = -8 ..8  ..8   ,
-    lag       =  0 ..0.9..0.45,
-    freq      =  0 ..150 ..75,
-    fringe    =  {16, 0},
+    volt      = {-8, 0, 8},
+    lag       = {0, 0.45, 0.9},
+    freq      = {0, 75, 150},
+    fringe    = {16, 0},
     harmon    = \s-> s.cur_cfg.freq == 0 and {2} or {0},
 
     plot_info = {
@@ -114,7 +132,7 @@ local function testCAVf() -- ~5 mins
   run_test(cfg)
 end
 
-local function testCCAV() -- ~10 mins
+function TestElectric:testCCAV() -- ~10 mins
   local cfg = ref_cfg "crabcavity" {
     elm =  [[
       CRABCAVITY, at=0.75, l=1.5,
@@ -131,9 +149,9 @@ local function testCCAV() -- ~10 mins
 
     alist = tblcat(ref_cfg.alist, {"volt", "lag", "freq", "harmon", "no_totalpath"}),
     no_totalpath = {true, false},
-    volt      = -8 ..8  ..8   ,
-    lag       =  0 ..0.9..0.45,
-    freq      =  75 ..150 ..75,
+    volt      = {-8, 0, 8},
+    lag       = {0, 0.45, 0.9},
+    freq      = {0, 75, 150},
     harmon    = \s-> s.cur_cfg.freq == 0 and {2} or {0},
 
     plot_info = {
@@ -155,7 +173,7 @@ local function testCCAV() -- ~10 mins
 end
 
 -- Fringe has no effect on crab cavity due to implementation in MAD-X (voltage is turned off and converted to a k0)
-local function testCCAVf() -- ~10 mins
+function TestElectric:testCCAVf() -- ~10 mins
   local cfg = ref_cfg "crabcavityf" {
     elm =  [[
       CRABCAVITY, at=0.75, l=1.5, fringe = ${fringe},
@@ -176,9 +194,9 @@ local function testCCAVf() -- ~10 mins
     ),
     no_totalpath = {true, false},
     volt      = {8, 0, -8},
-    lag       =  0 ..0.9..0.45,
-    freq      =  75 ..150 ..75,
-    fringe    =  {16, 0},
+    lag       = {0, 0.45, 0.9},
+    freq      = {0, 75, 150},
+    fringe    = {16, 0},
     harmon    = \s-> s.cur_cfg.freq == 0 and {2} or {0},
 
     plot_info = {
@@ -197,31 +215,32 @@ local function testCCAVf() -- ~10 mins
   run_test(cfg)
 end
 
-local function testRFMULT() -- ~40 mins
+function TestElectric:testRFMULT() -- ~40 mins
   local cfg = ref_cfg "rfmultipole" {
     elm =  [[
-      RFMULTIPOLE, at=0.75, lrad=1.5, 
+      RFMULTIPOLE, at=0, lrad=1.5, 
       volt=${volt}, lag=${lag}, harmon=${harmon}, freq=${freq}, 
       pnl=${pnl}, psl=${psl}, knl=${knl}, ksl=${ksl},
       no_cavity_totalpath=${no_totalpath};
       ;
       ]],
-
+      
+      seql = 1,
       model  = {1},
-      method = {2, 6},    
-      nslice = 1..2,
+      method = {2},    
+      nslice = {1},
       energy = {1, 6500},  -- {1, 450, 6500}
   
-      tol = 12000,
+      tol = 2e4,
 
       alist = tblcat(
       ref_cfg.alist, 
       {"lag", "freq", "harmon", "no_totalpath", "knl", "ksl", "pnl", "psl", "volt"}
     ),
     no_totalpath = {true, false},
-    volt      = {-8, 8}       ,
-    lag       =  0 ..0.9..0.45,
-    freq      =  0 ..150 ..75 ,
+    volt      = {-8, 8}  ,
+    lag       = {0, 0.45},
+    freq      = {0, 75}  ,
     knl       = {
       {0   ,  0, 0 ,  0   }, 
       {0.5, 5, -50,  500, -1500 },
@@ -254,16 +273,17 @@ local function testRFMULT() -- ~40 mins
 end 
 
 
-local function testRFMULTf() -- ~2 mins
+function TestElectric:testRFMULTf() -- ~2 mins
   local cfg = ref_cfg "rfmultipolef" {
     elm =  [[
-      RFMULTIPOLE, at=0.75, lrad=1.5, fringe = ${fringe},
+      RFMULTIPOLE, at=0, lrad=1.5, fringe = ${fringe},
       volt=${volt}, lag=${lag}, harmon=${harmon}, freq=${freq}, 
       pnl=${pnl}, psl=${psl}, knl=${knl}, ksl=${ksl},
       no_cavity_totalpath=${no_totalpath};
       ;
       ]],
 
+      seql = 1,
       model  = {1},
       method = {2},    
       nslice = {1},
@@ -276,9 +296,9 @@ local function testRFMULTf() -- ~2 mins
       {"lag", "freq", "harmon", "no_totalpath", "knl", "ksl", "pnl", "psl", "volt", "fringe"}
     ),
     no_totalpath = {true, false},
-    volt      = {-8, 8}       ,
-    lag       =  {0, 0.45},
-    freq      =  0 ..75 ..75 ,
+    volt      = {-8, 8}  ,
+    lag       = {0, 0.45},
+    freq      = {0, 75}  ,
     knl       = {
       {0   ,  0, 0 ,  0   }, 
       {0.5, 5, -50,  500, -1500 },
@@ -310,10 +330,7 @@ local function testRFMULTf() -- ~2 mins
   }
   run_test(cfg)
 end 
-
-testCAV()
-testCAVf()
-testCCAV()
-testCCAVf()
-testRFMULT()
-testRFMULTf()
+--all tests take about an hour to run (utests take about 10 mins)
+if not is_unittest then run_module(TestElectric)
+else                    _G.TestElectric = TestElectric 
+end

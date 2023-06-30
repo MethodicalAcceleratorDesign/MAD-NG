@@ -3,15 +3,20 @@ local mtable, object                                      in MAD
 local openfile, fileexists, tblcat, strinter                     in MAD.utility
 local max                                                        in math         
 local is_table                                                   in MAD.typeid
+local assertTrue                                                 in MAD.utest
 
 package.path = package.path .. ";../tools/?.mad"
 local get_diff, save_results, gen_cfg, in_dir, out_dir, plt_dir,
       plot_trk_res, get_prev_res, prnt_results, add_trk_gen_cols,
-      show_res, X0s, ptc_strs, create_madx_seq, get_last_ptc_map in require "track-tool"
+      show_res, X0s, ptc_strs, create_madx_seq, get_last_ptc_map, 
+      args_to_cfg                                                in require "track-tool"
 
 local create_dif = require "madl_dbgmap".cmpmdump
 
-local coord_str, test_ctx, madx_script in ptc_strs
+local coord_str, seq_ctx, madx_script in ptc_strs
+
+local utest_dir  = \s -> 'utests/' ..(s or '')
+os.execute("mkdir -p "..utest_dir()) -- Create utest dir if it doesn't exist
 
 local ref_file = openfile(in_dir("ref.madx"), "r")
 local madx_ref = ref_file:read("*a")
@@ -29,19 +34,37 @@ local function do_trck(cfg)
   -- Create element sequence w/ current cfg context
   create_madx_seq(cfg)
 
-  -- Run MAD-X-PTC
-  assert(os.execute(
-    '../madx64 '.. in_dir(cfg.name .. "_ref.madx") 
-    ..' >' .. out_dir(cfg.name .. "_p.txt")
-  ))
+  if not cfg.do_utest then -- Unit test already has results
+    -- Run MAD-X-PTC
+    assert(os.execute(
+      '../madx64 '.. in_dir(cfg.name .. "_ref.madx") 
+      ..' >' .. out_dir(cfg.name .. "_p.txt")
+    ))
+  end
   MADX.elm = nil -- Remove element so that next test can be run with new values
 
   -- Run MAD-NG track
   local _, mflw = mad_file()
 
   -- Grab PTC last map from out file and get diff with mflw[1]
-  local ptc_res = get_last_ptc_map(out_dir(cfg.name .. "_p.txt")):fromptc()
+  local ptc_res
+  if cfg.do_utest then 
+    ptc_res = dum:read(cfg.utest_reffile)
+  else
+    ptc_res = get_last_ptc_map(out_dir(cfg.name .. "_p.txt")):fromptc()
+  end
+  if cfg.gen_utest then 
+    ptc_res:write(cfg.utest_reffile, tostring(cfg.cur_cfg.cfgid))
+  end
   return get_diff(mflw[1], ptc_res, cfg.order)
+end
+
+local function chk_tol(res, tol, order)
+  for i = 1, order+1 do
+    local order_tol = is_table(tol) and tol[i] or tol
+    if res["order"..i-1.."_eps"] > order_tol then return false end
+  end
+  return true
 end
 
 local function run_cfg (cfg, results)
@@ -50,10 +73,9 @@ local function run_cfg (cfg, results)
 
   save_results(cfg, res, results)
   prnt_results(cfg, res)
-  if not cfg.dodbg then return end-- If debug mode is on, stop when max dif is greater than tol
-  for i = 1, cfg.order+1 do
-    local tol = is_table(cfg.tol) and cfg.tol[i] or cfg.tol
-    if res["order"..i-1.."_eps"] > tol then
+  if not (cfg.dodbg or cfg.do_utest) then return end
+  if cfg.dodbg then 
+    if not chk_tol(res, cfg.tol, cfg.order) then
       io.write("Max dif greater than tolerance, stopping...\n")
       -- Run mad in debug mode and set the program to stop
       create_madx_seq(cfg {debug = 6})
@@ -64,13 +86,20 @@ local function run_cfg (cfg, results)
       )
       create_dif({nam=out_dir(cfg.name)})
       cfg.stop = true
-      return
+      return -- If debug mode is on, stop when max dif is greater than tol 
     end
+  end
+  if cfg.do_utest then
+    assertTrue(chk_tol(res, cfg.tol, cfg.order), MAD.tostring(res))
   end
 end
 
 -- Run test -------------------------------------------------------------------o
 local function run_test(cfg)    
+  args_to_cfg(cfg) -- Convert user terminal arguments to cfg
+  if cfg.do_utest == true and cfg.gen_utest == true then
+    return print("Cannot run test and generate test at the same time")
+  end
   -- If the user does not want to run the test, 
   -- just show results from previous run
   if not cfg.dorun then 
@@ -79,6 +108,12 @@ local function run_test(cfg)
     if cfg.doprnt then show_res(res_tbl, cfg_tbl, cfg_tbl:colnames(), cfg.tol) end
     if cfg.doplot then plot_trk_res(res_tbl, cfg, plt_dir, cfg_tbl) end
     return 
+  end
+
+  if cfg.gen_utest then
+    cfg.utest_reffile = openfile(utest_dir(cfg.name..".ref"), "w")
+  elseif cfg.do_utest then
+    cfg.utest_reffile = openfile(utest_dir(cfg.name..".ref"), "r")
   end
 
   -- Generate the reference file
@@ -141,6 +176,9 @@ local function run_test(cfg)
     plot_trk_res(results, cfg, plt_dir)
   end
 
+  -- Close the utest file
+  if cfg.gen_utest or cfg.do_utest then cfg.utest_reffile:close() end
+
   -- Cleanup excess files if the program is not stopped mid-test
   if not cfg.stop then  
     os.remove(in_dir( cfg.name .. "_ref.madx"))
@@ -150,5 +188,22 @@ local function run_test(cfg)
     os.remove("fort.18")
   end
 end
+-- Dealing with test-suite ----------------------------------------------------o
+
+local is_unittest = MAD.env.arg[1] ~= "-test"
+-- Either runs all the tests in a module, or selects based on user input.
+local function run_module (ftbl)
+  if MAD.env.arg[2] ~= "-select" then  -- The user has no selection so run all
+    for k, f in pairs(ftbl) do if k:lower() ~= "setup" then f() end end
+  else
+    for i, v in ipairs(MAD.env.arg) do if ftbl[v] then ftbl[v]() end end 
+  end
+  return true
+end
 -------------------------------------------------------------------------------o
-return { run_test = run_test }
+
+return { 
+  run_test      = run_test   ,
+  is_unittest   = is_unittest,
+  run_module    = run_module ,
+}
