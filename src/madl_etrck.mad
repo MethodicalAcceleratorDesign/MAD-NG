@@ -99,6 +99,61 @@ local xrotation, yrotation, srotation, translate,
 
 -- dynamic maps in C ----------------------------------------------------------o
 
+local ffi = require 'ffi'
+
+ffi.cdef [[
+typedef  num_t  par6_t[6];
+typedef tpsa_t *map6_t[6];
+
+enum { nmul_max=22, snm_max=(nmul_max+1)*(nmul_max+2)/2 };
+
+struct mflw_ {
+  // element data
+  num_t el, eld, lrad;
+  num_t eh, ang, mang;
+
+  // beam
+  num_t pc, beta, betgam;
+  int charge;
+
+  // directions
+  int edir, sdir, tdir, T;
+
+  // solenoid
+  num_t ks, ksi;
+
+  // esptum, rfcav
+  num_t volt, freq, lag, nbsl;
+
+  // multipoles
+  int   nmul;
+  num_t knl[nmul_max];
+  num_t ksl[nmul_max];
+
+  // curved multipoles
+  int   snm;
+  num_t bfx[snm_max];
+  num_t bfy[snm_max];
+
+  // particles/damaps
+  int    npar;
+  par6_t *par;
+  map6_t *map;
+
+  // patches
+  num_t dx,   dy,   ds;
+  num_t dthe, dphi, dpsi;
+  num_t tlt;
+
+  // misalign
+  struct {
+    bool  rot, trn;
+    num_t dx,   dy,   ds;
+    num_t dthe, dphi, dpsi;
+  } algn;
+};
+]]
+
 local map = {
   r = {
     strex_drift  = _C.mad_trk_strex_drift_r ,
@@ -454,14 +509,14 @@ local function track_sbend (elm, m, e1_, e2_)
 end
 
 local function track_rbend (elm, m)
-  local angle, e1, e2, true_rbend, truerbend, ptcrbend in elm
+  local angle, e1, e2, true_rbend in elm
 
   m.mang = 0
-  if not (true_rbend or truerbend or ptcrbend) then                           -- checked
+  if not true_rbend then                                                      -- checked
     return track_sbend(elm, m, e1+angle/2, e2+angle/2)
   end
 
-  get_mult(elm, m, 3)                                                         -- unchecked
+  get_mult(elm, m, 3)                                                         -- checked
 
   local ds, tdir, nmul, knl, ksl, ptcmodel in m
   local k0, k0s, k1, k1s, k2, k2s in elm
@@ -470,21 +525,22 @@ local function track_rbend (elm, m)
     errorf("invalid rbend '%s' length=%.4e [m] (>0 expected)", elm.name, ds)
   end
 
+  if is_number(e1) and abs(e1) > twopi then e1 = false end
+  if is_number(e2) and abs(e2) > twopi then e2 = false end
+
   m.eld = ds
   m.elc = arc2cord(ds, angle)
 
-  if not ptcmodel and e1 and e2 
-     or  ptcmodel and (e1==0 and e2==0 or e1~=0 and e2~=0) then
+  if e1 and e2 then                                                           -- Straight
     m.e1, m.e2 = e1+angle/2, e2+angle/2
     m.el = m.elc
-  else                                                                        -- True parallel
-    if not ptcmodel and e1 or ptcmodel and e2==0 then
-      m.e1, m.e2, m.etp_dir = e1, angle - e1, -1
-      m.el = m.elc * cos(angle/2 - e1)
-    else            
-      m.e1, m.e2, m.etp_dir = angle - e2, e2, ptcmodel and -1 or 1            -- dir -> patch side.
-      m.el = m.elc * cos(angle/2 - e2)
-    end
+  elseif e1 then                                                              -- True parallel with exit patch
+    m.e1, m.e2, m.etp_dir = e1, angle - e1, -1
+    m.el = m.elc * cos(angle/2 - e1)
+  elseif e2 then                                                              -- True parallel with entry patch
+    m.e1, m.e2, m.etp_dir = angle - e2, e2,  1
+    m.el = m.elc * cos(angle/2 - e2)
+  else errorf("True parallel rbend '%s' must set e1 or e2", elm.name)
   end
 
   local l = abs(m.el)
