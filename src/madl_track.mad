@@ -54,6 +54,8 @@ local io, type, setmetatable, assert =
 
 require 'madl_etrck'
 
+local ffi = require 'ffi'
+
 -- helper ---------------------------------------------------------------------o
 
 local function mshow (mflw)
@@ -615,6 +617,40 @@ local function make_mflow (self)
     bfy={[0]=0},             -- current subelement curved field y coefficients
   }, {__index=mflw})
 
+  -- prepare cflw for C/C++ maps
+  if self.cmap then
+    mflw.cmap = damo > 0 and 'r' or 't'
+    mflw.cflw = ffi.new 'mflw_t[1]'
+
+    local npar, cflw in mflw
+    cflw.npar = npar
+    clfw.sdir = sdir
+    clfw.edir = edir
+    clfw.tdir = tdir
+    clfw.T    = T
+
+    if damo > 0 then
+      mflw.map6 = ffi.new('map6_t[?]', npar) -- hook first
+      cflw.map  = mflw.map6
+      for i=1,npar do
+        assert(is_damap(mflw[i]), "cmap: invalid mix of damaps and particles")
+        cflw.map[i-1] = mflw[i].__ta
+      end
+    else
+      mflw.par6 = ffi.new('par6_t[?]', npar) -- hook first
+      cflw.par  = mflw.par6
+      for i=1,npar do
+        assert(not is_damap(mflw[i]), "cmap: invalid mix of damaps and particles")
+        cflw.par[i-1][0] = mflw[i].x
+        cflw.par[i-1][1] = mflw[i].px
+        cflw.par[i-1][2] = mflw[i].y
+        cflw.par[i-1][3] = mflw[i].py
+        cflw.par[i-1][4] = mflw[i].t
+        cflw.par[i-1][5] = mflw[i].pt
+      end
+    end
+  end
+
   return mflw
 end
 
@@ -701,6 +737,7 @@ local track = command 'track' {
   frngmax=2,        -- maximum multipole fringe field (default quad)      (mflw)
   radiate=false,    -- radiate at slices "damp", "quantum", "photon"      (mflw)
   totalpath=false,  -- variable 't' is the totalpath                      (mflw)
+  cmap=false,       -- use C/C++ maps when available                      (mflw)
 
   save=true,        -- create mtable and save results (default atsave)    (mtbl)
   aper=true,        -- check for aperture (default atsave)                (mtbl)
@@ -729,7 +766,7 @@ local track = command 'track' {
     'sequence', 'beam', 'range', 'dir', 's0', 'X0', 'O0', 'deltap',
     'nturn', 'nstep', 'mapdef', 'method', 'model', 'secnmul', 'ptcmodel',
     'implicit', 'misalign', 'aperture', 'fringe', 'frngmax', 'radiate', 'totalpath',
-    'save', 'aper', 'title', 'observe', 'savemap', 'info', 'debug', 'usrdef',
+    'cmap', 'save', 'aper', 'title', 'observe', 'savemap', 'info', 'debug', 'usrdef',
     noeval = {'nslice', 'savesel', 'apersel',
               'atentry', 'atslice', 'atexit', 'atsave', 'ataper', 'atdebug'},
   }
