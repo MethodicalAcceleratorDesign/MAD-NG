@@ -34,7 +34,7 @@ typedef tpsa_t *map6_t[6];
 
 enum { nmul_max=22, snm_max=(nmul_max+1)*(nmul_max+2)/2 };
 
-struct mflw_ {
+struct mflw_ { // must be identical to def in madl_etrck.mad !!
   // element data
   num_t el, eld, lrad;
   num_t eh, ang, mang;
@@ -46,16 +46,21 @@ struct mflw_ {
   // directions
   int edir, sdir, tdir, T;
 
-  // solenoid
-  num_t ks, ksi;
+  // quad, solenoid, multipole, esptum, rfcav
+  num_t k1, ks, ksi, volt, freq, lag, nbsl;
 
-  // esptum, rfcav
-  num_t volt, freq, lag, nbsl;
+  // angles
+  num_t ca, sa, tlt;
 
   // multipoles
   int   nmul;
   num_t knl[nmul_max];
   num_t ksl[nmul_max];
+
+  // multipoles phases
+  int   npha;
+  num_t pnl[nmul_max];
+  num_t psl[nmul_max];
 
   // curved multipoles
   int   snm;
@@ -70,7 +75,6 @@ struct mflw_ {
   // patches
   num_t dx,   dy,   ds;
   num_t dthe, dphi, dpsi;
-  num_t tlt;
 
   // misalign
   struct {
@@ -657,16 +661,15 @@ inline void rbend_thick_new (mflw_t *m, num_t lw, int is)
 template <typename P, typename T=P::T>
 inline void quad_thick (mflw_t *m, num_t lw, int is)
 {                                          (void)is;
-  num_t l  = m->el*lw;
-  num_t k1 = m->knl[2]/m->el*m->edir;
-  num_t w  = 0;
-  int   ws = k1*m->sdir < 0 ? -1 : 1;
+  num_t l = m->el*lw;
+  num_t w = 0;
+  int  ws = m->k1*m->sdir < 0 ? -1 : 1;
 
   num_t cx, sx, mx1, mx2;
   num_t cy, sy, my1, my2;
 
-  if (abs(k1) >= minstr) {
-    w = sqrt(abs(k1))*m->tdir*ws;
+  if (abs(m->k1) >= minstr) {
+    w = sqrt(abs(m->k1))*m->tdir*ws;
     cx = cos (w*l), sx = sin (w*l);
     cy = cosh(w*l), sy = sinh(w*l);
     mx1 = sx/w, mx2 = -sx*w;
@@ -721,11 +724,7 @@ template <typename P, typename T=P::T>
 inline void quad_thicks (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
   num_t l   = m->el*lw;
-  num_t k1  = hypot(m->knl[2], m->ksl[2])/m->el*m->edir;
-  num_t a   = -0.5*atan2(m->ksl[2], m->knl[2]);
-  num_t ca  = cos(a), sa = sin(a);
-
-  num_t w   = sqrt(abs(k1))*m->tdir*m->sdir;
+  num_t w   = sqrt(abs(m->k1))*m->tdir*m->sdir;
   num_t cx  = cos (w*l), sx = sin (w*l);
   num_t cy  = cosh(w*l), sy = sinh(w*l);
   num_t mx1 = sx/w, mx2 = -sx*w;
@@ -738,10 +737,10 @@ inline void quad_thicks (mflw_t *m, num_t lw, int is)
     P p(m,i);
 
     // srotation
-    T rx  = ca*p.x  + sa*p.y;
-    T rpx = ca*p.px + sa*p.py;
-    T ry  = ca*p.y  - sa*p.x;
-    T rpy = ca*p.py - sa*p.px;
+    T rx  = m->ca*p.x  + m->sa*p.y;
+    T rpx = m->ca*p.px + m->sa*p.py;
+    T ry  = m->ca*p.y  - m->sa*p.x;
+    T rpy = m->ca*p.py - m->sa*p.px;
 
     T nx  = rx*cx  + rpx*mx1;
     T npx = rx*mx2 + rpx*cx;
@@ -749,10 +748,10 @@ inline void quad_thicks (mflw_t *m, num_t lw, int is)
     T npy = ry*my2 + rpy*cy;
 
     // srotation^-1
-    p.x   = ca*nx  - sa*ny;
-    p.px  = ca*npx - sa*npy;
-    p.y   = ca*ny  + sa*nx;
-    p.py  = ca*npy + sa*npx;
+    p.x   = m->ca*nx  - m->sa*ny;
+    p.px  = m->ca*npx - m->sa*npy;
+    p.y   = m->ca*ny  + m->sa*nx;
+    p.py  = m->ca*npy + m->sa*npx;
   }
 }
 
@@ -896,26 +895,24 @@ inline void solen_thick (mflw_t *m, num_t lw, int is)
 template <typename P, typename T=P::T>
 inline void esept_thick (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
-  num_t  l = m->el*lw;
-  num_t k1 = m->volt*m->charge/m->pc*m->sdir;
-  num_t ca = cos(m->ang), sa = sin(m->ang);
+  num_t l = m->el*lw;
 
   FOR (i,m->npar) {
     P p(m,i);
 
     // srotation
-    T  nx  = ca*p.x  + sa*p.y;
-    T  npx = ca*p.px + sa*p.py;
-    T  ny  = ca*p.y  - sa*p.x;
-    T  npy = ca*p.py - sa*p.px;
+    T  nx  = m->ca*p.x  + m->sa*p.y;
+    T  npx = m->ca*p.px + m->sa*p.py;
+    T  ny  = m->ca*p.y  - m->sa*p.x;
+    T  npy = m->ca*p.py - m->sa*p.px;
 
     T   e1 = 1/m->beta+p.pt;
-    T   dp = e1 + k1*ny;
+    T   dp = e1 + m->k1*ny;
     T l_pz = invsqrt(sqr(dp) - 1/sqr(m->betgam) - sqr(npx) - sqr(npy), l);
-    T  arg = k1*l_pz;
+    T  arg = m->k1*l_pz;
     T  shx = sinhc(arg)*l_pz;
     T   ch = cosh(arg), sh = sinh(arg);
-    T  chm = sqr(sinh(0.5*arg))*(2/k1);
+    T  chm = sqr(sinh(0.5*arg))*(2/m->k1);
     T   dt = chm*npy + sh *ny  + e1*shx;
     T   yt = ch *ny  + shx*npy + e1*chm;
     T  pyt = ch *npy + sh*dp;
@@ -924,10 +921,10 @@ inline void esept_thick (mflw_t *m, num_t lw, int is)
     ny  = yt, npy = pyt;
 
     // srotation^-1
-    p.x  = ca*nx  - sa*ny;
-    p.px = ca*npx - sa*npy;
-    p.y  = ca*ny  + sa*nx;
-    p.py = ca*npy + sa*npx;
+    p.x  = m->ca*nx  - m->sa*ny;
+    p.px = m->ca*npx - m->sa*npy;
+    p.y  = m->ca*ny  + m->sa*nx;
+    p.py = m->ca*npy + m->sa*npx;
     p.t -= dt + (m->T-1)*l/m->beta;
   }
 }
@@ -1344,14 +1341,16 @@ void mad_trk_spdtest (int n, int k)
 
     .edir=1, .sdir=1, .tdir=1, .T=0,
 
-    .ks=0, .ksi=0,
-    .volt=0, .freq=0, .lag=0, .nbsl=0,
+    .k1=0, .ks=0, .ksi=0, .volt=0, .freq=0, .lag=0, .nbsl=0,
+
+    .ca=0, .sa=0, .tlt=0,
 
     .nmul=1, .knl={1e-7}, .ksl={0},
-    .snm=1,  .bfx={0}   , .bfy={0},
+    .npha=0, .pnl={0}   , .psl={0},
+    .snm=0,  .bfx={0}   , .bfy={0},
     .npar=1, .par=&par1, .map=&map1,
 
-    .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0, .tlt=0,
+    .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0,
 
     .algn = {.rot=false, .trn=false,
     .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0},
