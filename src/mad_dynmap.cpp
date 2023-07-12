@@ -16,6 +16,7 @@
  o-----------------------------------------------------------------------------o
 */
 
+#include <type_traits>
 #include "mad_tpsa.hpp"
 
 extern "C" {
@@ -49,12 +50,9 @@ struct mflw_ { // must be identical to def in madl_etrck.mad !!
   num_t ca, sa, tlt;
 
   // multipoles
-  int   nmul;
+  int   nmul, npha;
   num_t knl[nmul_max];
   num_t ksl[nmul_max];
-
-  // multipoles phases
-  int   npha;
   num_t pnl[nmul_max];
   num_t psl[nmul_max];
 
@@ -121,6 +119,7 @@ const num_t twopi_clight = mad_cst_2PI/mad_cst_CLIGHT;
 template <typename T1, typename T2>
 inline void bxby (const mflw_t *m, const T1 &x, const T1 &y, T2 &bx, T2 &by)
 {
+  bx=0., by=0.;
   if (!m->nmul) return;
 
   bx = m->ksl[m->nmul-1];
@@ -139,12 +138,12 @@ inline void bxby (const mflw_t *m, const T1 &x, const T1 &y, T2 &bx, T2 &by)
 template <typename T1, typename T2>
 inline void bxbyh (const mflw_t *m, const T1 &x, const T1 &y, T2 &bx, T2 &by)
 {
+  bx = 0., by = 0.;
   if (!m->snm) return;
 
   int k = 0;
   T2 btx, bty;
 
-  bx = 0., by = 0.;
   RFOR(i,m->snm) {
     btx = 0., bty = 0.;
 
@@ -372,14 +371,17 @@ inline void strex_drift1 (mflw_t *m, P &p, num_t l, num_t ld)
   p.x += p.px*l_pz;
   p.y += p.py*l_pz;
   p.t -= l_pz*(1/m->beta+p.pt) + (m->T-1)*ld/m->beta;
+
+//if constexpr (std::is_floating_point<T>::value) printf("t=% -.16e\n", p.t);
 }
 
 template <typename P, typename T=P::T>
 inline void strex_drift (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
-  num_t l = m->el*lw, ld = m->eld*lw;
+  num_t l  = m->el*lw;
+  num_t ld = (m->eld ? m->eld : m->el)*lw;
 
-  if (std::abs(l) < minlen) return;
+  if (std::abs(m->el*lw) < minlen) return;
 
   FOR(i,m->npar) {
     P p(m,i);
@@ -394,7 +396,7 @@ inline void strex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
 
   num_t wchg = lw*m->tdir*m->charge;
   num_t dby  = no_k0l ? m->knl[1] : 0;
-  T bx, by; bx = 0., by = 0.;
+  T bx, by;
 
   FOR (i,m->npar) {
     P p(m,i);
@@ -436,7 +438,7 @@ inline void strex_kickhs (mflw_t *m, num_t lw, int is)
   if (!m->nmul == 0 || !m->ksi) return;
 
   num_t wchg = lw*m->tdir*m->charge;
-  T bx, by; bx = 0., by = 0.;
+  T bx, by;
 
   FOR(i,m->npar) {
     P p(m,i);
@@ -658,14 +660,13 @@ template <typename P, typename T=P::T>
 inline void quad_thick (mflw_t *m, num_t lw, int is)
 {                                          (void)is;
   num_t l = m->el*lw;
-  num_t w = 0;
   int  ws = m->k1*m->sdir < 0 ? -1 : 1;
 
   num_t cx, sx, mx1, mx2;
   num_t cy, sy, my1, my2;
 
   if (abs(m->k1) >= minstr) {
-    w = sqrt(abs(m->k1))*m->tdir*ws;
+    num_t w = sqrt(abs(m->k1))*m->tdir*ws;
     cx = cos (w*l), sx = sin (w*l);
     cy = cosh(w*l), sy = sinh(w*l);
     mx1 = sx/w, mx2 = -sx*w;
@@ -702,7 +703,7 @@ inline void quad_kick (mflw_t *m, num_t lw, int is)
 
   if (m->nmul > 0) {
     num_t wchg = lw*m->tdir*m->charge;
-    T bx, by; bx=0., by=0.;
+    T bx, by;
 
     FOR (i,m->npar) {
       P p(m,i);
@@ -760,7 +761,7 @@ inline void quad_kicks (mflw_t *m, num_t lw, int is)
 
   if (m->nmul > 0) {
     num_t wchg = lw*m->tdir*m->charge;
-    T bx, by; bx=0., by=0.;
+    T bx, by;
 
     FOR (i,m->npar) {
       P p(m,i);
@@ -839,7 +840,7 @@ inline void quad_kickh (mflw_t *m, num_t lw, int is)
 
   if (m->nmul > 0) {
     num_t wchg = lw*m->tdir*m->charge;
-    T bx, by; bx=0., by=0.;
+    T bx, by;
 
     FOR (i,m->npar) {
       P p(m,i);
@@ -998,25 +999,25 @@ inline void rfcav_kickn (mflw_t *m, num_t lw, int is)
 
 // --- patches ---
 
-void mad_trk_xrotation_r (mflw_t *m, num_t lw) {
-  xrotation<par_t>(m, lw);
+void mad_trk_xrotation_r (mflw_t *m, num_t lw, num_t phi) {
+  xrotation<par_t>(m, lw, phi);
 }
-void mad_trk_xrotation_t (mflw_t *m, num_t lw) {
-  xrotation<map_t>(m, lw);
-}
-
-void mad_trk_yrotation_r (mflw_t *m, num_t lw) {
-  yrotation<par_t>(m, lw);
-}
-void mad_trk_yrotation_t (mflw_t *m, num_t lw) {
-  yrotation<map_t>(m, lw);
+void mad_trk_xrotation_t (mflw_t *m, num_t lw, num_t phi) {
+  xrotation<map_t>(m, lw, phi);
 }
 
-void mad_trk_srotation_r (mflw_t *m, num_t lw) {
-  srotation<par_t>(m, lw);
+void mad_trk_yrotation_r (mflw_t *m, num_t lw, num_t the) {
+  yrotation<par_t>(m, lw, the);
 }
-void mad_trk_srotation_t (mflw_t *m, num_t lw) {
-  srotation<map_t>(m, lw);
+void mad_trk_yrotation_t (mflw_t *m, num_t lw, num_t the) {
+  yrotation<map_t>(m, lw, the);
+}
+
+void mad_trk_srotation_r (mflw_t *m, num_t lw, num_t psi) {
+  srotation<par_t>(m, lw, psi);
+}
+void mad_trk_srotation_t (mflw_t *m, num_t lw, num_t psi) {
+  srotation<map_t>(m, lw, psi);
 }
 
 void mad_trk_translate_r (mflw_t *m, num_t lw) {
@@ -1362,8 +1363,7 @@ void mad_trk_spdtest (int n, int k)
 
     .ca=0, .sa=0, .tlt=0,
 
-    .nmul=1, .knl={1e-7}, .ksl={0},
-    .npha=0, .pnl={0}   , .psl={0},
+    .nmul=1, .npha=0, .knl={1e-7}, .ksl={0}, .pnl={0}, .psl={0},
     .snm=0,  .bfx={0}   , .bfy={0},
     .npar=1, .par=pars  , .map=maps,
 
