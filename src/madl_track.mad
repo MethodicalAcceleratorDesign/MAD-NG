@@ -238,6 +238,68 @@ local function change_si (mflw, sequ, range_, nturn_, dir_)
   return mflw
 end
 
+-- track cflow ----------------------------------------------------------------o
+
+local function make_cflow (mflw)
+  if not mflw.cmap then return mflw end
+
+  mflw.cmap = mflw.damo > 0 and 't' or 'r'
+  mflw.cflw = ffi.new 'mflw_t[1]'
+  mflw.cflw = mflw.cflw[0]
+
+  local npar, cflw, beam in mflw
+  cflw.npar = mflw.npar
+  cflw.sdir = mflw.sdir
+  cflw.edir = mflw.edir
+  cflw.tdir = mflw.tdir
+  cflw.T    = mflw.T
+
+  cflw.beta   = beam.beta
+  cflw.pc     = beam.pc
+  cflw.betgam = beam.betgam
+  cflw.charge = beam.charge
+
+  if mflw.damo > 0 then
+    mflw.cmap6 = ffi.new('tpsa_t**[?]', npar) -- hook first
+    cflw.map   = mflw.cmap6
+    for i=1,npar do
+      assert(is_damap(mflw[i]), "cmap: invalid mix of damaps and particles")
+      cflw.map[i-1] = mflw[i].__ta
+    end
+  else
+    mflw.cpars = ffi.new('num_t [?]', npar*6) -- hook first
+    mflw.cpar6 = ffi.new('num_t*[?]', npar  ) -- hook first
+    cflw.par   = mflw.cpar6
+    for i=1,npar do
+      assert(is_number(mflw[i].x), "cmap: invalid mix of damaps and particles")
+      cflw.par[i-1] = mflw.cpars[(i-1)*6]
+      cflw.par[i-1][0] = mflw[i].x
+      cflw.par[i-1][1] = mflw[i].px
+      cflw.par[i-1][2] = mflw[i].y
+      cflw.par[i-1][3] = mflw[i].py
+      cflw.par[i-1][4] = mflw[i].t
+      cflw.par[i-1][5] = mflw[i].pt
+    end
+  end
+
+  return mflw
+end
+
+local function copy_cflow (mflw)
+  if mflw.cmap ~= 'r' then return end
+
+  local npar, cflw in mflw
+
+  for i=1,npar do
+    mflw[i].x  = cflw.par[i-1][0]
+    mflw[i].px = cflw.par[i-1][1]
+    mflw[i].y  = cflw.par[i-1][2]
+    mflw[i].py = cflw.par[i-1][3]
+    mflw[i].t  = cflw.par[i-1][4]
+    mflw[i].pt = cflw.par[i-1][5]
+  end
+end
+
 -- track mflow ----------------------------------------------------------------o
 
 local modint = {DKD=true, TKT=true}
@@ -623,47 +685,7 @@ local function make_mflow (self)
   }, {__index=mflw})
 
   -- prepare cflw for C/C++ maps
-  -- TODO: lost particles, subelements, fringes, parametric maps...
-  if mflw.cmap then
-    mflw.cmap = damo > 0 and 'r' or 't'
-    mflw.cflw = ffi.new 'mflw_t[1]'
-    mflw.cflw = mflw.cflw[0]
-
-    local npar, cflw in mflw
-    cflw.npar = mflw.npar
-    cflw.sdir = mflw.sdir
-    cflw.edir = mflw.edir
-    cflw.tdir = mflw.tdir
-    cflw.T    = mflw.T
-
-    cflw.beta   = beam.beta
-    cflw.pc     = beam.pc
-    cflw.betgam = beam.betgam
-    cflw.charge = beam.charge
-
-    if damo > 0 then
-      mflw.map6 = ffi.new('map6_t[?]', npar) -- hook first
-      cflw.map  = mflw.map6
-      for i=1,npar do
-        assert(is_damap(mflw[i]), "cmap: invalid mix of damaps and particles")
-        cflw.map[i-1] = mflw[i].__ta
-      end
-    else
-      mflw.par6 = ffi.new('par6_t[?]', npar) -- hook first
-      cflw.par  = mflw.par6
-      for i=1,npar do
-        assert(is_number(mflw[i].x), "cmap: invalid mix of damaps and particles")
-        cflw.par[i-1][0] = mflw[i].x
-        cflw.par[i-1][1] = mflw[i].px
-        cflw.par[i-1][2] = mflw[i].y
-        cflw.par[i-1][3] = mflw[i].py
-        cflw.par[i-1][4] = mflw[i].t
-        cflw.par[i-1][5] = mflw[i].pt
-      end
-    end
-  end
-
-  return mflw
+  return make_cflow(mflw)
 end
 
 -- track command --------------------------------------------------------------o
@@ -719,6 +741,9 @@ local function exec (self)
 
   -- store number of particles/damaps lost
   if mtbl then mtbl.lost = mflw.tpar - mflw.npar end
+
+  -- copy cflow back to mflow (i.e. track particles)
+  copy_cflow(mflw)
 
   return mtbl, mflw, ie
 end
