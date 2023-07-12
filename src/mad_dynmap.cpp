@@ -28,10 +28,6 @@ extern "C" {
 // --- types ------------------------------------------------------------------o
 
 extern "C" {
-
-typedef  num_t  par6_t[6];
-typedef tpsa_t *map6_t[6];
-
 enum { nmul_max=22, snm_max=(nmul_max+1)*(nmul_max+2)/2 };
 
 struct mflw_ { // must be identical to def in madl_etrck.mad !!
@@ -68,9 +64,9 @@ struct mflw_ { // must be identical to def in madl_etrck.mad !!
   num_t bfy[snm_max];
 
   // particles/damaps
-  int    npar;
-  par6_t *par;
-  map6_t *map;
+  int      npar;
+  num_t   **par;
+  tpsa_t* **map;
 
   // patches
   num_t dx,   dy,   ds;
@@ -1195,6 +1191,24 @@ void mad_trk_rfcav_kickn_t (mflw_t *m, num_t lw, int is) {
   rfcav_kickn<map_t>(m,lw,is);
 }
 
+// --- do nothing ---
+
+void mad_trk_fnil (mflw_t *m, num_t lw, int is) {
+  (void)m, (void)lw, (void)is;
+}
+
+// --- track one thick or thin ------------------------------------------------o
+
+void mad_trk_slice_thk (mflw_t *m, num_t lw, trkfun *thick)
+{
+  thick(m, lw, 0);
+}
+
+void mad_trk_slice_thn (mflw_t *m, num_t lw, trkfun *kick)
+{
+  kick(m, lw, 0);
+}
+
 // --- track one Yoshida slice ------------------------------------------------o
 
 ssz_t yosh2_n   = 1;
@@ -1330,8 +1344,11 @@ void mad_trk_spdtest (int n, int k)
   tpsa t ( "T"); t .set( 0   , 5);
   tpsa pt("PT"); pt.set( 0   , 6);
 
-  par6_t par1 = { x[0], px[0], y[0], py[0], t[0], pt[0] };
-  map6_t map1 = { x.ptr(), px.ptr(), y.ptr(), py.ptr(), t.ptr(), pt.ptr() };
+  num_t     par[] = { x[0], px[0], y[0], py[0], t[0], pt[0] };
+  tpsa_t*   map[] = { x.ptr(), px.ptr(), y.ptr(), py.ptr(), t.ptr(), pt.ptr() };
+
+  num_t   *pars[] = {par};
+  tpsa_t* *maps[] = {map};
 
   struct mflw_ m = {
     .el=1, .eld=1, .lrad=0,
@@ -1348,7 +1365,7 @@ void mad_trk_spdtest (int n, int k)
     .nmul=1, .knl={1e-7}, .ksl={0},
     .npha=0, .pnl={0}   , .psl={0},
     .snm=0,  .bfx={0}   , .bfy={0},
-    .npar=1, .par=&par1, .map=&map1,
+    .npar=1, .par=pars  , .map=maps,
 
     .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0,
 
