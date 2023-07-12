@@ -34,7 +34,7 @@ Notes about directions and quantities:
 local element                in MAD
 local fnil, bind3rd          in MAD.gfunc
 local errorf                 in MAD.utility
-local minlen, minang         in MAD.constant
+local minlen, minang, twopi  in MAD.constant
 local is_implicit            in element.drift
 local arc2cord, arc2len      in MAD.gmath
 local abs, sin, cos          in math
@@ -95,12 +95,11 @@ end
 
 local function trackelm (elm, m, inter, thick, thin, fringe)
   local sdir, atentry, atexit in m
-  local algn = get_algn(elm, m)
-  local tlt  = elm.tilt*m.tdir
+  local tlt  = elm.tilt*m.tdir  ; m.tlt  = tlt
+  local algn = get_algn(elm, m) ; m.algn = algn
   local mis  = algn and misalign or fnil
   local rot  = abs(tlt) >= minang and srotation or fnil
   local fng  = fringe or fnil
-  m.tlt, m.algn = tlt, algn
 
   atentry(elm, m,  sdir, -1)
   mis    (elm, m,  sdir)
@@ -119,12 +118,12 @@ end
 
 local function tracksub (elm, m, inter, thick, thin, fringe)
   local eidx, sdir, atentry, atexit, __sdat in m
-  local algn = get_algn(elm, m)
-  local tlt  = elm.tilt*m.tdir
+  local tlt  = elm.tilt*m.tdir  ; m.tlt  = tlt
+  local algn = get_algn(elm, m) ; m.algn = algn
   local mis  = algn and misalign or fnil
   local rot  = abs(tlt) >= minang and srotation or fnil
   local fng  = fringe or fnil
-  m.tlt, m.algn, m.eidx = tlt, algn, nil
+  m.eidx = nil
 
   if not eidx then
     errorf("invalid subelement survey %s (contain subelements)", elm.name)
@@ -270,27 +269,31 @@ end
 local fng_e  = \e, m, s -> yrotation(e, m, -0.5)
 
 local function track_rbend (elm, m)
-  local fng = nil -- default: curved rbend aka sbend with parallel pole faces
-
   m.mang = 0
+  if not elm.true_rbend then
+    track_thick(elm, m, nil) ; m.mang=nil ; return
+  end
 
-  if elm.true_rbend then
-    local e1, e2, angle in elm
-    m.elc = arc2cord(m.ds, angle)
-    if e1 and e2 then -- MAD-like wedge rbend
-      m.el = m.elc
-      fng = fng_e
-    else              -- true parallel rbend
-      if e1 then
-        m.e1, m.e2 = e1, angle - e1
-        m.el = m.elc * cos(angle/2 - e1)
-        fng = fng_e1
-      else
-        m.e1, m.e2 = angle - e2, e2
-        m.el = m.elc * cos(angle/2 - e2)
-        fng = fng_e2
-      end
-    end
+  local e1, e2, angle in elm
+  local fng
+
+  if is_number(e1) and abs(e1) > twopi then e1 = false end
+  if is_number(e2) and abs(e2) > twopi then e2 = false end
+
+  m.elc = arc2cord(m.ds, angle)
+
+  if e1 and e2 then                                                           -- Straight
+    m.el = m.elc
+    fng = fng_e
+  elseif e1 then                                                              -- True parallel with exit patch
+    m.e1, m.e2 = e1, angle - e1
+    m.el = m.elc * cos(angle/2 - e1)
+    fng = fng_e1
+  elseif e2 then                                                              -- True parallel with entry patch
+    m.e1, m.e2 = angle - e2, e2
+    m.el = m.elc * cos(angle/2 - e2)
+    fng = fng_e2
+  else errorf("True parallel rbend '%s' must set e1 or e2", elm.name)
   end
 
   track_thick(elm, m, fng)

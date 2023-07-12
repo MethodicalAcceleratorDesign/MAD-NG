@@ -32,7 +32,7 @@ Notes about directions and quantities:
 -- locals ---------------------------------------------------------------------o
 
 local element, damap, symint, option, warn, _C                  in MAD
-
+local is_number                                                 in MAD.typeid
 local fnil, bind3rd                                             in MAD.gfunc
 local fact, arc2cord, sqrt, sin, cos, atan2                     in MAD.gmath
 local errorf                                                    in MAD.utility
@@ -99,86 +99,166 @@ local xrotation, yrotation, srotation, translate,
 
 -- dynamic maps in C ----------------------------------------------------------o
 
+local ffi = require 'ffi'
+
+ffi.cdef [[
+enum { nmul_max=22, snm_max=(nmul_max+1)*(nmul_max+2)/2 };
+
+struct mflw_ { // must be identical to def in mad_dynmap.cpp !!
+  // element data
+  num_t el, eld, lrad;
+  num_t eh, ang, mang;
+
+  // beam
+  num_t pc, beta, betgam;
+  int charge;
+
+  // directions
+  int edir, sdir, tdir, T;
+
+  // quad, solenoid, multipole, esptum, rfcav
+  num_t k1, ks, ksi, volt, freq, lag, nbsl;
+
+  // angles
+  num_t ca, sa, tlt;
+
+  // multipoles
+  int   nmul;
+  num_t knl[nmul_max];
+  num_t ksl[nmul_max];
+
+  // multipoles phases
+  int   npha;
+  num_t pnl[nmul_max];
+  num_t psl[nmul_max];
+
+  // curved multipoles
+  int   snm;
+  num_t bfx[snm_max];
+  num_t bfy[snm_max];
+
+  // particles/damaps
+  int      npar;
+  num_t   **par;
+  tpsa_t* **map;
+
+  // patches
+  num_t dx,   dy,   ds;
+  num_t dthe, dphi, dpsi;
+
+  // misalign
+  struct {
+    bool  rot, trn;
+    num_t dx,   dy,   ds;
+    num_t dthe, dphi, dpsi;
+  } algn;
+};
+]]
+
 local map = {
   r = {
-    strex_drift  = _C.mad_trk_strex_drift_r ,
-    strex_kick   = _C.mad_trk_strex_kick_r  ,
-    strex_kickhs = _C.mad_trk_strex_kickhs_r,
-    strex_fringe =            strex_fringe  ,
-    curex_drift  = _C.mad_trk_curex_drift_r ,
-    curex_kick   = _C.mad_trk_curex_kick_r  ,
-    curex_fringe =            curex_fringe  ,
-    sbend_thick  = _C.mad_trk_sbend_thick_r ,
-    sbend_kick   = _C.mad_trk_sbend_kick_r  ,
-    dipeg_fringe =            dipeg_fringe  ,
-    rbend_thick  = _C.mad_trk_rbend_thick_r ,
-    rbend_kick   = _C.mad_trk_rbend_kick_r  ,
-    quad_thick   = _C.mad_trk_quad_thick_r  ,
-    quad_thicks  = _C.mad_trk_quad_thicks_r ,
-    quad_thickh  = _C.mad_trk_quad_thickh_r ,
-    quad_kick    = _C.mad_trk_quad_kick_r   ,
-    quad_kicks   = _C.mad_trk_quad_kicks_r  ,
-    quad_kickh   = _C.mad_trk_quad_kickh_r  ,
-    solen_thick  = _C.mad_trk_solen_thick_r ,
-    solen_fringe =            solen_fringe  ,
-    rfcav_kick   = _C.mad_trk_rfcav_kick_r  ,
-    rfcav_kickn  = _C.mad_trk_rfcav_kickn_r ,
-    rfcav_fringe =            rfcav_fringe  ,
-    esept_thick  = _C.mad_trk_esept_thick_r ,
-    nllens_kick  =            nllens_kick   ,
-    bbeam_kick   =            bbeam_kick    ,
-    bbeam_kick6D =            bbeam_kick6D  ,
-    genm_thick   =            genm_thick    ,
-    xrotation    = _C.mad_trk_xrotation_r   ,
-    yrotation    = _C.mad_trk_yrotation_r   ,
-    srotation    = _C.mad_trk_srotation_r   ,
-    translate    = _C.mad_trk_translate_r   ,
-    changeref    = _C.mad_trk_changeref_r   ,
-    changedir    =            changedir     ,
-    changenrj    =            changenrj     ,
-    misalign     = _C.mad_trk_misalign_r    ,
+    [strex_drift ] = _C.mad_trk_strex_drift_r ,
+    [strex_kick  ] = _C.mad_trk_strex_kick_r  ,
+    [strex_kickhs] = _C.mad_trk_strex_kickhs_r,
+    [strex_fringe] =            strex_fringe  ,
+    [curex_drift ] = _C.mad_trk_curex_drift_r ,
+    [curex_kick  ] = _C.mad_trk_curex_kick_r  ,
+    [curex_fringe] =            curex_fringe  ,
+    [sbend_thick ] = _C.mad_trk_sbend_thick_r ,
+    [sbend_kick  ] = _C.mad_trk_sbend_kick_r  ,
+    [dipeg_fringe] =            dipeg_fringe  ,
+    [rbend_thick ] = _C.mad_trk_rbend_thick_r ,
+    [rbend_kick  ] = _C.mad_trk_rbend_kick_r  ,
+    [quad_thick  ] = _C.mad_trk_quad_thick_r  ,
+    [quad_thicks ] = _C.mad_trk_quad_thicks_r ,
+    [quad_thickh ] = _C.mad_trk_quad_thickh_r ,
+    [quad_kick   ] = _C.mad_trk_quad_kick_r   ,
+    [quad_kicks  ] = _C.mad_trk_quad_kicks_r  ,
+    [quad_kickh  ] = _C.mad_trk_quad_kickh_r  ,
+    [solen_thick ] = _C.mad_trk_solen_thick_r ,
+    [solen_fringe] =            solen_fringe  ,
+    [rfcav_kick  ] = _C.mad_trk_rfcav_kick_r  ,
+    [rfcav_kickn ] = _C.mad_trk_rfcav_kickn_r ,
+    [rfcav_fringe] =            rfcav_fringe  ,
+    [esept_thick ] = _C.mad_trk_esept_thick_r ,
+    [nllens_kick ] =            nllens_kick   ,
+    [bbeam_kick  ] =            bbeam_kick    ,
+    [bbeam_kick6D] =            bbeam_kick6D  ,
+    [genm_thick  ] =            genm_thick    ,
+    [xrotation   ] = _C.mad_trk_xrotation_r   ,
+    [yrotation   ] = _C.mad_trk_yrotation_r   ,
+    [srotation   ] = _C.mad_trk_srotation_r   ,
+    [translate   ] = _C.mad_trk_translate_r   ,
+    [changeref   ] = _C.mad_trk_changeref_r   ,
+    [changedir   ] =            changedir     ,
+    [changenrj   ] =            changenrj     ,
+    [misalign    ] = _C.mad_trk_misalign_r    ,
+    [fnil        ] = _C.mad_trk_fnil          ,
   },
   t = {
-    strex_drift  = _C.mad_trk_strex_drift_t ,
-    strex_kick   = _C.mad_trk_strex_kick_t  ,
-    strex_kickhs = _C.mad_trk_strex_kickhs_t,
-    strex_fringe =            strex_fringe  ,
-    curex_drift  = _C.mad_trk_curex_drift_t ,
-    curex_kick   = _C.mad_trk_curex_kick_t  ,
-    curex_fringe =            curex_fringe  ,
-    sbend_thick  = _C.mad_trk_sbend_thick_t ,
-    sbend_kick   = _C.mad_trk_sbend_kick_t  ,
-    dipeg_fringe =            dipeg_fringe  ,
-    rbend_thick  = _C.mad_trk_rbend_thick_t ,
-    rbend_kick   = _C.mad_trk_rbend_kick_t  ,
-    quad_thick   = _C.mad_trk_quad_thick_t  ,
-    quad_thicks  = _C.mad_trk_quad_thicks_t ,
-    quad_thickh  = _C.mad_trk_quad_thickh_t ,
-    quad_kick    = _C.mad_trk_quad_kick_t   ,
-    quad_kicks   = _C.mad_trk_quad_kicks_t  ,
-    quad_kickh   = _C.mad_trk_quad_kickh_t  ,
-    solen_thick  = _C.mad_trk_solen_thick_t ,
-    solen_fringe =            solen_fringe  ,
-    rfcav_kick   = _C.mad_trk_rfcav_kick_t  ,
-    rfcav_kickn  = _C.mad_trk_rfcav_kickn_t ,
-    rfcav_fringe =            rfcav_fringe  ,
-    esept_thick  = _C.mad_trk_esept_thick_t ,
-    nllens_kick  =            nllens_kick   ,
-    bbeam_kick   =            bbeam_kick    ,
-    bbeam_kick6D =            bbeam_kick6D  ,
-    genm_thick   =            genm_thick    ,
-    xrotation    = _C.mad_trk_xrotation_t   ,
-    yrotation    = _C.mad_trk_yrotation_t   ,
-    srotation    = _C.mad_trk_srotation_t   ,
-    translate    = _C.mad_trk_translate_t   ,
-    changeref    = _C.mad_trk_changeref_t   ,
-    changedir    =            changedir     ,
-    changenrj    =            changenrj     ,
-    misalign     = _C.mad_trk_misalign_t    ,
+    [strex_drift ] = _C.mad_trk_strex_drift_t ,
+    [strex_kick  ] = _C.mad_trk_strex_kick_t  ,
+    [strex_kickhs] = _C.mad_trk_strex_kickhs_t,
+    [strex_fringe] =            strex_fringe  ,
+    [curex_drift ] = _C.mad_trk_curex_drift_t ,
+    [curex_kick  ] = _C.mad_trk_curex_kick_t  ,
+    [curex_fringe] =            curex_fringe  ,
+    [sbend_thick ] = _C.mad_trk_sbend_thick_t ,
+    [sbend_kick  ] = _C.mad_trk_sbend_kick_t  ,
+    [dipeg_fringe] =            dipeg_fringe  ,
+    [rbend_thick ] = _C.mad_trk_rbend_thick_t ,
+    [rbend_kick  ] = _C.mad_trk_rbend_kick_t  ,
+    [quad_thick  ] = _C.mad_trk_quad_thick_t  ,
+    [quad_thicks ] = _C.mad_trk_quad_thicks_t ,
+    [quad_thickh ] = _C.mad_trk_quad_thickh_t ,
+    [quad_kick   ] = _C.mad_trk_quad_kick_t   ,
+    [quad_kicks  ] = _C.mad_trk_quad_kicks_t  ,
+    [quad_kickh  ] = _C.mad_trk_quad_kickh_t  ,
+    [solen_thick ] = _C.mad_trk_solen_thick_t ,
+    [solen_fringe] =            solen_fringe  ,
+    [rfcav_kick  ] = _C.mad_trk_rfcav_kick_t  ,
+    [rfcav_kickn ] = _C.mad_trk_rfcav_kickn_t ,
+    [rfcav_fringe] =            rfcav_fringe  ,
+    [esept_thick ] = _C.mad_trk_esept_thick_t ,
+    [nllens_kick ] =            nllens_kick   ,
+    [bbeam_kick  ] =            bbeam_kick    ,
+    [bbeam_kick6D] =            bbeam_kick6D  ,
+    [genm_thick  ] =            genm_thick    ,
+    [xrotation   ] = _C.mad_trk_xrotation_t   ,
+    [yrotation   ] = _C.mad_trk_yrotation_t   ,
+    [srotation   ] = _C.mad_trk_srotation_t   ,
+    [translate   ] = _C.mad_trk_translate_t   ,
+    [changeref   ] = _C.mad_trk_changeref_t   ,
+    [changedir   ] =            changedir     ,
+    [changenrj   ] =            changenrj     ,
+    [misalign    ] = _C.mad_trk_misalign_t    ,
+    [fnil        ] = _C.mad_trk_fnil          ,
   }
 }
 
 -- strengths and phases -------------------------------------------------------o
+
+local function cpy_mult (m)
+  local cflw in m
+  cflw.nmul = m.nmul or 0
+  cflw.npha = m.npha or 0
+  cflw.snm  = m.snm  or 0
+
+  for i=1,cflw.nmul do
+    cflw.knl[i-1] = m.knl[i]
+    cflw.ksl[i-1] = m.ksl[i]
+  end
+
+  for i=1,cflw.npha do
+    cflw.pnl[i-1] = m.pnl[i]
+    cflw.psl[i-1] = m.psl[i]
+  end
+
+  for i=1,cflw.snm do
+    cflw.bfx[i-1] = m.bfx[i]
+    cflw.bfy[i-1] = m.bfy[i]
+  end
+end
 
 local function adj_mult (m)
   local knl, ksl in m
@@ -244,13 +324,48 @@ local function get_algn (e, m)
 
   if not (trn or rot) then return nil end
 
-  return {trn=trn, rot=rot, dx=dx, dy=dy, ds=ds, dthe=dthe, dphi=dphi, dpsi=dpsi}
+  if m.cmap then
+    local cmap = m.cflw
+    cmap.tlt       = m.tlt
+    cmap.algn.trn  = trn
+    cmap.algn.rot  = rot
+    cmap.algn.dx   = dx
+    cmap.algn.dy   = dy
+    cmap.algn.ds   = ds
+    cmap.algn.dthe = dthe
+    cmap.algn.dphi = dphi
+    cmap.algn.dpsi = dpsi
+  else
+    return {trn=trn, rot=rot, dx=dx, dy=dy, ds=ds, dthe=dthe, dphi=dphi, dpsi=dpsi}
+  end
+end
+
+-- helpers --------------------------------------------------------------------o
+
+local function cmisalign (elm, m, dir)
+  if m.cmap then
+    map[m.cmap][misalign](m.cflw, dir)
+  else
+    misalign(elm, m, dir)
+  end
+end
+
+local function crot (tlt, m, dir)
+  if m.cmap then
+    map[m.cmap][srotation](m.cflw, dir, tlt)
+  else
+    srotation(tlt, m, dir)
+  end
 end
 
 -- element tracking -----------------------------------------------------------o
-
-local function trackone (elm, m, inter, thick, thin, fringe)
+local function trackone (elm, m, inter, thick, thin, fringe_)
   local sdir, atentry, atexit in m
+
+  if m.cmap then
+    local cmap = map[m.cmap]
+    thick, thin = cmap[thick], cmap[thin]
+  end
 
   atentry(elm, m,  sdir, -1)
   inter  (elm, m,    1 , thick, thin)
@@ -259,12 +374,16 @@ end
 
 local function trackelm (elm, m, inter, thick, thin, fringe)
   local sdir, atentry, atexit in m
-  local algn = get_algn(elm, m)
-  local tlt  = elm.tilt*m.tdir
-  local mis  = algn and misalign or fnil
-  local rot  = abs(tlt) >= minang and srotation or fnil
+  local tlt  = elm.tilt*m.tdir  ; m.tlt  = tlt
+  local algn = get_algn(elm, m) ; m.algn = algn
+  local mis  = algn and cmisalign or fnil
+  local rot  = abs(tlt) >= minang and crot or fnil
   local fng  = fringe or fnil
-  m.tlt, m.algn = tlt, algn
+
+  if m.cmap then
+    local cmap = map[m.cmap]
+    thick, thin, fringe = cmap[thick], cmap[thin], cmap[fringe]
+  end
 
   atentry(elm, m,  sdir, -1)
   mis    (elm, m,  sdir)
@@ -283,15 +402,20 @@ end
 
 local function tracksub (elm, m, inter, thick, thin, fringe)
   local eidx, sdir, atentry, atexit, __sdat in m
-  local algn = get_algn(elm, m)
-  local tlt  = elm.tilt*m.tdir
-  local mis  = algn and misalign or fnil
-  local rot  = abs(tlt) >= minang and srotation or fnil
+  local tlt  = elm.tilt*m.tdir  ; m.tlt  = tlt
+  local algn = get_algn(elm, m) ; m.algn = algn
+  local mis  = algn and cmisalign or fnil
+  local rot  = abs(tlt) >= minang and crot or fnil
   local fng  = fringe or fnil
-  m.tlt, m.algn, m.eidx = tlt, algn, nil
+  m.eidx = nil
 
   if not eidx then
     errorf("invalid subelement track %s (contain subelements)", elm.name)
+  end
+
+  if m.cmap then
+    local cmap = map[m.cmap]
+    thick, thin, fringe = cmap[thick], cmap[thin], cmap[fringe]
   end
 
   atentry(elm, m, sdir, -1)
@@ -319,7 +443,8 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
   else -- backtrack
     local at, lw = 1
     for i=#elm,1,-1 do
-      at, lw = elm[i].sat, at - elm[i].sat
+      local sat = elm[i].sat - elm[i].l/m.el                                  -- Thick element, therefore at is the exit point (el is weighted by sdir)
+      at, lw = sat, at - sat
       if abs(lw) >= minlen then -- body step
         inter(elm, m, lw, thick, thin)
       end
@@ -358,11 +483,24 @@ end
 
 local function track_marker (elm, m)
   m.el, m.eh, m.nmul = 0, 0, 0
+
+  if m.cmap then
+    m.cflw.el   = 0
+    m.cflw.eh   = 0
+    m.cflw.nmul = 0
+  end
+
   trackone(elm, m, thinonly, fnil, fnil)
 end
 
 local function track_drift (elm, m)
   m.el, m.eh, m.nmul = m.ds, 0, 0
+
+  if m.cmap then
+    m.cflw.el   = m.el
+    m.cflw.eh   = 0
+    m.cflw.nmul = 0
+  end
 
   if is_implicit(elm) then
     local inter = m.implicit and thickonly or driftonly
@@ -379,7 +517,7 @@ local function track_multipole (elm, m)
 
   if m.nmul == 0 and abs(elm.ksi) < minstr then return track_marker(elm, m) end
 
-  local angle, ksi, lrad in elm
+  local ksi, lrad in elm
   local knl, ksl, sdir in m
 
   m.lrad, m.ksi = sdir*lrad, ksi or 0
@@ -387,6 +525,14 @@ local function track_multipole (elm, m)
   local kick = strex_kick
   if abs(knl[1]) + abs(ksl[1]) + abs(m.ksi) >= minstr then
     kick = strex_kickhs
+  end
+
+  if m.cmap then
+    m.cflw.el   = 0
+    m.cflw.eh   = 0
+    m.cflw.lrad = m.lrad
+    m.cflw.ksi  = m.ksi
+    cpy_mult(m)
   end
 
   trackelm(elm, m, thinonly, fnil, kick)
@@ -397,6 +543,12 @@ local function track_bbeam (elm, m)
   if not elm.enabled  then return track_marker(elm, m) end
 
   m.el, m.eh, m.nmul = 0, 0, 0
+
+  if m.cmap then
+    m.cflw.el   = 0
+    m.cflw.eh   = 0
+    m.cflw.nmul = 0
+  end
 
   local kick = elm.bb6D and bbeam_kick6D or bbeam_kick
   trackelm(elm, m, thinonly, fnil, kick)
@@ -448,20 +600,28 @@ local function track_sbend (elm, m, e1_, e2_)
     inter, thick, kick = TKT[method], sbend_thick , sbend_kick
   end
 
+  if m.cmap then
+    m.cflw.eh   = m.eh
+    m.cflw.el   = m.el
+    m.cflw.ang  = m.ang
+    m.cflw.mang = m.mang
+    cpy_mult(m, true)
+  end
+
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, kick, curex_fringe)
   m.snm, m.e1, m.e2, m.ang = nil, nil, nil, nil
 end
 
 local function track_rbend (elm, m)
-  local angle, e1, e2, true_rbend, truerbend, ptcrbend in elm
+  local angle, e1, e2, true_rbend in elm
 
   m.mang = 0
-  if not (true_rbend or truerbend or ptcrbend) then                           -- checked
+  if not true_rbend then                                                      -- checked
     return track_sbend(elm, m, e1+angle/2, e2+angle/2)
   end
 
-  get_mult(elm, m, 3)                                                         -- unchecked
+  get_mult(elm, m, 3)                                                         -- checked
 
   local ds, tdir, nmul, knl, ksl, ptcmodel in m
   local k0, k0s, k1, k1s, k2, k2s in elm
@@ -470,21 +630,22 @@ local function track_rbend (elm, m)
     errorf("invalid rbend '%s' length=%.4e [m] (>0 expected)", elm.name, ds)
   end
 
+  if is_number(e1) and abs(e1) > twopi then e1 = false end
+  if is_number(e2) and abs(e2) > twopi then e2 = false end
+
   m.eld = ds
   m.elc = arc2cord(ds, angle)
 
-  if not ptcmodel and e1 and e2 
-     or  ptcmodel and (e1==0 and e2==0 or e1~=0 and e2~=0) then
+  if e1 and e2 then                                                           -- Straight
     m.e1, m.e2 = e1+angle/2, e2+angle/2
     m.el = m.elc
-  else                                                                        -- True parallel
-    if not ptcmodel and e1 or ptcmodel and e2==0 then
-      m.e1, m.e2, m.etp_dir = e1, angle - e1, -1
-      m.el = m.elc * cos(angle/2 - e1)
-    else            
-      m.e1, m.e2, m.etp_dir = angle - e2, e2, ptcmodel and -1 or 1            -- dir -> patch side.
-      m.el = m.elc * cos(angle/2 - e2)
-    end
+  elseif e1 then                                                              -- True parallel with exit patch
+    m.e1, m.e2, m.etp_dir = e1, angle - e1, -1
+    m.el = m.elc * cos(angle/2 - e1)
+  elseif e2 then                                                              -- True parallel with entry patch
+    m.e1, m.e2, m.etp_dir = angle - e2, e2,  1
+    m.el = m.elc * cos(angle/2 - e2)
+  else errorf("True parallel rbend '%s' must set e1 or e2", elm.name)
   end
 
   local l = abs(m.el)
@@ -508,6 +669,15 @@ local function track_rbend (elm, m)
     inter, thick, kick = TKT[method], rbend_thick, rbend_kick
   end
 
+  if m.cmap then
+    m.cflw.eh   = m.eh
+    m.cflw.el   = m.el
+    m.cflw.eld  = m.eld
+    m.cflw.ang  = m.ang
+    m.cflw.mang = m.mang
+    cpy_mult(m)
+  end
+
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, kick, strex_fringe)
   m.e1, m.e2, m.ang, m.eld, m.elc, m.etp_dir = nil, nil, nil, nil, nil, nil
@@ -526,7 +696,7 @@ local function track_quadrupole (elm, m)
 
   knl[1], ksl[1] = knl[1]+k0*l, ksl[1]+k0s*l
   knl[2], ksl[2] = knl[2]+k1*l, ksl[2]+k1s*l
-  m.el = ds
+  m.el, m.eh = ds, 0
 
   adj_mult(m)
 
@@ -543,14 +713,23 @@ local function track_quadrupole (elm, m)
     inter, thick, kick = DKD[method], strex_drift, strex_kick
   elseif no_k1s and no_ang or no_tlt then       -- normal thick
     m.k1 = knl[2]/ds*edir
-    thick, kick = quad_thick, ptcmodel and quad_kick or quad_kick_ysh
+    thick, kick = quad_thick, ptcmodel and quad_kick_ or quad_kick
   elseif no_ang then                            -- skew thick
     local a = -0.5*atan2(ksl[2], knl[2])
     m.k1, m.ca, m.sa = sqrt(knl[2]^2 + ksl[2]^2)/ds*edir, cos(a), sin(a)
-    thick, kick = quad_thicks, ptcmodel and quad_kicks or quad_kicks_ysh
+    thick, kick = quad_thicks, ptcmodel and quad_kicks_ or quad_kicks
   else                                          -- combined thick            -- unchecked
     m.eh = angle/ds*tdir
-    thick, kick = quad_thickh, ptcmodel and quad_kickh or quad_kickh_ysh
+    thick, kick = quad_thickh, ptcmodel and quad_kickh_ or quad_kickh
+  end
+
+  if m.cmap then
+    m.cflw.el = m.el
+    m.cflw.eh = m.eh
+    m.cflw.k1 = m.k1 or 0
+    m.cflw.ca = m.ca or 0
+    m.cflw.sa = m.sa or 0
+    cpy_mult(m)
   end
 
   local track = #elm == 0 and trackelm or tracksub
@@ -574,7 +753,14 @@ local function track_strexgen (elm, m, ptc_, mth_)
     inter, thick, kick, fringe = DKD[method], strex_drift, strex_kick, strex_fringe
   else
     m.k1 = m.knl[2]/m.ds*m.edir
-    inter, thick, kick, fringe = KMK[method], quad_thick, quad_kick, strex_fringe
+    inter, thick, kick, fringe = KMK[method], quad_thick, quad_kick_, strex_fringe
+  end
+
+  if m.cmap then
+    m.cflw.eh = m.eh
+    m.cflw.el = m.el
+    m.cflw.k1 = m.k1
+    cpy_mult(m)
   end
 
   local track = #elm == 0 and trackelm or tracksub
@@ -717,6 +903,13 @@ local function track_solenoid (elm, m)
     thick, kick, fringe = solen_thick, strex_kick, elm.new_fringe and solen_fringe or strex_fringe
   end
 
+  if m.cmap then
+    m.cflw.el   = m.el
+    m.cflw.eh   = m.eh
+    m.cflw.ks   = m.ks or 0
+    cpy_mult(m)
+  end
+
   local track  = #elm == 0 and trackelm or tracksub
   track(elm, m, DKD[method], thick, kick, fringe)
   m.ks, m.ksi, m.lrad = nil, nil, nil
@@ -750,6 +943,15 @@ local function track_eseptum (elm, m)
     thick = esept_thick
   end
 
+  if m.cmap then
+    m.cflw.el   = m.el
+    m.cflw.eh   = m.eh
+    m.cflw.volt = m.volt or 0
+    m.cflw.ca   = m.ca   or 0
+    m.cflw.sa   = m.sa   or 0
+    cpy_mult(m)
+  end
+
   local inter = m.nmul == 0 and thickonly or KMK[elm.method or m.method]
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, strex_kick, strex_fringe)
@@ -775,11 +977,22 @@ local function track_rfcavgen (elm, m, crab)
     errorf("invalid rfcavity '%s' frequency =%.4e [MHz] (>0 or harmon expected)",
             elm.name, m.freq)
   end
+
   local inter  = l < minlen and thinonly or DKD[elm.method or m.method]
   local kick   = m.nmul+m.nbsl == 0 and rfcav_kick or rfcav_kickn
-
   local fringe = l < minlen and fnil     or rfcav_fringe
-  local track  = #elm == 0  and trackelm or tracksub
+
+  if m.cmap then
+    m.cflw.el   = m.el
+    m.cflw.eh   = m.eh
+    m.cflw.volt = m.volt
+    m.cflw.freq = m.freq
+    m.cflw.lag  = m.lag
+    m.cflw.nbsl = m.nbsl
+    cpy_mult(m)
+  end
+
+  local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, strex_drift, kick, fringe)
   m.volt, m.lag = nil, nil
 end

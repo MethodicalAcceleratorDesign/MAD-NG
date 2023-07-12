@@ -32,6 +32,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cassert>
 #include <memory>
 #include <string>
 #include <vector>
@@ -127,7 +128,7 @@ protected:
   tpsa_base operator=(std::nullptr_t)      = delete;  // nullptr assign
 };
 
-// public class to wrap tpsa_t *without* memory management.
+// public class to wrap tpsa_t* _without_ memory management.
 struct tpsa_ref : tpsa_base<tpsa_ref> {
   explicit tpsa_ref(tpsa_t *a) : t(*a) { TRC("tpsa_t* %p", (void*) a) }
 
@@ -153,7 +154,27 @@ private:
   tpsa_t &t;
 };
 
-// public class handle tpsa_t *with* memory management.
+// public class to wrap tpsa_t*[] _without_ memory management.
+struct tpsa_refs {
+  explicit tpsa_refs(tpsa_t *a[], int na) : n(na), t(a) { TRC("tpsa_t** %p", (void*) a) }
+
+  const tpsa_ref operator[](int i) const { TRC("ref[]") assert(i>=0 && i<n); return tpsa_ref(t[i]); }
+
+private:
+  tpsa_refs()                              = delete;  // final   class
+  tpsa_refs(tpsa_refs&&)                   = delete;  // move    ctor
+  tpsa_refs(const tpsa_refs&)              = delete;  // copy    ctor
+  tpsa_refs(std::nullptr_t)                = delete;  // nullptr ctor
+  tpsa_refs& operator=(tpsa_refs&&)        = delete;  // move    assign
+  tpsa_refs& operator=(const tpsa_refs&)   = delete;  // copy    assign
+  tpsa_refs& operator=(std::nullptr_t)     = delete;  // nullptr assign
+
+private:
+  int      n;
+  tpsa_t **t;
+};
+
+// public class handle tpsa_t* _with_ memory management.
 struct tpsa : tpsa_base<tpsa> {
   explicit tpsa()                : t(mad_tpsa_newd(mad_desc_curr, dflt)) { TRC("dft! %p", (void*)t.get()) }
   explicit tpsa(int mo)          : t(mad_tpsa_newd(mad_desc_curr, mo  )) { TRC("int! %p", (void*)t.get()) }
