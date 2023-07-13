@@ -119,19 +119,16 @@ const num_t twopi_clight = mad_cst_2PI/mad_cst_CLIGHT;
 template <typename T1, typename T2>
 inline void bxby (const mflw_t *m, const T1 &x, const T1 &y, T2 &bx, T2 &by)
 {
-  bx=0., by=0.;
-  if (!m->nmul) return;
-
   bx = m->ksl[m->nmul-1];
   by = m->knl[m->nmul-1];
 
-  if (m->nmul < 2) return;
-
-  T2 byt;
-  RFOR(i,m->nmul-1) {
-    byt = by*x - bx*y + m->knl[i];
-    bx  = by*y + bx*x + m->ksl[i];
-    by  = byt;
+  if (m->nmul > 1) {
+    T2 byt;
+    RFOR(i,m->nmul-1) {
+      byt = by*x - bx*y + m->knl[i];
+      bx  = by*y + bx*x + m->ksl[i];
+      by  = byt;
+    }
   }
 }
 
@@ -139,9 +136,8 @@ template <typename T1, typename T2>
 inline void bxbyh (const mflw_t *m, const T1 &x, const T1 &y, T2 &bx, T2 &by)
 {
   bx = 0., by = 0.;
-  if (!m->snm) return;
 
-  int k = 0;
+  int k = -1;
   T2 btx, bty;
 
   RFOR(i,m->snm) {
@@ -158,14 +154,13 @@ inline void bxbyh (const mflw_t *m, const T1 &x, const T1 &y, T2 &bx, T2 &by)
   }
 
   btx = 0., bty = 0.;
-  RFOR(i,m->snm) {
+  RFOR(i,m->snm) { ++k;
     btx = (btx + m->bfx[k]) * y;
     bty = (bty + m->bfy[k]) * y;
   }
 
-  ++k;
-  bx += btx + m->bfx[k];
-  by += bty + m->bfy[k];
+  bx += btx + m->bfx[k+1];
+  by += bty + m->bfy[k+1];
 }
 
 // --- patches ----------------------------------------------------------------o
@@ -176,7 +171,7 @@ inline void xrotation (mflw_t *m, num_t lw, num_t dphi_=0)
   num_t a = (dphi_ ? dphi_ : m->dphi)*m->tdir*lw;
   if (abs(a) < minang) return;
 
-  num_t sa=sin(a), ca=acos(a), ta=tan(a);
+  num_t sa=sin(a), ca=cos(a), ta=tan(a);
 
   FOR(i,m->npar) {
     P p(m,i);
@@ -199,7 +194,7 @@ inline void yrotation (mflw_t *m, num_t lw, num_t dthe_=0)
   num_t a = -(dthe_ ? dthe_ : m->dthe)*m->tdir*lw;
   if (abs(a) < minang) return;
 
-  num_t sa=sin(a), ca=acos(a), ta=tan(a);
+  num_t sa=sin(a), ca=cos(a), ta=tan(a);
 
   FOR(i,m->npar) {
     P p(m,i);
@@ -222,7 +217,7 @@ inline void srotation (mflw_t *m, num_t lw, num_t dpsi_=0)
   num_t a = (dpsi_ ? dpsi_ : m->dpsi)*m->tdir*lw;
   if (abs(a) < minang) return;
 
-  num_t sa=sin(a), ca=acos(a);
+  num_t sa=sin(a), ca=cos(a);
 
   FOR(i,m->npar) {
     P p(m,i);
@@ -371,8 +366,6 @@ inline void strex_drift1 (mflw_t *m, P &p, num_t l, num_t ld)
   p.x += p.px*l_pz;
   p.y += p.py*l_pz;
   p.t -= l_pz*(1/m->beta+p.pt) + (m->T-1)*ld/m->beta;
-
-//if constexpr (std::is_floating_point<T>::value) printf("t=% -.16e\n", p.t);
 }
 
 template <typename P, typename T=P::T>
@@ -395,7 +388,7 @@ inline void strex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
   if (!m->nmul) return;
 
   num_t wchg = lw*m->tdir*m->charge;
-  num_t dby  = no_k0l ? m->knl[1] : 0;
+  num_t dby  = no_k0l ? m->knl[0] : 0;
   T bx, by;
 
   FOR (i,m->npar) {
@@ -446,20 +439,20 @@ inline void strex_kickhs (mflw_t *m, num_t lw, int is)
 
     if (m->sdir == -1) strex_kicks(m, lw, p, pz);
 
-    if (m->nmul) {
+    if (m->nmul > 0) {
       bxby(m, p.x, p.y, bx, by);
 
       p.px -= wchg*by;
       p.py += wchg*bx;
 
-      if (abs(m->knl[1]) + abs(m->ksl[1]) > minstr) {
-        p.px += wchg* m->knl[1]*pz;
-        p.py -= wchg* m->ksl[1]*pz;
-        p.t  -= wchg*(m->knl[1]*p.x - m->ksl[1]*p.y)*(1/m->beta+p.pt)/pz;
+      if (abs(m->knl[0]) + abs(m->ksl[0]) > minstr) {
+        p.px += wchg* m->knl[0]*pz;
+        p.py -= wchg* m->ksl[0]*pz;
+        p.t  -= wchg*(m->knl[0]*p.x - m->ksl[0]*p.y)*(1/m->beta+p.pt)/pz;
 
         if (m->lrad) {
-          p.px -= lw*sqr(m->knl[1])/m->lrad*p.x;
-          p.py -= lw*sqr(m->ksl[1])/m->lrad*p.y;
+          p.px -= lw*sqr(m->knl[0])/m->lrad*p.x;
+          p.py -= lw*sqr(m->ksl[0])/m->lrad*p.y;
         }
       }
     }
@@ -501,17 +494,18 @@ template <typename P, typename T=P::T>
 inline void curex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
 {                                          (void)is;
   num_t blw = lw*m->charge*m->tdir;
-  T bx, by; bx = 0., by = m->knl[1];
+  T bx, by; bx = 0., by = m->knl[0];
 
   FOR(i,m->npar) {
     P p(m,i);
     T r = 1+m->eh*p.x;
-    bxbyh(m, p.x, p.y, bx, by);
+
+    if (m->snm > 0) bxbyh(m, p.x, p.y, bx, by);
 
     p.px -= blw*by*r;
     p.py += blw*bx*r;
 
-    if (no_k0l) p.px += (blw*m->knl[1])*r;
+    if (no_k0l) p.px += (blw*m->knl[0])*r;
   }
 }
 
@@ -524,8 +518,16 @@ inline void sbend_thick_old (mflw_t *m, num_t lw, int is)
 {                                               (void)is;
   num_t ld  = (m->eld ? m->eld : m->el)*lw;
   num_t ang = m->ang*lw, rho=1/m->eh;
-  num_t k0  = m->knl[1]/m->el*m->tdir, k0q = k0*m->charge;
+  num_t k0  = m->knl[0]/m->el*m->tdir, k0q = k0*m->charge;
   num_t ca  = cos(ang), sa = sin(ang), sa2 = sin(ang/2);
+
+//  if constexpr (!std::is_floating_point<T>::value) {
+//    printf("el=% -.16e, eh=% -.16e, k0=% -.16e\n", m->el, m->eh, k0);
+//    if (abs(k0) > 1e10) {
+//      printf("exiting!\n");
+//      exit(-1);
+//    }
+//  }
 
   FOR(i,m->npar) {
     P p(m,i);
@@ -555,7 +557,7 @@ inline void sbend_thick_new (mflw_t *m, num_t lw, int is)
 {                                               (void)is;
   num_t ld  = (m->eld ? m->eld : m->el)*lw;
   num_t ang = m->ang*lw, rho=1/m->eh;
-  num_t k0  = m->knl[1]/m->el*m->tdir, k0q = k0*m->charge;
+  num_t k0  = m->knl[0]/m->el*m->tdir, k0q = k0*m->charge;
   num_t ca  = cos(ang), sa = sin(ang), s2a = sin(2*ang), sa2 = sin(ang/2);
 
   FOR(i,m->npar) {
@@ -597,8 +599,8 @@ template <typename P, typename T=P::T>
 inline void rbend_thick_old (mflw_t *m, num_t lw, int is)
 {                                               (void)is;
   num_t ld   = (m->eld ? m->eld : m->el)*lw;
-  num_t k0   = m->knl[1]/m->el*m->tdir, k0q = k0*m->charge;
-  num_t k0lq = m->knl[1]*lw*m->charge*m->tdir;
+  num_t k0   = m->knl[0]/m->el*m->tdir, k0q = k0*m->charge;
+  num_t k0lq = m->knl[0]*lw*m->charge*m->tdir;
 
   FOR(i,m->npar) {
     P p(m,i);
@@ -626,8 +628,8 @@ inline void rbend_thick_new (mflw_t *m, num_t lw, int is)
 {                                               (void)is;
   num_t l    = m->el*lw;
   num_t ld   = (m->eld ? m->eld : m->el)*lw;
-  num_t k0   = m->knl[1]/m->el*m->tdir, k0q = k0*m->charge;
-  num_t k0lq = m->knl[1]*lw*m->charge*m->tdir;
+  num_t k0   = m->knl[0]/m->el*m->tdir, k0q = k0*m->charge;
+  num_t k0lq = m->knl[0]*lw*m->charge*m->tdir;
 
   FOR(i,m->npar) {
     P p(m,i);
@@ -667,17 +669,18 @@ inline void quad_thick (mflw_t *m, num_t lw, int is)
 
   if (abs(m->k1) >= minstr) {
     num_t w = sqrt(abs(m->k1))*m->tdir*ws;
-    cx = cos (w*l), sx = sin (w*l);
-    cy = cosh(w*l), sy = sinh(w*l);
-    mx1 = sx/w, mx2 = -sx*w;
-    my1 = sy/w, my2 =  sy*w;
+    cx = cos (w*l), sx  = sin (w*l);
+    cy = cosh(w*l), sy  = sinh(w*l);
+    mx1 = sx/w    , mx2 = -sx*w;
+    my1 = sy/w    , my2 =  sy*w;
   } else {
     cx = 1, sx = 0, mx1 = l, mx2 = 0;
     cy = 1, sy = 0, my1 = l, my2 = 0;
   }
 
-  if (ws != m->charge) // swap x <-> y
-    std::swap(cx,cy), std::swap(mx1,my1), std::swap(mx2,my2);
+  if (ws != m->charge) { // swap x <-> y
+    std::swap(cx,cy), std::swap(sx,sy), std::swap(mx1,my1), std::swap(mx2,my2);
+  }
 
   FOR(i,m->npar) {
     P p(m,i);
@@ -709,8 +712,8 @@ inline void quad_kick (mflw_t *m, num_t lw, int is)
       P p(m,i);
       bxby(m, p.x, p.y, bx, by);
 
-      p.px -= wchg*(by - m->knl[2]*p.x);
-      p.py += wchg*(bx - m->knl[2]*p.y);
+      p.px -= wchg*(by - m->knl[1]*p.x);
+      p.py += wchg*(bx - m->knl[1]*p.y);
     }
   }
 
@@ -722,13 +725,13 @@ inline void quad_thicks (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
   num_t l   = m->el*lw;
   num_t w   = sqrt(abs(m->k1))*m->tdir*m->sdir;
-  num_t cx  = cos (w*l), sx = sin (w*l);
-  num_t cy  = cosh(w*l), sy = sinh(w*l);
-  num_t mx1 = sx/w, mx2 = -sx*w;
-  num_t my1 = sy/w, my2 =  sy*w;
+  num_t cx  = cos (w*l), sx  = sin (w*l);
+  num_t cy  = cosh(w*l), sy  = sinh(w*l);
+  num_t mx1 = sx/w     , mx2 = -sx*w;
+  num_t my1 = sy/w     , my2 =  sy*w;
 
   if (m->sdir != m->charge) // swap x <-> y
-    std::swap(cx,cy), std::swap(mx1,my1), std::swap(mx2,my2);
+    std::swap(cx,cy), std::swap(sx,sy), std::swap(mx1,my1), std::swap(mx2,my2);
 
   FOR(i,m->npar) {
     P p(m,i);
@@ -767,8 +770,8 @@ inline void quad_kicks (mflw_t *m, num_t lw, int is)
       P p(m,i);
       bxby(m, p.x, p.y, bx, by);
 
-      p.px -= wchg*(by - m->knl[2]*p.x + m->ksl[2]*p.y);
-      p.py += wchg*(bx - m->knl[2]*p.y - m->ksl[2]*p.x);
+      p.px -= wchg*(by - m->knl[1]*p.x + m->ksl[1]*p.y);
+      p.py += wchg*(bx - m->knl[1]*p.y - m->ksl[1]*p.x);
     }
   }
 
@@ -779,8 +782,8 @@ template <typename P, typename T=P::T>
 inline void quad_thickh (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
   num_t l = m->el*lw;
-  num_t kx  = (m->knl[2] + m->eh*m->knl[1])/m->el;
-  num_t ky  = -m->knl[2]/m->el;
+  num_t kx  = (m->knl[1] + m->eh*m->knl[0])/m->el;
+  num_t ky  = -m->knl[1]/m->el;
   num_t wxs = kx*m->tdir < 0 ? -1 : 1;
   num_t wys = ky*m->tdir < 0 ? -1 : 1;
   num_t wx, cx, sx, wy, cy, sy;
@@ -847,8 +850,8 @@ inline void quad_kickh (mflw_t *m, num_t lw, int is)
       T pz = sqrt(1 + (2/m->beta)*p.pt + sqr(p.pt));
       bxby(m, p.x, p.y, bx, by);
 
-      p.px -= wchg*(by - m->knl[2]*p.x) - l*m->eh*(pz-(1/m->beta*p.pt));
-      p.py += wchg*(bx - m->knl[2]*p.y);
+      p.px -= wchg*(by - m->knl[1]*p.x) - l*m->eh*(pz-(1/m->beta*p.pt));
+      p.py += wchg*(bx - m->knl[1]*p.y);
       p.t  -= (l*m->eh)*((1/m->beta+p.pt)/pz - 1/m->beta)*p.x;
     }
   }
@@ -973,7 +976,7 @@ inline void rfcav_kickn (mflw_t *m, num_t lw, int is)
 
     p.pt += f*sa*vl/m->pc;
 
-    if (m->nmul) {
+    if (m->nmul > 0) {
       bxby(m, p.x, p.y, bx, by);
 
       p.px += bdir/m->pc*by*ca;
