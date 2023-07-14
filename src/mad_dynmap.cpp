@@ -370,16 +370,6 @@ inline void drift_adj (mflw_t *m, num_t l)
 // --- DKD maps ---------------------------------------------------------------o
 
 template <typename P, typename T=P::T>
-inline void strex_drift1 (mflw_t *m, P &p, num_t l, num_t ld)
-{
-  T l_pz = invsqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py), l);
-
-  p.x += p.px*l_pz;
-  p.y += p.py*l_pz;
-  p.t -= l_pz*(1/m->beta+p.pt) + (m->T-1)*ld/m->beta;
-}
-
-template <typename P, typename T=P::T>
 inline void strex_drift (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
   num_t l  = m->el*lw;
@@ -389,7 +379,11 @@ inline void strex_drift (mflw_t *m, num_t lw, int is)
 
   FOR(i,m->npar) {
     P p(m,i);
-    strex_drift1 (m, p, l, ld);
+    T l_pz = invsqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py), l);
+
+    p.x += p.px*l_pz;
+    p.y += p.py*l_pz;
+    p.t -= l_pz*(1/m->beta+p.pt) + (m->T-1)*ld/m->beta;
   }
 }
 
@@ -473,22 +467,6 @@ inline void strex_kickhs (mflw_t *m, num_t lw, int is)
 }
 
 template <typename P, typename T=P::T>
-inline void curex_drift1 (mflw_t *m, P &p, num_t ld, num_t rho,
-                                           num_t ca, num_t sa, num_t sa2)
-{
-  T   pz = sqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
-  T  _pz = inv(pz);
-  T  pxt = p.px*_pz;
-  T _ptt = inv(ca - sa*pxt);
-  T  pst = (p.x+rho)*sa*_pz*_ptt;
-
-  p.x  = (p.x + rho*(2*sqr(sa2) + sa*pxt))*_ptt;
-  p.px = ca*p.px + sa*pz;
-  p.y += pst*p.py;
-  p.t -= pst*(1/m->beta+p.pt) + (m->T-1)*ld/m->beta;
-}
-
-template <typename P, typename T=P::T>
 inline void curex_drift (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
   num_t ld  = (m->eld ? m->eld : m->el)*lw;
@@ -497,7 +475,16 @@ inline void curex_drift (mflw_t *m, num_t lw, int is)
 
   FOR(i,m->npar) {
     P p(m,i);
-    curex_drift1(m, p, ld, rho, ca, sa, sa2);
+    T   pz = sqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
+    T  _pz = inv(pz);
+    T  pxt = p.px*_pz;
+    T _ptt = inv(ca - sa*pxt);
+    T  pst = (p.x+rho)*sa*_pz*_ptt;
+
+    p.x  = (p.x + rho*(2*sqr(sa2) + sa*pxt))*_ptt;
+    p.px = ca*p.px + sa*pz;
+    p.y += pst*p.py;
+    p.t -= pst*(1/m->beta+p.pt) + (m->T-1)*ld/m->beta;
   }
 }
 
@@ -530,16 +517,10 @@ inline void sbend_thick_old (mflw_t *m, num_t lw, int is)
   num_t ld  = (m->eld ? m->eld : m->el)*lw;
   num_t ang = m->ang*lw, rho=1/m->eh;
   num_t k0  = m->knl[0]/m->el*m->tdir, k0q = k0*m->charge;
-  num_t ca  = cos(ang), sa = sin(ang), sa2 = sin(ang/2);
+  num_t ca  = cos(ang), sa = sin(ang);
 
   FOR(i,m->npar) {
     P p(m,i);
-
-    if (!k0q) {
-      curex_drift1(m, p, ld, rho, ca, sa, sa2);
-      continue;
-    }
-
     T  pw2 = 1 + 2*p.pt/m->beta + sqr(p.pt) - sqr(p.py);
     T  pzx = sqrt(pw2 - sqr(p.px)) - k0q*(rho+p.x); // can be numerically unstable
     T  npx = sa*pzx + ca*p.px;
@@ -561,16 +542,10 @@ inline void sbend_thick_new (mflw_t *m, num_t lw, int is)
   num_t ld  = (m->eld ? m->eld : m->el)*lw;
   num_t ang = m->ang*lw, rho=1/m->eh;
   num_t k0  = m->knl[0]/m->el*m->tdir, k0q = k0*m->charge;
-  num_t ca  = cos(ang), sa = sin(ang), s2a = sin(2*ang), sa2 = sin(ang/2);
+  num_t ca  = cos(ang), sa = sin(ang), s2a = sin(2*ang);
 
   FOR(i,m->npar) {
     P p(m,i);
-
-    if (!k0q) {
-      curex_drift1(m, p, ld, rho, ca, sa, sa2);
-      continue;
-    }
-
     T  pw2 = 1 + 2*p.pt/m->beta + sqr(p.pt) - sqr(p.py);
     T   pz = sqrt(pw2 - sqr(p.px));
     T   xr = p.x+rho;
@@ -607,12 +582,6 @@ inline void rbend_thick_old (mflw_t *m, num_t lw, int is)
 
   FOR(i,m->npar) {
     P p(m,i);
-
-    if (!k0q) {
-      strex_drift1(m, p, m->el*lw, ld);
-      continue;
-    }
-
     T  npx = p.px - k0lq;
     T  pw2 = 1 + 2*p.pt/m->beta + sqr(p.pt) - sqr(p.py);
     T _ptt = invsqrt(pw2);
@@ -636,12 +605,6 @@ inline void rbend_thick_new (mflw_t *m, num_t lw, int is)
 
   FOR(i,m->npar) {
     P p(m,i);
-
-    if (!k0q) {
-      strex_drift1(m, p, l, ld);
-      continue;
-    }
-
     T  npx = p.px - k0lq;
     T  pw2 = 1 + 2*p.pt/m->beta + sqr(p.pt) - sqr(p.py);
     T _ptt = invsqrt(pw2);
@@ -687,7 +650,6 @@ inline void quad_thick (mflw_t *m, num_t lw, int is)
 
   FOR(i,m->npar) {
     P p(m,i);
-
     T nx  = p.x*cx  + p.px*mx1;
     T npx = p.x*mx2 + p.px*cx;
     T ny  = p.y*cy  + p.py*my1;
@@ -738,7 +700,6 @@ inline void quad_thicks (mflw_t *m, num_t lw, int is)
 
   FOR(i,m->npar) {
     P p(m,i);
-
     // srotation
     T rx  = m->ca*p.x  + m->sa*p.y;
     T rpx = m->ca*p.px + m->sa*p.py;
@@ -902,7 +863,6 @@ inline void esept_thick (mflw_t *m, num_t lw, int is)
 
   FOR (i,m->npar) {
     P p(m,i);
-
     // srotation
     T  nx  = m->ca*p.x  + m->sa*p.y;
     T  npx = m->ca*p.px + m->sa*p.py;
@@ -957,7 +917,6 @@ inline void rfcav_kickn (mflw_t *m, num_t lw, int is)
 
   FOR (i,m->npar) {
     P p(m,i);
-
     T ph = m->lag - omega*p.t;
     T sa = sin(ph), ca = cos(ph);
     T f; f = 1;
