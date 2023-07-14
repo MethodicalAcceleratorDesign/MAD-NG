@@ -1218,34 +1218,31 @@ void mad_trk_slice_thn (mflw_t *m, num_t lw, trkfun *kick)
 
 // --- track one Yoshida slice ------------------------------------------------o
 
-ssz_t yosh2_n   = 1;
-num_t yosh2_d[] = {0.5};
-num_t yosh2_k[] = {1};
+const ssz_t yosh2_n   = 1;
+const num_t yosh2_d[] = {0.5};
+const num_t yosh2_k[] = {1};
+const ssz_t yosh4_n   = 2;
+const num_t yosh4_d[] = { 0x1.59e8b6eb96339p-1,-0x1.67a2dbae58ce4p-3 };
+const num_t yosh4_k[] = { 0x1.59e8b6eb96339p+0,-0x1.b3d16dd72c672p+0 };
+const ssz_t yosh6_n   = 4;
+const num_t yosh6_d[] = { 0x1.91abc4988937bp-2, 0x1.052468fb75c74p-1,
+                         -0x1.e25bd194051b9p-2, 0x1.199cec1241558p-4 };
+const num_t yosh6_k[] = { 0x1.91abc4988937bp-1, 0x1.e2743579895b4p-3,
+                         -0x1.2d7c6f7933b93p+0, 0x1.50b00cfb7be3ep+0 };
+const ssz_t yosh8_n   = 8;
+const num_t yosh8_d[] = { 0x1.d466770cfb237p-2, 0x1.2b25476e416dap-1,
+                         -0x1.30efca291a66ep-1,-0x1.9a644b62ac4e7p-1,
+                          0x1.c7a76da161edap-1,-0x1.702a9ae94c280p-7,
+                         -0x1.db997617a90dfp-1, 0x1.cfae4578f406ep-1 };
+const num_t yosh8_k[] = { 0x1.d466770cfb237p-1, 0x1.03c82f9f0f6fbp-2,
+                         -0x1.71e1d610de42dp+0,-0x1.4413aa8e705cep-3,
+                          0x1.f029e2f32ff94p+0,-0x1.f5ea8d5ed529ep+0,
+                          0x1.a5117472c1becp-4, 0x1.b55d2e31c7eafp+0 };
 
-ssz_t yosh4_n   = 2;
-num_t yosh4_d[] = { 0x1.59e8b6eb96339p-1,-0x1.67a2dbae58ce4p-3 };
-num_t yosh4_k[] = { 0x1.59e8b6eb96339p+0,-0x1.b3d16dd72c672p+0 };
-
-ssz_t yosh6_n   = 4;
-num_t yosh6_d[] = { 0x1.91abc4988937bp-2, 0x1.052468fb75c74p-1,
-                   -0x1.e25bd194051b9p-2, 0x1.199cec1241558p-4 };
-num_t yosh6_k[] = { 0x1.91abc4988937bp-1, 0x1.e2743579895b4p-3,
-                   -0x1.2d7c6f7933b93p+0, 0x1.50b00cfb7be3ep+0 };
-
-ssz_t yosh8_n   = 8;
-num_t yosh8_d[] = { 0x1.d466770cfb237p-2, 0x1.2b25476e416dap-1,
-                   -0x1.30efca291a66ep-1,-0x1.9a644b62ac4e7p-1,
-                    0x1.c7a76da161edap-1,-0x1.702a9ae94c280p-7,
-                   -0x1.db997617a90dfp-1, 0x1.cfae4578f406ep-1 };
-num_t yosh8_k[] = { 0x1.d466770cfb237p-1, 0x1.03c82f9f0f6fbp-2,
-                   -0x1.71e1d610de42dp+0,-0x1.4413aa8e705cep-3,
-                    0x1.f029e2f32ff94p+0,-0x1.f5ea8d5ed529ep+0,
-                    0x1.a5117472c1becp-4, 0x1.b55d2e31c7eafp+0 };
-
-struct {
-  ssz_t  n;
-  num_t *d;
-  num_t *k;
+const struct {
+  const ssz_t  n;
+  const num_t *d;
+  const num_t *k;
 } yosh[] = {
   {yosh2_n, yosh2_d, yosh2_k},   // yosh2 -> 0..0, ord=2, j=0, n=1, k=-1
   {yosh4_n, yosh4_d, yosh4_k},   // yosh4 -> 0..1, ord=4, j=1, n=2, k=-3
@@ -1276,35 +1273,31 @@ void mad_trk_slice_tkt (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int n)
 
 // --- track one Boole slice --------------------------------------------------o
 
-ssz_t boole2_n    = 1;
-num_t boole2_d    = 1.;
-num_t boole2_k[]  = {1./2};
+const ssz_t boole2_n    = 1;
+const num_t boole2_d    = 1.;
+const num_t boole2_k[]  = {1./2};
+const ssz_t boole4_n    = 2;
+const num_t boole4_d    = 1./2;
+const num_t boole4_k[]  = {1./6, 4./6};
+const ssz_t boole6_n    = 3;
+const num_t boole6_d    = 1./4;
+const num_t boole6_k[]  = {7./90, 32./90, 12./90};
+const ssz_t boole8_n    = 4;
+const num_t boole8_d    = 1./6;
+const num_t boole8_k[]  = {41./840, 216./840, 27./840, 272./840};
+const ssz_t boole10_n   = 5;
+const num_t boole10_d   = 1./8;
+const num_t boole10_k[] = {  989./28350, 5888./28350, -928./28350, 10496./28350,
+                           -4540./28350};
+const ssz_t boole12_n   = 6;
+const num_t boole12_d   = 1./10;
+const num_t boole12_k[] = { 16067./598752,  106300./598752, -48525./598752,
+                           272400./598752, -260550./598752, 427368./598752};
 
-ssz_t boole4_n    = 2;
-num_t boole4_d    = 1./2;
-num_t boole4_k[]  = {1./6, 4./6};
-
-ssz_t boole6_n    = 3;
-num_t boole6_d    = 1./4;
-num_t boole6_k[]  = {7./90, 32./90, 12./90};
-
-ssz_t boole8_n    = 4;
-num_t boole8_d    = 1./6;
-num_t boole8_k[]  = {41./840, 216./840, 27./840, 272./840};
-
-ssz_t boole10_n   = 5;
-num_t boole10_d   = 1./8;
-num_t boole10_k[] = {989./28350, 5888./28350, -928./28350, 10496./28350, -4540./28350};
-
-ssz_t boole12_n   = 6;
-num_t boole12_d   = 1./10;
-num_t boole12_k[] = { 16067./598752,  106300./598752, -48525./598752,
-                     272400./598752, -260550./598752, 427368./598752};
-
-struct {
-  ssz_t  n;
-  num_t  d;
-  num_t *k;
+const struct {
+  const ssz_t  n;
+  const num_t  d;
+  const num_t *k;
 } boole[] = {
   {boole2_n , boole2_d , boole2_k }, // bool2  -> 0..0, ord=2,  j=0, n=0, k=-1
   {boole4_n , boole4_d , boole4_k }, // bool4  -> 0..1, ord=4,  j=1, n=1, k=-2
@@ -1328,6 +1321,32 @@ void mad_trk_slice_kmk (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int or
     thick(m, lw*boole[j].d   , k++);
      kick(m, lw*boole[j].k[i], k++);
   }
+}
+
+// --- track one Teapot slice -------------------------------------------------o
+
+const struct {
+  const num_t d;
+  const num_t D;
+  const num_t k;
+} teapot[] = {
+  {1./6 , 1./6 , 1./2 }, // teapot2 -> 0..0, knd=2, j=0, n=1, k=-2
+  {1./8 , 3./8 , 1./3 }, // teapot3 -> 0..1, knd=3, j=1, n=2, k=-3
+  {3./30, 8./30, 1./4 }, // teapot4 -> 0..2, knd=4, j=2, n=3, k=-4
+} ;
+
+void mad_trk_slice_tpt (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int knd)
+{
+  ensure(knd >= 2 && knd <= 4, "invalid teapot kind 2..4");
+  int j = knd-2;
+  int n = knd-1;
+  int k = knd-1;
+    thick(m, lw*teapot[j].d, k++);
+  FOR(i,n) {
+     kick(m, lw*teapot[j].k, k++);
+    thick(m, lw*teapot[j].D, k++);
+  }  kick(m, lw*teapot[j].k, k++);
+    thick(m, lw*teapot[j].d, k++);
 }
 
 // --- speed tests ------------------------------------------------------------o
