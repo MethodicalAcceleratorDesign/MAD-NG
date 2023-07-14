@@ -37,7 +37,7 @@ local is_nil, is_beam, is_sequence, is_boolean, is_number,
       is_natural, is_nznatural, is_integer, is_string, is_true,
       is_beta0, is_matrix, is_tpsa, is_damap,
       is_callable, is_iterable, is_mappable                     in MAD.typeid
-local fnil, ffalse, chain, achain                               in MAD.gfunc
+local fnil, first, ffalse, chain, achain                        in MAD.gfunc
 local dp2pt, bet2map, par2vec                                   in MAD.gphys
 local errorf, assertf, printf                                   in MAD.utility
 local band                                                      in MAD.gfunc
@@ -94,9 +94,6 @@ local function mdump (elm, mflw, lw_, str)
   -- local orbit output
   if is_damap(X) then
     printf(fmt,X.x:get0(),X.px:get0(),X.y:get0(),X.py:get0(),X.t:get0(),X.pt:get0())
-  elseif mflw.cmap then
-    X = mflw.cflw.par[0]
-    printf(fmt, X[0], X[1], X[2], X[3], X[4], X[5]) ; dbg = 4
   else
     printf(fmt, X.x, X.px, X.y, X.py, X.t, X.pt)    ; dbg = 4
   end
@@ -142,7 +139,7 @@ local function fill_row (elm, mflw, lw, islc)
   end
 
   local name, kind in elm
-  local ds, eidx, clw, sdir, tdir, spos, turn, beam, mtbl, cmap, cflw, savemap in mflw
+  local ds, eidx, clw, sdir, tdir, spos, turn, beam, mtbl, savemap in mflw
 
   local lw  = islc<0 and 1-islc%2 or clw
   local dsw = ds*lw
@@ -159,9 +156,6 @@ local function fill_row (elm, mflw, lw, islc)
     if is_damap(m) then
       x,px,y,py,t,pt = x:get0(),px:get0(),y:get0(),py:get0(),t:get0(),pt:get0()
       M = savemap and (savemap == 1 and m:get1() or m:copy()) or nil
-    elseif cmap then
-      local X = cflw.par[i-1]
-      x,px,y,py,t,pt = X[0], X[1], X[2], X[3], X[4], X[5]
     end
 
     -- keep order!
@@ -246,10 +240,26 @@ end
 
 -- track cflow ----------------------------------------------------------------o
 
+local function sync_cflow (mflw, i)
+  local npar in mflw
+  mflw.__edat.cflw.npar = npar
+  mflw.__sdat.cflw.npar = npar
+
+  if i then
+    assert(mflw[i].__ta, "sync_cflow: invalid damap, missing __ta")
+    mflw.__cmap[i-1] = mflw[i].__ta
+  else for i=1,npar do
+    assert(mflw[i].__ta, "sync_cflow: invalid damap, missing __ta")
+    mflw.__cmap[i-1] = mflw[i].__ta
+  end end
+
+  return mflw
+end
+
 local function make_cflow (mflw)
   local npar, beam in mflw
 
-  mflw.cmap  = 't'
+  mflw.cmap, mflw.cmap_sync = 't', sync_cflow
 
   for i, v in ipairs{"__edat", "__sdat"} do
     local m = mflw[v]
@@ -269,14 +279,14 @@ local function make_cflow (mflw)
     c.charge = beam.charge
 
     if i == 1 then
-      mflw.cmap_ = ffi.new('tpsa_t**[?]', npar)
+      mflw.__cmap = ffi.new('tpsa_t**[?]', npar)
       for i=1,npar do
         assert(is_damap(mflw[i]), "cmap: invalid mix of damaps and particles")
-        mflw.cmap_[i-1] = mflw[i].__ta
+        mflw.__cmap[i-1] = mflw[i].__ta
       end
     end
 
-    c.map = mflw.cmap_
+    c.map = mflw.__cmap
   end
 end
 
@@ -550,6 +560,11 @@ local function make_mflow (self)
     end
   end
 
+  -- sanity check
+  if radiate == "photon" and damo > 0 then
+    error("tracking photon with damap is not allowed...")
+  end
+
   -- complete mflow
   mflw.sequ=sequ             -- current sequence
   mflw.beam=beam {}          -- current beam (clone)
@@ -602,6 +617,9 @@ local function make_mflow (self)
 
   mflw.mapdef=mapdef         -- save damap definitions (for info)
   mflw.savemap=savemap       -- save damaps
+
+  mflw.cmap=false            -- C/C++ maps
+  mflw.cmap_sync=first       -- function to sync mflw vs cflw
 
   mflw.info=self.info or 0   -- information level
   mflw.debug=self.debug or 0 -- debugging information level
