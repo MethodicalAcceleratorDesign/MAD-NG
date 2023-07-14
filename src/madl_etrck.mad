@@ -263,9 +263,14 @@ local function adj_mult (m)
 
   for i=nmul,1,-1 do
     local val = abs(knl[i]) + abs(ksl[i])
-    if val > 0               then m.nmul = i    end
-    if type(val) ~= "number" then m.pmap = true
-      if m.nmul > 0 then break end              end
+    if val > 0 then
+      m.nmul, m.pmap = i, not is_number(val)
+      if m.pmap then return else break end
+    end
+  end
+
+  for i=m.nmul-1,1,-1 do
+    if not is_number(knl[i]+ksl[i]) then m.pmap = true ; break end
   end
 end
 
@@ -323,19 +328,19 @@ local function get_algn (e, m)
   if not (trn or rot) then return nil end
 
   if m.cmap then
-    local cmap = m.cflw
-    cmap.tlt       = m.tlt
-    cmap.algn.trn  = trn
-    cmap.algn.rot  = rot
-    cmap.algn.dx   = dx
-    cmap.algn.dy   = dy
-    cmap.algn.ds   = ds
-    cmap.algn.dthe = dthe
-    cmap.algn.dphi = dphi
-    cmap.algn.dpsi = dpsi
-  else
-    return {trn=trn, rot=rot, dx=dx, dy=dy, ds=ds, dthe=dthe, dphi=dphi, dpsi=dpsi}
+    local c = m.cflw
+    c.tlt       = m.tlt
+    c.algn.trn  = trn
+    c.algn.rot  = rot
+    c.algn.dx   = dx
+    c.algn.dy   = dy
+    c.algn.ds   = ds
+    c.algn.dthe = dthe
+    c.algn.dphi = dphi
+    c.algn.dpsi = dpsi
   end
+
+  return {trn=trn, rot=rot, dx=dx, dy=dy, ds=ds, dthe=dthe, dphi=dphi, dpsi=dpsi}
 end
 
 -- helpers --------------------------------------------------------------------o
@@ -360,7 +365,7 @@ end
 local function trackone (elm, m, inter, thick, thin, fringe_)
   local sdir, atentry, atexit in m
 
-  if m.cmap then
+  if m.cmap and not m.pmap then
     local cmap = map[m.cmap]
     thick, thin = cmap[thick], cmap[thin]
   end
@@ -378,10 +383,9 @@ local function trackelm (elm, m, inter, thick, thin, fringe)
   local rot  = abs(tlt) >= minang and crot or fnil
   local fng  = fringe or fnil
 
-  if m.cmap then
+  if m.cmap and not m.pmap then
     local cmap = map[m.cmap]
-    thick, thin, fringe = cmap[thick], cmap[thin], cmap[fringe]
-    m.cflw.tlt = tlt
+    thick, thin = cmap[thick], cmap[thin]
   end
 
   atentry(elm, m,  sdir, -1)
@@ -396,9 +400,7 @@ local function trackelm (elm, m, inter, thick, thin, fringe)
   mis    (elm, m, -sdir)
   atexit (elm, m, -sdir, -2)
 
-  m.tlt, m.algn = 0, nil
-
-  if m.cmap then m.cflw.tlt = 0 end
+  m.algn = nil
 end
 
 local function tracksub (elm, m, inter, thick, thin, fringe)
@@ -414,10 +416,9 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
   local fng  = fringe or fnil
   m.eidx = 0
 
-  if m.cmap then
+  if m.cmap and not m.pmap then
     local cmap = map[m.cmap]
-    thick, thin, fringe = cmap[thick], cmap[thin], cmap[fringe]
-    m.cflw.tlt = tlt
+    thick, thin = cmap[thick], cmap[thin]
   end
 
   atentry(elm, m, sdir, -1)
@@ -466,9 +467,7 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
   mis   (elm, m, -sdir)
   atexit(elm, m, -sdir, -2)
 
-  m.tlt, m.algn, m.eidx = 0, nil, eidx
-
-  if m.cmap then m.cflw.tlt = 0 end
+  m.algn, m.eidx = nil, eidx
 end
 
 -- kinds ----------------------------------------------------------------------o
@@ -500,7 +499,9 @@ end
 local function track_drift (elm, m)
   m.el, m.eh, m.nmul = m.ds, 0, 0
 
-  if m.cmap then
+  if not is_number(m.ds) then m.pmap = true end
+
+  if m.cmap and not m.pmap then
     m.cflw.el   = m.el
     m.cflw.eh   = 0
     m.cflw.nmul = 0
@@ -524,6 +525,8 @@ local function track_multipole (elm, m)
   local ksi, lrad in elm
   local knl, ksl, sdir in m
 
+  if not (is_number(ksi) and is_number(lrad)) then m.pmap = true end
+
   m.lrad, m.ksi = sdir*lrad, ksi or 0
 
   local kick = strex_kick
@@ -531,24 +534,17 @@ local function track_multipole (elm, m)
     kick = strex_kickhs
   end
 
-  if m.cmap then
+  if m.cmap and not m.pmap then
     m.cflw.lrad = m.lrad
     m.cflw.ksi  = m.ksi
     cpy_mult(m)
   end
 
   trackelm(elm, m, thinonly, fnil, kick)
-  m.ksi, m.lrad, m.nmul = 0, 0, 0
-
-  if m.cmap then
-    m.cflw.ksi  = 0
-    m.cflw.lrad = 0
-    m.cflw.nmul = 0
-  end
 end
 
 local function track_bbeam (elm, m)
-  if not elm.enabled  then return track_marker(elm, m) end
+  if not elm.enabled then return track_marker(elm, m) end
 
   m.el, m.eh, m.nmul = 0, 0, 0
 
@@ -563,7 +559,7 @@ local function track_bbeam (elm, m)
 end
 
 local function track_nllens (elm, m)
-  if not elm.enabled  then return track_marker(elm, m) end
+  if not elm.enabled then return track_marker(elm, m) end
 
   m.el, m.eh, m.nmul = 0, 0, 0
 
@@ -606,6 +602,8 @@ local function track_sbend (elm, m, e1_, e2_)
 
   adj_mult(m) ; getanbnr(m)
 
+  if not is_number(m.eh) then m.pmap = true end
+
   if model == 'DKD' then                          -- curved thin
     inter, thick, kick = DKD[method], curex_drift , curex_kick
   elseif m.nmul == 1 and ksl[1] == 0 and not m.ptcmodel then -- curved thick only
@@ -614,7 +612,7 @@ local function track_sbend (elm, m, e1_, e2_)
     inter, thick, kick = TKT[method], sbend_thick , sbend_kick
   end
 
-  if m.cmap then
+  if m.cmap and not m.pmap then
     m.cflw.eh   = m.eh
     m.cflw.el   = m.el
     m.cflw.ang  = m.ang
@@ -624,13 +622,6 @@ local function track_sbend (elm, m, e1_, e2_)
 
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, kick, curex_fringe)
-  m.e1, m.e2, m.ang, m.nmul, m.snm = 0, 0, 0, 0, 0
-
-  if m.cmap then
-    m.cflw.ang  = 0
-    m.cflw.nmul = 0
-    m.cflw.snm  = 0
-  end
 end
 
 local function track_rbend (elm, m)
@@ -677,6 +668,8 @@ local function track_rbend (elm, m)
 
   adj_mult(m)
 
+  if not is_number(m.elc) then m.pmap = true end
+
   local model  = elm.model  or m.model
   local method = elm.method or m.method
   local inter, thick, kick
@@ -689,7 +682,7 @@ local function track_rbend (elm, m)
     inter, thick, kick = TKT[method], rbend_thick, rbend_kick
   end
 
-  if m.cmap then
+  if m.cmap and not m.pmap then
     m.cflw.eh   = m.eh
     m.cflw.el   = m.el
     m.cflw.eld  = m.eld
@@ -700,14 +693,8 @@ local function track_rbend (elm, m)
 
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, kick, strex_fringe)
-  m.e1, m.e2, m.ang, m.etp_dir, m.nmul, m.eld, m.elc = 0, 0, 0, 0, 0, nil, nil
-
-  if m.cmap then
-    m.cflw.eld  = 0
-    m.cflw.elc  = 0
-    m.cflw.ang  = 0
-    m.cflw.nmul = 0
-  end
+  m.eld = nil
+  if m.cmap then m.cflw.eld = 0 end
 end
 
 local function track_quadrupole (elm, m)
@@ -726,6 +713,8 @@ local function track_quadrupole (elm, m)
   m.el, m.eh = ds, 0
 
   adj_mult(m)
+
+  if not (is_number(angle) and is_number(l)) then m.pmap = true end
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
@@ -750,7 +739,7 @@ local function track_quadrupole (elm, m)
     thick, kick = quad_thickh, ptcmodel and quad_kickh_ or quad_kickh
   end
 
-  if m.cmap then
+  if m.cmap and not m.pmap then
     m.cflw.el = m.el
     m.cflw.eh = m.eh
     m.cflw.k1 = m.k1 or 0
@@ -761,14 +750,6 @@ local function track_quadrupole (elm, m)
 
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, kick, strex_fringe)
-  m.k1, m.ca, m.sa, m.nmul = 0, 0, 0, 0
-
-  if m.cmap then
-    m.cflw.k1   = 0
-    m.cflw.ca   = 0
-    m.cflw.sa   = 0
-    m.cflw.nmul = 0
-  end
 end
 
 -- straigth magnets (-rbend -quad -solenoid)
@@ -777,6 +758,8 @@ local function track_strexgen (elm, m, ptc_, mth_)
   m.el, m.eh = m.ds, 0
 
   adj_mult(m)
+
+  if not is_number(m.el) then m.pmap = true end
 
   local model  = elm.model  or m.model
   local method = elm.method or mth_ or m.method
@@ -791,7 +774,7 @@ local function track_strexgen (elm, m, ptc_, mth_)
     inter, thick, kick, fringe = KMK[method], quad_thick, quad_kick_, strex_fringe
   end
 
-  if m.cmap then
+  if m.cmap and not m.pmap then
     m.cflw.eh = 0
     m.cflw.el = m.el
     m.cflw.k1 = m.k1 or 0
@@ -800,12 +783,6 @@ local function track_strexgen (elm, m, ptc_, mth_)
 
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, kick, fringe)
-  m.k1, m.nmul = 0, 0
-
-  if m.cmap then
-    m.cflw.k1   = 0
-    m.cflw.nmul = 0
-  end
 end
 
 local function track_sextupole (elm, m)
@@ -914,7 +891,7 @@ local function track_solenoid (elm, m)
   local ds, tdir, edir in m
   local ks, ksi, lrad in elm
   local l = abs(ds)
-  local model  = elm.model or m.model
+  local model = elm.model or m.model
 
   if l == 0 and abs(ks) > 0 then
     warn("solenoid '%s' defines strength with zero length", elm.name)
@@ -934,31 +911,24 @@ local function track_solenoid (elm, m)
   local method = elm.method or m.method
   local thick, kick, fringe
 
+  if not (is_number(l) and is_number(ksi)) then m.pmap = true end
+
   if model == 'DKD' and no_ksi then
     thick, kick, fringe = strex_drift, strex_kick , strex_fringe
---  elseif model == 'DKD' then -- invalid use of drift in solenoid
---    m.ksi, m.lrad = ksi, lrad
---    thick, kick, fringe = strex_drift, strex_kickhs, strex_fringe
   else
     m.ks = ksi/l*edir
     thick, kick, fringe = solen_thick, strex_kick, elm.new_fringe and solen_fringe or strex_fringe
   end
 
-  if m.cmap then
+  if m.cmap and not m.pmap then
     m.cflw.el = m.el
     m.cflw.eh = m.eh
     m.cflw.ks = m.ks or 0
     cpy_mult(m)
   end
 
-  local track  = #elm == 0 and trackelm or tracksub
+  local track = #elm == 0 and trackelm or tracksub
   track(elm, m, DKD[method], thick, kick, fringe)
-  m.ks, m.nmul = 0, 0
-
-  if m.cmap then
-    m.cflw.ks   = 0
-    m.cflw.nmul = 0
-  end
 end
 
 -- eseptum
@@ -981,6 +951,8 @@ local function track_eseptum (elm, m)
   local volt = sqrt(exl^2 + eyl^2)/ds*edir
   local thick
 
+  if not (is_number(l) and is_number(volt)) then m.pmap = true end
+
   if abs(volt) < minvolt then
     thick = strex_drift
   else
@@ -989,7 +961,7 @@ local function track_eseptum (elm, m)
     thick = esept_thick
   end
 
-  if m.cmap then
+  if m.cmap and not m.pmap then
     m.cflw.el   = m.el
     m.cflw.eh   = m.eh
     m.cflw.volt = m.volt or 0
@@ -1001,14 +973,6 @@ local function track_eseptum (elm, m)
   local inter = m.nmul == 0 and thickonly or KMK[elm.method or m.method]
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, strex_kick, strex_fringe)
-  m.volt, m.ca, m.sa, m.nmul = 0, 0, 0, 0
-
-  if m.cmap then
-    m.cflw.volt = 0
-    m.cflw.ca   = 0
-    m.cflw.sa   = 0
-    m.cflw.nmul = 0
-  end
 end
 
 -- rf cavities
@@ -1032,11 +996,14 @@ local function track_rfcavgen (elm, m, crab)
             elm.name, m.freq)
   end
 
+  if not (is_number(l) and is_number(m.volt) and is_number(m.freq) and
+          is_number(m.lag)) then m.pmap = true end
+
   local inter  = l < minlen and thinonly or DKD[elm.method or m.method]
   local kick   = m.nmul+m.nbsl == 0 and rfcav_kick or rfcav_kickn
   local fringe = l < minlen and fnil     or rfcav_fringe
 
-  if m.cmap then
+  if m.cmap and not m.pmap then
     m.cflw.el   = m.el
     m.cflw.eh   = m.eh
     m.cflw.volt = m.volt
@@ -1048,16 +1015,6 @@ local function track_rfcavgen (elm, m, crab)
 
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, strex_drift, kick, fringe)
-  m.volt, m.freq, m.lag, m.nbsl, m.nmul, m.npha = 0, 0, 0, 0, 0, 0
-
-  if m.cmap then
-    m.cflw.volt = 0
-    m.cflw.freq = 0
-    m.cflw.lag  = 0
-    m.cflw.nbsl = 0
-    m.cflw.nmul = 0
-    m.cflw.npha = 0
-  end
 end
 
 local function track_rfcavity (elm, m)
