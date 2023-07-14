@@ -22,6 +22,7 @@
 extern "C" {
 #include "mad_log.h"
 #include "mad_cst.h"
+#include "mad_mem.h"
 #include "mad_mat.h"
 #include "mad_dynmap.h"
 }
@@ -105,6 +106,16 @@ struct map_t {
 // --- implementation ---------------------------------------------------------o
 
 using namespace mad;
+
+/* To debug TPSA version only, e.g.
+  if constexpr (!std::is_floating_point<T>::value) {
+    if (abs(k0) > 1e10) {
+      mad_mdump(0);
+      printf("exiting C++\n");
+      exit(-1);
+    }
+  }
+*/
 
 // --- constants --------------------------------------------------------------o
 
@@ -520,14 +531,6 @@ inline void sbend_thick_old (mflw_t *m, num_t lw, int is)
   num_t ang = m->ang*lw, rho=1/m->eh;
   num_t k0  = m->knl[0]/m->el*m->tdir, k0q = k0*m->charge;
   num_t ca  = cos(ang), sa = sin(ang), sa2 = sin(ang/2);
-
-//  if constexpr (!std::is_floating_point<T>::value) {
-//    printf("el=% -.16e, eh=% -.16e, k0=% -.16e\n", m->el, m->eh, k0);
-//    if (abs(k0) > 1e10) {
-//      printf("exiting!\n");
-//      exit(-1);
-//    }
-//  }
 
   FOR(i,m->npar) {
     P p(m,i);
