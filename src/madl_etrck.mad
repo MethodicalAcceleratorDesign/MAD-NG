@@ -497,9 +497,10 @@ local function track_marker (elm, m)
 end
 
 local function track_drift (elm, m)
-  m.el, m.eh, m.nmul = m.ds, 0, 0
+  local l in elm
+  m.el, m.eh, m.nmul = l*m.sdir, 0, 0
 
-  if not is_number(m.ds) then m.pmap = true end
+  if not is_number(m.el) then m.pmap = true end
 
   if m.cmap and not m.pmap then
     m.cflw.el   = m.el
@@ -512,7 +513,7 @@ local function track_drift (elm, m)
     trackone(elm, m, inter, strex_drift)
   else
     local track = #elm == 0 and trackelm or tracksub
-    local inter = abs(m.ds) >= minlen and thickonly or driftonly
+    local inter = l >= minlen and thickonly or driftonly
     track(elm, m, inter, strex_drift, fnil)
   end
 end
@@ -575,9 +576,8 @@ end
 local function track_sbend (elm, m, e1_, e2_)
   get_mult(elm, m, 3)
 
-  local ds, tdir, nmul, knl, ksl, bfx, bfy in m
-  local angle, k0, k0s, k1, k1s, k2, k2s in elm
-  local l = abs(ds)
+  local sdir, edir, tdir, nmul, knl, ksl, bfx, bfy in m
+  local l, angle, k0, k0s, k1, k1s, k2, k2s in elm
 
   if l < minlen then
     errorf("invalid sbend '%s' length=%.4e [m] (>0 expected)", elm.name, l)
@@ -589,7 +589,7 @@ local function track_sbend (elm, m, e1_, e2_)
   knl[1], ksl[1] = knl[1]+k0*l  , ksl[1]+k0s*l
   knl[2], ksl[2] = knl[2]+k1*l  , ksl[2]+k1s*l
   knl[3], ksl[3] = knl[3]+k2*l/2, ksl[3]+k2s*l/2
-  m.el, m.eh = ds, angle*tdir/ds
+  m.el, m.eh = l*sdir, angle*edir/l
   m.e1, m.e2 = (e1_ or elm.e1), (e2_ or elm.e2)
   m.ang      = angle*tdir
 
@@ -634,18 +634,18 @@ local function track_rbend (elm, m)
 
   get_mult(elm, m, 3)                                                         -- checked
 
-  local ds, tdir, nmul, knl, ksl, ptcmodel in m
-  local k0, k0s, k1, k1s, k2, k2s in elm
+  local sdir, edir, tdir, nmul, knl, ksl, ptcmodel in m
+  local l, k0, k0s, k1, k1s, k2, k2s in elm
 
-  if abs(ds) < minlen then
-    errorf("invalid rbend '%s' length=%.4e [m] (>0 expected)", elm.name, ds)
+  if l < minlen then
+    errorf("invalid rbend '%s' length=%.4e [m] (>0 expected)", elm.name, l)
   end
 
   if is_number(e1) and abs(e1) > twopi then e1 = false end
   if is_number(e2) and abs(e2) > twopi then e2 = false end
 
-  m.eld = ds
-  m.elc = arc2cord(ds, angle)
+  m.eld = l*sdir
+  m.elc = arc2cord(m.eld, angle)
 
   if e1 and e2 then                                                           -- Straight
     m.e1, m.e2 = e1+angle/2, e2+angle/2
@@ -659,8 +659,8 @@ local function track_rbend (elm, m)
   else errorf("True parallel rbend '%s' must set e1 or e2", elm.name)
   end
 
-  local l = abs(m.el)
-  m.eh = angle/ds*tdir
+  l = abs(m.el)
+  m.eh = angle*edir/l
 
   knl[1], ksl[1] = knl[1]+k0*l  , ksl[1]+k0s*l
   knl[2], ksl[2] = knl[2]+k1*l  , ksl[2]+k1s*l
@@ -668,7 +668,7 @@ local function track_rbend (elm, m)
 
   adj_mult(m)
 
-  if not is_number(m.elc) then m.pmap = true end
+  if not is_number(m.eh) then m.pmap = true end
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
@@ -700,9 +700,8 @@ end
 local function track_quadrupole (elm, m)
   get_mult(elm, m, 2)
 
-  local ds, edir, tdir, nmul, knl, ksl, ptcmodel in m
-  local angle, k0, k0s, k1, k1s in elm
-  local l = abs(ds)
+  local sdir, edir, tdir, nmul, knl, ksl, ptcmodel in m
+  local l, angle, k0, k0s, k1, k1s in elm
 
   if l == 0 and abs(k1)+abs(k1s)+abs(k0)+abs(k0s) > 0 then
     warn("quadrupole '%s' defines strength with zero length", elm.name)
@@ -710,7 +709,7 @@ local function track_quadrupole (elm, m)
 
   knl[1], ksl[1] = knl[1]+k0*l, ksl[1]+k0s*l
   knl[2], ksl[2] = knl[2]+k1*l, ksl[2]+k1s*l
-  m.el, m.eh = ds, 0
+  m.el, m.eh = l*sdir, 0
 
   adj_mult(m)
 
@@ -728,14 +727,14 @@ local function track_quadrupole (elm, m)
   if model == 'DKD' or no_k1 and no_k1s and no_ang then
     inter, thick, kick = DKD[method], strex_drift, strex_kick
   elseif no_k1s and no_ang or no_tlt then       -- normal thick
-    m.k1 = knl[2]/ds*edir
+    m.k1 = knl[2]/l*tdir
     thick, kick = quad_thick, ptcmodel and quad_kick_ or quad_kick
   elseif no_ang then                            -- skew thick
     local a = -0.5*atan2(ksl[2], knl[2])
-    m.k1, m.ca, m.sa = sqrt(knl[2]^2 + ksl[2]^2)/ds*edir, cos(a), sin(a)
+    m.k1, m.ca, m.sa = sqrt(knl[2]^2 + ksl[2]^2)/l*tdir, cos(a), sin(a)
     thick, kick = quad_thicks, ptcmodel and quad_kicks_ or quad_kicks
   else                                          -- combined thick            -- unchecked
-    m.eh = angle/ds*tdir
+    m.eh = angle/l*edir
     thick, kick = quad_thickh, ptcmodel and quad_kickh_ or quad_kickh
   end
 
@@ -755,7 +754,8 @@ end
 -- straigth magnets (-rbend -quad -solenoid)
 
 local function track_strexgen (elm, m, ptc_, mth_)
-  m.el, m.eh = m.ds, 0
+  local l in elm
+  m.el, m.eh = l*m.sdir, 0
 
   adj_mult(m)
 
@@ -765,12 +765,12 @@ local function track_strexgen (elm, m, ptc_, mth_)
   local method = elm.method or mth_ or m.method
   local inter, thick, kick, fringe
 
-  if abs(m.ds) < minlen then
+  if l < minlen then
     inter, thick, kick, fringe = thinonly, fnil, strex_kick, fnil
   elseif model == 'DKD' or not ptc_ then
     inter, thick, kick, fringe = DKD[method], strex_drift, strex_kick, strex_fringe
   else
-    m.k1 = m.knl[2]/m.ds*m.edir
+    m.k1 = m.knl[2]/l*m.tdir
     inter, thick, kick, fringe = KMK[method], quad_thick, quad_kick_, strex_fringe
   end
 
@@ -789,8 +789,7 @@ local function track_sextupole (elm, m)
   get_mult(elm, m, 3)
 
   local nmul, knl, ksl in m
-  local k2, k2s in elm
-  local l = abs(m.ds)
+  local l, k2, k2s in elm
 
   if l == 0 and abs(k2)+abs(k2s) > 0 then
     warn("sextupole '%s' defines strength with zero length", elm.name)
@@ -806,8 +805,7 @@ local function track_octupole (elm, m)
   get_mult(elm, m, 4)
 
   local nmul, knl, ksl in m
-  local k3, k3s in elm
-  local l = abs(m.ds)
+  local l, k3, k3s in elm
 
   if l == 0 and abs(k3)+abs(k3s) > 0 then
     warn("octupole '%s' defines strength with zero length", elm.name)
@@ -823,8 +821,7 @@ local function track_decapole (elm, m)
   get_mult(elm, m, 5)
 
   local nmul, knl, ksl in m
-  local k4, k4s in elm
-  local l = abs(m.ds)
+  local l, k4, k4s in elm
 
   if l == 0 and abs(k4)+abs(k4s) > 0 then
     warn("decapole '%s' defines strength with zero length", elm.name)
@@ -840,8 +837,7 @@ local function track_dodecapole (elm, m)
   get_mult(elm, m, 6)
 
   local nmul, knl, ksl in m
-  local k5, k5s in elm
-  local l = abs(m.ds)
+  local l, k5, k5s in elm
 
   if l == 0 and abs(k5)+abs(k5s) > 0 then
     warn("dodecapole '%s' defines strength with zero length", elm.name)
@@ -888,9 +884,8 @@ end
 local function track_solenoid (elm, m)
   get_mult(elm, m) ; adj_mult(m)
 
-  local ds, tdir, edir in m
-  local ks, ksi, lrad in elm
-  local l = abs(ds)
+  local sdir, edir, tdir in m
+  local l, ks, ksi, lrad in elm
   local model = elm.model or m.model
 
   if l == 0 and abs(ks) > 0 then
@@ -904,7 +899,7 @@ local function track_solenoid (elm, m)
     errorf("invalid solenoid '%s' length=%.4e [m] (>0 expected)", elm.name, l)
   end
 
-  m.el, m.eh = ds, 0
+  m.el, m.eh = l*sdir, 0
 
   local ksi = ksi + ks*l
   local no_ksi = abs(ksi) < minstr
@@ -916,7 +911,7 @@ local function track_solenoid (elm, m)
   if model == 'DKD' and no_ksi then
     thick, kick, fringe = strex_drift, strex_kick , strex_fringe
   else
-    m.ks = ksi/l*edir
+    m.ks = ksi/l*tdir
     thick, kick, fringe = solen_thick, strex_kick, elm.new_fringe and solen_fringe or strex_fringe
   end
 
@@ -936,19 +931,18 @@ end
 local function track_eseptum (elm, m)
   get_mult(elm, m) ; adj_mult(m)
 
-  local ds, edir, tdir in m
-  local ex, ey, exl, eyl in elm
-  local l = abs(ds)
+  local sdir, edir, tdir in m
+  local l, ex, ey, exl, eyl in elm
 
   if l == 0 and abs(ex)+abs(ey) > 0 then
     warn("eseptum '%s' defines strength with zero length", elm.name)
   end
 
-  m.el, m.eh = ds, 0
+  m.el, m.eh = l*sdir, 0
 
   local exl = exl + ex*l
   local eyl = eyl + ey*l
-  local volt = sqrt(exl^2 + eyl^2)/ds*edir
+  local volt = sqrt(exl^2 + eyl^2)/l*tdir
   local thick
 
   if not (is_number(l) and is_number(volt)) then m.pmap = true end
@@ -978,26 +972,25 @@ end
 -- rf cavities
 
 local function track_rfcavgen (elm, m, crab)
-  local ds in m
-  local volt in elm
-  local l = abs(ds)
+  local sdir in m
+  local l, volt, freq, lag, harmon, n_bessel in elm
 
-  m.el, m.eh = ds, 0
+  m.el, m.eh = l*sdir, 0
 
   adj_mult(m)
 
-  m.volt, m.lag = crab and 0 or volt*1e-3, elm.lag*twopi - (crab and pi_2 or 0)
-  m.freq, m.nbsl= elm.freq*1e6, elm.n_bessel
+  m.volt, m.lag = crab and 0 or volt*1e-3, lag*twopi - (crab and pi_2 or 0)
+  m.freq, m.nbsl= freq*1e6, n_bessel
   if m.freq == 0 then
-    m.freq = elm.harmon*clight*m.beam.beta/m.sequ.l
+    m.freq = harmon*clight*m.beam.beta/m.sequ.l
   end
   if m.freq <= 0 and abs(m.volt) ~= 0 then
     errorf("invalid rfcavity '%s' frequency =%.4e [MHz] (>0 or harmon expected)",
             elm.name, m.freq)
   end
 
-  if not (is_number(l) and is_number(m.volt) and is_number(m.freq) and
-          is_number(m.lag)) then m.pmap = true end
+  if not (is_number(l) and is_number(volt) and is_number(m.freq) and
+          is_number(lag)) then m.pmap = true end
 
   local inter  = l < minlen and thinonly or DKD[elm.method or m.method]
   local kick   = m.nmul+m.nbsl == 0 and rfcav_kick or rfcav_kickn
@@ -1029,7 +1022,8 @@ end
 
 local function track_crabcavity (elm, m)
   get_multphas  (elm, m, 1)
-  m.knl[1] = m.knl[1] + elm.volt*1e-3*abs(m.ds)
+  local l, volt in elm
+  m.knl[1] = m.knl[1] + volt*l*1e-3
   track_rfcavgen(elm, m, true)
 end
 
@@ -1038,11 +1032,10 @@ end
 local function track_genmap (elm, m)
   get_mult(elm, m) ; adj_mult(m)
 
-  local ds, tdir in m
-  local angle in elm
-  local l = abs(ds)
+  local sdir, edir in m
+  local l, angle in elm
 
-  m.el, m.eh = ds, angle/ds*tdir
+  m.el, m.eh = l*sdir, angle/l*edir
 
   local method = elm.method or m.method
   local inter  = l < minlen  and thinonly or m.nmul == 0 and thickonly or DKD[method]
