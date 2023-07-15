@@ -2,6 +2,7 @@
 local mtable, damap                                              in MAD
 local tblcpy, fileexists, tblcat, strinter                       in MAD.utility
 local max                                                        in math         
+local is_number                                                  in MAD.typeid
 
 package.path = package.path .. ";../tools/?.mad"
 local get_diff, save_results, prnt_results, gen_cfg,
@@ -27,7 +28,11 @@ local X0 = MAD.damap{nv = 6, mo = ${order}}
 for i, c in ipairs({"x", "px", "y", "py", "t", "pt"}) do 
   X0[c]:set0(X0s[${x0i}][c])
 end
-local seq = MAD.sequence "seq" {dir = ${edir}, l=1.5, MAD.element.${elm}}
+local drift, quadrupole, sextupole, octupole, sbend, rbend, solenoid, rfcavity,
+      kicker, elseparator, crabcavity, multipole, xrotation, yrotation, 
+      srotation, translate, changeref, decapole, dodecapole                     in MAD.element
+
+local seq = MAD.sequence "seq" {dir = ${edir}, l=${seql}, ${elm}}
 return MAD.track { -- see ref_cfg for list of values
   dir      = ${sdir},
   beam     = MAD.beam {energy = ${energy}, charge=${chg}},
@@ -38,6 +43,7 @@ return MAD.track { -- see ref_cfg for list of values
   method   = ${method},
   nslice   = ${nslice},
   debug    = ${debug},
+  cmap     = ${cmap},
 }
 ]]
 
@@ -66,7 +72,7 @@ os.execute("mkdir -p "..plt_dir()) -- Create image dir if it doesn't exist
 -- Generate a MAD-NG script from the cfg and return it-------------------------o
 local function create_run(cfg, cur_cfg, track_str_)
   return (track_str_ and "" or const_str) .. 
-  strinter(strinter(track_str_ or track_str, {elm = cfg.elm}, "="), cur_cfg, "=") % cfg
+  strinter(strinter(track_str_ or track_str, {elm = cur_cfg.elm or cfg.elm}, "="), cur_cfg, "=") % cfg
 end
 -------------------------------------------------------------------------------o
 
@@ -117,6 +123,16 @@ local function reverse_attr(cfg, results, attr)
   dif_save_prnt_dbg(cfg, cfg.ref_map, attr_res[1], results, attr_script)
 end
 
+local function cmaps(cfg, results)
+  cfg.cmap = true
+  local cmap_script = create_run(cfg, cfg.cur_cfg)
+  local _, cmap_res = loadstring(cmap_script)()
+  cfg.cmap = false
+
+  cfg.cur_cfg.test_type = "cmap"  -- Set test type
+  dif_save_prnt_dbg(cfg, cfg.ref_map, cmap_res[1], results, cmap_script)
+end
+
   
 local function run_cfg(cfg, equiv, results)
   -- Get the mflow for the main config
@@ -125,6 +141,7 @@ local function run_cfg(cfg, equiv, results)
   cfg.ref_map = ref[1]
   
   -- Do default checks
+  if is_number(cfg.cur_cfg.method) then cmaps(cfg, results) end -- Check cmap
   backtrack(cfg, results)            -- Backtrack
   reverse_attr(cfg, results, "chg")  -- Change sign of chg
   reverse_attr(cfg, results, "edir") -- Change sign of edir
@@ -132,7 +149,7 @@ local function run_cfg(cfg, equiv, results)
   -- Copy main config to make comparable config and then compare
 
   -- Generate similar configs
-  for i, change_type in ipairs(equiv.alist) do      -- Go through list of equivalences
+  for i, change_type in ipairs(equiv.alist or {}) do      -- Go through list of equivalences
     for j = 1, equiv[change_type].n do              -- Go through each equivalence
       cfg.cur_cfg.test_type = change_type.."_"..j   -- Set test type
       local other_cfg = tblcpy(cfg.cur_cfg)
@@ -181,7 +198,7 @@ local function run_test(cfg, equiv)
   end
 
   -- Fill the mtable with the cfg and results
-  gen_cfg(cfg, 1, \-> run_cfg(cfg, equiv, results))
+  gen_cfg(cfg, 1, \-> run_cfg(cfg, equiv or {}, results))
   
   -- Add the generator columns to the results table
   cfg.alist = tblcat(cfg.alist, {"test_type"})
