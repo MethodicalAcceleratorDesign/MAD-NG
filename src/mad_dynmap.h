@@ -55,6 +55,14 @@ void mad_trk_changeref_t    (mflw_t *m, num_t lw);
 void mad_trk_misalign_r     (mflw_t *m, num_t lw);
 void mad_trk_misalign_t     (mflw_t *m, num_t lw);
 
+// -- fringe maps
+void mad_trk_strex_fringe_r (mflw_t *m, num_t lw);
+void mad_trk_strex_fringe_t (mflw_t *m, num_t lw);
+void mad_trk_curex_fringe_r (mflw_t *m, num_t lw);
+void mad_trk_curex_fringe_t (mflw_t *m, num_t lw);
+void mad_trk_rfcav_fringe_r (mflw_t *m, num_t lw);
+void mad_trk_rfcav_fringe_t (mflw_t *m, num_t lw);
+
 // -- DKD maps
 void mad_trk_strex_drift_r  (mflw_t *m, num_t lw, int _);
 void mad_trk_strex_drift_t  (mflw_t *m, num_t lw, int _);
