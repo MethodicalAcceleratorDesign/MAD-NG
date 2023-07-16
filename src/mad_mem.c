@@ -30,7 +30,7 @@
 
 #define MAD_MEM_STD   0 // 1 -> use standard C allocator only.
 #define MAD_MEM_UTEST 0 // 1 -> run standalone unit tests in main().
-#define DBGMEM(P)  // P // uncomment for verbose debugging output
+#define DBGMEM(P)       // P // uncomment for verbose debugging output
 
 // --- standard allocator -----------------------------------------------------o
 
@@ -216,7 +216,7 @@ size_t
 mad_mcached (void)
 {
   struct pool *p = &pool;
-  size_t ccached = 0, cached = CACHED(p);
+  size_t cached = CACHED(p), ccached = 0;
 
   for (idx_t i=0; i < max_mblk; i++)
     if (p->mblk[i].nxt > IDXMAX) // ptr
@@ -234,7 +234,7 @@ mad_mcollect (void)
   size_t cached = CACHED(p);
 
   DBGMEM( printf("collect/clear/init cache\n"); )
-  DBGMEM( printf("collecting %zu bytes\n", mad_mcached()); mad_mdump(); )
+  DBGMEM( printf("collecting %zu bytes\n", mad_mcached()); )
 
   p->mkch = 0;
   p->free = 1;
@@ -249,7 +249,6 @@ mad_mcollect (void)
   }
   p->mblk[max_mblk-1].nxt = 0; // close linked list
 
-  DBGMEM( printf("status after collect\n"); mad_mdump(); )
   return cached;
 }
 
@@ -259,10 +258,14 @@ void
 mad_mdump (FILE *fp)
 {
   struct pool *p = &pool;
+  size_t cached = CACHED(p);
 
   if (!fp) fp = stdout;
 
-  fprintf(fp, "mdump: %zu bytes\n", CACHED(p));
+  // init cache to avoid full dump of empty mblk
+  if (!p->free && !cached) mad_mcollect();
+
+  fprintf(fp, "mdump: %zu bytes\n", cached);
 
   // display content of slot[] when used, i.e. link to mblk[] + linked list.
   for (idx_t i=0; i < max_slot; i++) {
@@ -270,11 +273,14 @@ mad_mdump (FILE *fp)
     if (slt) { // from slot (size) to memblk (object)
       fprintf(fp, "  slot[%4d] -> mblk[%d]", i, slt-1);
       struct memblk *mbp = p->mblk[slt-1].mbp;
+      idx_t nxt = -1, j = 0;
       while (mbp->next) { // linked list
-        fprintf(fp, "->[%d]", mbp->next-1);
-        mbp = p->mblk[mbp->next-1].mbp;
+        nxt = mbp->next-1, mbp = p->mblk[nxt].mbp;
+        if (++j < 8) fprintf(fp, "->[%d]", nxt);
       }
-      fprintf(fp, "\n");
+      if (j == 8) fprintf(fp,     "->[%d]\n", nxt); else
+      if (j >  8) fprintf(fp, "->..->[%d]\n", nxt); else
+                  fprintf(fp,           "\n");
     }
   }
 
