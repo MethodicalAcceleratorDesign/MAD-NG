@@ -32,8 +32,8 @@ Notes about directions and quantities:
 -- locals ---------------------------------------------------------------------o
 
 local element, damap, symint, option, warn, _C                  in MAD
-local is_number                                                 in MAD.typeid
-local fnil, bind3rd                                             in MAD.gfunc
+local is_number, is_function                                    in MAD.typeid
+local fnil, fcut, ftst, bind3rd                                 in MAD.gfunc
 local fact, arc2cord, sqrt, sin, cos, atan2                     in MAD.gmath
 local errorf                                                    in MAD.utility
 local minlen, minang, minstr, clight, twopi, pi_2               in MAD.constant
@@ -97,6 +97,9 @@ local genm_thick                                                   in MAD.dynmap
 local xrotation, yrotation, srotation, translate,
       changeref, changedir, changenrj, misalign                    in MAD.dynmap
 
+-- fringe flags
+local fringe                                                       in MAD.dynmap
+
 -- dynamic maps in C ----------------------------------------------------------o
 
 local ffi = require 'ffi'
@@ -106,18 +109,22 @@ enum { nmul_max=22, snm_max=(nmul_max+1)*(nmul_max+2)/2 };
 
 struct mflw_ { // must be identical to def in mad_dynmap.cpp !!
   // element data
-  num_t el, eld, lrad;
+  num_t el, eld, elc, lrad;
   num_t eh, ang, mang;
 
   // beam
   num_t pc, beta, betgam;
   int charge;
 
-  // directions
-  int edir, sdir, tdir, T;
+  // directions, path
+  int sdir, edir, pdir, T, Tbak;
 
   // quad, solenoid, multipole, esptum, rfcav
   num_t k1, ks, ksi, volt, freq, lag, nbsl;
+
+  // fringes
+  int frng, fmax;
+  num_t e, fint, h, hgap, f1, f2, a;
 
   // angles
   num_t ca, sa, tlt;
@@ -157,10 +164,10 @@ local map = {
     [strex_drift ] = _C.mad_trk_strex_drift_r ,
     [strex_kick  ] = _C.mad_trk_strex_kick_r  ,
     [strex_kickhs] = _C.mad_trk_strex_kickhs_r,
-    [strex_fringe] =            strex_fringe  ,
+    [strex_fringe] = _C.mad_trk_strex_fringe_r,
     [curex_drift ] = _C.mad_trk_curex_drift_r ,
     [curex_kick  ] = _C.mad_trk_curex_kick_r  ,
-    [curex_fringe] =            curex_fringe  ,
+    [curex_fringe] = _C.mad_trk_curex_fringe_r,
     [sbend_thick ] = _C.mad_trk_sbend_thick_r ,
     [sbend_kick  ] = _C.mad_trk_sbend_kick_r  ,
     [dipeg_fringe] =            dipeg_fringe  ,
@@ -176,7 +183,7 @@ local map = {
     [solen_fringe] =            solen_fringe  ,
     [rfcav_kick  ] = _C.mad_trk_rfcav_kick_r  ,
     [rfcav_kickn ] = _C.mad_trk_rfcav_kickn_r ,
-    [rfcav_fringe] =            rfcav_fringe  ,
+    [rfcav_fringe] = _C.mad_trk_rfcav_fringe_r,
     [esept_thick ] = _C.mad_trk_esept_thick_r ,
     [nllens_kick ] =            nllens_kick   ,
     [bbeam_kick  ] =            bbeam_kick    ,
@@ -196,10 +203,10 @@ local map = {
     [strex_drift ] = _C.mad_trk_strex_drift_t ,
     [strex_kick  ] = _C.mad_trk_strex_kick_t  ,
     [strex_kickhs] = _C.mad_trk_strex_kickhs_t,
-    [strex_fringe] =            strex_fringe  ,
+    [strex_fringe] = _C.mad_trk_strex_fringe_t,
     [curex_drift ] = _C.mad_trk_curex_drift_t ,
     [curex_kick  ] = _C.mad_trk_curex_kick_t  ,
-    [curex_fringe] =            curex_fringe  ,
+    [curex_fringe] = _C.mad_trk_curex_fringe_t,
     [sbend_thick ] = _C.mad_trk_sbend_thick_t ,
     [sbend_kick  ] = _C.mad_trk_sbend_kick_t  ,
     [dipeg_fringe] =            dipeg_fringe  ,
@@ -215,7 +222,7 @@ local map = {
     [solen_fringe] =            solen_fringe  ,
     [rfcav_kick  ] = _C.mad_trk_rfcav_kick_t  ,
     [rfcav_kickn ] = _C.mad_trk_rfcav_kickn_t ,
-    [rfcav_fringe] =            rfcav_fringe  ,
+    [rfcav_fringe] = _C.mad_trk_rfcav_fringe_t,
     [esept_thick ] = _C.mad_trk_esept_thick_t ,
     [nllens_kick ] =            nllens_kick   ,
     [bbeam_kick  ] =            bbeam_kick    ,
@@ -345,29 +352,65 @@ end
 
 -- helpers --------------------------------------------------------------------o
 
-local function cmisalign (elm, m, dir)
-  if m.cmap then
-    map[m.cmap][misalign](m.cflw, dir)
-  else
-    misalign(elm, m, dir)
-  end
-end
-
 local function crot (tlt, m, dir)
   if m.cmap then
-    map[m.cmap][srotation](m.cflw, dir, tlt)
+    map[m.cmap][srotation](m.cflw_, dir, tlt)
   else
     srotation(tlt, m, dir)
   end
 end
 
+local function cmisalign (elm, m, dir)
+  if m.cmap then
+    map[m.cmap][misalign](m.cflw_, dir)
+  else
+    misalign(elm, m, dir)
+  end
+end
+
+local function cfringe (elm, m, dir, frng)
+  local fun = map[m.cmap][frng]
+  if is_function(fun) then return fun(elm, m, dir) end
+
+  local c = m.cflw
+  local p = m.pdir == dir
+
+  if dir ==  1 and elm.kill_ent_fringe or
+     dir == -1 and elm.kill_exi_fringe
+  then c.frng = 0
+  else c.frng = fcut(m.fringe, elm.fringe)
+  end
+
+  if dir == 1 then
+    c.e, c.h  = (m.e1 or elm.e1)*m.tdir, elm.h1*m.tdir
+    c.a = p and (m.e2 or elm.e2)*m.tdir - c.e or 0
+  else
+    c.e, c.h  = (m.e2 or elm.e2)*m.tdir, elm.h2*m.tdir
+    c.a = p and (m.e1 or elm.e1)*m.tdir - c.e or 0
+  end
+
+  if ftst(c.frng, fringe.bend) then
+    c.fint, c.hgap = (dir == -1 and elm.fintx) or elm.fint, elm.hgap
+  end
+
+  if ftst(c.frng, fringe.mult) then
+    c.fmax = elm.frngmax or m.frngmax
+  end
+
+  if ftst(c.frng, fringe.qsad) then
+    c.f1, c.f2 = elm.f1, elm.f2
+  end
+
+  return fun(m.cflw_, dir)
+end
+
 -- element tracking -----------------------------------------------------------o
-local function trackone (elm, m, inter, thick, thin, fringe_)
+local function trackone (elm, m, inter, thick, thin)
   local sdir, atentry, atexit in m
 
   if m.cmap and not m.pmap then
     local cmap = map[m.cmap]
-    thick, thin = cmap[thick], cmap[thin]
+    thick, thin = cmap[thick or fnil], cmap[thin or fnil]
   end
 
   atentry(elm, m,  sdir, -1)
@@ -381,20 +424,20 @@ local function trackelm (elm, m, inter, thick, thin, fringe)
   local algn = get_algn(elm, m) ; m.algn = algn
   local mis  = algn and cmisalign or fnil
   local rot  = abs(tlt) >= minang and crot or fnil
-  local fng  = fringe or fnil
+  local fng  = fringe
 
   if m.cmap and not m.pmap then
     local cmap = map[m.cmap]
-    thick, thin = cmap[thick], cmap[thin]
+    thick, thin, fng = cmap[thick], cmap[thin], fng ~= fnil and cfringe or fng
   end
 
   atentry(elm, m,  sdir, -1)
   mis    (elm, m,  sdir)
   rot    (tlt, m,  sdir)
   atentry(elm, m,  sdir, -3)
-  fng    (elm, m,  sdir)
+  fng    (elm, m,  sdir, fringe)
   inter  (elm, m,    1 , thick, thin)
-  fng    (elm, m, -sdir)
+  fng    (elm, m, -sdir, fringe)
   atexit (elm, m, -sdir, -4)
   rot    (tlt, m, -sdir)
   mis    (elm, m, -sdir)
@@ -413,19 +456,19 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
   local algn = get_algn(elm, m) ; m.algn = algn
   local mis  = algn and cmisalign or fnil
   local rot  = abs(tlt) >= minang and crot or fnil
-  local fng  = fringe or fnil
+  local fng  = fringe
   m.eidx = 0
 
   if m.cmap and not m.pmap then
     local cmap = map[m.cmap]
-    thick, thin = cmap[thick], cmap[thin]
+    thick, thin, fng = cmap[thick], cmap[thin], fng ~= fnil and cfringe or fng
   end
 
   atentry(elm, m, sdir, -1)
   mis    (elm, m, sdir)
   rot    (tlt, m, sdir)
   atentry(elm, m, sdir, -3)
-  fng    (elm, m, sdir)
+  fng    (elm, m, sdir, fringe)
 
   if sdir > 0 then
     local at, lw = 0
@@ -461,7 +504,7 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
     end
   end
 
-  fng   (elm, m, -sdir)
+  fng   (elm, m, -sdir, fringe)
   atexit(elm, m, -sdir, -4)
   rot   (tlt, m, -sdir)
   mis   (elm, m, -sdir)
@@ -493,7 +536,7 @@ local function track_marker (elm, m)
     m.cflw.nmul = 0
   end
 
-  trackone(elm, m, thinonly, fnil, fnil)
+  trackone(elm, m, thinonly, nil, fnil)
 end
 
 local function track_drift (elm, m)
@@ -510,11 +553,11 @@ local function track_drift (elm, m)
 
   if is_implicit(elm) then
     local inter = m.implicit and thickonly or driftonly
-    trackone(elm, m, inter, strex_drift)
+    trackone(elm, m, inter, strex_drift, nil)
   else
     local track = #elm == 0 and trackelm or tracksub
     local inter = l >= minlen and thickonly or driftonly
-    track(elm, m, inter, strex_drift, fnil)
+    track(elm, m, inter, strex_drift, fnil, fnil)
   end
 end
 
@@ -541,7 +584,7 @@ local function track_multipole (elm, m)
     cpy_mult(m)
   end
 
-  trackelm(elm, m, thinonly, fnil, kick)
+  trackelm(elm, m, thinonly, fnil, kick, fnil)
 end
 
 local function track_bbeam (elm, m)
@@ -556,7 +599,7 @@ local function track_bbeam (elm, m)
   end
 
   local kick = elm.bb6D and bbeam_kick6D or bbeam_kick
-  trackelm(elm, m, thinonly, fnil, kick)
+  trackelm(elm, m, thinonly, fnil, kick, fnil)
 end
 
 local function track_nllens (elm, m)
@@ -570,7 +613,7 @@ local function track_nllens (elm, m)
     m.cflw.nmul = 0
   end
 
-  trackelm(elm, m, thinonly, fnil, nllens_kick)
+  trackelm(elm, m, thinonly, fnil, nllens_kick, fnil)
 end
 
 local function track_sbend (elm, m, e1_, e2_)
@@ -602,7 +645,9 @@ local function track_sbend (elm, m, e1_, e2_)
 
   adj_mult(m) ; getanbnr(m)
 
-  if not is_number(m.eh) then m.pmap = true end
+  if not (is_number(m.eh) and is_number(m.e1) and is_number(m.e2)) then
+    m.pmap = true
+  end
 
   if model == 'DKD' then                          -- curved thin
     inter, thick, kick = DKD[method], curex_drift , curex_kick
@@ -622,6 +667,7 @@ local function track_sbend (elm, m, e1_, e2_)
 
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, kick, curex_fringe)
+  m.e1, m.e2, m.snm = nil, nil, nil
 end
 
 local function track_rbend (elm, m)
@@ -648,13 +694,13 @@ local function track_rbend (elm, m)
   m.elc = arc2cord(m.eld, angle)
 
   if e1 and e2 then                                                           -- Straight
-    m.e1, m.e2 = e1+angle/2, e2+angle/2
+    m.e1, m.e2, m.pdir = e1+angle/2, e2+angle/2, nil
     m.el = m.elc
   elseif e1 then                                                              -- True parallel with exit patch
-    m.e1, m.e2, m.etp_dir = e1, angle - e1, -1
+    m.e1, m.e2, m.pdir = e1, angle - e1, -1
     m.el = m.elc * cos(angle/2 - e1)
   elseif e2 then                                                              -- True parallel with entry patch
-    m.e1, m.e2, m.etp_dir = angle - e2, e2,  1
+    m.e1, m.e2, m.pdir = angle - e2, e2,  1
     m.el = m.elc * cos(angle/2 - e2)
   else errorf("True parallel rbend '%s' must set e1 or e2", elm.name)
   end
@@ -668,7 +714,9 @@ local function track_rbend (elm, m)
 
   adj_mult(m)
 
-  if not is_number(m.eh) then m.pmap = true end
+  if not (is_number(m.eh) and is_number(m.e1) and is_number(m.e2)) then
+    m.pmap = true
+  end
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
@@ -686,6 +734,8 @@ local function track_rbend (elm, m)
     m.cflw.eh   = m.eh
     m.cflw.el   = m.el
     m.cflw.eld  = m.eld
+    m.cflw.elc  = m.elc
+    m.cflw.pdir = m.pdir or 0
     m.cflw.ang  = m.ang
     m.cflw.mang = m.mang
     cpy_mult(m)
@@ -693,8 +743,8 @@ local function track_rbend (elm, m)
 
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, kick, strex_fringe)
-  m.eld = nil
-  if m.cmap then m.cflw.eld = 0 end
+  m.e1, m.e2, m.eld, m.pdir = nil, nil, nil, nil
+  if m.cmap then m.cflw.eld, m.cflw.pdir = 0, 0 end
 end
 
 local function track_quadrupole (elm, m)
@@ -994,7 +1044,7 @@ local function track_rfcavgen (elm, m, crab)
 
   local inter  = l < minlen and thinonly or DKD[elm.method or m.method]
   local kick   = m.nmul+m.nbsl == 0 and rfcav_kick or rfcav_kickn
-  local fringe = l < minlen and fnil     or rfcav_fringe
+  local fringe = l < minlen and fnil or rfcav_fringe
 
   if m.cmap and not m.pmap then
     m.cflw.el   = m.el
@@ -1003,6 +1053,7 @@ local function track_rfcavgen (elm, m, crab)
     m.cflw.freq = m.freq
     m.cflw.lag  = m.lag
     m.cflw.nbsl = m.nbsl
+    m.cflw.Tbak = elm.no_cavity_totalpath and -2 or -1
     cpy_mult(m)
   end
 
@@ -1018,6 +1069,7 @@ end
 local function track_rfmcavity (elm, m)
   get_multphas  (elm, m)
   track_rfcavgen(elm, m)
+  m.npha = nil
 end
 
 local function track_crabcavity (elm, m)
@@ -1025,6 +1077,7 @@ local function track_crabcavity (elm, m)
   local l, volt in elm
   m.knl[1] = m.knl[1] + volt*l*1e-3
   track_rfcavgen(elm, m, true)
+  m.npha = nil
 end
 
 -- genmap element
