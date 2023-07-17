@@ -33,6 +33,9 @@ extern "C" {
 enum { nmul_max=22, snm_max=(nmul_max+1)*(nmul_max+2)/2 };
 
 struct mflw_ { // must be identical to def in madl_etrck.mad !!
+  str_t name;
+  int dbg;
+
   // element data
   num_t el, eld, elc, lrad;
   num_t eh, ang, mang;
@@ -111,15 +114,33 @@ struct map_t {
 
 using namespace mad;
 
-/* To debug TPSA version only, e.g.
+// --- debug ------------------------------------------------------------------o
+
+# if 1 // set to 0 to remove debug code, ~2.5% of code size
+#define mdump(n) if (m->dbg) mdump<P>(m, __func__, n)
+#else
+#define mdump(n)
+#endif
+
+template <typename P, typename T=P::T>
+inline void (mdump) (mflw_t *m, str_t s, int n) {
+  if (!m->dbg) return;
+
+  char fun[30];
+  snprintf(fun, 30, "%s:%d", s, n);
+  printf("@@ %-15s %-15s ", m->name, fun);
+
+  if (!m->npar) { printf("no particle found\n"); return; }
+
+  P p(m,0);
   if constexpr (!std::is_floating_point<T>::value) {
-    if (abs(k0) > 1e10) {
-      mad_mdump(0);
-      printf("exiting C++\n");
-      exit(-1);
-    }
+    printf("% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e\n",
+             p.x[0], p.px[0],  p.y[0], p.py[0],  p.t[0], p.pt[0]);
+  } else {
+    printf("% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e\n",
+                p.x,    p.px,     p.y,    p.py,     p.t,    p.pt);
   }
-*/
+}
 
 // --- constants --------------------------------------------------------------o
 
@@ -186,7 +207,7 @@ inline void xrotation (mflw_t *m, num_t lw, num_t dphi_=0)
 {
   num_t a = (dphi_ ? dphi_ : m->dphi)*lw;
   if (abs(a) < minang) return;
-
+  mdump(0);
   a *= m->sdir*m->edir;
   num_t sa=sin(a), ca=cos(a), ta=tan(a);
 
@@ -203,6 +224,7 @@ inline void xrotation (mflw_t *m, num_t lw, num_t dphi_=0)
     p.x  += _pzt*p.px;
     p.t  -= _pzt*(1/m->beta+p.pt);
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
@@ -210,7 +232,7 @@ inline void yrotation (mflw_t *m, num_t lw, num_t dthe_=0)
 {
   num_t a = -(dthe_ ? dthe_ : m->dthe)*lw;
   if (abs(a) < minang) return;
-
+  mdump(0);
   a *= m->sdir*m->edir;
   num_t sa=sin(a), ca=cos(a), ta=tan(a);
 
@@ -227,6 +249,7 @@ inline void yrotation (mflw_t *m, num_t lw, num_t dthe_=0)
     p.y  += _pzt*p.py;
     p.t  -= _pzt*(1/m->beta+p.pt);
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
@@ -234,7 +257,7 @@ inline void srotation (mflw_t *m, num_t lw, num_t dpsi_=0)
 {
   num_t a = (dpsi_ ? dpsi_ : m->dpsi)*lw;
   if (abs(a) < minang) return;
-
+  mdump(0);
   a *= m->sdir*m->edir;
   num_t sa=sin(a), ca=cos(a);
 
@@ -248,38 +271,37 @@ inline void srotation (mflw_t *m, num_t lw, num_t dpsi_=0)
     p.x  = nx;
     p.px = npx;
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
 inline void translate (mflw_t *m, num_t lw, num_t dx_=0, num_t dy_=0, num_t ds_=0)
 {
-  num_t dx = (dx_ ? dx_ : m->dx)*lw;
-  num_t dy = (dy_ ? dy_ : m->dy)*lw;
-  num_t ds = (ds_ ? ds_ : m->ds)*lw;
+  num_t dx = dx_ ? dx_ : m->dx;
+  num_t dy = dy_ ? dy_ : m->dy;
+  num_t ds = ds_ ? ds_ : m->ds;
   if (abs(dx)+abs(dy)+abs(ds) < minlen) return;
+  mdump(0);
+  dx *= lw*m->sdir*m->edir;
+  dy *= lw*m->sdir*m->edir;
+  ds *= lw*m->sdir*m->edir;
 
-  dx *= m->sdir*m->edir;
-  dy *= m->sdir*m->edir;
-  ds *= m->sdir*m->edir;
-
-  if (abs(ds) < minlen) {
+  if (abs(ds) < minlen)
     FOR(i,m->npar) {
       P p(m,i);
       p.y -= dx;
       p.x -= dy;
     }
-    return;
-  }
+  else
+    FOR(i,m->npar) {
+      P p(m,i);
+      T l_pz = invsqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py), ds);
 
-  num_t l = ds;
-  FOR(i,m->npar) {
-    P p(m,i);
-    T l_pz = invsqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py), l);
-
-    p.y += l_pz*p.px - dx;
-    p.x += l_pz*p.py - dy;
-    p.t -= l_pz*(1/m->beta+p.pt);
-  }
+      p.y += l_pz*p.px - dx;
+      p.x += l_pz*p.py - dy;
+      p.t -= l_pz*(1/m->beta+p.pt);
+    }
+  mdump(1);
 }
 
 template <typename P>
@@ -289,7 +311,7 @@ inline void changeref (mflw_t *m, num_t lw)
   bool rot = abs(m->dthe)+abs(m->dphi)+abs(m->dpsi) >= minang;
 
   if (!trn && !rot) return;
-
+  mdump(0);
   lw *= m->sdir;
 
   if (rot && lw > 0) {
@@ -305,6 +327,7 @@ inline void changeref (mflw_t *m, num_t lw)
     xrotation<P>(m,  m->edir);
     yrotation<P>(m, -m->edir);
   }
+  mdump(1);
 }
 
 // --- misalignments ----------------------------------------------------------o
@@ -312,6 +335,7 @@ inline void changeref (mflw_t *m, num_t lw)
 template <typename P>
 inline void misalignent (mflw_t *m, num_t lw) {
                                     (void)lw;
+  mdump(0);
   if (m->algn.rot && m->sdir > 0) {
     yrotation<P>(m,  m->edir, m->algn.dthe);
     xrotation<P>(m, -m->edir, m->algn.dphi);
@@ -326,10 +350,12 @@ inline void misalignent (mflw_t *m, num_t lw) {
     xrotation<P>(m,  m->edir, m->algn.dphi);
     yrotation<P>(m, -m->edir, m->algn.dthe);
   }
+  mdump(1);
 }
 
 template <typename P>
 inline void misalignexi (mflw_t *m, num_t lw) {
+  mdump(0);
   num_t rb[3*3], r[3*3];            (void)lw;
   num_t tb[3]  , t[3]={m->algn.dx, m->algn.dy, m->algn.ds};
 
@@ -356,6 +382,7 @@ inline void misalignexi (mflw_t *m, num_t lw) {
     xrotation<P>(m, -m->edir, -v[0]);
     srotation<P>(m,  m->edir, -v[2]);
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
@@ -369,6 +396,7 @@ inline void misalign (mflw_t *m, num_t lw) {
 template <typename P, typename T=P::T>
 inline void drift_adj (mflw_t *m, num_t l)
 {
+  mdump(0);
   FOR(i,m->npar) {
     P p(m,i);
     T l_pz = invsqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py), l);
@@ -377,6 +405,7 @@ inline void drift_adj (mflw_t *m, num_t l)
     p.y += p.py*(l_pz-l);
     p.t -= l_pz*(1/m->beta+p.pt) + (m->T-1)*l/m->beta;
   }
+  mdump(1);
 }
 
 // --- DKD maps ---------------------------------------------------------------o
@@ -384,10 +413,10 @@ inline void drift_adj (mflw_t *m, num_t l)
 template <typename P, typename T=P::T>
 inline void strex_drift (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
+  if (std::abs(m->el*lw) < minlen) return;
+  mdump(0);
   num_t l  = m->el*lw;
   num_t ld = (m->eld ? m->eld : m->el)*lw;
-
-  if (std::abs(m->el*lw) < minlen) return;
 
   FOR(i,m->npar) {
     P p(m,i);
@@ -397,13 +426,14 @@ inline void strex_drift (mflw_t *m, num_t lw, int is)
     p.y += p.py*l_pz;
     p.t -= l_pz*(1/m->beta+p.pt) + (m->T-1)*ld/m->beta;
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
 inline void strex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
 {                                          (void)is;
   if (!m->nmul) return;
-
+  mdump(0);
   num_t wchg = lw*m->sdir*m->edir*m->charge;
   num_t dby  = no_k0l ? m->knl[0] : 0;
   T bx, by;
@@ -415,6 +445,7 @@ inline void strex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
     p.px -= wchg*(by-dby);
     p.py += wchg* bx;
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
@@ -446,7 +477,7 @@ template <typename P, typename T=P::T>
 inline void strex_kickhs (mflw_t *m, num_t lw, int is)
 {                                            (void)is;
   if (!m->nmul == 0 || !m->ksi) return;
-
+  mdump(0);
   num_t wchg = lw*m->sdir*m->edir*m->charge;
   T bx, by;
 
@@ -476,11 +507,13 @@ inline void strex_kickhs (mflw_t *m, num_t lw, int is)
 
     if (m->sdir == 1) strex_kicks(m, lw, p, pz);
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
 inline void curex_drift (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
+  mdump(0);
   num_t ld  = (m->eld ? m->eld : m->el)*lw;
   num_t ang = m->ang*lw, rho = 1/m->eh;
   num_t ca  = cos(ang), sa = sin(ang), sa2 = sin(ang/2);
@@ -498,11 +531,13 @@ inline void curex_drift (mflw_t *m, num_t lw, int is)
     p.y += pst*p.py;
     p.t -= pst*(1/m->beta+p.pt) + (m->T-1)*ld/m->beta;
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
 inline void curex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
 {                                          (void)is;
+  mdump(0);
   num_t blw = lw*m->sdir*m->edir*m->charge;
   T bx, by; bx = 0., by = m->knl[0];
 
@@ -517,6 +552,7 @@ inline void curex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
 
     if (no_k0l) p.px += (blw*m->knl[0])*r;
   }
+  mdump(1);
 }
 
 // --- TKT maps ---------------------------------------------------------------o
@@ -524,8 +560,9 @@ inline void curex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
 // --- sbend ---
 
 template <typename P, typename T=P::T>
-inline void sbend_thick_old (mflw_t *m, num_t lw, int is)
-{                                               (void)is;
+inline void sbend_thick (mflw_t *m, num_t lw, int is)
+{                                           (void)is;
+  mdump(0);
   num_t ld  = (m->eld ? m->eld : m->el)*lw;
   num_t ang = m->ang*lw, rho=1/m->eh;
   num_t k0q = m->knl[0]/m->el*m->sdir*m->edir*m->charge;
@@ -546,11 +583,13 @@ inline void sbend_thick_old (mflw_t *m, num_t lw, int is)
     p.y += dxs*p.py;
     p.t -= dxs*(1/m->beta+p.pt) + (m->T-1)*(ld/m->beta);
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
 inline void sbend_thick_new (mflw_t *m, num_t lw, int is)
 {                                               (void)is;
+  mdump(0);
   num_t ld  = (m->eld ? m->eld : m->el)*lw;
   num_t ang = m->ang*lw, rho=1/m->eh;
   num_t k0q = m->knl[0]/m->el*m->sdir*m->edir*m->charge;
@@ -581,13 +620,15 @@ inline void sbend_thick_new (mflw_t *m, num_t lw, int is)
     p.y += dxs*p.py;
     p.t -= dxs*(1/m->beta+p.pt) + (m->T-1)*ld/m->beta;
   }
+  mdump(1);
 }
 
 // --- rbend ---
 
 template <typename P, typename T=P::T>
-inline void rbend_thick_old (mflw_t *m, num_t lw, int is)
-{                                               (void)is;
+inline void rbend_thick (mflw_t *m, num_t lw, int is)
+{                                           (void)is;
+  mdump(0);
   num_t ld   = (m->eld ? m->eld : m->el)*lw;
   num_t k0q  = m->knl[0]/m->el*m->sdir*m->edir*m->charge;
   num_t k0lq = m->knl[0]*lw   *m->sdir*m->edir*m->charge;
@@ -597,19 +638,23 @@ inline void rbend_thick_old (mflw_t *m, num_t lw, int is)
     T  npx = p.px - k0lq;
     T  pw2 = 1 + 2*p.pt/m->beta + sqr(p.pt) - sqr(p.py);
     T _ptt = invsqrt(pw2);
+    T   pz = sqrt(pw2 - sqr(p.px));
+    T  pzs = sqrt(pw2 - sqr(npx));
     T  dxs = (asin(p.px*_ptt) - asin(npx*_ptt))/k0q;
 
     // eq. 126 in Forest06
-    p.x += (sqrt(pw2 - sqr(npx)) - sqrt(pw2 - sqr(p.px)))/k0q;
+    p.x += (pzs-pz)/k0q;
     p.px = npx;
     p.y += dxs*p.py;
     p.t -= dxs*(1/m->beta+p.pt) + (m->T-1)*ld/m->beta;
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
 inline void rbend_thick_new (mflw_t *m, num_t lw, int is)
 {                                               (void)is;
+  mdump(0);
   num_t l    = m->el*lw;
   num_t ld   = (m->eld ? m->eld : m->el)*lw;
   num_t k0q  = m->knl[0]/m->el*m->sdir*m->edir*m->charge;
@@ -632,6 +677,7 @@ inline void rbend_thick_new (mflw_t *m, num_t lw, int is)
     p.y += dxs*p.py;
     p.t -= dxs*(1/m->beta+p.pt) + (m->T-1)*ld/m->beta;
   }
+  mdump(1);
 }
 
 // --- quadrupole ---
@@ -639,6 +685,7 @@ inline void rbend_thick_new (mflw_t *m, num_t lw, int is)
 template <typename P, typename T=P::T>
 inline void quad_thick (mflw_t *m, num_t lw, int is)
 {                                          (void)is;
+  mdump(0);
   num_t l = m->el*lw;
   int  ws = m->k1*m->sdir < 0 ? -1 : 1;
 
@@ -672,6 +719,7 @@ inline void quad_thick (mflw_t *m, num_t lw, int is)
     p.y  = ny;
     p.py = npy;
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
@@ -680,7 +728,7 @@ inline void quad_kick (mflw_t *m, num_t lw, int is)
   num_t l = m->el*lw;
 
   if (is >= 0) drift_adj<P>(m, is ? l : l/2);
-
+  mdump(0);
   if (m->nmul > 0) {
     num_t wchg = lw*m->sdir*m->edir*m->charge;
     T bx, by;
@@ -693,13 +741,14 @@ inline void quad_kick (mflw_t *m, num_t lw, int is)
       p.py += wchg*(bx - m->knl[1]*p.y);
     }
   }
-
+  mdump(1);
   if (is <= 0) drift_adj<P>(m, is ? l : l/2);
 }
 
 template <typename P, typename T=P::T>
 inline void quad_thicks (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
+  mdump(0);
   num_t l   = m->el*lw;
   num_t w   = sqrt(abs(m->k1))*m->edir;
   num_t cx  = cos (w*l), sx  = sin (w*l);
@@ -729,6 +778,7 @@ inline void quad_thicks (mflw_t *m, num_t lw, int is)
     p.y   = m->ca*ny  + m->sa*nx;
     p.py  = m->ca*npy + m->sa*npx;
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
@@ -737,7 +787,7 @@ inline void quad_kicks (mflw_t *m, num_t lw, int is)
   num_t l = m->el*lw;
 
   if (is >= 0) drift_adj<P>(m, is ? l : l/2);
-
+  mdump(0);
   if (m->nmul > 0) {
     num_t wchg = lw*m->sdir*m->edir*m->charge;
     T bx, by;
@@ -750,13 +800,14 @@ inline void quad_kicks (mflw_t *m, num_t lw, int is)
       p.py += wchg*(bx - m->knl[1]*p.y - m->ksl[1]*p.x);
     }
   }
-
+  mdump(1);
   if (is <= 0) drift_adj<P>(m, is ? l : l/2);
 }
 
 template <typename P, typename T=P::T>
 inline void quad_thickh (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
+  mdump(0);
   num_t l = m->el*lw;
   num_t kx  = (m->knl[1] + m->eh*m->knl[0])/m->el;
   num_t ky  = -m->knl[1]/m->el;
@@ -808,6 +859,7 @@ inline void quad_thickh (mflw_t *m, num_t lw, int is)
     p.py  = npy;
     p.t  -= dt;
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
@@ -816,7 +868,7 @@ inline void quad_kickh (mflw_t *m, num_t lw, int is)
   num_t l = m->el*lw;
 
   if (is >= 0) drift_adj<P>(m, is ? l : l/2);
-
+  mdump(0);
   if (m->nmul > 0) {
     num_t wchg = lw*m->sdir*m->edir*m->charge;
     T bx, by;
@@ -831,7 +883,7 @@ inline void quad_kickh (mflw_t *m, num_t lw, int is)
       p.t  -= (l*m->eh)*((1/m->beta+p.pt)/pz - 1/m->beta)*p.x;
     }
   }
-
+  mdump(1);
   if (is <= 0) drift_adj<P>(m, is ? l : l/2);
 }
 
@@ -840,6 +892,7 @@ inline void quad_kickh (mflw_t *m, num_t lw, int is)
 template <typename P, typename T=P::T>
 inline void solen_thick (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
+  mdump(0);
   num_t l = m->el*lw;
   num_t bsol = 0.5*m->ks*m->charge;
 
@@ -864,6 +917,7 @@ inline void solen_thick (mflw_t *m, num_t lw, int is)
     p.py = ca*pyt - sa*pxt;
     p.t -= l_pz*(1/m->beta+p.pt) + (m->T-1)*l/m->beta;
   }
+  mdump(1);
 }
 
 // --- eseptum ---
@@ -871,6 +925,7 @@ inline void solen_thick (mflw_t *m, num_t lw, int is)
 template <typename P, typename T=P::T>
 inline void esept_thick (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
+  mdump(0);
   num_t l = m->el*lw;
 
   FOR (i,m->npar) {
@@ -902,6 +957,7 @@ inline void esept_thick (mflw_t *m, num_t lw, int is)
     p.py = m->ca*npy + m->sa*npx;
     p.t -= dt + (m->T-1)*l/m->beta;
   }
+  mdump(1);
 }
 
 // --- rfcavity ---
@@ -909,6 +965,7 @@ inline void esept_thick (mflw_t *m, num_t lw, int is)
 template <typename P, typename T=P::T>
 inline void rfcav_kick (mflw_t *m, num_t lw, int is)
 {                                          (void)is;
+  mdump(0);
   num_t w  = m->freq*twopi_clight;
   num_t vl = m->volt*lw/m->pc*m->sdir*m->edir*m->charge;
 
@@ -916,11 +973,13 @@ inline void rfcav_kick (mflw_t *m, num_t lw, int is)
     P p(m,i);
     p.pt += vl*sin(m->lag - w*p.t);
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
 inline void rfcav_kickn (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
+  mdump(0);
   num_t w    = m->freq*twopi_clight;
   num_t wchg = lw/m->pc*m->sdir*m->edir*m->charge;
   num_t vl   = m->volt*wchg;
@@ -970,6 +1029,7 @@ inline void rfcav_kickn (mflw_t *m, num_t lw, int is)
       p.pt -= wchg*w*by*sa;
     }
   }
+  mdump(1);
 }
 
 // --- fringe maps ------------------------------------------------------------o
@@ -998,7 +1058,7 @@ template <typename P, typename T=P::T>
 inline void cav_fringe (mflw_t *m, num_t lw)
 {
   if (abs(m->el) < minlen) return;
-
+  mdump(0);
   num_t w  = m->freq*twopi_clight;
   num_t vl = 0.5*lw*m->volt/(m->pc*m->el)*m->sdir*m->edir*m->charge;
 
@@ -1011,13 +1071,14 @@ inline void cav_fringe (mflw_t *m, num_t lw)
     p.py -= vl*s1*p.y;
     p.pt += 0.5*vl*w*c1*(sqr(p.x) + sqr(p.y));
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
 inline void bend_face (mflw_t *m, num_t lw, num_t h=0)
 {                                 (void)lw;
   if (!h || abs(m->el) < minlen || abs(m->knl[0]) < minstr) return;
-
+  mdump(0);
   num_t k0hq = 0.5*h*m->knl[0]/m->el*m->sdir*m->charge;
 
   FOR (i,m->npar) {
@@ -1038,13 +1099,13 @@ inline void bend_face (mflw_t *m, num_t lw, num_t h=0)
 
     if (m->sdir*m->edir == -1) p.px += k0hq*sqr(p.x);
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
 inline void bend_ptch (mflw_t *m, num_t lw, num_t a=0)
 {                                 (void)lw;
   if (!a || !m->elc) return;
-
   num_t dx = m->elc*sin(a/2);
 
   FOR (i,m->npar) {
@@ -1058,7 +1119,7 @@ inline void bend_wedge (mflw_t *m, num_t lw, num_t e=0)
 {                                  (void)lw;
   if (!e) return;
   if (abs(m->knl[0]) < minstr) return yrotation<P>(m,1,e);
-
+  mdump(0);
   num_t b1 = m->knl[0]/m->el*m->sdir*m->edir*m->charge;
   num_t sa = sin(e), ca = cos(e), s2a = sin(2*e);
 
@@ -1077,13 +1138,14 @@ inline void bend_wedge (mflw_t *m, num_t lw, num_t e=0)
     p.y  += dxs*p.py;
     p.t  -= dxs*(1/m->beta+p.pt);
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
 inline void mad8_wedge (mflw_t *m, num_t lw, num_t e=0)
 {                                  (void)lw;
   if (!e || abs(m->knl[1]) < minstr) return;
-
+  mdump(0);
   num_t  wc = m->frng == 0 ? 0 : 0.25;
   num_t k1e = e*m->knl[1]/m->el*m->edir;
   num_t  c1 = (1+wc)*k1e*m->charge;
@@ -1094,13 +1156,14 @@ inline void mad8_wedge (mflw_t *m, num_t lw, num_t e=0)
     p.px +=   c1*sqr(p.x) - c2*sqr(p.y);
     p.py -= 2*c2*p.x*p.y;
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
 inline void bend_fringe (mflw_t *m, num_t lw)
 {
   if (abs(m->knl[0]) < minang) return;
-
+  mdump(0);
   num_t   fh = m->fint*m->hgap;
   num_t fsad = fh ? 1/(72*fh) : 0;
   num_t   b0 = lw*m->knl[0]/abs(m->el)*m->sdir*m->edir*m->charge;
@@ -1150,6 +1213,7 @@ inline void bend_fringe (mflw_t *m, num_t lw)
       p.y  *= 0.5*(1 + sqrt(1-2*ky*p.y));
     }
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
@@ -1157,14 +1221,13 @@ inline void qsad_fringe (mflw_t *m, num_t lw)
 {
   if (abs(m->knl[1])+abs(m->ksl[1]) < minstr) return;
   if (abs(m->f1)    +abs(m->f2)     < minstr) return;
-
+  mdump(0);
   num_t wchg = lw*m->charge;
-
-  num_t  a  = -0.5*atan2(m->ksl[1], m->knl[1]);
-  num_t b2  = hypot(m->knl[1], m->ksl[1])/m->el*m->edir;
-  num_t ca  = cos(a), sa = sin(a);
-  num_t bf1 = -abs(m->f1)*m->f1*b2/24;
-  num_t bf2 =             m->f2*b2;
+  num_t  a   = -0.5*atan2(m->ksl[1], m->knl[1]);
+  num_t b2   = hypot(m->knl[1], m->ksl[1])/m->el*m->edir;
+  num_t ca   = cos(a), sa = sin(a);
+  num_t bf1  = -abs(m->f1)*m->f1*b2/24;
+  num_t bf2  =             m->f2*b2;
 
   // Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
   FOR (i,m->npar) {
@@ -1193,6 +1256,7 @@ inline void qsad_fringe (mflw_t *m, num_t lw)
     p.y  = ca*ny  + sa*nx;
     p.py = ca*npy + sa*npx;
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
@@ -1200,7 +1264,7 @@ inline void mult_fringe (mflw_t *m, num_t lw)
 {
   int n = MIN(m->nmul,m->fmax);
   if (!n) return;
-
+  mdump(0);
   num_t    _l = m->el ? m->sdir*m->edir/m->el : m->edir;
   num_t  wchg = lw*m->charge;
   num_t no_k1 = m->frng & fringe_bend;
@@ -1257,11 +1321,13 @@ inline void mult_fringe (mflw_t *m, num_t lw)
     p.py  = (a*p.py - c*p.px)*_det;
     p.t  += (1/m->beta+p.pt)*(p.px*fx + p.py*fy)*sqr(_pz)*_pz;
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
 inline void curex_fringe (mflw_t *m, num_t lw)
 {
+  mdump(0);
   if (m->sdir*lw == 1) { // 'forward entry' or 'backward exit'
     yrotation<P> (m, 1,-m->e);
     bend_face<P> (m, 1, m->h);
@@ -1283,11 +1349,13 @@ inline void curex_fringe (mflw_t *m, num_t lw)
     bend_face<P> (m,-1, m->h);
     yrotation<P> (m,-1, m->e);
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
 inline void strex_fringe (mflw_t *m, num_t lw)
 {
+  mdump(0);
   num_t a = !m->pdir*(0.5*m->eh*(m->eld ? m->eld : m->el) - m->e);
   bool  p =  m->pdir == lw;
 
@@ -1312,11 +1380,13 @@ inline void strex_fringe (mflw_t *m, num_t lw)
     bend_ptch<P> (m,-1, m->a*p);
     yrotation<P> (m,-1, m->e  );
   }
+  mdump(1);
 }
 
 template <typename P, typename T=P::T>
 inline void rfcav_fringe (mflw_t *m, num_t lw)
 {
+  mdump(0);
   if (m->sdir*lw == 1) { // 'forward entry' or 'backward exit'
     ensure(m->Tbak < 0, "inconsistent totalpath when entering rfcavity");
     if (m->Tbak == -1)
@@ -1330,6 +1400,7 @@ inline void rfcav_fringe (mflw_t *m, num_t lw)
     if (lw == -1 && m->T != m->Tbak) adjust_time<P>(m, -1);
     m->T = m->Tbak, m->Tbak = -1;
   }
+  mdump(1);
 }
 
 // --- specializations --------------------------------------------------------o
@@ -1445,10 +1516,10 @@ void mad_trk_curex_kick_t (mflw_t *m, num_t lw, int is) {
 // --- sbend ---
 
 void mad_trk_sbend_thick_r (mflw_t *m, num_t lw, int is) {
-  sbend_thick_old<par_t>(m,lw,is);
+  sbend_thick<par_t>(m,lw,is);
 }
 void mad_trk_sbend_thick_t (mflw_t *m, num_t lw, int is) {
-  sbend_thick_old<map_t>(m,lw,is);
+  sbend_thick<map_t>(m,lw,is);
 }
 
 void mad_trk_sbend_kick_r (mflw_t *m, num_t lw, int is) {
@@ -1461,10 +1532,10 @@ void mad_trk_sbend_kick_t (mflw_t *m, num_t lw, int is) {
 // --- rbend ---
 
 void mad_trk_rbend_thick_r (mflw_t *m, num_t lw, int is) {
-  rbend_thick_old<par_t>(m,lw,is);
+  rbend_thick<par_t>(m,lw,is);
 }
 void mad_trk_rbend_thick_t (mflw_t *m, num_t lw, int is) {
-  rbend_thick_old<map_t>(m,lw,is);
+  rbend_thick<map_t>(m,lw,is);
 }
 
 void mad_trk_rbend_kick_r (mflw_t *m, num_t lw, int is) {
@@ -1731,6 +1802,8 @@ void mad_trk_spdtest (int n, int k)
   tpsa_t* *maps[] = {map};
 
   struct mflw_ m = {
+    .name="spdtest", .dbg=0,
+
     .el=1, .eld=1, .elc=0, .lrad=0,
     .eh=0, .ang=0, .mang=0,
 
