@@ -85,7 +85,7 @@ end
 
 -- element tracking -----------------------------------------------------------o
 
-local function trackone (elm, m, inter, thick, thin, fringe)
+local function trackone (elm, m, inter, thick, thin)
   local sdir, atentry, atexit in m
 
   atentry(elm, m,  sdir, -1)
@@ -99,39 +99,39 @@ local function trackelm (elm, m, inter, thick, thin, fringe)
   local algn = get_algn(elm, m) ; m.algn = algn
   local mis  = algn and misalign or fnil
   local rot  = abs(tlt) >= minang and srotation or fnil
-  local fng  = fringe or fnil
+  local fng  = fringe
 
   atentry(elm, m,  sdir, -1)
   mis    (elm, m,  sdir)
-  rot    (tlt, m,  sdir)
+  rot    (elm, m,  sdir, tlt)
   atentry(elm, m,  sdir, -3)
   fng    (elm, m,  sdir)
   inter  (elm, m,    1 , thick, thin)
   fng    (elm, m, -sdir)
   atexit (elm, m, -sdir, -4)
-  rot    (tlt, m, -sdir)
+  rot    (elm, m, -sdir, tlt)
   mis    (elm, m, -sdir)
   atexit (elm, m, -sdir, -2)
 
-  m.tlt, m.algn = nil, nil
+  m.algn = nil
 end
 
 local function tracksub (elm, m, inter, thick, thin, fringe)
+  if m.eidx == 0 then
+    errorf("invalid subelement survey %s (contain subelements)", elm.name)
+  end
+
   local eidx, sdir, atentry, atexit, __sdat in m
   local tlt  = elm.tilt*m.tdir  ; m.tlt  = tlt
   local algn = get_algn(elm, m) ; m.algn = algn
   local mis  = algn and misalign or fnil
   local rot  = abs(tlt) >= minang and srotation or fnil
-  local fng  = fringe or fnil
-  m.eidx = nil
-
-  if not eidx then
-    errorf("invalid subelement survey %s (contain subelements)", elm.name)
-  end
+  local fng  = fringe
+  m.eidx = 0
 
   atentry(elm, m, sdir, -1)
   mis    (elm, m, sdir)
-  rot    (tlt, m, sdir)
+  rot    (elm, m, sdir, tlt)
   atentry(elm, m, sdir, -3)
   fng    (elm, m, sdir)
 
@@ -170,11 +170,11 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
 
   fng   (elm, m, -sdir)
   atexit(elm, m, -sdir, -4)
-  rot   (tlt, m, -sdir)
+  rot   (elm, m, -sdir, tlt)
   mis   (elm, m, -sdir)
   atexit(elm, m, -sdir, -2)
 
-  m.tlt, m.algn, m.eidx = nil, nil, eidx
+  m.algn, m.eidx = nil, eidx
 end
 
 -- kinds ----------------------------------------------------------------------o
@@ -191,8 +191,7 @@ end
 
 local function track_marker (elm, m)
   m.el, m.ang = 0, 0
-  trackone(elm, m, thinonly, fnil, fnil)
-  m.el, m.ang = nil, nil
+  trackone(elm, m, thinonly, nil, fnil)
 end
 
 local function track_drift (elm, m)
@@ -205,10 +204,8 @@ local function track_drift (elm, m)
   else
     local track = #elm == 0 and trackelm or tracksub
     local inter = abs(ds) >= minlen and thickonly or driftonly
-    track(elm, m, inter, strex_thick, fnil)
+    track(elm, m, inter, strex_thick, fnil, fnil)
   end
-
-  m.el, m.ang = nil, nil
 end
 
 local function track_thin (elm, m)
@@ -216,9 +213,7 @@ local function track_thin (elm, m)
   m.el, m.ang = 0, angle*m.tdir
 
   local kick = abs(angle) >= minang and curex_thin or fnil
-  trackelm(elm, m, thinonly, fnil, kick)
-
-  m.el, m.ang = nil, nil
+  trackelm(elm, m, thinonly, nil, kick)
 end
 
 local function track_thick (elm, m, fng_)
@@ -235,38 +230,34 @@ local function track_thick (elm, m, fng_)
   end
 
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, inter, thick, fnil, fng_)
-
-  m.el, m.ang = nil, nil
+  track(elm, m, inter, thick, fnil, fng_ of fnil)
 end
 
 -- rbend special --------------------------------------------------------------o
 
-local function fng_e1 (e, m, s)
+local function fng_e1 (elm, m, s)
   local e1, e2, elc, sdir in m
   local d = s*sdir
-  if d == -1 then
-    local e_ = {name=e.name, dx=elc*sin((e2-e1)/2), dy=0, ds=0}
-    translate(e_, m, -1) -- translation independant of direction
-    yrotation(e2, m, -1)
+  if d == -1 then -- translation independant of direction
+    translate(elm, m, -1, elc*sin((e2-e1)/2), 0, 0)
+    yrotation(elm, m, -1, e2)
   elseif e1 ~= 0 then
-    yrotation(e1, m, -1)
+    yrotation(elm, m, -1, e1)
   end
 end
 
-local function fng_e2 (e, m, s)
+local function fng_e2 (elm, m, s)
   local e1, e2, elc, sdir in m
   local d = s*sdir
-  if d == 1 then
-    local e_ = {name=e.name, dx=elc*sin((e2-e1)/2), dy=0, ds=0}
-    yrotation(e1, m, -1)
-    translate(e_, m, -1) -- translation independant of direction
+  if d == 1 then -- translation independant of direction
+    yrotation(elm, m, -1, e1)
+    translate(elm, m, -1, elc*sin((e2-e1)/2), 0, 0)
   elseif e2 ~= 0 then
-    yrotation(e2 , m, -1)
+    yrotation(elm, m, -1, e2)
   end
 end
 
-local fng_e  = \e, m, s -> yrotation(e, m, -0.5)
+local fng_e  = \elm, m, s -> yrotation(elm, m, -0.5)
 
 local function track_rbend (elm, m)
   m.mang = 0
@@ -297,7 +288,7 @@ local function track_rbend (elm, m)
   end
 
   track_thick(elm, m, fng)
-  m.e1, m.e2, m.el, m.elc, m.mang = nil, nil, nil, nil, nil
+  m.e1, m.e2, m.mang = nil, nil, nil, nil, nil
 end
 
 -- load maps into elements ----------------------------------------------------o
