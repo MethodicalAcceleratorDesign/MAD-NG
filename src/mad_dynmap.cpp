@@ -413,7 +413,7 @@ inline void drift_adj (mflw_t *m, num_t l)
 template <typename P, typename T=P::T>
 inline void strex_drift (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
-  if (std::abs(m->el*lw) < minlen) return;
+  if (abs(m->el*lw) < minlen) return;
   mdump(0);
   num_t l  = m->el*lw;
   num_t ld = (m->eld ? m->eld : m->el)*lw;

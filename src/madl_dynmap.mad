@@ -137,8 +137,8 @@ end
 
 -- X-rotation
 
-local function xrotation (elm, m, lw_)  -- Rx(ax) [ROT_YZ]                   -- checked
-  local ax = is_number(elm) and elm or elm.angle*m.tdir
+local function xrotation (elm, m, lw_, dphi_)  -- Rx(ax) [ROT_YZ]            -- checked
+  local ax = dphi_ or elm.angle*m.tdir
   if abs(ax) < minang then return end
 
   m.atdebug(elm, m, lw_, 'xrotation:0')
@@ -170,8 +170,8 @@ M.xrotation = xrotation
 
 -- Y-rotation
 
-local function yrotation (elm, m, lw_)  -- Ry(ay) [ROT_XZ]                   -- checked
-  local ay = is_number(elm) and elm or elm.angle*m.tdir
+local function yrotation (elm, m, lw_, dthe_)  -- Ry(ay) [ROT_XZ]            -- checked
+  local ay = dthe_ or elm.angle*m.tdir
   if abs(ay) < minang then return end
 
   m.atdebug(elm, m, lw_, 'yrotation:0')
@@ -203,8 +203,8 @@ M.yrotation = yrotation
 
 -- S-rotation
 
-local function srotation (elm, m, lw_)  -- Rz(az) [ROT_XY]                   -- checked
-  local az = is_number(elm) and elm or elm.angle*m.tdir
+local function srotation (elm, m, lw_, dpsi_)  -- Rz(az) [ROT_XY]            -- checked
+  local az = dpsi_ or elm.angle*m.tdir
   if abs(az) < minang then return end
 
   m.atdebug(elm, m, lw_, 'srotation:0')
@@ -230,15 +230,19 @@ M.srotation = srotation
 
 -- Translation
 
-local function translate (elm, m, lw_) -- [TRANS]                            -- unchecked
-  local dx, dy, ds in elm
+local function translate (elm, m, lw_, dx_, dy_, ds_) -- [TRANS]             -- unchecked
+  local dx = dx_ or elm.dx
+  local dy = dy_ or elm.dy
+  local ds = ds_ or elm.ds
   if abs(dx)+abs(dy)+abs(ds) < minlen then return end
 
   m.atdebug(elm, m, lw_, 'translate:0')
 
   local tdir in m
   local lw = lw_ or 1
-  local dx, dy = dx*lw*tdir, dy*lw*tdir
+  dx = dx*lw*tdir
+  dy = dy*lw*tdir
+  ds = ds*lw*tdir
 
   if abs(ds) < minlen then
     for i=1,m.npar do
@@ -246,14 +250,12 @@ local function translate (elm, m, lw_) -- [TRANS]                            -- 
       m[i].x = x - dx
       m[i].y = y - dy
     end
-  else
-    -- ds is treated as a drift without correction for the time of flight
-    local l = ds*lw*m.sdir
+  else -- ds is treated as a drift without correction for the time of flight
     local _beta = 1/m.beam.beta
     for i=1,m.npar do
       local x, px, y, py, t, pt, beam in m[i]
       local _beta = beam and 1/beam.beta or _beta
-      local  l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
+      local  l_pz = ds/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
       m[i].x = x + px*l_pz - dx
       m[i].y = y + py*l_pz - dy
       m[i].t = t - l_pz*(_beta+pt)
@@ -284,21 +286,21 @@ function M.changeref (elm, m, lw_)                                           -- 
 
   -- rotate
   if rot and lw > 0 then
-    yrotation( dthe, m, edir)
-    xrotation(-dphi, m, edir)
-    srotation( dpsi, m, edir)
+    yrotation(elm, m,  edir,  dthe)
+    xrotation(elm, m,  edir, -dphi)
+    srotation(elm, m,  edir,  dpsi)
   end
 
   -- translate
-  if trn then
-    translate({dx=dx, dy=dy, ds=ds}, m, 1) -- translate does everything
+  if trn then -- translate does everything
+    translate(elm, m, 1, dx, dy, ds)
   end
 
   -- rotate
   if rot and lw < 0 then
-    srotation( dpsi, m, -edir)
-    xrotation(-dphi, m, -edir)
-    yrotation( dthe, m, -edir)
+    srotation(elm, m, -edir,  dpsi)
+    xrotation(elm, m, -edir, -dphi)
+    yrotation(elm, m, -edir,  dthe)
   end
 
   m.atdebug(elm, m, lw_, 'changeref:1')
@@ -361,7 +363,7 @@ function M.misalign (elm, m, lw_)                                            -- 
 end
 
 function misalignent (elm, m, lw)                                            -- unchecked
-  m.atdebug(elm, m, lw, 'misalign:0')
+  m.atdebug(elm, m, lw, 'misalignent:0')
 
   local sdir, edir, tdir, algn in m
 
@@ -371,24 +373,24 @@ function misalignent (elm, m, lw)                                            -- 
 
   -- rotate
   if algn.rot and sdir > 0 then
-    yrotation( algn.dthe, m, edir)
-    xrotation(-algn.dphi, m, edir)
-    srotation( algn.dpsi, m, edir)
+    yrotation(elm, m,  edir,  algn.dthe)
+    xrotation(elm, m,  edir, -algn.dphi)
+    srotation(elm, m,  edir,  algn.dpsi)
   end
 
   -- translate
   if algn.trn then
-    translate({dx=algn.dx, dy=algn.dy, ds=algn.ds}, m, sdir)
+    translate(elm, m, sdir, algn.dx, algn.dy, algn.ds)
   end
 
   -- rotate
   if algn.rot and sdir < 0 then
-    srotation( algn.dpsi, m, -edir)
-    xrotation(-algn.dphi, m, -edir)
-    yrotation( algn.dthe, m, -edir)
+    srotation(elm, m, -edir,  algn.dpsi)
+    xrotation(elm, m, -edir, -algn.dphi)
+    yrotation(elm, m, -edir,  algn.dthe)
   end
 
-  m.atdebug(elm, m, lw, 'misalign:1')
+  m.atdebug(elm, m, lw, 'misalignent:1')
 end
 
 function misalignexi (elm, m, lw)                                            -- unchecked
@@ -418,22 +420,22 @@ function misalignexi (elm, m, lw)                                            -- 
   -- rotate
   if algn.rot and sdir > 0 then
     local ax, ay, az = _Rb:torotzxy()
-    srotation(az, m, -edir)
-    xrotation(ax, m, -edir)
-    yrotation(ay, m, -edir)
+    srotation(elm, m, -edir, az)
+    xrotation(elm, m, -edir, ax)
+    yrotation(elm, m, -edir, ay)
   end
 
   -- translate
   if algn.trn then
-    translate({dx=_Tb[1], dy=_Tb[2], ds=_Tb[3]}, m, -sdir)
+    translate(elm, m, -sdir, _Tb[1], _Tb[2], _Tb[3])
   end
 
   -- rotate
   if algn.rot and sdir < 0 then
     local ax, ay, az = _Rb:torotzxy()
-    yrotation(ay, m, edir)
-    xrotation(ax, m, edir)
-    srotation(az, m, edir)
+    yrotation(elm, m,  edir, ay)
+    xrotation(elm, m,  edir, ax)
+    srotation(elm, m,  edir, az)
   end
 
   m.atdebug(elm, m, lw, 'misalignexi:1')
@@ -1587,13 +1589,13 @@ function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]                     -- 
 
   if sdir*lw == 1 then
 ! print(lw == 1 and 'forward entry' or 'backward exit')
-    yrotation(-e1, m, 1)
+    yrotation(elm, m, 1, -e1)
     if m.pdir == lw then                           -- Entering magnet
       for i=1,m.npar do
         m[i].x = m[i].x+m.elc*sin((e2-e1)/2)       -- EDGE_TRUE_PARALLEL
       end
     end
-    bend_face(h1, m, 1)
+    bend_face(elm, m, 1, h1)
     if m.frng ~= 0 then
       if ftst(m.frng, fringe.bend) then bend_fringe(elm, m, 1) end
       if ftst(m.frng, fringe.mult) then mult_fringe(elm, m, 1) end
@@ -1601,26 +1603,26 @@ function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]                     -- 
     end
     if not m.pdir then                    -- ! EDGE_TRUE_PARALLEL
       local a = 0.5*m.eh*(m.eld or m.el) - e1
-      bend_wedge(a, m, 1)
+      bend_wedge(elm, m, 1, a)
     end
   else
 ! print(lw == -1 and 'forward exit' or 'backward entry')
     if not m.pdir then                    -- ! EDGE_TRUE_PARALLEL
       local a = 0.5*m.eh*(m.eld or m.el) - e2
-      bend_wedge(a, m, -1)
+      bend_wedge(elm, m, -1, a)
     end
     if m.frng ~= 0 then
       if ftst(m.frng, fringe.qsad) then qsad_fringe(elm, m, -1) end
       if ftst(m.frng, fringe.mult) then mult_fringe(elm, m, -1) end
       if ftst(m.frng, fringe.bend) then bend_fringe(elm, m, -1) end
     end
-    bend_face(h2, m, -1)
+    bend_face(elm, m, -1, h2)
     if m.pdir == lw then                                -- Exiting magnet
       for i=1,m.npar do
         m[i].x = m[i].x+m.elc*sin((e2-e1)/2)            -- EDGE_TRUE_PARALLEL
       end
     end
-    yrotation(e2, m, -1)
+    yrotation(elm, m, -1, e2)
   end
 
   m.atdebug(elm, m, lw_, 'strex_fringe:1')
@@ -1645,26 +1647,27 @@ function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]                     -- 
 
   if sdir*lw == 1 then
 -- print(lw == 1 and 'forward entry' or 'backward exit')
-    yrotation (-e, m, 1)
-    bend_face ( h, m, 1)
+    yrotation (elm, m, 1, -e)
+    bend_face (elm, m, 1,  h)
     if m.frng ~= 0 then
       if ftst(m.frng, fringe.bend) then bend_fringe(elm, m, 1) end
       if ftst(m.frng, fringe.mult) then mult_fringe(elm, m, 1) end
       if ftst(m.frng, fringe.qsad) then qsad_fringe(elm, m, 1) end
     end
-    mad8_wedge( e, m, 1)
-    bend_wedge(-e, m, 1)
+--    if e ~= 0 then MAD.dbg() end
+    mad8_wedge(elm, m, 1,  e)
+    bend_wedge(elm, m, 1, -e)
   else
 -- print(lw == -1 and 'forward exit' or 'backward entry')
-    bend_wedge(-e, m, -1)
-    mad8_wedge( e, m, -1)
+    bend_wedge(elm, m, -1,-e)
+    mad8_wedge(elm, m, -1, e)
     if m.frng ~= 0 then
       if ftst(m.frng, fringe.qsad) then qsad_fringe(elm, m, -1) end
       if ftst(m.frng, fringe.mult) then mult_fringe(elm, m, -1) end
       if ftst(m.frng, fringe.bend) then bend_fringe(elm, m, -1) end
     end
-    bend_face ( h, m, -1)
-    yrotation ( e, m, -1)
+    bend_face (elm, m, -1, h)
+    yrotation (elm, m, -1, e)
   end
 
   m.atdebug(elm, m, lw_, 'curex_fringe:1')
@@ -1732,12 +1735,12 @@ end
 
 -- fringes helpers ------------------------------------------------------------o
 
-function bend_face (h, m, lw) -- [NEWFACE]                                   -- checked
+function bend_face (elm, m, lw, h) -- [NEWFACE]                              -- checked
   if h == 0 then return end
   local el, eld, knl in m
   if abs(el) < minlen or abs(knl[1]) < minstr then return end
 
-  m.atdebug(h, m, lw, 'bend_face:0')
+  m.atdebug(elm, m, lw, 'bend_face:0')
 
   local edir, sdir, tdir, beam in m
   ! h is weighted by tdir, el is weighted by sdir, so to get tdir back, we need to multiply by sdir
@@ -1777,12 +1780,12 @@ function bend_face (h, m, lw) -- [NEWFACE]                                   -- 
     m[i].t  = t
   end
 
-  m.atdebug(h, m, lw, 'bend_face:1')
+  m.atdebug(elm, m, lw, 'bend_face:1')
 end
 
-function mad8_wedge (e, m, lw_)     -- [FRINGE_TEAPOT:MAD8_WEDGE]            -- checked
+function mad8_wedge (elm, m, lw_, e)     -- [FRINGE_TEAPOT:MAD8_WEDGE]            -- checked
   if e == 0 or abs(m.knl[2]) < minstr then return end
-  m.atdebug(e, m, lw_, 'mad8_wedge:0')
+  m.atdebug(elm, m, lw_, 'mad8_wedge:0')
 
   local el, eld, edir, knl, frng, beam in m
   local   wc = frng == 0 and 0 or 0.25
@@ -1798,13 +1801,13 @@ function mad8_wedge (e, m, lw_)     -- [FRINGE_TEAPOT:MAD8_WEDGE]            -- 
     m[i].py = py - (chg*c2*2)*x*y
   end
 
-  m.atdebug(e, m, lw_, 'mad8_wedge:1')
+  m.atdebug(elm, m, lw_, 'mad8_wedge:1')
 end
 
-function bend_wedge (e, m, lw_) -- [WEDGE] see also [sr]bend_thick           -- checked
+function bend_wedge (elm, m, lw_, e) -- [WEDGE] see also [sr]bend_thick      -- checked
   if e == 0 then return end
   if abs(m.knl[1]) < minstr then return yrotation(-e,m,1) end
-  m.atdebug(e, m, lw_, 'bend_wedge:0')
+  m.atdebug(elm, m, lw_, 'bend_wedge:0')
 
   local el, eld, tdir, knl, beam in m
   local    k0 = knl[1]/el*tdir
@@ -1836,7 +1839,7 @@ function bend_wedge (e, m, lw_) -- [WEDGE] see also [sr]bend_thick           -- 
     ::continue::
   end
 
-  m.atdebug(e, m, lw_, 'bend_wedge:1')
+  m.atdebug(elm, m, lw_, 'bend_wedge:1')
 end
 
 function bend_fringe (elm, m, lw) -- [FRINGE_DIPOLE]                         -- checked
