@@ -289,16 +289,16 @@ inline void translate (mflw_t *m, num_t lw, num_t dx_=0, num_t dy_=0, num_t ds_=
   if (abs(ds) < minlen)
     FOR(i,m->npar) {
       P p(m,i);
-      p.y -= dx;
-      p.x -= dy;
+      p.x -= dx;
+      p.y -= dy;
     }
   else
     FOR(i,m->npar) {
       P p(m,i);
       T l_pz = invsqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py), ds);
 
-      p.y += l_pz*p.px - dx;
-      p.x += l_pz*p.py - dy;
+      p.x += l_pz*p.px - dx;
+      p.y += l_pz*p.py - dy;
       p.t -= l_pz*(1/m->beta+p.pt);
     }
   mdump(1);
@@ -1429,10 +1429,10 @@ void mad_trk_srotation_t (mflw_t *m, num_t lw, num_t psi) {
 }
 
 void mad_trk_translate_r (mflw_t *m, num_t lw) {
-  srotation<par_t>(m, lw);
+  translate<par_t>(m, lw);
 }
 void mad_trk_translate_t (mflw_t *m, num_t lw) {
-  srotation<map_t>(m, lw);
+  translate<map_t>(m, lw);
 }
 
 void mad_trk_changeref_r (mflw_t *m, num_t lw) {
