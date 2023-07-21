@@ -926,7 +926,8 @@ template <typename P, typename T=P::T>
 inline void esept_thick (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
   mdump(0);
-  num_t l = m->el*lw;
+  num_t l  = m->el*lw;
+  num_t k1 = m->sdir*m->charge/m->pc * m->volt;
 
   FOR (i,m->npar) {
     P p(m,i);
@@ -937,12 +938,12 @@ inline void esept_thick (mflw_t *m, num_t lw, int is)
     T  npy = m->ca*p.py - m->sa*p.px;
 
     T   e1 = 1/m->beta+p.pt;
-    T   dp = e1 + m->k1*ny;
+    T   dp = e1 + k1*ny;
     T l_pz = invsqrt(sqr(dp) - 1/sqr(m->betgam) - sqr(npx) - sqr(npy), l);
-    T  arg = m->k1*l_pz;
+    T  arg = k1*l_pz;
     T  shx = sinhc(arg)*l_pz;
     T   ch = cosh(arg), sh = sinh(arg);
-    T  chm = sqr(sinh(0.5*arg))*(2/m->k1);
+    T  chm = sqr(sinh(0.5*arg))*(2/k1);
     T   dt = chm*npy + sh *ny  + e1*shx;
     T   yt = ch *ny  + shx*npy + e1*chm;
     T  pyt = ch *npy + sh*dp;
