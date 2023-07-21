@@ -1015,18 +1015,26 @@ inline void rfcav_kickn (mflw_t *m, num_t lw, int is)
       p.px += wchg*by*ca;
       p.py -= wchg*bx*ca;
 
-      by = -m->knl[m->nmul-1]/m->nmul;
-      bx = -m->ksl[m->nmul-1]/m->nmul;
-      RFOR(i,m->nmul-1) {
-        byt = p.x*by - p.y*bx - m->knl[i]/(i+1);
-        bx  = p.y*by + p.x*bx - m->ksl[i]/(i+1);
-        by  = byt;
-      }
-      byt = p.x*by - p.y*bx;
-      bx  = p.y*by + p.x*bx;
-      by  = byt;
+      /* 
+        Below is a quick fix that is not very suitable and does not fix the 
+        underlying problem. The problem is that mad_tpsa_set0 is not suitable
+        enough for setting a tpsa to a scalar, because it does not clear the 
+        other monomials, so you get additional coefficients you shouldn't have
+      */
+      T bx2, by2, byt;
 
-      p.pt -= wchg*w*by*sa;
+      by2 = -(m->knl[m->nmul-1]/m->nmul);
+      bx2 = -(m->ksl[m->nmul-1]/m->nmul);
+      RFOR(i,m->nmul-1) {
+        byt = p.x*by2 - p.y*bx2 - m->knl[i]/(i+1);
+        bx2  = p.y*by2 + p.x*bx2 - m->ksl[i]/(i+1);
+        by2  = byt;
+      }
+      byt = p.x*by2 - p.y*bx2;
+      bx2  = p.y*by2 + p.x*bx2;
+      by2  = byt;
+
+      p.pt -= wchg*w*by2*sa;
     }
   }
   mdump(1);
