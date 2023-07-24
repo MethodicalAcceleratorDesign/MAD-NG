@@ -476,7 +476,7 @@ inline void strex_kicks (mflw_t *m, num_t lw, P &p, T &pz)
 template <typename P, typename T=P::T>
 inline void strex_kickhs (mflw_t *m, num_t lw, int is)
 {                                            (void)is;
-  if (!m->nmul == 0 || !m->ksi) return;
+  if (!m->nmul && !m->ksi) return;
   mdump(0);
   num_t wchg = lw*m->sdir*m->edir*m->charge;
   T bx, by;
