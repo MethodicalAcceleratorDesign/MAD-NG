@@ -80,7 +80,7 @@ struct tpsa_base {
   D& set(const std::string &s)         { mad_tpsa_setnam(ptr(), s.c_str());  return self(); }
 
   // set value and variables
-  D& set(num_t a)                      { mad_tpsa_set0  (ptr(), 0, a   );    return self(); }
+  D& set(num_t a)                      { mad_tpsa_setval(ptr(), a      );    return self(); }
   D& set(num_t a, idx_t v)             { mad_tpsa_setvar(ptr(), a, v, 0);    return self(); }
 
   template <class A>
@@ -139,7 +139,7 @@ struct tpsa_ref : tpsa_base<tpsa_ref> {
   tpsa_ref& operator=(const tpsa_base<A> &a) { TRC("ref=baz") mad_tpsa_copy(a.ptr(),ptr()); return *this; }
   tpsa_ref& operator=(const tpsa_ref     &a) { TRC("ref=ref") mad_tpsa_copy(a.ptr(),ptr()); return *this; }
   tpsa_ref& operator=(      tpsa_ref    &&a) { TRC("ref<ref") mad_tpsa_copy(a.ptr(),ptr()); return *this; }
-  tpsa_ref& operator=(      num_t         a) { TRC("ref=num") mad_tpsa_set0(  ptr(), 0, a); return *this; }
+  tpsa_ref& operator=(      num_t         a) { TRC("ref=num") mad_tpsa_setval(ptr(), a   ); return *this; }
 
 private:
   tpsa_ref()                               = delete;  // final   class
@@ -193,7 +193,7 @@ struct tpsa : tpsa_base<tpsa> {
   tpsa& operator=(const tpsa_base<A> &a) { TRC("tpa=baz") mad_tpsa_copy(a.ptr(),ptr()); return *this; }
   tpsa& operator=(const tpsa         &a) { TRC("tpa=tpa") mad_tpsa_copy(a.ptr(),ptr()); return *this; }
   tpsa& operator=(      tpsa        &&a) { TRC("tpa<tpa") mad_tpsa_copy(a.ptr(),ptr()); return *this; }
-  tpsa& operator=(      num_t         a) { TRC("tpa=num") mad_tpsa_set0(  ptr(), 0, a); return *this; }
+  tpsa& operator=(      num_t         a) { TRC("tpa=num") mad_tpsa_setval(ptr(), a   ); return *this; }
 
 #if TPSA_USE_TMP // specialization for capturing temporaries
   tpsa(const mad_prv_::tpsa_tmp_&); // forward decl
