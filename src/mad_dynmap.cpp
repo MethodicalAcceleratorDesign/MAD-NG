@@ -927,7 +927,7 @@ inline void esept_thick (mflw_t *m, num_t lw, int is)
 {                                           (void)is;
   mdump(0);
   num_t l  = m->el*lw;
-  num_t k1 = m->sdir*m->charge/m->pc * m->volt;
+  num_t k1 = m->volt/m->pc*m->sdir*m->charge;
 
   FOR (i,m->npar) {
     P p(m,i);
@@ -968,7 +968,7 @@ inline void rfcav_kick (mflw_t *m, num_t lw, int is)
 {                                          (void)is;
   mdump(0);
   num_t w  = m->freq*twopi_clight;
-  num_t vl = m->volt*lw/m->pc*m->sdir*m->edir*m->charge;
+  num_t vl = lw*m->volt/m->pc*m->sdir*m->edir*m->charge;
 
   FOR (i,m->npar) {
     P p(m,i);
