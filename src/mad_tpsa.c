@@ -293,6 +293,16 @@ FUN(setnam) (T *t, str_t nam)
 }
 
 void
+FUN(setval) (T *t, NUM v)
+{
+  assert(t); DBGFUN(->); DBGTPSA(t);
+
+  t->lo = t->hi = 0, t->nz = !!v, t->coef[0] = v;
+
+  DBGTPSA(t); DBGFUN(<-);
+}
+
+void
 FUN(setvar) (T *t, NUM v, idx_t iv, NUM scl)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
@@ -830,6 +840,9 @@ void FUN(setsm_r) (T *t, ssz_t n, const idx_t m[n], num_t a_re, num_t a_im, num_
 
 void FUN(setvar_r) (T *t, num_t v_re, num_t v_im, idx_t iv, num_t scl_re, num_t scl_im)
 { FUN(setvar)(t, CPX(v), iv, CPX(scl)); }
+
+void FUN(setval_r) (T *t, num_t v_re, num_t v_im)
+{ FUN(setval)(t, CPX(v)); }
 
 #endif // MAD_CTPSA_IMPL
 

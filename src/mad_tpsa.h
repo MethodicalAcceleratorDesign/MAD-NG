@@ -70,6 +70,7 @@ void    mad_tpsa_cutord  (const tpsa_t *t, tpsa_t *r, int   ord); // ord..mo = 0
 idx_t   mad_tpsa_maxord  (const tpsa_t *t,            ssz_t n, idx_t idx_[]);
 void    mad_tpsa_convert (const tpsa_t *t, tpsa_t *r, ssz_t n, idx_t t2r_[], int pb);
 void    mad_tpsa_setvar  (      tpsa_t *t, num_t v, idx_t iv_, num_t scl_);
+void    mad_tpsa_setval  (      tpsa_t *t, num_t v);
 void    mad_tpsa_setnam  (      tpsa_t *t, str_t nam);
 void    mad_tpsa_clear   (      tpsa_t *t);
 log_t   mad_tpsa_isnul   (const tpsa_t *t);
