@@ -401,9 +401,9 @@ inline void drift_adj (mflw_t *m, num_t l)
     P p(m,i);
     T _pz = invsqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
 
-    p.x += p.px*(l*_pz-l);
-    p.y += p.py*(l*_pz-l);
-    p.t -= _pz*(l/m->beta+p.pt) + (m->T-1)*l/m->beta;
+    p.x += l*p.px*(_pz-1);
+    p.y += l*p.py*(_pz-1);
+    p.t -= (l/m->beta+p.pt)*_pz + (m->T-1)*l/m->beta;
   }
   mdump(1);
 }
@@ -422,9 +422,9 @@ inline void strex_drift (mflw_t *m, num_t lw, int is)
     P p(m,i);
     T _pz = invsqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
 
-    p.x += p.px*l*_pz;
-    p.y += p.py*l*_pz;
-    p.t -= _pz*(l/m->beta+p.pt) + (m->T-1)*ld/m->beta;
+    p.x += l*p.px*_pz;
+    p.y += l*p.py*_pz;
+    p.t -= (l/m->beta+p.pt)*_pz + (m->T-1)*ld/m->beta;
   }
   mdump(1);
 }
@@ -901,11 +901,11 @@ inline void solen_thick (mflw_t *m, num_t lw, int is)
     T   xp = p.px + bsol*p.y;
     T   yp = p.py - bsol*p.x;
     T  _pz = invsqrt(1 + (2/m->beta)*p.pt + sqr(p.pt) - sqr(xp) - sqr(yp));
-    T  ang = _pz*(l*bsol);
+    T  ang = l*bsol*_pz;
 
     T ca = cos(ang), sa = sin(ang), sc = sinc(ang);
 
-    T lsc = l*_pz*sc;
+    T lsc = l*sc*_pz;
     T xt  = ca*p.x  + lsc*p.px;
     T pxt = ca*p.px - lsc*p.x *sqr(bsol);
     T yt  = ca*p.y  + lsc*p.py;
@@ -915,7 +915,7 @@ inline void solen_thick (mflw_t *m, num_t lw, int is)
     p.px = ca*pxt + sa*pyt;
     p.y  = ca*yt  - sa*xt;
     p.py = ca*pyt - sa*pxt;
-    p.t -= _pz*(l/m->beta+p.pt) + (m->T-1)*l/m->beta;
+    p.t -= (l/m->beta+p.pt)*_pz + (m->T-1)*l/m->beta;
   }
   mdump(1);
 }
