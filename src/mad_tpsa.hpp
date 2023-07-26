@@ -105,8 +105,8 @@ struct tpsa_base {
   D& operator^=(      int           a) { TRC("baz,int") mad_tpsa_powi(ptr(),      a,ptr()); return self(); }
 
   // indexing by index, monomial as string (literal), and (sparse) monomial as vector.
-  num_t operator[](idx_t i) const { return mad_tpsa_geti(ptr(),  i); }
-  num_t operator[](str_t s) const { return mad_tpsa_gets(ptr(),0,s); }
+  num_t operator[](idx_t i) const { return i ? mad_tpsa_geti(ptr(),  i) : mad_tpsa_get0(ptr()); }
+  num_t operator[](str_t s) const { return     mad_tpsa_gets(ptr(),0,s);                        }
 
   num_t operator[](const std::string& s) const {
     return mad_tpsa_gets(ptr(), s.size(), s.c_str());
