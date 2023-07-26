@@ -29,7 +29,7 @@
 #include "mad_mem.h"
 
 #define MAD_MEM_STD   0 // 1 -> use standard C allocator only.
-#define MAD_MEM_CLR   0 // 1 -> always clear allocated memory.
+#define MAD_MEM_CLR   0 // 1 -> replace malloc by calloc & clear pooled chunk.
 #define MAD_MEM_UTEST 0 // 1 -> run standalone unit tests in main().
 #define DBGMEM(P)       // P // uncomment for verbose debugging output
 
