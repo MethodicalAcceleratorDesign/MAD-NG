@@ -29,6 +29,7 @@
 #include "mad_mem.h"
 
 #define MAD_MEM_STD   0 // 1 -> use standard C allocator only.
+#define MAD_MEM_CLR   0 // 1 -> always clear allocated memory.
 #define MAD_MEM_UTEST 0 // 1 -> run standalone unit tests in main().
 #define DBGMEM(P)       // P // uncomment for verbose debugging output
 
@@ -98,15 +99,16 @@ struct pool {
 
 // static sanity checks
 enum {
-//static_assert__max_slot_not_a_power_of_2 = 1/!(max_slot & (max_slot-1)),
-//static_assert__max_mblk_not_a_power_of_2 = 1/!(max_mblk & (max_mblk-1)),
-//static_assert__max_mkch_not_a_power_of_2 = 1/!(max_mkch & (max_mkch-1)),
-  static_assert__stp_slot_not_a_power_of_2 = 1/!(stp_slot & (stp_slot-1)),
+  static_assert__max_slot_not_a_power_of_2 = 1/!(max_slot & (max_slot-1)), // not a real constraint, could be remove
+  static_assert__max_mblk_not_a_power_of_2 = 1/!(max_mblk & (max_mblk-1)), // not a real constraint, could be remove
+  static_assert__max_mkch_not_a_power_of_2 = 1/!(max_mkch & (max_mkch-1)), // not a real constraint, could be remove
   static_assert__max_slot_not_lt_IDXMAX    = 1/ (max_slot < IDXMAX),
   static_assert__max_mblk_not_lt_IDXMAX    = 1/ (max_mblk < IDXMAX),
   static_assert__max_mkch_not_lt_SLTMAX    = 1/ (max_mkch < SLTMAX),
+
+  static_assert__stp_slot_not_a_power_of_2 = 1/!(stp_slot & (stp_slot-1)),
   static_assert__stp_slot_neq_sizeof       = 1/ (stp_slot == sizeof(double)),
-  static_assert__stp_slot_neq_offsetof     = 1/ (stp_slot == offsetof(struct memblk,data)),
+  static_assert__stp_slot_neq_offsetof     = 1/ (stp_slot == offsetof(struct memblk,data)), // very important...
 };
 
 // --- locals -----------------------------------------------------------------o
@@ -150,6 +152,9 @@ void*
     mbp->mark = MARK;
     ensure((size_t)mbp > IDXMAX, "unexpected very low address"); // see collect
   }
+#if MAD_MEM_CLR
+  memset(mbp->data, 0, size);
+#endif
 
   DBGMEM( printf(" at %s\n", pdump(mbp)); )
   return mbp->data;
@@ -204,8 +209,15 @@ void*
 
   size_t idx = (size-1) / stp_slot;
   mbp = realloc(mbp, SIZE(idx));
-  mbp->slot = idx < max_slot ? idx : IDXMAX;
 
+#if MAD_MEM_CLR
+  if (mbp->slot < idx && idx < max_slot) {
+    size_t off = SIZE(mbp->slot)-SIZE(idx);
+    memset((char*)mbp->data+off, 0, size-off);
+  }
+#endif
+
+  mbp->slot = idx < max_slot ? idx : IDXMAX;
   DBGMEM( printf(" at %s\n", pdump(mbp)); )
   return mbp->data;
 }
