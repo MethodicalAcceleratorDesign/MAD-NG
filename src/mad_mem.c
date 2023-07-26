@@ -35,6 +35,10 @@
 
 // --- standard allocator -----------------------------------------------------o
 
+#if MAD_MEM_CLR == 1    // clear malloc'ed chunk
+#define malloc(sz) calloc(1,sz)
+#endif
+
 #if MAD_MEM_STD == 1    // module disabled
 
 // allocators
@@ -145,16 +149,16 @@ void*
     mbp = p->mblk[slt].mbp, p->mblk[slt].nxt = p->free;
     p->free = p->slot[idx], p->slot[idx] = mbp->next;
     p->mkch -= idx+2;
+#if MAD_MEM_CLR
+    memset(mbp->data, 0, size);
+#endif
   } else {
     DBGMEM( printf("alloc: malloc(%2zu)", size); )
-    mbp = malloc(SIZE(idx));
+    mbp = malloc(SIZE(idx)); assert(mbp);
     mbp->slot = idx < max_slot ? idx : IDXMAX;
     mbp->mark = MARK;
     ensure((size_t)mbp > IDXMAX, "unexpected very low address"); // see collect
   }
-#if MAD_MEM_CLR
-  memset(mbp->data, 0, size);
-#endif
 
   DBGMEM( printf(" at %s\n", pdump(mbp)); )
   return mbp->data;
@@ -208,7 +212,7 @@ void*
   ensure(mbp->mark == MARK, "invalid or corrupted allocated memory");
 
   size_t idx = (size-1) / stp_slot;
-  mbp = realloc(mbp, SIZE(idx));
+  mbp = realloc(mbp, SIZE(idx)); assert(mbp);
 
 #if MAD_MEM_CLR
   if (mbp->slot < idx && idx < max_slot) {
