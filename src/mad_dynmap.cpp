@@ -32,7 +32,8 @@ extern "C" {
 extern "C" {
 enum { nmul_max=22, snm_max=(nmul_max+1)*(nmul_max+2)/2 };
 
-struct mflw_ { // must be identical to def in madl_etrck.mad !!
+//template <typename P, typename T=P::T, typename T2=P::T2>
+struct mflw_ {
   str_t name;
   int dbg;
 
@@ -109,6 +110,23 @@ struct map_t {
 
   mad::tpsa_ref x, px, y, py, t, pt;
 };
+
+struct prm_t {
+  using T = mad::tpsa;
+
+  prm_t(mflw_t *m, int i)
+    : x(m->map[i][0]), px(m->map[i][1]),
+      y(m->map[i][2]), py(m->map[i][3]),
+      t(m->map[i][4]), pt(m->map[i][5]) {}
+
+  mad::tpsa_ref x, px, y, py, t, pt;
+};
+
+//union mflw_ {
+//  struct cflw<par_t> rflw;
+//  struct cflw<map_t> mflw;
+//  struct cflw<prm_t> pflw;
+//};
 
 // --- implementation ---------------------------------------------------------o
 
@@ -399,11 +417,11 @@ inline void drift_adj (mflw_t *m, num_t l)
   mdump(0);
   FOR(i,m->npar) {
     P p(m,i);
-    T _pz = invsqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
+    T l_pz = invsqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py), l);
 
-    p.x += l*p.px*(_pz-1);
-    p.y += l*p.py*(_pz-1);
-    p.t -= (l/m->beta+p.pt)*_pz + (m->T-1)*l/m->beta;
+    p.x += p.px*(l_pz-l);
+    p.y += p.py*(l_pz-l);
+    p.t -= (1/m->beta+p.pt)*l_pz + (m->T-1)*l/m->beta;
   }
   mdump(1);
 }
@@ -420,11 +438,11 @@ inline void strex_drift (mflw_t *m, num_t lw, int is)
 
   FOR(i,m->npar) {
     P p(m,i);
-    T _pz = invsqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
+    T l_pz = invsqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py), l);
 
-    p.x += l*p.px*_pz;
-    p.y += l*p.py*_pz;
-    p.t -= (l/m->beta+p.pt)*_pz + (m->T-1)*ld/m->beta;
+    p.x += p.px*l_pz;
+    p.y += p.py*l_pz;
+    p.t -= (1/m->beta+p.pt)*l_pz + (m->T-1)*ld/m->beta;
   }
   mdump(1);
 }
@@ -898,14 +916,14 @@ inline void solen_thick (mflw_t *m, num_t lw, int is)
 
   FOR (i,m->npar) {
     P p(m,i);
-    T   xp = p.px + bsol*p.y;
-    T   yp = p.py - bsol*p.x;
-    T  _pz = invsqrt(1 + (2/m->beta)*p.pt + sqr(p.pt) - sqr(xp) - sqr(yp));
-    T  ang = l*bsol*_pz;
+    T   xp  = p.px + bsol*p.y;
+    T   yp  = p.py - bsol*p.x;
+    T  l_pz = invsqrt(1 + (2/m->beta)*p.pt + sqr(p.pt) - sqr(xp) - sqr(yp), l);
+    T  ang  = bsol*l_pz;
 
     T ca = cos(ang), sa = sin(ang), sc = sinc(ang);
 
-    T lsc = l*sc*_pz;
+    T lsc = sc*l_pz;
     T xt  = ca*p.x  + lsc*p.px;
     T pxt = ca*p.px - lsc*p.x *sqr(bsol);
     T yt  = ca*p.y  + lsc*p.py;
@@ -915,7 +933,7 @@ inline void solen_thick (mflw_t *m, num_t lw, int is)
     p.px = ca*pxt + sa*pyt;
     p.y  = ca*yt  - sa*xt;
     p.py = ca*pyt - sa*pxt;
-    p.t -= (l/m->beta+p.pt)*_pz + (m->T-1)*l/m->beta;
+    p.t -= (1/m->beta+p.pt)*l_pz + (m->T-1)*l/m->beta;
   }
   mdump(1);
 }
