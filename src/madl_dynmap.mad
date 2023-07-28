@@ -446,7 +446,6 @@ end
 local function drift_adj (elm, m, l) -- [KICKPATH] drift adjustment          -- checked
   m.atdebug(elm, m, l, 'drift_adj:0')
 
-  local T in m
   local _beta = 1/m.beam.beta
 
   for i=1,m.npar do
@@ -456,7 +455,7 @@ local function drift_adj (elm, m, l) -- [KICKPATH] drift adjustment          -- 
 
     m[i].x = x + px*(l_pz-l)
     m[i].y = y + py*(l_pz-l)
-    m[i].t = t - l_pz*(_beta+pt) + (1-T)*(l*_beta)
+    m[i].t = t - (_beta+pt)*l_pz + (1-m.T)*_beta*l
   end
 
   m.atdebug(elm, m, l, 'drift_adj:1')
@@ -471,7 +470,7 @@ function M.strex_drift (elm, m, lw, istp) -- [DRIFT]                         -- 
 
   m.atdebug(elm, m, lw, 'strex_drift:0')
 
-  local el, eld, T in m
+  local el, eld in m
   local l, ld = el*lw, (eld or el)*lw
   local _beta = 1/m.beam.beta
 
@@ -482,7 +481,7 @@ function M.strex_drift (elm, m, lw, istp) -- [DRIFT]                         -- 
 
     m[i].x = x + px*l_pz
     m[i].y = y + py*l_pz
-    m[i].t = t - l_pz*(_beta+pt) + (1-T)*(ld*_beta)
+    m[i].t = t - (_beta+pt)*l_pz + (1-m.T)*_beta*ld
   end
 
   m.atdebug(elm, m, lw, 'strex_drift:1')
@@ -585,25 +584,25 @@ end
 function M.curex_drift (elm, m, lw, istp) -- [SPROT]                         -- checked
   m.atdebug(elm, m, lw, 'curex_drift:0')
 
-  local el, eld, eh, T in m
+  local el, eld, eh in m
   local ld, ang, rho = (eld or el)*lw, eh*el*lw, 1/eh -- R=rho, A=ang
   local ca, sa, sa2 = cos(ang), sin(ang), sin(ang/2)
-  local beta = m.beam.beta
+  local _beta = 1/m.beam.beta
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local beta = beam and beam.beta or beta
-    local   pz = sqrt(1 + (2/beta)*pt + pt^2 - px^2 - py^2)
-    local  _pz = 1/pz
-    local  pxt = px*_pz
-    local  ptt = ca - sa*pxt
-    local _ptt = 1/ptt
-    local  pst = (x+rho)*sa*_pz*_ptt
+    local _beta = beam and 1/beam.beta or _beta
+    local    pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
+    local   _pz = 1/pz
+    local   pxt = px*_pz
+    local   ptt = ca - sa*pxt
+    local  _ptt = 1/ptt
+    local   pst = (x+rho)*sa*_pz*_ptt
 
     m[i].x  = (x + rho*(2*sa2^2 + sa*pxt))*_ptt
     m[i].px = ca*px + sa*pz
     m[i].y  = y + pst*py
-    m[i].t  = t - pst*(1/beta+pt) + (1-T)*(ld/beta)
+    m[i].t  = t - pst*(_beta+pt) + (1-m.T)*_beta*ld
   end
 
   m.atdebug(elm, m, lw, 'curex_drift:1')
@@ -641,18 +640,18 @@ local function curex_drift0 (elm, m, lw, i, ld, ca, sa, sa2, rho)
   m.atdebug(elm, m, lw, 'curex_drift0:0')
 
   local x, px, y, py, t, pt in m[i]
-  local beta = (m[i].beam or m.beam).beta
-  local   pz = sqrt(1 + (2/beta)*pt + pt^2 - px^2 - py^2)
-  local  _pz = 1/pz
-  local  pxt = px*_pz
-  local  ptt = ca - sa*pxt
-  local _ptt = 1/ptt
-  local  pst = (x+rho)*sa*_pz*_ptt
+  local _beta = 1/(m[i].beam or m.beam).beta
+  local    pz = sqrt(1 + 2*_beta*pt + pt^2 - px^2 - py^2)
+  local   _pz = 1/pz
+  local   pxt = px*_pz
+  local   ptt = ca - sa*pxt
+  local  _ptt = 1/ptt
+  local   pst = (x+rho)*sa*_pz*_ptt
 
   m[i].x  = (x + rho*(2*sa2^2 + sa*pxt))*_ptt
   m[i].px = ca*px + sa*pz
   m[i].y  = y + pst*py
-  m[i].t  = t - pst*(1/beta+pt) + (1-m.T)*(ld/beta)
+  m[i].t  = t - pst*(_beta+pt) + (1-m.T)*_beta*ld
 
   m.atdebug(elm, m, lw, 'curex_drift0:1')
 end
@@ -660,22 +659,22 @@ end
 local function sbend_thick_new (elm, m, lw, istp) -- [SSEC]                  -- checked
   m.atdebug(elm, m, lw, 'sbend_thick:0')
 
-  local el, eld, eh, tdir, knl, beam, T in m
+  local el, eld, eh, tdir, knl, beam in m
   local ld, ang, rho, k0 = (eld or el)*lw, eh*el*lw, 1/eh, knl[1]/el*tdir
-  local beta, k0q = beam.beta, k0*beam.charge
+  local _beta, k0q = 1/beam.beta, k0*beam.charge
   local ca, sa, sa2, s2a = cos(ang), sin(ang), sin(ang/2), sin(2*ang)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local beta = beam and beam.beta or beta
-    local  k0q = beam and k0*beam.charge or k0q
+    local _beta = beam and 1/beam.beta or _beta
+    local   k0q = beam and k0*beam.charge or k0q
 
     if k0q == 0 then
       curex_drift0 (elm, m, lw, i, ld, ca, sa, sa2, rho)
       goto continue
     end
 
-    local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
+    local  pw2 = 1 + 2*_beta*pt + pt^2 - py^2
     local   pz = sqrt(pw2 - px^2)                                      -- PZ
     local   xr = x+rho
     local  pzx = pz - k0q*xr
@@ -700,7 +699,7 @@ local function sbend_thick_new (elm, m, lw, istp) -- [SSEC]                  -- 
     m[i].x  = xt1/(dpx+pzs) - rho                                       -- XN(1)
     m[i].px = npx                                                       -- XN(2)
     m[i].y  = y + dxs*py                                                -- XN(3)
-    m[i].t  = t - dxs*(1/beta+pt) + (1-T)*(ld/beta)                     -- XN(6)
+    m[i].t  = t - dxs*(_beta+pt) + (1-m.T)*_beta*ld                     -- XN(6)
 
     ::continue::
   end
@@ -711,22 +710,22 @@ end
 local function sbend_thick_old (elm, m, lw, istp) -- [SSEC]                  -- checked
   m.atdebug(elm, m, lw, 'sbend_thick:0')
   
-  local el, eld, eh, tdir, knl, beam, T in m
+  local el, eld, eh, tdir, knl, beam in m
   local ld, ang, rho, k0 = (eld or el)*lw, eh*el*lw, 1/eh, knl[1]/el*tdir
-  local beta, k0q = beam.beta, k0*beam.charge
+  local _beta, k0q = 1/beam.beta, k0*beam.charge
   local ca, sa, sa2 = cos(ang), sin(ang), sin(ang/2)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local beta = beam and beam.beta or beta
-    local  k0q = beam and k0*beam.charge or k0q
+    local _beta = beam and 1/beam.beta or _beta
+    local   k0q = beam and k0*beam.charge or k0q
 
     if k0q == 0 then
       curex_drift0 (elm, m, lw, i, ld, ca, sa, sa2, rho)
       goto continue
     end
 
-    local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
+    local  pw2 = 1 + 2*_beta*pt + pt^2 - py^2
     local   pz = sqrt(pw2 - px^2)                                      -- PZ
     local  pzx = pz - k0q*(rho+x)      -- could be numerically unstable
     local  npx = sa*pzx + ca*px                                        -- XN(2)
@@ -739,7 +738,7 @@ local function sbend_thick_old (elm, m, lw, istp) -- [SSEC]                  -- 
     m[i].x  = (pzs - dpx)/k0q - rho    -- could be numerically unstable -- XN(1)
     m[i].px = npx                                                       -- XN(2)
     m[i].y  = y + dxs*py                                                -- XN(3)
-    m[i].t  = t - dxs*(1/beta+pt) + (1-T)*(ld/beta)                     -- XN(6)
+    m[i].t  = t - dxs*(_beta+pt) + (1-m.T)*_beta*ld                     -- XN(6)
 
     ::continue::
   end
@@ -758,12 +757,12 @@ local function strex_drift0 (elm, m, lw, i, l, ld)                           -- 
   m.atdebug(elm, m, lw, 'strex_drift0:0')
 
   local x, px, y, py, t, pt in m[i]
-  local beta = (m[i].beam or m.beam).beta
+  local _beta = 1/(m[i].beam or m.beam).beta
   local l_pz = l*invsqrt(1 + (2/beta)*pt + pt^2 - px^2 - py^2)
 
   m[i].x = x + px*l_pz
   m[i].y = y + py*l_pz
-  m[i].t = t - l_pz*(1/beta+pt) + (1-m.T)*(ld/beta)
+  m[i].t = t - (_beta+pt)*l_pz + (1-m.T)*_beta*ld
 
   m.atdebug(elm, m, lw, 'strex_drift0:1')
 end
@@ -771,14 +770,14 @@ end
 local function rbend_thick_new (elm, m, lw, istp) -- [SPAR]                  -- checked
   m.atdebug(elm, m, lw, 'rbend_thick:0')
 
-  local el, eld, tdir, knl, beam, T in m
+  local el, eld, tdir, knl, beam in m
   local l, ld, k0 = el*lw, (eld or el)*lw, knl[1]/el*tdir
-  local beta, k0q, k0lq = beam.beta, k0*beam.charge, knl[1]*lw*beam.charge*tdir
+  local _beta, k0q, k0lq = 1/beam.beta, k0*beam.charge, knl[1]*lw*beam.charge*tdir
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local beta = beam and beam.beta or beta
-    local k0q  = beam and k0*beam.charge or k0q
+    local _beta = beam and 1/beam.beta or _beta
+    local  k0q  = beam and k0*beam.charge or k0q
 
     if k0q == 0 then
       strex_drift0 (elm, m, lw, i, l, ld)
@@ -787,7 +786,7 @@ local function rbend_thick_new (elm, m, lw, istp) -- [SPAR]                  -- 
 
     local k0lq = beam and knl[1]*lw*beam.charge*tdir or k0lq
     local  npx = px - k0lq
-    local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
+    local  pw2 = 1 + 2*_beta*pt + pt^2 - py^2
     local _ptt = invsqrt(pw2)
     local   pz = sqrt(pw2 - px^2)
     local  pzs = sqrt(pw2 - npx^2)
@@ -801,7 +800,7 @@ local function rbend_thick_new (elm, m, lw, istp) -- [SPAR]                  -- 
     m[i].x  = x + l*(2*px - k0lq) / (pz+pzs)
     m[i].px = npx
     m[i].y  = y + dxs*py
-    m[i].t  = t - dxs*(1/beta+pt) + (1-T)*ld/beta
+    m[i].t  = t - dxs*(_beta+pt) + (1-m.T)*_beta*ld
 
     ::continue::
   end
@@ -812,14 +811,14 @@ end
 local function rbend_thick_old (elm, m, lw, istp) -- [SPAR]                  -- checked
   m.atdebug(elm, m, lw, 'rbend_thick:0')
 
-  local el, eld, tdir, knl, beam, T in m
+  local el, eld, tdir, knl, beam in m
   local l, ld, k0 = el*lw, (eld or el)*lw, knl[1]/el*tdir
-  local beta, k0q, k0lq = beam.beta, k0*beam.charge, knl[1]*lw*beam.charge*tdir
+  local _beta, k0q, k0lq = 1/beam.beta, k0*beam.charge, knl[1]*lw*beam.charge*tdir
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local beta = beam and beam.beta or beta
-    local k0q  = beam and k0*beam.charge or k0q
+    local _beta = beam and 1/beam.beta or _beta
+    local  k0q  = beam and k0*beam.charge or k0q
 
     if k0q == 0 then
       strex_drift0 (elm, m, lw, i, l, ld)
@@ -838,7 +837,7 @@ local function rbend_thick_old (elm, m, lw, istp) -- [SPAR]                  -- 
     m[i].x  = x + (pzs-pz)/k0q
     m[i].px = npx
     m[i].y  = y + dxs*py
-    m[i].t  = t - dxs*(1/beta+pt) + (1-T)*ld/beta
+    m[i].t  = t - dxs*(_beta+pt) + (1-m.T)*_beta*ld
 
     ::continue::
   end
@@ -1214,7 +1213,7 @@ M.quad_kickh = \elm, m, lw, istp -> M.quad_kickh_(elm, m, lw, 0)
 function M.solen_thick (elm, m, lw, istp) -- [KICK_SOL]                      -- checked
   m.atdebug(elm, m, lw, 'solen_thick:0')
 
-  local el, ks, beam, T in m
+  local el, ks, beam in m
   local l = el*lw
   local bsol = 0.5*ks*beam.charge
   local _beta = 1/beam.beta
@@ -1240,7 +1239,7 @@ function M.solen_thick (elm, m, lw, istp) -- [KICK_SOL]                      -- 
     m[i].px = ca*pxt + sa*pyt
     m[i].y  = ca*yt  - sa*xt
     m[i].py = ca*pyt - sa*pxt
-    m[i].t  = t - l_pz*(_beta+pt) + (1-T)*l*_beta
+    m[i].t  = t - (_beta+pt)*l_pz + (1-m.T)*_beta*l
   end
 
   m.atdebug(elm, m, lw, 'solen_thick:1')
@@ -1251,7 +1250,7 @@ end
 function M.esept_thick (elm, m, lw, istp) -- [SEP]                           -- checked
   m.atdebug(elm, m, lw, 'elsep_thick:0')
 
-  local el, ca, sa, volt, sdir, beam, T in m
+  local el, ca, sa, volt, sdir, beam in m
   local _beta = 1/beam.beta
   local  _bg2 = 1/beam.betgam2
   local  wchg = beam.charge/beam.pc
@@ -1289,7 +1288,7 @@ function M.esept_thick (elm, m, lw, istp) -- [SEP]                           -- 
     m[i].px = ca*npx - sa*npy
     m[i].y  = ca*ny  + sa*nx
     m[i].py = ca*npy + sa*npx
-    m[i].t  = t - dt + (1-T)*(l*_beta)
+    m[i].t  = t - dt + (1-m.T)*_beta*l
   end
 
   m.atdebug(elm, m, lw, 'elsep_thick:1')
