@@ -257,7 +257,7 @@ inline void xrotation (cflw<M> &m, num_t lw, const V &dphi_)
 
   FOR(i,m.npar) {
     M p(m,i);
-    T   pz = sqrt(1 + (2/m.beta)*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
+    T   pz = sqrt(1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
     T  _pz = 1/pz;
     T _ptt = p.y/(1 - ta*p.py*_pz);
     T _pzt = ta*_pz*_ptt;
@@ -619,7 +619,7 @@ inline void sbend_thick (cflw<M> &m, num_t lw, int is)
 
   FOR(i,m.npar) {
     M p(m,i);
-    T  pw2 = 1 + 2*p.pt/m.beta + sqr(p.pt) - sqr(p.py);
+    T  pw2 = 1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.py);
     T  pzx = sqrt(pw2 - sqr(p.px)) - k0q*(rho+p.x); // can be numerically unstable
     T  npx = sa*pzx + ca*p.px;
     T  dpx = ca*pzx - sa*p.px;
@@ -646,7 +646,7 @@ inline void sbend_thick_new (cflw<M> &m, num_t lw, int is)
 
   FOR(i,m.npar) {
     M p(m,i);
-    T  pw2 = 1 + 2*p.pt/m.beta + sqr(p.pt) - sqr(p.py);
+    T  pw2 = 1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.py);
     T   pz = sqrt(pw2 - sqr(p.px));
     T   xr = p.x+rho;
     T  pzx = pz - k0q*xr;
@@ -685,7 +685,7 @@ inline void rbend_thick (cflw<M> &m, num_t lw, int is)
   FOR(i,m.npar) {
     M p(m,i);
     T  npx = p.px - k0lq;
-    T  pw2 = 1 + 2*p.pt/m.beta + sqr(p.pt) - sqr(p.py);
+    T  pw2 = 1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.py);
     T _ptt = invsqrt(pw2);
     T   pz = sqrt(pw2 - sqr(p.px));
     T  pzs = sqrt(pw2 - sqr(npx));
@@ -712,7 +712,7 @@ inline void rbend_thick_new (cflw<M> &m, num_t lw, int is)
   FOR(i,m.npar) {
     M p(m,i);
     T  npx = p.px - k0lq;
-    T  pw2 = 1 + 2*p.pt/m.beta + sqr(p.pt) - sqr(p.py);
+    T  pw2 = 1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.py);
     T _ptt = invsqrt(pw2);
     T   xi = p.px*_ptt;
     T zeta =  npx*_ptt;
@@ -938,7 +938,7 @@ inline void quad_kickh (cflw<M> &m, num_t lw, int is)
 
     FOR (i,m.npar) {
       M p(m,i);
-      T pz = sqrt(1 + (2/m.beta)*p.pt + sqr(p.pt));
+      T pz = sqrt(1 + 2/m.beta*p.pt + sqr(p.pt));
       bxby(m, p.x, p.y, bx, by);
 
       p.px -= wchg*(by - R(m.knl[1])*p.x) - lh*(pz-(1/m.beta*p.pt));
@@ -964,7 +964,7 @@ inline void solen_thick (cflw<M> &m, num_t lw, int is)
     M p(m,i);
     T   xp  = p.px + bsol*p.y;
     T   yp  = p.py - bsol*p.x;
-    T  l_pz = l*invsqrt(1 + (2/m.beta)*p.pt + sqr(p.pt) - sqr(xp) - sqr(yp));
+    T  l_pz = l*invsqrt(1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(xp) - sqr(yp));
     T  ang  = bsol*l_pz;
 
     T ca = cos(ang), sa = sin(ang), sc = sinc(ang);
@@ -1298,7 +1298,7 @@ inline void qsad_fringe (cflw<M> &m, num_t lw)
   // Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
   FOR (i,m.npar) {
     M p(m,i);
-    T _pz = invsqrt(1 + (2/m.beta)*p.pt + sqr(p.pt));
+    T _pz = invsqrt(1 + 2/m.beta*p.pt + sqr(p.pt));
     T  dt = (1/m.beta+p.pt)*_pz;
 
     T  f1 = wchg*bf1*_pz;
@@ -1341,7 +1341,7 @@ inline void mult_fringe (cflw<M> &m, num_t lw)
     T fx, fxx, fxy; fx = 0., fxx=0., fxy=0.;
     T fy, fyy, fyx; fy = 0., fyy=0., fyx=0.;
 
-    T _pz = invsqrt(1 + (2/m.beta)*p.pt + sqr(p.pt));
+    T _pz = invsqrt(1 + 2/m.beta*p.pt + sqr(p.pt));
 
     FOR (j,1,n+1) {
       T drx, dix; drx = rx, dix = ix;
