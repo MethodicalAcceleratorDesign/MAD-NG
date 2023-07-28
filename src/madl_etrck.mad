@@ -35,7 +35,7 @@ local element, damap, symint, option, warn, _C                  in MAD
 local is_number, is_function                                    in MAD.typeid
 local fnil, fcut, ftst, bind3rd                                 in MAD.gfunc
 local fact, arc2cord, sqrt, sin, cos, atan2                     in MAD.gmath
-local errorf                                                    in MAD.utility
+local assertf, errorf                                           in MAD.utility
 local minlen, minang, minstr, clight, twopi, pi_2               in MAD.constant
 local is_implicit                                               in element.drift
 
@@ -107,7 +107,7 @@ local ffi = require 'ffi'
 ffi.cdef [[
 enum { nmul_max=22, snm_max=(nmul_max+1)*(nmul_max+2)/2 };
 
-struct mflw_ { // must be identical to def in mad_dynmap.cpp !!
+struct cflw_r { // must be identical to def in mad_dynmap.cpp !!
   str_t name;
   int dbg;
 
@@ -123,31 +123,26 @@ struct mflw_ { // must be identical to def in mad_dynmap.cpp !!
   int sdir, edir, pdir, T, Tbak;
 
   // quad, solenoid, multipole, esptum, rfcav
-  num_t k1, ks, ksi, volt, freq, lag, nbsl;
+  num_t k1, ks, volt, freq, lag;
+  int nbsl;
 
   // fringes
   int frng, fmax;
-  num_t e, fint, h, hgap, f1, f2, a;
+  num_t e, h, a;
+  num_t fint, hgap, f1, f2;
 
   // angles
   num_t ca, sa, tlt;
 
   // multipoles
-  int   nmul, npha;
+  int   nmul;
   num_t knl[nmul_max];
   num_t ksl[nmul_max];
-  num_t pnl[nmul_max];
-  num_t psl[nmul_max];
 
   // curved multipoles
   int   snm;
   num_t bfx[snm_max];
   num_t bfy[snm_max];
-
-  // particles/damaps
-  int      npar;
-  num_t   **par;
-  tpsa_t* **map;
 
   // patches
   num_t dx,   dy,   ds;
@@ -159,8 +154,136 @@ struct mflw_ { // must be identical to def in mad_dynmap.cpp !!
     num_t dx,   dy,   ds;
     num_t dthe, dphi, dpsi;
   } algn;
+
+  // particles
+  int    npar;
+  num_t **par;
 };
+
+struct cflw_t { // must be identical to def in mad_dynmap.cpp !!
+  str_t name;
+  int dbg;
+
+  // element data
+  num_t el, eld, elc, lrad;
+  num_t eh, ang, mang;
+
+  // beam
+  num_t pc, beta, betgam;
+  int charge;
+
+  // directions, path
+  int sdir, edir, pdir, T, Tbak;
+
+  // quad, solenoid, multipole, esptum, rfcav
+  num_t k1, ks, volt, freq, lag;
+  int nbsl;
+
+  // fringes
+  int frng, fmax;
+  num_t e, h, a;
+  num_t fint, hgap, f1, f2;
+
+  // angles
+  num_t ca, sa, tlt;
+
+  // multipoles
+  int   nmul;
+  num_t knl[nmul_max];
+  num_t ksl[nmul_max];
+
+  // curved multipoles
+  int   snm;
+  num_t bfx[snm_max];
+  num_t bfy[snm_max];
+
+  // patches
+  num_t dx,   dy,   ds;
+  num_t dthe, dphi, dpsi;
+
+  // misalign
+  struct {
+    bool  rot, trn;
+    num_t dx,   dy,   ds;
+    num_t dthe, dphi, dpsi;
+  } algn;
+
+  // damaps
+  int      npar;
+  tpsa_t* **par;
+};
+
+struct cflw_p { // must be identical to def in mad_dynmap.cpp !!
+  str_t name;
+  int dbg;
+
+  // element data
+  tpsa_t *el, *eld, *elc, *lrad;
+  tpsa_t *eh, *ang, *mang;
+
+  // beam
+  num_t pc, beta, betgam;
+  int charge;
+
+  // directions, path
+  int sdir, edir, pdir, T, Tbak;
+
+  // quad, solenoid, multipole, esptum, rfcav
+  tpsa_t *k1, *ks, *volt, *freq, *lag;
+  int nbsl;
+
+  // fringes
+  int frng, fmax;
+  tpsa_t *e, *h, *a;
+  num_t fint, hgap, f1, f2;
+
+  // angles
+  tpsa_t *ca, *sa, *tlt;
+
+  // multipoles
+  int    nmul;
+  tpsa_t *knl[nmul_max];
+  tpsa_t *ksl[nmul_max];
+
+  // curved multipoles
+  int     snm;
+  tpsa_t *bfx[snm_max];
+  tpsa_t *bfy[snm_max];
+
+  // patches
+  tpsa_t *dx,   *dy,   *ds;
+  tpsa_t *dthe, *dphi, *dpsi;
+
+  // misalign
+  struct {
+    bool  rot, trn;
+    num_t dx,   dy,   ds;
+    num_t dthe, dphi, dpsi;
+  } algn;
+
+  // parametric damaps
+  int      npar;
+  tpsa_t* **par;
+};
+
+union mflw_ {
+  struct cflw_r rflw;
+  struct cflw_t tflw;
+  struct cflw_p pflw;
+};
+
+extern const size_t mad_cflw_rsize;
+extern const size_t mad_cflw_tsize;
+extern const size_t mad_cflw_psize;
+extern const size_t mad_cflw_size;
 ]]
+
+local msg = "FFI/C %s is not consistent with C/C++ %s from mad_dynmap.cpp"
+
+assertf(ffi.sizeof("struct cflw_r") == _C.mad_cflw_rsize, msg, "struct cflw_r", "struct cflw<par_t>")
+assertf(ffi.sizeof("struct cflw_t") == _C.mad_cflw_tsize, msg, "struct cflw_t", "struct cflw<map_t>")
+assertf(ffi.sizeof("struct cflw_p") == _C.mad_cflw_psize, msg, "struct cflw_p", "struct cflw<prm_t>")
+assertf(ffi.sizeof("union mflw_"  ) == _C.mad_cflw_size , msg, "union  mflw_" , "union  mflw_"      )
 
 local map = {
   r = { -- not used
@@ -182,6 +305,9 @@ local map = {
     [quad_kick   ] = _C.mad_trk_quad_kick_r   ,
     [quad_kicks  ] = _C.mad_trk_quad_kicks_r  ,
     [quad_kickh  ] = _C.mad_trk_quad_kickh_r  ,
+    [quad_kick_  ] = _C.mad_trk_quad_kick__r  ,
+    [quad_kicks_ ] = _C.mad_trk_quad_kicks__r ,
+    [quad_kickh_ ] = _C.mad_trk_quad_kickh__r ,
     [solen_thick ] = _C.mad_trk_solen_thick_r ,
     [solen_fringe] =            solen_fringe  ,
     [rfcav_kick  ] = _C.mad_trk_rfcav_kick_r  ,
@@ -221,6 +347,9 @@ local map = {
     [quad_kick   ] = _C.mad_trk_quad_kick_t   ,
     [quad_kicks  ] = _C.mad_trk_quad_kicks_t  ,
     [quad_kickh  ] = _C.mad_trk_quad_kickh_t  ,
+    [quad_kick_  ] = _C.mad_trk_quad_kick__t  ,
+    [quad_kicks_ ] = _C.mad_trk_quad_kicks__t ,
+    [quad_kickh_ ] = _C.mad_trk_quad_kickh__t ,
     [solen_thick ] = _C.mad_trk_solen_thick_t ,
     [solen_fringe] =            solen_fringe  ,
     [rfcav_kick  ] = _C.mad_trk_rfcav_kick_t  ,
@@ -240,27 +369,64 @@ local map = {
     [changenrj   ] =            changenrj     ,
     [misalign    ] = _C.mad_trk_misalign_t    ,
     [fnil        ] = _C.mad_trk_fnil          ,
-  }
+  },
+  p = {
+    [strex_drift ] = _C.mad_trk_strex_drift_p ,
+    [strex_kick  ] = _C.mad_trk_strex_kick_p  ,
+    [strex_kickhs] = _C.mad_trk_strex_kickhs_p,
+    [strex_fringe] = _C.mad_trk_strex_fringe_p,
+    [curex_drift ] = _C.mad_trk_curex_drift_p ,
+    [curex_kick  ] = _C.mad_trk_curex_kick_p  ,
+    [curex_fringe] = _C.mad_trk_curex_fringe_p,
+    [sbend_thick ] = _C.mad_trk_sbend_thick_p ,
+    [sbend_kick  ] = _C.mad_trk_sbend_kick_p  ,
+    [dipeg_fringe] =            dipeg_fringe  ,
+    [rbend_thick ] = _C.mad_trk_rbend_thick_p ,
+    [rbend_kick  ] = _C.mad_trk_rbend_kick_p  ,
+    [quad_thick  ] = _C.mad_trk_quad_thick_p  ,
+    [quad_thicks ] = _C.mad_trk_quad_thicks_p ,
+    [quad_thickh ] = _C.mad_trk_quad_thickh_p ,
+    [quad_kick   ] = _C.mad_trk_quad_kick_p   ,
+    [quad_kicks  ] = _C.mad_trk_quad_kicks_p  ,
+    [quad_kickh  ] = _C.mad_trk_quad_kickh_p  ,
+    [quad_kick_  ] = _C.mad_trk_quad_kick__p  ,
+    [quad_kicks_ ] = _C.mad_trk_quad_kicks__p ,
+    [quad_kickh_ ] = _C.mad_trk_quad_kickh__p ,
+    [solen_thick ] = _C.mad_trk_solen_thick_p ,
+    [solen_fringe] =            solen_fringe  ,
+    [rfcav_kick  ] = _C.mad_trk_rfcav_kick_p  ,
+    [rfcav_kickn ] = _C.mad_trk_rfcav_kickn_p ,
+    [rfcav_fringe] = _C.mad_trk_rfcav_fringe_p,
+    [esept_thick ] = _C.mad_trk_esept_thick_p ,
+    [nllens_kick ] =            nllens_kick   ,
+    [bbeam_kick  ] =            bbeam_kick    ,
+    [bbeam_kick6D] =            bbeam_kick6D  ,
+    [genm_thick  ] =            genm_thick    ,
+    [xrotation   ] = _C.mad_trk_xrotation_p   ,
+    [yrotation   ] = _C.mad_trk_yrotation_p   ,
+    [srotation   ] = _C.mad_trk_srotation_p   ,
+    [translate   ] = _C.mad_trk_translate_p   ,
+    [changeref   ] = _C.mad_trk_changeref_p   ,
+    [changedir   ] =            changedir     ,
+    [changenrj   ] =            changenrj     ,
+    [misalign    ] = _C.mad_trk_misalign_p    ,
+    [fnil        ] = _C.mad_trk_fnil          ,
+  },
 }
 
 -- strengths and phases -------------------------------------------------------o
 
 local function cpy_mult (m)
   local c = m.cflw
-  c.nmul = m.nmul or 0
-  c.npha = m.npha or 0
-  c.snm  = m.snm  or 0
+  c.nmul = m.nmul
+  c.snm  = m.snm
 
   c.knl[0], c.knl[1] = 0, 0
   c.ksl[0], c.ksl[1] = 0, 0
+
   for i=1,c.nmul do
     c.knl[i-1] = m.knl[i]
     c.ksl[i-1] = m.ksl[i]
-  end
-
-  for i=1,c.npha do
-    c.pnl[i-1] = m.pnl[i]
-    c.psl[i-1] = m.psl[i]
   end
 
   for i=1,c.snm do
@@ -299,16 +465,16 @@ end
 
 local function get_multphas (elm, m, n)
   local knl, ksl, dknl, dksl in elm
-  local pnl, psl, dpnl, dpsl in elm
+--local pnl, psl, dpnl, dpsl in elm
 
   m.nmul = max(#knl, #ksl, #dknl, #dksl, n or 0)
-  m.npha = m.nmul
+--m.npha = m.nmul
 
   for i=1,m.nmul do
     m.knl[i] = ((knl[i] or 0) + (dknl[i] or 0)) / fact(i-1)
     m.ksl[i] = ((ksl[i] or 0) + (dksl[i] or 0)) / fact(i-1)
-    m.pnl[i] =  (pnl[i] or 0) + (dpnl[i] or 0)
-    m.psl[i] =  (psl[i] or 0) + (dpsl[i] or 0)
+--  m.pnl[i] =  (pnl[i] or 0) + (dpnl[i] or 0)
+--  m.psl[i] =  (psl[i] or 0) + (dpsl[i] or 0)
   end
 end
 
@@ -580,6 +746,10 @@ local function track_multipole (elm, m)
   local ksi, lrad in elm
   local knl, ksl, sdir in m
 
+  if lrad == 0 and abs(ksi) > 0 then
+    errorf("thin solenoid '%s' defines strength with zero lrad", elm.name)
+  end
+
   if not (is_number(ksi) and is_number(lrad)) then m.pmap = true end
 
   m.lrad, m.ksi = sdir*lrad, ksi or 0
@@ -591,7 +761,7 @@ local function track_multipole (elm, m)
 
   if m.cmap and not m.pmap then
     m.cflw.lrad = m.lrad
-    m.cflw.ksi  = m.ksi
+    m.cflw.ks   = m.ksi/m.lrad
     cpy_mult(m)
   end
 
@@ -678,7 +848,7 @@ local function track_sbend (elm, m, e1_, e2_)
 
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, kick, curex_fringe)
-  m.e1, m.e2, m.snm = nil, nil, nil
+  m.e1, m.e2, m.snm = nil, nil, 0
 end
 
 local function track_rbend (elm, m)
