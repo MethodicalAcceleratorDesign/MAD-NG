@@ -31,15 +31,16 @@ extern "C" {
 
 extern "C" {
 enum { nmul_max=22, snm_max=(nmul_max+1)*(nmul_max+2)/2 };
+}
 
-//template <typename P, typename T=P::T, typename T2=P::T2>
-struct mflw_ {
+template <typename M, typename MT=M::MT, typename MP=M::MP>
+struct cflw {
   str_t name;
   int dbg;
 
   // element data
-  num_t el, eld, elc, lrad;
-  num_t eh, ang, mang;
+  MP el, eld, elc, lrad;
+  MP eh, ang, mang;
 
   // beam
   num_t pc, beta, betgam;
@@ -49,35 +50,30 @@ struct mflw_ {
   int sdir, edir, pdir, T, Tbak;
 
   // quad, solenoid, multipole, esptum, rfcav
-  num_t k1, ks, ksi, volt, freq, lag, nbsl;
+  MP k1, ks, volt, freq, lag;
+  int nbsl;
 
   // fringes
   int frng, fmax;
-  num_t e, fint, h, hgap, f1, f2, a;
+  MP e, h, a;
+  num_t fint, hgap, f1, f2;
 
   // angles
-  num_t ca, sa, tlt;
+  MP ca, sa, tlt;
 
   // multipoles
-  int   nmul, npha;
-  num_t knl[nmul_max];
-  num_t ksl[nmul_max];
-  num_t pnl[nmul_max];
-  num_t psl[nmul_max];
+  int nmul;
+  MP  knl[nmul_max];
+  MP  ksl[nmul_max];
 
   // curved multipoles
-  int   snm;
-  num_t bfx[snm_max];
-  num_t bfy[snm_max];
-
-  // particles/damaps
-  int      npar;
-  num_t   **par;
-  tpsa_t* **map;
+  int snm;
+  MP  bfx[snm_max];
+  MP  bfy[snm_max];
 
   // patches
-  num_t dx,   dy,   ds;
-  num_t dthe, dphi, dpsi;
+  MP dx,   dy,   ds;
+  MP dthe, dphi, dpsi;
 
   // misalign
   struct {
@@ -85,48 +81,75 @@ struct mflw_ {
     num_t dx,   dy,   ds;
     num_t dthe, dphi, dpsi;
   } algn;
+
+  // particles/damaps/parametric_damaps (must be last!!)
+  int npar;
+  MT **par;
 };
 
-} // extern "C"
-
-struct par_t {
-  using T = num_t;
-
-  par_t(mflw_t *m, int i)
-    : x(m->par[i][0]), px(m->par[i][1]),
-      y(m->par[i][2]), py(m->par[i][3]),
-      t(m->par[i][4]), pt(m->par[i][5]) {}
-
+struct par_t { // particles
+  // traits
+  using T  = num_t;         // type of variables  in maps (num_t  or tpsa)
+  using P  = num_t;         // type of parameters in maps (num_t  or tpsa)
+  using R  = num_t&;        // type of prms refs  in maps (num_t  or tpsa_ref)
+  using A  = num_t*;        // type of prms array in maps (num_t& or tpsa_refs)
+  using MT = num_t;         // type of variables  in mflw (num_t  or tpsa_t*)
+  using MP = num_t;         // type of parameters in mflw (num_t  or tpsa_t*)
+  // ctor
+  par_t(struct cflw<par_t> &m, int i)
+    : x(m.par[i][0]), px(m.par[i][1]),
+      y(m.par[i][2]), py(m.par[i][3]),
+      t(m.par[i][4]), pt(m.par[i][5]) {}
+  // members
   num_t &x, &px, &y, &py, &t, &pt;
 };
 
-struct map_t {
-  using T = mad::tpsa;
-
-  map_t(mflw_t *m, int i)
-    : x(m->map[i][0]), px(m->map[i][1]),
-      y(m->map[i][2]), py(m->map[i][3]),
-      t(m->map[i][4]), pt(m->map[i][5]) {}
-
+struct map_t { // damaps
+  // traits
+  using T  = mad::tpsa;     // type of variables  in maps (num_t  or tpsa)
+  using P  = num_t;         // type of parameters in maps (num_t  or tpsa)
+  using R  = num_t&;        // type of prms refs  in maps (num_t  or tpsa_ref)
+  using A  = num_t*;        // type of prms array in maps (num_t& or tpsa_refs)
+  using MT = tpsa_t*;       // type of variables  in mflw (num_t  or tpsa_t*)
+  using MP = num_t;         // type of parameters in mflw (num_t  or tpsa_t*)
+  // ctor
+  map_t(struct cflw<map_t> &m, int i)
+    : x(m.par[i][0]), px(m.par[i][1]),
+      y(m.par[i][2]), py(m.par[i][3]),
+      t(m.par[i][4]), pt(m.par[i][5]) {}
+  // members
   mad::tpsa_ref x, px, y, py, t, pt;
 };
 
-struct prm_t {
-  using T = mad::tpsa;
-
-  prm_t(mflw_t *m, int i)
-    : x(m->map[i][0]), px(m->map[i][1]),
-      y(m->map[i][2]), py(m->map[i][3]),
-      t(m->map[i][4]), pt(m->map[i][5]) {}
-
+struct prm_t { // parametric damaps
+  // traits
+  using T  = mad::tpsa;     // type of variables  in maps (num_t  or tpsa)
+  using P  = mad::tpsa;     // type of parameters in maps (num_t  or tpsa)
+  using R  = mad::tpsa_ref; // type of prms refs  in maps (num_t  or tpsa_ref)
+  using A  = mad::tpsa_refs;// type of prms array in maps (num_t& or tpsa_refs)
+  using MT = tpsa_t*;       // type of variables  in mflw (num_t  or tpsa_t*)
+  using MP = tpsa_t*;       // type of parameters in mflw (num_t  or tpsa_t*)
+  // ctor
+  prm_t(struct cflw<prm_t> &m, int i)
+    : x(m.par[i][0]), px(m.par[i][1]),
+      y(m.par[i][2]), py(m.par[i][3]),
+      t(m.par[i][4]), pt(m.par[i][5]) {}
+  // members
   mad::tpsa_ref x, px, y, py, t, pt;
 };
 
-//union mflw_ {
-//  struct cflw<par_t> rflw;
-//  struct cflw<map_t> mflw;
-//  struct cflw<prm_t> pflw;
-//};
+extern "C" {
+union mflw_ {
+  struct cflw<par_t> rflw;
+  struct cflw<map_t> tflw;
+  struct cflw<prm_t> pflw;
+};
+
+const size_t mad_cflw_rsize = sizeof(struct cflw<par_t>);
+const size_t mad_cflw_tsize = sizeof(struct cflw<map_t>);
+const size_t mad_cflw_psize = sizeof(struct cflw<prm_t>);
+const size_t mad_cflw_size  = sizeof(union  mflw_      );
+} // extern "C"
 
 // --- implementation ---------------------------------------------------------o
 
@@ -134,34 +157,36 @@ using namespace mad;
 
 // --- debug ------------------------------------------------------------------o
 
-# if 1 // set to 0 to remove debug code, ~2.5% of code size
-#define mdump(n) if (m->dbg) mdump<P>(m, __func__, n)
+#if 1 // set to 0 to remove debug code, ~2.5% of code size
+#define mdump(n) if (m.dbg) mdump<M>(m, __func__, n)
 #else
 #define mdump(n)
 #endif
 
-template <typename P, typename T=P::T>
-inline void (mdump) (mflw_t *m, str_t s, int n) {
-  if (!m->dbg) return;
+template <typename M, typename T=M::T>
+inline void (mdump) (cflw<M> &m, str_t s, int n)
+{
+  if (!m.dbg) return;
 
   char fun[30];
   snprintf(fun, 30, "%s:%d", s, n);
-  printf("@@ %-15s %-15s ", m->name, fun);
+  printf("@@ %-15s %-15s ", m.name, fun);
 
-  if (!m->npar) { printf("no particle found\n"); return; }
+  if (!m.npar) { printf("no particle found\n"); return; }
 
-  P p(m,0);
-  if constexpr (!std::is_floating_point<T>::value) {
-    printf("% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e\n",
-             p.x[0], p.px[0],  p.y[0], p.py[0],  p.t[0], p.pt[0]);
-  } else {
+  M p(m,0);
+  if constexpr (std::is_floating_point<T>::value)
     printf("% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e\n",
                 p.x,    p.px,     p.y,    p.py,     p.t,    p.pt);
-  }
+  else
+    printf("% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e\n",
+             p.x[0], p.px[0],  p.y[0], p.py[0],  p.t[0], p.pt[0]);
 }
 
 // --- constants --------------------------------------------------------------o
 
+const num_t one    = 1;
+const num_t zero   = 0;
 const num_t minlen = mad_cst_MINLEN;
 const num_t minang = mad_cst_MINANG;
 const num_t minstr = mad_cst_MINSTR;
@@ -171,67 +196,68 @@ const num_t twopi_clight = mad_cst_2PI/mad_cst_CLIGHT;
 
 // --- multipoles -------------------------------------------------------------o
 
-template <typename T1, typename T2>
-inline void bxby (const mflw_t *m, const T1 &x, const T1 &y, T2 &bx, T2 &by)
+template <typename M, typename T=M::T, typename V, typename R=M::R>
+inline void bxby (const cflw<M> &m, const V &x, const V &y, T &bx, T &by)
 {
-  bx = m->ksl[m->nmul-1];
-  by = m->knl[m->nmul-1];
+  bx = R(m.ksl[m.nmul-1]);
+  by = R(m.knl[m.nmul-1]);
 
-  if (m->nmul > 1) {
-    T2 byt;
-    RFOR(i,m->nmul-1) {
-      byt = by*x - bx*y + m->knl[i];
-      bx  = by*y + bx*x + m->ksl[i];
+  if (m.nmul > 1) {
+    T byt;
+    RFOR(i,m.nmul-1) {
+      byt = by*x - bx*y + R(m.knl[i]);
+      bx  = by*y + bx*x + R(m.ksl[i]);
       by  = byt;
     }
   }
 }
 
-template <typename T1, typename T2>
-inline void bxbyh (const mflw_t *m, const T1 &x, const T1 &y, T2 &bx, T2 &by)
+template <typename M, typename T=M::T, typename V, typename R=M::R>
+inline void bxbyh (const cflw<M> &m, const V &x, const V &y, T &bx, T &by)
 {
   bx = 0., by = 0.;
 
   int k = -1;
-  T2 btx, bty;
+  T btx, bty;
 
-  RFOR(i,m->snm) {
+  RFOR(i,m.snm) {
     btx = 0., bty = 0.;
 
-    RFOR(j,m->snm-i) { ++k;
-      btx = (btx + m->bfx[k]) * y;
-      bty = (bty + m->bfy[k]) * y;
+    RFOR(j,m.snm-i) { ++k;
+      btx = (btx + R(m.bfx[k])) * y;
+      bty = (bty + R(m.bfy[k])) * y;
     }
 
     ++k;
-    btx = (bx + btx + m->bfx[k]) * x;
-    bty = (by + bty + m->bfy[k]) * x;
+    btx = (bx + btx + R(m.bfx[k])) * x;
+    bty = (by + bty + R(m.bfy[k])) * x;
   }
 
   btx = 0., bty = 0.;
-  RFOR(i,m->snm) { ++k;
-    btx = (btx + m->bfx[k]) * y;
-    bty = (bty + m->bfy[k]) * y;
+  RFOR(i,m.snm) { ++k;
+    btx = (btx + R(m.bfx[k])) * y;
+    bty = (bty + R(m.bfy[k])) * y;
   }
 
-  bx += btx + m->bfx[k+1];
-  by += bty + m->bfy[k+1];
+  bx += btx + R(m.bfx[k+1]);
+  by += bty + R(m.bfy[k+1]);
 }
 
 // --- patches ----------------------------------------------------------------o
 
-template <typename P, typename T=P::T>
-inline void xrotation (mflw_t *m, num_t lw, num_t dphi_=0)
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R, typename V>
+inline void xrotation (cflw<M> &m, num_t lw, const V &dphi_)
 {
-  num_t a = (dphi_ ? dphi_ : m->dphi)*lw;
-  if (abs(a) < minang) return;
+  if (fabs(dphi_)+fabs(m.dphi) < minang) return;
   mdump(0);
-  a *= m->sdir*m->edir;
-  num_t sa=sin(a), ca=cos(a), ta=tan(a);
+  lw *= m.sdir*m.edir;
+  P a;
+  if (fval(dphi_)) a = lw*dphi_; else a = lw*R(m.dphi);
+  P sa=sin(a), ca=cos(a), ta=tan(a);
 
-  FOR(i,m->npar) {
-    P p(m,i);
-    T   pz = sqrt(1 + (2/m->beta)*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
+  FOR(i,m.npar) {
+    M p(m,i);
+    T   pz = sqrt(1 + (2/m.beta)*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
     T  _pz = 1/pz;
     T _ptt = p.y/(1 - ta*p.py*_pz);
     T _pzt = ta*_pz*_ptt;
@@ -240,23 +266,24 @@ inline void xrotation (mflw_t *m, num_t lw, num_t dphi_=0)
     p.y   = _ptt/ca;
     p.py  = ca*p.py + sa*pz;
     p.x  += _pzt*p.px;
-    p.t  -= _pzt*(1/m->beta+p.pt);
+    p.t  -= _pzt*(1/m.beta+p.pt);
   }
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void yrotation (mflw_t *m, num_t lw, num_t dthe_=0)
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R, typename V>
+inline void yrotation (cflw<M> &m, num_t lw, const V &dthe_)
 {
-  num_t a = -(dthe_ ? dthe_ : m->dthe)*lw;
-  if (abs(a) < minang) return;
+  if (fabs(dthe_)+fabs(m.dthe) < minang) return;
   mdump(0);
-  a *= m->sdir*m->edir;
-  num_t sa=sin(a), ca=cos(a), ta=tan(a);
+  lw *= -m.sdir*m.edir;
+  P a;
+  if (fval(dthe_)) a = lw*dthe_; else a = lw*R(m.dthe);
+  P sa=sin(a), ca=cos(a), ta=tan(a);
 
-  FOR(i,m->npar) {
-    P p(m,i);
-    T   pz = sqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
+  FOR(i,m.npar) {
+    M p(m,i);
+    T   pz = sqrt(1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
     T  _pz = inv(pz);
     T _ptt = p.x/(1 - ta*p.px*_pz);
     T _pzt = ta*_pz*_ptt;
@@ -265,22 +292,23 @@ inline void yrotation (mflw_t *m, num_t lw, num_t dthe_=0)
     p.x   = _ptt/ca;
     p.px  = ca*p.px + sa*pz;
     p.y  += _pzt*p.py;
-    p.t  -= _pzt*(1/m->beta+p.pt);
+    p.t  -= _pzt*(1/m.beta+p.pt);
   }
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void srotation (mflw_t *m, num_t lw, num_t dpsi_=0)
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R, typename V>
+inline void srotation (cflw<M> &m, num_t lw, const V &dpsi_)
 {
-  num_t a = (dpsi_ ? dpsi_ : m->dpsi)*lw;
-  if (abs(a) < minang) return;
+  if (fabs(dpsi_)+fabs(m.dpsi) < minang) return;
   mdump(0);
-  a *= m->sdir*m->edir;
-  num_t sa=sin(a), ca=cos(a);
+  lw *= m.sdir*m.edir;
+  P a;
+  if (fval(dpsi_)) a = lw*dpsi_; else a = lw*R(m.dpsi);
+  P sa=sin(a), ca=cos(a);
 
-  FOR(i,m->npar) {
-    P p(m,i);
+  FOR(i,m.npar) {
+    M p(m,i);
     T nx  = ca*p.x  + sa*p.y;
     T npx = ca*p.px + sa*p.py;
 
@@ -292,172 +320,176 @@ inline void srotation (mflw_t *m, num_t lw, num_t dpsi_=0)
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void translate (mflw_t *m, num_t lw, num_t dx_=0, num_t dy_=0, num_t ds_=0)
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R, typename V>
+inline void translate (cflw<M> &m, num_t lw, const V &dx_, const V &dy_, const V &ds_)
 {
-  num_t dx = dx_ ? dx_ : m->dx;
-  num_t dy = dy_ ? dy_ : m->dy;
-  num_t ds = ds_ ? ds_ : m->ds;
-  if (abs(dx)+abs(dy)+abs(ds) < minlen) return;
+  if (fabs(dx_)+fabs(m.dx) < minlen &&
+      fabs(dy_)+fabs(m.dy) < minlen &&
+      fabs(ds_)+fabs(m.ds) < minlen) return;
   mdump(0);
-  dx *= lw*m->sdir*m->edir;
-  dy *= lw*m->sdir*m->edir;
-  ds *= lw*m->sdir*m->edir;
+  lw *= m.sdir*m.edir;
+  P dx, dy, ds;
+  if (fval(dx_)) dx = lw*dx_; else dx = lw*R(m.dx);
+  if (fval(dy_)) dy = lw*dy_; else dy = lw*R(m.dy);
+  if (fval(ds_)) ds = lw*ds_; else ds = lw*R(m.ds);
 
-  if (abs(ds) < minlen)
-    FOR(i,m->npar) {
-      P p(m,i);
+  if (fabs(ds) < minlen)
+    FOR(i,m.npar) {
+      M p(m,i);
       p.x -= dx;
       p.y -= dy;
     }
   else
-    FOR(i,m->npar) {
-      P p(m,i);
-      T l_pz = invsqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py), ds);
+    FOR(i,m.npar) {
+      M p(m,i);
+      T l_pz = ds*invsqrt(1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
 
       p.x += l_pz*p.px - dx;
       p.y += l_pz*p.py - dy;
-      p.t -= l_pz*(1/m->beta+p.pt);
+      p.t -= l_pz*(1/m.beta+p.pt);
     }
   mdump(1);
 }
 
-template <typename P>
-inline void changeref (mflw_t *m, num_t lw)
+template <typename M, typename R=M::R>
+inline void changeref (cflw<M> &m, num_t lw)
 {
-  bool trn = abs(m->dx  )+abs(m->dy  )+abs(m->ds  ) >= minlen;
-  bool rot = abs(m->dthe)+abs(m->dphi)+abs(m->dpsi) >= minang;
+  bool trn = fabs(m.dx  )+fabs(m.dy  )+fabs(m.ds  ) >= minlen;
+  bool rot = fabs(m.dthe)+fabs(m.dphi)+fabs(m.dpsi) >= minang;
 
   if (!trn && !rot) return;
   mdump(0);
-  lw *= m->sdir;
+  lw *= m.sdir;
 
   if (rot && lw > 0) {
-    yrotation<P>(m,  m->edir);
-    xrotation<P>(m, -m->edir);
-    srotation<P>(m,  m->edir);
+    yrotation<M>(m,  m.edir, zero);
+    xrotation<M>(m, -m.edir, zero);
+    srotation<M>(m,  m.edir, zero);
   }
 
-  if (trn) translate<P>(m, 1);
+  if (trn) translate<M>(m, 1, zero, zero, zero);
 
   if (rot && lw < 0) {
-    srotation<P>(m, -m->edir);
-    xrotation<P>(m,  m->edir);
-    yrotation<P>(m, -m->edir);
+    srotation<M>(m, -m.edir, zero);
+    xrotation<M>(m,  m.edir, zero);
+    yrotation<M>(m, -m.edir, zero);
   }
   mdump(1);
 }
 
 // --- misalignments ----------------------------------------------------------o
 
-template <typename P>
-inline void misalignent (mflw_t *m, num_t lw) {
-                                    (void)lw;
+template <typename M>
+inline void misalignent (cflw<M> &m)
+{
   mdump(0);
-  if (m->algn.rot && m->sdir > 0) {
-    yrotation<P>(m,  m->edir, m->algn.dthe);
-    xrotation<P>(m, -m->edir, m->algn.dphi);
-    srotation<P>(m,  m->edir, m->algn.dpsi);
+  if (m.algn.rot && m.sdir > 0) {
+    yrotation<M>(m,  m.edir, m.algn.dthe);
+    xrotation<M>(m, -m.edir, m.algn.dphi);
+    srotation<M>(m,  m.edir, m.algn.dpsi);
   }
 
-  if (m->algn.trn)
-    translate<P>(m, m->sdir, m->algn.dx, m->algn.dy, m->algn.ds);
+  if (m.algn.trn)
+    translate<M>(m, m.sdir, m.algn.dx, m.algn.dy, m.algn.ds);
 
-  if (m->algn.rot && m->sdir < 0) {
-    srotation<P>(m, -m->edir, m->algn.dpsi);
-    xrotation<P>(m,  m->edir, m->algn.dphi);
-    yrotation<P>(m, -m->edir, m->algn.dthe);
+  if (m.algn.rot && m.sdir < 0) {
+    srotation<M>(m, -m.edir, m.algn.dpsi);
+    xrotation<M>(m,  m.edir, m.algn.dphi);
+    yrotation<M>(m, -m.edir, m.algn.dthe);
   }
   mdump(1);
 }
 
-template <typename P>
-inline void misalignexi (mflw_t *m, num_t lw) {
+template <typename M, typename R=M::R>
+inline void misalignexi (cflw<M> &m)
+{
   mdump(0);
-  num_t rb[3*3], r[3*3];            (void)lw;
-  num_t tb[3]  , t[3]={m->algn.dx, m->algn.dy, m->algn.ds};
+  num_t rb[3*3], r[3*3];
+  num_t tb[3]  , t[3]={m.algn.dx, m.algn.dy, m.algn.ds};
 
-  if (m->algn.rot)
-    mad_mat_rotyxz(r, m->algn.dphi, -m->algn.dthe, -m->algn.dpsi, true);
+  if (m.algn.rot)
+    mad_mat_rotyxz(r, m.algn.dphi, -m.algn.dthe, -m.algn.dpsi, true);
 
   // compute Rbar, Tbar
-  mad_mat_rtbar(rb, tb, abs(m->el), m->mang, m->tlt, m->algn.rot ? r:0, t);
+  mad_mat_rtbar(rb, tb, fabs(m.el), fval(m.mang), fval(m.tlt), m.algn.rot ? r:0, t);
 
-  if (m->algn.rot && m->sdir > 0) {
+  if (m.algn.rot && m.sdir > 0) {
     num_t v[3];
     mad_mat_torotyxz(rb, v, true);
-    srotation<P>(m, -m->edir, -v[2]);
-    xrotation<P>(m,  m->edir, -v[0]);
-    yrotation<P>(m, -m->edir, -v[1]);
+    srotation<M>(m, -m.edir, -v[2]);
+    xrotation<M>(m,  m.edir, -v[0]);
+    yrotation<M>(m, -m.edir, -v[1]);
   }
 
-  if (m->algn.trn) translate<P>(m, -m->sdir, tb[0], tb[1], tb[2]);
+  if (m.algn.trn) translate<M>(m, -m.sdir, tb[0], tb[1], tb[2]);
 
-  if (m->algn.rot && m->sdir < 0) {
+  if (m.algn.rot && m.sdir < 0) {
     num_t v[3];
     mad_mat_torotyxz(rb, v, true);
-    yrotation<P>(m,  m->edir, -v[1]);
-    xrotation<P>(m, -m->edir, -v[0]);
-    srotation<P>(m,  m->edir, -v[2]);
+    yrotation<M>(m,  m.edir, -v[1]);
+    xrotation<M>(m, -m.edir, -v[0]);
+    srotation<M>(m,  m.edir, -v[2]);
   }
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void misalign (mflw_t *m, num_t lw) {
-  if (lw >= 0) misalignent<P>(m,  1);
-  else         misalignexi<P>(m, -1);
+template <typename M>
+inline void misalign (cflw<M> &m, num_t lw)
+{
+  if (lw >= 0) misalignent<M>(m);
+  else         misalignexi<M>(m);
 }
 
 // --- special maps -----------------------------------------------------------o
 
-template <typename P, typename T=P::T>
-inline void drift_adj (mflw_t *m, num_t l)
+template <typename M, typename T=M::T, typename P=M::P>
+inline void drift_adj (cflw<M> &m, const P &l)
 {
   mdump(0);
-  FOR(i,m->npar) {
-    P p(m,i);
-    T l_pz = invsqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py), l);
+  FOR(i,m.npar) {
+    M p(m,i);
+    T l_pz = l*invsqrt(1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
 
     p.x += p.px*(l_pz-l);
     p.y += p.py*(l_pz-l);
-    p.t -= (1/m->beta+p.pt)*l_pz + (m->T-1)*l/m->beta;
+    p.t -= (1/m.beta+p.pt)*l_pz + (m.T-1)/m.beta*l;
   }
   mdump(1);
 }
 
 // --- DKD maps ---------------------------------------------------------------o
 
-template <typename P, typename T=P::T>
-inline void strex_drift (mflw_t *m, num_t lw, int is)
-{                                           (void)is;
-  if (abs(m->el*lw) < minlen) return;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void strex_drift (cflw<M> &m, num_t lw, int is)
+{                                            (void)is;
+  if (fabs(m.el) < minlen) return;
   mdump(0);
-  num_t l  = m->el*lw;
-  num_t ld = (m->eld ? m->eld : m->el)*lw;
+  P l  = R(m.el)*lw;
+  P ld = (fval(m.eld) ? R(m.eld) : R(m.el))*lw;
 
-  FOR(i,m->npar) {
-    P p(m,i);
-    T l_pz = invsqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py), l);
+  FOR(i,m.npar) {
+    M p(m,i);
+    T l_pz = l*invsqrt(1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
 
     p.x += p.px*l_pz;
     p.y += p.py*l_pz;
-    p.t -= (1/m->beta+p.pt)*l_pz + (m->T-1)*ld/m->beta;
+    p.t -= (1/m.beta+p.pt)*l_pz + (m.T-1)/m.beta*ld;
   }
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void strex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
-{                                          (void)is;
-  if (!m->nmul) return;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void strex_kick (cflw<M> &m, num_t lw, int is, bool no_k0l=false)
+{                                           (void)is;
+  if (!m.nmul) return;
   mdump(0);
-  num_t wchg = lw*m->sdir*m->edir*m->charge;
-  num_t dby  = no_k0l ? m->knl[0] : 0;
+  num_t wchg = lw*m.sdir*m.edir*m.charge;
+  P dby;
+  if (no_k0l) dby = R(m.knl[0]); else dby = 0.;
   T bx, by;
 
-  FOR (i,m->npar) {
-    P p(m,i);
+  FOR (i,m.npar) {
+    M p(m,i);
     bxby(m, p.x, p.y, bx, by);
 
     p.px -= wchg*(by-dby);
@@ -466,79 +498,78 @@ inline void strex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void strex_kicks (mflw_t *m, num_t lw, P &p, T &pz)
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void strex_kicks (cflw<M> &m, num_t lw, M &p, T &pz)
 {
-  if (!m->ksi || !m->lrad) return;
+  if (!fval(m.ks) || !fval(m.lrad)) return;
 
-  num_t wchg = lw*m->sdir*m->edir*m->charge;
-  num_t hss  = lw*sqr(m->ksi)/m->lrad;
-
+  num_t wchg = lw*m.sdir*m.edir*m.charge;
+  P hss  = lw*sqr(R(m.ks));
   T _dpp = inv(pz);
-  T  ang = 0.5*wchg*m->ksi*_dpp;
+  T  ang = 0.5*wchg*R(m.ks)*R(m.lrad)*_dpp;
   T  ca  = cos(ang), sa = sin(ang);
 
   T nx  = ca*p. x + sa*p. y;
   T npx = ca*p.px + sa*p.py;
   T ny  = ca*p. y - sa*p. x;
   T npy = ca*p.py - sa*p.px;
-  T nt  = p.t - ang*(1/m->beta+p.pt)*(p.y*p.px - p.x*p.py)*sqr(_dpp);
+  T nt  = p.t - ang*(1/m.beta+p.pt)*(p.y*p.px - p.x*p.py)*sqr(_dpp);
 
   p.x  = nx;
   p.px = npx - 0.25 *hss*nx*_dpp;
   p.y  = ny;
   p.py = npy - 0.25 *hss*ny*_dpp;
-  p.t  = nt  - 0.125*hss*(1/m->beta+p.pt)*(sqr(nx)+sqr(ny))*pow(_dpp,3);
+  p.t  = nt  - 0.125*hss*(1/m.beta+p.pt)*(sqr(nx)+sqr(ny))*pow(_dpp,3);
 }
 
-template <typename P, typename T=P::T>
-inline void strex_kickhs (mflw_t *m, num_t lw, int is)
-{                                            (void)is;
-  if (!m->nmul && !m->ksi) return;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void strex_kickhs (cflw<M> &m, num_t lw, int is)
+{                                             (void)is;
+  if (!m.nmul && !fval(m.ks)) return;
   mdump(0);
-  num_t wchg = lw*m->sdir*m->edir*m->charge;
+  num_t wchg = lw*m.sdir*m.edir*m.charge;
   T bx, by;
 
-  FOR(i,m->npar) {
-    P p(m,i);
-    T pz = sqrt(1 + 2/m->beta*p.pt + sqr(p.pt));
+  FOR(i,m.npar) {
+    M p(m,i);
+    T pz = sqrt(1 + 2/m.beta*p.pt + sqr(p.pt));
 
-    if (m->sdir == -1) strex_kicks(m, lw, p, pz);
+    if (m.sdir == -1) strex_kicks(m, lw, p, pz);
 
-    if (m->nmul > 0) {
+    if (m.nmul > 0) {
       bxby(m, p.x, p.y, bx, by);
 
       p.px -= wchg*by;
       p.py += wchg*bx;
 
-      if (abs(m->knl[0]) + abs(m->ksl[0]) > minstr) {
-        p.px += wchg* m->knl[0]*pz;
-        p.py -= wchg* m->ksl[0]*pz;
-        p.t  -= wchg*(m->knl[0]*p.x - m->ksl[0]*p.y)*(1/m->beta+p.pt)/pz;
+      if (fabs(R(m.knl[0]))+fabs(R(m.ksl[0])) > minstr) {
+        p.px += wchg* R(m.knl[0])*pz;
+        p.py -= wchg* R(m.ksl[0])*pz;
+        p.t  -= wchg*(R(m.knl[0])*p.x - R(m.ksl[0])*p.y)*(1/m.beta+p.pt)/pz;
 
-        if (m->lrad) {
-          p.px -= lw*sqr(m->knl[0])/m->lrad*p.x;
-          p.py -= lw*sqr(m->ksl[0])/m->lrad*p.y;
+        if (fabs(R(m.lrad))) {
+          p.px -= lw*sqr(R(m.knl[0]))/R(m.lrad)*p.x;
+          p.py -= lw*sqr(R(m.ksl[0]))/R(m.lrad)*p.y;
         }
       }
     }
 
-    if (m->sdir == 1) strex_kicks(m, lw, p, pz);
+    if (m.sdir == 1) strex_kicks(m, lw, p, pz);
   }
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void curex_drift (mflw_t *m, num_t lw, int is)
-{                                           (void)is;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void curex_drift (cflw<M> &m, num_t lw, int is)
+{                                            (void)is;
   mdump(0);
-  num_t ld  = (m->eld ? m->eld : m->el)*lw;
-  num_t ang = m->ang*lw, rho = 1/m->eh;
-  num_t ca  = cos(ang), sa = sin(ang), sa2 = sin(ang/2);
+  P ld  = (fval(m.eld) ? R(m.eld) : R(m.el))*lw;
+  P ang = R(m.ang)*lw, rho = 1/R(m.eh);
+  P ca  = cos(ang), sa = sin(ang), sa2 = sin(ang/2);
 
-  FOR(i,m->npar) {
-    P p(m,i);
-    T   pz = sqrt(1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
+  FOR(i,m.npar) {
+    M p(m,i);
+    T   pz = sqrt(1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
     T  _pz = inv(pz);
     T  pxt = p.px*_pz;
     T _ptt = inv(ca - sa*pxt);
@@ -547,28 +578,28 @@ inline void curex_drift (mflw_t *m, num_t lw, int is)
     p.x  = (p.x + rho*(2*sqr(sa2) + sa*pxt))*_ptt;
     p.px = ca*p.px + sa*pz;
     p.y += pst*p.py;
-    p.t -= pst*(1/m->beta+p.pt) + (m->T-1)*ld/m->beta;
+    p.t -= pst*(1/m.beta+p.pt) + (m.T-1)/m.beta*ld;
   }
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void curex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
-{                                          (void)is;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void curex_kick (cflw<M> &m, num_t lw, int is, bool no_k0l=false)
+{                                           (void)is;
   mdump(0);
-  num_t blw = lw*m->sdir*m->edir*m->charge;
-  T bx, by; bx = 0., by = m->knl[0];
+  num_t blw = lw*m.sdir*m.edir*m.charge;
+  T bx, by; bx = 0., by = R(m.knl[0]);
 
-  FOR(i,m->npar) {
-    P p(m,i);
-    T r = 1+m->eh*p.x;
+  FOR(i,m.npar) {
+    M p(m,i);
+    T r = 1+R(m.eh)*p.x;
 
-    if (m->snm > 0) bxbyh(m, p.x, p.y, bx, by);
+    if (m.snm > 0) bxbyh(m, p.x, p.y, bx, by);
 
     p.px -= blw*by*r;
     p.py += blw*bx*r;
 
-    if (no_k0l) p.px += (blw*m->knl[0])*r;
+    if (no_k0l) p.px += (blw*R(m.knl[0]))*r;
   }
   mdump(1);
 }
@@ -577,18 +608,18 @@ inline void curex_kick (mflw_t *m, num_t lw, int is, bool no_k0l=false)
 
 // --- sbend ---
 
-template <typename P, typename T=P::T>
-inline void sbend_thick (mflw_t *m, num_t lw, int is)
-{                                           (void)is;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void sbend_thick (cflw<M> &m, num_t lw, int is)
+{                                            (void)is;
   mdump(0);
-  num_t ld  = (m->eld ? m->eld : m->el)*lw;
-  num_t ang = m->ang*lw, rho=1/m->eh;
-  num_t k0q = m->knl[0]/m->el*m->sdir*m->edir*m->charge;
-  num_t ca  = cos(ang), sa = sin(ang);
+  P ld  = (fval(m.eld) ? R(m.eld) : R(m.el))*lw;
+  P ang = R(m.ang)*lw, rho=1/R(m.eh);
+  P k0q = R(m.knl[0])/R(m.el)*(m.sdir*m.edir*m.charge);
+  P ca  = cos(ang), sa = sin(ang);
 
-  FOR(i,m->npar) {
-    P p(m,i);
-    T  pw2 = 1 + 2*p.pt/m->beta + sqr(p.pt) - sqr(p.py);
+  FOR(i,m.npar) {
+    M p(m,i);
+    T  pw2 = 1 + 2*p.pt/m.beta + sqr(p.pt) - sqr(p.py);
     T  pzx = sqrt(pw2 - sqr(p.px)) - k0q*(rho+p.x); // can be numerically unstable
     T  npx = sa*pzx + ca*p.px;
     T  dpx = ca*pzx - sa*p.px;
@@ -599,23 +630,23 @@ inline void sbend_thick (mflw_t *m, num_t lw, int is)
     p.x  = (sqrt(pw2 - sqr(npx)) - dpx)/k0q - rho;  // can be numerically unstable
     p.px = npx;
     p.y += dxs*p.py;
-    p.t -= dxs*(1/m->beta+p.pt) + (m->T-1)*(ld/m->beta);
+    p.t -= dxs*(1/m.beta+p.pt) + (m.T-1)/m.beta*ld;
   }
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void sbend_thick_new (mflw_t *m, num_t lw, int is)
-{                                               (void)is;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void sbend_thick_new (cflw<M> &m, num_t lw, int is)
+{                                                (void)is;
   mdump(0);
-  num_t ld  = (m->eld ? m->eld : m->el)*lw;
-  num_t ang = m->ang*lw, rho=1/m->eh;
-  num_t k0q = m->knl[0]/m->el*m->sdir*m->edir*m->charge;
-  num_t ca  = cos(ang), sa = sin(ang), s2a = sin(2*ang);
+  P ld  = (fval(m.eld) ? R(m.eld) : R(m.el))*lw;
+  P ang = R(m.ang)*lw, rho=1/R(m.eh);
+  P k0q = R(m.knl[0])/R(m.el)*(m.sdir*m.edir*m.charge);
+  P ca  = cos(ang), sa = sin(ang), s2a = sin(2*ang);
 
-  FOR(i,m->npar) {
-    P p(m,i);
-    T  pw2 = 1 + 2*p.pt/m->beta + sqr(p.pt) - sqr(p.py);
+  FOR(i,m.npar) {
+    M p(m,i);
+    T  pw2 = 1 + 2*p.pt/m.beta + sqr(p.pt) - sqr(p.py);
     T   pz = sqrt(pw2 - sqr(p.px));
     T   xr = p.x+rho;
     T  pzx = pz - k0q*xr;
@@ -636,25 +667,25 @@ inline void sbend_thick_new (mflw_t *m, num_t lw, int is)
     p.x  = xt1/(dpx + sqrt(pw2 - sqr(npx))) - rho;
     p.px = npx;
     p.y += dxs*p.py;
-    p.t -= dxs*(1/m->beta+p.pt) + (m->T-1)*ld/m->beta;
+    p.t -= dxs*(1/m.beta+p.pt) + (m.T-1)/m.beta*ld;
   }
   mdump(1);
 }
 
 // --- rbend ---
 
-template <typename P, typename T=P::T>
-inline void rbend_thick (mflw_t *m, num_t lw, int is)
-{                                           (void)is;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void rbend_thick (cflw<M> &m, num_t lw, int is)
+{                                            (void)is;
   mdump(0);
-  num_t ld   = (m->eld ? m->eld : m->el)*lw;
-  num_t k0q  = m->knl[0]/m->el*m->sdir*m->edir*m->charge;
-  num_t k0lq = m->knl[0]*lw   *m->sdir*m->edir*m->charge;
+  P ld   = (fval(m.eld) ? R(m.eld) : R(m.el))*lw;
+  P k0q  = R(m.knl[0])/R(m.el)*(m.sdir*m.edir*m.charge);
+  P k0lq = R(m.knl[0])*(lw    * m.sdir*m.edir*m.charge);
 
-  FOR(i,m->npar) {
-    P p(m,i);
+  FOR(i,m.npar) {
+    M p(m,i);
     T  npx = p.px - k0lq;
-    T  pw2 = 1 + 2*p.pt/m->beta + sqr(p.pt) - sqr(p.py);
+    T  pw2 = 1 + 2*p.pt/m.beta + sqr(p.pt) - sqr(p.py);
     T _ptt = invsqrt(pw2);
     T   pz = sqrt(pw2 - sqr(p.px));
     T  pzs = sqrt(pw2 - sqr(npx));
@@ -664,24 +695,24 @@ inline void rbend_thick (mflw_t *m, num_t lw, int is)
     p.x += (pzs-pz)/k0q;
     p.px = npx;
     p.y += dxs*p.py;
-    p.t -= dxs*(1/m->beta+p.pt) + (m->T-1)*ld/m->beta;
+    p.t -= dxs*(1/m.beta+p.pt) + (m.T-1)/m.beta*ld;
   }
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void rbend_thick_new (mflw_t *m, num_t lw, int is)
-{                                               (void)is;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void rbend_thick_new (cflw<M> &m, num_t lw, int is)
+{                                                (void)is;
   mdump(0);
-  num_t l    = m->el*lw;
-  num_t ld   = (m->eld ? m->eld : m->el)*lw;
-  num_t k0q  = m->knl[0]/m->el*m->sdir*m->edir*m->charge;
-  num_t k0lq = m->knl[0]*lw   *m->sdir*m->edir*m->charge;
+  P l    = R(m.el)*lw;
+  P ld   = (fval(m.eld) ? R(m.eld) : R(m.el))*lw;
+  P k0q  = R(m.knl[0])/R(m.el)*(m.sdir*m.edir*m.charge);
+  P k0lq = R(m.knl[0])*(lw    * m.sdir*m.edir*m.charge);
 
-  FOR(i,m->npar) {
-    P p(m,i);
+  FOR(i,m.npar) {
+    M p(m,i);
     T  npx = p.px - k0lq;
-    T  pw2 = 1 + 2*p.pt/m->beta + sqr(p.pt) - sqr(p.py);
+    T  pw2 = 1 + 2*p.pt/m.beta + sqr(p.pt) - sqr(p.py);
     T _ptt = invsqrt(pw2);
     T   xi = p.px*_ptt;
     T zeta =  npx*_ptt;
@@ -693,40 +724,39 @@ inline void rbend_thick_new (mflw_t *m, num_t lw, int is)
     p.x += l*(2*p.px - k0lq) / (sqrt(pw2 - sqr(p.px)) + sqrt(pw2 - sqr(npx)));
     p.px = npx;
     p.y += dxs*p.py;
-    p.t -= dxs*(1/m->beta+p.pt) + (m->T-1)*ld/m->beta;
+    p.t -= dxs*(1/m.beta+p.pt) + (m.T-1)/m.beta*ld;
   }
   mdump(1);
 }
 
 // --- quadrupole ---
 
-template <typename P, typename T=P::T>
-inline void quad_thick (mflw_t *m, num_t lw, int is)
-{                                          (void)is;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void quad_thick (cflw<M> &m, num_t lw, int is)
+{                                           (void)is;
   mdump(0);
-  num_t l = m->el*lw;
-  int  ws = m->k1*m->sdir < 0 ? -1 : 1;
+  P    l = R(m.el)*lw;
+  int ws = fval(m.k1)*m.sdir < 0 ? -1 : 1;
 
-  num_t cx, sx, mx1, mx2;
-  num_t cy, sy, my1, my2;
+  P cx, sx, mx1, mx2;
+  P cy, sy, my1, my2;
 
-  if (abs(m->k1) >= minstr) {
-    num_t w = sqrt(abs(m->k1))*ws*m->sdir*m->edir;
+  if (fabs(m.k1) >= minstr) {
+    P w = sqrt(abs(R(m.k1)))*(ws*m.sdir*m.edir);
     cx = cos (w*l), sx  = sin (w*l);
     cy = cosh(w*l), sy  = sinh(w*l);
     mx1 = sx/w    , mx2 = -sx*w;
     my1 = sy/w    , my2 =  sy*w;
   } else {
-    cx = 1, sx = 0, mx1 = l, mx2 = 0;
-    cy = 1, sy = 0, my1 = l, my2 = 0;
+    cx = 1., sx = 0., mx1 = l, mx2 = 0.;
+    cy = 1., sy = 0., my1 = l, my2 = 0.;
   }
 
-  if (ws != m->charge) { // swap x <-> y
-    std::swap(cx,cy), std::swap(sx,sy), std::swap(mx1,my1), std::swap(mx2,my2);
-  }
+  if (ws != m.charge) // swap x <-> y
+    swap(cx,cy), swap(sx,sy), swap(mx1,my1), swap(mx2,my2);
 
-  FOR(i,m->npar) {
-    P p(m,i);
+  FOR(i,m.npar) {
+    M p(m,i);
     T nx  = p.x*cx  + p.px*mx1;
     T npx = p.x*mx2 + p.px*cx;
     T ny  = p.y*cy  + p.py*my1;
@@ -740,50 +770,56 @@ inline void quad_thick (mflw_t *m, num_t lw, int is)
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void quad_kick (mflw_t *m, num_t lw, int is)
-{                                         (void)is;
-  num_t l = m->el*lw;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void quad_kick (cflw<M> &m, num_t lw, int is)
+{                                          (void)is;
+  P l = R(m.el)*lw;
 
-  if (is >= 0) drift_adj<P>(m, is ? l : l/2);
+  if (is >= 0) {
+    if (!is) l /= 2;
+    drift_adj<M>(m, l);
+  }
+
   mdump(0);
-  if (m->nmul > 0) {
-    num_t wchg = lw*m->sdir*m->edir*m->charge;
+  if (m.nmul > 0) {
+    num_t wchg = lw*m.sdir*m.edir*m.charge;
     T bx, by;
 
-    FOR (i,m->npar) {
-      P p(m,i);
+    FOR (i,m.npar) {
+      M p(m,i);
       bxby(m, p.x, p.y, bx, by);
 
-      p.px -= wchg*(by - m->knl[1]*p.x);
-      p.py += wchg*(bx - m->knl[1]*p.y);
+      p.px -= wchg*(by - R(m.knl[1])*p.x);
+      p.py += wchg*(bx - R(m.knl[1])*p.y);
     }
   }
   mdump(1);
-  if (is <= 0) drift_adj<P>(m, is ? l : l/2);
+
+  if (is <= 0) drift_adj<M>(m, l);
 }
 
-template <typename P, typename T=P::T>
-inline void quad_thicks (mflw_t *m, num_t lw, int is)
-{                                           (void)is;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void quad_thicks (cflw<M> &m, num_t lw, int is)
+{                                            (void)is;
   mdump(0);
-  num_t l   = m->el*lw;
-  num_t w   = sqrt(abs(m->k1))*m->edir;
-  num_t cx  = cos (w*l), sx  = sin (w*l);
-  num_t cy  = cosh(w*l), sy  = sinh(w*l);
-  num_t mx1 = sx/w     , mx2 = -sx*w;
-  num_t my1 = sy/w     , my2 =  sy*w;
+  P l   = R(m.el)*lw;
+  P w   = sqrt(abs(R(m.k1)))*m.edir;
+  P cx  = cos (w*l), sx  = sin (w*l);
+  P cy  = cosh(w*l), sy  = sinh(w*l);
+  P mx1 = sx/w     , mx2 = -sx*w;
+  P my1 = sy/w     , my2 =  sy*w;
+  R ca  = m.ca, sa = m.sa;
 
-  if (m->sdir != m->charge) // swap x <-> y
-    std::swap(cx,cy), std::swap(sx,sy), std::swap(mx1,my1), std::swap(mx2,my2);
+  if (m.sdir != m.charge) // swap x <-> y
+    swap(cx,cy), swap(sx,sy), swap(mx1,my1), swap(mx2,my2);
 
-  FOR(i,m->npar) {
-    P p(m,i);
+  FOR(i,m.npar) {
+    M p(m,i);
     // srotation
-    T rx  = m->ca*p.x  + m->sa*p.y;
-    T rpx = m->ca*p.px + m->sa*p.py;
-    T ry  = m->ca*p.y  - m->sa*p.x;
-    T rpy = m->ca*p.py - m->sa*p.px;
+    T rx  = ca*p.x  + sa*p.y;
+    T rpx = ca*p.px + sa*p.py;
+    T ry  = ca*p.y  - sa*p.x;
+    T rpy = ca*p.py - sa*p.px;
 
     T nx  = rx*cx  + rpx*mx1;
     T npx = rx*mx2 + rpx*cx;
@@ -791,85 +827,89 @@ inline void quad_thicks (mflw_t *m, num_t lw, int is)
     T npy = ry*my2 + rpy*cy;
 
     // srotation^-1
-    p.x   = m->ca*nx  - m->sa*ny;
-    p.px  = m->ca*npx - m->sa*npy;
-    p.y   = m->ca*ny  + m->sa*nx;
-    p.py  = m->ca*npy + m->sa*npx;
+    p.x   = ca*nx  - sa*ny;
+    p.px  = ca*npx - sa*npy;
+    p.y   = ca*ny  + sa*nx;
+    p.py  = ca*npy + sa*npx;
   }
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void quad_kicks (mflw_t *m, num_t lw, int is)
-{                                          (void)is;
-  num_t l = m->el*lw;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void quad_kicks (cflw<M> &m, num_t lw, int is)
+{                                           (void)is;
+  P l = R(m.el)*lw;
 
-  if (is >= 0) drift_adj<P>(m, is ? l : l/2);
+  if (is >= 0) {
+    if (!is) l /= 2;
+    drift_adj<M>(m, l);
+  }
+
   mdump(0);
-  if (m->nmul > 0) {
-    num_t wchg = lw*m->sdir*m->edir*m->charge;
+  if (m.nmul > 0) {
+    num_t wchg = lw*m.sdir*m.edir*m.charge;
     T bx, by;
 
-    FOR (i,m->npar) {
-      P p(m,i);
+    FOR (i,m.npar) {
+      M p(m,i);
       bxby(m, p.x, p.y, bx, by);
 
-      p.px -= wchg*(by - m->knl[1]*p.x + m->ksl[1]*p.y);
-      p.py += wchg*(bx - m->knl[1]*p.y - m->ksl[1]*p.x);
+      p.px -= wchg*(by - R(m.knl[1])*p.x + R(m.ksl[1])*p.y);
+      p.py += wchg*(bx - R(m.knl[1])*p.y - R(m.ksl[1])*p.x);
     }
   }
   mdump(1);
-  if (is <= 0) drift_adj<P>(m, is ? l : l/2);
+
+  if (is <= 0) drift_adj<M>(m, l);
 }
 
-template <typename P, typename T=P::T>
-inline void quad_thickh (mflw_t *m, num_t lw, int is)
-{                                           (void)is;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void quad_thickh (cflw<M> &m, num_t lw, int is)
+{                                            (void)is;
   mdump(0);
-  num_t l = m->el*lw;
-  num_t kx  = (m->knl[1] + m->eh*m->knl[0])/m->el;
-  num_t ky  = -m->knl[1]/m->el;
-  num_t wxs = kx*m->sdir*m->edir < 0 ? -1 : 1;
-  num_t wys = ky*m->sdir*m->edir < 0 ? -1 : 1;
-  num_t wx, cx, sx, wy, cy, sy;
-  num_t mx11, mx12, mx13, mx21, mx22, mx23, mx31, mx32, mx33;
-  num_t my11, my12,       my21, my22;
+  P l     = R(m.el)*lw;
+  P kx    = (R(m.knl[1]) + R(m.eh)*R(m.knl[0]))/R(m.el);
+  P ky    = -R(m.knl[1])/R(m.el);
+  int wxs = fval(kx)*m.sdir*m.edir < 0 ? -1 : 1;
+  int wys = fval(ky)*m.sdir*m.edir < 0 ? -1 : 1;
 
-  if (abs(kx) >= minstr) {
-    wx = sqrt(abs(kx))*wxs;
-    wx = wx*m->charge, wxs = -wxs*m->charge;
-    if (wx > 0) cx = cos (wx*l), sx = sin (wx*l);
-    else        cx = cosh(wx*l), sx = sinh(wx*l);
-    mx11 = cx       , mx12 = sx/wx, mx13 =      m->eh *  (cx-1)*wxs/sqr(wx);
-    mx21 = wxs*wx*sx, mx22 = cx   , mx23 =      m->eh *   mx12;
-    mx31 = mx23     , mx32 = mx13 , mx33 = -sqr(m->eh)*(l-mx12)*wxs/sqr(wx);
+  P wx, cx, sx, wy, cy, sy;
+  P mx11, mx12, mx13, mx21, mx22, mx23, mx31, mx32, mx33;
+  P my11, my12,       my21, my22;
+
+  if (fabs(kx) >= minstr) {
+    wx = sqrt(abs(kx))*(wxs*m.charge); wxs *= -m.charge;
+    if (fval(wx) > 0) cx = cos (wx*l), sx = sin (wx*l);
+    else             cx = cosh(wx*l), sx = sinh(wx*l);
+    mx11 = cx       , mx12 = sx/wx, mx13 =      R(m.eh) *  (cx-1)*wxs/sqr(wx);
+    mx21 = wxs*wx*sx, mx22 = cx   , mx23 =      R(m.eh) *   mx12;
+    mx31 = mx23     , mx32 = mx13 , mx33 = -sqr(R(m.eh))*(l-mx12)*wxs/sqr(wx);
   } else {
-    wx = 0;
-    mx11 = 1   , mx12 = l   , mx13 = m->eh*sqr(l)/2;
-    mx21 = 0   , mx22 = 1   , mx23 = m->eh*l;
+    wx = 0.;
+    mx11 = 1.  , mx12 = l   , mx13 = R(m.eh)*sqr(l)/2;
+    mx21 = 0.  , mx22 = 1.  , mx23 = R(m.eh)*l;
     mx31 = mx23, mx32 = mx13, mx33 = mx13*mx23/3;
   }
 
-  if (abs(ky) >= minstr) {
-    wy = sqrt(abs(ky))*wys;
-    wy = wy*m->charge, wys = -wys*m->charge;
-    if (wy > 0) cy = cos (wy*l), sy = sin (wy*l);
-    else        cy = cosh(wy*l), sy = sinh(wy*l);
+  if (fabs(ky) >= minstr) {
+    wy = sqrt(abs(ky))*(wys*m.charge); wys *= -m.charge;
+    if (fval(wy) > 0) cy = cos (wy*l), sy = sin (wy*l);
+    else             cy = cosh(wy*l), sy = sinh(wy*l);
     my11 = cy       , my12 = sy/wy;
     my21 = wys*wy*sy, my22 = cy;
   } else {
-    wy = 0;
-    my11 = 1, my12 = l;
-    my21 = 0, my22 = 1;
+    wy = 0.;
+    my11 = 1., my12 = l ;
+    my21 = 0., my22 = 1.;
   }
 
-  FOR (i,m->npar) {
-    P p(m,i);
-    T nx  = p.x*mx11 + p.px*mx12 + p.pt*(mx13/m->beta);
-    T npx = p.x*mx21 + p.px*mx22 + p.pt*(mx23/m->beta);
+  FOR (i,m.npar) {
+    M p(m,i);
+    T nx  = p.x*mx11 + p.px*mx12 + p.pt*(mx13/m.beta);
+    T npx = p.x*mx21 + p.px*mx22 + p.pt*(mx23/m.beta);
     T ny  = p.y*my11 + p.py*my12;
     T npy = p.y*my21 + p.py*my22;
-    T dt  = p.x*(mx31/m->beta) + p.px*(mx32/m->beta) + p.pt*mx33;
+    T dt  = p.x*(mx31/m.beta) + p.px*(mx32/m.beta) + p.pt*mx33;
 
     p.x   = nx;
     p.y   = ny;
@@ -880,45 +920,51 @@ inline void quad_thickh (mflw_t *m, num_t lw, int is)
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void quad_kickh (mflw_t *m, num_t lw, int is)
-{                                          (void)is;
-  num_t l = m->el*lw;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void quad_kickh (cflw<M> &m, num_t lw, int is)
+{                                           (void)is;
+  P l  = R(m.el)*lw;
+  P lh = R(m.eh)*l;
 
-  if (is >= 0) drift_adj<P>(m, is ? l : l/2);
+  if (is >= 0) {
+    if (!is) l /= 2;
+    drift_adj<M>(m, l);
+  }
+
   mdump(0);
-  if (m->nmul > 0) {
-    num_t wchg = lw*m->sdir*m->edir*m->charge;
+  if (m.nmul > 0) {
+    num_t wchg = lw*m.sdir*m.edir*m.charge;
     T bx, by;
 
-    FOR (i,m->npar) {
-      P p(m,i);
-      T pz = sqrt(1 + (2/m->beta)*p.pt + sqr(p.pt));
+    FOR (i,m.npar) {
+      M p(m,i);
+      T pz = sqrt(1 + (2/m.beta)*p.pt + sqr(p.pt));
       bxby(m, p.x, p.y, bx, by);
 
-      p.px -= wchg*(by - m->knl[1]*p.x) - l*m->eh*(pz-(1/m->beta*p.pt));
-      p.py += wchg*(bx - m->knl[1]*p.y);
-      p.t  -= (l*m->eh)*((1/m->beta+p.pt)/pz - 1/m->beta)*p.x;
+      p.px -= wchg*(by - R(m.knl[1])*p.x) - lh*(pz-(1/m.beta*p.pt));
+      p.py += wchg*(bx - R(m.knl[1])*p.y);
+      p.t  -= lh*((1/m.beta+p.pt)/pz - 1/m.beta)*p.x;
     }
   }
   mdump(1);
-  if (is <= 0) drift_adj<P>(m, is ? l : l/2);
+
+  if (is <= 0) drift_adj<M>(m, l);
 }
 
 // --- solenoid ---
 
-template <typename P, typename T=P::T>
-inline void solen_thick (mflw_t *m, num_t lw, int is)
-{                                           (void)is;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void solen_thick (cflw<M> &m, num_t lw, int is)
+{                                            (void)is;
   mdump(0);
-  num_t l = m->el*lw;
-  num_t bsol = 0.5*m->ks*m->charge;
+  P l    = R(m.el)*lw;
+  P bsol = R(m.ks)*0.5*m.charge;
 
-  FOR (i,m->npar) {
-    P p(m,i);
+  FOR (i,m.npar) {
+    M p(m,i);
     T   xp  = p.px + bsol*p.y;
     T   yp  = p.py - bsol*p.x;
-    T  l_pz = invsqrt(1 + (2/m->beta)*p.pt + sqr(p.pt) - sqr(xp) - sqr(yp), l);
+    T  l_pz = l*invsqrt(1 + (2/m.beta)*p.pt + sqr(p.pt) - sqr(xp) - sqr(yp));
     T  ang  = bsol*l_pz;
 
     T ca = cos(ang), sa = sin(ang), sc = sinc(ang);
@@ -933,31 +979,32 @@ inline void solen_thick (mflw_t *m, num_t lw, int is)
     p.px = ca*pxt + sa*pyt;
     p.y  = ca*yt  - sa*xt;
     p.py = ca*pyt - sa*pxt;
-    p.t -= (1/m->beta+p.pt)*l_pz + (m->T-1)*l/m->beta;
+    p.t -= (1/m.beta+p.pt)*l_pz + (m.T-1)/m.beta*l;
   }
   mdump(1);
 }
 
 // --- eseptum ---
 
-template <typename P, typename T=P::T>
-inline void esept_thick (mflw_t *m, num_t lw, int is)
-{                                           (void)is;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void esept_thick (cflw<M> &m, num_t lw, int is)
+{                                            (void)is;
   mdump(0);
-  num_t l  = m->el*lw;
-  num_t k1 = m->volt/m->pc*m->sdir*m->charge;
+  P l  = R(m.el)*lw;
+  P k1 = R(m.volt)*(m.sdir*m.charge/m.pc);
+  R ca = m.ca, sa = m.sa;
 
-  FOR (i,m->npar) {
-    P p(m,i);
+  FOR (i,m.npar) {
+    M p(m,i);
     // srotation
-    T  nx  = m->ca*p.x  + m->sa*p.y;
-    T  npx = m->ca*p.px + m->sa*p.py;
-    T  ny  = m->ca*p.y  - m->sa*p.x;
-    T  npy = m->ca*p.py - m->sa*p.px;
+    T  nx  = ca*p.x  + sa*p.y;
+    T  npx = ca*p.px + sa*p.py;
+    T  ny  = ca*p.y  - sa*p.x;
+    T  npy = ca*p.py - sa*p.px;
 
-    T   e1 = 1/m->beta+p.pt;
+    T   e1 = 1/m.beta+p.pt;
     T   dp = e1 + k1*ny;
-    T l_pz = invsqrt(sqr(dp) - 1/sqr(m->betgam) - sqr(npx) - sqr(npy), l);
+    T l_pz = l*invsqrt(sqr(dp) - 1/sqr(m.betgam) - sqr(npx) - sqr(npy));
     T  arg = k1*l_pz;
     T  shx = sinhc(arg)*l_pz;
     T   ch = cosh(arg), sh = sinh(arg);
@@ -970,51 +1017,51 @@ inline void esept_thick (mflw_t *m, num_t lw, int is)
     ny  = yt, npy = pyt;
 
     // srotation^-1
-    p.x  = m->ca*nx  - m->sa*ny;
-    p.px = m->ca*npx - m->sa*npy;
-    p.y  = m->ca*ny  + m->sa*nx;
-    p.py = m->ca*npy + m->sa*npx;
-    p.t -= dt + (m->T-1)*l/m->beta;
+    p.x  = ca*nx  - sa*ny;
+    p.px = ca*npx - sa*npy;
+    p.y  = ca*ny  + sa*nx;
+    p.py = ca*npy + sa*npx;
+    p.t -= dt + (m.T-1)/m.beta*l;
   }
   mdump(1);
 }
 
 // --- rfcavity ---
 
-template <typename P, typename T=P::T>
-inline void rfcav_kick (mflw_t *m, num_t lw, int is)
-{                                          (void)is;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void rfcav_kick (cflw<M> &m, num_t lw, int is)
+{                                           (void)is;
   mdump(0);
-  num_t w  = m->freq*twopi_clight;
-  num_t vl = lw*m->volt/m->pc*m->sdir*m->edir*m->charge;
+  P w  = R(m.freq)*twopi_clight;
+  P vl = R(m.volt)*(lw*m.sdir*m.edir*m.charge/m.pc);
 
-  FOR (i,m->npar) {
-    P p(m,i);
-    p.pt += vl*sin(m->lag - w*p.t);
+  FOR (i,m.npar) {
+    M p(m,i);
+    p.pt += vl*sin(R(m.lag) - w*p.t);
   }
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void rfcav_kickn (mflw_t *m, num_t lw, int is)
-{                                           (void)is;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void rfcav_kickn (cflw<M> &m, num_t lw, int is)
+{                                            (void)is;
   mdump(0);
-  num_t w    = m->freq*twopi_clight;
-  num_t wchg = lw/m->pc*m->sdir*m->edir*m->charge;
-  num_t vl   = m->volt*wchg;
+  num_t wchg = lw*m.sdir*m.edir*m.charge;
+  P     w    = R(m.freq)*twopi_clight;
+  P     vl   = R(m.volt)*(wchg/m.pc);
 
   T bx, by, byt;
 
-  FOR (i,m->npar) {
-    P p(m,i);
-    T ph = m->lag - w*p.t;
+  FOR (i,m.npar) {
+    M p(m,i);
+    T ph = R(m.lag) - w*p.t;
     T sa = sin(ph), ca = cos(ph);
-    T f; f = 1;
+    T f; f = 1.;
 
-    if (m->nbsl > 0) {
+    if (m.nbsl > 0) {
       T df, r2; df = 0., r2 = 1.;
 
-      FOR(i,1,m->nbsl+1) {
+      FOR(i,1,m.nbsl+1) {
         r2  = -r2*(sqr(w)/(4*sqr(i+1)));
         df +=  r2*(i*2);
         r2  =  r2*(sqr(p.x)+sqr(p.y));
@@ -1028,17 +1075,17 @@ inline void rfcav_kickn (mflw_t *m, num_t lw, int is)
 
     p.pt += f*sa*vl;
 
-    if (m->nmul > 0) {
+    if (m.nmul > 0) {
       bxby(m, p.x, p.y, bx, by);
 
-      p.px += wchg*by*ca;
-      p.py -= wchg*bx*ca;
+      p.px += wchg*by*ca; // TBC! was $/R(m.pc) ?
+      p.py -= wchg*bx*ca; // TBC! was $/R(m.pc) ?
 
-      by = -m->knl[m->nmul-1]/m->nmul;
-      bx = -m->ksl[m->nmul-1]/m->nmul;
-      RFOR(i,m->nmul-1) {
-        byt = p.x*by - p.y*bx - m->knl[i]/(i+1);
-        bx  = p.y*by + p.x*bx - m->ksl[i]/(i+1);
+      by = -R(m.knl[m.nmul-1])/m.nmul;
+      bx = -R(m.ksl[m.nmul-1])/m.nmul;
+      RFOR(i,m.nmul-1) {
+        byt = p.x*by - p.y*bx - R(m.knl[i])/(i+1);
+        bx  = p.y*by + p.x*bx - R(m.ksl[i])/(i+1);
         by  = byt;
       }
       byt = p.x*by - p.y*bx;
@@ -1060,31 +1107,31 @@ enum {
  fringe_solen = 8, fringe_rfcav = 16, fringe_comb = 1+2, fringe_combqs = 1+2+4
 };
 
-template <typename P, typename T=P::T>
-inline void adjust_time (mflw_t *m, num_t lw)
-{                                   (void)lw;
-  if (abs(m->el) < minlen) return;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void adjust_time (cflw<M> &m, num_t lw)
+{                                    (void)lw;
+  if (fabs(m.el) < minlen) return;
 
-  num_t Tl = (m->T-m->Tbak)*m->el;
+  P Tl = (m.T-m.Tbak)/m.beta*R(m.el);
 
-  FOR (i,m->npar) {
-    P p(m,i);
-    p.t += Tl/m->beta;
+  FOR (i,m.npar) {
+    M p(m,i);
+    p.t += Tl;
   }
 }
 
-template <typename P, typename T=P::T>
-inline void cav_fringe (mflw_t *m, num_t lw)
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void cav_fringe (cflw<M> &m, num_t lw)
 {
-  if (abs(m->el) < minlen) return;
+  if (fabs(m.el) < minlen) return;
   mdump(0);
-  num_t w  = m->freq*twopi_clight;
-  num_t vl = 0.5*lw*m->volt/(m->pc*m->el)*m->sdir*m->edir*m->charge;
+  P w  = R(m.freq)*twopi_clight;
+  P vl = R(m.volt)/R(m.el)*(0.5*lw*m.sdir*m.edir*m.charge/m.pc);
 
-  FOR (i,m->npar) {
-    P p(m,i);
-    T s1 = sin(m->lag - w*p.t);
-    T c1 = cos(m->lag - w*p.t);
+  FOR (i,m.npar) {
+    M p(m,i);
+    T s1 = sin(R(m.lag) - w*p.t);
+    T c1 = cos(R(m.lag) - w*p.t);
 
     p.px -= vl*s1*p.x;
     p.py -= vl*s1*p.y;
@@ -1093,18 +1140,18 @@ inline void cav_fringe (mflw_t *m, num_t lw)
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void bend_face (mflw_t *m, num_t lw, num_t h=0)
-{                                 (void)lw;
-  if (!h || abs(m->el) < minlen || abs(m->knl[0]) < minstr) return;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R, typename V>
+inline void bend_face (cflw<M> &m, num_t lw, const V &h)
+{                                  (void)lw;
+  if (!fval(h) || fabs(m.el) < minlen || fabs(m.knl[0]) < minstr) return;
   mdump(0);
-  num_t k0hq = 0.5*h*m->knl[0]/m->el*m->sdir*m->charge;
+  P k0hq = R(m.knl[0])/R(m.el)*(0.5*h*m.sdir*m.charge);
 
-  FOR (i,m->npar) {
-    P p(m,i);
-    if (m->sdir*m->edir == 1) p.px += k0hq*sqr(p.x);
+  FOR (i,m.npar) {
+    M p(m,i);
+    if (m.sdir*m.edir == 1) p.px += k0hq*sqr(p.x);
 
-    T dpp      =  1 + 2/m->beta*p.pt + sqr(p.pt);
+    T dpp      =  1 + 2/m.beta*p.pt + sqr(p.pt);
     T _pt2     =  1/(dpp - sqr(p.px));
     T xi       =  2*k0hq * sqrt(dpp)*_pt2;
     T dxi_px   =  2*p.px*xi         *_pt2;
@@ -1116,35 +1163,35 @@ inline void bend_face (mflw_t *m, num_t lw, num_t h=0)
     p.py -= 2*xi*p.x*p.y;
     p.t  += dxi_ddel*p.x*y2;
 
-    if (m->sdir*m->edir == -1) p.px += k0hq*sqr(p.x);
+    if (m.sdir*m.edir == -1) p.px += k0hq*sqr(p.x);
   }
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void bend_ptch (mflw_t *m, num_t lw, num_t a=0)
-{                                 (void)lw;
-  if (!a || !m->elc) return;
-  num_t dx = m->elc*sin(a/2);
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R, typename V>
+inline void bend_ptch (cflw<M> &m, num_t lw, const V &a)
+{                                  (void)lw;
+  if (!fval(a) || !fval(m.elc)) return;
+  P dx = R(m.elc)*sin(a/2);
 
-  FOR (i,m->npar) {
-    P p(m,i);
+  FOR (i,m.npar) {
+    M p(m,i);
     p.x += dx;
   }
 }
 
-template <typename P, typename T=P::T>
-inline void bend_wedge (mflw_t *m, num_t lw, num_t e=0)
-{                                  (void)lw;
-  if (!e) return;
-  if (abs(m->knl[0]) < minstr) return yrotation<P>(m,1,e);
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R, typename V>
+inline void bend_wedge (cflw<M> &m, num_t lw, const V &e)
+{                                   (void)lw;
+  if (!fval(e)) return;
+  if (fabs(m.knl[0]) < minstr) return yrotation<M>(m,1,e);
   mdump(0);
-  num_t b1 = m->knl[0]/m->el*m->sdir*m->edir*m->charge;
-  num_t sa = sin(e), ca = cos(e), s2a = sin(2*e);
+  P b1 = R(m.knl[0])/R(m.el)*(m.sdir*m.edir*m.charge);
+  P sa = sin(e), ca = cos(e), s2a = sin(2*e);
 
-  FOR (i,m->npar) {
-    P p(m,i);
-    T pzy = 1 + 2/m->beta*p.pt + sqr(p.pt) - sqr(p.py);
+  FOR (i,m.npar) {
+    M p(m,i);
+    T pzy = 1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.py);
     T _pt = 1/sqrt(pzy);
     T  pz = sqrt(pzy - sqr(p.px));
     T pzx = pz - b1*p.x;
@@ -1155,48 +1202,48 @@ inline void bend_wedge (mflw_t *m, num_t lw, num_t e=0)
     p.x  *= ca + (p.px*s2a + sqr(sa)*(pz+pzx))/(pzs + pz*ca - p.px*sa);
     p.px  = npx;
     p.y  += dxs*p.py;
-    p.t  -= dxs*(1/m->beta+p.pt);
+    p.t  -= dxs*(1/m.beta+p.pt);
   }
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void mad8_wedge (mflw_t *m, num_t lw, num_t e=0)
-{                                  (void)lw;
-  if (!e || abs(m->knl[1]) < minstr) return;
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R, typename V>
+inline void mad8_wedge (cflw<M> &m, num_t lw, const V &e)
+{                                   (void)lw;
+  if (!fval(e) || fabs(m.knl[1]) < minstr) return;
   mdump(0);
-  num_t  wc = m->frng == 0 ? 0 : 0.25;
-  num_t k1e = e*m->knl[1]/m->el*m->edir;
-  num_t  c1 = (1+wc)*k1e*m->charge;
-  num_t  c2 = (1-wc)*k1e*m->charge;
+  num_t wc = m.frng == 0 ? 0 : 0.25;
+  P    k1e = R(m.knl[1])/R(m.el)*(e*m.edir);
+  P     c1 = (1+wc)*m.charge*k1e;
+  P     c2 = (1-wc)*m.charge*k1e;
 
-  FOR (i,m->npar) {
-    P p(m,i);
+  FOR (i,m.npar) {
+    M p(m,i);
     p.px +=   c1*sqr(p.x) - c2*sqr(p.y);
     p.py -= 2*c2*p.x*p.y;
   }
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void bend_fringe (mflw_t *m, num_t lw)
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void bend_fringe (cflw<M> &m, num_t lw)
 {
-  if (abs(m->knl[0]) < minang) return;
+  if (fabs(m.knl[0]) < minang) return;
   mdump(0);
-  num_t   fh = m->fint*m->hgap;
-  num_t fsad = fh ? 1/(72*fh) : 0;
-  num_t   b0 = lw*m->knl[0]/abs(m->el)*m->sdir*m->edir*m->charge;
-  num_t   c2 = b0*fh*2;
+  num_t   fh = 2*m.fint*m.hgap;
+  num_t fsad = fh ? 1/(36*fh) : 0;
+  P       b0 = R(m.knl[0])/abs(R(m.el))*(lw*m.sdir*m.edir*m.charge);
+  P       c2 = fh*b0;
 
-  FOR (i,m->npar) {
-    P p(m,i);
-    T   dpp = 1 + 2/m->beta*p.pt + sqr(p.pt);
+  FOR (i,m.npar) {
+    M p(m,i);
+    T   dpp = 1 + 2/m.beta*p.pt + sqr(p.pt);
     T    pz = sqrt(dpp - sqr(p.px) - sqr(p.py));
     T   _pz = 1/pz;
     T  _pz2 = sqr(_pz);
     T  relp = 1/sqrt(dpp);
-    T  tfac = -1/m->beta - p.pt;
-    T    c3 = sqr(b0)*fsad*relp;
+    T  tfac = -1/m.beta - p.pt;
+    T    c3 = fsad*sqr(b0)*relp;
 
     T xp  = p.px/pz,  yp  = p.py/pz;
     T xyp = xp*yp  ,  yp2 = 1+sqr(yp);
@@ -1215,7 +1262,7 @@ inline void bend_fringe (mflw_t *m, num_t lw)
     T ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp;
     T kz = fi1*tfac*xp*_pz2 + fi2*tfac*yp*_pz2 - fi3*tfac*_pz;
 
-    if (m->sdir == 1) {
+    if (m.sdir == 1) {
       T y  = 2*p.y / (1 + sqrt(1-2*ky*p.y));
       T y2 = sqr(y);
 
@@ -1235,24 +1282,24 @@ inline void bend_fringe (mflw_t *m, num_t lw)
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void qsad_fringe (mflw_t *m, num_t lw)
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void qsad_fringe (cflw<M> &m, num_t lw)
 {
-  if (abs(m->knl[1])+abs(m->ksl[1]) < minstr) return;
-  if (abs(m->f1)    +abs(m->f2)     < minstr) return;
+  if (fabs(m.knl[1])+fabs(m.ksl[1]) < minstr) return;
+  if (fabs(m.f1)    +fabs(m.f2)     < minstr) return;
   mdump(0);
-  num_t wchg = lw*m->charge;
-  num_t  a   = -0.5*atan2(m->ksl[1], m->knl[1]);
-  num_t b2   = hypot(m->knl[1], m->ksl[1])/m->el*m->edir;
-  num_t ca   = cos(a), sa = sin(a);
-  num_t bf1  = -abs(m->f1)*m->f1*b2/24;
-  num_t bf2  =             m->f2*b2;
+  num_t wchg = lw*m.charge;
+  P     a    = -0.5*atan2(R(m.ksl[1]), R(m.knl[1]));
+  P     b2   = hypot(R(m.knl[1]), R(m.ksl[1]))/R(m.el)*m.edir;
+  P     ca   = cos(a), sa = sin(a);
+  P     bf1  = (-abs(m.f1)*m.f1/24)*b2;
+  P     bf2  =             m.f2    *b2;
 
   // Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
-  FOR (i,m->npar) {
-    P p(m,i);
-    T _pz = 1/sqrt(1 + (2/m->beta)*p.pt + sqr(p.pt));
-    T  dt = (1/m->beta+p.pt)*_pz;
+  FOR (i,m.npar) {
+    M p(m,i);
+    T _pz = 1/sqrt(1 + (2/m.beta)*p.pt + sqr(p.pt));
+    T  dt = (1/m.beta+p.pt)*_pz;
 
     T  f1 = wchg*bf1*_pz;
     T  f2 =      bf2*_pz;
@@ -1278,23 +1325,23 @@ inline void qsad_fringe (mflw_t *m, num_t lw)
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void mult_fringe (mflw_t *m, num_t lw)
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void mult_fringe (cflw<M> &m, num_t lw)
 {
-  int n = MIN(m->nmul,m->fmax);
+  int n = MIN(m.nmul,m.fmax);
   if (!n) return;
   mdump(0);
-  num_t    _l = m->el ? m->sdir*m->edir/m->el : m->edir;
-  num_t  wchg = lw*m->charge;
-  num_t no_k1 = m->frng & fringe_bend;
+  num_t  wchg = lw*m.charge;
+  int   no_k1 = m.frng & fringe_bend;
+  P        _l = fval(m.el) ? m.sdir*m.edir/R(m.el) : m.edir*P();
 
-  FOR (i,m->npar) {
-    P p(m,i);
-    T rx, ix;       rx = 1., ix=0.;
+  FOR (i,m.npar) {
+    M p(m,i);
+    T rx, ix;       rx = 1., ix =0.;
     T fx, fxx, fxy; fx = 0., fxx=0., fxy=0.;
     T fy, fyy, fyx; fy = 0., fyy=0., fyx=0.;
 
-    T _pz = 1/sqrt(1 + (2/m->beta)*p.pt + sqr(p.pt));
+    T _pz = 1/sqrt(1 + (2/m.beta)*p.pt + sqr(p.pt));
 
     FOR (j,1,n+1) {
       T drx, dix; drx = rx, dix = ix;
@@ -1302,7 +1349,7 @@ inline void mult_fringe (mflw_t *m, num_t lw)
       ix = drx*p.y + dix*p.x;
 
       num_t nj = -wchg/(4*(j+1)), nf = (j+2)/j;
-      num_t kj = m->knl[j-1]*_l, ksj = m->ksl[j-1]*_l;
+      P kj = R(m.knl[j-1])*_l, ksj = R(m.ksl[j-1])*_l;
 
       T u, v, du, dv;
       if (j == 1 && no_k1) {
@@ -1338,86 +1385,86 @@ inline void mult_fringe (mflw_t *m, num_t lw)
     p.y  -= fy*_pz;
     p.px  = (d*p.px - b*p.py)*_det;
     p.py  = (a*p.py - c*p.px)*_det;
-    p.t  += (1/m->beta+p.pt)*(p.px*fx + p.py*fy)*sqr(_pz)*_pz;
+    p.t  += (1/m.beta+p.pt)*(p.px*fx + p.py*fy)*sqr(_pz)*_pz;
   }
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void curex_fringe (mflw_t *m, num_t lw)
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void curex_fringe (cflw<M> &m, num_t lw)
 {
   mdump(0);
-  if (m->sdir*lw == 1) { // 'forward entry' or 'backward exit'
-    yrotation<P> (m, 1,-m->e);
-    bend_face<P> (m, 1, m->h);
-    if (m->frng) {
-      if (m->frng & fringe_bend) bend_fringe<P>(m, 1);
-      if (m->frng & fringe_mult) mult_fringe<P>(m, 1);
-      if (m->frng & fringe_qsad) qsad_fringe<P>(m, 1);
+  if (m.sdir*lw == 1) { // 'forward entry' or 'backward exit'
+    yrotation<M> (m, 1,-R(m.e));
+    bend_face<M> (m, 1, R(m.h));
+    if (m.frng) {
+      if (m.frng & fringe_bend) bend_fringe<M>(m, 1);
+      if (m.frng & fringe_mult) mult_fringe<M>(m, 1);
+      if (m.frng & fringe_qsad) qsad_fringe<M>(m, 1);
     }
-    mad8_wedge<P>(m, 1, m->e);
-    bend_wedge<P>(m, 1,-m->e);
+    mad8_wedge<M>(m, 1, R(m.e));
+    bend_wedge<M>(m, 1,-R(m.e));
   } else {
-    bend_wedge<P>(m,-1,-m->e);
-    mad8_wedge<P>(m,-1, m->e);
-    if (m->frng) {
-      if (m->frng & fringe_qsad) qsad_fringe<P>(m,-1);
-      if (m->frng & fringe_mult) mult_fringe<P>(m,-1);
-      if (m->frng & fringe_bend) bend_fringe<P>(m,-1);
+    bend_wedge<M>(m,-1,-R(m.e));
+    mad8_wedge<M>(m,-1, R(m.e));
+    if (m.frng) {
+      if (m.frng & fringe_qsad) qsad_fringe<M>(m,-1);
+      if (m.frng & fringe_mult) mult_fringe<M>(m,-1);
+      if (m.frng & fringe_bend) bend_fringe<M>(m,-1);
     }
-    bend_face<P> (m,-1, m->h);
-    yrotation<P> (m,-1, m->e);
+    bend_face<M> (m,-1, R(m.h));
+    yrotation<M> (m,-1, R(m.e));
   }
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void strex_fringe (mflw_t *m, num_t lw)
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void strex_fringe (cflw<M> &m, num_t lw)
 {
   mdump(0);
-  num_t a = !m->pdir*(0.5*m->eh*(m->eld ? m->eld : m->el) - m->e);
-  bool  p =  m->pdir == lw;
+  bool p =  m.pdir == lw;
+  P    a = !m.pdir*(0.5*R(m.eh)*(fval(m.eld) ? R(m.eld) : R(m.el)) - R(m.e));
 
-  if (m->sdir*lw == 1) { // 'forward entry' or 'backward exit'
-    yrotation<P> (m, 1,-m->e  );
-    bend_ptch<P> (m, 1, m->a*p);
-    bend_face<P> (m, 1, m->h  );
-    if (m->frng) {
-      if (m->frng & fringe_bend) bend_fringe<P>(m, 1);
-      if (m->frng & fringe_mult) mult_fringe<P>(m, 1);
-      if (m->frng & fringe_qsad) qsad_fringe<P>(m, 1);
+  if (m.sdir*lw == 1) { // 'forward entry' or 'backward exit'
+    yrotation<M> (m, 1,-R(m.e)  );
+    bend_ptch<M> (m, 1, R(m.a)*p);
+    bend_face<M> (m, 1, R(m.h)  );
+    if (m.frng) {
+      if (m.frng & fringe_bend) bend_fringe<M>(m, 1);
+      if (m.frng & fringe_mult) mult_fringe<M>(m, 1);
+      if (m.frng & fringe_qsad) qsad_fringe<M>(m, 1);
     }
-    bend_wedge<P>(m, 1, a);
+    bend_wedge<M>(m, 1, a);
   } else {
-    bend_wedge<P>(m,-1, a);
-    if (m->frng) {
-      if (m->frng & fringe_qsad) qsad_fringe<P>(m,-1);
-      if (m->frng & fringe_mult) mult_fringe<P>(m,-1);
-      if (m->frng & fringe_bend) bend_fringe<P>(m,-1);
+    bend_wedge<M>(m,-1, a);
+    if (m.frng) {
+      if (m.frng & fringe_qsad) qsad_fringe<M>(m,-1);
+      if (m.frng & fringe_mult) mult_fringe<M>(m,-1);
+      if (m.frng & fringe_bend) bend_fringe<M>(m,-1);
     }
-    bend_face<P> (m,-1, m->h  );
-    bend_ptch<P> (m,-1, m->a*p);
-    yrotation<P> (m,-1, m->e  );
+    bend_face<M> (m,-1, R(m.h)  );
+    bend_ptch<M> (m,-1, R(m.a)*p);
+    yrotation<M> (m,-1, R(m.e)  );
   }
   mdump(1);
 }
 
-template <typename P, typename T=P::T>
-inline void rfcav_fringe (mflw_t *m, num_t lw)
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void rfcav_fringe (cflw<M> &m, num_t lw)
 {
   mdump(0);
-  if (m->sdir*lw == 1) { // 'forward entry' or 'backward exit'
-    ensure(m->Tbak < 0, "inconsistent totalpath when entering rfcavity");
-    if (m->Tbak == -1)
-      m->Tbak = m->T, m->T = 1, m->lag -= m->freq*abs(m->el)*pi_clight/m->beta;
+  if (m.sdir*lw == 1) { // 'forward entry' or 'backward exit'
+    ensure(m.Tbak < 0, "inconsistent totalpath when entering rfcavity");
+    if (m.Tbak == -1)
+      m.Tbak = m.T, m.T = 1, R(m.lag) -= R(m.freq)*abs(R(m.el))*(pi_clight/m.beta);
     else
-      m->Tbak = m->T, m->T = 0;
-    if (lw == -1 && m->T != m->Tbak) adjust_time<P>(m,  1);
-    if (m->frng & fringe_rfcav)      cav_fringe<P> (m,  1);
+      m.Tbak = m.T, m.T = 0;
+    if (lw == -1 && m.T != m.Tbak) adjust_time<M>(m, 1);
+    if (m.frng & fringe_rfcav)      cav_fringe<M>(m, 1);
   } else {
-    if (m->frng & fringe_rfcav)      cav_fringe<P> (m, -1);
-    if (lw == -1 && m->T != m->Tbak) adjust_time<P>(m, -1);
-    m->T = m->Tbak, m->Tbak = -1;
+    if (m.frng & fringe_rfcav)      cav_fringe<M>(m,-1);
+    if (lw == -1 && m.T != m.Tbak) adjust_time<M>(m,-1);
+    m.T = m.Tbak, m.Tbak = -1;
   }
   mdump(1);
 }
@@ -1427,219 +1474,329 @@ inline void rfcav_fringe (mflw_t *m, num_t lw)
 // --- patches ---
 
 void mad_trk_xrotation_r (mflw_t *m, num_t lw, num_t phi) {
-  xrotation<par_t>(m, lw, phi);
+  xrotation<par_t>(m->rflw, lw, phi);
 }
-void mad_trk_xrotation_t (mflw_t *m, num_t lw, num_t phi) {
-  xrotation<map_t>(m, lw, phi);
+void mad_trk_yrotation_r (mflw_t *m, num_t lw, num_t the) {
+  yrotation<par_t>(m->rflw, lw, the);
+}
+void mad_trk_srotation_r (mflw_t *m, num_t lw, num_t psi) {
+  srotation<par_t>(m->rflw, lw, psi);
+}
+void mad_trk_translate_r (mflw_t *m, num_t lw) {
+  translate<par_t>(m->rflw, lw, zero, zero, zero);
+}
+void mad_trk_changeref_r (mflw_t *m, num_t lw) {
+  changeref<par_t>(m->rflw, lw);
 }
 
-void mad_trk_yrotation_r (mflw_t *m, num_t lw, num_t the) {
-  yrotation<par_t>(m, lw, the);
+void mad_trk_xrotation_t (mflw_t *m, num_t lw, num_t phi) {
+  xrotation<map_t>(m->tflw, lw, phi);
 }
 void mad_trk_yrotation_t (mflw_t *m, num_t lw, num_t the) {
-  yrotation<map_t>(m, lw, the);
-}
-
-void mad_trk_srotation_r (mflw_t *m, num_t lw, num_t psi) {
-  srotation<par_t>(m, lw, psi);
+  yrotation<map_t>(m->tflw, lw, the);
 }
 void mad_trk_srotation_t (mflw_t *m, num_t lw, num_t psi) {
-  srotation<map_t>(m, lw, psi);
-}
-
-void mad_trk_translate_r (mflw_t *m, num_t lw) {
-  translate<par_t>(m, lw);
+  srotation<map_t>(m->tflw, lw, psi);
 }
 void mad_trk_translate_t (mflw_t *m, num_t lw) {
-  translate<map_t>(m, lw);
-}
-
-void mad_trk_changeref_r (mflw_t *m, num_t lw) {
-  changeref<par_t>(m, lw);
+  translate<map_t>(m->tflw, lw, zero, zero, zero);
 }
 void mad_trk_changeref_t (mflw_t *m, num_t lw) {
-  changeref<map_t>(m, lw);
+  changeref<map_t>(m->tflw, lw);
+}
+
+void mad_trk_xrotation_p (mflw_t *m, num_t lw, num_t phi) {
+  xrotation<prm_t>(m->pflw, lw, phi);
+}
+void mad_trk_yrotation_p (mflw_t *m, num_t lw, num_t the) {
+  yrotation<prm_t>(m->pflw, lw, the);
+}
+void mad_trk_srotation_p (mflw_t *m, num_t lw, num_t psi) {
+  srotation<prm_t>(m->pflw, lw, psi);
+}
+void mad_trk_translate_p (mflw_t *m, num_t lw) {
+  translate<prm_t>(m->pflw, lw, zero, zero, zero);
+}
+void mad_trk_changeref_p (mflw_t *m, num_t lw) {
+  changeref<prm_t>(m->pflw, lw);
 }
 
 // --- misalignment ---
 
 void mad_trk_misalign_r (mflw_t *m, num_t lw) {
-  misalign<par_t>(m, lw);
+  misalign<par_t>(m->rflw, lw);
 }
 void mad_trk_misalign_t (mflw_t *m, num_t lw) {
-  misalign<map_t>(m, lw);
+  misalign<map_t>(m->tflw, lw);
+}
+void mad_trk_misalign_p (mflw_t *m, num_t lw) {
+  misalign<prm_t>(m->pflw, lw);
 }
 
 // -- fringe maps ---
 
 void mad_trk_strex_fringe_r (mflw_t *m, num_t lw) {
-  strex_fringe<par_t>(m, lw);
+  strex_fringe<par_t>(m->rflw, lw);
 }
-void mad_trk_strex_fringe_t (mflw_t *m, num_t lw) {
-  strex_fringe<map_t>(m, lw);
+void mad_trk_curex_fringe_r (mflw_t *m, num_t lw) {
+  curex_fringe<par_t>(m->rflw, lw);
+}
+void mad_trk_rfcav_fringe_r (mflw_t *m, num_t lw) {
+  rfcav_fringe<par_t>(m->rflw, lw);
 }
 
-void mad_trk_curex_fringe_r (mflw_t *m, num_t lw) {
-  curex_fringe<par_t>(m, lw);
+void mad_trk_strex_fringe_t (mflw_t *m, num_t lw) {
+  strex_fringe<map_t>(m->tflw, lw);
 }
 void mad_trk_curex_fringe_t (mflw_t *m, num_t lw) {
-  curex_fringe<map_t>(m, lw);
-}
-
-void mad_trk_rfcav_fringe_r (mflw_t *m, num_t lw) {
-  rfcav_fringe<par_t>(m, lw);
+  curex_fringe<map_t>(m->tflw, lw);
 }
 void mad_trk_rfcav_fringe_t (mflw_t *m, num_t lw) {
-  rfcav_fringe<map_t>(m, lw);
+  rfcav_fringe<map_t>(m->tflw, lw);
+}
+
+void mad_trk_strex_fringe_p (mflw_t *m, num_t lw) {
+  strex_fringe<prm_t>(m->pflw, lw);
+}
+void mad_trk_curex_fringe_p (mflw_t *m, num_t lw) {
+  curex_fringe<prm_t>(m->pflw, lw);
+}
+void mad_trk_rfcav_fringe_p (mflw_t *m, num_t lw) {
+  rfcav_fringe<prm_t>(m->pflw, lw);
 }
 
 // --- DKD straight ---
 
 void mad_trk_strex_drift_r (mflw_t *m, num_t lw, int is) {
-  strex_drift<par_t>(m,lw,is);
+  strex_drift<par_t>(m->rflw,lw,is);
 }
-void mad_trk_strex_drift_t (mflw_t *m, num_t lw, int is) {
-  strex_drift<map_t>(m,lw,is);
+void mad_trk_strex_kick_r (mflw_t *m, num_t lw, int is) {
+  strex_kick<par_t>(m->rflw,lw,is);
+}
+void mad_trk_strex_kickhs_r (mflw_t *m, num_t lw, int is) {
+  strex_kickhs<par_t>(m->rflw,lw,is);
 }
 
-void mad_trk_strex_kick_r (mflw_t *m, num_t lw, int is) {
-  strex_kick<par_t>(m,lw,is);
+void mad_trk_strex_drift_t (mflw_t *m, num_t lw, int is) {
+  strex_drift<map_t>(m->tflw,lw,is);
 }
 void mad_trk_strex_kick_t (mflw_t *m, num_t lw, int is) {
-  strex_kick<map_t>(m,lw,is);
-}
-
-void mad_trk_strex_kickhs_r (mflw_t *m, num_t lw, int is) {
-  strex_kickhs<par_t>(m,lw,is);
+  strex_kick<map_t>(m->tflw,lw,is);
 }
 void mad_trk_strex_kickhs_t (mflw_t *m, num_t lw, int is) {
-  strex_kickhs<map_t>(m,lw,is);
+  strex_kickhs<map_t>(m->tflw,lw,is);
+}
+
+void mad_trk_strex_drift_p (mflw_t *m, num_t lw, int is) {
+  strex_drift<prm_t>(m->pflw,lw,is);
+}
+void mad_trk_strex_kick_p (mflw_t *m, num_t lw, int is) {
+  strex_kick<prm_t>(m->pflw,lw,is);
+}
+void mad_trk_strex_kickhs_p (mflw_t *m, num_t lw, int is) {
+  strex_kickhs<prm_t>(m->pflw,lw,is);
 }
 
 // --- DKD curved ---
 
 void mad_trk_curex_drift_r (mflw_t *m, num_t lw, int is) {
-  curex_drift<par_t>(m,lw,is);
+  curex_drift<par_t>(m->rflw,lw,is);
 }
-void mad_trk_curex_drift_t (mflw_t *m, num_t lw, int is) {
-  curex_drift<map_t>(m,lw,is);
+void mad_trk_curex_kick_r (mflw_t *m, num_t lw, int is) {
+  curex_kick<par_t>(m->rflw,lw,is);
 }
 
-void mad_trk_curex_kick_r (mflw_t *m, num_t lw, int is) {
-  curex_kick<par_t>(m,lw,is);
+void mad_trk_curex_drift_t (mflw_t *m, num_t lw, int is) {
+  curex_drift<map_t>(m->tflw,lw,is);
 }
 void mad_trk_curex_kick_t (mflw_t *m, num_t lw, int is) {
-  curex_kick<map_t>(m,lw,is);
+  curex_kick<map_t>(m->tflw,lw,is);
+}
+
+void mad_trk_curex_drift_p (mflw_t *m, num_t lw, int is) {
+  curex_drift<prm_t>(m->pflw,lw,is);
+}
+void mad_trk_curex_kick_p (mflw_t *m, num_t lw, int is) {
+  curex_kick<prm_t>(m->pflw,lw,is);
 }
 
 // --- sbend ---
 
 void mad_trk_sbend_thick_r (mflw_t *m, num_t lw, int is) {
-  sbend_thick<par_t>(m,lw,is);
+  sbend_thick<par_t>(m->rflw,lw,is);
 }
-void mad_trk_sbend_thick_t (mflw_t *m, num_t lw, int is) {
-  sbend_thick<map_t>(m,lw,is);
+void mad_trk_sbend_kick_r (mflw_t *m, num_t lw, int is) {
+  curex_kick<par_t>(m->rflw,lw,is,true);
 }
 
-void mad_trk_sbend_kick_r (mflw_t *m, num_t lw, int is) {
-  curex_kick<par_t>(m,lw,is,true);
+void mad_trk_sbend_thick_t (mflw_t *m, num_t lw, int is) {
+  sbend_thick<map_t>(m->tflw,lw,is);
 }
 void mad_trk_sbend_kick_t (mflw_t *m, num_t lw, int is) {
-  curex_kick<map_t>(m,lw,is,true);
+  curex_kick<map_t>(m->tflw,lw,is,true);
+}
+
+void mad_trk_sbend_thick_p (mflw_t *m, num_t lw, int is) {
+  sbend_thick<prm_t>(m->pflw,lw,is);
+}
+void mad_trk_sbend_kick_p (mflw_t *m, num_t lw, int is) {
+  curex_kick<prm_t>(m->pflw,lw,is,true);
 }
 
 // --- rbend ---
 
 void mad_trk_rbend_thick_r (mflw_t *m, num_t lw, int is) {
-  rbend_thick<par_t>(m,lw,is);
+  rbend_thick<par_t>(m->rflw,lw,is);
 }
-void mad_trk_rbend_thick_t (mflw_t *m, num_t lw, int is) {
-  rbend_thick<map_t>(m,lw,is);
+void mad_trk_rbend_kick_r (mflw_t *m, num_t lw, int is) {
+  strex_kick<par_t>(m->rflw,lw,is,true);
 }
 
-void mad_trk_rbend_kick_r (mflw_t *m, num_t lw, int is) {
-  strex_kick<par_t>(m,lw,is,true);
+void mad_trk_rbend_thick_t (mflw_t *m, num_t lw, int is) {
+  rbend_thick<map_t>(m->tflw,lw,is);
 }
 void mad_trk_rbend_kick_t (mflw_t *m, num_t lw, int is) {
-  strex_kick<map_t>(m,lw,is,true);
+  strex_kick<map_t>(m->tflw,lw,is,true);
+}
+
+void mad_trk_rbend_thick_p (mflw_t *m, num_t lw, int is) {
+  rbend_thick<prm_t>(m->pflw,lw,is);
+}
+void mad_trk_rbend_kick_p (mflw_t *m, num_t lw, int is) {
+  strex_kick<prm_t>(m->pflw,lw,is,true);
 }
 
 // --- quadrupole ---
 
 void mad_trk_quad_thick_r (mflw_t *m, num_t lw, int is) {
-  quad_thick<par_t>(m,lw,is);
+  quad_thick<par_t>(m->rflw,lw,is);
 }
-void mad_trk_quad_thick_t (mflw_t *m, num_t lw, int is) {
-  quad_thick<map_t>(m,lw,is);
-}
-
-void mad_trk_quad_kick_r (mflw_t *m, num_t lw, int is) {
-  quad_kick<par_t>(m,lw,0); (void)is; // always yoshida
-}
-void mad_trk_quad_kick_t (mflw_t *m, num_t lw, int is) {
-  quad_kick<map_t>(m,lw,0); (void)is; // always yoshida
-}
-
 void mad_trk_quad_thicks_r (mflw_t *m, num_t lw, int is) {
-  quad_thicks<par_t>(m,lw,is);
+  quad_thicks<par_t>(m->rflw,lw,is);
+}
+void mad_trk_quad_thickh_r (mflw_t *m, num_t lw, int is) {
+  quad_thickh<par_t>(m->rflw,lw,is);
+}
+void mad_trk_quad_kick_r (mflw_t *m, num_t lw, int is) {
+  quad_kick<par_t>(m->rflw,lw,0); (void)is; // always yoshida
+}
+void mad_trk_quad_kicks_r (mflw_t *m, num_t lw, int is) {
+  quad_kicks<par_t>(m->rflw,lw,0); (void)is; // always yoshida
+}
+void mad_trk_quad_kickh_r (mflw_t *m, num_t lw, int is) {
+  quad_kickh<par_t>(m->rflw,lw,0); (void)is; // always yoshida
+}
+void mad_trk_quad_kick__r (mflw_t *m, num_t lw, int is) {
+  quad_kick<par_t>(m->rflw,lw,is);
+}
+void mad_trk_quad_kicks__r (mflw_t *m, num_t lw, int is) {
+  quad_kicks<par_t>(m->rflw,lw,is);
+}
+void mad_trk_quad_kickh__r (mflw_t *m, num_t lw, int is) {
+  quad_kickh<par_t>(m->rflw,lw,is);
+}
+
+void mad_trk_quad_thick_t (mflw_t *m, num_t lw, int is) {
+  quad_thick<map_t>(m->tflw,lw,is);
 }
 void mad_trk_quad_thicks_t (mflw_t *m, num_t lw, int is) {
-  quad_thicks<map_t>(m,lw,is);
-}
-
-void mad_trk_quad_kicks_r (mflw_t *m, num_t lw, int is) {
-  quad_kicks<par_t>(m,lw,0); (void)is; // always yoshida
-}
-void mad_trk_quad_kicks_t (mflw_t *m, num_t lw, int is) {
-  quad_kicks<map_t>(m,lw,0); (void)is; // always yoshida
-}
-
-void mad_trk_quad_thickh_r (mflw_t *m, num_t lw, int is) {
-  quad_thickh<par_t>(m,lw,is);
+  quad_thicks<map_t>(m->tflw,lw,is);
 }
 void mad_trk_quad_thickh_t (mflw_t *m, num_t lw, int is) {
-  quad_thickh<map_t>(m,lw,is);
+  quad_thickh<map_t>(m->tflw,lw,is);
 }
-
-void mad_trk_quad_kickh_r (mflw_t *m, num_t lw, int is) {
-  quad_kickh<par_t>(m,lw,0); (void)is; // always yoshida
+void mad_trk_quad_kick_t (mflw_t *m, num_t lw, int is) {
+  quad_kick<map_t>(m->tflw,lw,0); (void)is; // always yoshida
+}
+void mad_trk_quad_kicks_t (mflw_t *m, num_t lw, int is) {
+  quad_kicks<map_t>(m->tflw,lw,0); (void)is; // always yoshida
 }
 void mad_trk_quad_kickh_t (mflw_t *m, num_t lw, int is) {
-  quad_kickh<map_t>(m,lw,0); (void)is; // always yoshida
+  quad_kickh<map_t>(m->tflw,lw,0); (void)is; // always yoshida
+}
+void mad_trk_quad_kick__t (mflw_t *m, num_t lw, int is) {
+  quad_kick<map_t>(m->tflw,lw,is);
+}
+void mad_trk_quad_kicks__t (mflw_t *m, num_t lw, int is) {
+  quad_kicks<map_t>(m->tflw,lw,is);
+}
+void mad_trk_quad_kickh__t (mflw_t *m, num_t lw, int is) {
+  quad_kickh<map_t>(m->tflw,lw,is);
+}
+
+void mad_trk_quad_thick_p (mflw_t *m, num_t lw, int is) {
+  quad_thick<prm_t>(m->pflw,lw,is);
+}
+void mad_trk_quad_thicks_p (mflw_t *m, num_t lw, int is) {
+  quad_thicks<prm_t>(m->pflw,lw,is);
+}
+void mad_trk_quad_thickh_p (mflw_t *m, num_t lw, int is) {
+  quad_thickh<prm_t>(m->pflw,lw,is);
+}
+void mad_trk_quad_kick_p (mflw_t *m, num_t lw, int is) {
+  quad_kick<prm_t>(m->pflw,lw,0); (void)is; // always yoshida
+}
+void mad_trk_quad_kicks_p (mflw_t *m, num_t lw, int is) {
+  quad_kicks<prm_t>(m->pflw,lw,0); (void)is; // always yoshida
+}
+void mad_trk_quad_kickh_p (mflw_t *m, num_t lw, int is) {
+  quad_kickh<prm_t>(m->pflw,lw,0); (void)is; // always yoshida
+}
+void mad_trk_quad_kick__p (mflw_t *m, num_t lw, int is) {
+  quad_kick<prm_t>(m->pflw,lw,is);
+}
+void mad_trk_quad_kicks__p (mflw_t *m, num_t lw, int is) {
+  quad_kicks<prm_t>(m->pflw,lw,is);
+}
+void mad_trk_quad_kickh__p (mflw_t *m, num_t lw, int is) {
+  quad_kickh<prm_t>(m->pflw,lw,is);
 }
 
 // --- solenoid ---
 
 void mad_trk_solen_thick_r (mflw_t *m, num_t lw, int is) {
-  solen_thick<par_t>(m,lw,is);
+  solen_thick<par_t>(m->rflw,lw,is);
 }
 void mad_trk_solen_thick_t (mflw_t *m, num_t lw, int is) {
-  solen_thick<map_t>(m,lw,is);
+  solen_thick<map_t>(m->tflw,lw,is);
+}
+void mad_trk_solen_thick_p (mflw_t *m, num_t lw, int is) {
+  solen_thick<prm_t>(m->pflw,lw,is);
 }
 
 // --- eseptum ---
 
 void mad_trk_esept_thick_r (mflw_t *m, num_t lw, int is) {
-  esept_thick<par_t>(m,lw,is);
+  esept_thick<par_t>(m->rflw,lw,is);
 }
 void mad_trk_esept_thick_t (mflw_t *m, num_t lw, int is) {
-  esept_thick<map_t>(m,lw,is);
+  esept_thick<map_t>(m->tflw,lw,is);
+}
+void mad_trk_esept_thick_p (mflw_t *m, num_t lw, int is) {
+  esept_thick<prm_t>(m->pflw,lw,is);
 }
 
 // --- rfcavity ---
 
 void mad_trk_rfcav_kick_r (mflw_t *m, num_t lw, int is) {
-  rfcav_kick<par_t>(m,lw,is);
+  rfcav_kick<par_t>(m->rflw,lw,is);
 }
-void mad_trk_rfcav_kick_t (mflw_t *m, num_t lw, int is) {
-  rfcav_kick<map_t>(m,lw,is);
+void mad_trk_rfcav_kickn_r (mflw_t *m, num_t lw, int is) {
+  rfcav_kickn<par_t>(m->rflw,lw,is);
 }
 
-void mad_trk_rfcav_kickn_r (mflw_t *m, num_t lw, int is) {
-  rfcav_kickn<par_t>(m,lw,is);
+void mad_trk_rfcav_kick_t (mflw_t *m, num_t lw, int is) {
+  rfcav_kick<map_t>(m->tflw,lw,is);
 }
 void mad_trk_rfcav_kickn_t (mflw_t *m, num_t lw, int is) {
-  rfcav_kickn<map_t>(m,lw,is);
+  rfcav_kickn<map_t>(m->tflw,lw,is);
+}
+
+void mad_trk_rfcav_kick_p (mflw_t *m, num_t lw, int is) {
+  rfcav_kick<prm_t>(m->pflw,lw,is);
+}
+void mad_trk_rfcav_kickn_p (mflw_t *m, num_t lw, int is) {
+  rfcav_kickn<prm_t>(m->pflw,lw,is);
 }
 
 // --- do nothing ---
@@ -1814,13 +1971,10 @@ void mad_trk_spdtest (int n, int k)
   tpsa t ( "T"); t .set( 0   , 5);
   tpsa pt("PT"); pt.set( 0   , 6);
 
-  num_t     par[] = { x[0], px[0], y[0], py[0], t[0], pt[0] };
-  tpsa_t*   map[] = { x.ptr(), px.ptr(), y.ptr(), py.ptr(), t.ptr(), pt.ptr() };
+  tpsa_t*   par[] = { x.ptr(), px.ptr(), y.ptr(), py.ptr(), t.ptr(), pt.ptr() };
+  tpsa_t* *pars[] = {par};
 
-  num_t   *pars[] = {par};
-  tpsa_t* *maps[] = {map};
-
-  struct mflw_ m = {
+  union mflw_ m = { .tflw = {
     .name="spdtest", .dbg=0,
 
     .el=1, .eld=1, .elc=0, .lrad=0,
@@ -1830,46 +1984,47 @@ void mad_trk_spdtest (int n, int k)
 
     .sdir=1, .edir=1, .pdir=0, .T=0, .Tbak=-1,
 
-    .k1=0, .ks=0, .ksi=0, .volt=0, .freq=0, .lag=0, .nbsl=0,
+    .k1=0, .ks=0, .volt=0, .freq=0, .lag=0, .nbsl=0,
 
-    .frng=0, .fmax=2, .e=0, .fint=0, .h=0, .hgap=0, .f1=0, .f2=0, .a=0,
+    .frng=0, .fmax=2, .e=0, .h=0, .a=0, .fint=0, .hgap=0, .f1=0, .f2=0,
 
     .ca=0, .sa=0, .tlt=0,
 
-    .nmul=1, .npha=0, .knl={1e-7}, .ksl={0}, .pnl={0}, .psl={0},
+    .nmul=1, .knl={1e-7}, .ksl={0},
     .snm=0,  .bfx={0}   , .bfy={0},
-    .npar=1, .par=pars  , .map=maps,
 
     .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0,
 
     .algn = {.rot=false, .trn=false,
     .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0},
-  };
+
+    .npar=1, .par=pars  ,// .map=maps,
+  }};
 
   switch(k) {
-  case 0: {
-    FOR(i,n) mad_trk_strex_drift_r (&m, 1, 1);
-    par_t p(&m,0);
-    printf("x =% -.16e\npx=% -.16e\ny =% -.16e\npy=% -.16e\nt =% -.16e\npt=% -.16e\n",
-            p.x, p.px, p.y, p.py, p.t, p.pt);
-  } break;
+//  case 0: {
+//    FOR(i,n) mad_trk_strex_drift_r (&m, 1, 1);
+//    par_t p(&m,0);
+//    printf("x =% -.16e\npx=% -.16e\ny =% -.16e\npy=% -.16e\nt =% -.16e\npt=% -.16e\n",
+//            p.x, p.px, p.y, p.py, p.t, p.pt);
+//  } break;
 
   case 1: {
     FOR(i,n) mad_trk_strex_drift_t (&m, 1, 1);
-    map_t p(&m,0);
+    map_t p(m.tflw,0);
     stdout << p.x << p.px << p.y << p.py << p.t << p.pt;
   } break;
 
-  case 2: {
-    FOR(i,n) {
-      mad_trk_strex_drift_r (&m, 0.5, 1);
-      mad_trk_strex_kick_r  (&m,   1, 1);
-      mad_trk_strex_drift_r (&m, 0.5, 1);
-    }
-    par_t p(&m,0);
-    printf("x =% -.16e\npx=% -.16e\ny =% -.16e\npy=% -.16e\nt =% -.16e\npt=% -.16e\n",
-            p.x, p.px, p.y, p.py, p.t, p.pt);
-  } break;
+//  case 2: {
+//    FOR(i,n) {
+//      mad_trk_strex_drift_r (&m, 0.5, 1);
+//      mad_trk_strex_kick_r  (&m,   1, 1);
+//      mad_trk_strex_drift_r (&m, 0.5, 1);
+//    }
+//    par_t p(&m,0);
+//    printf("x =% -.16e\npx=% -.16e\ny =% -.16e\npy=% -.16e\nt =% -.16e\npt=% -.16e\n",
+//            p.x, p.px, p.y, p.py, p.t, p.pt);
+//  } break;
 
   case 3: {
     FOR(i,n) {
@@ -1877,20 +2032,20 @@ void mad_trk_spdtest (int n, int k)
       mad_trk_strex_kick_t  (&m,   1, 1);
       mad_trk_strex_drift_t (&m, 0.5, 1);
     }
-    map_t p(&m,0);
+    map_t p(m.tflw,0);
     stdout << p.x << p.px << p.y << p.py << p.t << p.pt;
   } break;
 
-  case 4: {
-    FOR(i,n) mad_trk_slice_tkt(&m, 1, mad_trk_strex_drift_r, mad_trk_strex_kick_r, 2);
-    par_t p(&m,0);
-    printf("x =% -.16e\npx=% -.16e\ny =% -.16e\npy=% -.16e\nt =% -.16e\npt=% -.16e\n",
-            p.x, p.px, p.y, p.py, p.t, p.pt);
-  } break;
+//  case 4: {
+//    FOR(i,n) mad_trk_slice_tkt(&m, 1, mad_trk_strex_drift_r, mad_trk_strex_kick_r, 2);
+//    par_t p(&m,0);
+//    printf("x =% -.16e\npx=% -.16e\ny =% -.16e\npy=% -.16e\nt =% -.16e\npt=% -.16e\n",
+//            p.x, p.px, p.y, p.py, p.t, p.pt);
+//  } break;
 
   case 5: {
     FOR(i,n) mad_trk_slice_tkt(&m, 1, mad_trk_strex_drift_t, mad_trk_strex_kick_t, 2);
-    map_t p(&m,0);
+    map_t p(m.tflw,0);
     stdout << p.x << p.px << p.y << p.py << p.t << p.pt;
   } break;
 /*
