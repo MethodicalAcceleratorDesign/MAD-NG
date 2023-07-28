@@ -452,7 +452,7 @@ inline void drift_adj (cflw<M> &m, const P &l)
 
     p.x += p.px*(l_pz-l);
     p.y += p.py*(l_pz-l);
-    p.t -= (1/m.beta+p.pt)*l_pz + (m.T-1)/m.beta*l;
+    p.t  = p.t - (1/m.beta+p.pt)*l_pz + (1-m.T)/m.beta*l;
   }
   mdump(1);
 }
@@ -473,7 +473,7 @@ inline void strex_drift (cflw<M> &m, num_t lw, int is)
 
     p.x += p.px*l_pz;
     p.y += p.py*l_pz;
-    p.t -= (1/m.beta+p.pt)*l_pz + (m.T-1)/m.beta*ld;
+    p.t  = p.t - (1/m.beta+p.pt)*l_pz + (1-m.T)/m.beta*ld;
   }
   mdump(1);
 }
@@ -578,7 +578,7 @@ inline void curex_drift (cflw<M> &m, num_t lw, int is)
     p.x  = (p.x + rho*(2*sqr(sa2) + sa*pxt))*_ptt;
     p.px = ca*p.px + sa*pz;
     p.y += pst*p.py;
-    p.t -= pst*(1/m.beta+p.pt) + (m.T-1)/m.beta*ld;
+    p.t  = p.t - pst*(1/m.beta+p.pt) + (1-m.T)/m.beta*ld;
   }
   mdump(1);
 }
@@ -630,7 +630,7 @@ inline void sbend_thick (cflw<M> &m, num_t lw, int is)
     p.x  = (sqrt(pw2 - sqr(npx)) - dpx)/k0q - rho;  // can be numerically unstable
     p.px = npx;
     p.y += dxs*p.py;
-    p.t -= dxs*(1/m.beta+p.pt) + (m.T-1)/m.beta*ld;
+    p.t  = p.t - dxs*(1/m.beta+p.pt) + (1-m.T)/m.beta*ld;
   }
   mdump(1);
 }
@@ -667,7 +667,7 @@ inline void sbend_thick_new (cflw<M> &m, num_t lw, int is)
     p.x  = xt1/(dpx + sqrt(pw2 - sqr(npx))) - rho;
     p.px = npx;
     p.y += dxs*p.py;
-    p.t -= dxs*(1/m.beta+p.pt) + (m.T-1)/m.beta*ld;
+    p.t  = p.t - dxs*(1/m.beta+p.pt) + (1-m.T)/m.beta*ld;
   }
   mdump(1);
 }
@@ -695,7 +695,7 @@ inline void rbend_thick (cflw<M> &m, num_t lw, int is)
     p.x += (pzs-pz)/k0q;
     p.px = npx;
     p.y += dxs*p.py;
-    p.t -= dxs*(1/m.beta+p.pt) + (m.T-1)/m.beta*ld;
+    p.t  = p.t - dxs*(1/m.beta+p.pt) + (1-m.T)/m.beta*ld;
   }
   mdump(1);
 }
@@ -724,7 +724,7 @@ inline void rbend_thick_new (cflw<M> &m, num_t lw, int is)
     p.x += l*(2*p.px - k0lq) / (sqrt(pw2 - sqr(p.px)) + sqrt(pw2 - sqr(npx)));
     p.px = npx;
     p.y += dxs*p.py;
-    p.t -= dxs*(1/m.beta+p.pt) + (m.T-1)/m.beta*ld;
+    p.t  = p.t - dxs*(1/m.beta+p.pt) + (1-m.T)/m.beta*ld;
   }
   mdump(1);
 }
@@ -979,7 +979,7 @@ inline void solen_thick (cflw<M> &m, num_t lw, int is)
     p.px = ca*pxt + sa*pyt;
     p.y  = ca*yt  - sa*xt;
     p.py = ca*pyt - sa*pxt;
-    p.t -= (1/m.beta+p.pt)*l_pz + (m.T-1)/m.beta*l;
+    p.t  = p.t - (1/m.beta+p.pt)*l_pz + (1-m.T)/m.beta*l;
   }
   mdump(1);
 }
@@ -1021,7 +1021,7 @@ inline void esept_thick (cflw<M> &m, num_t lw, int is)
     p.px = ca*npx - sa*npy;
     p.y  = ca*ny  + sa*nx;
     p.py = ca*npy + sa*npx;
-    p.t -= dt + (m.T-1)/m.beta*l;
+    p.t  = p.t - dt + (1-m.T)/m.beta*l;
   }
   mdump(1);
 }
