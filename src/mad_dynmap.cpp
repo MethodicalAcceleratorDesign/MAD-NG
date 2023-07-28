@@ -1192,7 +1192,7 @@ inline void bend_wedge (cflw<M> &m, num_t lw, const V &e)
   FOR (i,m.npar) {
     M p(m,i);
     T pzy = 1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.py);
-    T _pt = 1/sqrt(pzy);
+    T _pt = invsqrt(pzy);
     T  pz = sqrt(pzy - sqr(p.px));
     T pzx = pz - b1*p.x;
     T npx = p.px*ca + pzx*sa;
@@ -1241,7 +1241,7 @@ inline void bend_fringe (cflw<M> &m, num_t lw)
     T    pz = sqrt(dpp - sqr(p.px) - sqr(p.py));
     T   _pz = 1/pz;
     T  _pz2 = sqr(_pz);
-    T  relp = 1/sqrt(dpp);
+    T  relp = invsqrt(dpp);
     T  tfac = -1/m.beta - p.pt;
     T    c3 = fsad*sqr(b0)*relp;
 
@@ -1298,7 +1298,7 @@ inline void qsad_fringe (cflw<M> &m, num_t lw)
   // Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
   FOR (i,m.npar) {
     M p(m,i);
-    T _pz = 1/sqrt(1 + (2/m.beta)*p.pt + sqr(p.pt));
+    T _pz = invsqrt(1 + (2/m.beta)*p.pt + sqr(p.pt));
     T  dt = (1/m.beta+p.pt)*_pz;
 
     T  f1 = wchg*bf1*_pz;
@@ -1341,7 +1341,7 @@ inline void mult_fringe (cflw<M> &m, num_t lw)
     T fx, fxx, fxy; fx = 0., fxx=0., fxy=0.;
     T fy, fyy, fyx; fy = 0., fyy=0., fyx=0.;
 
-    T _pz = 1/sqrt(1 + (2/m.beta)*p.pt + sqr(p.pt));
+    T _pz = invsqrt(1 + (2/m.beta)*p.pt + sqr(p.pt));
 
     FOR (j,1,n+1) {
       T drx, dix; drx = rx, dix = ix;
