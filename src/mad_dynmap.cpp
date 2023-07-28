@@ -1104,7 +1104,7 @@ inline void rfcav_kickn (cflw<M> &m, num_t lw, int is)
 enum {
  fringe_none  = 0,
  fringe_bend  = 1, fringe_mult  = 2 , fringe_qsad = 2+4,
- fringe_solen = 8, fringe_rfcav = 16, fringe_comb = 1+2, fringe_combqs = 1+2+4
+ fringe_rfcav = 8, fringe_solen = 16, fringe_comb = 1+2, fringe_combqs = 1+2+4
 };
 
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
