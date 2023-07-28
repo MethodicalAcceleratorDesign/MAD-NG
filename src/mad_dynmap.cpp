@@ -1371,7 +1371,9 @@ inline void mult_fringe (cflw<M> &m, num_t lw)
   mdump(0);
   num_t  wchg = lw*m.charge;
   int   no_k1 = m.frng & fringe_bend;
-  P        _l = fval(m.el) ? m.sdir*m.edir/R(m.el) : m.edir*P();
+  P        _l;
+
+  if (fval(m.el)) _l = m.sdir*m.edir/R(m.el); else _l = m.edir;
 
   FOR (i,m.npar) {
     M p(m,i);
