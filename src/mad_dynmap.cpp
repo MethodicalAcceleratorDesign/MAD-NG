@@ -1513,14 +1513,14 @@ inline void rfcav_fringe (cflw<M> &m, num_t lw)
 
 // --- patches ---
 
-void mad_trk_xrotation_r (mflw_t *m, num_t lw, num_t phi) {
-  xrotation<par_t>(m->rflw, lw, phi);
+void mad_trk_xrotation_r (mflw_t *m, num_t lw) {
+  xrotation<par_t>(m->rflw, lw, zero);
 }
-void mad_trk_yrotation_r (mflw_t *m, num_t lw, num_t the) {
-  yrotation<par_t>(m->rflw, lw, the);
+void mad_trk_yrotation_r (mflw_t *m, num_t lw) {
+  yrotation<par_t>(m->rflw, lw, zero);
 }
-void mad_trk_srotation_r (mflw_t *m, num_t lw, num_t psi) {
-  srotation<par_t>(m->rflw, lw, psi);
+void mad_trk_srotation_r (mflw_t *m, num_t lw) {
+  srotation<par_t>(m->rflw, lw, zero);
 }
 void mad_trk_translate_r (mflw_t *m, num_t lw) {
   translate<par_t>(m->rflw, lw, zero, zero, zero);
@@ -1529,14 +1529,14 @@ void mad_trk_changeref_r (mflw_t *m, num_t lw) {
   changeref<par_t>(m->rflw, lw);
 }
 
-void mad_trk_xrotation_t (mflw_t *m, num_t lw, num_t phi) {
-  xrotation<map_t>(m->tflw, lw, phi);
+void mad_trk_xrotation_t (mflw_t *m, num_t lw) {
+  xrotation<map_t>(m->tflw, lw, zero);
 }
-void mad_trk_yrotation_t (mflw_t *m, num_t lw, num_t the) {
-  yrotation<map_t>(m->tflw, lw, the);
+void mad_trk_yrotation_t (mflw_t *m, num_t lw) {
+  yrotation<map_t>(m->tflw, lw, zero);
 }
-void mad_trk_srotation_t (mflw_t *m, num_t lw, num_t psi) {
-  srotation<map_t>(m->tflw, lw, psi);
+void mad_trk_srotation_t (mflw_t *m, num_t lw) {
+  srotation<map_t>(m->tflw, lw, zero);
 }
 void mad_trk_translate_t (mflw_t *m, num_t lw) {
   translate<map_t>(m->tflw, lw, zero, zero, zero);
@@ -1545,14 +1545,14 @@ void mad_trk_changeref_t (mflw_t *m, num_t lw) {
   changeref<map_t>(m->tflw, lw);
 }
 
-void mad_trk_xrotation_p (mflw_t *m, num_t lw, num_t phi) {
-  xrotation<prm_t>(m->pflw, lw, phi);
+void mad_trk_xrotation_p (mflw_t *m, num_t lw) {
+  xrotation<prm_t>(m->pflw, lw, zero);
 }
-void mad_trk_yrotation_p (mflw_t *m, num_t lw, num_t the) {
-  yrotation<prm_t>(m->pflw, lw, the);
+void mad_trk_yrotation_p (mflw_t *m, num_t lw) {
+  yrotation<prm_t>(m->pflw, lw, zero);
 }
-void mad_trk_srotation_p (mflw_t *m, num_t lw, num_t psi) {
-  srotation<prm_t>(m->pflw, lw, psi);
+void mad_trk_srotation_p (mflw_t *m, num_t lw) {
+  srotation<prm_t>(m->pflw, lw, zero);
 }
 void mad_trk_translate_p (mflw_t *m, num_t lw) {
   translate<prm_t>(m->pflw, lw, zero, zero, zero);
@@ -1845,16 +1845,11 @@ void mad_trk_fnil (mflw_t *m, num_t lw, int is) {
   (void)m, (void)lw, (void)is;
 }
 
-// --- track one thick or thin ------------------------------------------------o
+// --- track one thick or thin slice ------------------------------------------o
 
-void mad_trk_slice_thk (mflw_t *m, num_t lw, trkfun *thick)
+void mad_trk_slice_one (mflw_t *m, num_t lw, trkfun *fun)
 {
-  thick(m, lw, 0);
-}
-
-void mad_trk_slice_thn (mflw_t *m, num_t lw, trkfun *kick)
-{
-  kick(m, lw, 0);
+  fun(m, lw, 0);
 }
 
 // --- track one Yoshida slice ------------------------------------------------o
