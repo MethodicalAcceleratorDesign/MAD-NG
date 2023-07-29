@@ -523,11 +523,12 @@ end
 
 -- helpers --------------------------------------------------------------------o
 
-local function crot (elm, m, dir, tlt)
+local function crot (elm, m, dir)
   if m.cmap then
-    map[m.cmap][srotation](m.cflw_, dir, tlt)
+    m.cflw.tlt = m.tlt
+    map[m.cmap][srotation](m.cflw_, dir)
   else
-    srotation(elm, m, dir, tlt)
+    srotation(elm, m, dir)
   end
 end
 
@@ -577,17 +578,17 @@ end
 
 -- element tracking -----------------------------------------------------------o
 
-local function trackone (elm, m, inter, thick, thin)
+local function trackone (elm, m, inter, thick_or_thin)
   local sdir, atentry, atexit in m
 
   if m.cmap and not m.pmap then
     local cmap = map[m.cmap]
-    thick, thin = cmap[thick or fnil], cmap[thin or fnil]
+    thick_or_thin = cmap[thick_or_thin or fnil]
     m.cflw.name = elm.name
   end
 
   atentry(elm, m,  sdir, -1)
-  inter  (elm, m,    1 , thick, thin)
+  inter  (elm, m,    1 , thick_or_thin)
   atexit (elm, m, -sdir, -2)
 end
 
@@ -604,17 +605,18 @@ local function trackelm (elm, m, inter, thick, thin, fringe)
     thick, thin, fng = cmap[thick], cmap[thin], fng ~= fnil and cfringe or fng
     if is_function(thick) or is_function(thin) then m.pmap = true end
     m.cflw.name = elm.name
+    m.cflw.tlt  = tlt
   end
 
   atentry(elm, m,  sdir, -1)
   mis    (elm, m,  sdir)
-  rot    (elm, m,  sdir, tlt)
+  rot    (elm, m,  sdir)
   atentry(elm, m,  sdir, -3)
   fng    (elm, m,  sdir, fringe)
   inter  (elm, m,    1 , thick, thin)
   fng    (elm, m, -sdir, fringe)
   atexit (elm, m, -sdir, -4)
-  rot    (elm, m, -sdir, tlt)
+  rot    (elm, m, -sdir)
   mis    (elm, m, -sdir)
   atexit (elm, m, -sdir, -2)
 
@@ -639,11 +641,12 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
     thick, thin, fng = cmap[thick], cmap[thin], fng ~= fnil and cfringe or fng
     if is_function(thick) or is_function(thin) then m.pmap = true end
     m.cflw.name = elm.name
+    m.cflw.tlt  = tlt
   end
 
   atentry(elm, m, sdir, -1)
   mis    (elm, m, sdir)
-  rot    (elm, m, sdir, tlt)
+  rot    (elm, m, sdir)
   atentry(elm, m, sdir, -3)
   fng    (elm, m, sdir, fringe)
 
@@ -683,7 +686,7 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
 
   fng   (elm, m, -sdir, fringe)
   atexit(elm, m, -sdir, -4)
-  rot   (elm, m, -sdir, tlt)
+  rot   (elm, m, -sdir)
   mis   (elm, m, -sdir)
   atexit(elm, m, -sdir, -2)
 
@@ -693,8 +696,6 @@ end
 -- kinds ----------------------------------------------------------------------o
 
 local function track_slink (elm, m)
-  m.el, m.eh, m.nmul = 0, 0, 0
-
   local update = elm:var_get'update'
   if update then update(elm, m) end -- update damap
 
@@ -705,35 +706,63 @@ local function track_slink (elm, m)
 end
 
 local function track_marker (elm, m)
-  m.el, m.eh, m.nmul = 0, 0, 0
+  trackone(elm, m, thinonly, fnil)
+end
+
+local function track_rotation (elm, m, rot)
+  m.ang = elm.angle
 
   if m.cmap then
-    m.cflw.el   = 0
-    m.cflw.eh   = 0
-    m.cflw.nmul = 0
+    m.cflw.ang = m.ang
   end
 
-  trackone(elm, m, thinonly, nil, fnil)
+  trackone(elm, m, thinonly, rot)
+end
+
+local function track_translate (elm, m)
+  m.dx, m.dy, m.ds = elm.dx, elm.dy, elm.ds
+
+  if m.cmap then
+    m.cflw.dx = m.dx
+    m.cflw.dy = m.dy
+    m.cflw.ds = m.ds
+  end
+
+  trackone(elm, m, thinonly, translate)
+end
+
+local function track_changeref (elm, m)
+  m.dx  , m.dy  , m.ds   = elm.dx  , elm.dy  , elm.ds
+  m.dthe, m.dphi, m.dpsi = elm.dthe, elm.dphi, elm.dpsi
+
+  if m.cmap then
+    m.cflw.dx   = m.dx
+    m.cflw.dy   = m.dy
+    m.cflw.ds   = m.ds
+    m.cflw.dthe = m.dthe
+    m.cflw.dphi = m.dphi
+    m.cflw.dpsi = m.dpsi
+  end
+
+  trackone(elm, m, thinonly, changeref)
 end
 
 local function track_drift (elm, m)
   local l in elm
-  m.el, m.eh, m.nmul = l*m.sdir, 0, 0
+  m.el = l*m.sdir
 
   if not is_number(m.el) then m.pmap = true end
 
   if m.cmap and not m.pmap then
-    m.cflw.el   = m.el
-    m.cflw.eh   = 0
-    m.cflw.nmul = 0
+    m.cflw.el = m.el
   end
 
   if is_implicit(elm) then
     local inter = m.implicit and thickonly or driftonly
-    trackone(elm, m, inter, strex_drift, nil)
+    trackone(elm, m, inter, strex_drift)
   else
-    local track = #elm == 0 and trackelm or tracksub
     local inter = l >= minlen and thickonly or driftonly
+    local track = #elm == 0 and trackelm or tracksub
     track(elm, m, inter, strex_drift, fnil, fnil)
   end
 end
@@ -765,36 +794,28 @@ local function track_multipole (elm, m)
     cpy_mult(m)
   end
 
-  trackelm(elm, m, thinonly, fnil, kick, fnil)
+  trackelm(elm, m, thinonly, kick)
 end
 
 local function track_bbeam (elm, m)
   if not elm.enabled then return track_marker(elm, m) end
 
-  m.el, m.eh, m.nmul = 0, 0, 0
-
   if m.cmap then
-    m.cflw.el   = 0
-    m.cflw.eh   = 0
-    m.cflw.nmul = 0
+    -- TODO: not yet implemented
   end
 
   local kick = elm.bb6D and bbeam_kick6D or bbeam_kick
-  trackelm(elm, m, thinonly, fnil, kick, fnil)
+  trackelm(elm, m, thinonly, kick)
 end
 
 local function track_nllens (elm, m)
   if not elm.enabled then return track_marker(elm, m) end
 
-  m.el, m.eh, m.nmul = 0, 0, 0
-
   if m.cmap then
-    m.cflw.el   = 0
-    m.cflw.eh   = 0
-    m.cflw.nmul = 0
+    -- TODO: not yet implemented
   end
 
-  trackelm(elm, m, thinonly, fnil, nllens_kick, fnil)
+  trackelm(elm, m, thinonly, nllens_kick)
 end
 
 local function track_sbend (elm, m, e1_, e2_)
@@ -917,7 +938,6 @@ local function track_rbend (elm, m)
     m.cflw.eld  = m.eld
     m.cflw.elc  = m.elc
     m.cflw.pdir = m.pdir or 0
-    m.cflw.ang  = m.ang
     m.cflw.mang = m.mang
     cpy_mult(m)
   end
@@ -997,7 +1017,7 @@ local function track_strexgen (elm, m, ptc_, mth_)
   local inter, thick, kick, fringe
 
   if l < minlen then
-    inter, thick, kick, fringe = thinonly, fnil, strex_kick, fnil
+    inter, thick, kick, fringe = thinonly, strex_kick, fnil, fnil
   elseif model == 'DKD' or not ptc_ then
     inter, thick, kick, fringe = DKD[method], strex_drift, strex_kick, strex_fringe
   else
@@ -1225,6 +1245,7 @@ local function track_rfcavgen (elm, m, crab)
 
   local inter  = l < minlen and thinonly or DKD[elm.method or m.method]
   local kick   = m.nmul+m.nbsl == 0 and rfcav_kick or rfcav_kickn
+  local thick  = l < minlen and kick or strex_drift
   local fringe = l < minlen and fnil or rfcav_fringe
 
   if m.cmap and not m.pmap then
@@ -1239,7 +1260,7 @@ local function track_rfcavgen (elm, m, crab)
   end
 
   local track = #elm == 0 and trackelm or tracksub
-  track(elm, m, inter, strex_drift, kick, fringe)
+  track(elm, m, inter, thick, kick, fringe)
 end
 
 local function track_rfcavity (elm, m)
@@ -1267,14 +1288,13 @@ local function track_genmap (elm, m)
   get_mult(elm, m) ; adj_mult(m)
 
   local sdir, edir in m
-  local l, angle in elm
+  local l, lrad, angle in elm
 
-  m.el, m.eh = l*sdir, angle/l*edir
+  m.el, m.lrad, m.eh = l*sdir, lrad*sdir, angle/l*edir
 
   m.pmap = true -- prevent C/C++ maps
 
-  local method = elm.method or m.method
-  local inter  = l < minlen  and thinonly or m.nmul == 0 and thickonly or DKD[method]
+  local inter  = KMK[elm.method or m.method]
   local kick   = m.nmul == 0 and fnil or abs(angle) < minang and strex_kick   or curex_kick
   local fringe = l < minlen  and fnil or abs(angle) < minang and strex_fringe or curex_fringe
 
@@ -1327,12 +1347,12 @@ E.nllens     :set_methods {track = track_nllens   }  -- thin
 E.genmap     :set_methods {track = track_genmap   }  -- straight or curved, damap, update
 
 -- patches
-E.xrotation  :set_methods {track = bind3rd(trackone, xrotation)}
-E.yrotation  :set_methods {track = bind3rd(trackone, yrotation)}
-E.srotation  :set_methods {track = bind3rd(trackone, srotation)}
-E.translate  :set_methods {track = bind3rd(trackone, translate)}
-E.changeref  :set_methods {track = bind3rd(trackone, changeref)}
-E.changedir  :set_methods {track = bind3rd(trackone, changedir)}
-E.changenrj  :set_methods {track = bind3rd(trackone, changenrj)}
+E.changeref  :set_methods {track = track_changeref}
+E.translate  :set_methods {track = track_translate}
+E.xrotation  :set_methods {track = \e,m -> track_rotation(e,m,xrotation) }
+E.yrotation  :set_methods {track = \e,m -> track_rotation(e,m,yrotation) }
+E.srotation  :set_methods {track = \e,m -> track_rotation(e,m,srotation) }
+E.changenrj  :set_methods {track = \e,m -> trackone(e,m,thinonly,changenrj) }
+E.changedir  :set_methods {track = \e,m -> trackone(e,m,thinonly,changedir) }
 
 -- end ------------------------------------------------------------------------o
