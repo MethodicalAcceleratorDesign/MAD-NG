@@ -1217,7 +1217,7 @@ template <typename M, typename T=M::T, typename P=M::P, typename R=M::R, typenam
 inline void bend_wedge (cflw<M> &m, num_t lw, const V &e)
 {                                   (void)lw;
   if (!fval(e)) return;
-  if (fabs(m.knl[0]) < minstr) return yrotation<M>(m,1,e);
+  if (fabs(m.knl[0]) < minstr) return yrotation<M>(m,1,-e);
 
   mdump(0);
   P b1 = R(m.knl[0])/R(m.el)*(m.sdir*m.edir*m.charge);
