@@ -1966,7 +1966,7 @@ const struct {
   const num_t D;
   const num_t k;
 } teapot[] = {
-  {1./6 , 1./6 , 1./2 }, // teapot2 -> 0..0, knd=2, j=0, n=1, k=-2
+  {1./6 , 4./6 , 1./2 }, // teapot2 -> 0..0, knd=2, j=0, n=1, k=-2
   {1./8 , 3./8 , 1./3 }, // teapot3 -> 0..1, knd=3, j=1, n=2, k=-3
   {3./30, 8./30, 1./4 }, // teapot4 -> 0..2, knd=4, j=2, n=3, k=-4
 } ;
