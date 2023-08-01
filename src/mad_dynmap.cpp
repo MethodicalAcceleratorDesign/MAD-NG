@@ -358,18 +358,19 @@ inline void changeref (cflw<M> &m, num_t lw)
   mdump(0);
   lw *= m.sdir;
 
+// By not placing the rotation as the third argument of the function, weighting is done by the function
   if (rot && lw > 0) {
-    yrotation<M>(m,  m.edir, zero);
-    xrotation<M>(m, -m.edir, zero);
-    srotation<M>(m,  m.edir, zero);
+    yrotation<M>(m,  m.sdir, zero);
+    xrotation<M>(m, -m.sdir, zero);
+    srotation<M>(m,  m.sdir, zero);
   }
 
   if (trn) translate<M>(m, 1, zero, zero, zero);
 
   if (rot && lw < 0) {
-    srotation<M>(m, -m.edir, zero);
-    xrotation<M>(m,  m.edir, zero);
-    yrotation<M>(m, -m.edir, zero);
+    srotation<M>(m, -m.sdir, zero);
+    xrotation<M>(m,  m.sdir, zero);
+    yrotation<M>(m, -m.sdir, zero);
   }
   mdump(1);
 }
