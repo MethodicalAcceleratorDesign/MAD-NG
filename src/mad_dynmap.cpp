@@ -824,14 +824,15 @@ inline void quad_thicks (cflw<M> &m, num_t lw, int is)
 
   mdump(0);
   P l   = R(m.el)*lw;
-  P w   = sqrt(abs(R(m.k1)))*m.edir;
+  int ws = fval(m.k1)*m.sdir < 0 ? -1 : 1;   // This is awkward due to multiplication of tdir in etrck
+  P w   = sqrt(abs(R(m.k1)))*m.sdir*m.edir*ws;
   P cx  = cos (w*l), sx  = sin (w*l);
   P cy  = cosh(w*l), sy  = sinh(w*l);
   P mx1 = sx/w     , mx2 = -sx*w;
   P my1 = sy/w     , my2 =  sy*w;
   R ca  = m.ca, sa = m.sa;
 
-  if (m.sdir != m.charge) // swap x <-> y
+  if (ws != m.charge) // swap x <-> y
     swap(cx,cy), swap(sx,sy), swap(mx1,my1), swap(mx2,my2);
 
   FOR(i,m.npar) {
