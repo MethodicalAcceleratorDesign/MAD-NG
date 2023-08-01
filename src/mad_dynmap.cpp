@@ -1325,7 +1325,6 @@ inline void qsad_fringe (cflw<M> &m, num_t lw)
   if (fabs(m.f1)    +fabs(m.f2)     < minstr) return;
 
   mdump(0);
-  num_t wchg = lw*m.charge;
   P     a    = -0.5*atan2(R(m.ksl[1]), R(m.knl[1]));
   P     b2   = hypot(R(m.knl[1]), R(m.ksl[1]))/R(m.el)*m.edir;
   P     ca   = cos(a), sa = sin(a);
@@ -1338,8 +1337,8 @@ inline void qsad_fringe (cflw<M> &m, num_t lw)
     T _pz = invsqrt(1 + 2/m.beta*p.pt + sqr(p.pt));
     T  dt = (1/m.beta+p.pt)*_pz;
 
-    T  f1 = wchg*bf1*_pz;
-    T  f2 =      bf2*_pz;
+    T  f1 = lw*m.charge*bf1*_pz;
+    T  f2 =    m.charge*bf2*_pz;
 
     T nx  = ca*p.x  + sa*p.y;
     T npx = ca*p.px + sa*p.py;
