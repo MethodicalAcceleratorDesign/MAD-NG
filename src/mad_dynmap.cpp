@@ -1420,11 +1420,13 @@ inline void mult_fringe (cflw<M> &m, num_t lw)
     T    c =   - fxy*_pz;
     T    d = 1 - fyy*_pz;
     T _det = 1/(a*d - b*c);
+    T npx = (d*p.px - b*p.py)*_det; // Create variables so they do not affect each other
+    T npy = (a*p.py - c*p.px)*_det;
 
     p.x  -= fx*_pz;
     p.y  -= fy*_pz;
-    p.px  = (d*p.px - b*p.py)*_det;
-    p.py  = (a*p.py - c*p.px)*_det;
+    p.px  = npx;
+    p.py  = npy;
     p.t  += (1/m.beta+p.pt)*(p.px*fx + p.py*fy)*sqr(_pz)*_pz;
   }
   mdump(1);
