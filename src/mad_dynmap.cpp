@@ -331,7 +331,7 @@ inline void translate (cflw<M> &m, num_t lw, const V &dx_, const V &dy_, const V
   P dx, dy, ds;
   if (fval(dx_)) dx = lw*dx_; else dx = lw*R(m.dx);
   if (fval(dy_)) dy = lw*dy_; else dy = lw*R(m.dy);
-  if (fval(ds_)) ds = lw*ds_; else ds = lw*R(m.ds);
+  if (fval(ds_)) ds = lw*m.edir*ds_; else ds = lw*m.edir*R(m.ds);
 
   if (fabs(ds) < minlen)
     FOR(i,m.npar) {
