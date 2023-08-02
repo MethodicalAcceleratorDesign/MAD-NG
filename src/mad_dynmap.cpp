@@ -503,9 +503,9 @@ inline void strex_kick (cflw<M> &m, num_t lw, int is, bool no_k0l=false)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void strex_kicks (cflw<M> &m, num_t lw, M &p, T &pz)
 {
-  if (fabs(m.ks) < minstr || fval(m.lrad) < minlen) return;
+  if (fabs(m.ks) < minstr || fabs(m.lrad) < minlen) return;
 
-  num_t wchg = lw*m.sdir*m.edir*m.charge;
+  num_t wchg = lw*m.edir*m.charge; // lrad is already weighted by sdir
   P hss  = lw*R(m.lrad)*sqr(R(m.ks));
   T _dpp = inv(pz);
   T  ang = (0.5*wchg)*R(m.ks)*R(m.lrad)*_dpp;
