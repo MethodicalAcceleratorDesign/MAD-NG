@@ -361,18 +361,19 @@ inline void changeref (cflw<M> &m, num_t lw)
   mdump(0);
   lw *= m.sdir;
 
+  // (y/x/s)rotation maps do lw*tdir, so to get the same result as in lua we muliply by sdir 
   if (rot && lw > 0) {
-    yrotation<M>(m,  m.edir, zero);
-    xrotation<M>(m, -m.edir, zero);
-    srotation<M>(m,  m.edir, zero);
+    yrotation<M>(m,  m.sdir, zero);
+    xrotation<M>(m, -m.sdir, zero);
+    srotation<M>(m,  m.sdir, zero);
   }
 
   if (trn) translate<M>(m, 1, zero, zero, zero);
 
   if (rot && lw < 0) {
-    srotation<M>(m, -m.edir, zero);
-    xrotation<M>(m,  m.edir, zero);
-    yrotation<M>(m, -m.edir, zero);
+    srotation<M>(m, -m.sdir, zero);
+    xrotation<M>(m,  m.sdir, zero);
+    yrotation<M>(m, -m.sdir, zero);
   }
   mdump(1);
 }
