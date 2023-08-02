@@ -298,25 +298,39 @@ local function plot_res(get_y_val, res_cfg_tbl, cfg, plt_dir, cfg_tbl_)
   local cfg_tbl = cfg_tbl_ or res_cfg_tbl
   local dif_tbl = res_cfg_tbl
   local n_points = #dif_tbl
-  local series = plot_info.series or {"${cfgid} > 0"}
-  local n_series = #series
+  local series, legend = plot_info.series or {}, plot_info.legend or {}
+  local n_series = #series + 1
+  series[n_series] = "${cfgid} > 0"
+  legend["y" .. n_series] = "Other"
   local x_data = table.new(n_series, 0)
   local y_data = table.new(n_series, 0)
+  local cntrs  = table.new(n_series, 0)
   for i = 1, n_series do 
-    x_data[i], y_data[i] = {}, {}
-    local cnt = 1
-    for j = 1, n_points do
-      if assert(loadstring("return " .. series[i] % cfg_tbl[j]))() then
-        x_data[i][cnt] = assert(loadstring("return " .. x_axis_attr % cfg_tbl[j]))()
-        local y_value = get_y_val(dif_tbl[j], cfg) -- So can be used for trk and srv
-        y_data[i][cnt] = y_value > 1e-16 and y_value or 1e-16
-        cnt = cnt + 1
-      end
-    end
+    x_data[i], y_data[i], cntrs[i] = {}, {}, 1
   end
 
-  cfg_plot.legend = cfg_plot.legend or {} ! Could be user set.
-  cfg_plot.data, cfg_plot.datastyles, cfg_plot.x1y1 = {}, {}, {}
+  for j = 1, n_points do
+    local i, point_added = 1, false
+    while not point_added do 
+      if assert(loadstring("return " .. series[i] % cfg_tbl[j]))() then -- User defined
+        -- Add point
+        x_data[i][cntrs[i]] = assert(loadstring("return " .. x_axis_attr % cfg_tbl[j]))()
+        local y_value = get_y_val(dif_tbl[j], cfg) -- So can be used for trk and srv
+        y_data[i][cntrs[i]] = y_value > 1e-16 and y_value or 1e-16
+        
+        -- Register point added
+        cntrs[i] = cntrs[i] + 1
+        point_added = true
+      end
+      i = i + 1
+    end
+  end
+  if cntrs[n_series] == 1 then -- Remove other if no points
+    legend["y" .. n_series], series[n_series] = nil, nil
+    n_series = n_series - 1
+  end
+
+  cfg_plot.legend, cfg_plot.data, cfg_plot.datastyles, cfg_plot.x1y1 = {}, {}, {}, {}
   for i = 1, n_series do
     cfg_plot.data["x"..i] = x_data[i]
     cfg_plot.data["y"..i] = y_data[i]
@@ -326,13 +340,14 @@ local function plot_res(get_y_val, res_cfg_tbl, cfg, plt_dir, cfg_tbl_)
       pointtype = i,
       color = colours[i],
     }
-    cfg_plot.legend["y"..i] = to_text(series[i])
+    cfg_plot.legend["y"..i] = legend["y"..i] or to_text(series[i])
   end
 
   plot_info.plotcfg = 
   [[
     set logscale y
   ]] .. (plot_info.plotcfg or "")
+  plot_info.legend = nil
 
   cfg_plot (plot_info)
 end
@@ -347,6 +362,15 @@ end
 
 local function plot_trk_res(res_cfg_tbl, cfg, plt_dir, cfg_tbl_)
   plot_res(get_trk_y_val, res_cfg_tbl, cfg, plt_dir, cfg_tbl_)
+end
+
+
+local function tbl2da (tbl)
+  local da = MAD.damap{nv = 6, mo = 1}
+  for i, c in ipairs({"x", "px", "y", "py", "t", "pt"}) do 
+    da[c]:set0(tbl[c])
+  end
+  return da
 end
 
 return {
@@ -371,4 +395,5 @@ return {
   X0s              = X0s             ,
   create_madx_seq  = create_madx_seq ,
   get_last_ptc_map = get_last_ptc_map,
+  tbl2da           = tbl2da          ,
 }

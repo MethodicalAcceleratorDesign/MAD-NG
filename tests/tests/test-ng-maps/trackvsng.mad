@@ -2,12 +2,12 @@
 local mtable, damap                                              in MAD
 local tblcpy, fileexists, tblcat, strinter                       in MAD.utility
 local max                                                        in math         
-local is_number                                                  in MAD.typeid
+local is_number, is_damap                                        in MAD.typeid
 
 package.path = package.path .. ";../tools/?.mad"
 local get_diff, save_results, prnt_results, gen_cfg,
       add_trk_gen_cols, show_res, plot_trk_res, get_prev_res,
-      args_to_cfg                                                in require "track-tool"      
+      args_to_cfg, tbl2da                                        in require "track-tool"      
 
 local create_dif = require "madl_dbgmap".cmpmdump
 
@@ -21,29 +21,37 @@ local models = {'DKD', 'TKT'}
 local X0s = {{x=0   , px=0    , y=0    , py=0   , t=0   , pt=0   }, -- zero
              {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=0   }, -- 4D
              {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=2e-5}, -- 5D
-             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=2e-5}} -- 6D
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=1e-2}} -- 6D
 ]]
 local track_str = [[
-local X0 = MAD.damap{nv = 6, mo = ${order}}
-for i, c in ipairs({"x", "px", "y", "py", "t", "pt"}) do 
-  X0[c]:set0(X0s[${x0i}][c])
+local X0 = X0s[${x0i}]
+if ${order} > 0 then 
+  X0 = MAD.damap{nv = 6, mo = ${order}}
+  for i, c in ipairs({"x", "px", "y", "py", "t", "pt"}) do 
+    X0[c]:set0(X0s[${x0i}][c])
+  end
 end
+
 local drift, quadrupole, sextupole, octupole, sbend, rbend, solenoid, rfcavity,
       kicker, elseparator, crabcavity, multipole, xrotation, yrotation, 
-      srotation, translate, changeref, decapole, dodecapole                     in MAD.element
+      srotation, translate, changeref, decapole, dodecapole, rfmultipole         in MAD.element
+
+local particles = {}
+for i = 1, ${npar} do particles[i] = X0 end
 
 local seq = MAD.sequence "seq" {dir = ${edir}, l=${seql}, ${elm}}
 return MAD.track { -- see ref_cfg for list of values
   dir      = ${sdir},
   beam     = MAD.beam {energy = ${energy}, charge=${chg}},
   sequence = seq,
-  X0       = X0,
+  X0       = particles,
 ! mapdef   = ${order},
   model    = models[${model}],
   method   = ${method},
   nslice   = ${nslice},
   debug    = ${debug},
   cmap     = ${cmap},
+  aperture = {kind='circle', 10},
 }
 ]]
 
@@ -52,13 +60,14 @@ local _, mflw = MAD.track { -- see ref_cfg for list of values
   dir      = ${sdir},
   beam     = MAD.beam {energy = ${energy}, charge=${chg}},
   sequence = seq,
-  X0       = mflw0[1],
+  X0       = mflw0,
   model    = models[${model}],
   method   = ${method},
   nslice   = ${nslice},
+  cmap     = ${cmap},
   debug    = ${debug},
 }
-return mflw, X0
+return mflw, particles
 ]]
 
 local in_dir  = \s -> 'input/' ..(s or '')
@@ -90,14 +99,22 @@ local function debug_chk(cfg, dif, script2)
   end
 end
 
-local function dif_save_prnt_dbg(cfg, exp, res, result_mtbl, script)
-  local dif_tbl = get_diff(exp, res, cfg.order)
-  save_results(cfg, dif_tbl, result_mtbl)
-  prnt_results(cfg, dif_tbl)
-  debug_chk(cfg, dif_tbl, script)
+local function dif_save_prnt_dbg(cfg, exp, res, result_mtbl, script) -- exp and res need to be mflows
+  local test_type, npar in cfg.cur_cfg
+  for i = 1, npar do
+    cfg.cur_cfg.test_type = test_type .. "_P" .. i  -- Set test type
+    if not is_damap(exp[i]) then exp[i] = tbl2da(exp[i]) end
+    if not is_damap(res[i]) then res[i] = tbl2da(res[i]) end
+    local dif_tbl = get_diff(exp[i], res[i], cfg.order)
+    save_results(cfg, dif_tbl, result_mtbl)
+    prnt_results(cfg, dif_tbl)
+    debug_chk(cfg, dif_tbl, script)
+  end
+  cfg.cur_cfg.test_type = test_type  -- reset test type
 end
 
 local function backtrack(cfg, results)
+  if not cfg.dobck then return end
   -- Setup backward tracking
   local bck_cfg = tblcpy(cfg.cur_cfg)
   bck_cfg.sdir = -1         -- Override direction
@@ -109,7 +126,7 @@ local function backtrack(cfg, results)
 
   -- Compare backward maps to initial coordinates
   cfg.cur_cfg.test_type = "backtrack"  -- Set test type
-  dif_save_prnt_dbg(cfg, exp, bck_map[1], results, bck_trk)
+  dif_save_prnt_dbg(cfg, exp, bck_map, results, bck_trk)
 end
 
 local function reverse_attr(cfg, results, attr)
@@ -120,28 +137,32 @@ local function reverse_attr(cfg, results, attr)
   cfg[attr] = -cfg[attr]
 
   cfg.cur_cfg.test_type = attr  -- Set test type
-  dif_save_prnt_dbg(cfg, cfg.ref_map, attr_res[1], results, attr_script)
+  dif_save_prnt_dbg(cfg, cfg.ref_map, attr_res, results, attr_script)
 end
 
 local function cmaps(cfg, results)
   cfg.cmap = true
   local cmap_script = create_run(cfg, cfg.cur_cfg)
   local _, cmap_res = loadstring(cmap_script)()
-  cfg.cmap = false
 
   cfg.cur_cfg.test_type = "cmap"  -- Set test type
-  dif_save_prnt_dbg(cfg, cfg.ref_map, cmap_res[1], results, cmap_script)
+  dif_save_prnt_dbg(cfg, cfg.ref_map, cmap_res, results, cmap_script)
+  
+  backtrack(cfg, results)            -- Backtrack
+  reverse_attr(cfg, results, "chg")  -- Change sign of chg
+  reverse_attr(cfg, results, "edir") -- Change sign of edir
+  cfg.cmap = false
 end
 
   
 local function run_cfg(cfg, equiv, results)
   -- Get the mflow for the main config
   cfg.ref_script = create_run(cfg, cfg.cur_cfg)
-  local _, ref = loadstring(cfg.ref_script)()
-  cfg.ref_map = ref[1]
+  local _, ref = assert(loadstring(cfg.ref_script))()
+  cfg.ref_map = ref
   
   -- Do default checks
-  if is_number(cfg.cur_cfg.method) then cmaps(cfg, results) end -- Check cmap
+  cmaps(cfg, results) -- Check cmap
   backtrack(cfg, results)            -- Backtrack
   reverse_attr(cfg, results, "chg")  -- Change sign of chg
   reverse_attr(cfg, results, "edir") -- Change sign of edir
@@ -161,7 +182,7 @@ local function run_cfg(cfg, equiv, results)
       
       local setup2_script = create_run(cfg, other_cfg)
       local _, res = loadstring(setup2_script)()
-      dif_save_prnt_dbg(cfg, ref[1], res[1], results, setup2_script)
+      dif_save_prnt_dbg(cfg, ref, res, results, setup2_script)
     end
   end
 end
@@ -187,6 +208,7 @@ local function run_test(cfg, equiv)
     "__cfg", "__res", 
     max_order = cfg.order, 
     run_tol   = cfg.tol,
+    novector  = true, 
   }
   
   if cfg.doprnt then 

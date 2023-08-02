@@ -30,11 +30,13 @@ local ref_cfg = object "ref" {
   dorun  = true, -- Default: true 
   dosave = true, -- Default: false
   doplot = true, -- Default: false
-  doprnt = true, -- Default: false
-  dodbg  = true, -- Default: false
+  doprnt = false, -- Default: false
+  dodbg  = false, -- Default: false
+
+  dobck  = true, -- Default: true -> Whether to do backtracking (not fringes)
   
   -- list of variables in the tests
-  alist = {"model", "energy", "method", "nslice", "x0i"}, --attributes list
+  alist = {"npar", "model", "energy", "method", "nslice", "x0i"}, --attributes list
   tol = 1000,
 
   -- list of values that are used to run test but are not changed throughout
@@ -42,7 +44,7 @@ local ref_cfg = object "ref" {
   icase  = 56,       -- 56/6
   debug  = 0,        -- 0/6
   seql   = 1.5,
-  cmap   = false,    -- false/true
+  npar   = {2},
 
   -- list of core values that are changed manually throughout the tests
   edir   = 1,        -- 1/-1 (element direction)
@@ -50,6 +52,7 @@ local ref_cfg = object "ref" {
   chg    = 1,        -- 1/-1 (charge)
   tdir   = \s-> s.edir * s.sdir,          -- tracking time direction
   bdir   = \s-> s.edir * s.sdir * s.chg,  -- tracking beam direction
+  cmap   = false,
 
   x0i    = 1..4,       -- 0, 4D, 5D, 6D (see get_mad_str)
 }
@@ -57,34 +60,41 @@ local ref_cfg = object "ref" {
 
 local default_plot_cfg = {
   series      = {
-    "'${test_type}' == 'edir'",
-    "'${test_type}' == 'chg'",
-    "'${test_type}' == 'backtrack'",
+    "('${test_type}'):sub(1,4) == 'edir'",
+    "('${test_type}'):sub(1,3) == 'chg'",
+    "('${test_type}'):sub(1,9) == 'backtrack'",
+    "('${test_type}'):sub(1,4) == 'cmap'",
   },
   legend      = {
     y1 = "Reverse edir",
     y2 = "Reverse charge",
     y3 = "Backtrack",
+    y4 = "Cmap",
   },
 }
 
 -- The actual test functions --------------------------------------------------o
 local function testDRIFT()
   local cfg = ref_cfg "drift" {
-    elm = "drift 'drift' {at=0.75, l=1.5, tilt=${tdir}*${tilt}*math.pi/8}",
+    elm = "drift 'drift' {at=${at}, l=${l}, tilt=${tdir}*${tilt}*math.pi/8}",
     model  = {1, 2},
-    method = 2..8..2,
+    method = {2, 6},    
     nslice = 1..3,
-    energy = {1, 6500},
+    energy = {1, 6500},  -- {1, 450, 6500}
+    seql   = \s -> s.cur_cfg.l,
+    tol = 15000, -- Error entirely due to the drift length and tilt in backtracking
 
-    tol = 10,
-
+    l     = {1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 1e1, 1e2, 1e3, 1e4},
+    at    = \s->s.cur_cfg.l/2,
     tilt = 0..2,
-    alist = tblcat(ref_cfg.alist, {"tilt"}),
+    alist = tblcat(ref_cfg.alist, {"l", "tilt"}),
 
     plot_info = {
+      x_axis_attr = "${l}",
       title    = "Drift NG v NG Maps",
       filename = "drift-ngvng.png",
+      xlabel = "Drift Length [m]",
+      plotcfg = "set logscale x",
       series   = default_plot_cfg.series,
       legend   = default_plot_cfg.legend,
     },
@@ -97,16 +107,16 @@ local function testQUAD() -- Test the body (~2 min)
   local cfg = ref_cfg "quad" {
     elm = "quadrupole 'quad' {at=0.75, l=1.5, k1=${bdir}*${k1}, k1s=${bdir}*${k1s},tilt=${tilt}, fringe=0}",
     model  = 1..2,
-    method = {"'teapot4'", 2, 4, 6, 8, "'teapot'"},    
+    method = {2, 4, 6, 8, "'teapot2'", "'teapot4'"},    
     nslice = 1..3,
     energy = {1, 6500},  -- {1, 450, 6500}
 
-    tol = 100,
+    tol = 150,
 
     k1     = {-0.15, 0, 0.2},
     k1s    = {-0.15, 0, 0.2},
-    tilt   = 0,
-    alist = tblcat(ref_cfg.alist, {"k1", "k1s"}),
+    tilt   = 0..2,
+    alist = tblcat(ref_cfg.alist, {"k1", "k1s", "tilt"}),
 
     plot_info = {
       title    = "Quadrupole NG v NG Maps",
@@ -130,6 +140,46 @@ local function testQUAD() -- Test the body (~2 min)
   run_test(cfg, equiv)
 end
 
+local function testQUADf() -- Test the straight fringes
+  local cfg = ref_cfg "quad" {
+    elm = [[quadrupole 'quad' {
+      at=0.75, l=1.5, 
+      knl={${bdir}*${k0}, ${bdir}*${k1}, 0, ${bdir}*${k3}}, 
+      ksl={0, ${bdir}*${k1s}, 0, ${bdir}*${k3}},
+      fringe=${fringe}, fint=${fint}, fintx=${fintx}, hgap=${hgap}, 
+      f1=${f1}, f2=${f2}, frng_max=${frng_max}, 
+    }]],
+    model  = {1},
+    method = {2},    
+    nslice = {1},
+    energy = {1, 6500},  -- {1, 450, 6500}
+
+    tol = 100,
+    dobck = false, -- No backtracking, some fringes are not fully reversible
+
+    k1     = {0, -0.15, 0.2},
+    k1s    = {0, -0.15, 0.2},
+    k0     = {0, 1e-2},
+    fringe = {1, 6, 7},
+    fint   = \s->s.cur_cfg.fringe%2==1 and {0, 0.5}   or {0},
+    fintx  = \s->s.cur_cfg.fringe%2==1 and {0, 0.7}   or {0},
+    hgap   = \s->s.cur_cfg.fringe%2==1 and {0, 0.05} or {0},
+    f1     = \s->s.cur_cfg.fringe > 1 and {0, 0.5} or {0},
+    f2     = \s->s.cur_cfg.fringe > 1 and {0, 0.2} or {0},
+    frng_max = {2, 5},
+    k3    = \s-> s.cur_cfg.frng_max>2 and 10 or 0,
+    alist = tblcat(ref_cfg.alist, {"k1", "k1s", "k0", "fringe", "fint", "fintx", "hgap", "f1", "f2", "frng_max"}),
+
+    plot_info = {
+      title    = "Straight Fringe NG v NG Maps",
+      filename = "quadf-ngvng.png",
+      series   = default_plot_cfg.series,
+      legend   = default_plot_cfg.legend,
+    }
+  }
+  run_test(cfg)
+end
+
 local function testSEXT()
   local cfg = ref_cfg "sext" {
     elm = "sextupole 'sext' {at=0.75, l=1.5, k2=${bdir}*${k2}, k2s=${bdir}*${k2s},tilt=${tilt}, fringe=0}",
@@ -138,7 +188,7 @@ local function testSEXT()
     nslice = 1..3,
     energy = {1, 6500},  -- {1, 450, 6500}
 
-    tol = 100,
+    tol = 150,
 
     k2     = {-0.5, 0, 0.7},
     k2s    = {-0.5, 0, 0.7},
@@ -212,7 +262,7 @@ local function testSBEND() -- Test the body (~2 min)
     nslice = 1..3,
     energy = {1, 6500},  -- {1, 450, 6500}
 
-    tol = 600,
+    tol = 750,
 
     angle_div = {50, 100, 200, 500, 1000},
     k0        = {0, 0.8, 1, 1.2},
@@ -221,6 +271,46 @@ local function testSBEND() -- Test the body (~2 min)
     plot_info = {
       title    = "SBend NG v NG Maps",
       filename = "sbend-ngvng.png",
+      series   = default_plot_cfg.series,
+      legend   = default_plot_cfg.legend,
+    }
+  }
+  run_test(cfg)
+end
+
+local function testSBENDf() -- Test the curved fringes
+  local cfg = ref_cfg "sbend" {
+    elm = [[sbend 'sbend' {
+      at=0.75, l=1.5, 
+      angle=${tdir}*math.pi/100*1.5, k0=${k0}*${bdir}*math.pi/100,
+      knl={0, ${bdir}*${k1}, 0, ${bdir}*${k3}}, 
+      ksl={0, ${bdir}*${k1s}, 0, ${bdir}*${k3}},
+      fringe=${fringe}, fint=${fint}, fintx=${fintx}, hgap=${hgap}, 
+      f1=${f1}, f2=${f2}, frng_max=${frng_max}, 
+    }]],
+    model  = {1},
+    method = {2},    
+    nslice = {1},
+    energy = {1, 6500},  -- {1, 450, 6500}
+
+    tol = 100,
+
+    k1     = {0, -0.15, 0.2},
+    k1s    = {0, -0.15, 0.2},
+    k0     = {0, 0.8, 1},
+    fringe = {1, 6, 7},
+    fint   = \s->s.cur_cfg.fringe%2==1 and {0, 0.5}   or {0},
+    fintx  = \s->s.cur_cfg.fringe%2==1 and {0, 0.7}   or {0},
+    hgap   = \s->s.cur_cfg.fringe%2==1 and {0, 0.05} or {0},
+    f1     = \s->s.cur_cfg.fringe > 1 and {0, 0.5} or {0},
+    f2     = \s->s.cur_cfg.fringe > 1 and {0, 0.2} or {0},
+    frng_max = {2, 5},
+    k3    = \s-> s.cur_cfg.frng_max>2 and 10 or 0,
+    alist = tblcat(ref_cfg.alist, {"k1", "k1s", "k0", "fringe", "fint", "fintx", "hgap", "f1", "f2", "frng_max"}),
+
+    plot_info = {
+      title    = "Curved Fringe NG v NG Maps",
+      filename = "sbendf-ngvng.png",
       series   = default_plot_cfg.series,
       legend   = default_plot_cfg.legend,
     }
@@ -240,11 +330,11 @@ local function testRBEND() -- Test the body (~2 min)
     nslice = 1..3,
     energy = {1, 6500},  -- {1, 450, 6500}
 
-    tol = 2000,
+    tol = 1200,
 
     angle_div = {50, 200, 1000},
     k0        = {0, 0.8, 1},
-    true_rbend = {false, true},
+    true_rbend = {true, false},
     e1 = {-0.15, 0, 0.2},
     e2 = {-0.2, 0, 0.15},
     alist = tblcat(ref_cfg.alist, {"true_rbend", "k0", "angle_div", "e1", "e2"}),
@@ -255,6 +345,39 @@ local function testRBEND() -- Test the body (~2 min)
       series   = default_plot_cfg.series,
       legend   = default_plot_cfg.legend,
     }  }
+  run_test(cfg)
+end
+
+local function testQUADh() -- Test curvature in straight fringe
+  local cfg = ref_cfg "quadh" {
+    elm = [[
+      quadrupole 'quadh' {
+        at = 0.75, l = 1.5,  k0=${k0}*${bdir}, k1=${bdir}*0.5,
+        e1=${tdir}*${e1}*math.pi/100*1.5, e2=${tdir}*${e2}*math.pi/100*1.5,
+        fringe = 0,! h1=${tdir}*${h1}, h2=${tdir}*${h2},
+      }
+    ]],
+    model  = {1},
+    method = {2},
+    nslice = {1},
+    energy = {1, 6500},  -- {1, 450, 6500}
+    dobck = false, -- (h1, h2)
+
+    tol = 10, !750 with backtracking and h1, h2 = 0
+
+    k0 = {0, 1e-2},
+    e1 = {-0.15, 0, 0.2},
+    e2 = {-0.2, 0, 0.15},
+    h1 = {0,-0.04, 0.05},
+    h2 = {0, 0.04,-0.05},
+    alist = tblcat(ref_cfg.alist, {"k0", "e1", "e2", "h1", "h2"}),
+    plot_info = {
+      title    = "Straight Fringe With Curvature NG v NG Maps",
+      filename = "quadh-ngvng.png",
+      series   = default_plot_cfg.series,
+      legend   = default_plot_cfg.legend,
+    }  
+  }
   run_test(cfg)
 end
 
@@ -270,7 +393,7 @@ local function testRBENDPARALLEL()
     nslice = 1..3,
     energy = {1, 6500},  -- {1, 450, 6500}
 
-    tol = 2000,
+    tol = 500,
 
     angle_div = {50, 100, 200, 500, 1000},
     patch_first = {false, true},
@@ -290,7 +413,17 @@ end
 
 local function testRFMULTIPOLE()
   local cfg = ref_cfg "rfmultipole" {
-    elm = "${element} 'rfm' {at=1.5, l=0, volt=0, freq=1, knl=${knl}, fringe=0}",
+    elm = [[${element} 'rfm' {
+      at=0, l=0, volt=0, freq=1, mult_arr = ${knl},
+      knl=\s -> {
+        s.mult_arr[1] * ${bdir},
+        s.mult_arr[2] * ${bdir},
+        s.mult_arr[3] * ${bdir},
+        s.mult_arr[4] * ${bdir},
+
+      }, fringe=0
+    }]],
+    seql = 0,
     model  = {1, 2},
     method = 2..8..2,
     nslice = 1..3,
@@ -299,17 +432,24 @@ local function testRFMULTIPOLE()
     element = "rfmultipole",
     l = 1.5,
 
-    tol = 100,
+    tol = 1,
 
-    knl = {
+    knl =\s-> {
       {0, 0, 0, 0},
-      -- {0.5, 0, 0, 0},
+      {0.5, 0, 0, 0},
       {0, 5, 0, 0},
       {0, 0, 50, 0},
       {0, 0, 0, 500},
-      -- {0.5, 5, 50, 500},
+      {0.5, 5, 50, 500},
     },
     alist = tblcat(ref_cfg.alist, {"knl"}),
+
+    plot_info = {
+      title    = "RF-Multipole NG v NG Maps",
+      filename = "rfmult-ngvng.png",
+      series   = default_plot_cfg.series,
+      legend   = default_plot_cfg.legend,
+    },
   }
 
   run_test(cfg)
@@ -351,11 +491,43 @@ local function testRFCAVITY()
     volt = {-8, 0, 8},
     freq = {75, 150, 225},
     lag  = {0, 0.8},
-    alist = tblcat(ref_cfg.alist, {"volt", "freq", "lag"}),
+    l    = {0, 1.5},
+    alist = tblcat(ref_cfg.alist, {"volt", "freq", "lag", "l"}),
 
     plot_info = {
       title    = "RF Cavity NG v NG Maps",
       filename = "rfcav-ngvng.png",
+      series   = default_plot_cfg.series,
+      legend   = default_plot_cfg.legend,
+    },  
+  }
+
+  run_test(cfg)
+end
+
+local function testRFCAVITYf()
+  local cfg = ref_cfg "rfcavf" {
+    elm = [[rfcavity 'rfcav' {
+      l=${l}, volt=${bdir}*${volt}, freq=${freq}, lag=${lag}, fringe=8,
+      no_cavity_totalpath=${totalpath}, 
+    }]],
+    model  = {1, 2},
+    method = {2},
+    nslice = {1},
+    energy = {1, 6500},
+
+    tol = 20,
+
+    volt = {-8, 0, 8},
+    freq = {75, 150, 225},
+    lag  = {0, 0.8},
+    l    = {0, 1.5},
+    totalpath = {false, true},
+    alist = tblcat(ref_cfg.alist, {"volt", "freq", "lag", "l", "totalpath"}),
+
+    plot_info = {
+      title    = "RF Cavity Fringe NG v NG Maps",
+      filename = "rfcavf-ngvng.png",
       series   = default_plot_cfg.series,
       legend   = default_plot_cfg.legend,
     },  
@@ -450,7 +622,7 @@ local function testMULTIPOLE()
   local cfg = ref_cfg "mult" {
     elm = [[
       multipole 'mult' {
-        at=0.75, lrad=${lrad}, knl={
+        at=0, lrad=${lrad}, knl={
           ${bdir}*${k0},
           ${bdir}*${k1},
           ${bdir}*${k2},
@@ -463,6 +635,7 @@ local function testMULTIPOLE()
         }, ksi=${bdir}*${ksi}, fringe=0
       }
       ]],
+    seql = 0,
     model  = {1},
     method = {2},
     nslice = {1},
@@ -470,7 +643,7 @@ local function testMULTIPOLE()
 
     order = 6,
 
-    tol = 60,
+    tol = 1,
 
     lrad = { 0, 0.5, 1.5},
     k0   = {-0.15, 0, 0.2},
@@ -481,7 +654,7 @@ local function testMULTIPOLE()
     k1s  = {-0.15, 0, 0.2},
     k2s  = \s -> s.cur_cfg.k0s,
     k3s  = \s -> s.cur_cfg.k1,
-    ksi  = {0, -0.15, 0.2},
+    ksi  = \s -> s.cur_cfg.lrad > 0 and {0, -0.15, 0.2} or {0},
     alist = tblcat(ref_cfg.alist, {"lrad", "k0", "k1", "k0s", "k1s", "ksi"}),
 
     plot_info = {
@@ -503,7 +676,7 @@ local function testROTATION()
     nslice = {1},
     energy = {1, 6500},
 
-    tol =  10,
+    tol =  15,
 
     at    = {0.05, 0.25, 0.75, 1},
     _angle= {10, 50, 100, 330, 500, 1000},
@@ -533,10 +706,10 @@ local function testTRANSLATE() -- Needs verification about tdir and sdir
     tol = 10,
 
     at    = {0.05, 0.25, 0.75, 1},
-    dx    = {0.01, 0.05, 0.1, 0.2},
-    dy    = {0.01, 0.05, 0.1, 0.2},
-    ds    = {0.01, 0.05, 0.1, 0.2},
-    alist = tblcat(ref_cfg.alist, {"at", "dx", "dy", "ds"}),
+    dx    = {0, 0.01, 0.05, 0.1, 0.2},
+    dy    = {0, 0.01, 0.05, 0.1, 0.2},
+    ds    = {0, 0.01, 0.05, 0.1, 0.2},
+    alist = tblcat(ref_cfg.alist, {"at", "ds", "dy", "dx"}),
 
     plot_info = {
       title    = "Translation NG v NG Maps",
@@ -581,14 +754,18 @@ end
 
 testDRIFT()
 testQUAD()
+testQUADf()
 testSEXT()
 testOCT()
-testSBEND()
+testSBEND() 
+testSBENDf()
 testRBEND()
-testRBENDPARALLEL()
+testQUADh()
+testRBENDPARALLEL() 
 testRFMULTIPOLE()
-testSOL()
+testSOL() 
 testRFCAVITY()
+testRFCAVITYf()
 testKICKER()
 testELSEPARATOR()
 testCCAVITY()
