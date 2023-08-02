@@ -229,8 +229,8 @@ inline void bxbyh (const cflw<M> &m, const V &x, const V &y, T &bx, T &by)
     }
 
     ++k;
-    btx = (bx + btx + R(m.bfx[k])) * x;
-    bty = (by + bty + R(m.bfy[k])) * x;
+    bx = (bx + btx + R(m.bfx[k])) * x;
+    by = (by + bty + R(m.bfy[k])) * x;
   }
 
   btx = 0., bty = 0.;
@@ -239,7 +239,7 @@ inline void bxbyh (const cflw<M> &m, const V &x, const V &y, T &bx, T &by)
     bty = (bty + R(m.bfy[k])) * y;
   }
 
-  bx += btx + R(m.bfx[k+1]);
+  bx += btx + R(m.bfx[k+1]); // Better to enforce associativity in Lua. 
   by += bty + R(m.bfy[k+1]);
 }
 
