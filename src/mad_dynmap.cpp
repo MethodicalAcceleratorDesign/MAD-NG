@@ -223,14 +223,14 @@ inline void bxbyh (const cflw<M> &m, const V &x, const V &y, T &bx, T &by)
   RFOR(i,m.snm) {
     btx = 0., bty = 0.;
 
-    RFOR(j,m.snm-i) { ++k;
+    RFOR(j,m.snm-(i+1)) { ++k;
       btx = (btx + R(m.bfx[k])) * y;
       bty = (bty + R(m.bfy[k])) * y;
     }
 
     ++k;
-    btx = (bx + btx + R(m.bfx[k])) * x;
-    bty = (by + bty + R(m.bfy[k])) * x;
+    bx = (bx + btx + R(m.bfx[k])) * x;
+    by = (by + bty + R(m.bfy[k])) * x;
   }
 
   btx = 0., bty = 0.;
@@ -239,8 +239,8 @@ inline void bxbyh (const cflw<M> &m, const V &x, const V &y, T &bx, T &by)
     bty = (bty + R(m.bfy[k])) * y;
   }
 
-  bx += btx + R(m.bfx[k+1]);
-  by += bty + R(m.bfy[k+1]);
+  bx = bx + btx + R(m.bfx[k+1]); // Not using += reduces numerical instability with Lua 
+  by = by + bty + R(m.bfy[k+1]);
 }
 
 // --- patches ----------------------------------------------------------------o
