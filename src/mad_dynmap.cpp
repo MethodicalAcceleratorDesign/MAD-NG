@@ -1383,7 +1383,7 @@ inline void mult_fringe (cflw<M> &m, num_t lw)
       rx = drx*p.x - dix*p.y;
       ix = drx*p.y + dix*p.x;
 
-      num_t nj = -wchg/(4*(j+1)), nf = (j+2)/j;
+      num_t nj = -wchg/(4*(j+1)), nf = (j+2.)/j;
       P kj = R(m.knl[j-1])*_l, ksj = R(m.ksl[j-1])*_l;
 
       T u, v, du, dv;
