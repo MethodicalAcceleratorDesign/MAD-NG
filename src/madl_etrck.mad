@@ -95,7 +95,7 @@ local genm_thick                                                   in MAD.dynmap
 
 -- patches
 local xrotation, yrotation, srotation, translate,
-      changeref, changedir, changenrj, misalign                    in MAD.dynmap
+      changeref, changedir, changenrj, misalign, tilt              in MAD.dynmap
 
 -- fringe flags
 local fringe                                                       in MAD.dynmap
@@ -122,17 +122,18 @@ struct cflw_r { // must be identical to def in mad_dynmap.cpp !!
   // directions, path
   int sdir, edir, pdir, T, Tbak;
 
-  // quad, solenoid, multipole, esptum, rfcav
-  num_t k1, ks, volt, freq, lag;
+  // quad, solenoid, multipole, esptum, rfcav, sine & cosine
+  num_t k1, ks, volt, freq, lag,  ca, sa;
   int nbsl;
 
   // fringes
   int frng, fmax;
-  num_t e, h, a;
-  num_t fint, hgap, f1, f2;
+  num_t e, h, a, fint, hgap, f1, f2;
 
-  // angles
-  num_t ca, sa, tlt;
+  // patches, misalignments & tilt
+  bool  rot, trn;
+  num_t dx,   dy,   ds;
+  num_t dthe, dphi, dpsi, tlt;
 
   // multipoles
   int   nmul;
@@ -143,17 +144,6 @@ struct cflw_r { // must be identical to def in mad_dynmap.cpp !!
   int   snm;
   num_t bfx[snm_max];
   num_t bfy[snm_max];
-
-  // patches
-  num_t dx,   dy,   ds;
-  num_t dthe, dphi, dpsi;
-
-  // misalign
-  struct {
-    bool  rot, trn;
-    num_t dx,   dy,   ds;
-    num_t dthe, dphi, dpsi;
-  } algn;
 
   // particles
   int    npar;
@@ -175,17 +165,18 @@ struct cflw_t { // must be identical to def in mad_dynmap.cpp !!
   // directions, path
   int sdir, edir, pdir, T, Tbak;
 
-  // quad, solenoid, multipole, esptum, rfcav
-  num_t k1, ks, volt, freq, lag;
+  // quad, solenoid, multipole, esptum, rfcav, sine & cosine
+  num_t k1, ks, volt, freq, lag, ca, sa;
   int nbsl;
 
   // fringes
   int frng, fmax;
-  num_t e, h, a;
-  num_t fint, hgap, f1, f2;
+  num_t e, h, a, fint, hgap, f1, f2;
 
-  // angles
-  num_t ca, sa, tlt;
+  // patches, misalignments & tilt
+  bool  rot, trn;
+  num_t dx,   dy,   ds;
+  num_t dthe, dphi, dpsi, tlt;
 
   // multipoles
   int   nmul;
@@ -196,17 +187,6 @@ struct cflw_t { // must be identical to def in mad_dynmap.cpp !!
   int   snm;
   num_t bfx[snm_max];
   num_t bfy[snm_max];
-
-  // patches
-  num_t dx,   dy,   ds;
-  num_t dthe, dphi, dpsi;
-
-  // misalign
-  struct {
-    bool  rot, trn;
-    num_t dx,   dy,   ds;
-    num_t dthe, dphi, dpsi;
-  } algn;
 
   // damaps
   int      npar;
@@ -228,17 +208,18 @@ struct cflw_p { // must be identical to def in mad_dynmap.cpp !!
   // directions, path
   int sdir, edir, pdir, T, Tbak;
 
-  // quad, solenoid, multipole, esptum, rfcav
-  tpsa_t *k1, *ks, *volt, *freq, *lag;
+  // quad, solenoid, multipole, esptum, rfcav, sine & cosine
+  tpsa_t *k1, *ks, *volt, *freq, *lag, *sa, *ca;
   int nbsl;
 
   // fringes
   int frng, fmax;
-  tpsa_t *e, *h, *a;
-  num_t fint, hgap, f1, f2;
+  tpsa_t *e, *h, *a, *fint, *hgap, *f1, *f2;
 
-  // angles
-  tpsa_t *ca, *sa, *tlt;
+  // patches, misalignments & tilt
+  bool  rot, trn;
+  tpsa_t *dx,   *dy,   *ds;
+  tpsa_t *dthe, *dphi, *dpsi, *tlt;
 
   // multipoles
   int    nmul;
@@ -249,17 +230,6 @@ struct cflw_p { // must be identical to def in mad_dynmap.cpp !!
   int     snm;
   tpsa_t *bfx[snm_max];
   tpsa_t *bfy[snm_max];
-
-  // patches
-  tpsa_t *dx,   *dy,   *ds;
-  tpsa_t *dthe, *dphi, *dpsi;
-
-  // misalign
-  struct {
-    bool  rot, trn;
-    num_t dx,   dy,   ds;
-    num_t dthe, dphi, dpsi;
-  } algn;
 
   // parametric damaps
   int      npar;
@@ -326,6 +296,7 @@ local map = {
     [changedir   ] =            changedir     ,
     [changenrj   ] =            changenrj     ,
     [misalign    ] = _C.mad_trk_misalign_r    ,
+    [tilt        ] = _C.mad_trk_tilt_r        ,
     [fnil        ] = _C.mad_trk_fnil          ,
   },
   t = {
@@ -368,6 +339,7 @@ local map = {
     [changedir   ] =            changedir     ,
     [changenrj   ] =            changenrj     ,
     [misalign    ] = _C.mad_trk_misalign_t    ,
+    [tilt        ] = _C.mad_trk_tilt_t        ,
     [fnil        ] = _C.mad_trk_fnil          ,
   },
   p = {
@@ -410,11 +382,14 @@ local map = {
     [changedir   ] =            changedir     ,
     [changenrj   ] =            changenrj     ,
     [misalign    ] = _C.mad_trk_misalign_p    ,
+    [tilt        ] = _C.mad_trk_tilt_p        ,
     [fnil        ] = _C.mad_trk_fnil          ,
   },
 }
 
 -- strengths and phases -------------------------------------------------------o
+
+local nsnm = \snm -> ((snm+1)*(snm+2)/2) -- see snm_max above
 
 local function cpy_mult (m)
   local c = m.cflw
@@ -429,8 +404,8 @@ local function cpy_mult (m)
     c.ksl[i-1] = m.ksl[i]
   end
 
-  if c.snm > 0 then -- bfx and bfy will have nil values otherwise
-    for i=1,(c.snm+1)*(c.snm+2)/2 do
+  if c.snm > 0 then
+    for i=1,nsnm(c.snm) do
       c.bfx[i-1] = m.bfx[i] 
       c.bfy[i-1] = m.bfy[i] 
     end  
