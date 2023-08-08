@@ -49,17 +49,18 @@ struct cflw {
   // directions, path
   int sdir, edir, pdir, T, Tbak;
 
-  // quad, solenoid, multipole, esptum, rfcav
-  MP k1, ks, volt, freq, lag;
+  // quad, solenoid, multipole, esptum, rfcav, sine & cosine
+  MP k1, ks, volt, freq, lag, sa, ca;
   int nbsl;
 
   // fringes
   int frng, fmax;
-  MP e, h, a;
-  num_t fint, hgap, f1, f2;
+  MP e, h, a, fint, hgap, f1, f2;
 
-  // angles
-  MP ca, sa, tlt;
+  // patches, misalignments & tilt
+  bool rot, trn;
+  MP dx,   dy,   ds;
+  MP dthe, dphi, dpsi, tlt;
 
   // multipoles
   int nmul;
@@ -70,17 +71,6 @@ struct cflw {
   int snm;
   MP  bfx[snm_max];
   MP  bfy[snm_max];
-
-  // patches
-  MP dx,   dy,   ds;
-  MP dthe, dphi, dpsi;
-
-  // misalign
-  struct {
-    bool  rot, trn;
-    num_t dx,   dy,   ds;
-    num_t dthe, dphi, dpsi;
-  } algn;
 
   // particles/damaps/parametric_damaps (must be last!!)
   int npar;
@@ -361,7 +351,6 @@ inline void changeref (cflw<M> &m, num_t lw)
   mdump(0);
   lw *= m.sdir;
 
-  // (y/x/s)rotation maps do lw*tdir, so to get the same result as in lua we muliply by sdir 
   if (rot && lw > 0) {
     yrotation<M>(m,  m.sdir, zero);
     xrotation<M>(m, -m.sdir, zero);
@@ -380,23 +369,23 @@ inline void changeref (cflw<M> &m, num_t lw)
 
 // --- misalignments ----------------------------------------------------------o
 
-template <typename M>
+template <typename M, typename R=M::R>
 inline void misalignent (cflw<M> &m)
 {
   mdump(0);
-  if (m.algn.rot && m.sdir > 0) {
-    yrotation<M>(m,  m.edir, m.algn.dthe);
-    xrotation<M>(m, -m.edir, m.algn.dphi);
-    srotation<M>(m,  m.edir, m.algn.dpsi);
+  if (m.rot && m.sdir > 0) {
+    yrotation<M>(m,  m.edir, R(m.dthe));
+    xrotation<M>(m, -m.edir, R(m.dphi));
+    srotation<M>(m,  m.edir, R(m.dpsi));
   }
 
-  if (m.algn.trn)
-    translate<M>(m, m.sdir, m.algn.dx, m.algn.dy, m.algn.ds);
+  if (m.trn)
+    translate<M>(m, m.sdir, R(m.dx), R(m.dy), R(m.ds));
 
-  if (m.algn.rot && m.sdir < 0) {
-    srotation<M>(m, -m.edir, m.algn.dpsi);
-    xrotation<M>(m,  m.edir, m.algn.dphi);
-    yrotation<M>(m, -m.edir, m.algn.dthe);
+  if (m.rot && m.sdir < 0) {
+    srotation<M>(m, -m.edir, R(m.dpsi));
+    xrotation<M>(m,  m.edir, R(m.dphi));
+    yrotation<M>(m, -m.edir, R(m.dthe));
   }
   mdump(1);
 }
@@ -405,31 +394,33 @@ template <typename M, typename R=M::R>
 inline void misalignexi (cflw<M> &m)
 {
   mdump(0);
-  num_t rb[3*3], r[3*3];
-  num_t tb[3]  , t[3]={m.algn.dx, m.algn.dy, m.algn.ds};
+  num_t rb[3*3], r[3*3],
+        tb[3]  , t[3]={fval(m.dx)  , fval(m.dy)  , fval(m.ds)  },
+                 a[3]={fval(m.dphi), fval(m.dthe), fval(m.dpsi)};
 
-  if (m.algn.rot)
-    mad_mat_rotyxz(r, m.algn.dphi, -m.algn.dthe, -m.algn.dpsi, true);
+  if (m.rot)
+    mad_mat_rotyxz(r, a[0], -a[1], -a[2], true);
 
   // compute Rbar, Tbar
-  mad_mat_rtbar(rb, tb, fabs(m.el), fval(m.mang), fval(m.tlt), m.algn.rot ? r:0, t);
+  mad_mat_rtbar(rb, tb, fabs(m.el), fval(m.mang), fval(m.tlt), m.rot ? r:0, t);
 
-  if (m.algn.rot && m.sdir > 0) {
+  if (m.rot && m.sdir > 0) {
     num_t v[3];
     mad_mat_torotyxz(rb, v, true);
-    srotation<M>(m, -m.edir, -v[2]);
-    xrotation<M>(m,  m.edir, -v[0]);
-    yrotation<M>(m, -m.edir, -v[1]);
+    srotation<M>(m, -m.edir, R(m.dpsi)-(a[2]+v[2]));
+    xrotation<M>(m,  m.edir, R(m.dphi)-(a[0]+v[0]));
+    yrotation<M>(m, -m.edir, R(m.dthe)-(a[1]+v[1]));
   }
 
-  if (m.algn.trn) translate<M>(m, -m.sdir, tb[0], tb[1], tb[2]);
+  if (m.trn) translate<M>(m, -m.sdir,
+     R(m.dx)-(t[0]+tb[0]), R(m.dy)-(t[1]+tb[1]), R(m.ds)-(t[2]+tb[2]));
 
-  if (m.algn.rot && m.sdir < 0) {
+  if (m.rot && m.sdir < 0) {
     num_t v[3];
     mad_mat_torotyxz(rb, v, true);
-    yrotation<M>(m,  m.edir, -v[1]);
-    xrotation<M>(m, -m.edir, -v[0]);
-    srotation<M>(m,  m.edir, -v[2]);
+    yrotation<M>(m,  m.edir, R(m.dthe)-(a[1]+v[1]));
+    xrotation<M>(m, -m.edir, R(m.dphi)-(a[0]+v[0]));
+    srotation<M>(m,  m.edir, R(m.dpsi)-(a[2]+v[2]));
   }
   mdump(1);
 }
@@ -1262,10 +1253,12 @@ inline void bend_fringe (cflw<M> &m, num_t lw)
   if (fabs(m.knl[0]) < minang) return;
 
   mdump(0);
-  num_t   fh = 2*m.fint*m.hgap;
-  num_t fsad = fh ? 1/(36*fh) : 0;
-  P       b0 = R(m.knl[0])/abs(R(m.el))*(lw*m.sdir*m.edir*m.charge);
-  P       c2 = fh*b0;
+  P   fh = 2*R(m.fint)*R(m.hgap);
+  P   b0 = R(m.knl[0])/abs(R(m.el))*(lw*m.sdir*m.edir*m.charge);
+  P   c2 = fh*b0;
+  P fsad;
+
+  if (fval(fh)) fsad=1/(36*fh); else fsad = 0.;
 
   FOR (i,m.npar) {
     M p(m,i);
@@ -1324,8 +1317,8 @@ inline void qsad_fringe (cflw<M> &m, num_t lw)
   P     a    = -0.5*atan2(R(m.ksl[1]), R(m.knl[1]));
   P     b2   = hypot(R(m.knl[1]), R(m.ksl[1]))/R(m.el)*m.edir;
   P     ca   = cos(a), sa = sin(a);
-  P     bf1  = (-abs(m.f1)*m.f1/24)*b2;
-  P     bf2  =             m.f2    *b2;
+  P     bf1  = (abs(R(m.f1))*R(m.f1)/-24)*b2;
+  P     bf2  =               R(m.f2)     *b2;
 
   // Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
   FOR (i,m.npar) {
@@ -1510,63 +1503,73 @@ inline void rfcav_fringe (cflw<M> &m, num_t lw)
 
 // --- patches ---
 
-void mad_trk_xrotation_r (mflw_t *m, num_t lw, int _) {
+void mad_trk_xrotation_r (mflw_t *m, num_t lw) {
   xrotation<par_t>(m->rflw, lw, zero);
 }
-void mad_trk_yrotation_r (mflw_t *m, num_t lw, int _) {
+void mad_trk_yrotation_r (mflw_t *m, num_t lw) {
   yrotation<par_t>(m->rflw, lw, zero);
 }
-void mad_trk_srotation_r (mflw_t *m, num_t lw, int _) {
+void mad_trk_srotation_r (mflw_t *m, num_t lw) {
   srotation<par_t>(m->rflw, lw, zero);
 }
-void mad_trk_translate_r (mflw_t *m, num_t lw, int _) {
+void mad_trk_translate_r (mflw_t *m, num_t lw) {
   translate<par_t>(m->rflw, lw, zero, zero, zero);
 }
-void mad_trk_changeref_r (mflw_t *m, num_t lw, int _) {
+void mad_trk_changeref_r (mflw_t *m, num_t lw) {
   changeref<par_t>(m->rflw, lw);
 }
 
-void mad_trk_xrotation_t (mflw_t *m, num_t lw, int _) {
+void mad_trk_xrotation_t (mflw_t *m, num_t lw) {
   xrotation<map_t>(m->tflw, lw, zero);
 }
-void mad_trk_yrotation_t (mflw_t *m, num_t lw, int _) {
+void mad_trk_yrotation_t (mflw_t *m, num_t lw) {
   yrotation<map_t>(m->tflw, lw, zero);
 }
-void mad_trk_srotation_t (mflw_t *m, num_t lw, int _) {
+void mad_trk_srotation_t (mflw_t *m, num_t lw) {
   srotation<map_t>(m->tflw, lw, zero);
 }
-void mad_trk_translate_t (mflw_t *m, num_t lw, int _) {
+void mad_trk_translate_t (mflw_t *m, num_t lw) {
   translate<map_t>(m->tflw, lw, zero, zero, zero);
 }
-void mad_trk_changeref_t (mflw_t *m, num_t lw, int _) {
+void mad_trk_changeref_t (mflw_t *m, num_t lw) {
   changeref<map_t>(m->tflw, lw);
 }
 
-void mad_trk_xrotation_p (mflw_t *m, num_t lw, int _) {
+void mad_trk_xrotation_p (mflw_t *m, num_t lw) {
   xrotation<prm_t>(m->pflw, lw, zero);
 }
-void mad_trk_yrotation_p (mflw_t *m, num_t lw, int _) {
+void mad_trk_yrotation_p (mflw_t *m, num_t lw) {
   yrotation<prm_t>(m->pflw, lw, zero);
 }
-void mad_trk_srotation_p (mflw_t *m, num_t lw, int _) {
+void mad_trk_srotation_p (mflw_t *m, num_t lw) {
   srotation<prm_t>(m->pflw, lw, zero);
 }
-void mad_trk_translate_p (mflw_t *m, num_t lw, int _) {
+void mad_trk_translate_p (mflw_t *m, num_t lw) {
   translate<prm_t>(m->pflw, lw, zero, zero, zero);
 }
-void mad_trk_changeref_p (mflw_t *m, num_t lw, int _) {
+void mad_trk_changeref_p (mflw_t *m, num_t lw) {
   changeref<prm_t>(m->pflw, lw);
 }
 
-// --- misalignment ---
+// --- tilt & misalignment ---
+void mad_trk_tilt_r (mflw_t *m, num_t lw) {
+  srotation<par_t>(m->rflw, lw, m->rflw.tlt);
+}
+void mad_trk_tilt_t (mflw_t *m, num_t lw) {
+  srotation<map_t>(m->tflw, lw, m->tflw.tlt);
+}
+void mad_trk_tilt_p (mflw_t *m, num_t lw) {
+  srotation<prm_t>(m->pflw, lw, tpsa_ref(m->pflw.tlt));
+}
 
-void mad_trk_misalign_r (mflw_t *m, num_t lw, int _) {
+
+void mad_trk_misalign_r (mflw_t *m, num_t lw) {
   misalign<par_t>(m->rflw, lw);
 }
-void mad_trk_misalign_t (mflw_t *m, num_t lw, int _) {
+void mad_trk_misalign_t (mflw_t *m, num_t lw) {
   misalign<map_t>(m->tflw, lw);
 }
-void mad_trk_misalign_p (mflw_t *m, num_t lw, int _) {
+void mad_trk_misalign_p (mflw_t *m, num_t lw) {
   misalign<prm_t>(m->pflw, lw);
 }
 
@@ -2016,19 +2019,15 @@ void mad_trk_spdtest (int n, int k)
 
     .sdir=1, .edir=1, .pdir=0, .T=0, .Tbak=-1,
 
-    .k1=0, .ks=0, .volt=0, .freq=0, .lag=0, .nbsl=0,
+    .k1=0, .ks=0, .volt=0, .freq=0, .lag=0, .sa=0, .ca=1, .nbsl=0,
 
     .frng=0, .fmax=2, .e=0, .h=0, .a=0, .fint=0, .hgap=0, .f1=0, .f2=0,
 
-    .ca=0, .sa=0, .tlt=0,
+    .rot=false, .trn=false,
+    .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0, .tlt=0,
 
     .nmul=1, .knl={1e-7}, .ksl={0},
     .snm=0,  .bfx={0}   , .bfy={0},
-
-    .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0,
-
-    .algn = {.rot=false, .trn=false,
-    .dx=0, .dy=0, .ds=0, .dthe=0, .dphi=0, .dpsi=0},
 
     .npar=1, .par=pars  ,// .map=maps,
   }};
