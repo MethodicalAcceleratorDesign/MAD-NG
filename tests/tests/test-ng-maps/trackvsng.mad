@@ -1,13 +1,17 @@
 -- locals ---------------------------------------------------------------------o
-local mtable, damap                                              in MAD
+local mtable, damap, tostring                                    in MAD
 local tblcpy, fileexists, tblcat, strinter                       in MAD.utility
 local max                                                        in math         
 local is_number, is_damap                                        in MAD.typeid
+local assertTrue                                                 in MAD.utest
 
 package.path = package.path .. ";../tools/?.mad"
-local get_diff, save_results, prnt_results, gen_cfg,
-      add_trk_gen_cols, show_res, plot_trk_res, get_prev_res,
-      args_to_cfg, tbl2da                                        in require "track-tool"      
+local get_diff, store_results, prnt_results, gen_cfg, in_dir, X0s, chk_tol,
+      out_dir, add_trk_gen_cols, show_res, get_prev_res, tbl2da, save_res  in require "track-tool"
+
+local plt_dir, plot_trk_res, do_norun                            in require "plot-tool"
+local args_to_cfg                                                in require "test-tool"
+
 
 local create_dif = require "madl_dbgmap".cmpmdump
 
@@ -18,11 +22,9 @@ local dum = damap() -- get a dummy damap object for reading
 local const_str = [[
 -- Constants
 local models = {'DKD', 'TKT'}
-local X0s = {{x=0   , px=0    , y=0    , py=0   , t=0   , pt=0   }, -- zero
-             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=0   }, -- 4D
-             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=2e-5}, -- 5D
-             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=1e-2}} -- 6D
-]]
+local X0s = 
+]] .. tostring(X0s, ",\n") .. "\n"
+
 local track_str = [[
 local X0 = X0s[${x0i}]
 if ${order} > 0 then 
@@ -69,13 +71,6 @@ local _, mflw = MAD.track { -- see ref_cfg for list of values
 }
 return mflw, particles
 ]]
-
-local in_dir  = \s -> 'input/' ..(s or '')
-local out_dir = \s -> 'output/'..(s or '')
-local plt_dir = \s -> out_dir('plots/'..(s or ''))
-
-os.execute("mkdir -p "..out_dir()) -- Create output dir if it doesn't exist
-os.execute("mkdir -p "..plt_dir()) -- Create image dir if it doesn't exist
 -------------------------------------------------------------------------------o
 
 -- Generate a MAD-NG script from the cfg and return it-------------------------o
@@ -88,14 +83,18 @@ end
 -- Run track and PTC from cur_cfg and create results --------------------------o
 local function debug_chk(cfg, dif, script2)
   if not cfg.dodbg then return end 
-  for i = 1, cfg.order+1 do
-    if dif["order"..i-1.."_eps"] > cfg.tol then
-      print("Max dif greater than tolerance, stopping...")
-      io.open(out_dir("setup1.mad"), "w"):write(cfg.ref_script):close()
-      io.open(out_dir("setup2.mad"), "w"):write(script2):close()
-      cfg.stop = true
-      return
-    end
+  if not chk_tol(dif, cfg.tol, cfg.order) then
+    print("Max dif greater than tolerance, stopping...")
+    io.open(out_dir("setup1.mad"), "w"):write(cfg.ref_script):close()
+    io.open(out_dir("setup2.mad"), "w"):write(script2):close()
+    cfg.stop = true
+    return
+  end
+end
+
+local function do_unit_test(cfg, dif)
+  if cfg.do_utest then
+    assertTrue(chk_tol(dif, cfg.tol, cfg.order), tostring(dif))
   end
 end
 
@@ -106,9 +105,10 @@ local function dif_save_prnt_dbg(cfg, exp, res, result_mtbl, script) -- exp and 
     if not is_damap(exp[i]) then exp[i] = tbl2da(exp[i]) end
     if not is_damap(res[i]) then res[i] = tbl2da(res[i]) end
     local dif_tbl = get_diff(exp[i], res[i], cfg.order)
-    save_results(cfg, dif_tbl, result_mtbl)
-    prnt_results(cfg, dif_tbl)
-    debug_chk(cfg, dif_tbl, script)
+    store_results(cfg, dif_tbl, result_mtbl)
+    prnt_results( cfg, dif_tbl)
+    debug_chk    (cfg, dif_tbl, script)
+    do_unit_test (cfg, dif_tbl)
   end
   cfg.cur_cfg.test_type = test_type  -- reset test type
 end
@@ -140,19 +140,30 @@ local function reverse_attr(cfg, results, attr)
   dif_save_prnt_dbg(cfg, cfg.ref_map, attr_res, results, attr_script)
 end
 
+local function reverse_chg(cfg, results)
+  if not cfg.dochg then return end
+  reverse_attr(cfg, results, "chg")
+end
+
+local function reverse_edir(cfg, results)
+  if not cfg.doedir then return end
+  reverse_attr(cfg, results, "edir")
+end
+
 local function cmaps(cfg, results)
   cfg.cmap = true
   local cmap_script = create_run(cfg, cfg.cur_cfg)
   local _, cmap_res = loadstring(cmap_script)()
-
-  cfg.cur_cfg.test_type = "cmap"  -- Set test type
-  dif_save_prnt_dbg(cfg, cfg.ref_map, cmap_res, results, cmap_script)
+  if cfg.docmap then
+    cfg.cur_cfg.test_type = "cmap"  -- Set test type
+    dif_save_prnt_dbg(cfg, cfg.ref_map, cmap_res, results, cmap_script)
+  end
   local lref_map, lref_script = cfg.ref_map, cfg.ref_script
   cfg.ref_map, cfg.ref_script = cmap_res, cmap_script
   
-  backtrack(cfg, results)            -- Backtrack
-  reverse_attr(cfg, results, "chg")  -- Change sign of chg
-  reverse_attr(cfg, results, "edir") -- Change sign of edir
+  backtrack   (cfg, results) -- Backtrack
+  reverse_chg (cfg, results) -- Change sign of chg
+  reverse_edir(cfg, results) -- Change sign of edir
   cfg.cmap, cfg.ref_map, cfg.ref_script = false, lref_map, lref_script
 end
 
@@ -164,14 +175,19 @@ local function run_cfg(cfg, equiv, results)
   cfg.ref_map = ref
   
   -- Do default checks
-  cmaps       (cfg, results        ) -- Check cmap
-  backtrack   (cfg, results        ) -- Backtrack
-  reverse_attr(cfg, results, "chg" ) -- Change sign of chg
-  reverse_attr(cfg, results, "edir") -- Change sign of edir
+  if cfg.docppall then
+    cmaps       (cfg, results) -- Check cmap
+  end
+  if cfg.doluaall then
+    backtrack   (cfg, results) -- Backtrack
+    reverse_chg (cfg, results) -- Change sign of chg
+    reverse_edir(cfg, results) -- Change sign of edir
+  end
 
   -- Copy main config to make comparable config and then compare
 
   -- Generate similar configs
+  if not cfg.docstm then return end
   for i, change_type in ipairs(equiv.alist or {}) do      -- Go through list of equivalences
     for j = 1, equiv[change_type].n do              -- Go through each equivalence
       cfg.cur_cfg.test_type = change_type.."_"..j   -- Set test type
@@ -189,21 +205,53 @@ local function run_cfg(cfg, equiv, results)
   end
 end
 
+local bool_to_series = {
+  doedir = "('${test_type}'):sub(1,4) == 'edir'",
+  dochg  = "('${test_type}'):sub(1,3) == 'chg'",
+  dobck  = "('${test_type}'):sub(1,9) == 'backtrack'",
+  docmap = "('${test_type}'):sub(1,4) == 'cmap'",
+}
+
+local bool_to_legend = {
+  doedir = "Reverse edir",
+  dochg  = "Reverse charge",
+  dobck  = "Backtrack",
+  docmap = "Cmap",
+}
+
+local default_plot_cfg = {
+  series      = {},
+  legend      = {},
+}
+
+local function gen_plot_cfg(cfg)
+  local idx = 1
+  for _, v in ipairs{"doedir", "dochg", "dobck", "docmap"} do
+    if cfg[v] then
+      default_plot_cfg.series[idx]      = bool_to_series[v]
+      default_plot_cfg.legend["y"..idx] = bool_to_legend[v]
+      idx = idx + 1
+    end
+  end
+end
+
 -- Run test -------------------------------------------------------------------o
 local function run_test(cfg, equiv)    
+  -- list of core values that are changed manually throughout the tests
+  cfg.edir = 1 -- 1/-1 (element direction)
+  cfg.sdir = 1 -- 1/-1 (tracking direction)
+  cfg.chg  = 1 -- 1/-1 (charge)
+  cfg.tdir = \s-> s.edir * s.sdir          -- tracking time direction
+  cfg.bdir = \s-> s.edir * s.sdir * s.chg  -- tracking beam direction
+  cfg.cmap = false
+
   args_to_cfg(cfg)
-  -- If the user does not want to run the test, 
-  -- just show results from previous run
-  if not cfg.dorun then 
-    local cfg_tbl, res_tbl = get_prev_res(cfg.name, out_dir)
-    res_tbl.max_order = cfg.order
-    if cfg.doprnt then show_res(res_tbl, cfg_tbl, cfg_tbl:colnames(), cfg.tol) end
-    if cfg.doplot then plot_trk_res(res_tbl, cfg, plt_dir, cfg_tbl) end
-    return 
-  end
+
+  -- If the user does not want to run the test, just show results from previous run
+  if not cfg.dorun then return do_norun (cfg) end
 
   -- Create new table for cur_cfg for each cfg set
-  cfg.cur_cfg = {cfgid = 0}
+  cfg.cur_cfg = {cfgid = 0, test_type="nil"}
   
   -- Create the mtable to store the results
   local results = mtable(cfg.name){
@@ -214,7 +262,7 @@ local function run_test(cfg, equiv)
   }
   
   if cfg.doprnt then 
-    io.write("Running ", cfg.name, " (tol = ", cfg.tol, ")\n")
+    io.write("Running ", cfg.name, " (tol = ", tostring(cfg.tol), ")\n")
   -- Print the header
     io.write("cfgid\t")
     for i = 0, cfg.order do io.write("order "..i.."\t") end
@@ -248,14 +296,14 @@ local function run_test(cfg, equiv)
       hdr_lst
     ) 
   end
+  -- if dosave then save_res(cfg, results, nil, {"cfgid", "test_type"}) end
 
   -- Print the results
-  if cfg.doprnt then 
-    show_res(results, results, cfg.alist, cfg.tol)
-  end 
+  if cfg.doprnt then show_res(results, results, cfg.alist, cfg.tol) end 
 
   -- Plot the results
   if cfg.doplot then 
+    gen_plot_cfg(cfg)
     plot_trk_res(results, cfg, plt_dir)
   end
 
@@ -268,4 +316,7 @@ local function run_test(cfg, equiv)
   end
 end
 -------------------------------------------------------------------------------o
-return { run_test = run_test }
+return { 
+  run_test         = run_test        ,
+  default_plot_cfg = default_plot_cfg,
+}

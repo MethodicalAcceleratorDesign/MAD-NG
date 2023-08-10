@@ -1,0 +1,114 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | MAD element test suites
+ | Usage:
+ | ../mad test-all-maps.mad
+ | assume ../madx64 to be present
+ |
+ | Methodical Accelerator Design - Copyright CERN 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: J. Gray, joshua.mark.gray at cern.ch
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide test suites for the MAD vs MAD
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+--[[
+      edir  sdir  chg  |  tdir  bdir
+FODO   1     1     1   |   1     1
+FODO  -1     1     1   |  -1    -1
+ODOF   1    -1     1   |  -1    -1
+ODOF  -1    -1     1   |   1     1
+s
+DOFO   1     1    -1   |   1    -1
+DOFO  -1     1    -1   |  -1     1
+OFOD   1    -1    -1   |  -1     1
+OFOD  -1    -1    -1   |   1    -1
+
+Usage of directions:
+  - lengths        are multiplied by sdir
+  - bending angles are multiplied by tdir
+  - strengths      are multiplied by bdir
+--]]
+
+-- modules --------------------------------------------------------------------o
+
+-- list of test suites (see src/madl_main.mad)
+local modules = {
+  "curved", "electric", "fringe", "misalignment", "misc", "multipole", "patch", 
+  "subelm"
+}
+
+-- allow global access
+MAD.strict(false)
+
+ref_cfg = MAD.object "ref" { -- The reference configuration for all tests
+  -- How to run the tests
+  dorun  = true, -- Default: true 
+  dosave = false, -- Default: false
+  doplot = false, -- Default: false
+  doprnt = false, -- Default: false
+  dodbg  = false, -- Default: false
+
+  dobck  = true, -- Default: true -> Whether to do backtracking (not fringes)
+  dochg  = true, -- Default: true -> Whether to do charge
+  doedir = true, -- Default: true -> Whether to do edir
+  docmap = true, -- Default: true -> Whether to do cmap
+  docstm = true, -- Default: true -> Whether to do custom equivalences
+
+  doluaall = true, -- Default: true -> Whether to do all Lua tests
+  docppall = true, -- Default: true -> Whether to do all C++ tests
+  
+  -- list of variables in the tests
+  alist = {"model", "energy", "method", "nslice", "x0i"}, --attributes list
+  tol = 1000,
+
+  -- list of values that are used to run test but are not changed throughout
+  order  = 4,        -- 2/4
+  debug  = 0,        -- 0/6
+  seql   = 1.5,
+  npar   = 2,
+
+  x0i    = 1..5,       -- 0, 4D, 5D, 6D (see get_mad_str)
+}
+
+-- load test suites
+for _,v in ipairs(modules) do
+  modules[v] = require("test-" .. v .. "-maps")
+end
+
+-- control display of custom objects during tests
+MAD:export('tostring', true)
+
+-- check for unexpected global access
+MAD.strict()
+
+local parse_cmd_args, run_tests in require("testvsng")
+if parse_cmd_args() then return run_tests() end
+
+-- run test suites
+local status = MAD.utest.LuaUnit.run()
+
+-- collect tests
+local testname = MAD.utest.LuaUnit.collectTests()
+
+-- build dict
+MAD.utility.setkeys(testname)
+testname["ref_cfg"] = true   -- Not an unexpected global
+
+-- check for unexpected globals
+MAD.checkglobal(testname)
+
+-- exit status, run finalizer
+os.exit( status, true )
