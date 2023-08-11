@@ -229,8 +229,8 @@ inline void bxbyh (const cflw<M> &m, const V &x, const V &y, T &bx, T &by)
     }
 
     ++k;
-    btx = (bx + btx + R(m.bfx[k])) * x;
-    bty = (by + bty + R(m.bfy[k])) * x;
+    bx = (bx + btx + R(m.bfx[k])) * x;
+    by = (by + bty + R(m.bfy[k])) * x;
   }
 
   btx = 0., bty = 0.;
@@ -239,7 +239,7 @@ inline void bxbyh (const cflw<M> &m, const V &x, const V &y, T &bx, T &by)
     bty = (bty + R(m.bfy[k])) * y;
   }
 
-  bx += btx + R(m.bfx[k+1]);
+  bx += btx + R(m.bfx[k+1]); // Better to enforce associativity in Lua. 
   by += bty + R(m.bfy[k+1]);
 }
 
@@ -361,18 +361,19 @@ inline void changeref (cflw<M> &m, num_t lw)
   mdump(0);
   lw *= m.sdir;
 
+  // (y/x/s)rotation maps do lw*tdir, so to get the same result as in lua we muliply by sdir 
   if (rot && lw > 0) {
-    yrotation<M>(m,  m.edir, zero);
-    xrotation<M>(m, -m.edir, zero);
-    srotation<M>(m,  m.edir, zero);
+    yrotation<M>(m,  m.sdir, zero);
+    xrotation<M>(m, -m.sdir, zero);
+    srotation<M>(m,  m.sdir, zero);
   }
 
   if (trn) translate<M>(m, 1, zero, zero, zero);
 
   if (rot && lw < 0) {
-    srotation<M>(m, -m.edir, zero);
-    xrotation<M>(m,  m.edir, zero);
-    yrotation<M>(m, -m.edir, zero);
+    srotation<M>(m, -m.sdir, zero);
+    xrotation<M>(m,  m.sdir, zero);
+    yrotation<M>(m, -m.sdir, zero);
   }
   mdump(1);
 }
@@ -503,12 +504,12 @@ inline void strex_kick (cflw<M> &m, num_t lw, int is, bool no_k0l=false)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void strex_kicks (cflw<M> &m, num_t lw, M &p, T &pz)
 {
-  if (fval(m.ks) < minstr || fval(m.lrad) < minlen) return;
+  if (fabs(m.ks) < minstr || fabs(m.lrad) < minlen) return;
 
-  num_t wchg = lw*m.sdir*m.edir*m.charge;
-  P hss  = lw*sqr(R(m.ks));
+  num_t wchg = lw*m.edir*m.charge; // lrad is already weighted by sdir
+  P hss  = lw*R(m.lrad)*sqr(R(m.ks));
   T _dpp = inv(pz);
-  T  ang = 0.5*wchg*R(m.ks)*R(m.lrad)*_dpp;
+  T  ang = (0.5*wchg)*R(m.ks)*R(m.lrad)*_dpp;
   T  ca  = cos(ang), sa = sin(ang);
 
   T nx  = ca*p. x + sa*p. y;
@@ -527,7 +528,7 @@ inline void strex_kicks (cflw<M> &m, num_t lw, M &p, T &pz)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void strex_kickhs (cflw<M> &m, num_t lw, int is)
 {                                             (void)is;
-  if ((!m.nmul && fval(m.ks) < minstr) || !m.charge) return;
+  if ((!m.nmul && fabs(m.ks) < minstr) || !m.charge) return;
 
   mdump(0);
   num_t wchg = lw*m.sdir*m.edir*m.charge;
@@ -1509,63 +1510,63 @@ inline void rfcav_fringe (cflw<M> &m, num_t lw)
 
 // --- patches ---
 
-void mad_trk_xrotation_r (mflw_t *m, num_t lw) {
+void mad_trk_xrotation_r (mflw_t *m, num_t lw, int _) {
   xrotation<par_t>(m->rflw, lw, zero);
 }
-void mad_trk_yrotation_r (mflw_t *m, num_t lw) {
+void mad_trk_yrotation_r (mflw_t *m, num_t lw, int _) {
   yrotation<par_t>(m->rflw, lw, zero);
 }
-void mad_trk_srotation_r (mflw_t *m, num_t lw) {
+void mad_trk_srotation_r (mflw_t *m, num_t lw, int _) {
   srotation<par_t>(m->rflw, lw, zero);
 }
-void mad_trk_translate_r (mflw_t *m, num_t lw) {
+void mad_trk_translate_r (mflw_t *m, num_t lw, int _) {
   translate<par_t>(m->rflw, lw, zero, zero, zero);
 }
-void mad_trk_changeref_r (mflw_t *m, num_t lw) {
+void mad_trk_changeref_r (mflw_t *m, num_t lw, int _) {
   changeref<par_t>(m->rflw, lw);
 }
 
-void mad_trk_xrotation_t (mflw_t *m, num_t lw) {
+void mad_trk_xrotation_t (mflw_t *m, num_t lw, int _) {
   xrotation<map_t>(m->tflw, lw, zero);
 }
-void mad_trk_yrotation_t (mflw_t *m, num_t lw) {
+void mad_trk_yrotation_t (mflw_t *m, num_t lw, int _) {
   yrotation<map_t>(m->tflw, lw, zero);
 }
-void mad_trk_srotation_t (mflw_t *m, num_t lw) {
+void mad_trk_srotation_t (mflw_t *m, num_t lw, int _) {
   srotation<map_t>(m->tflw, lw, zero);
 }
-void mad_trk_translate_t (mflw_t *m, num_t lw) {
+void mad_trk_translate_t (mflw_t *m, num_t lw, int _) {
   translate<map_t>(m->tflw, lw, zero, zero, zero);
 }
-void mad_trk_changeref_t (mflw_t *m, num_t lw) {
+void mad_trk_changeref_t (mflw_t *m, num_t lw, int _) {
   changeref<map_t>(m->tflw, lw);
 }
 
-void mad_trk_xrotation_p (mflw_t *m, num_t lw) {
+void mad_trk_xrotation_p (mflw_t *m, num_t lw, int _) {
   xrotation<prm_t>(m->pflw, lw, zero);
 }
-void mad_trk_yrotation_p (mflw_t *m, num_t lw) {
+void mad_trk_yrotation_p (mflw_t *m, num_t lw, int _) {
   yrotation<prm_t>(m->pflw, lw, zero);
 }
-void mad_trk_srotation_p (mflw_t *m, num_t lw) {
+void mad_trk_srotation_p (mflw_t *m, num_t lw, int _) {
   srotation<prm_t>(m->pflw, lw, zero);
 }
-void mad_trk_translate_p (mflw_t *m, num_t lw) {
+void mad_trk_translate_p (mflw_t *m, num_t lw, int _) {
   translate<prm_t>(m->pflw, lw, zero, zero, zero);
 }
-void mad_trk_changeref_p (mflw_t *m, num_t lw) {
+void mad_trk_changeref_p (mflw_t *m, num_t lw, int _) {
   changeref<prm_t>(m->pflw, lw);
 }
 
 // --- misalignment ---
 
-void mad_trk_misalign_r (mflw_t *m, num_t lw) {
+void mad_trk_misalign_r (mflw_t *m, num_t lw, int _) {
   misalign<par_t>(m->rflw, lw);
 }
-void mad_trk_misalign_t (mflw_t *m, num_t lw) {
+void mad_trk_misalign_t (mflw_t *m, num_t lw, int _) {
   misalign<map_t>(m->tflw, lw);
 }
-void mad_trk_misalign_p (mflw_t *m, num_t lw) {
+void mad_trk_misalign_p (mflw_t *m, num_t lw, int _) {
   misalign<prm_t>(m->pflw, lw);
 }
 
