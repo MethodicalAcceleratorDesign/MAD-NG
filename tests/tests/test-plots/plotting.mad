@@ -6,7 +6,9 @@ local round                                                      in MAD.gmath
 local is_nil                                                     in MAD.typeid
 local min                                                        in math
 package.path = package.path .. ";../tools/?.mad"
-local in_dir, out_dir, plt_dir, newSID, ptc_strs                 in require "track-tool"
+local in_dir, out_dir, ptc_strs                                  in require "track-tool"
+local plt_dir, newSID                                            in require "plot-tool"
+local args_to_cfg                                                in require "test-tool"
 
 local create_dif = require "madl_dbgmap".cmpmdump
 
@@ -74,7 +76,7 @@ local function get_coords(in_global_frame, x_coord, y_coord, tr, sv)
     local global_frame = get_global_coord(tr, sv)
     return global_frame[x_coord], global_frame[y_coord]
   else
-    return tr[x_coord], tr[y_coord] 
+    return tr[x_coord], tr[y_coord]
   end
 end
 
@@ -86,6 +88,19 @@ local function create_seq (cfg)
   MADX:load(cfg.seq_file)
   MADX.seq.beam = beam {energy=cfg.energy, charge=cfg.chg}
   MADX.seq.dir  = cfg.edir
+end
+
+local function run_plt_trk(cfg, trk_ref, get_coords, y_data, set_x1y2, attr)
+  create_seq(cfg)
+  local tr, _ = trk_ref { }
+  local x, y = get_coords(tr)
+  local diff = y_data - y
+  set_x1y2(
+    x, diff, attr, 
+    string.format(
+      "%s = %s diff, err_f = %.3g", attr, tostring(cfg[attr]), diff[#diff]
+    )
+  )
 end
 
 -- Remove the temporary files
@@ -102,6 +117,7 @@ local function clean_tmp (cfg)
 end
 
 local function run_test (cfg)
+  args_to_cfg(cfg)
   -- Generate the reference files
   local cfg = cfg { -- Override some values (method may be changed later)
     seq_file = in_dir(cfg.name.."_seq.seq"),
@@ -109,7 +125,8 @@ local function run_test (cfg)
     debug    = 7,
     method   = 8,
   }
-  local dir, sv_trk, sv_srv, sv_plt, nslice, ng_conv, ng_vs_ng, ng_vs_ptc, X0 in cfg
+  local dir, sv_trk, sv_srv, sv_plt, nslice, ng_conv, ng_vs_ng, ng_vs_ptc, X0,
+        ng_vs_cpp                                                             in cfg
   create_seq(cfg)
   
   local trk_ref = track { -- Cache certain values in the track (used everywhere)
@@ -135,9 +152,6 @@ local function run_test (cfg)
   local x_coord, y_coord, filename in cfg.plot_info
   local in_global_frame = x_coord == x_coord:upper()
 
-  -- Cache in_global_frame, x_coord and y_coord for the get_coords function
-  local get_coords = \tr, sv -> get_coords(in_global_frame, x_coord, y_coord, tr, sv)
-
   local title = cfg.plot_info.title .. (in_global_frame and " (global)" or " (local)")
   
   local data, x1y1, x1y2, legend, sv = {}, {}, {}, {}
@@ -147,16 +161,19 @@ local function run_test (cfg)
     legend["y_" .. name] = series
   end
   local tr, _ = trk_ref { model = "TKT" }
-  if sv_trk then tr:write(filename.."track_"..x0i) end
+  if sv_trk then tr:write(filename.."track") end
 
   assert(tr.lost == 0, "Particle lost during tracking")
   if in_global_frame then
     sv = srv_ref { }
     if sv_srv then sv:write(filename) end
   end
-  data  ["x1"], data["y1"] = get_coords(tr, sv)
-  x1y1  ["x1"] = "y1"
-  legend["y1"] = "x = "..X0.x..", px = "..X0.px
+  -- Cache in_global_frame, x_coord and y_coord for the get_coords function
+  local get_coords = \tr,sv_ -> get_coords(in_global_frame, x_coord, y_coord, tr, sv_ or sv)
+  data.x1, data.y1 = get_coords(tr)
+  
+  x1y1  .x1 = "y1"
+  legend.y1 = "x = "..X0.x..", px = "..X0.px
 
   if ng_vs_ptc and not in_global_frame then 
     local ptc_cfg = cfg {ptcmodel = true, method=2}
@@ -190,29 +207,13 @@ local function run_test (cfg)
       end 
       if tri > #tr then break end
     end
-    print("max error = ", math.max(table.unpack(y)))
-    set_x1y2(x, y, "ptc", "NG - PTC (order = " .. cfg.order .. ")")
-  end
-
-
-  if ng_vs_ng then
-    -- Change the sign of the edir
-    cfg.edir   = -cfg.edir
-    create_seq(cfg)
-    local tr, _ = trk_ref { }
-    local x, y = get_coords(tr, sv)
-    set_x1y2(x, data["y1"] - y, "edir", "Diff with edir = " .. cfg.edir)
-    cfg.edir, cfg.chg = -cfg.edir, -cfg.chg -- restore edir and reverse chg
-    
-    -- Change the sign of the charge
-    create_seq(cfg)
-    local tr, _ = trk_ref { }
-    local x, y = get_coords(tr, sv)
-    set_x1y2(x, data["y1"] - y, "chg", "Diff with charge = " .. cfg.chg)
-    
-    -- Restore the charge and sequence
-    cfg.chg = -cfg.chg
-    create_seq(cfg)
+    local max_y, min_y = math.max(table.unpack(y)), math.min(table.unpack(y))
+    if max_y > plot_template.y2range[2] then plot_template.y2range[2] = max_y end
+    if min_y < plot_template.y2range[1] then plot_template.y2range[1] = min_y end
+    set_x1y2(
+      x, y, "ptc", 
+      string.format("NG - PTC (order = %d), err_f = %.3g", cfg.order, y[#y])
+    )
   end
 
   if ng_conv then
@@ -236,7 +237,32 @@ local function run_test (cfg)
       io.write("WARNING: Maximum number of slices reached!\n")
     end
     set_x1y2(dkd_x, ref_y - dkd_y, "dkd", "TKT - DKD (nslice = " .. nslice .. ")")
-  end   
+  end
+
+  local run_plt_trk = \attr -> run_plt_trk(cfg, trk_ref, get_coords, data.y1, set_x1y2, attr)
+  if ng_vs_ng then
+    -- Change the sign of the edir
+    cfg.edir   = -cfg.edir
+    run_plt_trk("edir")
+    cfg.edir, cfg.chg = -cfg.edir, -cfg.chg -- restore edir and reverse chg
+    
+    -- Run with opposite charge sign
+    run_plt_trk("chg")
+    
+    -- Restore the charge and sequence
+    cfg.chg = -cfg.chg
+    create_seq(cfg)
+  end
+
+  if ng_vs_cpp then 
+    -- Change the map type
+    cfg.cmap = not cfg.cmap
+    run_plt_trk("cmap")
+
+    -- Restore the map type and sequence
+    cfg.cmap = not cfg.cmap
+    create_seq(cfg)
+  end
 
   -- Finally, plot the data
   plot_template { 
