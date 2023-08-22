@@ -1,15 +1,14 @@
-Purpose
-==
+# Test Suite for PTC vs NG maps
+
+## Purpose
 
 The purpose of this test suite is to test MAD-NG maps against PTC. 
 
-Prerequisites
---
+## Prerequisites
 
 A binary of MAD-NG and MAD-X must be in the parent directory of the test directory. The binaries must be named `mad` and `madx` respectively.
 
-Commands to run the tests
---
+## Commands to run the tests
 
 To run all the tests:
 
@@ -44,8 +43,7 @@ Once the files have all been generated, now you can run unit tests. To run a uni
 ```
 where TestName is optional, if it is not provided, then all the tests in the module will be run. Also TestModule is optional, if it is not provided, then all the tests in the folder will be run.
 
-Details on Running the Tests
-==
+## Details on Running the Tests
 
 To run the tests you must put the first argument after the file name as `-test` or the file will assume that you are running the file as a unit test. 
 
@@ -81,8 +79,7 @@ But of course you could just save and plot in the same run:
 ../mad test-electric-maps.mad -t -s -f TestElectric.testCCAV
 ```
 
-Defining the Tests
-==
+## Defining the Tests
 
 Within each test, we define an object, inherited from the reference config (which is essentially identical across all files, with changes to order and icase depending on the files need). 
 
@@ -107,8 +104,7 @@ Once the configuration object is defined, the test is run by calling `run_test(c
 
 All the configurations are placed inside functions, such as `local cfg = ref_cfg "rbend"{ ... }` is the configuration for the rbend and within the function `testRBEND()`, which is called later in the file.
 
-How the Tests Work
-==
+## How the Tests Work
 
 Using the configuration object, the function `run_test` will do the following:
 1. Checks if cfg.dorun is not nil or false, if it is, then the function skips to step 5.
@@ -125,8 +121,7 @@ Using the configuration object, the function `run_test` will do the following:
 7. If cfg.doplot then the results are plotted and saved to a file if cfg.filename is not nil.
 8. If the test has not been stopped by cfg.dodbg then several excess files are removed.
 
-Debugging the Tests
-==
+## Debugging the Tests
 
 When you run the tests, you can check the results in two ways:
 - Check the plot for any particularly high differences.
@@ -160,3 +155,27 @@ The next steps are up to you, however the best way I found to debug the tests is
 4. Make changes and repeat step 3 until you have found/resolved the issue.
 
 5. Once you have resolved the issue, you can turn off `dodbg` and `doprnt` and run the test again to get the final results. (Not a necessary step, but it makes the output cleaner)
+
+
+## The file trackvsptc.mad
+This file does the test or unittest, once given a configuration object.
+
+On loading of this file, this file reads in the following files:
+- `input/ref.mad` - This file contains the run that loads the sequence (through `MADX`), runs track and returns the results. The string is placed into `mad_ref`.
+- `input/ref.madx` - This file contains the MAD-X file that loads the sequence and runs ptc_normal in debug mode. The string is placed into `madx_ref`.
+
+### Functions
+
+#### do_trck (cfg)
+This function calls `create_madx_seq` from `track-tool.mad`, then runs the function created by `loadstring(mad_ref%cfg)`. If it is a unittest and unittest generation is off, then the function will read the results from the unittest reference file, otherwise, it will run `run_madx(cfg.name)` from `track-tool.mad` and grab the final map from PTC. If the unittest generation is on, then the results are saved to the unittest reference file. Then the difference between the final maps from MAD-NG and PTC are returned, using `get_diff` from `track-tool.mad`.
+
+#### run_cfg (cfg, results)
+This function first gets the diffs by running `do_trck(cfg)`, then runs `store_results` and `prnt_results` from `track-tool.mad`. If `cfg.dodbg` is on, then the function will run `debug_chk` from `track-tool.mad`, which will stop the test if the difference is outside the tolerance and create the file `cfg.name .. "_n.txt"` and run dbgmap to create `cfg.name .. "_d.txt"`. If it is a unittest, then the function will assert `chk_tol` from `track-tool returns true.
+
+#### run_test (cfg)
+This function runs the test, first running `args_to_cfg(cfg)` from `test-tool.mad`, to get the test config. PTC model is then turned on before creating the madx reference file and loading the mad reference string specific to this test. 
+
+The function then creates the mtable, writes the printing header, runs `gen_cfg(cfg, 1, \-> run_cfg(cfg, results))`, adds generator columns to the mtable, then saves, prints and plots the results. If the program was not stopped by `debug_chk`, then the function will cleanup the files created by the test.
+
+## The file testvsptc.mad
+This file overwrites the default help of the test suite, to include the help for the additional options. While also including the application of the additional options.

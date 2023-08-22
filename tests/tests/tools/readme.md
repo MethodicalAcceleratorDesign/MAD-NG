@@ -313,6 +313,9 @@ This returns a boolean if the test is not a unittest (so returns `true` if its j
 
 ### Functions (only for non unittests)
 
+#### args_to_cfg (cfg)
+This function takes the a configuration object (from the user) and overwrites the default values with the values from the global configuration object.
+
 #### chk_test (mod_name, test_name)
 This function checks if the test should be run. If the test name is not input, then it checks if a keep or exclusion pattern has been input on the command line. 
 
