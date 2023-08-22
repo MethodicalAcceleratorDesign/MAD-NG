@@ -210,10 +210,10 @@ inline void bxbyh (const cflw<M> &m, const V &x, const V &y, T &bx, T &by)
   int k = -1;
   T btx, bty;
 
-  RFOR(i,m.snm+1, 1) {
+  RFOR(i,m.snm) {
     btx = 0., bty = 0.;
 
-    RFOR(j,m.snm-i) { ++k;
+    RFOR(j,m.snm-i-1) { ++k; // must skip the first iteration
       btx = (btx + R(m.bfx[k])) * y;
       bty = (bty + R(m.bfy[k])) * y;
     }
@@ -229,7 +229,7 @@ inline void bxbyh (const cflw<M> &m, const V &x, const V &y, T &bx, T &by)
     bty = (bty + R(m.bfy[k])) * y;
   }
 
-  bx += btx + R(m.bfx[k+1]); // Better to enforce associativity in Lua. 
+  bx += btx + R(m.bfx[k+1]); // better to enforce associativity in Lua.
   by += bty + R(m.bfy[k+1]);
 }
 
