@@ -210,7 +210,7 @@ inline void bxbyh (const cflw<M> &m, const V &x, const V &y, T &bx, T &by)
   int k = -1;
   T btx, bty;
 
-  RFOR(i,m.snm) {
+  RFOR(i,m.snm+1, 1) {
     btx = 0., bty = 0.;
 
     RFOR(j,m.snm-i) { ++k;
