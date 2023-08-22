@@ -1234,7 +1234,7 @@ inline void mad8_wedge (cflw<M> &m, num_t lw, const V &e)
   if (!fval(e) || fabs(m.knl[1]) < minstr) return;
 
   mdump(0);
-  num_t wc = m.frng == 0 ? 0 : 0.25;
+  num_t wc = m.frng <= 1 ? 0 : 0.25;
   P    k1e = R(m.knl[1])/R(m.el)*(e*m.edir);
   P     c1 = (1+wc)*m.charge*k1e;
   P     c2 = (1-wc)*m.charge*k1e;
