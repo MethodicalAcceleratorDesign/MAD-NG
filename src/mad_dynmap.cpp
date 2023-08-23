@@ -374,18 +374,18 @@ inline void misalignent (cflw<M> &m)
 {
   mdump(0);
   if (m.rot && m.sdir > 0) {
-    yrotation<M>(m,  m.edir, R(m.dthe));
-    xrotation<M>(m, -m.edir, R(m.dphi));
-    srotation<M>(m,  m.edir, R(m.dpsi));
+    yrotation<M>(m,  m.sdir, R(m.dthe));
+    xrotation<M>(m, -m.sdir, R(m.dphi));
+    srotation<M>(m,  m.sdir, R(m.dpsi));
   }
 
   if (m.trn)
     translate<M>(m, m.sdir, R(m.dx), R(m.dy), R(m.ds));
 
   if (m.rot && m.sdir < 0) {
-    srotation<M>(m, -m.edir, R(m.dpsi));
-    xrotation<M>(m,  m.edir, R(m.dphi));
-    yrotation<M>(m, -m.edir, R(m.dthe));
+    srotation<M>(m, -m.sdir, R(m.dpsi));
+    xrotation<M>(m,  m.sdir, R(m.dphi));
+    yrotation<M>(m, -m.sdir, R(m.dthe));
   }
   mdump(1);
 }
@@ -407,9 +407,9 @@ inline void misalignexi (cflw<M> &m)
   if (m.rot && m.sdir > 0) {
     num_t v[3];
     mad_mat_torotyxz(rb, v, true);
-    srotation<M>(m, -m.edir, R(m.dpsi)-(a[2]+v[2]));
-    xrotation<M>(m,  m.edir, R(m.dphi)-(a[0]+v[0]));
-    yrotation<M>(m, -m.edir, R(m.dthe)-(a[1]+v[1]));
+    srotation<M>(m, -m.sdir, R(m.dpsi)-(a[2]+v[2]));
+    xrotation<M>(m,  m.sdir, R(m.dphi)-(a[0]+v[0]));
+    yrotation<M>(m, -m.sdir, R(m.dthe)-(a[1]+v[1]));
   }
 
   if (m.trn) translate<M>(m, -m.sdir,
@@ -418,9 +418,9 @@ inline void misalignexi (cflw<M> &m)
   if (m.rot && m.sdir < 0) {
     num_t v[3];
     mad_mat_torotyxz(rb, v, true);
-    yrotation<M>(m,  m.edir, R(m.dthe)-(a[1]+v[1]));
-    xrotation<M>(m, -m.edir, R(m.dphi)-(a[0]+v[0]));
-    srotation<M>(m,  m.edir, R(m.dpsi)-(a[2]+v[2]));
+    yrotation<M>(m,  m.sdir, R(m.dthe)-(a[1]+v[1]));
+    xrotation<M>(m, -m.sdir, R(m.dphi)-(a[0]+v[0]));
+    srotation<M>(m,  m.sdir, R(m.dpsi)-(a[2]+v[2]));
   }
   mdump(1);
 }
