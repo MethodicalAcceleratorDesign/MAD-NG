@@ -457,6 +457,7 @@ inline void strex_drift (cflw<M> &m, num_t lw, int is)
   if (fabs(m.el) < minlen) return;
 
   mdump(0);
+  lw *= m.sdir;
   P l  = R(m.el)*lw;
   P ld = (fval(m.eld) ? R(m.eld) : R(m.el))*lw;
 
@@ -522,7 +523,8 @@ inline void strex_kickhs (cflw<M> &m, num_t lw, int is)
   if ((!m.nmul && fabs(m.ks) < minstr) || !m.charge) return;
 
   mdump(0);
-  num_t wchg = lw*m.sdir*m.edir*m.charge;
+  lw *= m.sdir;
+  num_t wchg = lw*m.edir*m.charge;
   T bx, by;
 
   FOR(i,m.npar) {
@@ -557,11 +559,12 @@ inline void strex_kickhs (cflw<M> &m, num_t lw, int is)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void curex_drift (cflw<M> &m, num_t lw, int is)
 {                                            (void)is;
-  if (fabs(m.ang) < minang) return strex_drift<M>(m, lw, is);
+  if (fabs(R(m.el)*R(m.eh)) < minang) return strex_drift<M>(m, lw, is);
 
   mdump(0);
+  lw *= m.sdir;
   P ld  = (fval(m.eld) ? R(m.eld) : R(m.el))*lw;
-  P ang = R(m.ang)*lw, rho = 1/R(m.eh);
+  P ang = R(m.eh)*R(m.el)*lw*m.edir, rho = 1/R(m.eh)*m.edir;
   P ca  = cos(ang), sa = sin(ang), sa2 = sin(ang/2);
 
   FOR(i,m.npar) {
@@ -584,7 +587,7 @@ template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void curex_kick (cflw<M> &m, num_t lw, int is, bool no_k0l=false)
 {                                           (void)is;
   if (!m.nmul || !m.charge) return;
-  if (fabs(m.ang) < minang) return strex_kick<M>(m, lw, is);
+  if (fabs(R(m.el)*R(m.eh)) < minang) return strex_kick<M>(m, lw, is);
 
   mdump(0);
   num_t wchg = lw*m.sdir*m.edir*m.charge;
@@ -592,7 +595,7 @@ inline void curex_kick (cflw<M> &m, num_t lw, int is, bool no_k0l=false)
 
   FOR(i,m.npar) {
     M p(m,i);
-    T r = 1+R(m.eh)*p.x;
+    T r = 1+R(m.eh)*p.x*m.edir;
 
     if (m.snm) bxbyh(m, p.x, p.y, bx, by);
 
@@ -614,9 +617,10 @@ inline void sbend_thick (cflw<M> &m, num_t lw, int is)
   if (fabs(m.knl[0]) < minstr || !m.charge) return curex_drift<M>(m, lw, is);
 
   mdump(0);
+  lw *= m.sdir;
   P ld  = (fval(m.eld) ? R(m.eld) : R(m.el))*lw;
-  P ang = R(m.ang)*lw, rho=1/R(m.eh);
-  P k0q = R(m.knl[0])/R(m.el)*(m.sdir*m.edir*m.charge);
+  P ang = R(m.eh)*R(m.el)*lw*m.edir, rho=1/R(m.eh)*m.edir;
+  P k0q = R(m.knl[0])/R(m.el)*(m.edir*m.charge);
   P ca  = cos(ang), sa = sin(ang);
 
   FOR(i,m.npar) {
@@ -643,9 +647,10 @@ inline void sbend_thick_new (cflw<M> &m, num_t lw, int is)
   if (fabs(m.knl[0]) < minstr || !m.charge) return curex_drift<M>(m, lw, is);
 
   mdump(0);
+  lw *= m.sdir;
   P ld  = (fval(m.eld) ? R(m.eld) : R(m.el))*lw;
-  P ang = R(m.ang)*lw, rho=1/R(m.eh);
-  P k0q = R(m.knl[0])/R(m.el)*(m.sdir*m.edir*m.charge);
+  P ang = R(m.eh)*R(m.el)*lw*m.edir, rho=1/R(m.eh)*m.edir;
+  P k0q = R(m.knl[0])/R(m.el)*(m.edir*m.charge);
   P ca  = cos(ang), sa = sin(ang), s2a = sin(2*ang);
 
   FOR(i,m.npar) {
@@ -684,9 +689,10 @@ inline void rbend_thick (cflw<M> &m, num_t lw, int is)
   if (fabs(m.knl[0]) < minstr || !m.charge) return strex_drift<M>(m, lw, is);
 
   mdump(0);
+  lw *= m.sdir;
   P ld   = (fval(m.eld) ? R(m.eld) : R(m.el))*lw;
-  P k0q  = R(m.knl[0])/R(m.el)*(m.sdir*m.edir*m.charge);
-  P k0lq = R(m.knl[0])*(lw    * m.sdir*m.edir*m.charge);
+  P k0q  = R(m.knl[0])/R(m.el)*(m.edir*m.charge);
+  P k0lq = R(m.knl[0])*(lw    * m.edir*m.charge);
 
   FOR(i,m.npar) {
     M p(m,i);
@@ -712,10 +718,11 @@ inline void rbend_thick_new (cflw<M> &m, num_t lw, int is)
   if (fabs(m.knl[0]) < minstr || !m.charge) return strex_drift<M>(m, lw, is);
 
   mdump(0);
+  lw *= m.sdir;
   P l    = R(m.el)*lw;
   P ld   = (fval(m.eld) ? R(m.eld) : R(m.el))*lw;
-  P k0q  = R(m.knl[0])/R(m.el)*(m.sdir*m.edir*m.charge);
-  P k0lq = R(m.knl[0])*(lw    * m.sdir*m.edir*m.charge);
+  P k0q  = R(m.knl[0])/R(m.el)*(m.edir*m.charge);
+  P k0lq = R(m.knl[0])*(lw    * m.edir*m.charge);
 
   FOR(i,m.npar) {
     M p(m,i);
@@ -745,8 +752,9 @@ inline void quad_thick (cflw<M> &m, num_t lw, int is)
   if (fabs(m.k1) < minstr || !m.charge) return strex_drift<M>(m, lw, is);
 
   mdump(0);
+  lw *= m.sdir;
   P    l = R(m.el)*lw;
-  int ws = fval(m.k1)*m.sdir < 0 ? -1 : 1;
+  int ws = fval(m.k1)*m.edir < 0 ? -1 : 1;
 
   P cx, sx, mx1, mx2;
   P cy, sy, my1, my2;
@@ -783,6 +791,7 @@ inline void quad_thick (cflw<M> &m, num_t lw, int is)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void quad_kick (cflw<M> &m, num_t lw, int is)
 {                                          (void)is;
+  lw *= m.sdir;
   if (fabs(m.k1) < minstr) return strex_kick<M>(m, lw, is);
 
   P l = R(m.el)*lw;
@@ -791,7 +800,7 @@ inline void quad_kick (cflw<M> &m, num_t lw, int is)
 
   mdump(0);
   if (m.nmul > 0) {
-    num_t wchg = lw*m.sdir*m.edir*m.charge;
+    num_t wchg = lw*m.edir*m.charge;
     T bx, by;
 
     FOR (i,m.npar) {
@@ -813,8 +822,8 @@ inline void quad_thicks (cflw<M> &m, num_t lw, int is)
   if (fabs(m.k1) < minstr || !m.charge) return strex_drift<M>(m, lw, is);
 
   mdump(0);
-  P l   = R(m.el)*lw;
-  int ws = fval(m.k1)*m.sdir < 0 ? -1 : 1;   // This is awkward due to multiplication of tdir in etrck
+  P l   = R(m.el)*lw*m.sdir;
+  int ws = fval(m.k1)*m.edir < 0 ? -1 : 1;
   P w   = sqrt(abs(R(m.k1)))*m.sdir*m.edir*ws;
   P cx  = cos (w*l), sx  = sin (w*l);
   P cy  = cosh(w*l), sy  = sinh(w*l);
@@ -852,13 +861,14 @@ inline void quad_kicks (cflw<M> &m, num_t lw, int is)
 {                                           (void)is;
   if (fabs(m.k1) < minstr) return strex_kick<M>(m, lw, is);
 
+  lw *= m.sdir;
   P l = R(m.el)*lw;
   num_t dw = is == 0 ? 1./2 : 1.; // drift weight
   if (is >= 0) drift_adj<M>(m, dw*l);
 
   mdump(0);
   if (m.nmul > 0) {
-    num_t wchg = lw*m.sdir*m.edir*m.charge;
+    num_t wchg = lw*m.edir*m.charge;
     T bx, by;
 
     FOR (i,m.npar) {
@@ -878,11 +888,12 @@ template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void quad_thickh (cflw<M> &m, num_t lw, int is)
 {                                            (void)is;
   mdump(0);
+  lw *= m.sdir;
   P l     = R(m.el)*lw;
   P kx    = (R(m.knl[1]) + R(m.eh)*R(m.knl[0]))/R(m.el);
   P ky    = -R(m.knl[1])/R(m.el);
-  int wxs = fval(kx)*m.sdir*m.edir < 0 ? -1 : 1;
-  int wys = fval(ky)*m.sdir*m.edir < 0 ? -1 : 1;
+  int wxs = fval(kx)*m.edir < 0 ? -1 : 1;
+  int wys = fval(ky)*m.edir < 0 ? -1 : 1;
 
   P wx, cx, sx, wy, cy, sy;
   P mx11, mx12, mx13, mx21, mx22, mx23, mx31, mx32, mx33;
@@ -934,6 +945,7 @@ inline void quad_thickh (cflw<M> &m, num_t lw, int is)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void quad_kickh (cflw<M> &m, num_t lw, int is)
 {                                           (void)is;
+  lw *= m.sdir;
   P l  = R(m.el)*lw;
   P lh = R(m.eh)*l;
   num_t dw = is == 0 ? 1./2 : 1.; // drift weight
@@ -968,8 +980,9 @@ inline void solen_thick (cflw<M> &m, num_t lw, int is)
   if (fabs(m.ks) < minstr || !m.charge) return strex_drift<M>(m, lw, is);
 
   mdump(0);
+  lw *= m.sdir;
   P l    = R(m.el)*lw;
-  P bsol = R(m.ks)*0.5*m.charge;
+  P bsol = R(m.ks)*0.5*m.edir*m.charge;
 
   FOR (i,m.npar) {
     M p(m,i);
@@ -1003,8 +1016,9 @@ inline void esept_thick (cflw<M> &m, num_t lw, int is)
   if (!fval(m.volt) || !m.charge) return strex_drift<M>(m, lw, is);
 
   mdump(0);
+  lw *= m.sdir;
   P l  = R(m.el)*lw;
-  P k1 = R(m.volt)*(m.sdir*m.charge/m.pc);
+  P k1 = R(m.volt)*(m.edir*m.charge/m.pc);
   R ca = m.ca, sa = m.sa;
 
   FOR (i,m.npar) {
@@ -1129,7 +1143,7 @@ inline void adjust_time (cflw<M> &m, num_t lw)
 {                                    (void)lw;
   if (fabs(m.el) < minlen) return;
 
-  P Tl = (m.T-m.Tbak)/m.beta*R(m.el);
+  P Tl = (m.T-m.Tbak)/m.beta*R(m.el)*m.sdir;
 
   FOR (i,m.npar) {
     M p(m,i);
@@ -1144,7 +1158,7 @@ inline void cav_fringe (cflw<M> &m, num_t lw)
 
   mdump(0);
   P w  = R(m.freq)*twopi_clight;
-  P vl = R(m.volt)/R(m.el)*(0.5*lw*m.sdir*m.edir*m.charge/m.pc);
+  P vl = R(m.volt)/R(m.el)*(0.5*lw*m.edir*m.charge/m.pc);
 
   FOR (i,m.npar) {
     M p(m,i);
@@ -1192,7 +1206,7 @@ inline void bend_ptch (cflw<M> &m, num_t lw, const V &a)
 {                                  (void)lw;
   if (!fval(a) || !fval(m.elc)) return;
 
-  P dx = R(m.elc)*sin(a/2);
+  P dx = R(m.elc)*sin(m.sdir*m.edir*a/2);
 
   FOR (i,m.npar) {
     M p(m,i);
@@ -1207,8 +1221,9 @@ inline void bend_wedge (cflw<M> &m, num_t lw, const V &e)
   if (fabs(m.knl[0]) < minstr) return yrotation<M>(m,1,-e);
 
   mdump(0);
-  P b1 = R(m.knl[0])/R(m.el)*(m.sdir*m.edir*m.charge);
-  P sa = sin(e), ca = cos(e), s2a = sin(2*e);
+  P b1 = R(m.knl[0])/R(m.el)*(m.edir*m.charge);
+  P we = e*m.sdir*m.edir;
+  P sa = sin(we), ca = cos(we), s2a = sin(2*we);
 
   FOR (i,m.npar) {
     M p(m,i);
@@ -1218,7 +1233,7 @@ inline void bend_wedge (cflw<M> &m, num_t lw, const V &e)
     T pzx = pz - b1*p.x;
     T npx = p.px*ca + pzx*sa;
     T pzs = sqrt(pzy - sqr(npx));
-    T dxs = (e + asin(p.px*_pt) - asin(npx*_pt))/b1;
+    T dxs = (we + asin(p.px*_pt) - asin(npx*_pt))/b1;
 
     p.x  *= ca + (p.px*s2a + sqr(sa)*(pz+pzx))/(pzs + pz*ca - p.px*sa);
     p.px  = npx;
@@ -1235,7 +1250,7 @@ inline void mad8_wedge (cflw<M> &m, num_t lw, const V &e)
 
   mdump(0);
   num_t wc = m.frng <= 1 ? 0 : 0.25;
-  P    k1e = R(m.knl[1])/R(m.el)*(e*m.edir);
+  P    k1e = R(m.knl[1])/R(m.el)*e;
   P     c1 = (1+wc)*m.charge*k1e;
   P     c2 = (1-wc)*m.charge*k1e;
 
@@ -1361,7 +1376,7 @@ inline void mult_fringe (cflw<M> &m, num_t lw)
   int   no_k1 = m.frng & fringe_bend;
   P        _l;
 
-  if (fval(m.el)) _l = m.sdir*m.edir/R(m.el); else _l = m.edir;
+  if (fval(m.el)) _l = m.edir/R(m.el); else _l = m.edir;
 
   FOR (i,m.npar) {
     M p(m,i);
