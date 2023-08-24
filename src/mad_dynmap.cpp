@@ -1987,13 +1987,6 @@ void mad_trk_slice_tpt (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int kn
 // --- speed tests ------------------------------------------------------------o
 
 #if 1
-
-#if TPSA_USE_TRC
-#define TRC(...) printf(#__VA_ARGS__ "\n"); __VA_ARGS__
-#else
-#define TRC(...) __VA_ARGS__
-#endif
-
 void mad_trk_spdtest (int n, int k)
 {
   mad_desc_newv(6, 1);
@@ -2131,11 +2124,20 @@ end
 // --- unit tests -------------------------------------------------------------o
 
 #if 1
+#include "mad_ctpsa.hpp"
+
 void mad_trk_cpptest (void)
 {
   mad_desc_newv(6, 1);
 
-  TRC(tpsa a("A");                             )
+#if TPSA_USE_TRC
+#define TRC(...) printf(#__VA_ARGS__ "\n"); __VA_ARGS__
+#else
+#define TRC(...) __VA_ARGS__
+#endif
+
+// Real version
+{ TRC(tpsa a("A");                             )
   TRC(tpsa_ref ar(a.ptr());                    )
 
   TRC( a   = 1.;                               )
@@ -2219,5 +2221,93 @@ void mad_trk_cpptest (void)
 
   TRC(       tpsa f =  a+1+a+2+a+2;            )
   TRC(       tpsa g = (a+1)*sqr(a+2)+a*2;      )
+}
+
+// Complex version
+{ TRC(ctpsa a("A");                            )
+  TRC(ctpsa_ref ar(a.ptr());                   )
+
+  TRC( a   = 1.;                               )
+  TRC( a  += 1.;                               )
+  TRC( ar  = 1.;                               )
+  TRC( ar += 1.;                               )
+
+  TRC( a  = a;                                 )
+  TRC( a += a;                                 )
+  TRC( a  = ar;                                )
+  TRC( a += ar;                                )
+  TRC( a  = a+a;                               )
+  TRC( a += a+a;                               )
+  TRC( a  = 2*a;                               )
+  TRC( a += 2*a;                               )
+  TRC( a  = 1.;                                )
+  TRC( a += 1.;                                )
+  TRC( a  = ctpsa();                           ) // ctpsa(a);       // error
+  TRC( a += ctpsa();                           ) // ctpsa(a);       // error
+  TRC( a  = ctpsa(a+a);                        )
+  TRC( a += ctpsa(a+a);                        )
+  TRC( a  = ctpsa_ref(a.ptr());                ) // ctpsa_ref(a);   // error
+  TRC( a += ctpsa_ref(a.ptr());                ) // ctpsa_ref(a+b); // error
+
+  TRC( ar  = a;                                )
+  TRC( ar += a;                                )
+  TRC( ar  = ar;                               )
+  TRC( ar += ar;                               )
+  TRC( ar  = a+a;                              )
+  TRC( ar += a+a;                              )
+  TRC( ar  = 2*a;                              )
+  TRC( ar += 2*a;                              )
+  TRC( ar  = 1.;                               )
+  TRC( ar += 1.;                               )
+  TRC( ar  = ctpsa();                          )  // ctpsa(a);       // error
+  TRC( ar += ctpsa();                          )  // ctpsa(a);       // error
+  TRC( ar  = ctpsa(a+a);                       )
+  TRC( ar += ctpsa(a+a);                       )
+  TRC( ar  = ctpsa_ref(a.ptr());               ) // ctpsa_ref(a);   // error
+  TRC( ar += ctpsa_ref(a.ptr());               ) // ctpsa_ref(a+b); // error
+
+  TRC( ctpsa()  = a;                           )
+  TRC( ctpsa() += a;                           )
+  TRC( ctpsa()  = ar;                          )
+  TRC( ctpsa() += ar;                          )
+  TRC( ctpsa()  = a+a;                         )
+  TRC( ctpsa() += a+a;                         )
+  TRC( ctpsa()  = 2*a;                         )
+  TRC( ctpsa() += 2*a;                         )
+  TRC( ctpsa()  = 1.;                          )
+  TRC( ctpsa() += 1.;                          )
+  TRC( ctpsa()  = ctpsa();                     )  // ctpsa(a); // error
+  TRC( ctpsa() += ctpsa();                     )  // ctpsa(a); // error
+  TRC( ctpsa()  = ctpsa(a+a);                  )
+  TRC( ctpsa() += ctpsa(a+a);                  )
+  TRC( ctpsa()  = ctpsa_ref(a.ptr());          ) // ctpsa_ref(a);   // error
+  TRC( ctpsa() += ctpsa_ref(a.ptr());          ) // ctpsa_ref(a+b); // error
+
+  TRC( ctpsa_ref(a.ptr())  = a;                )
+  TRC( ctpsa_ref(a.ptr()) += a;                )
+  TRC( ctpsa_ref(a.ptr())  = ar;               )
+  TRC( ctpsa_ref(a.ptr()) += ar;               )
+  TRC( ctpsa_ref(a.ptr())  = a+a;              )
+  TRC( ctpsa_ref(a.ptr()) += a+a;              )
+  TRC( ctpsa_ref(a.ptr())  = 2*a;              )
+  TRC( ctpsa_ref(a.ptr()) += 2*a;              )
+  TRC( ctpsa_ref(a.ptr())  = 1.;               )
+  TRC( ctpsa_ref(a.ptr()) += 1.;               )
+  TRC( ctpsa_ref(a.ptr())  = ctpsa();          ) // ctpsa(a);       // error
+  TRC( ctpsa_ref(a.ptr()) += ctpsa();          ) // ctpsa(a);       // error
+  TRC( ctpsa_ref(a.ptr())  = ctpsa(a+a);       )
+  TRC( ctpsa_ref(a.ptr()) += ctpsa(a+a);       )
+  TRC( ctpsa_ref(a.ptr())  = ctpsa_ref(a.ptr());) // ctpsa_ref(a);   // error
+  TRC( ctpsa_ref(a.ptr()) += ctpsa_ref(a.ptr());) // ctpsa_ref(a+b); // error
+
+  TRC( const ctpsa b {  a+1+a+2+a+3 };         )
+  TRC( const ctpsa c { (a+1)*sqr(a+2)+a*2 };   )
+
+  TRC( const ctpsa d =  a+1+a+2+a+2;           )
+  TRC( const ctpsa e = (a+1)*sqr(a+2)+a*2;     )
+
+  TRC(       ctpsa f =  a+1+a+2+a+2;           )
+  TRC(       ctpsa g = (a+1)*sqr(a+2)+a*2;     )
+}
 }
 #endif
