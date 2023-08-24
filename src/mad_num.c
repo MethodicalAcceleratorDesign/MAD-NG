@@ -43,7 +43,7 @@ fact(int n)
 #define CHKR  assert( r )
 
 #define CPX(a)    CPX2(MKNAME(a,_re), MKNAME(a,_im))
-#define CPX2(a,b) (* (cpx_t*) & (num_t[2]) { a, b })
+#define CPX2(a,b) (* (cpx_t*) & (num_t[2]) { a, b }) // could be CMPLX
 
 // --- num
 

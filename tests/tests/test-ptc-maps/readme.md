@@ -1,41 +1,40 @@
-Purpose
-==
+# Test Suite for PTC vs NG maps
+
+## Purpose
 
 The purpose of this test suite is to test MAD-NG maps against PTC. 
 
-Prerequisites
---
+## Prerequisites
 
 A binary of MAD-NG and MAD-X must be in the parent directory of the test directory. The binaries must be named `mad` and `madx` respectively.
 
-Commands to run the tests
---
+## Commands to run the tests
 
 To run all the tests:
 
 ```shell
-../mad test-all-maps.mad -test
+../mad test-all-maps.mad -t
+```
+or 
+```shell
+../mad test-all-maps.mad --test
 ```
 
-To run a category of tests, run the individual files: (Should I have a flag to select?)
+To run a category of tests, like in unit tests:
 
 ```shell
-../mad test-category-maps.mad -test
+../mad test-all-maps.mad --test TestModule
 ```
 
 To run an individual test: 
 
 ```shell
-../mad test-category-maps.mad -test -select TestName
-```
-or
-```shell
-../mad test-all-maps.mad -test -select TestName
+../mad test-category-maps.mad --test TestModule.TestName
 ```
 
-If you would like to run a unit test, you must ensure that you have generated the files for the unit tests (these take a bit of time, could be more than 3 hours for them all), to generate these run the following:
+If you would like to run a unit test, you must ensure that you have generated the files for the unit tests (these take a bit of time, could be more than 3 hours for them all), to generate these run the following, this can be done while running the test as well:
 ```shell 
-../mad test-all-maps.mad -test -gutest
+../mad test-all-maps.mad -g
 ```
 
 Once the files have all been generated, now you can run unit tests. To run a unit test, it is identical to how the unit tests in the folder utest are called:
@@ -44,8 +43,7 @@ Once the files have all been generated, now you can run unit tests. To run a uni
 ```
 where TestName is optional, if it is not provided, then all the tests in the module will be run. Also TestModule is optional, if it is not provided, then all the tests in the folder will be run.
 
-Details on Running the Tests
-==
+## Details on Running the Tests
 
 To run the tests you must put the first argument after the file name as `-test` or the file will assume that you are running the file as a unit test. 
 
@@ -62,31 +60,26 @@ There are five flags that can be used to control how your tests run and the repo
 
 These flags can be set when you call the file. After the file, you can set values to the opposite of the default (shown above and in the file).
 
-* `-print` sets `doprnt` to `true`.
-* `-debug` sets `dodbg` to `true`.
-* `-save` sets `dosave` to `true`.
-* `-norun` sets `dorun` to `false`.
-* `-plot` sets `doplot` to `true`.
-* `-gutest` sets `gen_utest` to `true`.
+Run the following to get the help message, describing the flags and how to use them:
+```shell
+../mad test-all-maps.mad -h
+```
+or 
+```shell
+../mad test-all-maps.mad --help
+```
 
 The following example runs the crab cavity test and saves the cfg and results files. The next line then does the plot, without running the test again by retrieving the results from the cfg and res files.
 ```shell
-../mad test-electric-maps.mad -test -select testCCAV -save
-../mad test-electric-maps.mad -test -select testCCAV -plot -norun
+../mad test-electric-maps.mad -t TestElectric.testCCAV -s
+../mad test-electric-maps.mad -t TestElectric.testCCAV -f -n
 ```
 But of course you could just save and plot in the same run:
 ```shell
-../mad test-electric-maps.mad -test -select testCCAV -save -plot
+../mad test-electric-maps.mad -t -s -f TestElectric.testCCAV
 ```
 
-> **Note**
-> that the option `-test` **must** be the **first** argument after the file name, otherwise the file will assume that you are running the file as a unit test. 
-
-> **Note**
-> that the option `-select` **must** be the **second** argument after the file name and `-test`, otherwise all the tests in the file will be run.
-
-Defining the Tests
-==
+## Defining the Tests
 
 Within each test, we define an object, inherited from the reference config (which is essentially identical across all files, with changes to order and icase depending on the files need). 
 
@@ -94,13 +87,13 @@ This object must contain the following information:
 - The element string, which is the MAD-X element definition, with the parameters to be tested as part of the string, ready to be formatted with the configuration table, see below.
 - The following attributes must be define as an iterable:
     - model (1 = DKD, 2 = TKT)
-    - method (2, 4, 6, 8, "'teapot'", "'teapot4'")
+    - method (2, 4, 6, 8, "'teapot2'", "'teapot4'")
     - nslice (Number of slices)
     - energy (Energy of the beam)
 
 
 Then optionally contains:
-- The tolerance, which is the number that the difference between the maps is compared to, it is multiplied by your machine epsilon (`eps`) to get the number to compare to. The tolerance is optional as the default is 1000. 
+- The tolerance, which is the number that the difference between the maps is compared to, it is multiplied by your machine epsilon (`eps`) to get the number to compare to. The tolerance is optional as the default is 10. 
 - Additional parameters that are in the element string to be tested, these must be defined as an iterable. If you add parameters, such as k0, this must be added to the attribute list `alist`.
 - The information for the plot. This is a list that will be sent directly to the plot function, with a couple adjustments:
     - x_axis_attribute is the value that will be plotted on the x axis, this must be a string and will be created by each row of the configuration. If you had `x_axis_attribute = "${k1}"`, then the x axis would be the k1 value for each row. If this is left blanl, then it is `"${cfgid}"` by default, which is the configuration id.
@@ -111,8 +104,7 @@ Once the configuration object is defined, the test is run by calling `run_test(c
 
 All the configurations are placed inside functions, such as `local cfg = ref_cfg "rbend"{ ... }` is the configuration for the rbend and within the function `testRBEND()`, which is called later in the file.
 
-How the Tests Work
-==
+## How the Tests Work
 
 Using the configuration object, the function `run_test` will do the following:
 1. Checks if cfg.dorun is not nil or false, if it is, then the function skips to step 5.
@@ -129,15 +121,14 @@ Using the configuration object, the function `run_test` will do the following:
 7. If cfg.doplot then the results are plotted and saved to a file if cfg.filename is not nil.
 8. If the test has not been stopped by cfg.dodbg then several excess files are removed.
 
-Debugging the Tests
-==
+## Debugging the Tests
 
 When you run the tests, you can check the results in two ways:
 - Check the plot for any particularly high differences.
 - Check the results in the results file.
 
 The next steps are up to you, however the best way I found to debug the tests is to do the following:
-1. Set `dorun` to `false` and `doprnt` to `true`.
+1. Set `dorun` to `false` (`-n`) and `doprnt` to `true` (`-v`).
 2. Run the specific test you want to debug. This will give you an output like so: 
     ```shell
     order 0:
@@ -153,14 +144,38 @@ The next steps are up to you, however the best way I found to debug the tests is
     model   = {540, 540}
     order   = {[2]=1080}
     ```
-    In this list, you can see situations where the failure never occured and situations where changing the variable had no effect. So the variables that had no effect here are ``nslice, energy, icase, k1, tilt, method, model, order``. While the specifics that are missing are `x0i = 1`, `k1s = 0`, `fringe = 0`, indicating the issue only occurs when the initial conditions are `x0i > 1` (not the zero orbit) and when there is a fringe field, and a `k1s` value.
+    In this list, you can see situations where the failure never occured and situations where changing the variable had no effect. So the variables that had no effect here are ``nslice, energy, icase, k1, tilt, method, model, order``. While the specifics that are missing are `x0i = 1`, `k1s = 0`, `fringe = 0`, indicating the issue only occurs when the initial conditions are `x0i > 1` (not the zero orbit), there is a fringe field, and a `k1s` value.
     
     This step gives you an idea of where the problem may have occured, so you can next move to debugging the specific maps.
 
-3. Set `dorun` to `true` and `dodbg` to `true`. This will run the test until your tolerance is reached. Once this happens, the test will stop and run MAD-NG and PTC in debug mode to files called `cfg.name .. "_n"` and `cfg.name .. "_p"` respectively and then a diff of the two files to `cfg.name .. "_d"` (all in your output folder), created by madl_dbgmap.mad. This will give you the differences between every map that is run, so you can see exactly where the problem begins. 
+3. Set `dorun` to `true` and `dodbg` to `true` (`-d`). This will run the test until your tolerance is reached. Once this happens, the test will stop and run MAD-NG and PTC in debug mode to files called `cfg.name .. "_n"` and `cfg.name .. "_p"` respectively and then a diff of the two files to `cfg.name .. "_d"` (all in your output folder), created by madl_dbgmap.mad. This will give you the differences between every map that is run, so you can see exactly where the problem begins. 
     
     The sequence, mad and madx files that are used to run everything can be found in the input folder.
 
 4. Make changes and repeat step 3 until you have found/resolved the issue.
 
 5. Once you have resolved the issue, you can turn off `dodbg` and `doprnt` and run the test again to get the final results. (Not a necessary step, but it makes the output cleaner)
+
+
+## The file trackvsptc.mad
+This file does the test or unittest, once given a configuration object.
+
+On loading of this file, this file reads in the following files:
+- `input/ref.mad` - This file contains the run that loads the sequence (through `MADX`), runs track and returns the results. The string is placed into `mad_ref`.
+- `input/ref.madx` - This file contains the MAD-X file that loads the sequence and runs ptc_normal in debug mode. The string is placed into `madx_ref`.
+
+### Functions
+
+#### do_trck (cfg)
+This function calls `create_madx_seq` from `track-tool.mad`, then runs the function created by `loadstring(mad_ref%cfg)`. If it is a unittest and unittest generation is off, then the function will read the results from the unittest reference file, otherwise, it will run `run_madx(cfg.name)` from `track-tool.mad` and grab the final map from PTC. If the unittest generation is on, then the results are saved to the unittest reference file. Then the difference between the final maps from MAD-NG and PTC are returned, using `get_diff` from `track-tool.mad`.
+
+#### run_cfg (cfg, results)
+This function first gets the diffs by running `do_trck(cfg)`, then runs `store_results` and `prnt_results` from `track-tool.mad`. If `cfg.dodbg` is on, then the function will run `debug_chk` from `track-tool.mad`, which will stop the test if the difference is outside the tolerance and create the file `cfg.name .. "_n.txt"` and run dbgmap to create `cfg.name .. "_d.txt"`. If it is a unittest, then the function will assert `chk_tol` from `track-tool returns true.
+
+#### run_test (cfg)
+This function runs the test, first running `args_to_cfg(cfg)` from `test-tool.mad`, to get the test config. PTC model is then turned on before creating the madx reference file and loading the mad reference string specific to this test. 
+
+The function then creates the mtable, writes the printing header, runs `gen_cfg(cfg, 1, \-> run_cfg(cfg, results))`, adds generator columns to the mtable, then saves, prints and plots the results. If the program was not stopped by `debug_chk`, then the function will cleanup the files created by the test.
+
+## The file testvsptc.mad
+This file overwrites the default help of the test suite, to include the help for the additional options. While also including the application of the additional options.

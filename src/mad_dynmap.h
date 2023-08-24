@@ -38,6 +38,28 @@ void mad_trk_slice_kmk (mflw_t *m, num_t lw, trkfun *dft, trkfun *kck, int ord);
 void mad_trk_slice_tpt (mflw_t *m, num_t lw, trkfun *dft, trkfun *kck, int knd);// teapot
 void mad_trk_slice_one (mflw_t *m, num_t lw, trkfun *dft_or_kck);               // single
 
+// -- tilt & misalignment
+void mad_trk_tilt_r         (mflw_t *m, num_t lw);
+void mad_trk_tilt_t         (mflw_t *m, num_t lw);
+void mad_trk_tilt_p         (mflw_t *m, num_t lw);
+
+void mad_trk_misalign_r     (mflw_t *m, num_t lw);
+void mad_trk_misalign_t     (mflw_t *m, num_t lw);
+void mad_trk_misalign_p     (mflw_t *m, num_t lw);
+
+// -- fringe maps
+void mad_trk_strex_fringe_r (mflw_t *m, num_t lw);
+void mad_trk_curex_fringe_r (mflw_t *m, num_t lw);
+void mad_trk_rfcav_fringe_r (mflw_t *m, num_t lw);
+
+void mad_trk_strex_fringe_t (mflw_t *m, num_t lw);
+void mad_trk_curex_fringe_t (mflw_t *m, num_t lw);
+void mad_trk_rfcav_fringe_t (mflw_t *m, num_t lw);
+
+void mad_trk_strex_fringe_p (mflw_t *m, num_t lw);
+void mad_trk_curex_fringe_p (mflw_t *m, num_t lw);
+void mad_trk_rfcav_fringe_p (mflw_t *m, num_t lw);
+
 // -- patches
 void mad_trk_xrotation_r    (mflw_t *m, num_t lw, int _);
 void mad_trk_yrotation_r    (mflw_t *m, num_t lw, int _);
@@ -56,24 +78,6 @@ void mad_trk_yrotation_p    (mflw_t *m, num_t lw, int _);
 void mad_trk_srotation_p    (mflw_t *m, num_t lw, int _);
 void mad_trk_translate_p    (mflw_t *m, num_t lw, int _);
 void mad_trk_changeref_p    (mflw_t *m, num_t lw, int _);
-
-// -- misalign
-void mad_trk_misalign_r     (mflw_t *m, num_t lw, int _);
-void mad_trk_misalign_t     (mflw_t *m, num_t lw, int _);
-void mad_trk_misalign_p     (mflw_t *m, num_t lw, int _);
-
-// -- fringe maps
-void mad_trk_strex_fringe_r (mflw_t *m, num_t lw);
-void mad_trk_curex_fringe_r (mflw_t *m, num_t lw);
-void mad_trk_rfcav_fringe_r (mflw_t *m, num_t lw);
-
-void mad_trk_strex_fringe_t (mflw_t *m, num_t lw);
-void mad_trk_curex_fringe_t (mflw_t *m, num_t lw);
-void mad_trk_rfcav_fringe_t (mflw_t *m, num_t lw);
-
-void mad_trk_strex_fringe_p (mflw_t *m, num_t lw);
-void mad_trk_curex_fringe_p (mflw_t *m, num_t lw);
-void mad_trk_rfcav_fringe_p (mflw_t *m, num_t lw);
 
 // -- DKD maps
 void mad_trk_strex_drift_r  (mflw_t *m, num_t lw, int _);

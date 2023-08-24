@@ -248,8 +248,8 @@ local prms_list = {
 local function sync_cflow (mflw, i)
   local m = mflw.mflw
 
-  m.       cflw.npar = m.npar
-  m.__sdat.cflw.npar = m.npar
+  m.       tflw.npar = m.npar
+  m.__sdat.tflw.npar = m.npar
   if m.pflw ~= nil then
     m.       pflw.npar = m.npar
     m.__sdat.pflw.npar = m.npar
@@ -273,10 +273,10 @@ local function make_cflow (mflw)
 
   local m = mflw
   for i=1,2 do
-    m.cflw_  = ffi.new 'mflw_t[1]'
-    m.cflw   = m.cflw_[0].tflw
+    m.tflw_  = ffi.new 'mflw_t[1]'
+    m.tflw   = m.tflw_[0].tflw
 
-    local c  = m.cflw
+    local c  = m.tflw
     c.dbg    = max(0, mflw.debug-3)
     c.npar   = mflw.npar
     c.sdir   = mflw.sdir
@@ -299,9 +299,6 @@ local function make_cflow (mflw)
     c.par = mflw.__cmap
     m = mflw.__sdat
   end
-
-  -- TODO: set properly pflw fields and swap cflw_ with pflw_ in etrck
-  if true then return end
 
   if mflw.dapo == 0 then return end
 
@@ -699,6 +696,7 @@ local function make_mflow (self)
                s0=s0, range=range, nturn=nturn} -- sequence iterator reset
 
   -- for processing elements (pre-alloc to avoid rehash)
+  mflw.name="--UNNAMED--"    -- current element name
   mflw.el, mflw.lrad=0,0     -- current element lengths
   mflw.eh, mflw.ang =0,0     -- current element curvatures
   mflw.mang=0                -- current element misalignment angle
@@ -711,13 +709,10 @@ local function make_mflow (self)
   mflw.volt, mflw.freq=0,0   -- rfcavity parameters
   mflw.lag , mflw.nbsl=0,0
 
-  mflw.algn=nil              -- current element misalignment
+  mflw.algn=false            -- current element misalignment
   mflw.nmul=0                -- current element number of multipoles
   mflw.knl={[0]=0}           -- current element multipoles
   mflw.ksl={[0]=0}           -- current element multipoles skew
---mflw.npha=0                -- current element number of multiplole phases
---mflw.pnl={[0]=0}           -- current element multipoles phases
---mflw.psl={[0]=0}           -- current element multipoles shew phases
   mflw.snm=0                 -- current element sector nmul max
   mflw.bfx={[0]=0}           -- current element curved field x coefficients
   mflw.bfy={[0]=0}           -- current element curved field y coefficients
@@ -725,7 +720,7 @@ local function make_mflow (self)
   -- for processing (thin) subelements (pre-alloc to avoid rehash)
   mflw.__sdat = setmetatable({
     el=0, lrad=0,            -- current subelement lengths
-    eh=0,  ang=0,            -- current subelement curvatures
+    eh=0,  ang=0,            -- current subelement curvature and angle
     mang=0,                  -- current subelement misalignment angle
     elc=0,                   -- current subelement chord length
     tlt=0,                   -- current subelement tilt angle
@@ -735,19 +730,16 @@ local function make_mflow (self)
     volt=0, freq=0, lag=0,   -- rfcavity parameters
     nbsl=0,
 
-    algn=nil,                -- current subelement misalignment
+    algn=false,              -- current subelement misalignment
     nmul=0,                  -- current subelement number of multipoles
     knl={[0]=0},             -- current subelement multipoles
     ksl={[0]=0},             -- current subelement multipoles skew
---  npha=0,                  -- current subelement number of multiplole phases
---  pnl={[0]=0},             -- current subelement multipoles phases
---  psl={[0]=0},             -- current subelement multipoles shew phases
     snm=0,                   -- current subelement sector nmul max
     bfx={[0]=0},             -- current subelement curved field x coefficients
     bfy={[0]=0},             -- current subelement curved field y coefficients
   }, {__index=mflw})
 
-  -- prepare cflw (and pflw) for C/C++ maps
+  -- prepare tflw (and pflw) for C/C++ maps
   if self.cmap and damo > 0 then make_cflow(mflw) end
 
   return mflw
@@ -792,7 +784,8 @@ local function exec (self)
 
     -- dynamic tracking
     for ei,elm,spos,ds in iter, state, eidx do
-      mflw.eidx, mflw.spos, mflw.ds, mflw.clw = ei, s0+spos, ds, 0
+      mflw.name, mflw.eidx, mflw.spos, mflw.ds, mflw.clw =
+       elm.name,      ei,     s0+spos,      ds,      0
       ret = elm:track(mflw)
       mflw.nstep = mflw.nstep-1
 

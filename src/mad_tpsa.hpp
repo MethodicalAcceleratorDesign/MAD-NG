@@ -491,7 +491,7 @@ inline T pow (const tpsa_base<A> &a, num_t b) {  TRC("baz^num")
 template <class A>
 inline T pow (num_t a, const tpsa_base<A> &b) {  TRC("num^baz")
   T c(b);
-  mad_tpsa_scl(b.ptr(), std::log(a), c.ptr());
+  mad_tpsa_scl(b.ptr(), log(a), c.ptr());
   mad_tpsa_exp(c.ptr(), c.ptr());
   return c;
 }
@@ -522,7 +522,7 @@ inline T pow (const T &a, num_t b) {  TRC("tmp^num")
 
 inline T pow (num_t a, const T &b) {  TRC("num^tmp")
   T c(b);
-  mad_tpsa_scl(c.ptr(), std::log(a), c.ptr());
+  mad_tpsa_scl(c.ptr(), log(a), c.ptr());
   mad_tpsa_exp(c.ptr(), c.ptr());
   return c;
 }
@@ -597,10 +597,10 @@ inline void swap (num_t    &a, num_t    &b) { TRC("num") std::swap(a,b); }
 // --- functions ---
 
 inline num_t fval   (num_t a           ) { TRC("num") return a; }
-inline num_t nrm    (num_t a           ) { TRC("num") return std::abs(a); }
+inline num_t nrm    (num_t a           ) { TRC("num") return abs(a); }
 inline num_t sqr    (num_t a           ) { TRC("num") return a*a; }
 inline num_t inv    (num_t a, num_t v=1) { TRC("num") return v/a; }
-inline num_t invsqrt(num_t a, num_t v=1) { TRC("num") return v/std::sqrt(a); }
+inline num_t invsqrt(num_t a, num_t v=1) { TRC("num") return v/sqrt(a); }
 inline num_t sinc   (num_t a           ) { TRC("num") return mad_num_sinc (a); }
 inline num_t sinhc  (num_t a           ) { TRC("num") return mad_num_sinhc(a); }
 inline num_t asinc  (num_t a           ) { TRC("num") return mad_num_asinc(a); }
@@ -615,12 +615,12 @@ inline num_t fval (const tpsa_base<A> &a) { TRC("baz")
 }
 
 inline num_t fabs (const tpsa_t *a) { TRC("tspa")
-  return std::abs(mad_tpsa_get0(a));
+  return abs(mad_tpsa_get0(a));
 }
 
 template <class A>
 inline num_t fabs (const tpsa_base<A> &a) { TRC("baz")
-  return std::abs(a[0]);
+  return abs(a[0]);
 }
 
 template <class A>

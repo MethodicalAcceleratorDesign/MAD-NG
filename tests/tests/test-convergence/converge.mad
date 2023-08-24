@@ -3,12 +3,15 @@ local mtable, damap, plot, tostring                              in MAD
 local openfile, fileexists, tblcat, tblcpy                       in MAD.utility
 local max, abs                                                   in math         
 local eps                                                        in MAD.constant
+local is_string                                                  in MAD.typeid
 
 package.path = package.path .. ";../tools/?.mad"
-local get_diff, save_results, gen_cfg, in_dir, out_dir, plt_dir,
-      plot_trk_res, get_prev_res, prnt_results, add_trk_gen_cols,
-      show_res, get_trk_y_val, newSID, get_lower_bnds, X0s, ptc_strs,
-      create_madx_seq, get_last_ptc_map                   in require "track-tool"
+local get_diff, store_results, gen_cfg, in_dir, out_dir, 
+      prnt_results, add_trk_gen_cols, show_res, get_prev_res,
+      ptc_strs, create_madx_seq, get_last_ptc_map                in require "track-tool"
+
+local plt_dir, newSID, get_trk_y_val, do_norun                   in require "plot-tool"
+local args_to_cfg                                                in require "test-tool"
 
 local create_dif = require "madl_dbgmap".cmpmdump
 local coord_str, seq_ctx, madx_script in ptc_strs
@@ -23,14 +26,14 @@ ref_file:close()
 -------------------------------------------------------------------------------o
 
 -- Run track and PTC from cur_cfg and create results --------------------------o
-local function do_trck(cfg)
+local function do_trck(cfg)  
    -- Create results table
   local res = {}
   
   -- Create element sequence w/ current cfg context
   create_madx_seq(cfg)
   local ptc_res 
-  if cfg.doptc and cfg.cur_cfg.method ~= "'teapot2'" then
+  if cfg.doptc and not is_string(cfg.cur_cfg.method) then
     -- Run MAD-X-PTC
     assert(os.execute(
       '../madx64 '.. in_dir(cfg.name .. "_ref.madx") 
@@ -69,7 +72,7 @@ local function run_cfg (cfg, results)
     end
   end
   ng_dif.ptc_or_ng = "ng"
-  save_results(cfg, ng_dif, results)
+  store_results(cfg, ng_dif, results)
   prnt_results(cfg, ng_dif, results)
   if ptc_res then 
     ptc_dif["converged"] = true
@@ -80,7 +83,7 @@ local function run_cfg (cfg, results)
       end
     end  
     ptc_dif.ptc_or_ng = "ptc"
-    save_results(cfg, ptc_dif, results)
+    store_results(cfg, ptc_dif, results)
     prnt_results(cfg, ptc_dif, results) 
   end 
 end
@@ -91,7 +94,7 @@ local series = {}
 local legend = {}
 for i, method in ipairs(method_list) do 
   series[i] = "${method} == "..method
-  legend["y"..i] = "Method "..tostring(method):gsub("'teapot'", "t")
+  legend["y"..i] = "Method "..tostring(method):gsub("teapot", "t"):gsub("'", "")
 end
 local plot_template = plot {
   prolog = [[
@@ -117,38 +120,60 @@ local colours = {
 
 -- Plot the results -----------------------------------------------------------o
 local function plot_res(res_cfg_tbl, cfg, plt_dir, dofit, cfg_tbl_)
+  -- Grab the legend and series from the plot template
   local legend, series = tblcpy(plot_template.legend), plot_template.series
+  -- Grab the results table from the cfg table
   local cfg_tbl, dif_tbl = cfg_tbl_ or res_cfg_tbl, res_cfg_tbl
+
+  -- Create the plot for NG and PTC
   for _, ptc_or_ng in ipairs {"ng", cfg.doptc and "ptc" or nil} do
-    local is_ptc = ptc_or_ng == "ptc"
-    local plot_info = cfg.plot_info or {}
+    local is_ptc = ptc_or_ng == "ptc" -- Is this a PTC plot?
+    
+    -- Grab the plot info from the cfg or use empty table
+    local plot_info = cfg.plot_info and tblcpy(cfg.plot_info) or {}
+    
+    -- Grab the plot info (or use defaults: nil)
     local x_axis_attr, filename, pointtype in plot_info
+    
+    -- Create a new plot inheriting from the plot template
     local cfg_plot = plot_template { 
       sid    = newSID(),
       title  = cfg.name,
-      output = filename and plt_dir(ptc_or_ng .. "_" .. filename) or 2, 
+      output = filename and plt_dir(ptc_or_ng .. "_" .. filename) or 2,
+      legend = legend, -- override the legend to be a copy of the template legend 
       exec   = false,
     }
+    -- Set the number of points and series to be plotted
     local n_points, n_series = #dif_tbl, is_ptc and 4 or #series ! Should be 5
+    
+    -- Create the data tables
     local x_data, y_data = table.new(n_series, 0), table.new(n_series, 0)
+    
+    -- Create the converge points table
     local converge_points = {} -- Set default instead?
     for i = 1, n_series do 
-      x_data[i], y_data[i] = {}, {}
+      x_data[i], y_data[i] = {}, {} -- Create an empty table for each series
       local cnt = 1
       for j = 1, n_points do
+        -- First check we have the correct ptc_or_ng and then check the series condition (e.g. method == "teapot2")
         if dif_tbl[j].ptc_or_ng == ptc_or_ng and
         assert(loadstring("return " .. series[i] % cfg_tbl[j]))() then
+
+          -- Get the x value (could be user set)
           x_data[i][cnt] = assert(loadstring("return " .. x_axis_attr % cfg_tbl[j]))()
+          
+          -- Get the y value
           local y_value = get_trk_y_val(dif_tbl[j], cfg)
-          y_data[i][cnt] = y_value > 1e-16 and y_value or 1e-16
-          if dif_tbl[j].converged then 
+          y_data[i][cnt] = y_value > 1e-16 and y_value or 1e-16 -- set a minimum value of 1e-16 (so points are visible)
+          if dif_tbl[j].converged then -- Store the largest x value for converged points
             converge_points[i] = math.max(x_data[i][cnt], converge_points[i] or 0)
           end
-          cnt = cnt + 1
+          cnt = cnt + 1 -- Increment the counter (for the x_data and y_data tables)
         end
       end
     end
 
+    -- Sort out configuring the plot
     cfg_plot.data, cfg_plot.datastyles, cfg_plot.x1y1 = {}, {}, {}
     local plotcfg, epilog = "", ""
     for i = 1, n_series do
@@ -160,11 +185,12 @@ local function plot_res(res_cfg_tbl, cfg, plt_dir, dofit, cfg_tbl_)
         pointtype = i,!assert(loadstring("return " .. (pointtype or i) % cfg_tbl[j]))(),
         color = colours[i],
       }
+      -- Add the legend (could include the fit details)
       cfg_plot.legend["y"..i] = legend["y"..i] .. (dofit and 
                                 "'.sprintf('= %.2g x^{%.2g}', a"..i..", b"..i..").'" or "") 
-      if dofit then
-        plotcfg = plotcfg .. string.format("b%d=%d\nf%d(x) = a%d*x**b%d\n", i, 2, i, i, i)
-        plotcfg = plotcfg .. string.format("fit [%.3f:10] f%d(x) '$MAD_DATA' index %d using 1:2::($2**(0.5)) via a%d, b%d\n", converge_points[i] or 0, i, i-1, i, i)
+      if dofit then -- Add the fit to the plot
+        plotcfg = plotcfg .. string.format("b%d=%d\nf%d(x) = a%d*x**b%d\n", i, 3, i, i, i)
+        plotcfg = plotcfg .. string.format("fit [%.3f:10] f%d(x) '$MAD_DATA' index %d using 1:2::($2) via a%d, b%d\n", converge_points[i] or 0, i, i-1, i, i)
         epilog  = epilog  .. "replot ["..(converge_points[i] or eps)..":10] f"..i.."(x) linecolor '"..colours[i].."'\n"
       end
     end
@@ -179,22 +205,22 @@ local function plot_res(res_cfg_tbl, cfg, plt_dir, dofit, cfg_tbl_)
       replot
     ]] 
     plot_info.title = plot_info.title and ptc_or_ng:upper() .. " " .. plot_info.title or nil
-
+    print(plot_info)
     cfg_plot (plot_info)
   end
 end
 -- Run test -------------------------------------------------------------------o
 local function run_test(cfg)    
+  args_to_cfg(cfg) -- Convert user terminal arguments to cfg
   -- If the user does not want to run the test, 
   -- just show results from previous run
-  if not cfg.dorun then 
+  if not cfg.dorun then
     local cfg_tbl, res_tbl = get_prev_res(cfg.name, out_dir)
     res_tbl.max_order = cfg.order
     if cfg.doprnt then show_res(res_tbl, cfg_tbl, cfg_tbl:colnames(), cfg.tol) end
     if cfg.doplot then plot_res(res_tbl, cfg, plt_dir, cfg.dofit, cfg_tbl) end
-    return 
+    return
   end
-
   -- Generate the reference file
   cfg.seq_file = in_dir(cfg.name.."_seq.seq")
   openfile(in_dir(cfg.name .. "_ref.madx"), "w"):write(madx_ref % cfg):close()
@@ -203,7 +229,7 @@ local function run_test(cfg)
   mad_file = loadstring(mad_ref % cfg)
 
   -- Create new table for cur_cfg for each cfg set
-  cfg.cur_cfg = {cfgid = 0}
+  cfg.cur_cfg = {cfgid = 0, test_type="convergence"}
   
   -- Create the mtable to store the results
   local results = mtable(cfg.name){

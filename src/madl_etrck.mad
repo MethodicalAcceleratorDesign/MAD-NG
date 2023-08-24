@@ -95,7 +95,7 @@ local genm_thick                                                   in MAD.dynmap
 
 -- patches
 local xrotation, yrotation, srotation, translate,
-      changeref, changedir, changenrj, misalign                    in MAD.dynmap
+      changeref, changedir, changenrj, misalign, tilt              in MAD.dynmap
 
 -- fringe flags
 local fringe                                                       in MAD.dynmap
@@ -122,17 +122,18 @@ struct cflw_r { // must be identical to def in mad_dynmap.cpp !!
   // directions, path
   int sdir, edir, pdir, T, Tbak;
 
-  // quad, solenoid, multipole, esptum, rfcav
-  num_t k1, ks, volt, freq, lag;
+  // quad, solenoid, multipole, esptum, rfcav, sine & cosine
+  num_t k1, ks, volt, freq, lag,  ca, sa;
   int nbsl;
 
   // fringes
   int frng, fmax;
-  num_t e, h, a;
-  num_t fint, hgap, f1, f2;
+  num_t e, h, a, fint, hgap, f1, f2;
 
-  // angles
-  num_t ca, sa, tlt;
+  // patches, misalignments & tilt
+  bool  rot, trn;
+  num_t dx,   dy,   ds;
+  num_t dthe, dphi, dpsi, tlt;
 
   // multipoles
   int   nmul;
@@ -143,17 +144,6 @@ struct cflw_r { // must be identical to def in mad_dynmap.cpp !!
   int   snm;
   num_t bfx[snm_max];
   num_t bfy[snm_max];
-
-  // patches
-  num_t dx,   dy,   ds;
-  num_t dthe, dphi, dpsi;
-
-  // misalign
-  struct {
-    bool  rot, trn;
-    num_t dx,   dy,   ds;
-    num_t dthe, dphi, dpsi;
-  } algn;
 
   // particles
   int    npar;
@@ -175,17 +165,18 @@ struct cflw_t { // must be identical to def in mad_dynmap.cpp !!
   // directions, path
   int sdir, edir, pdir, T, Tbak;
 
-  // quad, solenoid, multipole, esptum, rfcav
-  num_t k1, ks, volt, freq, lag;
+  // quad, solenoid, multipole, esptum, rfcav, sine & cosine
+  num_t k1, ks, volt, freq, lag, ca, sa;
   int nbsl;
 
   // fringes
   int frng, fmax;
-  num_t e, h, a;
-  num_t fint, hgap, f1, f2;
+  num_t e, h, a, fint, hgap, f1, f2;
 
-  // angles
-  num_t ca, sa, tlt;
+  // patches, misalignments & tilt
+  bool  rot, trn;
+  num_t dx,   dy,   ds;
+  num_t dthe, dphi, dpsi, tlt;
 
   // multipoles
   int   nmul;
@@ -196,17 +187,6 @@ struct cflw_t { // must be identical to def in mad_dynmap.cpp !!
   int   snm;
   num_t bfx[snm_max];
   num_t bfy[snm_max];
-
-  // patches
-  num_t dx,   dy,   ds;
-  num_t dthe, dphi, dpsi;
-
-  // misalign
-  struct {
-    bool  rot, trn;
-    num_t dx,   dy,   ds;
-    num_t dthe, dphi, dpsi;
-  } algn;
 
   // damaps
   int      npar;
@@ -228,17 +208,18 @@ struct cflw_p { // must be identical to def in mad_dynmap.cpp !!
   // directions, path
   int sdir, edir, pdir, T, Tbak;
 
-  // quad, solenoid, multipole, esptum, rfcav
-  tpsa_t *k1, *ks, *volt, *freq, *lag;
+  // quad, solenoid, multipole, esptum, rfcav, sine & cosine
+  tpsa_t *k1, *ks, *volt, *freq, *lag, *sa, *ca;
   int nbsl;
 
   // fringes
   int frng, fmax;
-  tpsa_t *e, *h, *a;
-  num_t fint, hgap, f1, f2;
+  tpsa_t *e, *h, *a, *fint, *hgap, *f1, *f2;
 
-  // angles
-  tpsa_t *ca, *sa, *tlt;
+  // patches, misalignments & tilt
+  bool  rot, trn;
+  tpsa_t *dx,   *dy,   *ds;
+  tpsa_t *dthe, *dphi, *dpsi, *tlt;
 
   // multipoles
   int    nmul;
@@ -249,17 +230,6 @@ struct cflw_p { // must be identical to def in mad_dynmap.cpp !!
   int     snm;
   tpsa_t *bfx[snm_max];
   tpsa_t *bfy[snm_max];
-
-  // patches
-  tpsa_t *dx,   *dy,   *ds;
-  tpsa_t *dthe, *dphi, *dpsi;
-
-  // misalign
-  struct {
-    bool  rot, trn;
-    num_t dx,   dy,   ds;
-    num_t dthe, dphi, dpsi;
-  } algn;
 
   // parametric damaps
   int      npar;
@@ -284,6 +254,18 @@ assertf(ffi.sizeof("struct cflw_r") == _C.mad_cflw_rsize, msg, "struct cflw_r", 
 assertf(ffi.sizeof("struct cflw_t") == _C.mad_cflw_tsize, msg, "struct cflw_t", "struct cflw<map_t>")
 assertf(ffi.sizeof("struct cflw_p") == _C.mad_cflw_psize, msg, "struct cflw_p", "struct cflw<prm_t>")
 assertf(ffi.sizeof("union mflw_"  ) == _C.mad_cflw_size , msg, "union  mflw_" , "union  mflw_"      )
+
+local txflw  = { r = 'rflw' , t = 'tflw' , p = 'pflw'  }
+local txflw_ = { r = 'rflw_', t = 'tflw_', p = 'pflw_' }
+local  xflw  = \m -> m[txflw [m.cmap]]
+local  xflw_ = \m -> m[txflw_[m.cmap]]
+
+local function xcpy (a, b)
+      if is_number(a) then return b
+  elseif is_number(b) then _C.mad_tpsa_setval(a,b) return a
+  else                     _C.mad_tpsa_copy  (b,a) return a
+  end
+end
 
 local map = {
   r = { -- not used
@@ -326,6 +308,7 @@ local map = {
     [changedir   ] =            changedir     ,
     [changenrj   ] =            changenrj     ,
     [misalign    ] = _C.mad_trk_misalign_r    ,
+    [tilt        ] = _C.mad_trk_tilt_r        ,
     [fnil        ] = _C.mad_trk_fnil          ,
   },
   t = {
@@ -368,6 +351,7 @@ local map = {
     [changedir   ] =            changedir     ,
     [changenrj   ] =            changenrj     ,
     [misalign    ] = _C.mad_trk_misalign_t    ,
+    [tilt        ] = _C.mad_trk_tilt_t        ,
     [fnil        ] = _C.mad_trk_fnil          ,
   },
   p = {
@@ -410,44 +394,51 @@ local map = {
     [changedir   ] =            changedir     ,
     [changenrj   ] =            changenrj     ,
     [misalign    ] = _C.mad_trk_misalign_p    ,
+    [tilt        ] = _C.mad_trk_tilt_p        ,
     [fnil        ] = _C.mad_trk_fnil          ,
   },
 }
 
 -- strengths and phases -------------------------------------------------------o
 
+local nsnm = \snm -> ((snm+1)*(snm+2)/2) -- see snm_max above
+
 local function cpy_mult (m)
-  local c = m.cflw
+  local c = xflw(m)
   c.nmul = m.nmul
   c.snm  = m.snm
 
-  c.knl[0], c.knl[1] = 0, 0
-  c.ksl[0], c.ksl[1] = 0, 0
+  c.knl[0] = xcpy(c.knl[0], 0)
+  c.ksl[0] = xcpy(c.ksl[0], 0)
+  c.knl[1] = xcpy(c.knl[1], 0)
+  c.ksl[1] = xcpy(c.ksl[1], 0)
 
   for i=1,c.nmul do
-    c.knl[i-1] = m.knl[i]
-    c.ksl[i-1] = m.ksl[i]
+    c.knl[i-1] = xcpy(c.knl[i-1], m.knl[i])
+    c.ksl[i-1] = xcpy(c.ksl[i-1], m.ksl[i])
   end
 
-  if c.snm > 0 then -- bfx and bfy will have nil values otherwise
-    for i=1,(c.snm+1)*(c.snm+2)/2 do
-      c.bfx[i-1] = m.bfx[i] 
-      c.bfy[i-1] = m.bfy[i] 
+  if c.snm > 0 then
+    for i=1,nsnm(c.snm) do
+      c.bfx[i-1] = xcpy(c.bfx[i-1], m.bfx[i])
+      c.bfy[i-1] = xcpy(c.bfy[i-1], m.bfy[i])
     end  
   end
 end
 
 local function adj_mult (m)
-  local knl, ksl, nmul in m
-  m.nmul, m.pmap = 0, false
+  local knl, ksl, nmul, dapo in m
+  m.nmul = 0
 
   for i=nmul,1,-1 do
     if abs(knl[i])+abs(ksl[i]) > 0 then m.nmul = i ; break end
   end
 
-  for i=m.nmul,1,-1 do
-    if not (is_number(knl[i]) and is_number(ksl[i])) then
-      m.pmap = true ; break
+  if dapo > 0 then
+    for i=m.nmul,1,-1 do
+      if not (is_number(knl[i]) and is_number(ksl[i])) then
+        m.cmap = 'p' ; break
+      end
     end
   end
 end
@@ -460,21 +451,6 @@ local function get_mult (elm, m, n)
   for i=1,m.nmul do
     m.knl[i] = ((knl[i] or 0) + (dknl[i] or 0)) / fact(i-1)
     m.ksl[i] = ((ksl[i] or 0) + (dksl[i] or 0)) / fact(i-1)
-  end
-end
-
-local function get_multphas (elm, m, n)
-  local knl, ksl, dknl, dksl in elm
---local pnl, psl, dpnl, dpsl in elm
-
-  m.nmul = max(#knl, #ksl, #dknl, #dksl, n or 0)
---m.npha = m.nmul
-
-  for i=1,m.nmul do
-    m.knl[i] = ((knl[i] or 0) + (dknl[i] or 0)) / fact(i-1)
-    m.ksl[i] = ((ksl[i] or 0) + (dksl[i] or 0)) / fact(i-1)
---  m.pnl[i] =  (pnl[i] or 0) + (dpnl[i] or 0)
---  m.psl[i] =  (psl[i] or 0) + (dpsl[i] or 0)
   end
 end
 
@@ -506,16 +482,16 @@ local function get_algn (e, m)
   if not (trn or rot) then return nil end
 
   if m.cmap then
-    local c = m.cflw
-    c.tlt       = m.tlt
-    c.algn.trn  = trn
-    c.algn.rot  = rot
-    c.algn.dx   = dx
-    c.algn.dy   = dy
-    c.algn.ds   = ds
-    c.algn.dthe = dthe
-    c.algn.dphi = dphi
-    c.algn.dpsi = dpsi
+    local c = xflw(m)
+    c.trn  = trn
+    c.rot  = rot
+    c.dx   = xcpy(c.dx  , dx   )
+    c.dy   = xcpy(c.dy  , dy   )
+    c.ds   = xcpy(c.ds  , ds   )
+    c.dthe = xcpy(c.dthe, dthe )
+    c.dphi = xcpy(c.dphi, dphi )
+    c.dpsi = xcpy(c.dpsi, dpsi )
+    c.tlt  = xcpy(c.tlt , m.tlt)
   end
 
   return {trn=trn, rot=rot, dx=dx, dy=dy, ds=ds, dthe=dthe, dphi=dphi, dpsi=dpsi}
@@ -525,16 +501,17 @@ end
 
 local function crot (elm, m, dir)
   if m.cmap then
-    m.cflw.dpsi = m.tlt*m.tdir -- dpsi is tilted in the cmap
-    map[m.cmap][srotation](m.cflw_, dir, 0)
+    local c = xflw(m)
+    c.tlt = xcpy(c.tlt, m.tlt)
+    map[m.cmap][tilt](xflw_(m), dir)
   else
-    srotation(elm, m, dir, m.tlt)
+    tilt(elm, m, dir)
   end
 end
 
 local function cmisalign (elm, m, dir)
   if m.cmap then
-    map[m.cmap][misalign](m.cflw_, dir, 0)
+    map[m.cmap][misalign](xflw_(m), dir)
   else
     misalign(elm, m, dir)
   end
@@ -544,34 +521,46 @@ local function cfringe (elm, m, dir, frng)
   local fun = map[m.cmap][frng]
   if is_function(fun) then return frng(elm, m, dir) end
 
-  local c = m.cflw
-  local p = m.pdir == dir
+  local frng, fmax, e, h, a, fint, hgap, f1, f2 =
+           0,    0, 0, 0, 0,    0,    0,  0, 0
 
-  if dir ==  1 and elm.kill_ent_fringe or
-     dir == -1 and elm.kill_exi_fringe
-  then c.frng = 0
-  else c.frng = fcut(m.fringe, elm.fringe)
+  if not (dir ==  1 and elm.kill_ent_fringe or
+          dir == -1 and elm.kill_exi_fringe) then
+    frng = fcut(m.fringe, elm.fringe)
   end
 
   local e1, e2 = (m.e1 or elm.e1)*m.tdir, (m.e2 or elm.e2)*m.tdir
-  if dir == 1 then c.e, c.h = e1, elm.h1 *m.tdir
-  else             c.e, c.h = e2, elm.h2 *m.tdir
+  if dir == 1 then e, h = e1, elm.h1 *m.tdir
+  else             e, h = e2, elm.h2 *m.tdir
   end
-  c.a = p and (e2 - e1)*m.sdir or 0 -- if sdir == -1 then e1 and e2 are swapped
+  a = m.pdir == dir and (e2 - e1)*m.sdir or 0
 
   if ftst(c.frng, fringe.bend) then
-    c.fint, c.hgap = (dir == -1 and elm.fintx) or elm.fint, elm.hgap
+    fint, hgap = (dir == -1 and elm.fintx) or elm.fint, elm.hgap
   end
 
   if ftst(c.frng, fringe.mult) then
-    c.fmax = elm.frngmax or m.frngmax
+    fmax = elm.frngmax or m.frngmax
   end
 
   if ftst(c.frng, fringe.qsad) then
-    c.f1, c.f2 = elm.f1, elm.f2
+    f1, f2 = elm.f1, elm.f2
   end
 
-  return fun(m.cflw_, dir)
+  if m.cmap then
+    local c = xflw(m)
+    c.frng = frng
+    c.fmax = fmax
+    c.fint = xcpy(c.fint, fint)
+    c.hgap = xcpy(c.hgap, hgap)
+    c.e    = xcpy(c.e   , e   )
+    c.h    = xcpy(c.h   , h   )
+    c.a    = xcpy(c.a   , a   )
+    c.f1   = xcpy(c.f1  , f1  )
+    c.f2   = xcpy(c.f2  , f2  )
+  end
+
+  return fun(xflw_(m), dir)
 end
 
 -- element tracking -----------------------------------------------------------o
@@ -579,15 +568,19 @@ end
 local function trackone (elm, m, inter, thick_or_thin)
   local sdir, atentry, atexit in m
 
-  if m.cmap and not m.pmap then
+  if m.cmap then
     local cmap = map[m.cmap]
-    thick_or_thin = cmap[thick_or_thin or fnil]
-    m.cflw.name = elm.name
+    thick_or_thin = cmap[thick_or_thin]
+    if is_function(thick_or_thin) then m.pmap = true end
+    xflw(m).name = elm.name
   end
 
   atentry(elm, m,  sdir, -1)
   inter  (elm, m,    1 , thick_or_thin)
   atexit (elm, m, -sdir, -2)
+
+  m.pmap = false
+  if m.cmap == 'p' then m.cmap = 't' end
 end
 
 local function trackelm (elm, m, inter, thick, thin, fringe)
@@ -598,12 +591,13 @@ local function trackelm (elm, m, inter, thick, thin, fringe)
   local rot  = abs(tlt) >= minang and crot or fnil
   local fng  = fringe
 
-  if m.cmap and not m.pmap then
+  if m.cmap then
     local cmap = map[m.cmap]
     thick, thin, fng = cmap[thick], cmap[thin], fng ~= fnil and cfringe or fng
     if is_function(thick) or is_function(thin) then m.pmap = true end
-    m.cflw.name = elm.name
-    m.cflw.tlt  = tlt
+    local c = xflw(m)
+    c.name = elm.name
+    c.tlt = xcpy(c.tlt, tlt)
   end
 
   atentry(elm, m,  sdir, -1)
@@ -618,7 +612,8 @@ local function trackelm (elm, m, inter, thick, thin, fringe)
   mis    (elm, m, -sdir)
   atexit (elm, m, -sdir, -2)
 
-  m.algn = nil
+  m.pmap, m.algn = false, nil
+  if m.cmap == 'p' then m.cmap = 't' end
 end
 
 local function tracksub (elm, m, inter, thick, thin, fringe)
@@ -634,12 +629,13 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
   local fng  = fringe
   m.eidx = 0
 
-  if m.cmap and not m.pmap then
+  if m.cmap then
     local cmap = map[m.cmap]
     thick, thin, fng = cmap[thick], cmap[thin], fng ~= fnil and cfringe or fng
     if is_function(thick) or is_function(thin) then m.pmap = true end
-    m.cflw.name = elm.name
-    m.cflw.tlt  = tlt
+    local c = xflw(m)
+    c.name = elm.name
+    c.tlt = xcpy(c.tlt, tlt)
   end
 
   atentry(elm, m, sdir, -1)
@@ -688,7 +684,8 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
   mis   (elm, m, -sdir)
   atexit(elm, m, -sdir, -2)
 
-  m.algn, m.eidx = nil, eidx
+  m.pmap, m.algn, m.eidx = false, nil, eidx
+  if m.cmap == 'p' then m.cmap = 't' end
 end
 
 -- kinds ----------------------------------------------------------------------o
@@ -707,17 +704,12 @@ local function track_marker (elm, m)
   trackone(elm, m, thinonly, fnil)
 end
 
-local rot_angles = {
-  [yrotation] = "dthe",
-  [xrotation] = "dphi",
-  [srotation] = "dpsi",
-}
-
 local function track_rotation (elm, m, rot)
   m.ang = elm.angle
 
   if m.cmap then
-    m.cflw[rot_angles[rot]] = m.ang
+    local c = xflw(m)
+    c.ang = xcpy(c.ang, m.ang)
   end
 
   trackone(elm, m, thinonly, rot)
@@ -727,9 +719,10 @@ local function track_translate (elm, m)
   m.dx, m.dy, m.ds = elm.dx, elm.dy, elm.ds
 
   if m.cmap then
-    m.cflw.dx = m.dx
-    m.cflw.dy = m.dy
-    m.cflw.ds = m.ds
+    local c = xflw(m)
+    c.dx = xcpy(c.dx, m.dx)
+    c.dy = xcpy(c.dy, m.dy)
+    c.ds = xcpy(c.ds, m.ds)
   end
 
   trackone(elm, m, thinonly, translate)
@@ -740,12 +733,13 @@ local function track_changeref (elm, m)
   m.dthe, m.dphi, m.dpsi = elm.dtheta, elm.dphi, elm.dpsi
 
   if m.cmap then
-    m.cflw.dx   = m.dx
-    m.cflw.dy   = m.dy
-    m.cflw.ds   = m.ds
-    m.cflw.dthe = m.dthe
-    m.cflw.dphi = m.dphi
-    m.cflw.dpsi = m.dpsi
+    local c = xflw(m)
+    c.dx   = xcpy(c.dx  , m.dx  )
+    c.dy   = xcpy(c.dy  , m.dy  )
+    c.ds   = xcpy(c.ds  , m.ds  )
+    c.dthe = xcpy(c.dthe, m.dthe)
+    c.dphi = xcpy(c.dphi, m.dphi)
+    c.dpsi = xcpy(c.dpsi, m.dpsi)
   end
 
   trackone(elm, m, thinonly, changeref)
@@ -755,10 +749,10 @@ local function track_drift (elm, m)
   local l in elm
   m.el = l*m.sdir
 
-  if not is_number(m.el) then m.pmap = true end
-
-  if m.cmap and not m.pmap then
-    m.cflw.el = m.el
+  if m.cmap then
+    if not is_number(m.el) then m.cmap = 'p' end
+    local c = xflw(m)
+    c.el = xcpy(c.el, m.el)
   end
 
   if is_implicit(elm) then
@@ -783,8 +777,6 @@ local function track_multipole (elm, m)
     errorf("thin solenoid '%s' defines strength with zero lrad", elm.name)
   end
 
-  if not (is_number(ksi) and is_number(lrad)) then m.pmap = true end
-
   m.lrad, m.ksi = sdir*lrad, ksi or 0
 
   local kick = strex_kick
@@ -792,9 +784,11 @@ local function track_multipole (elm, m)
     kick = strex_kickhs
   end
 
-  if m.cmap and not m.pmap then
-    m.cflw.lrad = m.lrad
-    m.cflw.ks   = m.ksi/lrad
+  if m.cmap then
+    if not (is_number(ksi) and is_number(lrad)) then m.cmap = 'p' end
+    local c = xflw(m)
+    c.lrad = xcpy(c.lrad, m.lrad    )
+    c.ks   = xcpy(c.ks  , m.ksi/lrad)
     cpy_mult(m)
   end
 
@@ -851,10 +845,6 @@ local function track_sbend (elm, m, e1_, e2_)
 
   adj_mult(m) ; getanbnr(m)
 
-  if not (is_number(m.eh) and is_number(m.e1) and is_number(m.e2)) then
-    m.pmap = true
-  end
-
   if model == 'DKD' then                          -- curved thin
     inter, thick, kick = DKD[method], curex_drift , curex_kick
   elseif m.nmul == 1 and ksl[1] == 0 and not m.ptcmodel then -- curved thick only
@@ -863,11 +853,15 @@ local function track_sbend (elm, m, e1_, e2_)
     inter, thick, kick = TKT[method], sbend_thick , sbend_kick
   end
 
-  if m.cmap and not m.pmap then
-    m.cflw.eh   = m.eh
-    m.cflw.el   = m.el
-    m.cflw.ang  = m.ang
-    m.cflw.mang = m.mang
+  if m.cmap then
+    if m.dapo > 0 and not (is_number(m.eh) and is_number(m.e1) and is_number(m.e2)) then
+      m.cmap = 'p'
+    end
+    local c = xflw(m)
+    c.eh   = xcpy(c.eh  , m.eh  )
+    c.el   = xcpy(c.el  , m.el  )
+    c.ang  = xcpy(c.ang , m.ang )
+    c.mang = xcpy(c.mang, m.mang)
     cpy_mult(m)
   end
 
@@ -920,10 +914,6 @@ local function track_rbend (elm, m)
 
   adj_mult(m)
 
-  if not (is_number(m.eh) and is_number(m.e1) and is_number(m.e2)) then
-    m.pmap = true
-  end
-
   local model  = elm.model  or m.model
   local method = elm.method or m.method
   local inter, thick, kick
@@ -936,20 +926,29 @@ local function track_rbend (elm, m)
     inter, thick, kick = TKT[method], rbend_thick, rbend_kick
   end
 
-  if m.cmap and not m.pmap then
-    m.cflw.eh   = m.eh
-    m.cflw.el   = m.el
-    m.cflw.eld  = m.eld
-    m.cflw.elc  = m.elc
-    m.cflw.pdir = m.pdir or 0
-    m.cflw.mang = m.mang
+  if m.cmap then
+    if m.dapo > 0 and not (is_number(m.eh) and is_number(m.e1) and is_number(m.e2)) then
+      m.cmap = 'p'
+    end
+    local c = xflw(m)
+    c.pdir = m.pdir or 0
+    c.eh   = xcpy(c.eh  , m.eh  )
+    c.el   = xcpy(c.el  , m.el  )
+    c.eld  = xcpy(c.eld , m.eld )
+    c.elc  = xcpy(c.elc , m.elc )
+    c.mang = xcpy(c.mang, m.mang)
     cpy_mult(m)
   end
 
   local track = #elm == 0 and trackelm or tracksub
   track(elm, m, inter, thick, kick, strex_fringe)
   m.e1, m.e2, m.eld, m.pdir = nil, nil, nil, nil
-  if m.cmap then m.cflw.eld, m.cflw.pdir = 0, 0 end
+
+  if m.cmap then
+    local c = xflw(m)
+    c.pdir = 0
+    c.eld = xcpy(c.eld, 0)
+  end
 end
 
 local function track_quadrupole (elm, m)
@@ -967,8 +966,6 @@ local function track_quadrupole (elm, m)
   m.el, m.eh = l*sdir, 0
 
   adj_mult(m)
-
-  if not (is_number(angle) and is_number(l)) then m.pmap = true end
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
@@ -993,12 +990,14 @@ local function track_quadrupole (elm, m)
     thick, kick = quad_thickh, ptcmodel and quad_kickh_ or quad_kickh
   end
 
-  if m.cmap and not m.pmap then
-    m.cflw.el = m.el
-    m.cflw.eh = m.eh
-    m.cflw.k1 = m.k1 or 0
-    m.cflw.ca = m.ca or 0
-    m.cflw.sa = m.sa or 0
+  if m.cmap then
+    if not (is_number(angle) and is_number(l)) then m.cmap = 'p' end
+    local c = xflw(m)
+    c.el = xcpy(c.el, m.el     )
+    c.eh = xcpy(c.eh, m.eh     )
+    c.k1 = xcpy(c.k1, m.k1 or 0)
+    c.ca = xcpy(c.ca, m.ca or 0)
+    c.sa = xcpy(c.sa, m.sa or 0)
     cpy_mult(m)
   end
 
@@ -1014,8 +1013,6 @@ local function track_strexgen (elm, m, ptc_, mth_)
 
   adj_mult(m)
 
-  if not is_number(m.el) then m.pmap = true end
-
   local model  = elm.model  or m.model
   local method = elm.method or mth_ or m.method
   local inter, thick, kick, fringe
@@ -1030,10 +1027,12 @@ local function track_strexgen (elm, m, ptc_, mth_)
     thick, kick, fringe = quad_thick, quad_kick_, strex_fringe
   end
 
-  if m.cmap and not m.pmap then
-    m.cflw.eh = 0
-    m.cflw.el = m.el
-    m.cflw.k1 = m.k1 or 0
+  if m.cmap then
+    if not is_number(m.el) then m.cmap = 'p' end
+    local c = xflw(m)
+    c.eh = xcpy(c.eh, 0        )
+    c.el = xcpy(c.el, m.el     )
+    c.k1 = xcpy(c.k1, m.k1 or 0)
     cpy_mult(m)
   end
 
@@ -1162,8 +1161,6 @@ local function track_solenoid (elm, m)
   local method = elm.method or m.method
   local thick, kick, fringe
 
-  if not (is_number(l) and is_number(ksi)) then m.pmap = true end
-
   if no_ksi then
     thick, kick, fringe = strex_drift, strex_kick , strex_fringe
   else
@@ -1171,10 +1168,12 @@ local function track_solenoid (elm, m)
     thick, kick, fringe = solen_thick, strex_kick, elm.new_fringe and solen_fringe or strex_fringe
   end
 
-  if m.cmap and not m.pmap then
-    m.cflw.el = m.el
-    m.cflw.eh = m.eh
-    m.cflw.ks = m.ks or 0
+  if m.cmap then
+    if not (is_number(l) and is_number(ksi)) then m.cmap = 'p' end
+    local c = xflw(m)
+    c.el = xcpy(c.el, m.el     )
+    c.eh = xcpy(c.eh, m.eh     )
+    c.ks = xcpy(c.ks, m.ks or 0)
     cpy_mult(m)
   end
 
@@ -1201,8 +1200,6 @@ local function track_eseptum (elm, m)
   local volt = sqrt(exl^2 + eyl^2)/l*tdir
   local thick
 
-  if not (is_number(l) and is_number(volt)) then m.pmap = true end
-
   if abs(volt) < minvolt then
     thick = strex_drift
   else
@@ -1211,12 +1208,14 @@ local function track_eseptum (elm, m)
     thick = esept_thick
   end
 
-  if m.cmap and not m.pmap then
-    m.cflw.el   = m.el
-    m.cflw.eh   = m.eh
-    m.cflw.volt = m.volt or 0
-    m.cflw.ca   = m.ca   or 0
-    m.cflw.sa   = m.sa   or 0
+  if m.cmap then
+    if not (is_number(l) and is_number(volt)) then m.cmap = 'p' end
+    local c = xflw(m)
+    c.el   = xcpy(c.el  , m.el       )
+    c.eh   = xcpy(c.eh  , m.eh       )
+    c.volt = xcpy(c.volt, m.volt or 0)
+    c.ca   = xcpy(c.ca  , m.ca   or 0)
+    c.sa   = xcpy(c.sa  , m.sa   or 0)
     cpy_mult(m)
   end
 
@@ -1228,7 +1227,7 @@ end
 -- rf cavities
 
 local function track_rfcavgen (elm, m, crab)
-  local sdir in m
+  local sdir, dapo in m
   local l, volt, freq, lag, harmon, n_bessel in elm
 
   m.el, m.eh = l*sdir, 0
@@ -1245,22 +1244,22 @@ local function track_rfcavgen (elm, m, crab)
             elm.name, m.freq)
   end
 
-  if not (is_number(l) and is_number(volt) and is_number(m.freq) and
-          is_number(lag)) then m.pmap = true end
-
   local inter  = l < minlen and thinonly or DKD[elm.method or m.method]
   local kick   = m.nmul+m.nbsl == 0 and rfcav_kick or rfcav_kickn
   local thick  = l < minlen and kick or strex_drift
   local fringe = l < minlen and fnil or rfcav_fringe
 
-  if m.cmap and not m.pmap then
-    m.cflw.el   = m.el
-    m.cflw.eh   = m.eh
-    m.cflw.volt = m.volt
-    m.cflw.freq = m.freq
-    m.cflw.lag  = m.lag
-    m.cflw.nbsl = m.nbsl
-    m.cflw.Tbak = elm.no_cavity_totalpath and -2 or -1
+  if m.cmap then
+    if m.dapo > 0 and not (is_number(volt) and is_number(m.freq) and
+      is_number(lag) and is_number(l)) then m.cmap = 'p' end
+    local c = xflw(m)
+    c.nbsl = m.nbsl
+    c.Tbak = elm.no_cavity_totalpath and -2 or -1
+    c.el   = xcpy(c.el  , m.el  )
+    c.eh   = xcpy(c.eh  , m.eh  )
+    c.volt = xcpy(c.volt, m.volt)
+    c.freq = xcpy(c.freq, m.freq)
+    c.lag  = xcpy(c.lag , m.lag )
     cpy_mult(m)
   end
 
@@ -1274,13 +1273,13 @@ local function track_rfcavity (elm, m)
 end
 
 local function track_rfmcavity (elm, m)
-  get_multphas  (elm, m)
+  get_mult      (elm, m)
   track_rfcavgen(elm, m)
   m.npha = nil
 end
 
 local function track_crabcavity (elm, m)
-  get_multphas  (elm, m, 1)
+  get_mult      (elm, m, 1)
   local l, volt in elm
   m.knl[1] = m.knl[1] + volt*l*1e-3
   track_rfcavgen(elm, m, true)
