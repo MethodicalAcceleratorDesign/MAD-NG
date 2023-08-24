@@ -317,11 +317,10 @@ inline void translate (cflw<M> &m, num_t lw, const V &dx_, const V &dy_, const V
       fabs(dy_)+fabs(m.dy) < minlen &&
       fabs(ds_)+fabs(m.ds) < minlen) return;
   mdump(0);
-  lw *= m.edir;
   P dx, dy, ds;
-  if (fval(dx_)) dx = lw*dx_; else dx = lw*R(m.dx);
-  if (fval(dy_)) dy = lw*dy_; else dy = lw*R(m.dy);
-  if (fval(ds_)) ds = lw*m.edir*ds_; else ds = lw*m.edir*R(m.ds);
+  if (fval(dx_)) dx = lw*m.edir*dx_; else dx = lw*m.edir*R(m.dx);
+  if (fval(dy_)) dy = lw*m.edir*dy_; else dy = lw*m.edir*R(m.dy);
+  if (fval(ds_)) ds = lw       *ds_; else ds = lw*       R(m.ds);
 
   if (fabs(ds) < minlen)
     FOR(i,m.npar) {
@@ -379,7 +378,7 @@ inline void misalignent (cflw<M> &m)
   }
 
   if (m.trn)
-    translate<M>(m, 1, R(m.dx), R(m.dy), R(m.ds));
+    translate<M>(m, m.sdir, R(m.dx), R(m.dy), R(m.ds));
 
   if (m.rot && m.sdir < 0) {
     srotation<M>(m, -1, R(m.dpsi));
@@ -406,20 +405,20 @@ inline void misalignexi (cflw<M> &m)
   if (m.rot && m.sdir > 0) {
     num_t v[3];
     mad_mat_torotyxz(rb, v, true);
-    srotation<M>(m, -1, R(m.dpsi)-(a[2]+v[2]));
-    xrotation<M>(m,  1, R(m.dphi)-(a[0]+v[0]));
-    yrotation<M>(m, -1, R(m.dthe)-(a[1]+v[1]));
+    srotation<M>(m,  1, R(m.dpsi)-(a[2]-v[2]));
+    xrotation<M>(m,  1,-R(m.dphi)+(a[0]+v[0]));
+    yrotation<M>(m,  1, R(m.dthe)-(a[1]-v[1]));
   }
 
-  if (m.trn) translate<M>(m, -1,
-     R(m.dx)-(t[0]+tb[0]), R(m.dy)-(t[1]+tb[1]), R(m.ds)-(t[2]+tb[2]));
+  if (m.trn) translate<M>(m, -m.sdir,
+     R(m.dx)-(t[0]-tb[0]), R(m.dy)-(t[1]-tb[1]), R(m.ds)-(t[2]-tb[2]));
 
   if (m.rot && m.sdir < 0) {
     num_t v[3];
     mad_mat_torotyxz(rb, v, true);
-    yrotation<M>(m,  1, R(m.dthe)-(a[1]+v[1]));
-    xrotation<M>(m, -1, R(m.dphi)-(a[0]+v[0]));
-    srotation<M>(m,  1, R(m.dpsi)-(a[2]+v[2]));
+    yrotation<M>(m,  1,-R(m.dthe)+(a[1]-v[1]));
+    xrotation<M>(m,  1, R(m.dphi)-(a[0]+v[0]));
+    srotation<M>(m,  1,-R(m.dpsi)+(a[2]-v[2]));
   }
   mdump(1);
 }
