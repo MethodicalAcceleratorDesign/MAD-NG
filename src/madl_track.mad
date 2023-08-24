@@ -31,7 +31,7 @@ Notes about directions and quantities:
 
 -- locals ---------------------------------------------------------------------o
 
-local command, element, mtable, damap, symint, option, show     in MAD
+local command, element, mtable, damap, tpsa, symint, option     in MAD
 
 local is_nil, is_beam, is_sequence, is_boolean, is_number,
       is_natural, is_nznatural, is_integer, is_string, is_true,
@@ -59,11 +59,11 @@ local ffi = require 'ffi'
 -- helper ---------------------------------------------------------------------o
 
 local function mshow (mflw)
-  show(mflw)
+  MAD.show(mflw)
   for i=1,#mflw do
     local m = mflw[i]
     printf("** [%d]=\n", i)
-    show(m)
+    MAD.show(m)
     if is_damap(m) then
       m:get0():print(nil,'line')
       if mflw.debug >= 3 then m:get1():print(nil,'line') end
@@ -75,7 +75,7 @@ end
 
 local fmt = "% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e "
 
-local function mdump (elm, mflw, lw_, str)
+local function mdump (elm, mflw, str)
   local dbg = mflw.debug
   if dbg < 4 then return end -- print mflw[1], require debug >= 4
 
@@ -193,9 +193,7 @@ end
 -- reset/change sequence iterator (e.g. track again) --------------------------o
 
 local function reset_si (mflw)
-  local mt = getmetatable(mflw)
-  local m = mt and mt.__index or mflw
-
+  local m = mflw.mflw
   local sequ, range, nturn, sdir, s0 in m.__sitr
   local iter, state, eidx = sequ:siter(range, nturn, sdir)
 
@@ -213,9 +211,7 @@ local function reset_si (mflw)
 end
 
 local function change_si (mflw, sequ, range_, nturn_, dir_)
-  local mt = getmetatable(mflw)
-  local m = mt and mt.__index or mflw
-
+  local m = mflw.mflw
   local range = range_ or sequ.range
   local iter, state, eidx = sequ:siter(range, nturn_, dir_)
 
@@ -234,17 +230,37 @@ end
 
 -- track cflow ----------------------------------------------------------------o
 
+local prms_list = {
+  -- element data
+  'el', 'eld', 'elc', 'lrad',
+  'eh', 'ang', 'mang',
+  -- quad, solenoid, multipole, esptum, rfcav
+  'k1', 'ks', 'volt', 'freq', 'lag',
+  -- fringes
+  'e', 'h', 'a',
+  -- angles
+  'ca', 'sa', 'tlt',
+  -- patches
+  'dx'  , 'dy'  , 'ds',
+  'dthe', 'dphi', 'dpsi',
+}
+
 local function sync_cflow (mflw, i)
-  local npar in mflw
-  mflw.       cflw.npar = npar
-  mflw.__sdat.cflw.npar = npar
+  local m = mflw.mflw
+
+  m.       tflw.npar = m.npar
+  m.__sdat.tflw.npar = m.npar
+  if m.pflw ~= nil then
+    m.       pflw.npar = m.npar
+    m.__sdat.pflw.npar = m.npar
+  end
 
   if i then
+    assert(m[i].__ta, "sync_cflow: invalid damap, missing __ta")
+    m.__cmap[i-1] = m[i].__ta
+  else for i=1,m.npar do
     assert(mflw[i].__ta, "sync_cflow: invalid damap, missing __ta")
-    mflw.__cmap[i-1] = mflw[i].__ta
-  else for i=1,npar do
-    assert(mflw[i].__ta, "sync_cflow: invalid damap, missing __ta")
-    mflw.__cmap[i-1] = mflw[i].__ta
+    m.__cmap[i-1] = m[i].__ta
   end end
 
   return mflw
@@ -253,14 +269,14 @@ end
 local function make_cflow (mflw)
   local npar, beam in mflw
 
-  mflw.cmap, mflw.cmap_sync = 't', sync_cflow
+  mflw.cmap, mflw.pmap, mflw.cmap_sync = 't', false, sync_cflow
 
   local m = mflw
-  for i =1,2 do
-    m.cflw_ = ffi.new 'mflw_t[1]'
-    m.cflw  = m.cflw_[0]
+  for i=1,2 do
+    m.tflw_  = ffi.new 'mflw_t[1]'
+    m.tflw   = m.tflw_[0].tflw
 
-    local c = m.cflw
+    local c  = m.tflw
     c.dbg    = max(0, mflw.debug-3)
     c.npar   = mflw.npar
     c.sdir   = mflw.sdir
@@ -280,7 +296,49 @@ local function make_cflow (mflw)
       end
     end
 
-    c.map = mflw.__cmap
+    c.par = mflw.__cmap
+    m = mflw.__sdat
+  end
+
+  if mflw.dapo == 0 then return end
+
+  local td, po = mflw[1].__td, mflw.dapo
+
+  local m = mflw
+  for i=1,2 do
+    m.pflw_  = ffi.new 'mflw_t[1]'
+    m.pflw   = m.pflw_[0].pflw
+
+    local p  = m.pflw
+    p.dbg    = max(0, mflw.debug-3)
+    p.npar   = mflw.npar
+    p.sdir   = mflw.sdir
+    p.edir   = mflw.edir
+    p.T      = mflw.T
+    p.Tbak   = -1
+    p.beta   = beam.beta
+    p.pc     = beam.pc
+    p.betgam = beam.betgam
+    p.charge = beam.charge
+
+    m.__tpsa = {}
+
+    local t = m.__tpsa
+    for i,k in ipairs(prms_list) do
+      t[i] = tpsa(td, po) ; p[k] = t[i]
+    end
+    local n = #t+1
+    for i=0,nmul_max-1 do
+      t[n+2*i  ] = tpsa(td, po) ; p.knl[i] = t[n+2*i  ]
+      t[n+2*i+1] = tpsa(td, po) ; p.ksl[i] = t[n+2*i+1]
+    end
+    local n = #t+1
+    for i=0,snm_max-1 do
+      t[n+2*i  ] = tpsa(td, po) ; p.bfx[i] = t[n+2*i  ]
+      t[n+2*i+1] = tpsa(td, po) ; p.bfy[i] = t[n+2*i+1]
+    end
+
+    p.par = mflw.__cmap
     m = mflw.__sdat
   end
 end
@@ -507,9 +565,9 @@ local function make_mflow (self)
   local mflw = table.new(npar*ndp, 50)
   local mdef = mapdef or {}
   local beta = beam.beta
-  local x0   = par2vec(O0)
+  local x0   = is_damap(O0) and O0:get0() or par2vec(O0)
   local pt0  = x0[6]
-  local damo, stat = 0
+  local damo, dapo, stat = 0, 0
 
   -- precedence of initial conditions
   for j,dp in ipairs(deltap) do
@@ -526,15 +584,15 @@ local function make_mflow (self)
 
       if is_beta0(X0i) then     -- damap created from beta0
         mflw[ii] = bet2map(X0i, damap(mdef[i] or mdef)):set0(x0,1) -- x0 added
-        stat, damo = 'Aset', max(damo, mflw[ii].__td.mo)
+        stat, damo, dapo = 'Aset', max(damo, mflw[ii].__td.mo), max(dapo, mflw[ii].__td.po)
       elseif is_damap(X0i) then -- damap (copy)
         mflw[ii] = (nc and X0i or X0i:copy()):set0(x0,1)           -- x0 added
-        stat, damo = 'Mset', max(damo, mflw[ii].__td.mo)
+        stat, damo, dapo  = 'Mset', max(damo, mflw[ii].__td.mo), max(dapo, mflw[ii].__td.po)
       elseif is_iterable(X0i) then
         local x = x0 + par2vec(X0i)                                -- x0 added
         if mapdef then          -- damap created from particle
           mflw[ii] = damap(mdef[i] or mdef):set0(x)
-          damo = max(damo, mflw[ii].__td.mo)
+          damo, dapo = max(damo, mflw[ii].__td.mo), max(dapo, mflw[ii].__td.po)
         else                    -- particle (copy)
           local p = nc and X0i or {x=0, px=0, y=0, py=0, t=0, pt=0}
           p.x, p.px, p.y, p.py, p.t, p.pt = x[1], x[2], x[3], x[4], x[5], x[6]
@@ -561,6 +619,7 @@ local function make_mflow (self)
   end
 
   -- complete mflow
+  mflw.mflw=mflw             -- the "main" mflw
   mflw.sequ=sequ             -- current sequence
   mflw.beam=beam {}          -- current beam (clone)
   mflw.mtbl=mtbl             -- current mtable (nil if not save)
@@ -577,7 +636,8 @@ local function make_mflow (self)
 
   mflw.npar=#mflw            -- number of tracked particles or damaps
   mflw.tpar=mflw.npar        -- total number of particles or damaps
-  mflw.damo=damo             -- damap max order (0 means no DA)
+  mflw.damo=damo             -- damap max variables  order (0 means no DA)
+  mflw.dapo=dapo             -- damap max parameters order (0 means no parameters)
   mflw.nslc=nslc             -- minimum number of slices for all elements
   mflw.nslice=nslice         -- slices for each element (num, fun or iterable)
   mflw.deltap=deltap         -- delta p
@@ -614,6 +674,7 @@ local function make_mflow (self)
   mflw.savemap=savemap       -- save damaps
 
   mflw.cmap=false            -- C/C++ maps
+  mflw.pmap=false            -- C/C++ parametric maps
   mflw.cmap_sync=first       -- function to sync mflw vs cflw
 
   mflw.info=self.info or 0   -- information level
@@ -635,8 +696,11 @@ local function make_mflow (self)
                s0=s0, range=range, nturn=nturn} -- sequence iterator reset
 
   -- for processing elements (pre-alloc to avoid rehash)
+  mflw.name="--UNNAMED--"    -- current element name
   mflw.el, mflw.lrad=0,0     -- current element lengths
   mflw.eh, mflw.ang =0,0     -- current element curvatures
+  mflw.mang=0                -- current element misalignment angle
+  mflw.elc=0                 -- current element chord length
   mflw.tlt=0                 -- current element tilt angle
   mflw.clw=0                 -- current element cumulated length weights
   mflw.nsl=0                 -- current element number of slices
@@ -645,14 +709,10 @@ local function make_mflow (self)
   mflw.volt, mflw.freq=0,0   -- rfcavity parameters
   mflw.lag , mflw.nbsl=0,0
 
-  mflw.algn=nil              -- current element misalignment
-  mflw.pmap=false            -- current element uses parametric maps
+  mflw.algn=false            -- current element misalignment
   mflw.nmul=0                -- current element number of multipoles
   mflw.knl={[0]=0}           -- current element multipoles
   mflw.ksl={[0]=0}           -- current element multipoles skew
-  mflw.npha=0                -- current element number of multiplole phases
-  mflw.pnl={[0]=0}           -- current element multipoles phases
-  mflw.psl={[0]=0}           -- current element multipoles shew phases
   mflw.snm=0                 -- current element sector nmul max
   mflw.bfx={[0]=0}           -- current element curved field x coefficients
   mflw.bfy={[0]=0}           -- current element curved field y coefficients
@@ -660,7 +720,9 @@ local function make_mflow (self)
   -- for processing (thin) subelements (pre-alloc to avoid rehash)
   mflw.__sdat = setmetatable({
     el=0, lrad=0,            -- current subelement lengths
-    eh=0,  ang=0,            -- current subelement curvatures
+    eh=0,  ang=0,            -- current subelement curvature and angle
+    mang=0,                  -- current subelement misalignment angle
+    elc=0,                   -- current subelement chord length
     tlt=0,                   -- current subelement tilt angle
     clw=0,                   -- current subelement cumulated length weights
     nsl=0,                   -- current subelement number of slices
@@ -668,20 +730,16 @@ local function make_mflow (self)
     volt=0, freq=0, lag=0,   -- rfcavity parameters
     nbsl=0,
 
-    algn=nil,                -- current subelement misalignment
-    pmap=false,              -- current subelement uses parametric maps
+    algn=false,              -- current subelement misalignment
     nmul=0,                  -- current subelement number of multipoles
     knl={[0]=0},             -- current subelement multipoles
     ksl={[0]=0},             -- current subelement multipoles skew
-    npha=0,                  -- current subelement number of multiplole phases
-    pnl={[0]=0},             -- current subelement multipoles phases
-    psl={[0]=0},             -- current subelement multipoles shew phases
     snm=0,                   -- current subelement sector nmul max
     bfx={[0]=0},             -- current subelement curved field x coefficients
     bfy={[0]=0},             -- current subelement curved field y coefficients
   }, {__index=mflw})
 
-  -- prepare cflw for C/C++ maps
+  -- prepare tflw (and pflw) for C/C++ maps
   if self.cmap and damo > 0 then make_cflow(mflw) end
 
   return mflw
@@ -726,7 +784,8 @@ local function exec (self)
 
     -- dynamic tracking
     for ei,elm,spos,ds in iter, state, eidx do
-      mflw.eidx, mflw.spos, mflw.ds, mflw.clw = ei, s0+spos, ds, 0
+      mflw.name, mflw.eidx, mflw.spos, mflw.ds, mflw.clw =
+       elm.name,      ei,     s0+spos,      ds,      0
       ret = elm:track(mflw)
       mflw.nstep = mflw.nstep-1
 

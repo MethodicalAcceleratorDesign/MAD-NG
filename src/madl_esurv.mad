@@ -38,6 +38,7 @@ local minlen, minang, twopi  in MAD.constant
 local is_implicit            in element.drift
 local arc2cord, arc2len      in MAD.gmath
 local abs, sin, cos          in math
+local is_number              in MAD.typeid
 
 -- integrator schemes ---------------------------------------------------------o
 
@@ -85,11 +86,11 @@ end
 
 -- element tracking -----------------------------------------------------------o
 
-local function trackone (elm, m, inter, thick, thin)
+local function trackone (elm, m, inter, thick_or_thin)
   local sdir, atentry, atexit in m
 
   atentry(elm, m,  sdir, -1)
-  inter  (elm, m,    1 , thick, thin)
+  inter  (elm, m,    1 , thick_or_thin)
   atexit (elm, m, -sdir, -2)
 end
 
@@ -103,13 +104,13 @@ local function trackelm (elm, m, inter, thick, thin, fringe)
 
   atentry(elm, m,  sdir, -1)
   mis    (elm, m,  sdir)
-  rot    (elm, m,  sdir, tlt)
+  rot    (elm, m,  sdir)
   atentry(elm, m,  sdir, -3)
   fng    (elm, m,  sdir)
   inter  (elm, m,    1 , thick, thin)
   fng    (elm, m, -sdir)
   atexit (elm, m, -sdir, -4)
-  rot    (elm, m, -sdir, tlt)
+  rot    (elm, m, -sdir)
   mis    (elm, m, -sdir)
   atexit (elm, m, -sdir, -2)
 
@@ -131,7 +132,7 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
 
   atentry(elm, m, sdir, -1)
   mis    (elm, m, sdir)
-  rot    (elm, m, sdir, tlt)
+  rot    (elm, m, sdir)
   atentry(elm, m, sdir, -3)
   fng    (elm, m, sdir)
 
@@ -170,7 +171,7 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
 
   fng   (elm, m, -sdir)
   atexit(elm, m, -sdir, -4)
-  rot   (elm, m, -sdir, tlt)
+  rot   (elm, m, -sdir)
   mis   (elm, m, -sdir)
   atexit(elm, m, -sdir, -2)
 
@@ -190,20 +191,35 @@ local function track_slink (elm, m)
 end
 
 local function track_marker (elm, m)
-  m.el, m.ang = 0, 0
-  trackone(elm, m, thinonly, nil, fnil)
+  trackone(elm, m, thinonly, fnil)
+end
+
+local function track_rotation (elm, m, rot)
+  m.ang = elm.angle
+  trackone(elm, m, thinonly, rot)
+end
+
+local function track_translate (elm, m)
+  m.dx, m.dy, m.ds = elm.dx, elm.dy, elm.ds
+  trackone(elm, m, thinonly, translate)
+end
+
+local function track_changeref (elm, m)
+  m.dx  , m.dy  , m.ds   = elm.dx  , elm.dy  , elm.ds
+  m.dthe, m.dphi, m.dpsi = elm.dthe, elm.dphi, elm.dpsi
+  trackone(elm, m, thinonly, changeref)
 end
 
 local function track_drift (elm, m)
-  local ds in m
-  m.el, m.ang = ds, 0
+  local l in elm
+  m.el = l*m.sdir
 
   if is_implicit(elm) then
     local inter = m.implicit and thickonly or driftonly
-    trackone(elm, m, inter, strex_thick, fnil)
+    trackone(elm, m, inter, strex_thick)
   else
+    local inter = l >= minlen and thickonly or driftonly
     local track = #elm == 0 and trackelm or tracksub
-    local inter = abs(ds) >= minlen and thickonly or driftonly
     track(elm, m, inter, strex_thick, fnil, fnil)
   end
 end
@@ -213,17 +229,16 @@ local function track_thin (elm, m)
   m.el, m.ang = 0, angle*m.tdir
 
   local kick = abs(angle) >= minang and curex_thin or fnil
-  trackelm(elm, m, thinonly, nil, kick)
+  trackelm(elm, m, thinonly, kick, nil, fnil)
 end
 
 local function track_thick (elm, m, fng_)
-  local ds in m
-  local angle in elm
+  local l, angle in elm
   local no_ang = abs(angle) < minang or fng_
-  m.el, m.ang = fng_ and m.el or ds, angle*m.tdir
+  m.el, m.ang = fng_ and m.el or l*m.sdir, angle*m.tdir
 
   local inter, track, thick
-  if abs(ds) >= minlen then -- trick: driftonly+thick <=> thinonly+thin
+  if l >= minlen then -- trick: driftonly+thick <=> thinonly+thin
     inter, thick = thickonly, no_ang and strex_thick or curex_thick
   else
     inter, thick = driftonly, no_ang and fnil        or curex_thin
@@ -288,7 +303,7 @@ local function track_rbend (elm, m)
   end
 
   track_thick(elm, m, fng)
-  m.e1, m.e2, m.mang = nil, nil, nil, nil, nil
+  m.e1, m.e2, m.mang = nil, nil, nil
 end
 
 -- load maps into elements ----------------------------------------------------o
@@ -310,12 +325,12 @@ E.rbend         :set_methods {survey = track_rbend}
 E.thin_element  :set_methods {survey = track_thin}
 
 -- patches
-E.xrotation     :set_methods {survey = bind3rd(trackone, xrotation)}
-E.yrotation     :set_methods {survey = bind3rd(trackone, yrotation)}
-E.srotation     :set_methods {survey = bind3rd(trackone, srotation)}
-E.translate     :set_methods {survey = bind3rd(trackone, translate)}
-E.changeref     :set_methods {survey = bind3rd(trackone, changeref)}
-E.changedir     :set_methods {survey = bind3rd(trackone, changedir)}
-E.changenrj     :set_methods {survey = bind3rd(trackone, changenrj)}
+E.changeref     :set_methods {survey = track_changeref}
+E.translate     :set_methods {survey = track_translate}
+E.xrotation     :set_methods {survey = \e,m -> track_rotation(e,m,xrotation)}
+E.yrotation     :set_methods {survey = \e,m -> track_rotation(e,m,yrotation)}
+E.srotation     :set_methods {survey = \e,m -> track_rotation(e,m,srotation)}
+E.changenrj     :set_methods {survey = \e,m -> trackone(e,m,thinonly,changenrj)}
+E.changedir     :set_methods {survey = \e,m -> trackone(e,m,thinonly,changedir)}
 
 -- end ------------------------------------------------------------------------o

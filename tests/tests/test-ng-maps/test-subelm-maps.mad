@@ -1,71 +1,11 @@
--- ../mad test-ng-maps.mad
--- assume ../madx64 to be present...
-
-local object, vector                                            in MAD
-local tblcat                                                    in MAD.utility
-local run_test in require("trackvsng")
-
--- The setup for the tests ----------------------------------------------------o
+local object, vector             in MAD
+local tblcat                     in MAD.utility
+local run_test                   in require("trackvsng")
 
 --[[
-      edir  sdir  chg  |  tdir  bdir
-FODO   1     1     1   |   1     1
-FODO  -1     1     1   |  -1    -1
-ODOF   1    -1     1   |  -1    -1
-ODOF  -1    -1     1   |   1     1
-s
-DOFO   1     1    -1   |   1    -1
-DOFO  -1     1    -1   |  -1     1
-OFOD   1    -1    -1   |  -1     1
-OFOD  -1    -1    -1   |   1    -1
+MISSING TEST ->  SUB ELEMENTS + FRINGE/TILT/MISALIGNMENT
+]]
 
-Usage of directions:
-  - lengths        are multiplied by sdir
-  - bending angles are multiplied by tdir
-  - strengths      are multiplied by bdir
---]]
-
-local ref_cfg = object "ref" {
-  -- How to run the tests
-  dorun  = true, -- Default: true 
-  dosave = true, -- Default: false
-  doplot = true, -- Default: false
-  doprnt = true, -- Default: false
-  dodbg  = true, -- Default: false
-  
-  -- list of variables in the tests
-  alist = {"model", "energy", "method", "nslice", "x0i"}, --attributes list
-  tol = 1000,
-
-  -- list of values that are used to run test but are not changed throughout
-  order  = 4,        -- 2/4
-  icase  = 56,       -- 56/6
-  debug  = 0,        -- 0/6
-  cmap   = false,    -- true/false
-  seql   = 1.5,
-
-  -- list of core values that are changed manually throughout the tests
-  edir   = 1,        -- 1/-1 (element direction)
-  sdir   = 1,        -- 1/-1 (tracking direction)
-  chg    = 1,        -- 1/-1 (charge)
-  tdir   = \s-> s.edir * s.sdir,          -- tracking time direction
-  bdir   = \s-> s.edir * s.sdir * s.chg,  -- tracking beam direction
-
-  x0i    = 1..4,       -- 0, 4D, 5D, 6D (see get_mad_str)
-}
-
-local default_plot_cfg = {
-  series      = {
-    "'${test_type}' == 'edir'",
-    "'${test_type}' == 'chg'",
-    "'${test_type}' == 'backtrack'",
-  },
-  legend      = {
-    y1 = "Reverse edir",
-    y2 = "Reverse charge",
-    y3 = "Backtrack",
-  },
-}
 
 -- Yoshida Integrator Schemes -------------------------------------------------o
 local function make_yoshida (w)
@@ -89,7 +29,25 @@ local yosh8_d, yosh8_k = make_yoshida(
 local yoshg_k = { [2] = yosh2_k, [4] = yosh4_k, [6] = yosh6_k, [8] = yosh8_k }
 local yoshg_d = { [2] = yosh2_d, [4] = yosh4_d, [6] = yosh6_d, [8] = yosh8_d } 
 
-local function testMULT()
+------------------------------------------------------------------------------o
+
+-- The tests ------------------------------------------------------------------o
+TestSubElm = {}
+
+function TestSubElm:setUp()
+  -- Turn off all unnecessary components for unit testing
+  
+  ref_cfg.dodbg     = false
+  ref_cfg.doprnt    = false
+  ref_cfg.dosave    = false
+  
+  -- Turn on the components for unit testing
+  ref_cfg.dorun     = true
+  ref_cfg.do_utest  = true
+  ref_cfg.doplot    = true
+end
+
+function TestSubElm:testMULT()
   local cfg = ref_cfg "sub_mult" {
     elm = [[
       drift { at = 0.75, l = 1.5,
@@ -113,8 +71,6 @@ local function testMULT()
     plot_info = {
       title    = "Three Multipole Subelements",
       filename = "mult-sub.png",
-      series   = default_plot_cfg.series,
-      legend   = default_plot_cfg.legend,
     }
   }
 
@@ -142,7 +98,7 @@ local function create_mults(cur_cfg)
   return mults
 end
 
-local function testDKD ()
+function TestSubElm:testDKD ()
   local cfg = ref_cfg "sub_DKD" {
     elm = \s -> [[
       drift { at = ${elm_l}/2, l = ${elm_l},
@@ -196,7 +152,7 @@ local function testDKD ()
   run_test(cfg, equiv)
 end
 
-local function testTHICK()
+function TestSubElm:testTHICK()
   local cfg = ref_cfg "sub_thick" {
     elm = [[
       quadrupole { at = 0.75, l = 1.5, k1 = ${bdir}*${k1}, 
@@ -219,15 +175,13 @@ local function testTHICK()
     plot_info = {
       title    = "Thick Subelement inside thick element",
       filename = "thick-thick-sub.png",
-      series = default_plot_cfg.series,
-      legend = default_plot_cfg.legend,
     }
   }
 
   run_test(cfg)
 end
 
-local function testTHICK_MANY()
+function TestSubElm:testTHICK_MANY() -- This has surprisingly high error
   local cfg = ref_cfg "sub_thick_many" {
     elm = [[
       quadrupole { at = 0.75, l = 1.5, k1 = ${bdir}*0.05, 
@@ -253,16 +207,8 @@ local function testTHICK_MANY()
     plot_info = {
       title    = "Many Thick Subelements inside thick element",
       filename = "thick-thick-sub-many.png",
-      series = default_plot_cfg.series,
-      legend = default_plot_cfg.legend,
     }
   }
 
   run_test(cfg)
 end
-
-
-testMULT()
-testDKD()
-testTHICK()
-testTHICK_MANY()

@@ -68,8 +68,8 @@ Notes about PTC variables vs MAD:
 
 --[=[
 Notes and questions:
-  Is (_beta+pt) in t eq. shouldn't be sqrt((_beta+pt)^2 - (_beta*_gamma)^2) ??
-  is it a linear order approximation?
+  Is (1/beta+pt) in t eq. shouldn't be sqrt((1/beta+pt)^2 - 1/(beta*gamma)^2) ?
+  is it a linear approximation?
 --]=]
 
 -- locals ---------------------------------------------------------------------o
@@ -127,8 +127,8 @@ local function bxbyh (snm, bfx, bfy, x, y)
     bty = (bty + bfy[k]) * y
   end
   
-  bx = bx + btx + bfx[k+1]
-  by = by + bty + bfy[k+1]
+  bx = bx + (btx + bfx[k+1])
+  by = by + (bty + bfy[k+1])
 
   return bx, by
 end
@@ -138,32 +138,32 @@ end
 -- X-rotation
 
 local function xrotation (elm, m, lw_, dphi_)  -- Rx(ax) [ROT_YZ]            -- checked
-  local ax = dphi_ or elm.angle*m.tdir
+  local ax = dphi_ or m.ang*m.tdir
   if abs(ax) < minang then return end
 
-  m.atdebug(elm, m, lw_, 'xrotation:0')
+  m.atdebug(elm, m, 'xrotation:0')
 
   local ax = ax*(lw_ or 1)
   local sa, ca, ta = sin(ax), cos(ax), tan(ax)
-  local _beta = 1/m.beam.beta
+  local beta = m.beam.beta
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local _beta = beam and 1/beam.beta or _beta
-    local    pz = sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
-    local   _pz = 1/pz
-    local   ptt = 1 - ta*py*_pz
-    local  _ptt = y/ptt
-    local  _pzt = ta*_pz*_ptt
+    local beta = beam and beam.beta or beta
+    local   pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
+    local  _pz = 1/pz
+    local  ptt = 1 - ta*py*_pz
+    local _ptt = y/ptt
+    local _pzt = ta*_pz*_ptt
 
     -- eq. 127 in Forest06
     m[i].y  = _ptt/ca
     m[i].py = ca*py + sa*pz
     m[i].x  = x + _pzt*px
-    m[i].t  = t - _pzt*(_beta+pt)
+    m[i].t  = t - _pzt*(1/beta+pt)
   end
 
-  m.atdebug(elm, m, lw_, 'xrotation:1')
+  m.atdebug(elm, m, 'xrotation:1')
 end
 
 M.xrotation = xrotation
@@ -171,32 +171,32 @@ M.xrotation = xrotation
 -- Y-rotation
 
 local function yrotation (elm, m, lw_, dthe_)  -- Ry(ay) [ROT_XZ]            -- checked
-  local ay = dthe_ or elm.angle*m.tdir
+  local ay = dthe_ or m.ang*m.tdir
   if abs(ay) < minang then return end
 
-  m.atdebug(elm, m, lw_, 'yrotation:0')
+  m.atdebug(elm, m, 'yrotation:0')
 
   local ay = -ay*(lw_ or 1) -- minus sign, eq. 127 is for clockwise yrotation
   local sa, ca, ta = sin(ay), cos(ay), tan(ay)
-  local _beta = 1/m.beam.beta
+  local beta = m.beam.beta
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local _beta = beam and 1/beam.beta or _beta
-    local    pz = sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
-    local   _pz = 1/pz
-    local   ptt = 1 - ta*px*_pz
-    local  _ptt = x/ptt
-    local  _pzt = ta*_pz*_ptt
+    local beta = beam and beam.beta or beta
+    local   pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
+    local  _pz = 1/pz
+    local  ptt = 1 - ta*px*_pz
+    local _ptt = x/ptt
+    local _pzt = ta*_pz*_ptt
 
     -- eq. 127 in Forest06
     m[i].x  = _ptt/ca
     m[i].px = ca*px + sa*pz
     m[i].y  = y + _pzt*py
-    m[i].t  = t - _pzt*(_beta+pt)
+    m[i].t  = t - _pzt*(1/beta+pt)
   end
 
-  m.atdebug(elm, m, lw_, 'yrotation:1')
+  m.atdebug(elm, m, 'yrotation:1')
 end
 
 M.yrotation = yrotation
@@ -204,10 +204,10 @@ M.yrotation = yrotation
 -- S-rotation
 
 local function srotation (elm, m, lw_, dpsi_)  -- Rz(az) [ROT_XY]            -- checked
-  local az = dpsi_ or elm.angle*m.tdir
+  local az = dpsi_ or m.ang*m.tdir
   if abs(az) < minang then return end
 
-  m.atdebug(elm, m, lw_, 'srotation:0')
+  m.atdebug(elm, m, 'srotation:0')
 
   local az = az*(lw_ or 1)
   local sa, ca = sin(az), cos(az)
@@ -223,22 +223,24 @@ local function srotation (elm, m, lw_, dpsi_)  -- Rz(az) [ROT_XY]            -- 
     m[i].px   = npx
   end
 
-  m.atdebug(elm, m, lw_, 'srotation:1')
+  m.atdebug(elm, m, 'srotation:1')
 end
 
 M.srotation = srotation
 
+M.tilt = \elm, m, lw_ -> srotation(elm, m, lw_, m.tlt)
+
 -- Translation
 
 local function translate (elm, m, lw_, dx_, dy_, ds_) -- [TRANS]             -- unchecked
-  local dx = dx_ or elm.dx
-  local dy = dy_ or elm.dy
-  local ds = ds_ or elm.ds
+  local dx = dx_ or m.dx
+  local dy = dy_ or m.dy
+  local ds = ds_ or m.ds
   if abs(dx)+abs(dy)+abs(ds) < minlen then return end
 
-  m.atdebug(elm, m, lw_, 'translate:0')
+  m.atdebug(elm, m, 'translate:0')
 
-  local tdir in m
+  local tdir, sdir in m
   local lw = lw_ or 1
   dx = dx*lw*tdir
   dy = dy*lw*tdir
@@ -251,41 +253,38 @@ local function translate (elm, m, lw_, dx_, dy_, ds_) -- [TRANS]             -- 
       m[i].y = y - dy
     end
   else -- ds is treated as a drift without correction for the time of flight
-    local _beta = 1/m.beam.beta
+    local beta = m.beam.beta
     for i=1,m.npar do
       local x, px, y, py, t, pt, beam in m[i]
-      local _beta = beam and 1/beam.beta or _beta
-      local  l_pz = ds/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
+      local beta = beam and beam.beta or beta
+      local l_pz = ds*invsqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
       m[i].x = x + px*l_pz - dx
       m[i].y = y + py*l_pz - dy
-      m[i].t = t - l_pz*(_beta+pt)
+      m[i].t = t - l_pz*(1/beta+pt)
     end
   end
 
-  m.atdebug(elm, m, lw_, 'translate:1')
+  m.atdebug(elm, m, 'translate:1')
 end
 
 M.translate = translate
 
 -- Changeref (generic patch, lw_>0: RT, lw_<0: TR)
 
-function M.changeref (elm, m, lw_)                                           -- unchecked
-  local sdir, edir in m 
-  local lw = (lw_ or 1)*sdir -- for trackone, sdir is not placed into lw
-  local dx, dy, ds, dphi, dpsi in elm
-  local dthe = elm.dtheta
+function M.changeref (elm, m)                                                 -- unchecked
+  local sdir, edir, dx, dy, ds, dthe, dphi, dpsi in m
   local trn = abs(dx  )+abs(dy  )+abs(ds  ) >= minlen
   local rot = abs(dthe)+abs(dphi)+abs(dpsi) >= minang
 
   if not (trn or rot) then return end
 
-  m.atdebug(elm, m, lw_, 'changeref:0')
+  m.atdebug(elm, m, 'changeref:0')
 
   -- forward : x1' = R*x1+T
   -- backward: x1  = R^-1*(x1'-T)
 
   -- rotate
-  if rot and lw > 0 then
+  if rot and sdir > 0 then
     yrotation(elm, m,  edir,  dthe)
     xrotation(elm, m,  edir, -dphi)
     srotation(elm, m,  edir,  dpsi)
@@ -297,38 +296,38 @@ function M.changeref (elm, m, lw_)                                           -- 
   end
 
   -- rotate
-  if rot and lw < 0 then
+  if rot and sdir < 0 then
     srotation(elm, m, -edir,  dpsi)
     xrotation(elm, m, -edir, -dphi)
     yrotation(elm, m, -edir,  dthe)
   end
 
-  m.atdebug(elm, m, lw_, 'changeref:1')
+  m.atdebug(elm, m, 'changeref:1')
 end
 
 -- Changedir (reverse mflow e-direction)
 
-function M.changedir (elm_, m, lw_)                                          -- unchecked
-  m.atdebug(elm, m, lw_, 'changedir:0')
+function M.changedir (elm, m)                                                 -- unchecked
+  m.atdebug(elm, m, 'changedir:0')
 
   m.edir = -m.edir
   m.tdir = -m.tdir
 
-  m.atdebug(elm, m, lw_, 'changedir:1')
+  m.atdebug(elm, m, 'changedir:1')
 end
 
 -- Changenrj (change frame energy)
 
-function M.changenrj (elm, m, lw_)                                           -- unchecked
-  local dnrj in elm
+function M.changenrj (elm, m)                                                 -- unchecked
+  local dnrj in m
   if dnrj == 0 then return end
 
-  m.atdebug(elm, m, lw_, 'changenrj:0')
+  m.atdebug(elm, m, 'changenrj:0')
 
   local tdir, beam in m
   local p0c, _b0 = beam.pc, 1/beam.beta
   beam.energy = beam.energy + dnrj*tdir
-  local a, _beta = p0c/beam.pc, 1/beam.beta
+  local a, beta = p0c/beam.pc, beam.beta
 
   for i=1,m.npar do
     -- scale momenta of particles attached to the reference beam only
@@ -337,11 +336,11 @@ function M.changenrj (elm, m, lw_)                                           -- 
       local dp2 = a^2*(1 + (2*_b0)*pt + pt^2) -- new (1+dp)^2
       m[i].px = a*px
       m[i].py = a*py
-      m[i].pt = sqrt(dp2 + _beta^2 - 1) - _beta
+      m[i].pt = sqrt(dp2 + 1/beta^2 - 1) - 1/beta
     end
   end
 
-  m.atdebug(elm, m, lw_, 'changenrj:1')
+  m.atdebug(elm, m, 'changenrj:1')
 end
 
 -- misalignments --------------------------------------------------------------o
@@ -363,7 +362,7 @@ function M.misalign (elm, m, lw_)                                            -- 
 end
 
 function misalignent (elm, m, lw)                                            -- unchecked
-  m.atdebug(elm, m, lw, 'misalignent:0')
+  m.atdebug(elm, m, 'misalignent:0')
 
   local sdir, edir, tdir, algn in m
 
@@ -390,11 +389,11 @@ function misalignent (elm, m, lw)                                            -- 
     yrotation(elm, m, -edir,  algn.dthe)
   end
 
-  m.atdebug(elm, m, lw, 'misalignent:1')
+  m.atdebug(elm, m, 'misalignent:1')
 end
 
 function misalignexi (elm, m, lw)                                            -- unchecked
-  m.atdebug(elm, m, lw, 'misalignexi:0')
+  m.atdebug(elm, m, 'misalignexi:0')
 
   local el, ang, tlt, sdir, edir, tdir, algn in m
   local mang = m.mang or ang
@@ -438,28 +437,27 @@ function misalignexi (elm, m, lw)                                            -- 
     srotation(elm, m,  edir, az)
   end
 
-  m.atdebug(elm, m, lw, 'misalignexi:1')
+  m.atdebug(elm, m, 'misalignexi:1')
 end
 
 -- [INTER_STREX, INTER_TEAPOT, H3 adjustment] ---------------------------------o
 
 local function drift_adj (elm, m, l) -- [KICKPATH] drift adjustment          -- checked
-  m.atdebug(elm, m, l, 'drift_adj:0')
+  m.atdebug(elm, m, 'drift_adj:0')
 
-  local T in m
-  local _beta = 1/m.beam.beta
+  local beta = m.beam.beta
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local _beta = beam and 1/beam.beta or _beta
-    local  l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
+    local beta = beam and beam.beta or beta
+    local l_pz = l*invsqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
 
     m[i].x = x + px*(l_pz-l)
     m[i].y = y + py*(l_pz-l)
-    m[i].t = t - l_pz*(_beta+pt) + (1-T)*(l*_beta)
+    m[i].t = t - (1/beta+pt)*l_pz + (1-m.T)/beta*l
   end
 
-  m.atdebug(elm, m, l, 'drift_adj:1')
+  m.atdebug(elm, m, 'drift_adj:1')
 end
 
 -- DKD [INTER_STREX] ----------------------------------------------------------o
@@ -469,29 +467,29 @@ local is_tpsa in MAD.typeid
 function M.strex_drift (elm, m, lw, istp) -- [DRIFT]                         -- checked
   if abs(m.el*lw) < minlen then return end
 
-  m.atdebug(elm, m, lw, 'strex_drift:0')
+  m.atdebug(elm, m, 'strex_drift:0')
 
-  local el, eld, T in m
+  local el, eld in m
   local l, ld = el*lw, (eld or el)*lw
-  local _beta = 1/m.beam.beta
+  local beta = m.beam.beta
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local _beta = beam and 1/beam.beta or _beta
-    local  l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - px^2 - py^2)
+    local beta = beam and beam.beta or beta
+    local l_pz = l*invsqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
 
     m[i].x = x + px*l_pz
     m[i].y = y + py*l_pz
-    m[i].t = t - l_pz*(_beta+pt) + (1-T)*(ld*_beta)
+    m[i].t = t - (1/beta+pt)*l_pz + (1-m.T)/beta*ld
   end
 
-  m.atdebug(elm, m, lw, 'strex_drift:1')
+  m.atdebug(elm, m, 'strex_drift:1')
 end
 
 function M.strex_kick (elm, m, lw, istp, no_k0l) -- [KICKEX]                 -- checked
   if m.nmul == 0 then return end
 
-  m.atdebug(elm, m, lw, 'strex_kick:0', no_k0l)
+  m.atdebug(elm, m, 'strex_kick:0')
 
   local tdir, nmul, knl, ksl, beam in m
   local wchg = lw*tdir*beam.charge
@@ -506,10 +504,10 @@ function M.strex_kick (elm, m, lw, istp, no_k0l) -- [KICKEX]                 -- 
     m[i].py = py + wchg* bx
   end
 
-  m.atdebug(elm, m, lw, 'strex_kick:1', no_k0l)
+  m.atdebug(elm, m, 'strex_kick:1')
 end
 
-local function strex_kicks(elm, m, lw, i, wchg, _beta, pz)
+local function strex_kicks(elm, m, lw, i, wchg, beta, pz)
   local ksi, lrad in m
   if ksi == 0 or lrad == 0 then return end
 
@@ -525,13 +523,13 @@ local function strex_kicks(elm, m, lw, i, wchg, _beta, pz)
   local npx = ca*px + sa*py
   local ny  = ca* y - sa* x
   local npy = ca*py - sa*px
-  local nt  = m[i].t - ang*(_beta+pt)*(y*px - x*py)*_dp
+  local nt  = m[i].t - ang*(1/beta+pt)*(y*px - x*py)*_dp
 
   m[i].x  = nx
   m[i].px = npx - (0.25 *hss)*nx*_dpp
   m[i].y  = ny
   m[i].py = npy - (0.25 *hss)*ny*_dpp
-  m[i].t  = nt  - (0.125*hss)*(_beta+pt)*(nx^2+ny^2)*_dpp^3
+  m[i].t  = nt  - (0.125*hss)*(1/beta+pt)*(nx^2+ny^2)*_dpp^3
 end
 
 
@@ -539,19 +537,19 @@ function M.strex_kickhs (elm, m, lw, istp) -- [KICKT]                        -- 
   local lrad, nmul, ksi in m
   if nmul == 0 and ksi == 0 then return end
 
-  m.atdebug(elm, m, lw, 'strex_kickhs:0')
+  m.atdebug(elm, m, 'strex_kickhs:0')
 
   local sdir, tdir, knl, ksl, beam in m
-  local  wchg = lw*tdir*beam.charge -- lw is always 1 for multipole only (Needed?)
-  local _beta = 1/beam.beta
+  local wchg = lw*tdir*beam.charge -- lw is always 1 for multipole only (Needed?)
+  local beta = beam.beta
 
   for i=1,m.npar do
     local x, y, t, pt, beam in m[i]
-    local  wchg = beam and lw*tdir*beam.charge or wchg
-    local _beta = beam and 1/beam.beta or _beta
-    local    pz = sqrt(1 + (2*_beta)*pt + pt^2)
+    local wchg = beam and lw*tdir*beam.charge or wchg
+    local beta = beam and beam.beta or beta
+    local   pz = sqrt(1 + 2/beta*pt + pt^2)
 
-    if sdir == -1 then strex_kicks(elm, m, lw, i, wchg, _beta, pz) end
+    if sdir == -1 then strex_kicks(elm, m, lw, i, wchg, beta, pz) end
 
     -- multipole
     if nmul > 0 then
@@ -563,7 +561,7 @@ function M.strex_kickhs (elm, m, lw, istp) -- [KICKT]                        -- 
       if abs(knl[1]) + abs(ksl[1]) > 0 then
         m[i].px = m[i].px + (wchg*knl[1])*pz
         m[i].py = m[i].py - (wchg*ksl[1])*pz
-        m[i].t  = m[i].t  - wchg*(knl[1]*x - ksl[1]*y)*(_beta+pt)/pz
+        m[i].t  = m[i].t  - wchg*(knl[1]*x - ksl[1]*y)*(1/beta+pt)/pz
 
         -- field curvature
         if lrad ~= 0 then
@@ -573,19 +571,19 @@ function M.strex_kickhs (elm, m, lw, istp) -- [KICKT]                        -- 
       end
     end
 
-    if sdir == 1 then strex_kicks(elm, m, lw, i, wchg, _beta, pz) end
+    if sdir == 1 then strex_kicks(elm, m, lw, i, wchg, beta, pz) end
 
   end
 
-  m.atdebug(elm, m, lw, 'strex_kickhs:1')
+  m.atdebug(elm, m, 'strex_kickhs:1')
 end
 
 -- DKD [INTER_TEAPOT] ---------------------------------------------------------o
 
 function M.curex_drift (elm, m, lw, istp) -- [SPROT]                         -- checked
-  m.atdebug(elm, m, lw, 'curex_drift:0')
+  m.atdebug(elm, m, 'curex_drift:0')
 
-  local el, eld, eh, T in m
+  local el, eld, eh in m
   local ld, ang, rho = (eld or el)*lw, eh*el*lw, 1/eh -- R=rho, A=ang
   local ca, sa, sa2 = cos(ang), sin(ang), sin(ang/2)
   local beta = m.beam.beta
@@ -593,7 +591,7 @@ function M.curex_drift (elm, m, lw, istp) -- [SPROT]                         -- 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
     local beta = beam and beam.beta or beta
-    local   pz = sqrt(1 + (2/beta)*pt + pt^2 - px^2 - py^2)
+    local   pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
     local  _pz = 1/pz
     local  pxt = px*_pz
     local  ptt = ca - sa*pxt
@@ -603,14 +601,14 @@ function M.curex_drift (elm, m, lw, istp) -- [SPROT]                         -- 
     m[i].x  = (x + rho*(2*sa2^2 + sa*pxt))*_ptt
     m[i].px = ca*px + sa*pz
     m[i].y  = y + pst*py
-    m[i].t  = t - pst*(1/beta+pt) + (1-T)*(ld/beta)
+    m[i].t  = t - pst*(1/beta+pt) + (1-m.T)/beta*ld
   end
 
-  m.atdebug(elm, m, lw, 'curex_drift:1')
+  m.atdebug(elm, m, 'curex_drift:1')
 end
 
 function M.curex_kick (elm, m, lw, istp, no_k0l) -- [SKICK]                  -- checked
-  m.atdebug(elm, m, lw, 'curex_kick:0', no_k0l)
+  m.atdebug(elm, m, 'curex_kick:0')
 
   local el, eh, tdir, snm, knl, bfx, bfy, beam in m
   local bdir = tdir*beam.charge
@@ -630,7 +628,7 @@ function M.curex_kick (elm, m, lw, istp, no_k0l) -- [SKICK]                  -- 
     end
   end
 
-  m.atdebug(elm, m, lw, 'curex_kick:1', no_k0l)
+  m.atdebug(elm, m, 'curex_kick:1')
 end
 
 -- TKT [INTER_TEAPOT] ---------------------------------------------------------o
@@ -638,11 +636,11 @@ end
 -- version for k0*charge == 0 to avoid NaN
 
 local function curex_drift0 (elm, m, lw, i, ld, ca, sa, sa2, rho)
-  m.atdebug(elm, m, lw, 'curex_drift0:0')
+  m.atdebug(elm, m, 'curex_drift0:0')
 
   local x, px, y, py, t, pt in m[i]
   local beta = (m[i].beam or m.beam).beta
-  local   pz = sqrt(1 + (2/beta)*pt + pt^2 - px^2 - py^2)
+  local   pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
   local  _pz = 1/pz
   local  pxt = px*_pz
   local  ptt = ca - sa*pxt
@@ -652,15 +650,15 @@ local function curex_drift0 (elm, m, lw, i, ld, ca, sa, sa2, rho)
   m[i].x  = (x + rho*(2*sa2^2 + sa*pxt))*_ptt
   m[i].px = ca*px + sa*pz
   m[i].y  = y + pst*py
-  m[i].t  = t - pst*(1/beta+pt) + (1-m.T)*(ld/beta)
+  m[i].t  = t - pst*(1/beta+pt) + (1-m.T)/beta*ld
 
-  m.atdebug(elm, m, lw, 'curex_drift0:1')
+  m.atdebug(elm, m, 'curex_drift0:1')
 end
 
 local function sbend_thick_new (elm, m, lw, istp) -- [SSEC]                  -- checked
-  m.atdebug(elm, m, lw, 'sbend_thick:0')
+  m.atdebug(elm, m, 'sbend_thick:0')
 
-  local el, eld, eh, tdir, knl, beam, T in m
+  local el, eld, eh, tdir, knl, beam in m
   local ld, ang, rho, k0 = (eld or el)*lw, eh*el*lw, 1/eh, knl[1]/el*tdir
   local beta, k0q = beam.beta, k0*beam.charge
   local ca, sa, sa2, s2a = cos(ang), sin(ang), sin(ang/2), sin(2*ang)
@@ -675,14 +673,14 @@ local function sbend_thick_new (elm, m, lw, istp) -- [SSEC]                  -- 
       goto continue
     end
 
-    local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
-    local   pz = sqrt(pw2 - px^2)                                      -- PZ
+    local  pw2 = 1 + 2/beta*pt + pt^2 - py^2
+    local   pz = sqrt(pw2 - px^2)                                       -- PZ
     local   xr = x+rho
     local  pzx = pz - k0q*xr
-    local  npx = sa*pzx + ca*px                                        -- XN(2)
-    local  dpx = ca*pzx - sa*px                                        -- DPX'
-    local  pzs = sqrt(pw2 - npx^2)                                     -- PZS
-    local _ptt = invsqrt(pw2)                                          -- 1/PT
+    local  npx = sa*pzx + ca*px                                         -- XN(2)
+    local  dpx = ca*pzx - sa*px                                         -- DPX'
+    local  pzs = sqrt(pw2 - npx^2)                                      -- PZS
+    local _ptt = invsqrt(pw2)                                           -- 1/PT
 
     local  xt1 = -k0q*x^2 + 2*(pz*xr - (k0q*rho)*x) - k0q*rho^2
     local   xi =  px*_ptt
@@ -700,18 +698,18 @@ local function sbend_thick_new (elm, m, lw, istp) -- [SSEC]                  -- 
     m[i].x  = xt1/(dpx+pzs) - rho                                       -- XN(1)
     m[i].px = npx                                                       -- XN(2)
     m[i].y  = y + dxs*py                                                -- XN(3)
-    m[i].t  = t - dxs*(1/beta+pt) + (1-T)*(ld/beta)                     -- XN(6)
+    m[i].t  = t - dxs*(1/beta+pt) + (1-m.T)/beta*ld                     -- XN(6)
 
     ::continue::
   end
 
-  m.atdebug(elm, m, lw, 'sbend_thick:1')
+  m.atdebug(elm, m, 'sbend_thick:1')
 end
 
 local function sbend_thick_old (elm, m, lw, istp) -- [SSEC]                  -- checked
-  m.atdebug(elm, m, lw, 'sbend_thick:0')
+  m.atdebug(elm, m, 'sbend_thick:0')
   
-  local el, eld, eh, tdir, knl, beam, T in m
+  local el, eld, eh, tdir, knl, beam in m
   local ld, ang, rho, k0 = (eld or el)*lw, eh*el*lw, 1/eh, knl[1]/el*tdir
   local beta, k0q = beam.beta, k0*beam.charge
   local ca, sa, sa2 = cos(ang), sin(ang), sin(ang/2)
@@ -726,25 +724,25 @@ local function sbend_thick_old (elm, m, lw, istp) -- [SSEC]                  -- 
       goto continue
     end
 
-    local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
-    local   pz = sqrt(pw2 - px^2)                                      -- PZ
+    local  pw2 = 1 + 2/beta*pt + pt^2 - py^2
+    local   pz = sqrt(pw2 - px^2)                                       -- PZ
     local  pzx = pz - k0q*(rho+x)      -- could be numerically unstable
-    local  npx = sa*pzx + ca*px                                        -- XN(2)
-    local  dpx = ca*pzx - sa*px                                        -- DPX'
-    local  pzs = sqrt(pw2 - npx^2)                                     -- PZS
-    local _ptt = invsqrt(pw2)                                          -- PT
-    local  dxs = (ang + asin(px*_ptt) - asin(npx*_ptt))/k0q            -- XN(3)
+    local  npx = sa*pzx + ca*px                                         -- XN(2)
+    local  dpx = ca*pzx - sa*px                                         -- DPX'
+    local  pzs = sqrt(pw2 - npx^2)                                      -- PZS
+    local _ptt = invsqrt(pw2)                                           -- PT
+    local  dxs = (ang + asin(px*_ptt) - asin(npx*_ptt))/k0q             -- XN(3)
 
     -- eq. 126 in Forest06
     m[i].x  = (pzs - dpx)/k0q - rho    -- could be numerically unstable -- XN(1)
     m[i].px = npx                                                       -- XN(2)
     m[i].y  = y + dxs*py                                                -- XN(3)
-    m[i].t  = t - dxs*(1/beta+pt) + (1-T)*(ld/beta)                     -- XN(6)
+    m[i].t  = t - dxs*(1/beta+pt) + (1-m.T)/beta*ld                     -- XN(6)
 
     ::continue::
   end
 
-  m.atdebug(elm, m, lw, 'sbend_thick:1')
+  m.atdebug(elm, m, 'sbend_thick:1')
 end
 
 M.sbend_thick = new_bend_thick and sbend_thick_new or sbend_thick_old
@@ -755,23 +753,23 @@ M.sbend_kick  = \el,m,lw,istp -> M.curex_kick(el,m,lw,istp,true) ;           -- 
 -- version for k0*charge == 0 to avoid NaN
 
 local function strex_drift0 (elm, m, lw, i, l, ld)                           -- checked
-  m.atdebug(elm, m, lw, 'strex_drift0:0')
+  m.atdebug(elm, m, 'strex_drift0:0')
 
   local x, px, y, py, t, pt in m[i]
   local beta = (m[i].beam or m.beam).beta
-  local l_pz = l/sqrt(1 + (2/beta)*pt + pt^2 - px^2 - py^2)
+  local l_pz = l*invsqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
 
   m[i].x = x + px*l_pz
   m[i].y = y + py*l_pz
-  m[i].t = t - l_pz*(1/beta+pt) + (1-m.T)*(ld/beta)
+  m[i].t = t - (1/beta+pt)*l_pz + (1-m.T)/beta*ld
 
-  m.atdebug(elm, m, lw, 'strex_drift0:1')
+  m.atdebug(elm, m, 'strex_drift0:1')
 end
 
 local function rbend_thick_new (elm, m, lw, istp) -- [SPAR]                  -- checked
-  m.atdebug(elm, m, lw, 'rbend_thick:0')
+  m.atdebug(elm, m, 'rbend_thick:0')
 
-  local el, eld, tdir, knl, beam, T in m
+  local el, eld, tdir, knl, beam in m
   local l, ld, k0 = el*lw, (eld or el)*lw, knl[1]/el*tdir
   local beta, k0q, k0lq = beam.beta, k0*beam.charge, knl[1]*lw*beam.charge*tdir
 
@@ -787,7 +785,7 @@ local function rbend_thick_new (elm, m, lw, istp) -- [SPAR]                  -- 
 
     local k0lq = beam and knl[1]*lw*beam.charge*tdir or k0lq
     local  npx = px - k0lq
-    local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
+    local  pw2 = 1 + 2/beta*pt + pt^2 - py^2
     local _ptt = invsqrt(pw2)
     local   pz = sqrt(pw2 - px^2)
     local  pzs = sqrt(pw2 - npx^2)
@@ -801,18 +799,18 @@ local function rbend_thick_new (elm, m, lw, istp) -- [SPAR]                  -- 
     m[i].x  = x + l*(2*px - k0lq) / (pz+pzs)
     m[i].px = npx
     m[i].y  = y + dxs*py
-    m[i].t  = t - dxs*(1/beta+pt) + (1-T)*ld/beta
+    m[i].t  = t - dxs*(1/beta+pt) + (1-m.T)/beta*ld
 
     ::continue::
   end
 
-  m.atdebug(elm, m, lw, 'rbend_thick:1')
+  m.atdebug(elm, m, 'rbend_thick:1')
 end
 
 local function rbend_thick_old (elm, m, lw, istp) -- [SPAR]                  -- checked
-  m.atdebug(elm, m, lw, 'rbend_thick:0')
+  m.atdebug(elm, m, 'rbend_thick:0')
 
-  local el, eld, tdir, knl, beam, T in m
+  local el, eld, tdir, knl, beam in m
   local l, ld, k0 = el*lw, (eld or el)*lw, knl[1]/el*tdir
   local beta, k0q, k0lq = beam.beta, k0*beam.charge, knl[1]*lw*beam.charge*tdir
 
@@ -838,12 +836,12 @@ local function rbend_thick_old (elm, m, lw, istp) -- [SPAR]                  -- 
     m[i].x  = x + (pzs-pz)/k0q
     m[i].px = npx
     m[i].y  = y + dxs*py
-    m[i].t  = t - dxs*(1/beta+pt) + (1-T)*ld/beta
+    m[i].t  = t - dxs*(1/beta+pt) + (1-m.T)/beta*ld
 
     ::continue::
   end
 
-  m.atdebug(elm, m, lw, 'rbend_thick:1')
+  m.atdebug(elm, m, 'rbend_thick:1')
 end
 
 M.rbend_thick = new_bend_thick and rbend_thick_new or rbend_thick_old
@@ -852,7 +850,7 @@ M.rbend_kick  = \el,m,lw,istp -> M.strex_kick(el,m,lw,istp,true)             -- 
 -- TKT [INTER_TKTF] -----------------------------------------------------------o
 
 function M.quad_thick (elm, m, lw, istp) -- [PUSHTKT7]                       -- checked
-  m.atdebug(elm, m, lw, 'quad_thick:0')
+  m.atdebug(elm, m, 'quad_thick:0')
 
   local el, sdir, tdir, k1, beam in m
   local l = el*lw
@@ -894,16 +892,15 @@ function M.quad_thick (elm, m, lw, istp) -- [PUSHTKT7]                       -- 
     m[i].py = npy
   end
 
-  m.atdebug(elm, m, lw, 'quad_thick:1')
+  m.atdebug(elm, m, 'quad_thick:1')
 end
 
 function M.quad_kick_ (elm, m, lw, istp) -- [KICKTKT7]                       -- checked
   local l = m.el*lw
   if istp >= 0 then drift_adj(elm, m, istp == 0 and l/2 or l) end
 
+  m.atdebug(elm, m, 'quad_kick:0')
   if m.nmul > 0 then
-    m.atdebug(elm, m, lw, 'quad_kick:0')
-
     local tdir, nmul, knl, ksl, beam in m
     local wchg = lw*tdir*beam.charge
 
@@ -915,9 +912,8 @@ function M.quad_kick_ (elm, m, lw, istp) -- [KICKTKT7]                       -- 
       m[i].px = px - wchg*(by - knl[2]*x)
       m[i].py = py + wchg*(bx - knl[2]*y)
     end
-
-    m.atdebug(elm, m, lw, 'quad_kick:1')
   end
+  m.atdebug(elm, m, 'quad_kick:1')
 
   if istp <= 0 then drift_adj(elm, m, istp == 0 and l/2 or l) end
 end
@@ -927,7 +923,7 @@ M.quad_kick = \elm, m, lw, istp -> M.quad_kick_(elm, m, lw, 0)
 -- skew (tilted by k1s)
 
 function M.quad_thicks (elm, m, lw, istp) -- [PUSHTKT7]                      -- checked
-  m.atdebug(elm, m, lw, 'quad_thicks:0')
+  m.atdebug(elm, m, 'quad_thicks:0')
 
   local el, sdir, tdir, k1, ca, sa, beam in m
   local l = el*lw
@@ -968,16 +964,15 @@ function M.quad_thicks (elm, m, lw, istp) -- [PUSHTKT7]                      -- 
     m[i].py = ca*py + sa*px
   end
 
-  m.atdebug(elm, m, lw, 'quad_thicks:1')
+  m.atdebug(elm, m, 'quad_thicks:1')
 end
 
 function M.quad_kicks_ (elm, m, lw, istp) -- [KICKTKT7]                      -- checked
   local l = m.el*lw
   if istp >= 0 then drift_adj(elm, m, istp == 0 and l/2 or l) end
 
+  m.atdebug(elm, m, 'quad_kicks:0')
   if m.nmul > 0 then
-    m.atdebug(elm, m, lw, 'quad_kicks:0')
-
     local tdir, nmul, knl, ksl, beam in m
     local wchg = lw*tdir*beam.charge
 
@@ -989,9 +984,8 @@ function M.quad_kicks_ (elm, m, lw, istp) -- [KICKTKT7]                      -- 
       m[i].px = px - wchg*(by - knl[2]*x + ksl[2]*y)
       m[i].py = py + wchg*(bx - knl[2]*y - ksl[2]*x)
     end
-
-    m.atdebug(elm, m, lw, 'quad_kicks:1')
   end
+  m.atdebug(elm, m, 'quad_kicks:1')
 
   if istp <= 0 then drift_adj(elm, m, istp == 0 and l/2 or l) end
 end
@@ -1001,14 +995,12 @@ M.quad_kicks = \elm, m, lw, istp -> M.quad_kicks_(elm, m, lw, 0)
 -- curved (eh ~= 0)
 
 function M.quad_thickh_new (elm, m, lw, istp) -- [PUSHTKT7]                  -- unchecked
-  m.atdebug(elm, m, lw, 'quad_thickh:0')
+  m.atdebug(elm, m, 'quad_thickh:0')
 
   local el, eh, sdir, edir, tdir, beam in m
-  local     l = el*lw
-  local _beta = 1/beam.beta
-  local   chg = beam.charge
-
-  -- [GETMAT7] TODO: cache these values as lw is the same over the slices!
+  local    l = el*lw
+  local beta = beam.beta
+  local  chg = beam.charge
 
   local kx  = (knl[2]+eh*knl[1])/el*edir
   local ky  = -knl[2]/el*edir
@@ -1044,8 +1036,8 @@ function M.quad_thickh_new (elm, m, lw, istp) -- [PUSHTKT7]                  -- 
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local _beta = beam and 1/beam.beta or _beta
-    local   chg = beam and beam.charge or chg
+    local beta = beam and beam.beta   or beta
+    local  chg = beam and beam.charge or chg
 
     if ws ~= chg then -- swap x <-> y
       mx11, mx12, mx13, mx21, mx22, mx23,
@@ -1068,8 +1060,8 @@ function M.quad_thickh_new (elm, m, lw, istp) -- [PUSHTKT7]                  -- 
 --  my22 = cx                  ; 1
 --  my23 = 0                   ; 0
 
-    local nx  = x*mx11 + px*mx12 + (mx13*_beta)*pt
-    local npx = x*mx21 + px*mx22 + (mx23*_beta)*pt
+    local nx  = x*mx11 + px*mx12 + (mx13/beta)*pt
+    local npx = x*mx21 + px*mx22 + (mx23/beta)*pt
     local ny  = y*my11 + py*my12
     local npy = y*my21 + py*my22
     -- TODO: update t...
@@ -1080,16 +1072,16 @@ function M.quad_thickh_new (elm, m, lw, istp) -- [PUSHTKT7]                  -- 
     m[i].py = npy
   end
 
-  m.atdebug(elm, m, lw, 'quad_thickh:1')
+  m.atdebug(elm, m, 'quad_thickh:1')
 end
 
 function M.quad_thickh (elm, m, lw, istp) -- [PUSHTKT7]                      -- unchecked (checked for sdir=1 and eh=0)
-  m.atdebug(elm, m, lw, 'quad_thickh:0')
+  m.atdebug(elm, m, 'quad_thickh:0')
 
   local el, eh, sdir, edir, tdir, knl, beam in m
   local l = el*lw
   local chg = beam.charge
-  local _beta = 1/beam.beta           -- Should be _beta not beta
+  local beta = beam.beta
 
   -- [GETMAT7, w ~= 0]
   local kx  = (knl[2]+eh*knl[1])/el   -- No need to include sign of edir here (see below)
@@ -1122,8 +1114,8 @@ function M.quad_thickh (elm, m, lw, istp) -- [PUSHTKT7]                      -- 
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local  chg = beam and beam.charge or chg
-    local _beta = beam and 1/beam.beta or _beta
+    local chg  = beam and beam.charge or chg
+    local beta = beam and beam.beta   or beta
 
     local cx, sx
     if wx ~= 0 then -- [GETMAT7]
@@ -1162,11 +1154,11 @@ function M.quad_thickh (elm, m, lw, istp) -- [PUSHTKT7]                      -- 
     -- print("my21=", my21) print("my22=", my22)
     -- print("mx31=", mx31) print("mx32=", mx32) print("mx33=", mx33)
 
-    local nx  = x*mx11 + px*mx12 + pt*(mx13*_beta)
-    local npx = x*mx21 + px*mx22 + pt*(mx23*_beta)
+    local nx  = x*mx11 + px*mx12 + pt*(mx13/beta)
+    local npx = x*mx21 + px*mx22 + pt*(mx23/beta)
     local ny  = y*my11 + py*my12
     local npy = y*my21 + py*my22
-    local dt  = x*(mx31*_beta) + px*(mx32*_beta) + pt*mx33
+    local dt  = x*(mx31/beta) + px*(mx32/beta) + pt*mx33
 
     m[i].x   = nx
     m[i].y   = ny
@@ -1175,34 +1167,32 @@ function M.quad_thickh (elm, m, lw, istp) -- [PUSHTKT7]                      -- 
     m[i].t   = t - dt
   end
 
-  m.atdebug(elm, m, lw, 'quad_thickh:1')
+  m.atdebug(elm, m, 'quad_thickh:1')
 end
 
 function M.quad_kickh_ (elm, m, lw, istp) -- [KICKTKT7]                      -- unchecked (checked for sdir=1 and eh=0)
   local l = m.el*lw
   if istp >= 0 then drift_adj(elm, m, istp == 0 and l/2 or l) end
 
+  m.atdebug(elm, m, 'quad_kickh:0')
   if m.nmul > 0 then
-    m.atdebug(elm, m, lw, 'quad_kickh:0')
-
     local eh, tdir, nmul, knl, ksl, beam in m
-    local _beta = 1/beam.beta
-    local  wchg = lw*tdir*beam.charge
+    local beta = beam.beta
+    local wchg = lw*tdir*beam.charge
 
     for i=1,m.npar do
       local x, px, y, py, t, pt, beam in m[i]
-      local _beam = beam and 1/beam.beta or _beta
+      local  beam = beam and beam.beta or beta
       local  wchg = beam and lw*tdir*beam.charge or wchg
-      local    pz = sqrt(1 + (2*_beta)*pt + pt^2)
+      local    pz = sqrt(1 + 2/beta*pt + pt^2)
       local bx,by = bxby(nmul, knl, ksl, x, y)
 
-      m[i].px = px - wchg*(by - knl[2]*x) + l*eh*(pz-(_beta*pt)) -- eh has tdir included
+      m[i].px = px - wchg*(by - knl[2]*x) + l*eh*(pz-(1/beta*pt)) -- eh has tdir included
       m[i].py = py + wchg*(bx - knl[2]*y)
-      m[i].t  =  t - (l*eh)*((_beta+pt)/pz - _beta)*x
+      m[i].t  =  t - l*eh*((1/beta+pt)/pz - 1/beta)*x
     end
-
-    m.atdebug(elm, m, lw, 'quad_kickh:1')
   end
+  m.atdebug(elm, m, 'quad_kickh:1')
 
   if istp <= 0 then drift_adj(elm, m, istp == 0 and l/2 or l) end
 end
@@ -1212,21 +1202,21 @@ M.quad_kickh = \elm, m, lw, istp -> M.quad_kickh_(elm, m, lw, 0)
 -- DKD, TKT [INTER_SOL5] ------------------------------------------------------o
 
 function M.solen_thick (elm, m, lw, istp) -- [KICK_SOL]                      -- checked
-  m.atdebug(elm, m, lw, 'solen_thick:0')
+  m.atdebug(elm, m, 'solen_thick:0')
 
-  local el, ks, beam, T in m
+  local el, ks, beam in m
   local l = el*lw
   local bsol = 0.5*ks*beam.charge
-  local _beta = 1/beam.beta
+  local beta = beam.beta
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local _beta = beam and 1/beam.beta or _beta
-    local  bsol = beam and 0.5*ks*beam.charge or bsol
-    local    xp = px + bsol*y
-    local    yp = py - bsol*x
-    local  l_pz = l/sqrt(1 + (2*_beta)*pt + pt^2 - xp^2 - yp^2)
-    local   ang = l_pz*bsol
+    local beta = beam and beam.beta or beta
+    local bsol = beam and 0.5*ks*beam.charge or bsol
+    local   xp = px + bsol*y
+    local   yp = py - bsol*x
+    local l_pz = l*invsqrt(1 + 2/beta*pt + pt^2 - xp^2 - yp^2)
+    local  ang = l_pz*bsol
 
     local ca, sa, sc = cos(ang), sin(ang), sinc(ang)
 
@@ -1240,30 +1230,30 @@ function M.solen_thick (elm, m, lw, istp) -- [KICK_SOL]                      -- 
     m[i].px = ca*pxt + sa*pyt
     m[i].y  = ca*yt  - sa*xt
     m[i].py = ca*pyt - sa*pxt
-    m[i].t  = t - l_pz*(_beta+pt) + (1-T)*l*_beta
+    m[i].t  = t - (1/beta+pt)*l_pz + (1-m.T)/beta*l
   end
 
-  m.atdebug(elm, m, lw, 'solen_thick:1')
+  m.atdebug(elm, m, 'solen_thick:1')
 end
 
 -- DKD, TKT [SEPTTRACK] -------------------------------------------------------o
 
 function M.esept_thick (elm, m, lw, istp) -- [SEP]                           -- checked
-  m.atdebug(elm, m, lw, 'elsep_thick:0')
+  m.atdebug(elm, m, 'elsep_thick:0')
 
-  local el, ca, sa, volt, sdir, beam, T in m
-  local _beta = 1/beam.beta
-  local  _bg2 = 1/beam.betgam2
-  local  wchg = beam.charge/beam.pc
-  local    k1 = sdir*volt*wchg
-  local     l = el*lw
+  local el, ca, sa, volt, sdir, beam in m
+  local beta = beam.beta
+  local  bg2 = beam.betgam2
+  local wchg = beam.charge/beam.pc
+  local   k1 = sdir*volt*wchg
+  local    l = el*lw
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local _beta = beam and 1/beam.beta or _beta
-    local  _bg2 = beam and 1/beam.betgam2 or _bg2
-    local    k1 = beam and k1*beam.charge/(wchg*beam.pc) or k1
-    local    e1 = _beta+pt
+    local beta = beam and beam.beta or beta
+    local  bg2 = beam and beam.betgam2 or bg2
+    local   k1 = beam and k1*beam.charge/(wchg*beam.pc) or k1
+    local   e1 = 1/beta+pt
 
     -- srotation
     local   nx  = ca*x  + sa*y
@@ -1272,7 +1262,7 @@ function M.esept_thick (elm, m, lw, istp) -- [SEP]                           -- 
     local   npy = ca*py - sa*px
 
     local    dp = e1 + k1*ny
-    local  l_pz = l/sqrt(dp^2 - _bg2 - npx^2 - npy^2)
+    local  l_pz = l*invsqrt(dp^2 - 1/bg2 - npx^2 - npy^2)
     local   arg = k1*l_pz
     local   shx = sinhc(arg)*l_pz
     local ch,sh = cosh(arg), sinh(arg)
@@ -1289,16 +1279,16 @@ function M.esept_thick (elm, m, lw, istp) -- [SEP]                           -- 
     m[i].px = ca*npx - sa*npy
     m[i].y  = ca*ny  + sa*nx
     m[i].py = ca*npy + sa*npx
-    m[i].t  = t - dt + (1-T)*(l*_beta)
+    m[i].t  = t - dt + (1-m.T)/beta*l
   end
 
-  m.atdebug(elm, m, lw, 'elsep_thick:1')
+  m.atdebug(elm, m, 'elsep_thick:1')
 end
 
 -- DKD, TKT [INTER_CAV4] ------------------------------------------------------o
 
 function M.rfcav_kick (elm, m, lw, istp) -- [KICKCAV, FEVAL_CAVR?]           -- checked
-  m.atdebug(elm, m, lw, 'rfcav_kick:0')
+  m.atdebug(elm, m, 'rfcav_kick:0')
 
   local volt, freq, lag, tdir, beam in m
   local omega = freq*twopi_clight
@@ -1317,11 +1307,11 @@ function M.rfcav_kick (elm, m, lw, istp) -- [KICKCAV, FEVAL_CAVR?]           -- 
     m[i].pt = pt + vl*sin(phase - omega*t)
   end
 
-  m.atdebug(elm, m, lw, 'rfcav_kick:1')
+  m.atdebug(elm, m, 'rfcav_kick:1')
 end
 
 function M.rfcav_kickn (elm, m, lw, istp) -- [KICKCAV, nmul~=0 or nbsl~=0]   -- checked
-  m.atdebug(elm, m, lw, 'rfcav_kickn:0')
+  m.atdebug(elm, m, 'rfcav_kickn:0')
 
   local volt, freq, lag, tdir, nbsl, nmul, knl, ksl, beam in m
   local omega = freq*twopi_clight
@@ -1363,8 +1353,8 @@ function M.rfcav_kickn (elm, m, lw, istp) -- [KICKCAV, nmul~=0 or nbsl~=0]   -- 
 
     if nmul > 0 then
       local bx, by, byt = bxby(nmul, knl, ksl, x, y)
-      px = px + (bdir*_pc)*by*ca
-      py = py - (bdir*_pc)*bx*ca
+      px = px + bdir*by*ca
+      py = py - bdir*bx*ca
 
       by = -knl[nmul]/nmul
       bx = -ksl[nmul]/nmul
@@ -1377,7 +1367,7 @@ function M.rfcav_kickn (elm, m, lw, istp) -- [KICKCAV, nmul~=0 or nbsl~=0]   -- 
       bx  = y*by + x*bx
       by  = byt
 
-      pt = pt - (bdir*_pc)*omega*by*sa
+      pt = pt - bdir*omega*by*sa
     end
 
     m[i].px = px
@@ -1385,7 +1375,7 @@ function M.rfcav_kickn (elm, m, lw, istp) -- [KICKCAV, nmul~=0 or nbsl~=0]   -- 
     m[i].pt = pt
   end
 
-  m.atdebug(elm, m, lw, 'rfcav_kickn:1')
+  m.atdebug(elm, m, 'rfcav_kickn:1')
 end
 
 -- DKD, TKT -------------------------------------------------------------------o
@@ -1393,7 +1383,7 @@ end
 local BB = require 'madl_bbeam' -- beambeam physics
 
 function M.bbeam_kick (elm, m, lw, istp)                                     -- unchecked
-  m.atdebug(elm, m, lw, 'bbeam_kick:0')
+  m.atdebug(elm, m, 'bbeam_kick:0')
 
   local xma, yma, dpx, dpy, sigx, sigy, sigtol, bdir, bbeam in elm
   local tdir, beam in m
@@ -1421,21 +1411,21 @@ function M.bbeam_kick (elm, m, lw, istp)                                     -- 
     m[i].py = py-dpy + kck*Ey
   end
 
-  m.atdebug(elm, m, lw, 'bbeam_kick:1')
+  m.atdebug(elm, m, 'bbeam_kick:1')
 end
 
 function M.bbeam_kick6D (elm, m, lw, istp)                                   -- unchecked
-  m.atdebug(elm, m, lw, 'bbeam_kick6D:0')
+  m.atdebug(elm, m, 'bbeam_kick6D:0')
 
   error("NYI")
 
-  m.atdebug(elm, m, lw, 'bbeam_kick6D:1')
+  m.atdebug(elm, m, 'bbeam_kick6D:1')
 end
 
 -- DKD, TKT -------------------------------------------------------------------o
 
 function M.nllens_kick (elm, m, lw, istp)                                    -- unchecked
-  m.atdebug(elm, m, lw, 'nllens_kick:0')
+  m.atdebug(elm, m, 'nllens_kick:0')
 
   local knll, cnll in elm
   local tdir, beam in m
@@ -1482,7 +1472,7 @@ function M.nllens_kick (elm, m, lw, istp)                                    -- 
     m[i].py = py + (chg*knll)*(dUu*duy + dUv*dvy)
   end
 
-  m.atdebug(elm, m, lw, 'nllens_kick:1')
+  m.atdebug(elm, m, 'nllens_kick:1')
 end
 
 -- DKD, TKT -------------------------------------------------------------------o
@@ -1490,7 +1480,7 @@ end
 local V6 = vector(6)
 
 function M.genm_thick (elm, m, lw, istp)                                     -- unchecked
-  m.atdebug(elm, m, lw, 'genm_thick:0')
+  m.atdebug(elm, m, 'genm_thick:0')
 
   local update = elm:var_get'update'
   if update then update(elm, m, lw) end -- update damap
@@ -1507,7 +1497,7 @@ function M.genm_thick (elm, m, lw, istp)                                     -- 
     end
   end
 
-  m.atdebug(elm, m, lw, 'genm_thick:1')
+  m.atdebug(elm, m, 'genm_thick:1')
 end
 
 -- fringes --------------------------------------------------------------------o
@@ -1520,8 +1510,8 @@ M.fringe = {
   bend  =  fbit(0),               -- bending    fringe fields
   mult  =  fbit(1),               -- multipolar fringe fields
   qsad  =  fset(fbit(1),fbit(2)), -- multipolar fringe fields with quad SAD
-  solen =  fbit(3),               -- solenoid   fringe fields
-  rfcav =  fbit(4),               -- rfcavity   fringe fields
+  rfcav =  fbit(3),               -- rfcavity   fringe fields
+  solen =  fbit(4),               -- solenoid   fringe fields
 
   -- sbend+quadrupole
   comb   = fset(fbit(0),fbit(1)),
@@ -1572,7 +1562,7 @@ local mad8_wedge, bend_wedge, bend_face
 local bend_fringe, mult_fringe, qsad_fringe, sol_fringe, cav_fringe
 
 function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]                     -- checked
-  m.atdebug(elm, m, lw_, 'strex_fringe:0')
+  m.atdebug(elm, m, 'strex_fringe:0')
 
   local lw = lw_ or 1
   local sdir, tdir in m
@@ -1625,11 +1615,11 @@ function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]                     -- 
     yrotation(elm, m, -1, e2)
   end
 
-  m.atdebug(elm, m, lw_, 'strex_fringe:1')
+  m.atdebug(elm, m, 'strex_fringe:1')
 end
 
 function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]                     -- checked
-  m.atdebug(elm, m, lw_, 'curex_fringe:0')
+  m.atdebug(elm, m, 'curex_fringe:0')
 
   local lw = lw_ or 1
   local sdir, tdir in m
@@ -1670,11 +1660,11 @@ function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]                     -- 
     yrotation (elm, m, -1, e)
   end
 
-  m.atdebug(elm, m, lw_, 'curex_fringe:1')
+  m.atdebug(elm, m, 'curex_fringe:1')
 end
 
 function M.solen_fringe (elm, m, lw_)
-  m.atdebug(elm, m, lw_, 'solen_fringe:0')
+  m.atdebug(elm, m, 'solen_fringe:0')
 
   local lw = lw_ or 1
   if lw == 1 and elm.kill_ent_fringe or lw == -1 and elm.kill_exi_fringe
@@ -1688,7 +1678,7 @@ function M.solen_fringe (elm, m, lw_)
     sol_fringe(elm, m, sdir*lw)
   end
 
-  m.atdebug(elm, m, lw_, 'solen_fringe:1')
+  m.atdebug(elm, m, 'solen_fringe:1')
 end
 
 local function adjust_time (m)
@@ -1704,7 +1694,7 @@ local function adjust_time (m)
 end
 
 function M.rfcav_fringe (elm, m, lw_) -- [ADJUST_TIME_CAV4, FRINGECAV]       -- checked
-  m.atdebug(elm, m, lw_, 'rfcav_fringe:0')
+  m.atdebug(elm, m, 'rfcav_fringe:0')
 
   local lw = lw_ or 1
   local sdir, beam in m
@@ -1730,7 +1720,7 @@ function M.rfcav_fringe (elm, m, lw_) -- [ADJUST_TIME_CAV4, FRINGECAV]       -- 
     m.T, m.Tbak = m.Tbak, nil
   end
 
-  m.atdebug(elm, m, lw_, 'rfcav_fringe:1')
+  m.atdebug(elm, m, 'rfcav_fringe:1')
 end
 
 -- fringes helpers ------------------------------------------------------------o
@@ -1740,32 +1730,33 @@ function bend_face (elm, m, lw, h) -- [NEWFACE]                              -- 
   local el, eld, knl in m
   if abs(el) < minlen or abs(knl[1]) < minstr then return end
 
-  m.atdebug(elm, m, lw, 'bend_face:0')
+  m.atdebug(elm, m, 'bend_face:0')
 
   local edir, sdir, tdir, beam in m
   ! h is weighted by tdir, el is weighted by sdir, so to get tdir back, we need to multiply by sdir
-  local   k0h = 0.5*h * knl[1]/el * sdir
-  local   chg = beam.charge
-  local _beta = 1/beam.beta
+  local  k0h = 0.5*h * knl[1]/el * sdir
+  local  chg = beam.charge
+  local beta = beam.beta
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local _beta = beam and 1/beam.beta or _beta
-    local chg   = beam and beam.charge or chg
-    local k0hq  = k0h*chg -- k0hq must be weighted by bdir
+    local beta = beam and beam.beta or beta
+    local chg  = beam and beam.charge or chg
+    local k0hq = k0h*chg -- k0hq must be weighted by bdir
 
     if tdir == 1 then -- to insure reversal symmetry ; horizontal wedge (only tdir)
       px = px + k0hq*x^2
     end
 
-    local dpp      =  1 + 2*pt*_beta + pt^2
+    -- This is still not fully revesible in 3rd and 4th order, due to self dependance of px
+    local dpp      =  1 + 2/beta*pt + pt^2
     local _pt2     =  1/(dpp - px^2)
     local xi       =  2*k0hq*sqrt(dpp)*_pt2
     local dxi_px   =  2*px*xi         *_pt2
     local dxi_ddel = -2   *xi*(1+pt)  *_pt2
     local y2       = y^2
 
-    x  = x / (1-dxi_px*y2)
+    x  = x / (1-dxi_px*y2) -- this affects reversibility also, for py
     px = px - xi*y2
     py = py - 2*xi*x*y
     t  = t  + dxi_ddel*x*y2
@@ -1780,15 +1771,15 @@ function bend_face (elm, m, lw, h) -- [NEWFACE]                              -- 
     m[i].t  = t
   end
 
-  m.atdebug(elm, m, lw, 'bend_face:1')
+  m.atdebug(elm, m, 'bend_face:1')
 end
 
 function mad8_wedge (elm, m, lw_, e)     -- [FRINGE_TEAPOT:MAD8_WEDGE]            -- checked
   if e == 0 or abs(m.knl[2]) < minstr then return end
-  m.atdebug(elm, m, lw_, 'mad8_wedge:0')
+  m.atdebug(elm, m, 'mad8_wedge:0')
 
   local el, eld, edir, knl, frng, beam in m
-  local   wc = frng == 0 and 0 or 0.25
+  local   wc = frng <= 1 and 0 or 0.25
   local  k1e = e*knl[2]/el*edir
   local   c1 = (1+wc)*k1e
   local   c2 = (1-wc)*k1e
@@ -1801,18 +1792,18 @@ function mad8_wedge (elm, m, lw_, e)     -- [FRINGE_TEAPOT:MAD8_WEDGE]          
     m[i].py = py - (chg*c2*2)*x*y
   end
 
-  m.atdebug(elm, m, lw_, 'mad8_wedge:1')
+  m.atdebug(elm, m, 'mad8_wedge:1')
 end
 
 function bend_wedge (elm, m, lw_, e) -- [WEDGE] see also [sr]bend_thick      -- checked
   if e == 0 then return end
-  if abs(m.knl[1]) < minstr then return yrotation(-e,m,1) end
-  m.atdebug(elm, m, lw_, 'bend_wedge:0')
+  if abs(m.knl[1]) < minstr then return yrotation(elm,m,1,-e) end
+  m.atdebug(elm, m, 'bend_wedge:0')
 
   local el, eld, tdir, knl, beam in m
-  local    k0 = knl[1]/el*tdir
-  local    b1 = k0*beam.charge
-  local _beta = 1/beam.beta
+  local   k0 = knl[1]/el*tdir
+  local   b1 = k0*beam.charge
+  local beta = beam.beta
   local sa, ca, s2a = sin(e), cos(e), sin(2*e)
 
   for i=1,m.npar do
@@ -1820,11 +1811,11 @@ function bend_wedge (elm, m, lw_, e) -- [WEDGE] see also [sr]bend_thick      -- 
     -- Note: for now, ignore wedge for photons to avoid NaN due to b1=0
     if beam and beam.charge == 0 then goto continue end
 
-    local _beta = beam and 1/beam.beta or _beta
-    local    b1 = beam and k0*beam.charge or b1
+    local beta = beam and beam.beta or beta
+    local   b1 = beam and k0*beam.charge or b1
 
-    local pzy = 1 + (2*_beta)*pt + pt^2 - py^2
-    local _pt = 1/sqrt(pzy)
+    local pzy = 1 + 2/beta*pt + pt^2 - py^2
+    local _pt = invsqrt(pzy)
     local  pz = sqrt(pzy - px^2)
     local pzx = pz - b1*x
     local npx = px*ca + pzx*sa
@@ -1834,41 +1825,41 @@ function bend_wedge (elm, m, lw_, e) -- [WEDGE] see also [sr]bend_thick      -- 
     m[i].x  = x*(ca + (px*s2a + sa^2*(pz+pzx))/(pzs + pz*ca - px*sa))
     m[i].px = npx
     m[i].y  = y + dxs*py
-    m[i].t  = t - dxs*(_beta+pt)
+    m[i].t  = t - dxs*(1/beta+pt)
 
     ::continue::
   end
 
-  m.atdebug(elm, m, lw_, 'bend_wedge:1')
+  m.atdebug(elm, m, 'bend_wedge:1')
 end
 
 function bend_fringe (elm, m, lw) -- [FRINGE_DIPOLE]                         -- checked
   if abs(m.knl[1]) < minang then return end
-  m.atdebug(elm, m, lw, 'bend_fringe:0')
+  m.atdebug(elm, m, 'bend_fringe:0')
 
   local el, eld, sdir, tdir, beam in m
-  local    fh = elm.hgap*(sdir*lw == -1 and elm.fintx or elm.fint)
-  local  fsad = fh ~= 0 and 1/(72*fh) or 0
-  local   k0w = m.knl[1]/abs(el)*tdir*lw
-  local    b0 = k0w*beam.charge
-  local _beta = 1/beam.beta
+  local   fh = elm.hgap*(sdir*lw == -1 and elm.fintx or elm.fint)
+  local fsad = fh ~= 0 and 1/(72*fh) or 0
+  local  k0w = m.knl[1]/abs(el)*tdir*lw
+  local   b0 = k0w*beam.charge
+  local beta = beam.beta
 
 ! printf("lw=% d, sdir=% d, el=% -.4f, fh=% -.5e, b0=% -.5e\n",
 !         lw, sdir, el, fh, b0)
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local _beta = beam and 1/beam.beta or _beta
-    local    b0 = beam and k0w*beam.charge or b0
-    local    c2 = b0*fh*2
+    local beta = beam and beam.beta or beta
+    local   b0 = beam and k0w*beam.charge or b0
+    local   c2 = b0*fh*2
 
-    local   dpp = 1 + 2*_beta*pt + pt^2
-    local    pz = sqrt(dpp - px^2 - py^2)
-    local   _pz = 1/pz
-    local  _pz2 = _pz^2
-    local  relp = 1/sqrt(dpp)
-    local  tfac = -(_beta + pt)
-    local    c3 = b0^2*fsad*relp
+    local  dpp = 1 + 2/beta*pt + pt^2
+    local   pz = sqrt(dpp - px^2 - py^2)
+    local  _pz = 1/pz
+    local _pz2 = _pz^2
+    local relp = invsqrt(dpp)
+    local tfac = -(1/beta + pt)
+    local   c3 = b0^2*fsad*relp
 
     local xp,  yp  = px/pz, py/pz
     local xyp, yp2 = xp*yp, 1+yp^2
@@ -1896,6 +1887,7 @@ function bend_fringe (elm, m, lw) -- [FRINGE_DIPOLE]                         -- 
       m[i].t  = t  + (0.5*kz  + c3*y2*relp^2*tfac)*y2
       m[i].y  = y
     else -- need to reverse y-dependence
+      -- This is still not fully revesible in 3rd and 4th order, due to self dependance of y
       local y2 = y^2
 
       m[i].x  = x  - 0.5*kx*y2
@@ -1905,7 +1897,7 @@ function bend_fringe (elm, m, lw) -- [FRINGE_DIPOLE]                         -- 
     end
   end
 
-  m.atdebug(elm, m, lw, 'bend_fringe:1')
+  m.atdebug(elm, m, 'bend_fringe:1')
 end
 
 function qsad_fringe (elm, m, lw) -- [FRINGE2QUAD]                           -- unchecked
@@ -1913,18 +1905,18 @@ function qsad_fringe (elm, m, lw) -- [FRINGE2QUAD]                           -- 
   local f1, f2 in elm
   if abs(f1)+abs(f2) < minstr then return end
 
-  m.atdebug(elm, m, lw, 'qsad_fringe:0')
+  m.atdebug(elm, m, 'qsad_fringe:0')
 
 -- fwd entry, bwd exit : lw= 1
 -- fwd exit , bwd entry: lw=-1
 
   local el, eld, tdir, k1, ca, sa, beam in m
-  local _beta = 1/beam.beta
-  local  wchg = beam.charge*lw
+  local beta = beam.beta
+  local  chg = beam.charge
 
   local edir, knl, ksl in m
   local a  = -0.5*atan2(ksl[2], knl[2])
-  local b2 = sqrt(knl[2]^2 + ksl[2]^2)/el*edir
+  local b2 = hypot(knl[2],ksl[2])/el*edir
   local ca, sa = cos(a), sin(a)
 
   f1 = -abs(f1)*f1*b2/24
@@ -1933,13 +1925,13 @@ function qsad_fringe (elm, m, lw) -- [FRINGE2QUAD]                           -- 
   -- Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local _beta = beam and 1/beam.beta or _beta
-    local  wchg = beam and beam.charge*lw or wchg
-    local   _pz = 1/sqrt(1 + (2*_beta)*pt + pt^2)
-    local    dt = (_beta+pt)*_pz
+    local beta = beam and beam.beta or beta
+    local  chg = beam and beam.charge or chg
+    local  _pz = invsqrt(1 + 2/beta*pt + pt^2)
+    local   dt = (1/beta+pt)*_pz
 
-    local f1 = (wchg*f1)*_pz
-    local f2 =       f2 *_pz
+    local f1 = (lw*chg*f1)*_pz
+    local f2 = (   chg*f2)*_pz
 
     local nx  = ca*x  + sa*y
     local npx = ca*px + sa*py
@@ -1960,27 +1952,26 @@ function qsad_fringe (elm, m, lw) -- [FRINGE2QUAD]                           -- 
     m[i].py = ca*py + sa*px
   end
 
-  m.atdebug(elm, m, lw, 'qsad_fringe:1')
+  m.atdebug(elm, m, 'qsad_fringe:1')
 end
 
 function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                      -- checked
   local fmax = elm.frngmax or m.frngmax
   if min(m.nmul,fmax) == 0 then return end
 
-  m.atdebug(elm, m, lw, 'mult_fringe:0')
+  m.atdebug(elm, m, 'mult_fringe:0')
 
   local el, eld, edir, sdir, tdir, nmul, knl, ksl, beam in m
-  local _beta = 1/beam.beta
-  local    _l = el ~= 0 and tdir/el or edir
+  local  beta = beam.beta
   local  wchg = beam.charge*lw
-
   local no_k1 = ftst(m.frng, fringe.bend)
+  local    _l = el ~= 0 and tdir/el or edir
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
-    local _beta = beam and 1/beam.beta or _beta
-    local  wchg = beam and beam.charge*lw or wchg
-    local   _pz = 1/sqrt(1 + (2*_beta)*pt + pt^2)
+    local beta = beam and beam.beta or beta
+    local wchg = beam and beam.charge*lw or wchg
+    local  _pz = invsqrt(1 + 2/beta*pt + pt^2)
 
     local rx, ix = 1, 0
     local fx, fxx, fxy = 0, 0, 0
@@ -2041,15 +2032,15 @@ function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                      -- 
     m[i].y  = y - fy*_pz
     m[i].px = npx
     m[i].py = npy
-    m[i].t  = t + (_beta+pt)*(npx*fx + npy*fy)*_pz^3
+    m[i].t  = t + (1/beta+pt)*(npx*fx + npy*fy)*_pz^3
   end
 
-  m.atdebug(elm, m, lw, 'mult_fringe:1')
+  m.atdebug(elm, m, 'mult_fringe:1')
 end
 
 function sol_fringe (elm, m, lw)                                             -- unchecked
   -- TODO: shortcut
-  m.atdebug(elm, m, lw, 'solent_fringe:0')
+  m.atdebug(elm, m, 'solent_fringe:0')
 
   local m1, m2, p0, s0 in elm
   local tdir, ksi, beam in m
@@ -2093,12 +2084,12 @@ function sol_fringe (elm, m, lw)                                             -- 
     m[i].px = Q_R*sP + J_R*cP
   end
 
-  m.atdebug(elm, m, lw, 'solent_fringe:1')
+  m.atdebug(elm, m, 'solent_fringe:1')
 end
 
 function cav_fringe (elm, m, lw) -- [FRINGECAV]                              -- checked
   if abs(m.el) < minlen then return end
-  m.atdebug(elm, m, lw, 'cav_fringe:0')
+  m.atdebug(elm, m, 'cav_fringe:0')
 
   local el, volt, freq, lag, tdir, beam in m
   local    w = freq*twopi_clight
@@ -2119,14 +2110,14 @@ function cav_fringe (elm, m, lw) -- [FRINGECAV]                              -- 
     m[i].pt = pt + (0.5*vl*w)*c1*(x^2 + y^2)
   end
 
-  m.atdebug(elm, m, lw, 'cav_fringe:1')
+  m.atdebug(elm, m, 'cav_fringe:1')
 end
 
 -- extra fringe (not used) ----------------------------------------------------o
 
 function M.dipeg_fringe (elm, m, lw_) -- [MADX dipedge]                      -- unchecked
   if abs(m.knl[1]) < minstr then return end -- switched off
-  m.atdebug(elm, m, lw_, 'dipeg_fringe:0')
+  m.atdebug(elm, m, 'dipeg_fringe:0')
 
   local lw = lw_ or 1
   local el, eld, edir, sdir, tdir, knl, beam in m
@@ -2146,8 +2137,8 @@ function M.dipeg_fringe (elm, m, lw_) -- [MADX dipedge]                      -- 
   end
 
   if e == 0 and corr == 0 then
-    m.atdebug(elm, m, lw_, 'dipeg_fringe:1')
-    return
+  m.atdebug(elm, m, 'dipeg_fringe:1')
+  return
   end
 
   local chg = beam.charge
@@ -2162,7 +2153,7 @@ function M.dipeg_fringe (elm, m, lw_) -- [MADX dipedge]                      -- 
     m[i].py = py + chg*r43*y
   end
 
-  m.atdebug(elm, m, lw_, 'dipeg_fringe:1')
+  m.atdebug(elm, m, 'dipeg_fringe:1')
 end
 
 -- end ------------------------------------------------------------------------o
