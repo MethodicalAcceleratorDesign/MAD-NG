@@ -370,15 +370,23 @@ function misalignent (elm, m, lw)                                            -- 
   -- forward : x1' = R*x1+T
   -- backward: x1  = R^-1*(x1'-T)
 
+  -- PTC applies the rotation to the translation before doing the translation
+  if algn.trn and algn.rot then 
+    _T:fill{edir*algn.dx, edir*algn.dy, algn.ds}
+    _R:rotzxy(-edir*algn.dphi, edir*algn.dthe, edir*algn.dpsi, true):mul(_T, _T)
+  end
+
   -- rotate
-  if algn.rot and sdir > 0 then
-    yrotation(elm, m,  edir,  algn.dthe)
-    xrotation(elm, m,  edir, -algn.dphi)
-    srotation(elm, m,  edir,  algn.dpsi)
+  if algn.rot and sdir > 0 then -- MADX survey does (theta . -phi . psi) X
+    yrotation(elm, m,  1,  algn.dthe)
+    xrotation(elm, m,  1, -algn.dphi)
+    srotation(elm, m,  1,  algn.dpsi)
   end
 
   -- translate
-  if algn.trn then
+  if algn.trn and algn.rot then
+    translate(elm, m, sdir, edir*_T[1], edir*_T[2], _T[3])
+  elseif algn.trn then
     translate(elm, m, sdir, algn.dx, algn.dy, algn.ds)
   end
 
@@ -395,14 +403,14 @@ end
 function misalignexi (elm, m, lw)                                            -- unchecked
   m.atdebug(elm, m, 'misalignexi:0')
 
-  local el, ang, tlt, sdir, edir, tdir, algn in m
-  local mang = m.mang or ang
+  local el, eld, ang, tlt, sdir, edir, algn in m
+  local mang = (m.mang or ang)*edir
 
-  -- translation
-  if algn.trn then _T:fill{algn.dx, algn.dy, algn.ds} else _T:zeros() end
+  -- translation (Multiply by edir to get the sign right, due to mang * edir)
+  if algn.trn then _T:fill{edir*algn.dx, edir*algn.dy, algn.ds} else _T:zeros() end
 
-  -- rotation
-  if algn.rot then _R:rotzxy(-algn.dphi, algn.dthe, algn.dpsi) end
+  -- rotation (Multiply by edir to get the sign right, due to mang * edir)
+  if algn.rot then _R:rotzxy(-edir*algn.dphi, edir*algn.dthe, edir*algn.dpsi) end
 
   -- compute Rbar, Tbar
   _C.mad_mat_rtbar(_Rb._dat, _Tb._dat, abs(el), mang, tlt, algn.rot and _R._dat or nil, _T._dat)
@@ -411,26 +419,19 @@ function misalignexi (elm, m, lw)                                            -- 
   -- forward : x2  = Rb^-1*(x2'-Tb)
   -- backward: x2' = Rb*x2+Tb
 
-  -- _T:print("T")
-  -- _R:print("R")
-  -- _Tb:print("Tb")
-  -- _Rb:print("Rb")
-
   -- rotate
-  if algn.rot and sdir > 0 then
+  if algn.rot and sdir > 0 then --(Undo edir sign change)
     local ax, ay, az = _Rb:torotzxy()
     srotation(elm, m, -edir, az)
     xrotation(elm, m, -edir, ax)
     yrotation(elm, m, -edir, ay)
   end
 
-  -- translate
-  if algn.trn then
-    translate(elm, m, -sdir, _Tb[1], _Tb[2], _Tb[3])
-  end
+  -- translate (Undo edir sign change)
+  translate(elm, m, -sdir, edir*_Tb[1], edir*_Tb[2], _Tb[3])
 
-  -- rotate
-  if algn.rot and sdir < 0 then
+  -- rotate 
+  if algn.rot and sdir < 0 then --(Undo edir sign change)
     local ax, ay, az = _Rb:torotzxy()
     yrotation(elm, m,  edir, ay)
     xrotation(elm, m,  edir, ax)

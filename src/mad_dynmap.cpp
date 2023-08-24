@@ -373,14 +373,27 @@ template <typename M, typename R=M::R>
 inline void misalignent (cflw<M> &m)
 {
   mdump(0);
+  num_t tb[3], t[3]={m.edir*fval(m.dx), m.edir*fval(m.dy), fval(m.ds)}; // t needs to be weighted before rotation
+
+  if (m.rot && m.trn){
+    num_t r[3*3];
+    mad_mat_rotyxz(r, m.edir*fval(m.dphi),-m.edir*fval(m.dthe),-m.edir*fval(m.dpsi), false);
+    mad_mat_mul(r, t, tb, 3, 1, 3);
+  }
+
   if (m.rot && m.sdir > 0) {
     yrotation<M>(m,  m.edir, R(m.dthe));
     xrotation<M>(m, -m.edir, R(m.dphi));
     srotation<M>(m,  m.edir, R(m.dpsi));
   }
 
-  if (m.trn)
+  if (m.rot && m.trn) {
+    translate<M>(m, m.sdir,
+      R(m.dx)-m.edir*(t[0]-tb[0]), R(m.dy)-m.edir*(t[1]-tb[1]), R(m.ds)-(t[2]-tb[2]));
+  }
+  else if (m.trn) {
     translate<M>(m, m.sdir, R(m.dx), R(m.dy), R(m.ds));
+  }
 
   if (m.rot && m.sdir < 0) {
     srotation<M>(m, -m.edir, R(m.dpsi));
@@ -395,32 +408,32 @@ inline void misalignexi (cflw<M> &m)
 {
   mdump(0);
   num_t rb[3*3], r[3*3],
-        tb[3]  , t[3]={fval(m.dx)  , fval(m.dy)  , fval(m.ds)  },
-                 a[3]={fval(m.dphi), fval(m.dthe), fval(m.dpsi)};
+        tb[3]  , t[3]={m.edir*fval(m.dx)  , m.edir*fval(m.dy)  , fval(m.ds)  },
+                 a[3]={m.edir*fval(m.dphi), m.edir*fval(m.dthe), m.edir*fval(m.dpsi)};
 
   if (m.rot)
     mad_mat_rotyxz(r, a[0], -a[1], -a[2], true);
 
   // compute Rbar, Tbar
-  mad_mat_rtbar(rb, tb, fabs(m.el), fval(m.mang), fval(m.tlt), m.rot ? r:0, t);
+  mad_mat_rtbar(rb, tb, fabs(m.el), m.edir*fval(m.mang), fval(m.tlt), m.rot ? r:0, t);
 
   if (m.rot && m.sdir > 0) {
     num_t v[3];
     mad_mat_torotyxz(rb, v, true);
-    srotation<M>(m, -m.edir, R(m.dpsi)-(a[2]+v[2]));
-    xrotation<M>(m,  m.edir, R(m.dphi)-(a[0]+v[0]));
-    yrotation<M>(m, -m.edir, R(m.dthe)-(a[1]+v[1]));
+    srotation<M>(m,  1, R(m.dpsi)-m.edir*(a[2]-v[2]));
+    xrotation<M>(m,  1,-R(m.dphi)+m.edir*(a[0]+v[0]));
+    yrotation<M>(m,  1, R(m.dthe)-m.edir*(a[1]-v[1]));
   }
 
-  if (m.trn) translate<M>(m, -m.sdir,
-     R(m.dx)-(t[0]+tb[0]), R(m.dy)-(t[1]+tb[1]), R(m.ds)-(t[2]+tb[2]));
+  translate<M>(m, -m.sdir,
+     R(m.dx)-m.edir*(t[0]-tb[0]), R(m.dy)-m.edir*(t[1]-tb[1]), R(m.ds)-(t[2]-tb[2]));
 
   if (m.rot && m.sdir < 0) {
     num_t v[3];
     mad_mat_torotyxz(rb, v, true);
-    yrotation<M>(m,  m.edir, R(m.dthe)-(a[1]+v[1]));
-    xrotation<M>(m, -m.edir, R(m.dphi)-(a[0]+v[0]));
-    srotation<M>(m,  m.edir, R(m.dpsi)-(a[2]+v[2]));
+    yrotation<M>(m,  1,-R(m.dthe)+m.edir*(a[1]-v[1]));
+    xrotation<M>(m,  1, R(m.dphi)-m.edir*(a[0]+v[0]));
+    srotation<M>(m,  1,-R(m.dpsi)+m.edir*(a[2]-v[2]));
   }
   mdump(1);
 }
