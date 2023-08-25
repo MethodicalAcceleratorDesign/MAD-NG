@@ -2308,5 +2308,20 @@ void mad_trk_cpptest (void)
   TRC(       ctpsa f =  a+1+a+2+a+2;           )
   TRC(       ctpsa g = (a+1)*sqr(a+2)+a*2;     )
 }
+
+// Real <-> Complex conversion
+{ TRC( tpsa a("A");                            )
+  TRC( tpsa_ref ar(a.ptr());                   )
+  TRC( tpsa b("B");                            )
+  TRC( tpsa_ref br(b.ptr());                   )
+  TRC(ctpsa c(a);                              )
+  TRC(ctpsa_ref cr(c.ptr());                   )
+  TRC(ctpsa d(a,b);                            )
+  TRC(ctpsa_ref dr(d.ptr());                   )
+
+  c = a;
+//  a = real(d);
+//  b = imag(d);
+}
 }
 #endif

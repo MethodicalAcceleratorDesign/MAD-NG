@@ -187,6 +187,8 @@ struct ctpsa : ctpsa_base<ctpsa> {
   template <class A>
   explicit ctpsa(const ctpsa_base<A> &a, int mo) : t(mad_ctpsa_new(a.ptr(), mo  )) { TRC("&baz,int! %p", (void*)t.get()) }
   template <class A>
+  explicit ctpsa(const tpsa_base<A> &re) { TRC("&baz! %p", (void*)t.get()); mad_ctpsa_cplx(re.ptr(), NULL, t.get()); }
+  template <class A>
   explicit ctpsa(const tpsa_base<A> &re,
                  const tpsa_base<A> &im) { TRC("&baz,&baz! %p", (void*)t.get()); mad_ctpsa_cplx(re.ptr(), im.ptr(), t.get()); }
 
@@ -199,6 +201,9 @@ struct ctpsa : ctpsa_base<ctpsa> {
   ctpsa& operator=(const ctpsa         &a) { TRC("tpa=tpa") mad_ctpsa_copy(a.ptr(),ptr()); return *this; }
   ctpsa& operator=(      ctpsa        &&a) { TRC("tpa<tpa") mad_ctpsa_copy(a.ptr(),ptr()); return *this; }
   ctpsa& operator=(      CPX            a) { TRC("tpa=num") mad_ctpsa_setval(ptr(), C(a)); return *this; }
+
+  template <class A>
+  ctpsa& operator=(const  tpsa_base<A> &a) { TRC("tpa=baz") mad_ctpsa_cplx(a.ptr(),NULL,ptr()); return *this; }
 
 #if TPSA_USE_TMP // specialization for capturing temporaries
   ctpsa(const mad_prv_::ctpsa_tmp_&); // forward decl
