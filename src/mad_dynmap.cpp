@@ -16,6 +16,13 @@
  o-----------------------------------------------------------------------------o
 */
 
+// comment to remove mdump code (+2.5% code size), (basic) speed and C++ tests
+#define TPSA_DBGMDUMP 1
+#define TPSA_SPDTESTS 1
+#define TPSA_CPPTESTS 1
+
+// --- includes ---------------------------------------------------------------o
+
 #include <type_traits>
 #include "mad_tpsa.hpp"
 
@@ -147,7 +154,7 @@ using namespace mad;
 
 // --- debug ------------------------------------------------------------------o
 
-#if 1 // set to 0 to remove debug code, ~2.5% of code size
+#if TPSA_DBGMDUMP // set to 0 to remove debug code, ~2.5% of code size
 #define mdump(n) if (m.dbg) mdump<M>(m, __func__, n)
 #else
 #define mdump(n)
@@ -1985,7 +1992,7 @@ void mad_trk_slice_tpt (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int kn
 
 // --- speed tests ------------------------------------------------------------o
 
-#if 1
+#if TPSA_SPDTEST
 void mad_trk_spdtest (int n, int k)
 {
   mad_desc_newv(6, 1);
@@ -2088,7 +2095,7 @@ void mad_trk_spdtest (int n, int k)
     printf("unknown use case %d\n", k);
   }
 }
-#endif
+#endif // TPSA_SPDTEST
 
 /*
 time: 0.001262 sec
@@ -2122,7 +2129,7 @@ end
 
 // --- unit tests -------------------------------------------------------------o
 
-#if 1
+#if TPSA_CPPTEST
 #include "mad_ctpsa.hpp"
 
 void mad_trk_cpptest (void)
@@ -2328,4 +2335,4 @@ void mad_trk_cpptest (void)
   b = imag(dr);
 }
 }
-#endif
+#endif // TPSA_CPPTEST
