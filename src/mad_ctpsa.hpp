@@ -75,6 +75,9 @@ struct ctpsa_base {
   D& set(CPX a)                 { mad_ctpsa_setval(ptr(), C(a)      ); return self(); }
   D& set(CPX a, idx_t v)        { mad_ctpsa_setvar(ptr(), C(a), v, 0); return self(); }
 
+  // debug
+  log_t isvalid() const { return mad_ctpsa_isvalid(ptr()); }
+
   template <class A>
   D& operator+=(const ctpsa_base<A> &a) { TRC("baz,baz") mad_ctpsa_add (ptr(),a.ptr(),ptr()); return self(); }
   D& operator+=(      CPX            a) { TRC("baz,num") mad_ctpsa_set0(ptr(),      1, C(a)); return self(); }
@@ -243,6 +246,7 @@ private:
 namespace mad_prv_ {
 
 struct ctpsa_tmp_ : ctpsa {
+  explicit ctpsa_tmp_() : ctpsa()                  { TRC("dft! %p", (void*)ptr()) }
   ctpsa_tmp_(ctpsa_tmp_ &&a) : ctpsa(std::move(a)) { TRC("<tmp") } // move ctor
   ctpsa_tmp_(const ctpsa_tmp_ &a) : ctpsa(a)       { TRC("&tmp") } // copy ctor
 
@@ -251,7 +255,7 @@ struct ctpsa_tmp_ : ctpsa {
   explicit ctpsa_tmp_(ctpsa_t *a)             : ctpsa(a) { TRC("*tmp") } // capture ptr (see scan)
 
 private:
-  ctpsa_tmp_()                               = delete; // final   class
+//ctpsa_tmp_()                               = delete; // dflt    ctor
 //ctpsa_tmp_(ctpsa_tmp_ &&)                  = delete; // move    ctor
 //ctpsa_tmp_(const ctpsa_tmp_ &)             = delete; // copy    ctor
   ctpsa_tmp_(std::nullptr_t)                 = delete; // nullptr ctor
@@ -274,12 +278,12 @@ inline ctpsa::ctpsa(const T &a) { t.swap(const_cast<T&>(a).t); TRC("&tmp") }
 
 template <class A>
 inline R real (const ctpsa_base<A> &a) {  TRC("re(baz)")
-  R c; mad_ctpsa_real(a,c.ptr()); return c;
+  R c; mad_ctpsa_real(a.ptr(),c.ptr()); return c;
 }
 
 template <class A>
 inline R imag (const ctpsa_base<A> &a) {  TRC("im(baz)")
-  R c; mad_ctpsa_imag(a,c.ptr()); return c;
+  R c; mad_ctpsa_imag(a.ptr(),c.ptr()); return c;
 }
 
 // --- unary ---
