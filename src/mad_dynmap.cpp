@@ -2314,14 +2314,18 @@ void mad_trk_cpptest (void)
   TRC( tpsa_ref ar(a.ptr());                   )
   TRC( tpsa b("B");                            )
   TRC( tpsa_ref br(b.ptr());                   )
+
   TRC(ctpsa c(a);                              )
   TRC(ctpsa_ref cr(c.ptr());                   )
   TRC(ctpsa d(a,b);                            )
   TRC(ctpsa_ref dr(d.ptr());                   )
 
   c = a;
-//  a = real(d);
-//  b = imag(d);
+  c = ar;
+  a = real(d);
+  b = imag(d);
+  a = real(dr);
+  b = imag(dr);
 }
 }
 #endif
