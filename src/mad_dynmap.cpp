@@ -1509,13 +1509,13 @@ inline void rfcav_fringe (cflw<M> &m, num_t lw)
 
 // --- tilt & misalignment ---
 void mad_trk_tilt_r (mflw_t *m, num_t lw) {
-  srotation<par_t>(m->rflw, lw, m->rflw.tlt);
+  srotation<par_t>(m->rflw, lw*m->rflw.sdir, m->rflw.tlt);
 }
 void mad_trk_tilt_t (mflw_t *m, num_t lw) {
-  srotation<map_t>(m->tflw, lw, m->tflw.tlt);
+  srotation<map_t>(m->tflw, lw*m->tflw.sdir, m->tflw.tlt);
 }
 void mad_trk_tilt_p (mflw_t *m, num_t lw) {
-  srotation<prm_t>(m->pflw, lw, tpsa_ref(m->pflw.tlt));
+  srotation<prm_t>(m->pflw, lw*m->pflw.sdir, tpsa_ref(m->pflw.tlt));
 }
 
 void mad_trk_misalign_r (mflw_t *m, num_t lw) {
