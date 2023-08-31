@@ -1100,8 +1100,8 @@ inline void rfcav_kickn (cflw<M> &m, num_t lw, int is)
     if (m.nmul > 0) {
       bxby(m, p.x, p.y, bx, by);
 
-      p.px += wchg*by*ca; // TBC! was $/R(m.pc) ?
-      p.py -= wchg*bx*ca; // TBC! was $/R(m.pc) ?
+      p.px += wchg/m.pc*by*ca;
+      p.py -= wchg/m.pc*bx*ca;
 
       by = -R(m.knl[m.nmul-1])/m.nmul;
       bx = -R(m.ksl[m.nmul-1])/m.nmul;
