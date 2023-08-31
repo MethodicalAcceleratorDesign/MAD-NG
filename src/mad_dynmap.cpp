@@ -1114,7 +1114,7 @@ inline void rfcav_kickn (cflw<M> &m, num_t lw, int is)
       bx  = p.y*by + p.x*bx;
       by  = byt;
 
-      p.pt -= wchg*w*by*sa;
+      p.pt -= wchg/m.pc*w*by*sa;
     }
   }
   mdump(1);
