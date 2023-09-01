@@ -16,6 +16,13 @@
  o-----------------------------------------------------------------------------o
 */
 
+// comment to remove mdump code (+2.5% code size), (basic) speed and C++ tests
+#define TPSA_DBGMDUMP 1
+#define TPSA_SPDTESTS 1
+#define TPSA_CPPTESTS 1
+
+// --- includes ---------------------------------------------------------------o
+
 #include <type_traits>
 #include "mad_tpsa.hpp"
 
@@ -147,7 +154,7 @@ using namespace mad;
 
 // --- debug ------------------------------------------------------------------o
 
-#if 1 // set to 0 to remove debug code, ~2.5% of code size
+#if TPSA_DBGMDUMP // set to 0 to remove debug code, ~2.5% of code size
 #define mdump(n) if (m.dbg) mdump<M>(m, __func__, n)
 #else
 #define mdump(n)
@@ -1106,8 +1113,8 @@ inline void rfcav_kickn (cflw<M> &m, num_t lw, int is)
     if (m.nmul > 0) {
       bxby(m, p.x, p.y, bx, by);
 
-      p.px += wchg*by*ca; // TBC! was $/R(m.pc) ?
-      p.py -= wchg*bx*ca; // TBC! was $/R(m.pc) ?
+      p.px += wchg/m.pc*by*ca;
+      p.py -= wchg/m.pc*bx*ca;
 
       by = -R(m.knl[m.nmul-1])/m.nmul;
       bx = -R(m.ksl[m.nmul-1])/m.nmul;
@@ -1120,7 +1127,7 @@ inline void rfcav_kickn (cflw<M> &m, num_t lw, int is)
       bx  = p.y*by + p.x*bx;
       by  = byt;
 
-      p.pt -= wchg*w*by*sa;
+      p.pt -= wchg/m.pc*w*by*sa;
     }
   }
   mdump(1);
@@ -1515,13 +1522,13 @@ inline void rfcav_fringe (cflw<M> &m, num_t lw)
 
 // --- tilt & misalignment ---
 void mad_trk_tilt_r (mflw_t *m, num_t lw) {
-  srotation<par_t>(m->rflw, lw, m->rflw.tlt);
+  srotation<par_t>(m->rflw, lw*m->rflw.sdir, m->rflw.tlt);
 }
 void mad_trk_tilt_t (mflw_t *m, num_t lw) {
-  srotation<map_t>(m->tflw, lw, m->tflw.tlt);
+  srotation<map_t>(m->tflw, lw*m->tflw.sdir, m->tflw.tlt);
 }
 void mad_trk_tilt_p (mflw_t *m, num_t lw) {
-  srotation<prm_t>(m->pflw, lw, tpsa_ref(m->pflw.tlt));
+  srotation<prm_t>(m->pflw, lw*m->pflw.sdir, tpsa_ref(m->pflw.tlt));
 }
 
 void mad_trk_misalign_r (mflw_t *m, num_t lw) {
@@ -1998,7 +2005,7 @@ void mad_trk_slice_tpt (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int kn
 
 // --- speed tests ------------------------------------------------------------o
 
-#if 1
+#if TPSA_SPDTEST
 void mad_trk_spdtest (int n, int k)
 {
   mad_desc_newv(6, 1);
@@ -2101,7 +2108,7 @@ void mad_trk_spdtest (int n, int k)
     printf("unknown use case %d\n", k);
   }
 }
-#endif
+#endif // TPSA_SPDTEST
 
 /*
 time: 0.001262 sec
@@ -2135,7 +2142,7 @@ end
 
 // --- unit tests -------------------------------------------------------------o
 
-#if 1
+#if TPSA_CPPTEST
 #include "mad_ctpsa.hpp"
 
 void mad_trk_cpptest (void)
@@ -2321,5 +2328,24 @@ void mad_trk_cpptest (void)
   TRC(       ctpsa f =  a+1+a+2+a+2;           )
   TRC(       ctpsa g = (a+1)*sqr(a+2)+a*2;     )
 }
+
+// Real <-> Complex conversion
+{ TRC( tpsa a("A");                            )
+  TRC( tpsa_ref ar(a.ptr());                   )
+  TRC( tpsa b("B");                            )
+  TRC( tpsa_ref br(b.ptr());                   )
+
+  TRC(ctpsa c(a);                              )
+  TRC(ctpsa_ref cr(c.ptr());                   )
+  TRC(ctpsa d(a,b);                            )
+  TRC(ctpsa_ref dr(d.ptr());                   )
+
+  c = a;
+  c = ar;
+  a = real(d);
+  b = imag(d);
+  a = real(dr);
+  b = imag(dr);
 }
-#endif
+}
+#endif // TPSA_CPPTEST

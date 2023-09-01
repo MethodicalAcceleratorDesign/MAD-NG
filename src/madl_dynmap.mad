@@ -363,7 +363,8 @@ end
 function misalignent (elm, m, lw)                                            -- unchecked
   m.atdebug(elm, m, 'misalignent:0')
 
-  local sdir, edir, algn in m
+  local sdir, edir, algn, ptcmodel in m
+  local dthe, dphi, dpsi, dx, dy, ds, rot, trn in algn
 
   -- misalignment at entry and local/global frames
   -- forward : x1' = R*x1+T
@@ -376,24 +377,37 @@ function misalignent (elm, m, lw)                                            -- 
   end
 
   -- rotate
-  if algn.rot and sdir > 0 then -- MADX survey does (theta . -phi . psi) X
-    yrotation(elm, m,  1,  algn.dthe)
-    xrotation(elm, m,  1, -algn.dphi)
-    srotation(elm, m,  1,  algn.dpsi)
+  if rot and sdir > 0 then -- MADX survey does (theta . -phi . psi) X
+    if not ptcmodel then
+      yrotation(elm, m,  1,  dthe)
+      xrotation(elm, m,  1, -dphi)
+      srotation(elm, m,  1,  dpsi)
+    else
+      xrotation(elm, m,  1, -dphi)
+      yrotation(elm, m,  1,  dthe)
+      srotation(elm, m,  1,  dpsi)
+    end
   end
 
   -- translate
-  if algn.trn and algn.rot then
-    translate(elm, m, sdir, edir*_T[1], edir*_T[2], _T[3])
-  elseif algn.trn then
-    translate(elm, m, sdir, algn.dx, algn.dy, algn.ds)
+  if trn then
+    if rot then -- rotate T
+      _T:fill{edir*dx, edir*dy, ds}
+      if not ptcmodel
+      then _R:rotzxy(-edir*dphi, edir*dthe, edir*dpsi, true):mul(_T, _T)
+      else _R:rotzyx(-edir*dphi, edir*dthe, edir*dpsi, true):mul(_T, _T)
+      end
+      translate(elm, m, sdir, edir*_T[1], edir*_T[2], _T[3])
+    else
+      translate(elm, m, sdir, dx, dy, ds)
+    end
   end
 
   -- rotate
-  if algn.rot and sdir < 0 then
-    srotation(elm, m, -1,  algn.dpsi)
-    xrotation(elm, m, -1, -algn.dphi)
-    yrotation(elm, m, -1,  algn.dthe)
+  if rot and sdir < 0 then
+    srotation(elm, m, -1,  dpsi)
+    xrotation(elm, m, -1, -dphi)
+    yrotation(elm, m, -1,  dthe)
   end
 
   m.atdebug(elm, m, 'misalignent:1')
@@ -402,39 +416,54 @@ end
 function misalignexi (elm, m, lw)                                            -- unchecked
   m.atdebug(elm, m, 'misalignexi:0')
 
-  local el, eld, ang, tlt, sdir, edir, algn in m
-  local mang = (m.mang or ang)*edir
+  local el, eld, mang, tlt, sdir, edir, algn, ptcmodel in m
+  local dthe, dphi, dpsi, dx, dy, ds, rot, trn in algn
 
-  -- translation (Multiply by edir to get the sign right, due to mang * edir)
-  if algn.trn then _T:fill{edir*algn.dx, edir*algn.dy, algn.ds} else _T:zeros() end
+  -- translation
+  if trn
+  then _T:fill{edir*dx, edir*dy, ds}
+  else _T:zeros()
+  end
 
-  -- rotation (Multiply by edir to get the sign right, due to mang * edir)
-  if algn.rot then _R:rotzxy(-edir*algn.dphi, edir*algn.dthe, edir*algn.dpsi) end
+  -- rotation
+  if rot then
+    if not ptcmodel
+    then _R:rotzxy(-edir*dphi, edir*dthe, edir*dpsi)
+    else _R:rotzyx(-edir*dphi, edir*dthe, edir*dpsi)
+    end
+  end
 
   -- compute Rbar, Tbar
-  _C.mad_mat_rtbar(_Rb._dat, _Tb._dat, abs(eld or el), mang, tlt, algn.rot and _R._dat or nil, _T._dat)
+  _C.mad_mat_rtbar(_Rb._dat, _Tb._dat, abs(eld or el), edir*mang, edir*tlt, rot and _R._dat or nil, _T._dat)
 
   -- misalignment at exit and local/global frames
   -- forward : x2  = Rb^-1*(x2'-Tb)
   -- backward: x2' = Rb*x2+Tb
 
   -- rotate
-  if algn.rot and sdir > 0 then --(Undo edir sign change)
-    local ax, ay, az = _Rb:torotzxy()
-    srotation(elm, m, -edir, az)
-    xrotation(elm, m, -edir, ax)
-    yrotation(elm, m, -edir, ay)
+  if rot and sdir > 0 then
+    if not ptcmodel then
+      local ax, ay, az = _Rb:torotzxy()
+      srotation(elm, m, -edir, az)
+      xrotation(elm, m, -edir, ax)
+      yrotation(elm, m, -edir, ay)
+    else
+      local ax, ay, az = _Rb:torotzyx(true)
+      srotation(elm, m,  edir, az)
+      xrotation(elm, m,  edir, ax)
+      yrotation(elm, m,  edir, ay)
+    end
   end
 
-  -- translate (Undo edir sign change)
+  -- translate
   translate(elm, m, -sdir, edir*_Tb[1], edir*_Tb[2], _Tb[3])
 
-  -- rotate 
-  if algn.rot and sdir < 0 then --(Undo edir sign change)
+  -- rotate
+  if rot and sdir < 0 then
     local ax, ay, az = _Rb:torotzxy()
-    yrotation(elm, m,  edir, ay)
-    xrotation(elm, m,  edir, ax)
-    srotation(elm, m,  edir, az)
+    yrotation(elm, m, edir, ay)
+    xrotation(elm, m, edir, ax)
+    srotation(elm, m, edir, az)
   end
 
   m.atdebug(elm, m, 'misalignexi:1')
@@ -1356,8 +1385,8 @@ function M.rfcav_kickn (elm, m, lw, istp) -- [KICKCAV, nmul~=0 or nbsl~=0]   -- 
 
     if nmul > 0 then
       local bx, by, byt = bxby(nmul, knl, ksl, x, y)
-      px = px + bdir*by*ca
-      py = py - bdir*bx*ca
+      px = px + bdir*_pc*by*ca
+      py = py - bdir*_pc*bx*ca
 
       by = -knl[nmul]/nmul
       bx = -ksl[nmul]/nmul
@@ -1366,11 +1395,11 @@ function M.rfcav_kickn (elm, m, lw, istp) -- [KICKCAV, nmul~=0 or nbsl~=0]   -- 
         bx  = y*by + x*bx - ksl[i]/i
         by  = byt
       end
-      byt = x*by - y*bx -- extra terms?
+      byt = x*by - y*bx
       bx  = y*by + x*bx
       by  = byt
 
-      pt = pt - bdir*omega*by*sa
+      pt = pt - bdir*_pc*omega*by*sa
     end
 
     m[i].px = px
@@ -1736,7 +1765,8 @@ function bend_face (elm, m, lw, h) -- [NEWFACE]                              -- 
   m.atdebug(elm, m, 'bend_face:0')
 
   local edir, sdir, beam in m
-  local  k0h = 0.5*h*knl[1]/el*sdir
+  local  k0h = 0.5*h*knl[1]/el*edir*sdir -- Needs confirmation, but I believe h1, h2 are independent of tdir -> see PTC
+  -- PTC eq: X(2)=X(2)+(EL%DIR*EL%CHARGE*BN(1)*H/2.0_dp)*X(1)**2. If h was dependent on tdir, then this equation would not require DIR 
   local  chg = beam.charge
   local beta = beam.beta
 
@@ -1746,7 +1776,7 @@ function bend_face (elm, m, lw, h) -- [NEWFACE]                              -- 
     local chg  = beam and beam.charge or chg
     local k0hq = k0h*chg -- k0hq must be weighted by bdir
 
-    if tdir == 1 then -- to insure reversal symmetry ; horizontal wedge (only tdir)
+    if sdir == 1 then -- to insure reversal symmetry ; horizontal wedge (only sdir) -> PTC uses edir, and if we do this, reversing edir does not give the same result
       px = px + k0hq*x^2
     end
 
@@ -1763,7 +1793,7 @@ function bend_face (elm, m, lw, h) -- [NEWFACE]                              -- 
     py = py - 2*xi*x*y
     t  = t  + dxi_ddel*x*y2
 
-    if tdir == -1 then -- to insure reversal symmetry; horizontal wedge (only tdir)
+    if sdir == -1 then -- to insure reversal symmetry; horizontal wedge (only sdir) -> PTC uses edir, and if we do this, reversing edir does not give the same result
       px = px + k0hq*x^2
     end
 

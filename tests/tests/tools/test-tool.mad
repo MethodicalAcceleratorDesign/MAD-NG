@@ -1,6 +1,6 @@
-local is_vector, is_table in MAD.typeid
-local fnil                in MAD.gfunc
-local atexit, tblcpy      in MAD.utility
+local is_vector, is_table, is_integer in MAD.typeid
+local fnil                            in MAD.gfunc
+local atexit, tblcpy                  in MAD.utility
 
 local help_usage = [[Usage: ../mad <your_test_suite.mad> [options] [testname1 [testname2] ... ]
 Options:
@@ -68,6 +68,20 @@ local mad_args     = tblcpy(MAD.env.arg) -- Copy the arg list for manipulation
 
 local args_to_cfg = \cfg => for k, v in pairs(global_cfg) do cfg[k] = v end end
 
+local args_in_utest = {
+  doprnt   = true,
+  doplot   = true,
+  pattern  = true,
+  exclude  = true,
+  help     = true,
+}
+
+local function remove_arg (is_unittest, i, arg) -- this assumes you are looping over the arg list
+  if is_unittest and not args_in_utest[arg] then
+    table.remove(MAD.env.arg, i + (#MAD.env.arg - #mad_args))  -- Remove the arg from the arg list
+  end
+end
+
 local function run_help (is_unittest) 
   if is_unittest then atexit(\->print(unittest_help)) 
   else                print(help_usage) ; os.exit(0) 
@@ -85,26 +99,20 @@ local function get_pttrn_or_excl (i, is_unittest, tbl)
   tbl[#tbl+1], mad_args[i+1] = pttrn, ""
 end
  
+local function get_print_level (i, is_unittest)
+  local lvl = tonumber(mad_args[i + 1])
+  assert(is_integer(lvl) and lvl >= 0, "Missing argument for option: "..mad_args[i]) 
+  global_cfg.doprnt = lvl
+  remove_arg(is_unittest, i+1, lvl)
+end
+
 local arg_fun = {
   pattern = \i, iut-> get_pttrn_or_excl(i, iut, patterns),
   exclude = \i, iut-> get_pttrn_or_excl(i, iut, excludes),
   help    = \_, iut-> run_help(iut),
   test    = fnil,
+  doprnt  = \i, iut-> get_print_level(i, iut)
 }
-
-local args_in_utest = {
-  doprnt   = true,
-  doplot   = true,
-  pattern  = true,
-  exclude  = true,
-  help     = true,
-}
-
-local function remove_arg (is_unittest, i, arg) -- this assumes you are looping over the arg list
-  if is_unittest and not args_in_utest[arg] then
-    table.remove(MAD.env.arg, i + (#MAD.env.arg - #mad_args))  -- Remove the arg from the arg list
-  end
-end
 
 local function parse_cmd_args(is_unittest) -- Parse the command line arguments
   -- First check if this is a unittest

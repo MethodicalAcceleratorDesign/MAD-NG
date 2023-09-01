@@ -83,6 +83,9 @@ struct tpsa_base {
   D& set(num_t a)                      { mad_tpsa_setval(ptr(), a      );    return self(); }
   D& set(num_t a, idx_t v)             { mad_tpsa_setvar(ptr(), a, v, 0);    return self(); }
 
+  // debug
+  log_t isvalid() const { return mad_ctpsa_isvalid(ptr()); }
+
   template <class A>
   D& operator+=(const tpsa_base<A> &a) { TRC("baz,baz") mad_tpsa_add (ptr(),a.ptr(),ptr()); return self(); }
   D& operator+=(      num_t         a) { TRC("baz,num") mad_tpsa_set0(ptr(),      1,    a); return self(); }
@@ -107,7 +110,6 @@ struct tpsa_base {
   // indexing by index, monomial as string (literal), and (sparse) monomial as vector.
   num_t operator[](idx_t i) const { return i ? mad_tpsa_geti(ptr(),  i) : mad_tpsa_get0(ptr()); }
   num_t operator[](str_t s) const { return     mad_tpsa_gets(ptr(),0,s);                        }
-
   num_t operator[](const std::string& s) const {
     return mad_tpsa_gets(ptr(), s.size(), s.c_str());
   }
@@ -235,6 +237,7 @@ private:
 namespace mad_prv_ {
 
 struct tpsa_tmp_ : tpsa {
+  explicit tpsa_tmp_() : tpsa()                 { TRC("dft! %p", (void*)ptr()) }
   tpsa_tmp_(tpsa_tmp_ &&a) : tpsa(std::move(a)) { TRC("<tmp") } // move ctor
   tpsa_tmp_(const tpsa_tmp_ &a) : tpsa(a)       { TRC("&tmp") } // copy ctor
 
@@ -243,7 +246,7 @@ struct tpsa_tmp_ : tpsa {
   explicit tpsa_tmp_(tpsa_t *a)             : tpsa(a) { TRC("*tmp") } // capture ptr (see scan)
 
 private:
-  tpsa_tmp_()                              = delete; // final   class
+//tpsa_tmp_()                              = delete; // dflt    ctor
 //tpsa_tmp_(tpsa_tmp_ &&)                  = delete; // move    ctor
 //tpsa_tmp_(const tpsa_tmp_ &)             = delete; // copy    ctor
   tpsa_tmp_(std::nullptr_t)                = delete; // nullptr ctor
