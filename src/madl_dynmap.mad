@@ -363,29 +363,45 @@ end
 function misalignent (elm, m, lw)                                            -- unchecked
   m.atdebug(elm, m, 'misalignent:0')
 
-  local sdir, edir, algn in m
+  local sdir, edir, algn, ptcmodel in m
+  local dthe, dphi, dpsi, dx, dy, ds, rot, trn in algn
 
   -- misalignment at entry and local/global frames
   -- forward : x1' = R*x1+T
   -- backward: x1  = R^-1*(x1'-T)
 
   -- rotate
-  if algn.rot and sdir > 0 then
-    yrotation(elm, m,  1,  algn.dthe)
-    xrotation(elm, m,  1, -algn.dphi)
-    srotation(elm, m,  1,  algn.dpsi)
+  if rot and sdir > 0 then
+    if not ptcmodel then
+      yrotation(elm, m,  1,  dthe)
+      xrotation(elm, m,  1, -dphi)
+      srotation(elm, m,  1,  dpsi)
+    else
+      xrotation(elm, m,  1, -dphi)
+      yrotation(elm, m,  1,  dthe)
+      srotation(elm, m,  1,  dpsi)
+    end
   end
 
   -- translate
-  if algn.trn then
-    translate(elm, m, sdir, algn.dx, algn.dy, algn.ds)
+  if trn then
+    if rot then -- rotate T
+      _T:fill{edir*dx, edir*dy, ds}
+      if not ptcmodel
+      then _R:rotzxy(-edir*dphi, edir*dthe, edir*dpsi, true):mul(_T, _T)
+      else _R:rotzyx(-edir*dphi, edir*dthe, edir*dpsi, true):mul(_T, _T)
+      end
+      translate(elm, m, sdir, edir*_T[1], edir*_T[2], _T[3])
+    else
+      translate(elm, m, sdir, dx, dy, ds)
+    end
   end
 
   -- rotate
-  if algn.rot and sdir < 0 then
-    srotation(elm, m, -1,  algn.dpsi)
-    xrotation(elm, m, -1, -algn.dphi)
-    yrotation(elm, m, -1,  algn.dthe)
+  if rot and sdir < 0 then
+    srotation(elm, m, -1,  dpsi)
+    xrotation(elm, m, -1, -dphi)
+    yrotation(elm, m, -1,  dthe)
   end
 
   m.atdebug(elm, m, 'misalignent:1')
@@ -394,16 +410,25 @@ end
 function misalignexi (elm, m, lw)                                            -- unchecked
   m.atdebug(elm, m, 'misalignexi:0')
 
-  local el, eld, mang, tlt, sdir, edir, algn in m
+  local el, eld, mang, tlt, sdir, edir, algn, ptcmodel in m
+  local dthe, dphi, dpsi, dx, dy, ds, rot, trn in algn
 
   -- translation
-  if algn.trn then _T:fill{algn.dx, algn.dy, algn.ds} else _T:zeros() end
+  if trn
+  then _T:fill{edir*dx, edir*dy, ds}
+  else _T:zeros()
+  end
 
   -- rotation
-  if algn.rot then _R:rotzxy(-algn.dphi, algn.dthe, algn.dpsi) end
+  if rot then
+    if not ptcmodel
+    then _R:rotzxy(-edir*dphi, edir*dthe, edir*dpsi)
+    else _R:rotzyx(-edir*dphi, edir*dthe, edir*dpsi)
+    end
+  end
 
   -- compute Rbar, Tbar
-  _C.mad_mat_rtbar(_Rb._dat, _Tb._dat, abs(eld or el), mang, tlt, algn.rot and _R._dat or nil, _T._dat)
+  _C.mad_mat_rtbar(_Rb._dat, _Tb._dat, abs(eld or el), edir*mang, edir*tlt, rot and _R._dat or nil, _T._dat)
 
   -- misalignment at exit and local/global frames
   -- forward : x2  = Rb^-1*(x2'-Tb)
@@ -415,24 +440,29 @@ function misalignexi (elm, m, lw)                                            -- 
   -- _Rb:print("Rb")
 
   -- rotate
-  if algn.rot and sdir > 0 then
-    local ax, ay, az = _Rb:torotzxy()
-    srotation(elm, m, -1, az)
-    xrotation(elm, m, -1, ax)
-    yrotation(elm, m, -1, ay)
+  if rot and sdir > 0 then
+    if not ptcmodel then
+      local ax, ay, az = _Rb:torotzxy()
+      srotation(elm, m, -edir, az)
+      xrotation(elm, m, -edir, ax)
+      yrotation(elm, m, -edir, ay)
+    else
+      local ax, ay, az = _Rb:torotzyx(true)
+      srotation(elm, m,  edir, az)
+      xrotation(elm, m,  edir, ax)
+      yrotation(elm, m,  edir, ay)
+    end
   end
 
   -- translate
-  if algn.trn then
-    translate(elm, m, -sdir, _Tb[1], _Tb[2], _Tb[3])
-  end
+  translate(elm, m, -sdir, edir*_Tb[1], edir*_Tb[2], _Tb[3])
 
   -- rotate
-  if algn.rot and sdir < 0 then
+  if rot and sdir < 0 then
     local ax, ay, az = _Rb:torotzxy()
-    yrotation(elm, m,  1, ay)
-    xrotation(elm, m,  1, ax)
-    srotation(elm, m,  1, az)
+    yrotation(elm, m, edir, ay)
+    xrotation(elm, m, edir, ax)
+    srotation(elm, m, edir, az)
   end
 
   m.atdebug(elm, m, 'misalignexi:1')
