@@ -1186,7 +1186,7 @@ inline void bend_face (cflw<M> &m, num_t lw, const V &h)
 
   FOR (i,m.npar) {
     M p(m,i);
-    if (m.sdir*m.edir == 1) p.px += k0hq*sqr(p.x);
+    if (m.sdir == 1) p.px += k0hq*sqr(p.x);
 
     T dpp      =  1 + 2/m.beta*p.pt + sqr(p.pt);
     T _pt2     =  1/(dpp - sqr(p.px));
@@ -1200,7 +1200,7 @@ inline void bend_face (cflw<M> &m, num_t lw, const V &h)
     p.py -= 2*xi*p.x*p.y;
     p.t  += dxi_ddel*p.x*y2;
 
-    if (m.sdir*m.edir == -1) p.px += k0hq*sqr(p.x);
+    if (m.sdir == -1) p.px += k0hq*sqr(p.x);
   }
   mdump(1);
 }
@@ -1337,7 +1337,7 @@ inline void qsad_fringe (cflw<M> &m, num_t lw)
   P     b2   = hypot(R(m.knl[1]), R(m.ksl[1]))/R(m.el)*m.edir;
   P     ca   = cos(a), sa = sin(a);
   P     bf1  = (abs(R(m.f1))*R(m.f1)/-24)*b2;
-  P     bf2  =               R(m.f2)     *b2;
+  P     bf2  =               R(m.f2)     *b2*m.sdir;
 
   // Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
   FOR (i,m.npar) {
