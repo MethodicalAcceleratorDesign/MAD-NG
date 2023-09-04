@@ -1182,7 +1182,7 @@ inline void bend_face (cflw<M> &m, num_t lw, const V &h)
   if (!fval(h) || fabs(m.el) < minlen || fabs(m.knl[0]) < minstr) return;
 
   mdump(0);
-  P k0hq = R(m.knl[0])/R(m.el)*(0.5*h*m.sdir*m.charge);
+  P k0hq = R(m.knl[0])/R(m.el)*(0.5*h*m.sdir*m.edir*m.charge);
 
   FOR (i,m.npar) {
     M p(m,i);
