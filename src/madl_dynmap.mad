@@ -1875,6 +1875,33 @@ function bend_wedge (elm, m, lw_, e) -- [WEDGE] see also [sr]bend_thick      -- 
   m.atdebug(elm, m, 'bend_wedge:1')
 end
 
+local function bend_fringe_param (dpp, px, py, c2, b0, tfac, only_ky)
+  local   pz = sqrt(dpp - px^2 - py^2)
+  local  _pz = 1/pz
+  local _pz2 = _pz^2
+
+  local xp,  yp  = px/pz, py/pz
+  local xyp, yp2 = xp*yp, 1+yp^2
+  local xp2,_yp2 = xp^2 , 1/yp2
+
+  local fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*pz
+  local co2 = b0/cos(fi0)^2
+  local co1 = co2/(1 + (xp*_yp2)^2)*_yp2
+  local co3 = co2*c2
+
+  local fi1 =    co1          - co3*2*xp*(1+yp2)*pz
+  local fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *pz
+  local fi3 =                 - co3*(1 + xp2*(1+yp2))
+
+  local ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp
+  if only_ky then return fi0, nil, ky, nil end -- only ky is needed, speed up calculation
+
+  local kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp
+  local kz = fi1*tfac*xp*_pz2 + fi2*tfac*yp*_pz2 - fi3*tfac*_pz
+  return fi0, kx, ky, kz
+end
+
+
 function bend_fringe (elm, m, lw) -- [FRINGE_DIPOLE]                         -- checked
   if abs(m.knl[1]) < minang then return end
   m.atdebug(elm, m, 'bend_fringe:0')
@@ -1896,46 +1923,29 @@ function bend_fringe (elm, m, lw) -- [FRINGE_DIPOLE]                         -- 
     local   c2 = b0*fh*2
 
     local  dpp = 1 + 2/beta*pt + pt^2
-    local   pz = sqrt(dpp - px^2 - py^2)
-    local  _pz = 1/pz
-    local _pz2 = _pz^2
     local relp = invsqrt(dpp)
     local tfac = -(1/beta + pt)
     local   c3 = b0^2*fsad*relp
 
-    local xp,  yp  = px/pz, py/pz
-    local xyp, yp2 = xp*yp, 1+yp^2
-    local xp2,_yp2 = xp^2 , 1/yp2
-
-    local fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*pz
-    local co2 = b0/cos(fi0)^2
-    local co1 = co2/(1 + (xp*_yp2)^2)*_yp2
-    local co3 = co2*c2
-
-    local fi1 =    co1          - co3*2*xp*(1+yp2)*pz
-    local fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *pz
-    local fi3 =                 - co3*(1 + xp2*(1+yp2))
-
-    local kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp
-    local ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp
-    local kz = fi1*tfac*xp*_pz2 + fi2*tfac*yp*_pz2 - fi3*tfac*_pz
-
+    local fi0, kx, ky, kz = bend_fringe_param(dpp, px, py, c2, b0, tfac, sdir==-1) -- this method is not perfect.
+    local ny = 2*y / (1 + sqrt(1-2*ky*y))
     if sdir == 1 then
-      y  = 2*y / (1 + sqrt(1-2*ky*y))
-      local y2 = y^2
+      local ny2 = ny^2
 
-      m[i].x  = x  + 0.5*kx*y2
-      m[i].py = py - (4*c3*y2 + b0*tan(fi0))*y
-      m[i].t  = t  + (0.5*kz  + c3*y2*relp^2*tfac)*y2
-      m[i].y  = y
+      m[i].x  = x  + 0.5*kx*ny2
+      m[i].py = py - (4*c3*ny2 + b0*tan(fi0))*ny
+      m[i].t  = t  + (0.5*kz  + c3*ny2*relp^2*tfac)*ny2
+      m[i].y  = ny
     else -- need to reverse y-dependence
-      -- This is still not fully revesible in 3rd and 4th order, due to self dependance of y
+      -- This is still not fully revesible in 5thand 6th order, due to self dependance of py -> results in max error of 1e-11 and 2e-9 for 5th and 6th order respectively
+      local new_py = py + (4*c3*ny^2 + b0*tan(fi0))*ny
+      fi0, kx, ky, kz = bend_fringe_param(dpp, px, new_py, c2, b0, tfac) -- this method is not perfect.
       local y2 = y^2
 
       m[i].x  = x  - 0.5*kx*y2
       m[i].py = py + (4*c3*y2 + b0*tan(fi0))*y
       m[i].t  = t  - (0.5*kz + c3*y2*relp^2*tfac)*y2
-      m[i].y  = 0.5*y * (1 + sqrt(1-2*ky*y))
+      m[i].y  = y - y2*ky/2
     end
   end
 
