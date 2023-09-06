@@ -41,13 +41,9 @@ enum { nmul_max=22, snm_max=(nmul_max+1)*(nmul_max+2)/2 };
 }
 
 template <typename M, typename MT=M::MT, typename MP=M::MP>
-struct cflw {
+struct cflw { // must be identical to def of 3 variants in madl_etck.mad!!
   str_t name;
   int dbg;
-
-  // element data
-  MP el, eld, elc, lrad;
-  MP eh, ang, mang;
 
   // beam
   num_t pc, beta, betgam;
@@ -55,6 +51,12 @@ struct cflw {
 
   // directions, path
   int sdir, edir, pdir, T, Tbak;
+
+// start of polymorphic section
+
+  // element data
+  MP el, eld, elc, lrad;
+  MP eh, ang, mang;
 
   // quad, solenoid, multipole, esptum, rfcav, sine & cosine
   MP k1, ks, volt, freq, lag, sa, ca;
@@ -1093,22 +1095,24 @@ inline void rfcav_kickn (cflw<M> &m, num_t lw, int is)
     T sa = sin(ph), ca = cos(ph);
     T f; f = 1.;
 
-    if (m.nbsl > 0) {
-      T df, r2; df = 0., r2 = 1.;
+    if (fval(m.volt)) {
+      if (m.nbsl > 0) {
+        T df, r2; df = 0., r2 = 1.;
 
-      FOR(i,1,m.nbsl+1) {
-        r2  = -r2*(sqr(w)/(4*sqr(i+1)));
-        df +=  r2*(i*2);
-        r2  =  r2*(sqr(p.x)+sqr(p.y));
-        f  +=  r2;
+        FOR(i,1,m.nbsl+1) {
+          r2  = -r2*(sqr(w)/(4*sqr(i+1)));
+          df +=  r2*(i*2);
+          r2  =  r2*(sqr(p.x)+sqr(p.y));
+          f  +=  r2;
+        }
+
+        T c1 = vl/w*df*ca;
+        p.px += p.x*c1;
+        p.py += p.y*c1;
       }
 
-      T c1 = vl/w*df*ca;
-      p.px += p.x*c1;
-      p.py += p.y*c1;
+      p.pt += f*sa*vl;
     }
-
-    p.pt += f*sa*vl;
 
     if (m.nmul > 0) {
       bxby(m, p.x, p.y, bx, by);
@@ -1158,7 +1162,7 @@ inline void adjust_time (cflw<M> &m, num_t lw)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void cav_fringe (cflw<M> &m, num_t lw)
 {
-  if (fabs(m.el) < minlen) return;
+  if (fabs(m.el) < minlen || !fval(m.volt)) return;
 
   mdump(0);
   P w  = R(m.freq)*twopi_clight;
@@ -1910,13 +1914,15 @@ void mad_trk_slice_dkd (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int or
   int j = ord/2-1;
   int n = 1<<j;
   int k = -2*n;
+  int d = m->rflw.sdir; // this is above polymorphic data, hence same for all
+
   FOR(i,n) {
-    thick(m, lw*yosh[j].d[i  ], ++k);
-     kick(m, lw*yosh[j].k[i  ], ++k);
-  } thick(m, lw*yosh[j].d[--n], ++k);
+    thick(m, lw*yosh[j].d[i  ], ++k*d);
+     kick(m, lw*yosh[j].k[i  ], ++k*d);
+  } thick(m, lw*yosh[j].d[--n], ++k*d);
   RFOR(i,n) {
-     kick(m, lw*yosh[j].k[i  ], ++k);
-    thick(m, lw*yosh[j].d[i  ], ++k);
+     kick(m, lw*yosh[j].k[i  ], ++k*d);
+    thick(m, lw*yosh[j].d[i  ], ++k*d);
   }
 }
 
@@ -1967,13 +1973,15 @@ void mad_trk_slice_kmk (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int or
   int j = ord/2-1;
   int n = j;
   int k = -2*n;                      if (!k) --k;
+  int d = m->rflw.sdir; // this is above polymorphic data, hence same for all
+
   FOR(i,n) {
-     kick(m, lw*boole[j].k[i], k++);
-    thick(m, lw*boole[j].d   , k++);
-  }  kick(m, lw*boole[j].k[n], k++); if (!n) ++n;
+     kick(m, lw*boole[j].k[i], k++*d);
+    thick(m, lw*boole[j].d   , k++*d);
+  }  kick(m, lw*boole[j].k[n], k++*d); if (!n) ++n;
   RFOR(i,n) {
-    thick(m, lw*boole[j].d   , k++);
-     kick(m, lw*boole[j].k[i], k++);
+    thick(m, lw*boole[j].d   , k++*d);
+     kick(m, lw*boole[j].k[i], k++*d);
   }
 }
 
@@ -1995,12 +2003,14 @@ void mad_trk_slice_tpt (mflw_t *m, num_t lw, trkfun *thick, trkfun *kick, int kn
   int j = knd-2;
   int n = knd-1;
   int k = knd-1;
-    thick(m, lw*teapot[j].d, k++);
+  int d = m->rflw.sdir; // this is above polymorphic data, hence same for all
+
+    thick(m, lw*teapot[j].d, k++*d);
   FOR(i,n) {
-     kick(m, lw*teapot[j].k, k++);
-    thick(m, lw*teapot[j].D, k++);
-  }  kick(m, lw*teapot[j].k, k++);
-    thick(m, lw*teapot[j].d, k++);
+     kick(m, lw*teapot[j].k, k++*d);
+    thick(m, lw*teapot[j].D, k++*d);
+  }  kick(m, lw*teapot[j].k, k++*d);
+    thick(m, lw*teapot[j].d, k++*d);
 }
 
 // --- speed tests ------------------------------------------------------------o
