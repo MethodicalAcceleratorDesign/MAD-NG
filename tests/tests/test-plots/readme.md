@@ -1,8 +1,9 @@
 Run the following to run everything successfully:
 ```bash
-../mad test-all-plots.mad -s --ptc --ng --cpp --conv -x Deca -x Elsep
+../mad test-all-plots.mad -s --ptc --ng --cpp --conv -x Deca -x Elsep -x Parallel
 ../mad test-all-plots.mad -s --ng --cpp --conv -p Deca
 ../mad test-all-plots.mad -s --ng --cpp --conv -p Elsep
+../mad test-all-plots.mad -s --ng --cpp --conv -p Parallel
 ```
 
 Reasons for the three commands:
