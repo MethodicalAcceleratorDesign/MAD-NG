@@ -60,7 +60,7 @@ end
 local function get_global_coord(tr, sv) -- Get the global coordinates from track and survey
   local global_frame = {X = vector(#sv), Y = vector(#sv), Z = vector(#sv)}
   for i = 1, #sv do
-    local v  = vector{sv.x[i],0      , sv.z[i]}
+    local v = vector{sv.x[i],0       , sv.z[i]}
     local o = vector{tr.x[i], tr.y[i], 0      }
     local r = v + sv.__map[i] * o
     global_frame.X[i] = r[1]
@@ -141,8 +141,8 @@ local function run_test (cfg)
   }
   local srv_ref = survey { -- Cache certain values in the survey (used everywhere)
     sequence:= MADX.seq,
-    save     = "atbody",
-    nslice  := nslice,
+    save     = "atbody", -- do atexit instead?? or go to default as this will disguise errors
+    nslice  := nslice,   -- do atexit instead?? or go to default as this will disguise errors
     savemap  = true,
     implicit = true,
     exec     = false,
@@ -154,7 +154,7 @@ local function run_test (cfg)
 
   local title = cfg.plot_info.title .. (in_global_frame and " (global)" or " (local)")
   
-  local data, x1y1, x1y2, legend, sv = {}, {}, {}, {}
+  local data, x1y1, x1y2, legend = {}, {}, {}, {}
   local set_x1y2 = \x, y, name, series =>
     data  ["x_" .. name], data["y_" .. name] = x, y
     x1y2  ["x_" .. name] = "y_" .. name
@@ -164,8 +164,9 @@ local function run_test (cfg)
   if sv_trk then tr:write(filename.."track") end
 
   assert(tr.lost == 0, "Particle lost during tracking")
+  local sv, sv_dat
   if in_global_frame then
-    sv = srv_ref { }
+    sv, sv_dat = srv_ref { }
     if sv_srv then sv:write(filename) end
   end
   -- Cache in_global_frame, x_coord and y_coord for the get_coords function
@@ -248,10 +249,32 @@ local function run_test (cfg)
     
     -- Run with opposite charge sign
     run_plt_trk("chg")
-    
-    -- Restore the charge and sequence
-    cfg.chg = -cfg.chg
+    cfg.chg = -cfg.chg -- restore chg and reset seq
     create_seq(cfg)
+
+    local tr, mflw = trk_ref { }
+    local s0 = tr[#tr].s
+    
+    -- Run with opposite sdir
+    local tr, _ = trk_ref { X0 = mflw[1], s0 = s0, dir = -1 }
+    local attr, sv_bck = "sdir"
+    if in_global_frame then 
+      sv_bck = srv_ref {
+        dir = -1,
+        X0 = sv_dat.V:totable(), -- Use the V matrix to get initial coordinates
+        s0 = s0,
+        A0 = sv_dat.W, -- Use the W matrix to get initial angles
+      }
+    end
+    local x, y = get_coords(tr, sv_bck)
+    local rev_x, rev_y = x:rev(), y:rev()
+
+    -- Plot the data
+    local diff = rev_y - data.y1
+    set_x1y2(
+      rev_x, diff, attr, 
+      string.format("%s = %s, err\\_max = %.3g", attr, tostring(cfg[attr]), diff:maxabs())
+    )
   end
 
   if ng_vs_cpp then 
