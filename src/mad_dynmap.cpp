@@ -1095,22 +1095,24 @@ inline void rfcav_kickn (cflw<M> &m, num_t lw, int is)
     T sa = sin(ph), ca = cos(ph);
     T f; f = 1.;
 
-    if (m.nbsl > 0) {
-      T df, r2; df = 0., r2 = 1.;
+    if (fval(m.volt)) {
+      if (m.nbsl > 0) {
+        T df, r2; df = 0., r2 = 1.;
 
-      FOR(i,1,m.nbsl+1) {
-        r2  = -r2*(sqr(w)/(4*sqr(i+1)));
-        df +=  r2*(i*2);
-        r2  =  r2*(sqr(p.x)+sqr(p.y));
-        f  +=  r2;
+        FOR(i,1,m.nbsl+1) {
+          r2  = -r2*(sqr(w)/(4*sqr(i+1)));
+          df +=  r2*(i*2);
+          r2  =  r2*(sqr(p.x)+sqr(p.y));
+          f  +=  r2;
+        }
+
+        T c1 = vl/w*df*ca;
+        p.px += p.x*c1;
+        p.py += p.y*c1;
       }
 
-      T c1 = vl/w*df*ca;
-      p.px += p.x*c1;
-      p.py += p.y*c1;
+      p.pt += f*sa*vl;
     }
-
-    p.pt += f*sa*vl;
 
     if (m.nmul > 0) {
       bxby(m, p.x, p.y, bx, by);
@@ -1160,7 +1162,7 @@ inline void adjust_time (cflw<M> &m, num_t lw)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void cav_fringe (cflw<M> &m, num_t lw)
 {
-  if (fabs(m.el) < minlen) return;
+  if (fabs(m.el) < minlen || !fval(m.volt)) return;
 
   mdump(0);
   P w  = R(m.freq)*twopi_clight;
