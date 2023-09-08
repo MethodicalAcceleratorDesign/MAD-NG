@@ -1193,18 +1193,32 @@ inline void bend_face (cflw<M> &m, num_t lw, const V &h)
     if (m.sdir == 1) p.px += k0hq*sqr(p.x);
 
     T dpp      =  1 + 2/m.beta*p.pt + sqr(p.pt);
+    T y2       = sqr(p.y);
     T _pt2     =  1/(dpp - sqr(p.px));
     T xi       =  2*k0hq * sqrt(dpp)*_pt2;
     T dxi_px   =  2*p.px*xi         *_pt2;
+    
+    if (m.sdir == -1) {
+      T npx = p.px - xi*y2;
+      _pt2   = 1/(dpp - sqr(npx));
+      xi     = 2*k0hq * sqrt(dpp)*_pt2;
+      dxi_px = 2*npx*xi          *_pt2;
+    }
+
     T dxi_ddel = -2     *xi*(1+p.pt)*_pt2;
-    T y2       = sqr(p.y);
+    if (m.sdir == 1){
+      p.x  /= 1-dxi_px*y2;
+      p.px -= xi*y2;
+      p.py -= 2*xi*p.x*p.y;
+      p.t  += dxi_ddel*p.x*y2;
+    } else {
+      p.t  += dxi_ddel*p.x*y2;
+      p.py -= 2*xi*p.x*p.y;
 
-    p.x  /= 1-dxi_px*y2;
-    p.px -= xi*y2;
-    p.py -= 2*xi*p.x*p.y;
-    p.t  += dxi_ddel*p.x*y2;
-
-    if (m.sdir == -1) p.px += k0hq*sqr(p.x);
+      p.x  /= 1-dxi_px*y2;
+      p.px -= xi*y2;
+      p.px += k0hq*sqr(p.x);
+    }
   }
   mdump(1);
 }
