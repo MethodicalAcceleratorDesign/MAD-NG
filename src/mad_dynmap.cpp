@@ -1338,25 +1338,25 @@ inline void bend_fringe (cflw<M> &m, num_t lw)
       // recalculate kx, ky and kz with a new py (Work out what it probably was)
       T   npy = p.py + (4*c3*y2 + b0*tan(fi0))*y;
       
-      T    pz = sqrt(dpp - sqr(p.px) - sqr(npy));
-      T   _pz = 1/pz;
-      T  _pz2 = sqr(_pz);
+        pz = sqrt(dpp - sqr(p.px) - sqr(npy));
+       _pz = 1/pz;
+      _pz2 = sqr(_pz);
       
-      T xp  = p.px/pz,  yp  = npy/pz;
-      T xyp = xp*yp  ,  yp2 = 1+sqr(yp);
-      T xp2 = sqr(xp), _yp2 = 1/yp2;
+      xp  = p.px/pz,  yp  = npy/pz;
+      xyp = xp*yp  ,  yp2 = 1+sqr(yp);
+      xp2 = sqr(xp), _yp2 = 1/yp2;
 
-      T fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*pz;
-      T co2 = b0/sqr(cos(fi0));
-      T co1 = co2/(1 + sqr(xp*_yp2))*_yp2;
-      T co3 = co2*c2;
+      fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*pz;
+      co2 = b0/sqr(cos(fi0));
+      co1 = co2/(1 + sqr(xp*_yp2))*_yp2;
+      co3 = co2*c2;
 
-      T fi1 =    co1          - co3*2*xp*(1+yp2)*pz;
-      T fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *pz;
-      T fi3 =                 - co3*(1 + xp2*(1+yp2));
+      fi1 =    co1          - co3*2*xp*(1+yp2)*pz;
+      fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *pz;
+      fi3 =                 - co3*(1 + xp2*(1+yp2));
 
       T kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp;
-      T ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp;
+        ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp;
       T kz = fi1*tfac*xp*_pz2 + fi2*tfac*yp*_pz2 - fi3*tfac*_pz;
 
       p.x  -= 0.5*kx*y2;
