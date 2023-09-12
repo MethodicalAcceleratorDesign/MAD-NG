@@ -1180,6 +1180,8 @@ inline void cav_fringe (cflw<M> &m, num_t lw)
   mdump(1);
 }
 
+
+#if 0  // version from L.D. & PTC (requires correct inversion for backtracking)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R, typename V>
 inline void bend_face (cflw<M> &m, num_t lw, const V &h)
 {                                  (void)lw;
@@ -1208,6 +1210,49 @@ inline void bend_face (cflw<M> &m, num_t lw, const V &h)
   }
   mdump(1);
 }
+#else  // version from J.Gray, slightly improves backtracking (review needed)
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R, typename V>
+inline void bend_face (cflw<M> &m, num_t lw, const V &h)
+{                                  (void)lw;
+  if (!fval(h) || fabs(m.el) < minlen || fabs(m.knl[0]) < minstr) return;
+
+  mdump(0);
+  P k0hq = R(m.knl[0])/R(m.el)*(0.5*h*m.sdir*m.edir*m.charge);
+
+  FOR (i,m.npar) {
+    M p(m,i);
+    if (m.sdir == 1) p.px += k0hq*sqr(p.x);
+
+    T dpp    =  1 + 2/m.beta*p.pt + sqr(p.pt);
+    T y2     = sqr(p.y);
+    T _pt2   =  1/(dpp - sqr(p.px));
+    T xi     =  2*k0hq * sqrt(dpp)*_pt2;
+    T dxi_px =  2*p.px*xi         *_pt2;
+    
+    if (m.sdir == -1) {
+      T npx  = p.px - xi*y2;
+      _pt2   = 1/(dpp - sqr(npx));
+      xi     = 2*k0hq * sqrt(dpp)*_pt2;
+      dxi_px = 2*npx*xi          *_pt2;
+    }
+
+    T dxi_ddel = -2*xi*(1+p.pt)*_pt2;
+
+    if (m.sdir == 1) {
+      p.x  /= 1-dxi_px*y2;
+      p.px -= xi*y2;
+      p.py -= 2*xi*p.x*p.y;
+      p.t  += dxi_ddel*p.x*y2;
+    } else {
+      p.t  += dxi_ddel*p.x*y2;
+      p.py -= 2*xi*p.x*p.y;
+      p.x  /= 1-dxi_px*y2;
+      p.px -= xi*y2 - k0hq*sqr(p.x);
+    }
+  }
+  mdump(1);
+}
+#endif
 
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R, typename V>
 inline void bend_ptch (cflw<M> &m, num_t lw, const V &a)
@@ -1270,6 +1315,7 @@ inline void mad8_wedge (cflw<M> &m, num_t lw, const V &e)
   mdump(1);
 }
 
+#if 0  // version from L.D. & PTC (requires correct inversion for backtracking)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void bend_fringe (cflw<M> &m, num_t lw)
 {
@@ -1329,6 +1375,91 @@ inline void bend_fringe (cflw<M> &m, num_t lw)
   }
   mdump(1);
 }
+#else  // version from J.Gray, slightly improves backtracking (review needed)
+template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+inline void bend_fringe (cflw<M> &m, num_t lw)
+{
+  if (fabs(m.knl[0]) < minang) return;
+
+  mdump(0);
+  P   fh = 2*R(m.fint)*R(m.hgap);
+  P   b0 = R(m.knl[0])/abs(R(m.el))*(lw*m.sdir*m.edir*m.charge);
+  P   c2 = fh*b0;
+  P fsad;
+
+  if (fval(fh)) fsad=1/(36*fh); else fsad = 0.;
+
+  FOR (i,m.npar) {
+    M p(m,i);
+    T   dpp = 1 + 2/m.beta*p.pt + sqr(p.pt);
+    T    pz = sqrt(dpp - sqr(p.px) - sqr(p.py));
+    T   _pz = 1/pz;
+    T  _pz2 = sqr(_pz);
+    T  relp = invsqrt(dpp);
+    T  tfac = -1/m.beta - p.pt;
+    T    c3 = fsad*sqr(b0)*relp;
+
+    T xp  = p.px/pz,  yp  = p.py/pz;
+    T xyp = xp*yp  ,  yp2 = 1+sqr(yp);
+    T xp2 = sqr(xp), _yp2 = 1/yp2;
+
+    T fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*pz;
+    T co2 = b0/sqr(cos(fi0));
+    T co1 = co2/(1 + sqr(xp*_yp2))*_yp2;
+    T co3 = co2*c2;
+
+    T fi1 =    co1          - co3*2*xp*(1+yp2)*pz;
+    T fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *pz;
+    T fi3 =                 - co3*(1 + xp2*(1+yp2));
+
+    T ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp;
+    T y  = 2*p.y / (1 + sqrt(1-2*ky*p.y));
+
+    if (m.sdir == 1) {
+      // Only calculate kx and kz once
+      T kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp;
+      T kz = fi1*tfac*xp*_pz2 + fi2*tfac*yp*_pz2 - fi3*tfac*_pz;
+      T y2 = sqr(y);
+
+      p.x  += 0.5*kx*y2;
+      p.py -= (4*c3*y2 + b0*tan(fi0))*y;
+      p.t  += (0.5*kz  + c3*y2*sqr(relp)*tfac)*y2;
+      p.y   = y;
+    } else { // need to reverse y-dependence
+      T y2 = sqr(p.y);
+      // recalculate kx, ky and kz with a new py (Work out what it probably was)
+      T   npy = p.py + (4*c3*y2 + b0*tan(fi0))*y;
+      
+        pz = sqrt(dpp - sqr(p.px) - sqr(npy));
+       _pz = 1/pz;
+      _pz2 = sqr(_pz);
+      
+      xp  = p.px/pz,  yp  = npy/pz;
+      xyp = xp*yp  ,  yp2 = 1+sqr(yp);
+      xp2 = sqr(xp), _yp2 = 1/yp2;
+
+      fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*pz;
+      co2 = b0/sqr(cos(fi0));
+      co1 = co2/(1 + sqr(xp*_yp2))*_yp2;
+      co3 = co2*c2;
+
+      fi1 =    co1          - co3*2*xp*(1+yp2)*pz;
+      fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *pz;
+      fi3 =                 - co3*(1 + xp2*(1+yp2));
+
+      T kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp;
+        ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp;
+      T kz = fi1*tfac*xp*_pz2 + fi2*tfac*yp*_pz2 - fi3*tfac*_pz;
+
+      p.x  -= 0.5*kx*y2;
+      p.py += (4*c3*y2 + b0*tan(fi0))*p.y;
+      p.t  -= (0.5*kz  + c3*y2*sqr(relp)*tfac)*y2;
+      p.y  -= y2*ky/2;
+    }
+  }
+  mdump(1);
+}
+#endif
 
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void qsad_fringe (cflw<M> &m, num_t lw)

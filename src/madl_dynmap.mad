@@ -1777,21 +1777,32 @@ function bend_face (elm, m, lw, h) -- [NEWFACE]                              -- 
       px = px + k0hq*x^2
     end
 
-    -- This is still not fully revesible in 3rd and 4th order, due to self dependance of px
-    local dpp      =  1 + 2/beta*pt + pt^2
-    local _pt2     =  1/(dpp - px^2)
-    local xi       =  2*k0hq*sqrt(dpp)*_pt2
-    local dxi_px   =  2*px*xi         *_pt2
-    local dxi_ddel = -2   *xi*(1+pt)  *_pt2
-    local y2       = y^2
+    -- This is still not fully revesible in 4th order, due to dependancy of x on px and vice versa.
+    local dpp    = 1 + 2/beta*pt + pt^2
+    local y2     = y^2
+    local _pt2   = 1/(dpp - px^2)
+    local xi     = 2*k0hq*sqrt(dpp)*_pt2
+    local dxi_px = 2*px*xi         *_pt2
 
-    x  = x / (1-dxi_px*y2) -- this affects reversibility also, for py
-    px = px - xi*y2
-    py = py - 2*xi*x*y
-    t  = t  + dxi_ddel*x*y2
+    if sdir == -1 then 
+      local npx = px - xi*y2 
+      _pt2   = 1/(dpp - npx^2)
+      xi     = 2*k0hq*sqrt(dpp)*_pt2
+      dxi_px = 2*npx*xi        *_pt2
+    end
+    
+    local dxi_ddel = -2*xi*(1+pt)*_pt2
 
-    if sdir == -1 then -- to insure reversal symmetry; horizontal wedge (only sdir) -> PTC uses edir, and if we do this, reversing edir does not give the same result
-      px = px + k0hq*x^2
+    if sdir == 1 then 
+      x  = x  / (1-dxi_px*y2)
+      px = px - xi*y2
+      py = py - 2*xi*x*y
+      t  = t  + dxi_ddel*x*y2
+    else
+      t  = t  + dxi_ddel*x*y2
+      py = py - 2*xi*x*y
+      x  = x  / (1-dxi_px*y2)
+      px = px - xi*y2 + k0hq*x^2
     end
 
     m[i].x  = x
@@ -1863,13 +1874,41 @@ function bend_wedge (elm, m, lw_, e) -- [WEDGE] see also [sr]bend_thick      -- 
   m.atdebug(elm, m, 'bend_wedge:1')
 end
 
+local function bend_fringe_param (dpp, px, py, c2, b0, tfac, only_ky)
+  -- This map could do with some cleaning, use of pz, _pz and _pz2 is inconsistent
+  local   pz = sqrt(dpp - px^2 - py^2)
+  local  _pz = 1/pz
+  local _pz2 = _pz^2
+
+  local xp,  yp  = px/pz, py/pz
+  local xyp, yp2 = xp*yp, 1+yp^2
+  local xp2,_yp2 = xp^2 , 1/yp2
+
+  local fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*pz
+  local co2 = b0/cos(fi0)^2
+  local co1 = co2/(1 + (xp*_yp2)^2)*_yp2
+  local co3 = co2*c2
+
+  local fi1 =    co1          - co3*2*xp*(1+yp2)*pz
+  local fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *pz
+  local fi3 =                 - co3*(1 + xp2*(1+yp2))
+
+  local ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp
+  if only_ky then return fi0, nil, ky, nil end -- only ky is needed, speed up calculation
+
+  local kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp
+  local kz = fi1*tfac*xp*_pz2 + fi2*tfac*yp*_pz2 - fi3*tfac*_pz
+  return fi0, kx, ky, kz
+end
+
+
 function bend_fringe (elm, m, lw) -- [FRINGE_DIPOLE]                         -- checked
   if abs(m.knl[1]) < minang then return end
   m.atdebug(elm, m, 'bend_fringe:0')
 
   local el, eld, sdir, edir, beam in m
-  local   fh = elm.hgap*(sdir*lw == -1 and elm.fintx or elm.fint)
-  local fsad = fh ~= 0 and 1/(72*fh) or 0
+  local   fh = 2*elm.hgap*(sdir*lw == -1 and elm.fintx or elm.fint)
+  local fsad = fh ~= 0 and 1/(36*fh) or 0
   local  k0w = m.knl[1]/abs(el)*edir*sdir*lw
   local   b0 = k0w*beam.charge
   local beta = beam.beta
@@ -1881,49 +1920,32 @@ function bend_fringe (elm, m, lw) -- [FRINGE_DIPOLE]                         -- 
     local x, px, y, py, t, pt, beam in m[i]
     local beta = beam and beam.beta or beta
     local   b0 = beam and k0w*beam.charge or b0
-    local   c2 = b0*fh*2
+    local   c2 = b0*fh
 
     local  dpp = 1 + 2/beta*pt + pt^2
-    local   pz = sqrt(dpp - px^2 - py^2)
-    local  _pz = 1/pz
-    local _pz2 = _pz^2
     local relp = invsqrt(dpp)
     local tfac = -(1/beta + pt)
     local   c3 = b0^2*fsad*relp
 
-    local xp,  yp  = px/pz, py/pz
-    local xyp, yp2 = xp*yp, 1+yp^2
-    local xp2,_yp2 = xp^2 , 1/yp2
-
-    local fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*pz
-    local co2 = b0/cos(fi0)^2
-    local co1 = co2/(1 + (xp*_yp2)^2)*_yp2
-    local co3 = co2*c2
-
-    local fi1 =    co1          - co3*2*xp*(1+yp2)*pz
-    local fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *pz
-    local fi3 =                 - co3*(1 + xp2*(1+yp2))
-
-    local kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp
-    local ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp
-    local kz = fi1*tfac*xp*_pz2 + fi2*tfac*yp*_pz2 - fi3*tfac*_pz
-
+    local fi0, kx, ky, kz = bend_fringe_param(dpp, px, py, c2, b0, tfac, sdir==-1) -- this method is not perfect.
+    local ny = 2*y / (1 + sqrt(1-2*ky*y))
     if sdir == 1 then
-      y  = 2*y / (1 + sqrt(1-2*ky*y))
-      local y2 = y^2
+      local ny2 = ny^2
 
-      m[i].x  = x  + 0.5*kx*y2
-      m[i].py = py - (4*c3*y2 + b0*tan(fi0))*y
-      m[i].t  = t  + (0.5*kz  + c3*y2*relp^2*tfac)*y2
-      m[i].y  = y
+      m[i].x  = x  + 0.5*kx*ny2
+      m[i].py = py - (4*c3*ny2 + b0*tan(fi0))*ny
+      m[i].t  = t  + (0.5*kz  + c3*ny2*relp^2*tfac)*ny2
+      m[i].y  = ny
     else -- need to reverse y-dependence
-      -- This is still not fully revesible in 3rd and 4th order, due to self dependance of y
+      -- This is still not fully revesible in 5thand 6th order, due to self dependance of py -> results in max error of 1e-11 and 2e-9 for 5th and 6th order respectively
+      local npy = py + (4*c3*ny^2 + b0*tan(fi0))*ny
+      fi0, kx, ky, kz = bend_fringe_param(dpp, px, npy, c2, b0, tfac) -- this method is not perfect.
       local y2 = y^2
 
       m[i].x  = x  - 0.5*kx*y2
       m[i].py = py + (4*c3*y2 + b0*tan(fi0))*y
       m[i].t  = t  - (0.5*kz + c3*y2*relp^2*tfac)*y2
-      m[i].y  = 0.5*y * (1 + sqrt(1-2*ky*y))
+      m[i].y  = y - y2*ky/2
     end
   end
 
