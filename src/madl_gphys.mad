@@ -35,7 +35,7 @@ local abs, sqrt, exp, log, sin, cos, tan, atan2, tgamma, lgamma,
     
 local is_nil, is_boolean, is_number, is_positive, is_nonzero, is_integer,
       is_natural, is_nznatural, is_even, is_odd, is_string, is_table,
-      is_mappable, is_indexable,
+      is_mappable, is_indexable, is_monomial,
       is_matrix, is_cmatrix, isa_matrix, is_vector, is_cvector,
       is_tpsa, is_damap, is_cdamap, isa_damap, wrestrict         in MAD.typeid
 
@@ -733,7 +733,10 @@ local function nfcpy (nf, a_)
     dq2     = nf.dq2,
     anhx    = nf.anhx,
     anhy    = nf.anhy,
-    getks   = nf.getks,
+    gnfu    = nf.gnfu,
+    haml    = nf.haml,
+    getms   = nf.getms,
+    getpms  = nf.getpms,
 
     -- "data"
     nn      = nf.nn,         -- #(variables + parameters)
@@ -758,32 +761,46 @@ end
 
 -- getters --
 
-local function nf_ks (nf, ki_)
+local function nf_pms (nf, ki_, ko_)
   assert(is_nf(nf), "invalid argument #1 (normal form expected)")
-  local np, ki = nf.nn - nf.nv, ki_ or 0
-  assert(is_natural(ki), "invalid knob index (ki >= 0 expected)")
+  local np, ki, ko = nf.nn - nf.nv, ki_ or 0, ko_ or 1
+  assert(is_natural  (ki), "invalid knob index (ki >= 0 expected)")
+  assert(is_nznatural(ko), "invalid knob order (ko >= 1 expected)")
   if ki > 0
-  then return ("0"):rep(ki-1) .. "1" .. ("0"):rep(np-(ki-1)-1)
+  then return ("0"):rep(ki-1) .. ko .. ("0"):rep(np-(ki-1)-1)
   else return ("0"):rep(np)
   end
 end
 
+local function nf_ms (nf, ms, ki_, ko_)
+  assert(is_nf(nf), "invalid argument #1 (normal form expected)")
+  if is_table(ms) then ms, ki_, ko_ = ms[1], ms[2], ms[3] end
+  if is_monomial(ms) then ms = ms:tostring() end
+  assert(is_string(ms), "invalid argument #2 (monomial or string expected)")
+  if ki_
+  then if #ms < nf.nv then ms = ms..("0"):rep(nf.nv - #ms) end
+           ms = ms..nf_pms(nf, ki_, ko_)
+  else if #ms < nf.nn then ms = ms..("0"):rep(nf.nn - #ms) end
+  end
+  return ms
+end
+
 local function nf_q (nf, ord, x, y)
   local ms = table.concat{x, 0, y, 0, 0, 0}
-  local ks = nf_ks(nf, ord[2])
+  local ks = nf_pms(nf, ord[2])
   return nf.anh[ms..ks]
 end
 
 local function nf_dq (nf, ord, x, y)
   local ms = table.concat{x, 0, y, 0, 0, ord[1]}
-  local ks = nf_ks(nf, ord[2])
+  local ks = nf_pms(nf, ord[2])
   return nf.anh[ms..ks]
 end
 
 local function nf_anh (nf, ord, x, y)
   local mn = {ord[1]+x, ord[1], ord[2]+y, ord[2], ord[3] or 0, ord[3] or 0}
   local ms = table.concat(mn)
-  local ks = nf_ks(nf, ord[4])
+  local ks = nf_pms(nf, ord[4])
   local rv = nf.anh[ms..ks]
   return rv -- and rv/(max(1,mn[1])*max(1,mn[3])) or nil
 end
@@ -836,6 +853,20 @@ local function nf_anhy (nf, ord)
   assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
   assert(is_nznatural(ord[2]), "invalid y order (y > 0 expected)")
   return nf_anh(nf, ord, 0, 1)
+end
+
+-- generating functions --
+
+local function nf_gnfu (nf, ms, ki_, ko_)
+  local ms = nf_ms(nf, ms, ki_, ko_)
+  return nf.gnf[ms]
+end
+
+-- hamiltonian terms --
+
+local function nf_haml (nf, ms, ki_, ko_)
+  local ms = nf_ms(nf, ms, ki_, ko_)
+  return nf.ham[ms]
 end
 
 -- analyse anh, gnf, ham --
@@ -920,6 +951,9 @@ local function nfana (nf, k_, a_)
       ham[#ham+1], ham[ms] = ms, v*(1-p)                            -- ham terms
     end
     nf.gnf, nf.ham = gnf, ham
+
+    -- add access methods
+    nf.gnfu, nf.haml = nf_gnfu, nf_haml
   end
 
   -- ANH and HAM
@@ -949,8 +983,8 @@ local function nfana (nf, k_, a_)
     nf.q3_ = lam[5]:carg()/twopi ; if nf.q3_ < 0 then nf.q3_ = nf.q3_+1 end
   end
 
-  -- method for ks
-  nf.getks = nf_ks
+  -- method for ks and ms
+  nf.getpms, nf.getms = nf_pms, nf_ms
 
   return nf
 end
