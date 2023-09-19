@@ -6,8 +6,9 @@ local is_number, is_damap                                        in MAD.typeid
 local assertTrue                                                 in MAD.utest
 
 package.path = package.path .. ";../tools/?.mad"
-local get_diff, store_results, prnt_results, gen_cfg, in_dir, X0s, chk_tol, get_cfgs_to_run,
-      out_dir, add_trk_gen_cols, show_res, get_prev_res, tbl2da, save_res  in require "track-tool"
+local get_diff, store_results, prnt_results, gen_cfg, in_dir, X0s, chk_tol, 
+      get_cfgs_to_run, out_dir, add_trk_gen_cols, show_res, get_prev_res,
+      tbl2da, save_res                                           in require "track-tool"
 
 local plt_dir, plot_trk_res, do_norun                            in require "plot-tool"
 local args_to_cfg                                                in require "test-tool"
@@ -126,6 +127,10 @@ local function dif_save_prnt_dbg(cfg, exp, res, result_mtbl, script) -- exp and 
 end
 
 local function backtrack(cfg, results)
+  if not cfg.chk_cfg then -- If cfg is not in the list of cfgs to run, increment cfgid and return
+    cfg.cur_cfg.cfgid = cfg.cur_cfg.cfgid + cfg.npar
+    return 
+  end
   if not cfg.dobck then return end
   -- Setup backward tracking
   local bck_cfg = tblcpy(cfg.cur_cfg)
@@ -153,11 +158,19 @@ local function reverse_attr(cfg, results, attr)
 end
 
 local function reverse_chg(cfg, results)
+  if not cfg.chk_cfg then -- If cfg is not in the list of cfgs to run, increment cfgid and return
+    cfg.cur_cfg.cfgid = cfg.cur_cfg.cfgid + cfg.npar
+    return 
+  end 
   if not cfg.dochg then return end
   reverse_attr(cfg, results, "chg")
 end
 
 local function reverse_edir(cfg, results)
+  if not cfg.chk_cfg then -- If cfg is not in the list of cfgs to run, increment cfgid and return
+    cfg.cur_cfg.cfgid = cfg.cur_cfg.cfgid + cfg.npar
+    return 
+  end 
   if not cfg.doedir then return end
   reverse_attr(cfg, results, "edir")
 end
@@ -166,7 +179,9 @@ local function cmaps(cfg, results)
   cfg.cmap = not cfg.cmap
   local cmap_script = create_run(cfg, cfg.cur_cfg)
   local _, cmap_res = loadstring(cmap_script)()
-  if cfg.docmap then
+  if not cfg.chk_cfg then -- If cfg is not in the list of cfgs to run, increment cfgid and continue
+    cfg.cur_cfg.cfgid = cfg.cur_cfg.cfgid + cfg.npar
+  elseif cfg.docmap then
     cfg.cur_cfg.test_type = "cmap"  -- Set test type
     dif_save_prnt_dbg(cfg, cfg.ref_map, cmap_res, results, cmap_script)
   end
@@ -182,10 +197,6 @@ end
   
 local function run_cfg(cfg, equiv, results)
   -- Get the mflow for the main config
-  if not cfg.chk_cfg then -- If cfg is not in the list of cfgs to run, increment cfgid and return
-    cfg.cur_cfg.cfgid = cfg.cur_cfg.cfgid + cfg.npar
-    return 
-  end 
   cfg.ref_script = create_run(cfg, cfg.cur_cfg)
   local _, ref = assert(loadstring(cfg.ref_script))()
   cfg.ref_map = ref
@@ -201,7 +212,10 @@ local function run_cfg(cfg, equiv, results)
   end
 
   -- Copy main config to make comparable config and then compare
-
+  if not cfg.chk_cfg then -- If cfg is not in the list of cfgs to run, increment cfgid and return
+    cfg.cur_cfg.cfgid = cfg.cur_cfg.cfgid + cfg.npar
+    return 
+  end 
   -- Generate similar configs
   if not cfg.docstm then return end
   for i, change_type in ipairs(equiv.alist or {}) do      -- Go through list of equivalences
@@ -254,15 +268,15 @@ end
 -- Run test -------------------------------------------------------------------o
 local function run_test(cfg, equiv)    
   -- list of core values that are changed manually throughout the tests
+  args_to_cfg(cfg) -- Do this first to avoid side effects (cmap)
+
   cfg.edir = 1 -- 1/-1 (element direction)
   cfg.sdir = 1 -- 1/-1 (tracking direction)
   cfg.chg  = 1 -- 1/-1 (charge)
   cfg.tdir = \s-> s.edir * s.sdir          -- tracking time direction
   cfg.bdir = \s-> s.edir * s.sdir * s.chg  -- tracking beam direction
-  cfg.cmap = true -- Change the default for the release 0.9.8
-
-  args_to_cfg(cfg)
-  cfg.chk_cfg = get_cfgs_to_run(cfg.cid)
+  cfg.cmap = false -- default is lua since the test was built for lua first
+  cfg.chk_cfg = get_cfgs_to_run(cfg.cid) -- if cid not nil, get the cfgs to run otherwise true
 
   -- If the user does not want to run the test, just show results from previous run
   if not cfg.dorun then return do_norun (cfg) end
@@ -278,7 +292,15 @@ local function run_test(cfg, equiv)
     novector  = true, 
   }
   
-  io.write("Running ", cfg.name, " (tol = ", tostring(cfg.tol), ")\n")
+  io.write("Running ", cfg.name, " (tol = ", tostring(cfg.tol), " eps)\n")
+  io.write(
+    "setup =", cfg.dosave and " sv" or "", cfg.doplot and " plt" or "", 
+    cfg.doprnt > 0 and " prnt" or "", cfg.dodbg and " dbg" or "",
+    cfg.dobck and " bck" or "", cfg.doedir and " edir" or "",
+    cfg.dochg and " chg" or "", cfg.docmap and " cmap" or "",
+    cfg.docstm and " cstm" or "", not cfg.doluaall and " nolua" or "",
+    not cfg.docppall and " nocpp" or "", " o", cfg.order, " npar", cfg.npar, "\n" 
+  )
   if cfg.doprnt > 1 then 
   -- Print the header
     io.write("cfgid\t")
