@@ -805,9 +805,11 @@ inline void quad_kick (cflw<M> &m, num_t lw, int is)
 {                                          (void)is;
   if (fabs(m.k1) < minstr) return strex_kick<M>(m, lw, is);
 
-  P l = R(m.el)*lw;
   num_t dw = is == 0 ? 1./2 : 1.; // drift weight
-  if (is >= 0) drift_adj<M>(m, dw*l);
+  P l   = R(m.el)*lw;
+  P ldw = l*dw;
+
+  if (is >= 0) drift_adj<M>(m, ldw);
 
   mdump(0);
   if (m.nmul > 0) {
@@ -824,7 +826,7 @@ inline void quad_kick (cflw<M> &m, num_t lw, int is)
   }
   mdump(1);
 
-  if (is <= 0) drift_adj<M>(m, dw*l);
+  if (is <= 0) drift_adj<M>(m, ldw);
 }
 
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
@@ -872,9 +874,11 @@ inline void quad_kicks (cflw<M> &m, num_t lw, int is)
 {                                           (void)is;
   if (fabs(m.k1) < minstr) return strex_kick<M>(m, lw, is);
 
-  P l = R(m.el)*lw;
   num_t dw = is == 0 ? 1./2 : 1.; // drift weight
-  if (is >= 0) drift_adj<M>(m, dw*l);
+  P l   = R(m.el)*lw;
+  P ldw = l*dw;
+
+  if (is >= 0) drift_adj<M>(m, ldw);
 
   mdump(0);
   if (m.nmul > 0) {
@@ -891,7 +895,7 @@ inline void quad_kicks (cflw<M> &m, num_t lw, int is)
   }
   mdump(1);
 
-  if (is <= 0) drift_adj<M>(m, dw*l);
+  if (is <= 0) drift_adj<M>(m, ldw);
 }
 
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
@@ -954,11 +958,12 @@ inline void quad_thickh (cflw<M> &m, num_t lw, int is)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void quad_kickh (cflw<M> &m, num_t lw, int is)
 {                                           (void)is;
-  P l  = R(m.el)*lw;
-  P lh = R(m.eh)*l;
   num_t dw = is == 0 ? 1./2 : 1.; // drift weight
+  P l   = R(m.el)*lw;
+  P lh  = R(m.eh)*l;
+  P ldw = l*dw;
 
-  if (is >= 0) drift_adj<M>(m, dw*l);
+  if (is >= 0) drift_adj<M>(m, ldw);
 
   mdump(0);
   if (m.nmul > 0) {
@@ -977,7 +982,7 @@ inline void quad_kickh (cflw<M> &m, num_t lw, int is)
   }
   mdump(1);
 
-  if (is <= 0) drift_adj<M>(m, dw*l);
+  if (is <= 0) drift_adj<M>(m, ldw);
 }
 
 // --- solenoid ---
