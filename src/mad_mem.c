@@ -212,7 +212,11 @@ void*
   ensure(mbp->mark == MARK, "invalid or corrupted allocated memory");
 
   size_t idx = (size-1) / stp_slot;
-  mbp = realloc(mbp, SIZE(idx)); assert(mbp);
+  mbp = realloc(mbp, SIZE(idx));
+  assert(mbp); // check if it propagates beyond that assert
+               // could it be it gets removed during some
+               // "build process using optimisation"
+  ensure(mbp, "reallocation of main base ptr failed");
 
 #if MAD_MEM_CLR
   if (mbp->slot < idx && idx < max_slot) {
