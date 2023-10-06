@@ -34,7 +34,7 @@ local round                in MAD.gmath
 local _C, option, warn                                               in MAD
 local gtpsad, tpsa, ctpsa, vector, cvector, matrix, cmatrix, complex in MAD
 
-local openfile, strtrim                                              in MAD.utility
+local openfile, strtrim, tblcat                                      in MAD.utility
 
 local is_nil, is_boolean, is_number, is_integer, is_complex, is_scalar,
       is_table, is_string, is_indexable, is_iterable, is_mappable,
@@ -119,7 +119,7 @@ local function map_alloc (td, vn, mt)
     xx, td, vn, mt = td, td.__td, td.__vn, getmetatable(td)
   end
 
-  local nn = min(vn.__n, td.nn)
+  local nn = min(#vn, td.nn)
   local ct = mt == MC and ctpsa or tpsa
   local ta = mt == MC and ctpsa_arr(td.nn) or tpsa_arr(td.nn)
   local mv = table.new(td.nn, nn+3) -- + __ta, __td, __vn
@@ -149,9 +149,9 @@ end
 
 local function map_ctor (arg, mt)
   -- specification of damap by variables orders.
-  if arg.mo or arg.no then
+  if arg.mo or arg.no or arg.vo then
     local td = gtpsad(arg)
-    local vn = arg.vn and cvname_dup(arg.vn) or cvname[min(td.nv,6)]
+    local vn = tblcat(arg.vn or cvname[min(td.nv,6)], arg.pn or {})
     return map_alloc(td, vn, mt)
   end
 
@@ -159,8 +159,7 @@ local function map_ctor (arg, mt)
   local xy = arg.xy or 1
   local pt = arg.pt or xy
   local t  = arg.t  or pt
-  local vn = arg.vn and cvname_dup(arg.vn) or cvname[6]
-
+  local vn = tblcat(arg.vn or cvname[6], arg.pn or {})
   local np = arg.np or 0
   local po = np > 0 and (arg.po or 1) or 0
   local nv, mo, no
@@ -240,6 +239,24 @@ function MR.__copy (x, y_, e_)
 end
 
 MC.__copy = MR.__copy -- fully polymorphic
+
+-- equal ----------------------------------------------------------------------o
+
+function MR.__eq (x, y, tol_)
+  if is_nil(y) or is_nil(x) then return false end
+  assert(isa_damap(x), "invalid argument #1 (damap expected)")
+  assert(isa_damap(y), "invalid argument #2 (damap expected)")
+  if x.__ta == y.__ta then return true end
+  if #x ~= #y then return false end
+  tol_ = tol_ or 0
+  assert(is_number(tol_), "invalid argument #3 (number expected)")
+  for i=1,#x do
+    if not x[i]:eq(y[i], tol_) then return false end
+  end
+  return true
+end
+
+MC.__eq = MR.__eq -- fully polymorphic
 
 -- conversion -----------------------------------------------------------------o
 
@@ -1353,11 +1370,11 @@ MC.__same, MC.__copy, MC.__len
 MR.unm = \x,r_ -> MR.__unm(x,nil,r_)
 MC.unm = \x,r_ -> MC.__unm(x,nil,r_)
 
-MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  pow =
-MR.__add, MR.__sub, MR.__mul, MR.__div, MR.__pow
+MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  pow, MR.  eq =
+MR.__add, MR.__sub, MR.__mul, MR.__div, MR.__pow, MR.__eq
 
-MC.  add, MC.  sub, MC.  mul, MR.  div, MC.  pow =
-MC.__add, MC.__sub, MC.__mul, MR.__div, MC.__pow
+MC.  add, MC.  sub, MC.  mul, MR.  div, MC.  pow, MC.  eq =
+MC.__add, MC.__sub, MC.__mul, MR.__div, MC.__pow, MC.__eq
 
 -- MR -> MC -------------------------------------------------------------------o
 
