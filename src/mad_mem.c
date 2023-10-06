@@ -154,7 +154,8 @@ void*
 #endif
   } else {
     DBGMEM( printf("alloc: malloc(%2zu)", size); )
-    mbp = malloc(SIZE(idx)); assert(mbp);
+    mbp = malloc(SIZE(idx));
+    if (!mbp) return warn("cannot allocate %zu bytes", size), NULL;
     mbp->slot = idx < max_slot ? idx : IDXMAX;
     mbp->mark = MARK;
     ensure((size_t)mbp > IDXMAX, "unexpected very low address"); // see collect
@@ -197,7 +198,7 @@ void*
 {
   size_t size = ecount * esize;
   void  *ptr  = (mad_malloc)(size);
-  return memset(ptr, 0, size);
+  return ptr ? memset(ptr, 0, size) : NULL;
 }
 
 void*
@@ -212,7 +213,8 @@ void*
   ensure(mbp->mark == MARK, "invalid or corrupted allocated memory");
 
   size_t idx = (size-1) / stp_slot;
-  mbp = realloc(mbp, SIZE(idx)); assert(mbp);
+  mbp = realloc(mbp, SIZE(idx));
+  if (!mbp) return warn("cannot reallocate %zu bytes", size), NULL;
 
 #if MAD_MEM_CLR
   if (mbp->slot < idx && idx < max_slot) {
