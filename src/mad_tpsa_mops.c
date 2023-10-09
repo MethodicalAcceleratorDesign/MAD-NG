@@ -106,7 +106,8 @@ static inline void
 exppb (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa], T *t[4])
 {
   const int nmax = 100;
-  const num_t nrm_min1 = 1e-10, nrm_min2 = 4*DBL_EPSILON*sa;
+//  const num_t nrm_min1 = 1e-10, nrm_min2 = 4*DBL_EPSILON*sa;
+  const num_t nrm_min1 = 1e-9, nrm_min2 = 100*DBL_EPSILON*sa;
 
   FOR(i,sa) {
     num_t nrm_ = INFINITY;
@@ -117,6 +118,7 @@ exppb (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa], T *t[4])
 
     idx_t n;
     for (n=1; n <= nmax; ++n) {
+      if (n==nmax/2) warn("exppb: n=%d (slow convergence)", n);
       FUN(scl)(t[0], 1.0/n, t[1]);
       fgrad(sa, ma, t[1], t[0], &t[2]);
       FUN(add)(mc[i], t[0], mc[i]);
@@ -143,7 +145,8 @@ static inline void // see 2nd Etienne's book, ch11
 logpb (ssz_t sa, const T *ma[sa], T *mc[sa], T *t[4+5*sa], num_t eps)
 {
   const int nmax = 100;
-  const num_t nrm_min1 = 1e-10, nrm_min2 = 4*DBL_EPSILON*sa;
+//  const num_t nrm_min1 = 1e-10, nrm_min2 = 4*DBL_EPSILON*sa;
+  const num_t nrm_min1 = 1e-9, nrm_min2 = 100*DBL_EPSILON*sa;
   num_t nrm = 1e4, nrm_ = INFINITY, nrm0 = mnrm(sa, ma);
   num_t epsone = eps ? eps : nrm0/1000;
   log_t conv = FALSE;
@@ -157,6 +160,8 @@ logpb (ssz_t sa, const T *ma[sa], T *mc[sa], T *t[4+5*sa], num_t eps)
 
   idx_t n;
   for (n=1; n <= nmax; ++n) {
+    if (n==nmax/2) warn("logpb: n=%d (slow convergence)", n);
+
     FOR(i,sa) FUN(scl) (mc[i], -1, t1[i]);     // t1 = -mc
     exppb(sa, TC t1, ma, t0, t);               // t0 = exp(:-mc:) ma
     FOR(i,sa) FUN(seti)(t0[i], i+1, 1, -1);    // t0 = t0-Id
