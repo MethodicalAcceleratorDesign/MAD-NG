@@ -30,6 +30,8 @@
 
 void  mad_vec_fill   (      num_t x  ,                         num_t r[], ssz_t n); // num -> vec
 void  mad_vec_roll   (      num_t x[],                                    ssz_t n, int nroll);
+log_t mad_vec_isnul  (const num_t x[],                                    ssz_t n); // vec == 0
+log_t mad_vec_isval  (const num_t x[],       num_t v,                     ssz_t n); // vec == v
 void  mad_vec_copy   (const num_t x[],                         num_t r[], ssz_t n); // vec -> vec
 void  mad_vec_copyv  (const num_t x[],                         cpx_t r[], ssz_t n); // vec ->cvec
 void  mad_vec_minmax (const num_t x[],       log_t absf,       idx_t r[2],ssz_t n); // MinMax(vec)
@@ -73,6 +75,9 @@ void  mad_vec_kadd   (int k,const num_t a[], const num_t *x[], num_t r[], ssz_t 
 void  mad_cvec_fill  (      cpx_t x  ,                         cpx_t r[], ssz_t n); // cpx ->cvec
 void  mad_cvec_fill_r(      num_t x_re,            num_t x_im, cpx_t r[], ssz_t n); // cpx ->cvec
 void  mad_cvec_roll  (      cpx_t x[],                                    ssz_t n, int nroll);
+log_t mad_cvec_isnul (const cpx_t x[],                                    ssz_t n); // cvec == 0
+log_t mad_cvec_isval (const cpx_t x[],             cpx_t v,               ssz_t n); // cvec == v
+log_t mad_cvec_isval_r(const cpx_t x[],num_t v_re, num_t v_im,            ssz_t n); // cvec == v
 void  mad_cvec_copy  (const cpx_t x[],                         cpx_t r[], ssz_t n); // cvec ->cvec
 void  mad_cvec_minmax(const cpx_t x[],                         idx_t r[2],ssz_t n); // MinMax(vec)
 cpx_t mad_cvec_eval  (const cpx_t x[],               cpx_t x0,            ssz_t n); // Horner scheme
@@ -130,6 +135,8 @@ void  mad_cvec_kadd  (int k,const cpx_t a[], const cpx_t *x[], cpx_t r[], ssz_t 
 
 void  mad_ivec_fill  (      idx_t x  ,                         idx_t r[], ssz_t n); // idx ->ivec
 void  mad_ivec_roll  (      idx_t x[],                                    ssz_t n, int nroll);
+log_t mad_ivec_isnul (const idx_t x[],                                    ssz_t n); // ivec == 0
+log_t mad_ivec_isval (const idx_t x[],       idx_t v,                     ssz_t n); // ivec == v
 void  mad_ivec_copy  (const idx_t x[],                         idx_t r[], ssz_t n); // ivec ->ivec
 void  mad_ivec_minmax(const idx_t x[],       log_t absf,       idx_t r[2],ssz_t n); // MinMax(ivec)
 void  mad_ivec_add   (const idx_t x[], const idx_t y[] ,       idx_t r[], ssz_t n); // ivec + ivec

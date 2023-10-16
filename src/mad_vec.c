@@ -40,6 +40,12 @@
 
 // --- vec
 
+log_t mad_vec_isnul (const num_t x[], ssz_t n)
+{ return mad_vec_isval(x, 0, n); }
+
+log_t mad_vec_isval (const num_t x[], num_t v, ssz_t n)
+{ CHKX; FOR(i,n) if (x[i] != v) return FALSE; return TRUE; }
+
 void mad_vec_fill (num_t x, num_t r[], ssz_t n)
 { CHKR; FOR(i,n) r[i] = x; }
 
@@ -334,6 +340,15 @@ void mad_vec_kadd (int k, const num_t a[], const num_t *x[], num_t r[], ssz_t n)
 
 // --- cvec
 
+log_t mad_cvec_isnul (const cpx_t x[], ssz_t n)
+{ return mad_cvec_isval(x, 0, n); }
+
+log_t mad_cvec_isval (const cpx_t x[], cpx_t v, ssz_t n)
+{ CHKX; FOR(i,n) if (x[i] != v) return FALSE; return TRUE; }
+
+log_t mad_cvec_isval_r (const cpx_t x[], num_t v_re, num_t v_im, ssz_t n)
+{ return mad_cvec_isval (x, CPX(v_re,v_im), n); }
+
 void mad_cvec_fill (cpx_t x, cpx_t r[], ssz_t n)
 { CHKR; FOR(i,n) r[i] = x; }
 
@@ -551,6 +566,12 @@ void mad_cvec_kadd (int k, const cpx_t a[], const cpx_t *x[], cpx_t r[], ssz_t n
 }
 
 // --- ivec
+
+log_t mad_ivec_isnul (const idx_t x[], ssz_t n)
+{ return mad_ivec_isval(x, 0, n); }
+
+log_t mad_ivec_isval (const idx_t x[], idx_t v, ssz_t n)
+{ CHKX; FOR(i,n) if (x[i] != v) return FALSE; return TRUE; }
 
 void mad_ivec_fill (idx_t x, idx_t r[], ssz_t n)
 { CHKR; FOR(i,n) r[i] = x; }
