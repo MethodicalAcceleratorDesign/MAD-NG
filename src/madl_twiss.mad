@@ -155,24 +155,47 @@ end
 local function fill_row (elm, mflw, lw, islc)
   if not mflw.__twdat then return end -- not yet in twiss
 
-!  printf("tw_fill: islc=%2d, elm=%s\n", islc, elm.name)
+  local mtbl, info in mflw
+  local nrow, ofun, rdt0, rdts, onam in mflw.__twdat
 
-  local mtbl in mflw
-  local nrow, ofun, onam in mflw.__twdat
+-- printf("tw_fill: islc=%2d, nrow=%4d, elm=%s\n", islc, nrow, elm.name)
 
--- print("twfill", elm.name, #mtbl, mflw.npar, nrow)
+  if info >= 2 and rdts then
+    printf("twiss: computing RDTs at :%4d:%s\n", nrow, elm.name)
+  end
 
   for i=1,mflw.npar do
     local m = mflw[i]
     if not m.nosave then
-      local id, of = m.id, ofun[m.id]
---      print("rank=", of.rank)
       nrow = nrow + 1
+
       -- save optical functions (expand done by track!)
+      local of = ofun[m.id]
       for _,k in ipairs(onam) do
         local col = mtbl[k]
         if not is_table(col) then col:_reshapeto(nrow) end
         col[nrow] = of[k]
+      end
+
+      -- save RDTs (expand done by track!)
+      if rdts then
+        local nf0 = rdt0[m.id]
+        if m:eq(nf0.m_prev) then                  -- duplicate values
+          for _,k in ipairs(rdts) do
+            nf0.m_dup = 1+(nf0.m_dup or 0)
+            local col = mtbl[k]
+            if not is_table(col) then col:_reshapeto(nrow) end
+            col[nrow] = col[nrow-1]
+          end
+        else
+          local nf = nf0:analyse('gnf', m)        -- full gnf analysis
+          for _,k in ipairs(rdts) do
+            local col = mtbl[k]
+            if not is_table(col) then col:_reshapeto(nrow) end
+            col[nrow] = nf:gnfu(k:sub(2))
+          end
+          nf0.m_prev = m:copy(nf0.m_prev)
+        end
       end
     end
   end
@@ -186,7 +209,7 @@ end
 local function twissact (elm, mflw, lw, islc)
   if not mflw.__twdat then return end -- not yet in twiss
 
-! printf("\ntw_ofun: '%s', npar=%2d, islc=%2d\n", elm.name, mflw.npar, islc)
+! printf("\ntw_ofun: islc=%2d, npar=%2d, elem=%s\n", islc, mflw.npar, elm.name)
 
   local fst = atfirst(nil, nil , nil, islc)
   local std = atstd  (nil, mflw, nil, islc)
@@ -266,7 +289,7 @@ local function twiss_cofind (self, mflw0)
   local j, X0, Xi = 1, table.new(npar,0), table.new(npar,0)
   for i=1,npar do -- use particles or (re)use damaps
     local m = mflw0[i]
-    if m.status == 'Xset' then
+    if m.status ~= 'Aset' then
       X0[j] = codiff and m:get0():totable() or m
       Xi[j], X0[j].beam, X0[j].nosave, X0[j].nocopy, j =
        m.id,     m.beam,     m.nosave,            i, j+1
@@ -360,11 +383,11 @@ end
 
 local function twiss_nform (self, mflw0)
   local npar, sdir, info, debug in mflw0
-  local coupling in self
+  local coupling, trkrdt in self
 
   -- prepare mflw0 to twiss extensions
-  mflw0.__twdat = {ofun={}}
-  local ofun in mflw0.__twdat
+  mflw0.__twdat = {ofun={}, rdt0={}}
+  local ofun, rdt0 in mflw0.__twdat
 
   for i=1,npar do
     local m = mflw0[i]
@@ -373,6 +396,9 @@ local function twiss_nform (self, mflw0)
     if m.status ~= 'Aset' then
       local nf = normal(m)
       nf.a:copy(m):set0(nf.x0).status = 'Aset'
+
+      -- save nf0 for RDTs calculation
+      if trkrdt then rdt0[m.id] = nf ; nf.id = m.id end
     end
 
     -- create beta0 from damap
@@ -389,14 +415,14 @@ end
 -- extend track mflw and mtbl -------------------------------------------------o
 
 local twheader = {
-  'chrom', 'coupling', 'length',
+  'chrom', 'coupling', 'trkrdt', 'length',
   -- see also cvtlst above
   'q1', 'q2', 'q3', 'dq1', 'dq2', 'dq3', 'alfap', 'etap', 'gammatr',
   'synch_1', 'synch_2', 'synch_3', 'synch_4', 'synch_5', 'synch_6', 'synch_8',
 }
 
 local function twiss_init (self, mflw)
-  local save, chrom, coupling in self
+  local save, chrom, coupling, trkrdt in self
   local npar, beam, mtbl, __twdat in mflw
   local n = npar
 
@@ -410,6 +436,7 @@ local function twiss_init (self, mflw)
   __twdat.npar = n
   __twdat.nrow = 0
   __twdat.chrm = chrom
+  __twdat.rdts = trkrdt
   __twdat.omat = matrix(6)
   __twdat.onam = coupling and (chrom and ofchname or ofcname) or
                                chrom and ofhname  or ofname
@@ -438,9 +465,15 @@ local function twiss_init (self, mflw)
 
     mtbl.chrom    = chrom
     mtbl.coupling = coupling
+    mtbl.trkrdt   = trkrdt
 
     -- add twiss columns and type to mtbl
     for _,k in ipairs(mflw.__twdat.onam) do mtbl:addcol(k,{0}) end
+
+    -- add rdts columns
+    if trkrdt then
+      for _,k in ipairs(trkrdt) do mtbl:addcol(k,{0}) end
+    end
   end
 
   return mflw
@@ -483,7 +516,7 @@ local function make_mflow (self)
   -- check if cofind is needed
   local cofind
   for i=1,mflw.npar do
-    if mflw[i].status == 'Xset' then cofind = true ; break end
+    if mflw[i].status ~= 'Aset' then cofind = true ; break end
   end
 
   if cofind then
@@ -493,11 +526,9 @@ local function make_mflow (self)
     if mflw.debug >= 3 then twdump(mflw,'co.') end
 
     -- track one-turn-map (update mflw, keep order)
-    if self.codiff then -- see comment in twiss_track
-      twiss_track(self, mflw)
-      if mflw.npar == 0 then return mflw end -- no more particles...
-      if mflw.debug >= 3 then twdump(mflw,'tk.') end
-    end
+    twiss_track(self, mflw)
+    if mflw.npar == 0 then return mflw end -- no more particles...
+    if mflw.debug >= 3 then twdump(mflw,'tk.') end
   end
 
   -- compute normal forms (update mflw, keep order)
@@ -554,6 +585,7 @@ local twiss = command 'twiss' {
   deltap=nil,        -- initial deltap(s)                                 (trck)
   chrom=false,       -- compute chromatic functions by finite difference  (twss)
   coupling=false,    -- compute optical functions for coupling modes      (twss)
+  trkrdt=false,      -- compute (list of) RDTs                            (twss)
 
   nturn=nil,         -- number of turns                                   (trck)
   nstep=nil,         -- number of elements to track for last phase        (trck)
@@ -603,7 +635,7 @@ local twiss = command 'twiss' {
 
   __attr = tblcat(   -- list of all setup attributes
     cofind.__attr,
-    {'chrom', 'coupling'},
+    {'chrom', 'coupling', 'trkrdt'},
     {noeval=cofind.__attr.noeval}
   )
 } :set_readonly() -- reference twiss command is readonly
