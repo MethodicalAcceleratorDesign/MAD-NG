@@ -788,20 +788,20 @@ end
 local function nf_q (nf, ord, x, y)
   local ms = table.concat{x, 0, y, 0, 0, 0}
   local ks = nf_pms(nf, ord[2])
-  return nf.anh[ms..ks]
+  return nf.anh[ms..ks] or 0
 end
 
 local function nf_dq (nf, ord, x, y)
   local ms = table.concat{x, 0, y, 0, 0, ord[1]}
   local ks = nf_pms(nf, ord[2])
-  return nf.anh[ms..ks]
+  return nf.anh[ms..ks] or 0
 end
 
 local function nf_anh (nf, ord, x, y)
   local mn = {ord[1]+x, ord[1], ord[2]+y, ord[2], ord[3] or 0, ord[3] or 0}
   local ms = table.concat(mn)
   local ks = nf_pms(nf, ord[4])
-  local rv = nf.anh[ms..ks]
+  local rv = nf.anh[ms..ks] or 0
   return rv -- and rv/(max(1,mn[1])*max(1,mn[3])) or nil
 end
 
@@ -859,17 +859,49 @@ end
 
 local function nf_gnfu (nf, ms, ki_, ko_)
   local ms = nf_ms(nf, ms, ki_, ko_)
-  return nf.gnf[ms]
+  return nf.gnf[ms] or 0i
 end
 
 -- hamiltonian terms --
 
 local function nf_haml (nf, ms, ki_, ko_)
   local ms = nf_ms(nf, ms, ki_, ko_)
-  return nf.ham[ms]
+  return nf.ham[ms] or 0i
 end
 
 -- analyse anh, gnf, ham --
+
+local T1, T11, T12, T2, T21, T22, T3, T4, T5 = 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+local function time_nfana ()
+  printf("time_rot1=% 8.2fs %d%%\n", T11, T11/(T1 > 0 and T1 or 1)*100)
+  printf("time_rot2=% 8.2fs %d%%\n", T12, T12/(T1 > 0 and T1 or 1)*100)
+  printf("time_rot =% 8.2fs\n", T1)
+  printf("time_log1=% 8.2fs %d%%\n", T21, T21/(T2 > 0 and T2 or 1)*100)
+  printf("time_log2=% 8.2fs %d%%\n", T22, T22/(T2 > 0 and T2 or 1)*100)
+  printf("time_log =% 8.2fs\n", T2 )
+  printf("time_gnf =% 8.2fs\n", T3 )
+  printf("time_anh =% 8.2fs\n", T4 )
+  printf("time_tun =% 8.2fs\n", T5 )
+  printf("time_tot =% 8.2fs\n", T1+T2+T3+T4+T5)
+end
+
+-- uncomment to print the timings at exit
+!MAD.utility.atexit(time_nfana)
+
+--[[
+                                            Total
+time_rot1=  457.77s 72%  normal_a0          [25%]
+time_rot2=  169.21s 26%  compose rotation   [ 9%]
+time_rot =  628.20s                          34%
+time_log1=  312.26s 26%  phasors similarity [18%]
+time_log2=  844.11s 72%  factor_map (logpb) [46%]
+time_log = 1156.81s                          64%
+time_gnf =   34.38s                           2%
+time_anh =    0.02s                           0%
+time_tun =    0.02s                           0%
+time_tot = 1819.42s                         100%
+--]]
 
 local normal_a0 -- forward local decl
 
@@ -880,41 +912,13 @@ local function nfana (nf, k_, a_)
   assert(is_nil(k_) or nf_knd[k_]   , "invalid argument #2 (kind expected)" )
   assert(is_nil(a_) or isa_damap(a_), "invalid argument #3 (A-damap expected)")
 
-  local kind = nf_knd[k_ or 'all']
-  local mono = monomial(nf.nn)
+  local t0  = os.clock()
+  local t11, t12 = t0, t0
 
-  -- propagated normal form, put in CS form
+  -- propagated normal form, apply rotations
   if a_ then
     local nfa = normal_a0(a_) ; a_ = nfa.m_n
-  if false then
-    local nv, nt, npt in nf
-    if npt ~= 0 then nv = 4 end -- process t,pt as params
-
-    local mu1 =            atan2(a_.x:get(3), a_.x:get(2))
-    local mu2 =            atan2(a_.y:get(5), a_.y:get(4))
-    local mu3 = nv > 4 and atan2(a_.t:get(7), a_.t:get(6)) or 0
-
-    if abs(mu1)+abs(mu2)+abs(mu3) > 0 then
-      local r = a_:same():eye()
-      for i=2,nv,2 do -- rephase to CS
-        local a11, a12 = a_[i-1]:deriv(i-1), a_[i-1]:deriv(i)
-        local d = hypot(a11, a12)
-        local ca, sa = a11/d, a12/d
-        local nq = ca*r[i-1] + sa*r[i  ] -- [ a11/d  a12/d] = [ cos a  sin a]
-        local np = ca*r[i  ] - sa*r[i-1] -- [-a12/d  a11/d]   [-sin a  cos a]
-
-        if npt ~= 0 then
-          local t = -0.5*(-1i*log(ca + sa*1i)):deriv(npt):real()
-          r.pt = r.pt + (-1^nt) * t * (r[i-1]^2 + r[i]^2)
-        end
-
-        r[i-1], r[i] = nq, np
-      end
-      nf = nf:copy((a_*r^-1):cplx():set0(0))
---    io.write("mu1=", mu1, ", mu2=", mu2, ", mu3=", mu3, "\n") ;
---    r:print("R")
-    end
-  else
+    t11 = os.clock()
     local mu1 =                 atan2(a_.x:get(3), a_.x:get(2))-- mu1 = atan2(A12, A11)
     local mu2 =                 atan2(a_.y:get(5), a_.y:get(4))
     local mu3 = nf.npt == 0 and atan2(a_.t:get(7), a_.t:get(6)) or 0
@@ -929,16 +933,28 @@ local function nfana (nf, k_, a_)
       ri.pt:set(6, sin(mu3)) ; ri.pt:set(7, cos(mu3))
       a_ = a_*ri
     end
+    t12 = os.clock()
 
     nf = nf:copy(a_:cplx():set0(0))
-  end end
+  end
+
+  local t1 = os.clock()
+  local t2, t21, t22 = t1, t1, t1
+
+  local kind = nf_knd[k_]
+  local mono = monomial(nf.nn)
 
   -- GNF and HAM
-  if is_nil(nf.gnf) and (kind == 'all' or kind == 'gnf') then
+  if is_nil(nf.gnf) and (kind == 'all' or kind == 'gnf' or kind == 'ham') then
     local a, c, ci, nv, nn, nt, lam in nf
     local gnf, ham = {}, {}
-    local g = (ci*a*c):factor_map(-1):fld2vec()
+    local g = ci*a*c
+    t21 = os.clock()
+    g = g:factor_map(-1)
+    t22 = os.clock()
+    g = g:fld2vec()
     g:cutord(-2, g) -- keep only orders 3..
+    t2 = os.clock()
 
     if nt ~= 0 then nv = 4 end -- t,pt are parameters
 
@@ -946,9 +962,11 @@ local function nfana (nf, k_, a_)
       local ms = mono:tostring()
       gnf[#gnf+1], gnf[ms] = ms, v                                  -- gnf terms
 
-      local p = 1
-      for j=2,nv,2 do p = p*lam[j-1]^(mono[j-1]-mono[j]) end
-      ham[#ham+1], ham[ms] = ms, v*(1-p)                            -- ham terms
+      if kind == 'ham' then
+        local p = 1
+        for j=2,nv,2 do p = p*lam[j-1]^(mono[j-1]-mono[j]) end
+        ham[#ham+1], ham[ms] = ms, v*(1-p)                          -- ham terms
+      end
     end
     nf.gnf, nf.ham = gnf, ham
 
@@ -956,7 +974,9 @@ local function nfana (nf, k_, a_)
     nf.gnfu, nf.haml = nf_gnfu, nf_haml
   end
 
-  -- ANH and HAM
+  local t3 = os.clock()
+
+  -- ANH
   if is_nil(nf.anh) and (kind == 'all' or kind == 'anh') then
     local nv, t_op in nf
     local anh = {}
@@ -975,16 +995,27 @@ local function nfana (nf, k_, a_)
     nf_q1, nf_q2, nf_dq1, nf_dq2, nf_anhx, nf_anhy
   end
 
+  local t4 = os.clock()
+
   -- TUNES (fractionnal part)
   if is_nil(nf.q1_) then
     local lam in nf
     nf.q1_ = lam[1]:carg()/twopi ; if nf.q1_ < 0 then nf.q1_ = nf.q1_+1 end
     nf.q2_ = lam[3]:carg()/twopi ; if nf.q2_ < 0 then nf.q2_ = nf.q2_+1 end
     nf.q3_ = lam[5]:carg()/twopi ; if nf.q3_ < 0 then nf.q3_ = nf.q3_+1 end
+
+    -- add access methods
+    nf.q1, nf.q2 =
+    nf_q1, nf_q2
   end
 
   -- method for ks and ms
   nf.getpms, nf.getms = nf_pms, nf_ms
+
+  local t5 = os.clock()
+
+  T1, T2, T3, T4, T5 = T1+t1-t0, T2+t2-t1, T3+t3-t2, T4+t4-t3, T5+t5-t4
+  T11, T12, T21, T22 = T11+t11-t0, T12+t12-t11, T21+t21-t1, T22+t22-t21
 
   return nf
 end
@@ -1085,7 +1116,7 @@ function normal_a0 (nf, ord_)
         x[i], x[i-1] = -a0[i-1], a0[i]              -- swap
         v[i], v[i-1] = x[i]:deriv(npt), x[i-1]:deriv(npt)
         t1 = t1 - m1:setvar(0,i  ) * v[i  ]         -- 1st order
-                - m1:setvar(0,i-1) * v[i-1]         -- 1st order
+                - m1:setvar(0,i-1) * v[i-1]         --  "
                 - 0.5*(x[i-1]*v[i] - x[i]*v[i-1])   -- 2nd order
       end
       a0.t = t1                                     -- will make t symplectic
@@ -1322,9 +1353,10 @@ function gphys.normal (m, urdt_)
   end -- for n
 
   -- the normalizing map A
-  nf.lieex = id:lieexppb(f_op)                                                  ; nf:dump"lieex"
+  local lieex = id:lieexppb(f_op)                                               ; nf:dump(lieex, "lieex")
 
-  nf.a = nf.a0 * nf.a1 * nf.c * nf.lieex * nf.ci                                ; nf:dump"a"
+  nf.a2 = nf.c * lieex * nf.ci
+  nf.a = nf.a0 * nf.a1 * nf.a2                                                  ; nf:dump"a"
 --nf.a:real():copy(m):set0(nf.x0).status = 'Aset'
 
 --  if fid then io.stderr:write("end of normal form\n") end
