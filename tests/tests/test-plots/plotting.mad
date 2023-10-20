@@ -1,0 +1,312 @@
+-- locals ---------------------------------------------------------------------o
+local beam, plot, survey, track, vector                          in MAD
+local openfile, fileexists, tblcat, tblcpy, strinter             in MAD.utility
+local eps                                                        in MAD.constant
+local round                                                      in MAD.gmath
+local is_nil                                                     in MAD.typeid
+local min                                                        in math
+package.path = package.path .. ";../tools/?.mad"
+local in_dir, out_dir, ptc_strs                                  in require "track-tool"
+local plt_dir, newSID                                            in require "plot-tool"
+local args_to_cfg                                                in require "test-tool"
+
+local create_dif = require "madl_dbgmap".cmpmdump
+
+-------------------------------------------------------------------------------o
+local seq_ctx = [[
+seq: sequence, l=${seql} ;
+  ${elm};
+endsequence ;
+]]
+MADX.seq = 0 -- Prevents MADX from complaining about undefined variables
+
+local ref_file = openfile(in_dir("ref.madx"), "r")
+local madx_ref = ref_file:read("*a")
+ref_file:close()
+
+local ref_file = openfile(in_dir("ref.mad"), "r")
+local mad_ref, mad_file = ref_file:read("*a")
+ref_file:close()
+
+-- Change this for all plots to be changed
+local plot_template = plot {
+  exec       = false, 
+  xrange     = {-0.5, 4},
+  yrange     = {-1.125, 1.125},
+  y2range    = {-1e-14, 1e-14},
+  layonly    = false,
+  wsizex     = 1080,
+  wsizey     = 1080,
+  laysize    = 0.5,
+  elemwidth  = \s -> s.laysize * 2, -- Not quite perfect...
+  fontsize   = 14, !legendsize = 16, titlesize = 18,
+  styles     = "line",
+  linewidths = 2,
+  prolog     = "set size square",
+  elemshift  = false,
+}
+
+local coord_str, madx_script in ptc_strs
+local function create_madx_seq(cfg) -- Create the MADX sequence file
+  openfile(cfg.seq_file, "w"):write(
+    strinter(madx_script, {
+      seq_ctx  = seq_ctx   % cfg,
+      coords   = coord_str % cfg.X0,
+      ptcmodel = not is_nil(cfg.ptcmodel) and cfg.ptcmodel,
+    }, "=") % cfg
+    ):close()
+end
+
+local function get_global_coord(tr, sv) -- Get the global coordinates from track and survey
+  local global_frame = {X = vector(#sv), Y = vector(#sv), Z = vector(#sv)}
+  for i = 1, #sv do
+    local v = vector{sv.x[i],0       , sv.z[i]}
+    local o = vector{tr.x[i], tr.y[i], 0      }
+    local r = v + sv.__map[i] * o
+    global_frame.X[i] = r[1]
+    global_frame.Y[i] = r[2] -- Is this correct?
+    global_frame.Z[i] = r[3]
+  end
+  return global_frame
+end
+
+-- Get the coordinates based on global or local frame
+local function get_coords(in_global_frame, x_coord, y_coord, tr, sv)
+  if in_global_frame then
+    local global_frame = get_global_coord(tr, sv)
+    return global_frame[x_coord], global_frame[y_coord]
+  else
+    return tr[x_coord], tr[y_coord]
+  end
+end
+
+-- Reset the sequences, create the MADX sequence file, load it and set the beam
+local function create_seq (cfg)
+  if MADX.seq ~= 0 then for _, elm in MADX.seq:iter() do MADX[elm.name] = nil end end
+  MADX.seq = 0
+  create_madx_seq(cfg)
+  MADX:load(cfg.seq_file)
+  MADX.seq.beam = beam {energy=cfg.energy, charge=cfg.chg}
+  MADX.seq.dir  = cfg.edir
+end
+
+local function run_plt_trk(cfg, trk_ref, get_coords, y_data, set_x1y2, attr)
+  create_seq(cfg)
+  local tr, _ = trk_ref { }
+  local x, y = get_coords(tr)
+  local diff = y_data - y
+  set_x1y2(
+    x, diff, attr, 
+    string.format(
+      "%s = %s diff, err_f = %.3g", attr, tostring(cfg[attr]), diff[#diff]
+    )
+  )
+end
+
+-- Remove the temporary files
+local function clean_tmp (cfg)
+  if cfg.dodbg then return end
+  if cfg.ng_vs_ptc then
+    for _, ext in ipairs {"_n", "_p", "_d"} do 
+      os.remove(out_dir(cfg.name .. ext .. ".txt"))
+    end
+    os.remove(in_dir(cfg.name .. "_ref.mad"))
+    os.remove(in_dir(cfg.name .. "_ref.madx"))
+  end
+  os.remove(in_dir(cfg.name .. "_seq.seq"))
+end
+
+local function run_test (cfg)
+  args_to_cfg(cfg)
+  -- Generate the reference files
+  local cfg = cfg { -- Override some values (method may be changed later)
+    seq_file = in_dir(cfg.name.."_seq.seq"),
+    model    = 2,
+    debug    = 7,
+    method   = 8,
+  }
+  local dir, sv_trk, sv_srv, sv_plt, nslice, ng_conv, ng_vs_ng, ng_vs_ptc, X0,
+        ng_vs_cpp                                                             in cfg
+  create_seq(cfg)
+  
+  local trk_ref = track { -- Cache certain values in the track (used everywhere)
+    sequence:= MADX.seq,
+    X0       = X0,
+    nslice  := nslice,
+    method   = cfg.method,
+    observe  = 0,
+    save     = "atbody", 
+    implicit = true,
+    exec     = false,
+  }
+  local srv_ref = survey { -- Cache certain values in the survey (used everywhere)
+    sequence:= MADX.seq,
+    save     = "atbody", -- do atexit instead?? or go to default as this will disguise errors
+    nslice  := nslice,   -- do atexit instead?? or go to default as this will disguise errors
+    savemap  = true,
+    implicit = true,
+    exec     = false,
+}
+  cfg.plot_info.exec = false
+  local plot_template = plot_template (cfg.plot_info)
+  local x_coord, y_coord, filename in cfg.plot_info
+  local in_global_frame = x_coord == x_coord:upper()
+
+  local title = cfg.plot_info.title .. (in_global_frame and " (global)" or " (local)")
+  
+  local data, x1y1, x1y2, legend = {}, {}, {}, {}
+  local set_x1y2 = \x, y, name, series =>
+    data  ["x_" .. name], data["y_" .. name] = x, y
+    x1y2  ["x_" .. name] = "y_" .. name
+    legend["y_" .. name] = series
+  end
+  local tr, _ = trk_ref { model = "TKT" }
+  if sv_trk then tr:write(filename.."track") end
+
+  assert(tr.lost == 0, "Particle lost during tracking")
+  local sv, sv_dat
+  if in_global_frame then
+    sv, sv_dat = srv_ref { }
+    if sv_srv then sv:write(filename) end
+  end
+  -- Cache in_global_frame, x_coord and y_coord for the get_coords function
+  local get_coords = \tr,sv_ -> get_coords(in_global_frame, x_coord, y_coord, tr, sv_ or sv)
+  data.x1, data.y1 = get_coords(tr)
+  
+  x1y1  .x1 = "y1"
+  legend.y1 = "x = "..X0.x..", px = "..X0.px
+
+  if ng_vs_ptc and not in_global_frame then 
+    local ptc_cfg = cfg {ptcmodel = true, method=2}
+    -- Create the reference files and run MAD and PTC
+    create_madx_seq(ptc_cfg)
+    openfile(in_dir(cfg.name .. "_ref.madx"), "w"):write(madx_ref % cfg):close()
+    openfile(in_dir(cfg.name .. "_ref.mad" ), "w"):write( mad_ref % cfg):close()
+    assert(os.execute(
+      '../madx64 '.. in_dir(cfg.name .. "_ref.madx") ..' >' .. out_dir(cfg.name .. "_p.txt")
+    ))
+    assert(os.execute(
+      '../mad '   .. in_dir(cfg.name .. "_ref.mad" ) ..' >' .. out_dir(cfg.name .. "_n.txt")
+    ))
+    
+    -- Turn debug off and run MAD to get the track mtable
+    create_madx_seq(ptc_cfg {debug=0})
+    local tr = assert(loadstring(mad_ref % cfg))()
+
+    -- Get difference between MAD and PTC and plot it
+    local dbg_lst = create_dif {nam = out_dir(cfg.name), sum = true, vec=true}
+    local x, y, tri = {}, {}, 1
+    for mi = 1, #dbg_lst do
+      local max_err = 0
+      if dbg_lst[mi].vec[5] - tr.t[tri] < 1e-14 then -- Check time to get correct s position
+        for ci, coord in ipairs {"x", "px", "y", "py", "t", "pt"} do
+          for oi = 1, cfg.order do 
+              max_err = math.max(math.abs(dbg_lst[mi].sum[ci].c[oi] or 0), max_err)
+          end
+        end
+        x[tri], y[tri], tri = tr[x_coord][tri], max_err, tri + 1
+      end 
+      if tri > #tr then break end
+    end
+    local max_y, min_y = math.max(table.unpack(y)), math.min(table.unpack(y))
+    if max_y > plot_template.y2range[2] then plot_template.y2range[2] = max_y end
+    if min_y < plot_template.y2range[1] then plot_template.y2range[1] = min_y end
+    set_x1y2(
+      x, y, "ptc", 
+      string.format("NG - PTC (order = %d), err_f = %.3g", cfg.order, y[#y])
+    )
+  end
+
+  if ng_conv then
+    local dkd_x, dkd_y, ref_x, ref_y 
+    create_seq(cfg)
+    repeat 
+      -- Run track in TKT and DKD
+      local dkd_tr, _ = trk_ref { model = "DKD" }
+      local tr, _     = trk_ref { model = "TKT" }
+      if in_global_frame then sv = srv_ref { } end
+      
+      -- Get the coordinates
+      ref_x, ref_y = get_coords(    tr, sv)
+      dkd_x, dkd_y = get_coords(dkd_tr, sv)
+
+      -- Check convergence and plot once converged
+      local converged = (ref_y - dkd_y):maxabs() < cfg.tol * eps
+      if not converged then nslice = round(nslice * 1.1) end
+    until (converged or nslice >= cfg.max_nslice)
+    if nslice >= cfg.max_nslice then
+      io.write("WARNING: Maximum number of slices reached!\n")
+    end
+    set_x1y2(dkd_x, ref_y - dkd_y, "dkd", "TKT - DKD (nslice = " .. nslice .. ")")
+  end
+
+  local run_plt_trk = \attr -> run_plt_trk(cfg, trk_ref, get_coords, data.y1, set_x1y2, attr)
+  if ng_vs_ng then
+    -- Change the sign of the edir
+    cfg.edir   = -cfg.edir
+    run_plt_trk("edir")
+    cfg.edir, cfg.chg = -cfg.edir, -cfg.chg -- restore edir and reverse chg
+    
+    -- Run with opposite charge sign
+    run_plt_trk("chg")
+    cfg.chg = -cfg.chg -- restore chg and reset seq
+    create_seq(cfg)
+
+    local tr, mflw = trk_ref { }
+    local s0 = tr[#tr].s
+    
+    -- Run with opposite sdir
+    local tr, _ = trk_ref { X0 = mflw[1], s0 = s0, dir = -1 }
+    local attr, sv_bck = "sdir"
+    if in_global_frame then 
+      sv_bck = srv_ref {
+        dir = -1,
+        X0 = sv_dat.V:totable(), -- Use the V matrix to get initial coordinates
+        s0 = s0,
+        A0 = sv_dat.W, -- Use the W matrix to get initial angles
+      }
+    end
+    local x, y = get_coords(tr, sv_bck)
+    local rev_x, rev_y = x:rev(), y:rev()
+
+    -- Plot the data
+    local diff = rev_y - data.y1
+    set_x1y2(
+      rev_x, diff, attr, 
+      string.format("%s = %s, err\\_max = %.3g", attr, tostring(cfg[attr]), diff:maxabs())
+    )
+  end
+
+  if ng_vs_cpp then 
+    -- Change the map type
+    cfg.cmap = not cfg.cmap
+    run_plt_trk("cmap")
+
+    -- Restore the map type and sequence
+    cfg.cmap = not cfg.cmap
+    create_seq(cfg)
+  end
+
+  -- Finally, plot the data
+  plot_template { 
+    sid = newSID(),
+    title = title,
+    data = data,
+    x1y1 = x1y1,
+    x1y2 = x1y2,
+    legend = legend,
+    xlabel  = x_coord .. " [m]",
+    ylabel  = y_coord .. " [m]",
+    y2label = y_coord .. " Difference [m]",
+    sequence = MADX.seq,
+    laypos = in_global_frame and "in" or "middle",
+    layproj = x_coord..y_coord,
+    output = sv_plt and plt_dir(
+      filename ..(in_global_frame and "-global" or "-local") .. ".png"
+    ) or nil,
+  }
+  clean_tmp(cfg)
+end
+
+
+return { run_test = run_test }

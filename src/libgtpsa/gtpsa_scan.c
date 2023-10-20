@@ -65,7 +65,7 @@ int main(int argc, const char *argv[])
 
     ord_t o = mad_mono_ord(nv, m);
     printf("** "); mad_mono_print(nv,m); printf(", o=%2d | ", o);
-    mad_desc_del(mad_desc_newvpo(nv, np, m, po)); printf("\n");
+    mad_desc_del(mad_desc_newvpo(nv, 0, np, po, m)); printf("\n");
 
     for(idx_t k=1; nol; k++) {
       if (k == 1000) { fprintf(stderr, "."); k=0; }
@@ -79,7 +79,7 @@ int main(int argc, const char *argv[])
 
       ord_t o = mad_mono_ord(nv, m);
       printf("** "); mad_mono_print(nv,m); printf(", o=%2d | ", o);
-      mad_desc_del(mad_desc_newvpo(nv, np, m, po)); printf("\n");
+      mad_desc_del(mad_desc_newvpo(nv, 0, np, po, m)); printf("\n");
     }
   }
 

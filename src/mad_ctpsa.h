@@ -38,7 +38,7 @@
 
 // --- types -----------------------------------------------------------------o
 
-typedef struct ctpsa ctpsa_t;
+typedef struct ctpsa_ ctpsa_t;
 
 // --- globals ---------------------------------------------------------------o
 
@@ -59,17 +59,18 @@ int32_t  mad_ctpsa_uid     (      ctpsa_t *t, int32_t uid_); // set uid if != 0
 ssz_t    mad_ctpsa_len     (const ctpsa_t *t);
 str_t    mad_ctpsa_nam     (const ctpsa_t *t);
 ord_t    mad_ctpsa_ord     (const ctpsa_t *t);
-ord_t    mad_ctpsa_ordv    (const ctpsa_t *t, ...);        // max order of all
-ord_t    mad_ctpsa_ordn    (ssz_t n, const ctpsa_t *t[n]); // max order of all
+ord_t    mad_ctpsa_ordv    (const ctpsa_t *t, ...);       // max order of all
+ord_t    mad_ctpsa_ordn    (ssz_t n, const ctpsa_t *t[]); // max order of all
 
 // initialization
 void     mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *r);
 void     mad_ctpsa_sclord  (const ctpsa_t *t, ctpsa_t *r, log_t inv); // t[i]*o[i]
 void     mad_ctpsa_getord  (const ctpsa_t *t, ctpsa_t *r, ord_t ord);
 void     mad_ctpsa_cutord  (const ctpsa_t *t, ctpsa_t *r, int   ord); // ord..mo = 0 or 0..-ord=0
-void     mad_ctpsa_convert (const ctpsa_t *t, ctpsa_t *r, ssz_t n, idx_t t2r_[n], int pb);
+idx_t    mad_ctpsa_maxord  (const ctpsa_t *t,             ssz_t n, idx_t idx_[]);
+void     mad_ctpsa_convert (const ctpsa_t *t, ctpsa_t *r, ssz_t n, idx_t t2r_[], int pb);
 void     mad_ctpsa_setvar  (      ctpsa_t *t, cpx_t v, idx_t iv_, cpx_t scl_);
-void     mad_ctpsa_setvar_r(      ctpsa_t *t, num_t v_re, num_t v_im, idx_t iv_, num_t scl_re_, num_t scl_im_);
+void     mad_ctpsa_setval  (      ctpsa_t *t, cpx_t v);
 void     mad_ctpsa_setnam  (      ctpsa_t *t, str_t nam);
 void     mad_ctpsa_clear   (      ctpsa_t *t);
 log_t    mad_ctpsa_isnul   (const ctpsa_t *t);
@@ -85,39 +86,41 @@ void     mad_ctpsa_rect    (const ctpsa_t *t, ctpsa_t *r);
 void     mad_ctpsa_polar   (const ctpsa_t *t, ctpsa_t *r);
 
 // indexing / monomials (return idx_t = -1 if invalid)
-ord_t    mad_ctpsa_mono    (const ctpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i);
-idx_t    mad_ctpsa_idxs    (const ctpsa_t *t, ssz_t n,       str_t s    ); // string mono "[0-9]*"
-idx_t    mad_ctpsa_idxm    (const ctpsa_t *t, ssz_t n, const ord_t m [n]);
-idx_t    mad_ctpsa_idxsm   (const ctpsa_t *t, ssz_t n, const int   m [n]); // sparse mono [(i,o)]
-idx_t    mad_ctpsa_cycle   (const ctpsa_t *t, ssz_t n,       ord_t m_[n], idx_t i, cpx_t *v_);
+ord_t    mad_ctpsa_mono    (const ctpsa_t *t, idx_t i, ssz_t n,       ord_t m_[]);
+idx_t    mad_ctpsa_idxs    (const ctpsa_t *t,          ssz_t n,       str_t s   ); // string mono "[0-9]*"
+idx_t    mad_ctpsa_idxm    (const ctpsa_t *t,          ssz_t n, const ord_t m []);
+idx_t    mad_ctpsa_idxsm   (const ctpsa_t *t,          ssz_t n, const int   m []); // sparse mono [(i,o)]
+idx_t    mad_ctpsa_cycle   (const ctpsa_t *t, idx_t i, ssz_t n,       ord_t m_[], cpx_t *v_);
 
 // accessors
 cpx_t    mad_ctpsa_get0    (const ctpsa_t *t);
 cpx_t    mad_ctpsa_geti    (const ctpsa_t *t, idx_t i);
-cpx_t    mad_ctpsa_gets    (const ctpsa_t *t, ssz_t n,       str_t s   ); // string w orders in '0'-'9'
-cpx_t    mad_ctpsa_getm    (const ctpsa_t *t, ssz_t n, const ord_t m[n]);
-cpx_t    mad_ctpsa_getsm   (const ctpsa_t *t, ssz_t n, const int   m[n]); // sparse mono [(i,o)]
-void     mad_ctpsa_set0    (      ctpsa_t *t, /* i = 0 */                cpx_t a, cpx_t b); // a*x[0]+b
-void     mad_ctpsa_seti    (      ctpsa_t *t, idx_t i,                   cpx_t a, cpx_t b); // a*x[i]+b
-void     mad_ctpsa_sets    (      ctpsa_t *t, ssz_t n,       str_t s   , cpx_t a, cpx_t b); // a*x[m]+b
-void     mad_ctpsa_setm    (      ctpsa_t *t, ssz_t n, const ord_t m[n], cpx_t a, cpx_t b); // a*x[m]+b
-void     mad_ctpsa_setsm   (      ctpsa_t *t, ssz_t n, const int   m[n], cpx_t a, cpx_t b); // a*x[m]+b
+cpx_t    mad_ctpsa_gets    (const ctpsa_t *t, ssz_t n,       str_t s  ); // string w orders in '0'-'9'
+cpx_t    mad_ctpsa_getm    (const ctpsa_t *t, ssz_t n, const ord_t m[]);
+cpx_t    mad_ctpsa_getsm   (const ctpsa_t *t, ssz_t n, const int   m[]); // sparse mono [(i,o)]
+void     mad_ctpsa_set0    (      ctpsa_t *t, /* i = 0 */               cpx_t a, cpx_t b); // a*x[0]+b
+void     mad_ctpsa_seti    (      ctpsa_t *t, idx_t i,                  cpx_t a, cpx_t b); // a*x[i]+b
+void     mad_ctpsa_sets    (      ctpsa_t *t, ssz_t n,       str_t s  , cpx_t a, cpx_t b); // a*x[m]+b
+void     mad_ctpsa_setm    (      ctpsa_t *t, ssz_t n, const ord_t m[], cpx_t a, cpx_t b); // a*x[m]+b
+void     mad_ctpsa_setsm   (      ctpsa_t *t, ssz_t n, const int   m[], cpx_t a, cpx_t b); // a*x[m]+b
 
 // accessors without complex-by-value
 void     mad_ctpsa_get0_r  (const ctpsa_t *t, cpx_t *r);
 void     mad_ctpsa_geti_r  (const ctpsa_t *t, idx_t i, cpx_t *r);
-void     mad_ctpsa_gets_r  (const ctpsa_t *t, ssz_t n,       str_t s   , cpx_t *r);
-void     mad_ctpsa_getm_r  (const ctpsa_t *t, ssz_t n, const ord_t m[n], cpx_t *r);
-void     mad_ctpsa_getsm_r (const ctpsa_t *t, ssz_t n, const int   m[n], cpx_t *r);
-void     mad_ctpsa_set0_r  (      ctpsa_t *t, /* i = 0 */                num_t a_re, num_t a_im, num_t b_re, num_t b_im);
-void     mad_ctpsa_seti_r  (      ctpsa_t *t, idx_t i,                   num_t a_re, num_t a_im, num_t b_re, num_t b_im);
-void     mad_ctpsa_sets_r  (      ctpsa_t *t, ssz_t n,       str_t s   , num_t a_re, num_t a_im, num_t b_re, num_t b_im);
-void     mad_ctpsa_setm_r  (      ctpsa_t *t, ssz_t n, const ord_t m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im);
-void     mad_ctpsa_setsm_r (      ctpsa_t *t, ssz_t n, const int   m[n], num_t a_re, num_t a_im, num_t b_re, num_t b_im);
+void     mad_ctpsa_gets_r  (const ctpsa_t *t, ssz_t n,       str_t s  , cpx_t *r);
+void     mad_ctpsa_getm_r  (const ctpsa_t *t, ssz_t n, const ord_t m[], cpx_t *r);
+void     mad_ctpsa_getsm_r (const ctpsa_t *t, ssz_t n, const int   m[], cpx_t *r);
+void     mad_ctpsa_set0_r  (      ctpsa_t *t, /* i = 0 */               num_t a_re, num_t a_im, num_t b_re, num_t b_im);
+void     mad_ctpsa_seti_r  (      ctpsa_t *t, idx_t i,                  num_t a_re, num_t a_im, num_t b_re, num_t b_im);
+void     mad_ctpsa_sets_r  (      ctpsa_t *t, ssz_t n,       str_t s  , num_t a_re, num_t a_im, num_t b_re, num_t b_im);
+void     mad_ctpsa_setm_r  (      ctpsa_t *t, ssz_t n, const ord_t m[], num_t a_re, num_t a_im, num_t b_re, num_t b_im);
+void     mad_ctpsa_setsm_r (      ctpsa_t *t, ssz_t n, const int   m[], num_t a_re, num_t a_im, num_t b_re, num_t b_im);
+void     mad_ctpsa_setvar_r(      ctpsa_t *t, num_t v_re, num_t v_im, idx_t iv_, num_t scl_re_, num_t scl_im_);
+void     mad_ctpsa_setval_r(      ctpsa_t *t, num_t v_re, num_t v_im);
 
 // accessors vector based
-void     mad_ctpsa_getv    (const ctpsa_t *t, idx_t i, ssz_t n,       cpx_t v[n]);
-void     mad_ctpsa_setv    (      ctpsa_t *t, idx_t i, ssz_t n, const cpx_t v[n]);
+void     mad_ctpsa_getv    (const ctpsa_t *t, idx_t i, ssz_t n,       cpx_t v[]);
+void     mad_ctpsa_setv    (      ctpsa_t *t, idx_t i, ssz_t n, const cpx_t v[]);
 
 // operators
 log_t    mad_ctpsa_equ     (const ctpsa_t *a, const ctpsa_t *b, num_t tol_);
@@ -182,14 +185,15 @@ void     mad_ctpsa_scl     (const ctpsa_t *a, cpx_t v, ctpsa_t *c); // c  = v*a
 void     mad_ctpsa_inv     (const ctpsa_t *a, cpx_t v, ctpsa_t *c); // c  = v/a
 void     mad_ctpsa_invsqrt (const ctpsa_t *a, cpx_t v, ctpsa_t *c); // c  = v/sqrt(a)
 
+void     mad_ctpsa_unit    (const ctpsa_t *x, ctpsa_t *r);
 void     mad_ctpsa_hypot   (const ctpsa_t *x, const ctpsa_t *y, ctpsa_t *r);
 void     mad_ctpsa_hypot3  (const ctpsa_t *x, const ctpsa_t *y, const ctpsa_t *z, ctpsa_t *r);
 
 void     mad_ctpsa_integ   (const ctpsa_t *a, ctpsa_t *c, int iv);
 void     mad_ctpsa_deriv   (const ctpsa_t *a, ctpsa_t *c, int iv);
-void     mad_ctpsa_derivm  (const ctpsa_t *a, ctpsa_t *c, ssz_t n, const ord_t m[n]);
+void     mad_ctpsa_derivm  (const ctpsa_t *a, ctpsa_t *c, ssz_t n, const ord_t m[]);
 void     mad_ctpsa_poisbra (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int nv);
-void     mad_ctpsa_taylor  (const ctpsa_t *a, ssz_t n, const cpx_t coef[n], ctpsa_t *c);
+void     mad_ctpsa_taylor  (const ctpsa_t *a, ssz_t n, const cpx_t coef[], ctpsa_t *c);
 
 // functions with internal real-to-complex conversion
 void     mad_ctpsa_poisbrat(const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c, int nv);
@@ -249,20 +253,20 @@ void     mad_ctpsa_logaxpsqrtbpcx2_r (const ctpsa_t *x, num_t a_re, num_t a_im,
                                                         num_t c_re, num_t c_im, ctpsa_t *r);
 
 // to check for non-homogeneous maps & parameters
-void     mad_ctpsa_vec2fld  (ssz_t na, const ctpsa_t *a     ,                        ctpsa_t *mc[na]); // F . grad
-void     mad_ctpsa_fld2vec  (ssz_t na, const ctpsa_t *ma[na],                        ctpsa_t *c     );
-void     mad_ctpsa_fgrad    (ssz_t na, const ctpsa_t *ma[na], const ctpsa_t * b    , ctpsa_t *c     );
-void     mad_ctpsa_liebra   (ssz_t na, const ctpsa_t *ma[na], const ctpsa_t *mb[na], ctpsa_t *mc[na]);
-void     mad_ctpsa_exppb    (ssz_t na, const ctpsa_t *ma[na], const ctpsa_t *mb[na], ctpsa_t *mc[na]); // exp(:F:) K
-void     mad_ctpsa_logpb    (ssz_t na, const ctpsa_t *ma[na], const ctpsa_t *mb[na], ctpsa_t *mc[na]); // exp(log(:F:)) K
+void     mad_ctpsa_vec2fld  (ssz_t na, const ctpsa_t *a   ,                      ctpsa_t *mc[]); // F . grad
+void     mad_ctpsa_fld2vec  (ssz_t na, const ctpsa_t *ma[],                      ctpsa_t *c   );
+void     mad_ctpsa_fgrad    (ssz_t na, const ctpsa_t *ma[], const ctpsa_t * b  , ctpsa_t *c   );
+void     mad_ctpsa_liebra   (ssz_t na, const ctpsa_t *ma[], const ctpsa_t *mb[], ctpsa_t *mc[]);
+void     mad_ctpsa_exppb    (ssz_t na, const ctpsa_t *ma[], const ctpsa_t *mb[], ctpsa_t *mc[]); // exp(:F:) K
+void     mad_ctpsa_logpb    (ssz_t na, const ctpsa_t *ma[], const ctpsa_t *mb[], ctpsa_t *mc[]); // exp(log(:F:)) K
 
-num_t    mad_ctpsa_mnrm     (ssz_t na, const ctpsa_t *ma[na]);
-void     mad_ctpsa_minv     (ssz_t na, const ctpsa_t *ma[na],                                  ctpsa_t *mc[na]);
-void     mad_ctpsa_pminv    (ssz_t na, const ctpsa_t *ma[na],                                  ctpsa_t *mc[na], idx_t select[na]);
-void     mad_ctpsa_compose  (ssz_t na, const ctpsa_t *ma[na], ssz_t nb, const ctpsa_t *mb[nb], ctpsa_t *mc[na]);
-void     mad_ctpsa_translate(ssz_t na, const ctpsa_t *ma[na], ssz_t nb, const cpx_t    tb[nb], ctpsa_t *mc[na]);
-void     mad_ctpsa_eval     (ssz_t na, const ctpsa_t *ma[na], ssz_t nb, const cpx_t    tb[nb], cpx_t    tc[na]);
-void     mad_ctpsa_mconv    (ssz_t na, const ctpsa_t *ma[na], ssz_t nc,                        ctpsa_t *mc[nc], ssz_t n, idx_t t2r_[n], int pb);
+num_t    mad_ctpsa_mnrm     (ssz_t na, const ctpsa_t *ma[]);
+void     mad_ctpsa_minv     (ssz_t na, const ctpsa_t *ma[],                                ctpsa_t *mc[]);
+void     mad_ctpsa_pminv    (ssz_t na, const ctpsa_t *ma[],                                ctpsa_t *mc[], idx_t select[]);
+void     mad_ctpsa_compose  (ssz_t na, const ctpsa_t *ma[], ssz_t nb, const ctpsa_t *mb[], ctpsa_t *mc[]);
+void     mad_ctpsa_translate(ssz_t na, const ctpsa_t *ma[], ssz_t nb, const cpx_t    tb[], ctpsa_t *mc[]);
+void     mad_ctpsa_eval     (ssz_t na, const ctpsa_t *ma[], ssz_t nb, const cpx_t    tb[], cpx_t    tc[]);
+void     mad_ctpsa_mconv    (ssz_t na, const ctpsa_t *ma[], ssz_t nc,                      ctpsa_t *mc[], ssz_t n, idx_t t2r_[], int pb);
 
 // I/O
 void     mad_ctpsa_print    (const ctpsa_t *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_);

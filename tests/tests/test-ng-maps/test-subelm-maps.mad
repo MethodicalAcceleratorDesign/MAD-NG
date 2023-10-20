@@ -1,0 +1,215 @@
+local object, vector             in MAD
+local tblcat                     in MAD.utility
+local run_test                   in require("trackvsng")
+
+MAD.warn("TestSubElm: This test is not complete, missing fringe/tilt/misalignment tests")
+--[[
+MISSING TEST ->  SUB ELEMENTS + FRINGE/TILT/MISALIGNMENT
+]]
+
+
+-- Yoshida Integrator Schemes -------------------------------------------------o
+local function make_yoshida (w)
+  local d, k, n, s = {}, {}, #w+1, 0
+  for i=1,n-1 do k[i] = w[n-i] ; s = s+w[i] end
+  d[1], k[n] = k[1]/2, 1-2*s
+  for i=2,n do d[i] = (k[i]+k[i-1])/2 end
+  return vector(d), vector(k)
+end
+local yosh2_d, yosh2_k = vector{0.5}, vector{1}
+local yosh4_d, yosh4_k = make_yoshida({ 1.35120719195965777 })
+local yosh6_d, yosh6_k = make_yoshida(
+  { -0.117767998417887E1 ,  0.235573213359357E0 , 0.784513610477560E0 }
+)
+local yosh8_d, yosh8_k = make_yoshida(
+  {  0.102799849391985E0 , -0.196061023297549E1,  0.193813913762276E1 ,
+    -0.158240635368243E0 , -0.144485223686048E1,  0.253693336566229E0 ,
+     0.914844246229740E0 }
+)
+
+local yoshg_k = { [2] = yosh2_k, [4] = yosh4_k, [6] = yosh6_k, [8] = yosh8_k }
+local yoshg_d = { [2] = yosh2_d, [4] = yosh4_d, [6] = yosh6_d, [8] = yosh8_d } 
+
+------------------------------------------------------------------------------o
+
+-- The tests ------------------------------------------------------------------o
+TestSubElm = {}
+
+function TestSubElm:setUp()
+  -- Turn off all unnecessary components for unit testing
+  
+  ref_cfg.dodbg     = false
+  ref_cfg.doprnt    = 0
+  ref_cfg.dosave    = false
+  
+  -- Turn on the components for unit testing
+  ref_cfg.dorun     = true
+  ref_cfg.do_utest  = true
+  ref_cfg.doplot    = true
+end
+
+function TestSubElm:testMULT()
+  local cfg = ref_cfg "sub_mult" {
+    elm = [[
+      drift { at = 0.75, l = 1.5,
+        multipole { sat = ${sat1}, knl = { ${bdir}*${sat1}, 0, 0 } },
+        multipole { sat = ${sat2}, knl = { 0, ${bdir}*${sat2}, 0 } },
+        multipole { sat = ${sat3}, knl = { 0, 0, ${bdir}*${sat3} } },
+      },
+    ]],
+
+    model  = {1},
+    method = 2..8..2,
+    nslice = {1, 2, 3},
+    energy = {1, 6500},
+    tol    = 500,
+
+    sat1  = {0.5, 0.1 , 0.25, 0},
+    sat2  = {0.5, 0.75, 1.0},
+    sat3  = {1.0, 1.1 , 1.5},
+    alist = tblcat(ref_cfg.alist, {"sat1", "sat2", "sat3"}),
+
+    plot_info = {
+      title    = "Three Multipole Subelements",
+      filename = "mult-sub.png",
+    }
+  }
+
+  run_test(cfg)
+end
+
+local function create_mults(cur_cfg)
+  local thick_nsl, method, k1 in cur_cfg
+  local mults, running_sat = "", 0
+  local ndrift, nkick = 2^(method/2), 2^(method/2) - 1     -- ndrift = nkick + 1
+  for iscl=1,thick_nsl do
+    for ikck = 1,nkick do
+      local yoshk = ikck > (ndrift)/2 and nkick  + 1 - ikck or ikck
+      local yoshd = ikck > (ndrift)/2 and ndrift + 1 - ikck or ikck
+      running_sat = running_sat + yoshg_d[method][yoshd] / thick_nsl
+      mults = string.format([[%s
+        multipole { 
+          sat = %+.16g, 
+          knl = { 0, ${bdir}*%+.16g} 
+        },
+      ]], mults, running_sat, k1*yoshg_k[method][yoshk]/thick_nsl)
+    end
+    running_sat = running_sat + yoshg_d[method][1] / thick_nsl
+  end
+  return mults
+end
+
+function TestSubElm:testDKD ()
+  local cfg = ref_cfg "sub_DKD" {
+    elm = \s -> [[
+      drift { at = ${elm_l}/2, l = ${elm_l},
+        ]].. create_mults(s.cur_cfg) ..[[
+      },
+    ]],
+
+    seql   = \s -> s.cur_cfg.elm_l,
+
+    model  = {1},
+    method = 2..8..2,
+    nslice = {1},
+    energy = {1, 6500},
+    tol    = 2000,
+
+    thick_nsl = 1..5, 
+    k1     = {-0.15, 0, 0.2},
+    elm_l  = {0.5, 1, 1.5, 2.1, 2.5},
+    alist = tblcat(ref_cfg.alist, {"k1", "elm_l", "thick_nsl"}),
+
+    plot_info = {
+      title    = "DKD Quadrupole vs Drift with Multipole Subelements",
+      filename = "quad-dkd-sub.png",
+      series   = {
+        "${method} == 2",
+        "${method} == 4",
+        "${method} == 6",
+        "${method} == 8",
+      },
+      legend  = {
+        y1 = "Yoshida Method 2",
+        y2 = "Yoshida Method 4",
+        y3 = "Yoshida Method 6",
+        y4 = "Yoshida Method 8",
+      },
+    }
+  }
+
+  local equiv = {
+    thick = object {
+      "elm", "nslice",
+      elm     = {"quadrupole { l = ${elm_l}, k1 = ${bdir}*${k1}/${elm_l} }"},
+      nslice := {cfg.cur_cfg.thick_nsl},
+
+      n = 1,
+    },
+
+    alist = {"thick"}
+  }
+
+  run_test(cfg, equiv)
+end
+
+function TestSubElm:testTHICK()
+  local cfg = ref_cfg "sub_thick" {
+    elm = [[
+      quadrupole { at = 0.75, l = 1.5, k1 = ${bdir}*${k1}, 
+        sextupole { sat = ${sat}, l = ${elm_l}, k2 = ${bdir}*${k2}/${elm_l} },
+     },
+    ]],
+
+    model  = {1, 2},
+    method = 2..8..2,
+    nslice = 1..3,
+    energy = {1, 6500},
+    tol    = 700,
+    
+    k1     = {-0.15, 0, 0.2},
+    k2     = {-0.15, 0, 0.2},
+    elm_l  = {0.4, 1.1},
+    sat    = {0.3, 0.5, 0.75},
+    alist = tblcat(ref_cfg.alist, {"k1", "k2", "elm_l", "sat"}),
+
+    plot_info = {
+      title    = "Thick Subelement inside thick element",
+      filename = "thick-thick-sub.png",
+    }
+  }
+
+  run_test(cfg)
+end
+
+function TestSubElm:testTHICK_MANY() -- This has surprisingly high error
+  local cfg = ref_cfg "sub_thick_many" {
+    elm = [[
+      quadrupole { at = 0.75, l = 1.5, k1 = ${bdir}*0.05, 
+        sextupole { sat = ${sat_sext}, l = 0.3, k2 = ${bdir}*${k2} },
+        octupole  { sat = ${sat_oct} , l = 0.3, k3 = ${bdir}*${k3} },
+      }
+    ]],
+    seql = 1.5,
+
+    model  = {1},
+    method = {2, 6},
+    nslice = 1..3,
+    energy = {1},
+    tol    = 2500,
+    dodbg  = false,
+
+    k2       = {-0.15, 0, 0.2},
+    k3       = {-1.5 , 0, 2  },
+    sat_sext = {0  , 0.2, 0.3},
+    sat_oct  = {0.5, 0.6, 0.8},
+    alist = tblcat(ref_cfg.alist, {"k2", "k3", "sat_sext", "sat_oct"}),
+
+    plot_info = {
+      title    = "Many Thick Subelements inside thick element",
+      filename = "thick-thick-sub-many.png",
+    }
+  }
+
+  run_test(cfg)
+end

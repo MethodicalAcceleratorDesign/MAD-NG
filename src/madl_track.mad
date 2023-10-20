@@ -31,21 +31,21 @@ Notes about directions and quantities:
 
 -- locals ---------------------------------------------------------------------o
 
-local command, element, mtable, damap, symint, option, show    in MAD
+local command, element, mtable, damap, tpsa, symint, option, _C in MAD
 
 local is_nil, is_beam, is_sequence, is_boolean, is_number,
-      is_integer, is_true, is_string, is_matrix, is_damap,
-      is_callable, is_iterable, is_mappable, is_beta0           in MAD.typeid
-local fnil, ffalse, chain, achain                               in MAD.gfunc
+      is_natural, is_nznatural, is_integer, is_string, is_true,
+      is_beta0, is_matrix, is_tpsa, is_damap,
+      is_callable, is_iterable, is_mappable                     in MAD.typeid
+local fnil, first, ffalse, chain, achain                        in MAD.gfunc
 local dp2pt, bet2map, par2vec                                   in MAD.gphys
 local errorf, assertf, printf                                   in MAD.utility
-local tobit, band, bor                                          in MAD.gfunc
+local band                                                      in MAD.gfunc
 local apercheck                                                 in MAD.aperture
 local srad_save, srad_damp, srad_quant                          in MAD.synrad
 local is_implicit                                               in element.drift
-local atbegin, atbody, atend, atins, atins1, action, actionat   in symint
-
-local abs in math
+local slcsel, slcbit, action, actionat, getslcbit               in symint
+local abs, max in math
 
 local io, type, setmetatable, assert =
       io, type, setmetatable, assert
@@ -54,14 +54,16 @@ local io, type, setmetatable, assert =
 
 require 'madl_etrck'
 
+local ffi = require 'ffi'
+
 -- helper ---------------------------------------------------------------------o
 
 local function mshow (mflw)
-  show(mflw)
+  MAD.show(mflw)
   for i=1,#mflw do
     local m = mflw[i]
     printf("** [%d]=\n", i)
-    show(m)
+    MAD.show(m)
     if is_damap(m) then
       m:get0():print(nil,'line')
       if mflw.debug >= 3 then m:get1():print(nil,'line') end
@@ -71,68 +73,45 @@ end
 
 -- debug ----------------------------------------------------------------------o
 
---[[ Unix command to retrieve debug=4 values in a matrix
-./mad script_dump.mad | \
-  awk 'BEGIN{printf("MAD.matrix{")} END{printf("}")}
-  /@@/{printf("{");for(i=4;i<=NF;i++)printf("%s, ",$i);printf("},\n")}'
---]]
+local fmt = "% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e "
 
-local shtfmt1 = "% -.6e "
-local lngfmt1 = "% -.16e "
-local shtfmt  = "% -.6e  % -.6e  % -.6e  % -.6e  % -.6e  % -.6e "
-local lngfmt  = "% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e "
-local nodump  = {marker=true}
+local function mdump (elm, mflw, str)
+  local dbg = mflw.debug
+  if dbg < 4 then return end -- print mflw[1], require debug >= 4
 
-local function mdump (elm, mflw, lw_, str) -- require debug >= 4
-  if mflw.debug < 4 then return end
-
-  if is_number(elm) then
-    printf("@@ %-15s %-15s ", '  "', str)
-  else
-    if nodump[elm.kind] then return end
-    printf("@@ %-15s %-15s ", elm.name, str)
-  end
+  assert(not is_number(elm), "invalid element (elm as number is obsolete)")
+  printf("@@ %-15s %-15s ", elm.name, str)
 
   if mflw.npar == 0 then io.write("no particle found\n") return end
 
-  local fmt = mflw.debug >= 5 and lngfmt or shtfmt
-  local X   = mflw[1]
-
-  if not is_damap(X) then
-    printf(fmt, X.x, X.px, X.y, X.py, X.t, X.pt)
-    io.write('\n') ; return
+  -- local orbit output
+  local X = mflw[1]
+  if is_damap(X) then
+    printf(fmt,X.x:get0(),X.px:get0(),X.y:get0(),X.py:get0(),X.t:get0(),X.pt:get0())
+  else
+    printf(fmt, X.x, X.px, X.y, X.py, X.t, X.pt)    ; dbg = 4
   end
 
-  local X, R, n = X:get0(), X:get1() ; n = R.nrow
-  printf(fmt, X[1], X[2], X[3], X[4], X[5], X[6])
-
-  for i=1,n do
-    io.write(' ')
-    printf(fmt,R:get(i,1),R:get(i,2),R:get(i,3),R:get(i,4),R:get(i,5),R:get(i,6))
-  end
-  io.write('\n')
-
-  if mflw.debug >= 6 and string.sub(str,-2) == ':1' then
-    local eval = R:symperr(R)
-    local estr = abs(eval) >= 1e-10 and 'symperr***' or
-                 abs(eval) >= 1e-12 and 'symperr**'  or
-                 abs(eval) >= 1e-14 and 'symperr*'   or 'symperr'
-    printf("@@ %-15s %-15s ", is_number(elm) and '  "' or elm.name, estr)
-    printf(lngfmt1, eval) ; io.write(' ') ; printf(lngfmt1, lw_ or 0)
-    io.write('m                                                 ',
-             '                                                  ')
-    for i=1,n do
+  if dbg >= 5 then
+    -- linear output
+    local R = X:get1()
+    for i=1,R.nrow do
       io.write(' ')
-      printf(lngfmt,R:get(i,1),R:get(i,2),R:get(i,3),R:get(i,4),R:get(i,5),R:get(i,6))
+      printf(fmt,R:get(i,1),R:get(i,2),R:get(i,3),R:get(i,4),R:get(i,5),R:get(i,6))
     end
-    io.write('\n')
 
-    if mflw.debug >= 7 then mflw[1]:print() end
+    -- full map output on exit
+    if dbg >= 6 and string.sub(str,-2) == ':1' then
+      io.write('\n')
+      mflw[1]:print("no-header")
+    end
   end
+
+  io.write('\n')
 end
 
-local function xdump (elm, mflw, X, str_)
-  printf("@@ %-15s %-15s ", elm.name, str_ or '')
+local function xdump (elm, mflw, X, str_) -- print tpsa X, require debug >= 5
+  printf("@: %-15s %-15s ", elm.name, str_ or '')
 
   local fmt  = mflw.debug >= 5 and lngfmt  or shtfmt
   local fmt1 = mflw.debug >= 5 and lngfmt1 or shtfmt1
@@ -154,9 +133,9 @@ local function fill_row (elm, mflw, lw, islc)
   end
 
   local name, kind in elm
-  local ds, eidx, clw, sdir, tdir, spos, turn, beam, mtbl, savemap in mflw
+  local ds, eidx, clw, sdir, tdir, spos, turn, beam, mtbl, savemap, sdir in mflw
 
-  local lw  = islc<0 and -1-islc or clw
+  local lw  = islc<0 and 1-islc%2 or clw*sdir -- ds, sdir and lw have the same sign
   local dsw = ds*lw
   local pc  = beam.pc
 
@@ -170,7 +149,7 @@ local function fill_row (elm, mflw, lw, islc)
     local pc = beam and beam.pc or pc
     if is_damap(m) then
       x,px,y,py,t,pt = x:get0(),px:get0(),y:get0(),py:get0(),t:get0(),pt:get0()
-      M = savemap and (savemap == 1 and m:get1() or m:copy())
+      M = savemap and (savemap == 1 and m:get1() or m:copy()) or nil
     end
 
     -- keep order!
@@ -214,9 +193,7 @@ end
 -- reset/change sequence iterator (e.g. track again) --------------------------o
 
 local function reset_si (mflw)
-  local mt = getmetatable(mflw)
-  local m = mt and mt.__index or mflw
-
+  local m = mflw.mflw
   local sequ, range, nturn, sdir, s0 in m.__sitr
   local iter, state, eidx = sequ:siter(range, nturn, sdir)
 
@@ -234,9 +211,7 @@ local function reset_si (mflw)
 end
 
 local function change_si (mflw, sequ, range_, nturn_, dir_)
-  local mt = getmetatable(mflw)
-  local m = mt and mt.__index or mflw
-
+  local m = mflw.mflw
   local range = range_ or sequ.range
   local iter, state, eidx = sequ:siter(range, nturn_, dir_)
 
@@ -253,14 +228,123 @@ local function change_si (mflw, sequ, range_, nturn_, dir_)
   return mflw
 end
 
+-- track cflow ----------------------------------------------------------------o
+
+local prms_list = {
+  -- element data
+  'el', 'eld', 'elc', 'lrad',
+  'eh', 'ang', 'mang',
+  -- quad, solenoid, multipole, esptum, rfcav
+  'k1', 'ks', 'volt', 'freq', 'lag', 'sa', 'ca',
+  -- fringes
+  'e', 'h', 'a', 'fint', 'hgap', 'f1', 'f2',
+  -- patches
+  'dx'  , 'dy'  , 'ds',
+  'dthe', 'dphi', 'dpsi', 'tlt',
+}
+
+local function sync_cflow (mflw, i)
+  local m = mflw.mflw
+
+  m.       tflw.npar = m.npar
+  m.__sdat.tflw.npar = m.npar
+  if m.pflw ~= nil then
+    m.       pflw.npar = m.npar
+    m.__sdat.pflw.npar = m.npar
+  end
+
+  if i then
+    assert(m[i].__ta, "sync_cflow: invalid damap, missing __ta")
+    m.__cmap[i-1] = m[i].__ta
+  else for i=1,m.npar do
+    assert(mflw[i].__ta, "sync_cflow: invalid damap, missing __ta")
+    m.__cmap[i-1] = m[i].__ta
+  end end
+
+  return mflw
+end
+
+local function make_cflow (mflw)
+  local npar, beam in mflw
+
+  mflw.cmap, mflw.pmap, mflw.cmap_sync = 't', false, sync_cflow
+
+  local m = mflw
+  for i=1,2 do
+    m.tflw_  = ffi.new 'mflw_t[1]'
+    m.tflw   = m.tflw_[0].tflw
+
+    local c  = m.tflw
+    c.dbg    = max(0, mflw.debug-3)
+    c.npar   = mflw.npar
+    c.sdir   = mflw.sdir
+    c.edir   = mflw.edir
+    c.T      = mflw.T
+    c.Tbak   = -1
+    c.beta   = beam.beta
+    c.pc     = beam.pc
+    c.betgam = beam.betgam
+    c.charge = beam.charge
+
+    if i == 1 then
+      mflw.__cmap = ffi.new('tpsa_t**[?]', npar)
+      for i=1,npar do
+        assert(is_damap(mflw[i]), "cmap: invalid mix of damaps and particles")
+        mflw.__cmap[i-1] = mflw[i].__ta
+      end
+    end
+
+    c.par = mflw.__cmap
+    m = mflw.__sdat
+  end
+
+  if mflw.dapo == 0 then return end
+
+  local td, po = mflw[1].__td, mflw.dapo
+  local nmul_max, snm_max in _C
+
+  local m = mflw
+  for i=1,2 do
+    m.pflw_  = ffi.new 'mflw_t[1]'
+    m.pflw   = m.pflw_[0].pflw
+
+    local p  = m.pflw
+    p.dbg    = max(0, mflw.debug-3)
+    p.npar   = mflw.npar
+    p.sdir   = mflw.sdir
+    p.edir   = mflw.edir
+    p.T      = mflw.T
+    p.Tbak   = -1
+    p.beta   = beam.beta
+    p.pc     = beam.pc
+    p.betgam = beam.betgam
+    p.charge = beam.charge
+
+    m.__tpsa = {}
+
+    local t = m.__tpsa
+    for i,k in ipairs(prms_list) do
+      t[i] = tpsa(td, po) ; p[k] = t[i]
+    end
+    local n = #t+1
+    for i=0,nmul_max-1 do
+      t[n+2*i  ] = tpsa(td, po) ; p.knl[i] = t[n+2*i  ]
+      t[n+2*i+1] = tpsa(td, po) ; p.ksl[i] = t[n+2*i+1]
+    end
+    local n = #t+1
+    for i=0,snm_max-1 do
+      t[n+2*i  ] = tpsa(td, po) ; p.bfx[i] = t[n+2*i  ]
+      t[n+2*i+1] = tpsa(td, po) ; p.bfy[i] = t[n+2*i+1]
+    end
+
+    p.par = mflw.__cmap
+    m = mflw.__sdat
+  end
+end
+
 -- track mflow ----------------------------------------------------------------o
 
 local modint = {DKD=true, TKT=true}
-
--- see (survey)
-local slicebit = { [false]=tobit(0), [true]=tobit(4),
-                   atentry=tobit(1), atslice=tobit(2), atexit=tobit(4),
-                   atbound=tobit(5), atbody =tobit(6), atall =tobit(7) }
 
 local function make_mflow (self)
   -- check sequence
@@ -283,41 +367,39 @@ local function make_mflow (self)
   local iter, state, eidx = sequ:siter(range, nturn, dir)
 
   -- check more attributes
-  local save, implicit, observe, fringe, radiate in self
-  local savebit = slicebit[save]
+  local implicit, observe, fringe, frngmax, radiate, nocavity in self
   if is_boolean(fringe ) then fringe  = fringe  and -1 or 0 end
   if is_boolean(radiate) then radiate = radiate and "damp" or nil end
 
-  assert(is_number(savebit)  ,
-              "invalid save directive (boolean or valid atxxx string expected)")
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
+  assert(is_natural(observe) , "invalid observe (positive integer expected)")
   assert(is_string(radiate) or radiate == nil, "invalid radiate (string expected)")
-  assert(is_integer(fringe) and fringe >= -1
-                             , "invalid fringe (boolean or fringe flag expected)")
-  assert(is_integer(observe) and observe >= 0
-                             , "invalid observe (positive integer expected)")
-
-  local savesel = self:var_get 'savesel'
-  assert(is_callable(savesel), "invalid savesel (callable expected)")
+  assert(is_natural(fringe+1), "invalid fringe (boolean or fringe flag expected)")
+  assert(is_natural(frngmax), "invalid maximum multipole fringe (positive integer expected)")
 
   -- sequence and time direction
   local edir = sequ.dir
   local tdir = dir*edir
   assert(tdir == 1 or tdir == -1, "invalid time direction (1 or -1 expected)")
 
-  -- setup default sclicing
+  -- setup default slicing
   local nslice = self:var_get 'nslice'
   local nslc = is_number(nslice) and nslice or is_callable(nslice) and 1
                                             or is_iterable(nslice) and #nslice
-  assert(is_integer(nslc) and nslc > 0,
+  assert(is_nznatural(nslc),
          "invalid nslice (integer>0 or iterable of or generator of slice weights expected)")
 
   -- setup default misalign
   local misalign in self
   assert(is_boolean(misalign), "invalid misalign (boolean expected)")
 
+  -- setup default aperture
+  local aperture in self
+  if not aperture then aperture = sequ.aperture or {kind='circle', 1} end
+  assert(is_mappable(aperture), "invalid aperture (mappable expected)")
+
   -- setup deltap (number, table, vector or range)
-  local deltap = self.deltap or 0
+  local deltap in self
   if is_number(deltap) then deltap = {deltap} end
   assert(is_iterable(deltap), "invalid deltap (number or iterable expected)")
   local ndp = #deltap
@@ -329,6 +411,8 @@ local function make_mflow (self)
   local ataper  = self:var_get 'ataper'
   local atsave  = self:var_get 'atsave'
   local atdebug = self:var_get 'atdebug'
+  local savesel = self:var_get 'savesel'
+  local apersel = self:var_get 'apersel'
 
   assert(is_callable(atentry), "invalid atentry (callable expected)")
   assert(is_callable(atslice), "invalid atslice (callable expected)")
@@ -336,26 +420,39 @@ local function make_mflow (self)
   assert(is_callable(ataper ), "invalid ataper (callable expected)")
   assert(is_callable(atsave ), "invalid atsave (callable expected)")
   assert(is_callable(atdebug), "invalid atdebug (callable expected)")
+  assert(is_callable(savesel), "invalid savesel (callable expected)")
+  assert(is_callable(apersel), "invalid apersel (callable expected)")
 
   -- saving data, build mtable
-  local mtbl
+  local save, mtbl = self.save
   if save then
     mtbl = make_mtable(self, range)
     if atsave ~= ffalse then
       local fill = observe > 0 and fill_obs or fill_row
       atsave = achain(fill, atsave)
 
+      local savebit
+      if savesel ~= fnil then
+        savebit = getslcbit(savesel)
+      elseif save == true then
+        savebit = slcbit.atexit
+        savesel = slcsel.atexit
+      else
+        savebit = slcbit[save]
+        savesel = slcsel[save]
+        assert(is_number(savebit)  ,
+              "invalid save directive (boolean or valid atxxx string expected)")
+      end
+
       if savebit > 0 then
-        local saveact, ex = action 'atsave'
-        if band(savebit, slicebit.atentry) ~= 0 then
+        local saveact = actionat('atsave', savesel)
+        if band(savebit, slcbit.atentry) ~= 0 then
           atentry = chain(atentry, saveact)
         end
-        if band(savebit, slicebit.atexit) ~= 0 then
+        if band(savebit, slcbit.atexit) ~= 0 then
           atexit = chain(atexit, saveact)
-          ex = true
         end
-        if band(savebit, slicebit.atslice) ~= 0 then
-          local saveact = actionat('atsave', ex and atins or atins1)
+        if band(savebit, slcbit.atslice) ~= 0 then
           atslice = chain(atslice, saveact)
         end
       end
@@ -363,10 +460,37 @@ local function make_mflow (self)
   end
 
   -- activate aperture checks
-  if ataper ~= ffalse then
-    local aperact = actionat('ataper', atend)
-    atslice = chain(aperact, atslice) -- chain ataper to atslice for last slice
-    ataper = achain(apercheck, ataper)
+  local aper = self.aper
+  if aper then
+    if ataper ~= ffalse then
+      ataper = achain(apercheck, ataper)
+
+      local aperbit
+      if apersel ~= fnil then
+        aperbit = getslcbit(apersel)
+      elseif aper == true then
+        aperbit = slcbit.atend
+        apersel = slcsel.atend
+      else
+        aperbit = slcbit[aper]
+        apersel = slcsel[aper]
+        assert(is_number(aperbit)  ,
+              "invalid aper directive (boolean or valid atxxx string expected)")
+      end
+
+      if aperbit > 0 then
+        local aperact = actionat('ataper', apersel)
+        if band(aperbit, slcbit.atentry) ~= 0 then
+          atentry = chain(atentry, aperact)
+        end
+        if band(aperbit, slcbit.atexit) ~= 0 then
+          atexit = chain(atexit, aperact)
+        end
+        if band(aperbit, slcbit.atslice) ~= 0 then
+          atslice = chain(atslice, aperact)
+        end
+      end
+    end
   end
 
   -- activate maps debugging
@@ -378,20 +502,19 @@ local function make_mflow (self)
 
   -- activate radiation
   if radiate then
-    atslice = chain(achain(atbegin, srad_save), atslice)
-    if string.find(radiate, "photon", 1, true) then
-      atslice = chain(achain(atbody, srad_quant), atslice)
-      radiate = "photon"
-    elseif string.find(radiate, "quantum", 1, true) then
-      atslice = chain(achain(atbody, srad_quant), atslice)
-      radiate = "quantum"
-    elseif string.find(radiate, "damp", 1, true) then
-      atslice = chain(achain(atbody, srad_damp), atslice)
-      radiate = "damp"
-    else
-      error("invalid radiate value '"..radiate.."'")
-    end
+    local radact
+    atentry = chain(achain(slcsel.atbegin, srad_save), atentry)
+    if string.find(radiate, "damp", 1, true) then
+      radact = srad_damp
+    elseif string.find(radiate, "quant", 1, true) or
+           string.find(radiate, "phot" , 1, true) then
+      radact = srad_quant
+    else error("invalid radiate value '"..radiate.."'") end
+    atslice = chain(achain(slcsel.atcore, radact), atslice)
+    atexit  = chain(achain(slcsel.atend,  radact), atexit )
+
     if save then mtbl.radiate = radiate end -- update mtbl
+    if string.find(radiate, "phot", 1, true) then radiate = "photon" end
   end
 
   -- totalpath
@@ -399,28 +522,29 @@ local function make_mflow (self)
   assert(is_boolean(totalpath), "invalid totalpath (boolean expected)")
   local T = totalpath and 1 or 0
 
-  -- model, method
-  local method, model, ptcmodel in self
+  -- model, method, secnmul
+  local method, model, secnmul, ptcmodel in self
   if is_nil(ptcmodel) then ptcmodel = option.ptcmodel end
   assertf(modint[model],
                     "invalid integration model %s (DKD or TKT expected)", model)
   assertf(symint[model][method], "invalid integration method '%s'", method)
+  assert(is_natural((secnmul or 0)+2), "invalid secnmul (integer or strategy expected)")
   assert(is_boolean(ptcmodel), "invalid ptcmodel (boolean expected)")
 
   -- retrieve initial conditions
   local s0, X0, O0 in self
-  if X0 == 0    then X0 = {0,0,0,0,0,0} end
-  if O0 == 0    then O0 = {0,0,0,0,0,0} end
-  if O0 == true then O0 = {0,0,0,0,0,0, cofind=true} end
+  if X0 == 0        then X0 = {0,0,0,0,0,0} end
+  if O0 == 0        then O0 = {0,0,0,0,0,0} end
+  if is_boolean(O0) then O0 = {0,0,0,0,0,0, cofind=O0 } end
   assert(is_number  (s0), "invalid s0 (number expected)")
   assert(is_iterable(X0), "invalid X0 (iterable expected)")
   assert(is_iterable(O0), "invalid O0 (iterable expected)")
-  if not is_iterable(X0[1]) or is_beta0(X0) then X0 = {X0} end
+  if not is_iterable(X0[1]) or is_beta0(X0) or is_damap(X0) then X0 = {X0} end
 
   -- damap defs and save
   local mapdef, savemap in self
-      if mapdef == true                    then mapdef = {} -- defaut is xy=1
-  elseif is_integer(mapdef) and mapdef > 0 then mapdef = {xy=mapdef} end
+      if mapdef == true       then mapdef = {} -- defaut is xy=1
+  elseif is_nznatural(mapdef) then mapdef = {xy=mapdef} end
   assert(is_boolean(mapdef) or is_mappable(mapdef),
                         "invalid mapdef (boolean, number or mappable expected)")
   assert(is_boolean(savemap) or savemap == 1, -- 1 means to save only the matrix
@@ -440,9 +564,9 @@ local function make_mflow (self)
   local mflw = table.new(npar*ndp, 50)
   local mdef = mapdef or {}
   local beta = beam.beta
-  local x0   = par2vec(O0)
+  local x0   = is_damap(O0) and O0:get0() or par2vec(O0)
   local pt0  = x0[6]
-  local stat, useda
+  local damo, dapo, stat = 0, 0
 
   -- precedence of initial conditions
   for j,dp in ipairs(deltap) do
@@ -459,15 +583,15 @@ local function make_mflow (self)
 
       if is_beta0(X0i) then     -- damap created from beta0
         mflw[ii] = bet2map(X0i, damap(mdef[i] or mdef)):set0(x0,1) -- x0 added
-        stat, useda = 'Aset', true
+        stat, damo, dapo = 'Aset', max(damo, mflw[ii].__td.mo), max(dapo, mflw[ii].__td.po)
       elseif is_damap(X0i) then -- damap (copy)
         mflw[ii] = (nc and X0i or X0i:copy()):set0(x0,1)           -- x0 added
-        stat, useda = 'Mset', true
+        stat, damo, dapo  = 'Mset', max(damo, mflw[ii].__td.mo), max(dapo, mflw[ii].__td.po)
       elseif is_iterable(X0i) then
         local x = x0 + par2vec(X0i)                                -- x0 added
         if mapdef then          -- damap created from particle
           mflw[ii] = damap(mdef[i] or mdef):set0(x)
-          useda = true
+          damo, dapo = max(damo, mflw[ii].__td.mo), max(dapo, mflw[ii].__td.po)
         else                    -- particle (copy)
           local p = nc and X0i or {x=0, px=0, y=0, py=0, t=0, pt=0}
           p.x, p.px, p.y, p.py, p.t, p.pt = x[1], x[2], x[3], x[4], x[5], x[6]
@@ -488,7 +612,13 @@ local function make_mflow (self)
     end
   end
 
+  -- sanity check
+  if radiate == "photon" and damo > 0 then
+    error("tracking photon with damap is not allowed...")
+  end
+
   -- complete mflow
+  mflw.mflw=mflw             -- the "main" mflw
   mflw.sequ=sequ             -- current sequence
   mflw.beam=beam {}          -- current beam (clone)
   mflw.mtbl=mtbl             -- current mtable (nil if not save)
@@ -505,19 +635,23 @@ local function make_mflow (self)
 
   mflw.npar=#mflw            -- number of tracked particles or damaps
   mflw.tpar=mflw.npar        -- total number of particles or damaps
+  mflw.damo=damo             -- damap max variables  order (0 means no DA)
+  mflw.dapo=dapo             -- damap max parameters order (0 means no parameters)
   mflw.nslc=nslc             -- minimum number of slices for all elements
   mflw.nslice=nslice         -- slices for each element (num, fun or iterable)
   mflw.deltap=deltap         -- delta p
   mflw.implicit=implicit     -- slice also implicit elements (e.g. plots)
-  mflw.useda=useda           -- contain damap
   mflw.fringe=fringe         -- compute fringe fields
+  mflw.frngmax=frngmax       -- maximum multipole fringe fields
   mflw.misalign=misalign     -- misalign element
+  mflw.aperture=aperture     -- default element aperture.
   mflw.radiate=radiate       -- radiate at slices
+  mflw.nocav=nocavity        -- disable rfcavities
   mflw.nphot=0               -- number of tracked photons
 
   mflw.save=save             -- save data
+  mflw.aper=aper             -- check aperture
   mflw.observe=observe       -- save observed elements every n turns
-  mflw.savesel=savesel       -- save selector
 
   mflw.atentry=atentry       -- action called when entering an element
   mflw.atslice=atslice       -- action called after each element slices (ataper)
@@ -526,14 +660,22 @@ local function make_mflow (self)
   mflw.atsave=atsave         -- action called when saving in mtable
   mflw.atdebug=atdebug       -- action called when debugging the maps
 
+  mflw.apersel=apersel       -- aper selector
+  mflw.savesel=savesel       -- save selector
+
   mflw.method=method         -- default integration method
   mflw.model=model           -- default integration model
+  mflw.secnmul=secnmul       -- default maximum number of multipoles for bends
   mflw.T=T                   -- cancel compensation for time of flight
 
-  mflw.ptcmodel=ptcmodel     -- use PTC thick model
+  mflw.ptcmodel=ptcmodel     -- use PTC maps
 
   mflw.mapdef=mapdef         -- save damap definitions (for info)
   mflw.savemap=savemap       -- save damaps
+
+  mflw.cmap=false            -- C/C++ maps
+  mflw.pmap=false            -- C/C++ parametric maps
+  mflw.cmap_sync=first       -- function to sync mflw vs cflw
 
   mflw.info=self.info or 0   -- information level
   mflw.debug=self.debug or 0 -- debugging information level
@@ -554,36 +696,51 @@ local function make_mflow (self)
                s0=s0, range=range, nturn=nturn} -- sequence iterator reset
 
   -- for processing elements (pre-alloc to avoid rehash)
-  mflw.__edat = setmetatable({
-    el=0, eh=0,              -- current element length and curvature
-    tlt=0,                   -- current element tilt angle
-    clw=0,                   -- current element cumulated length weights
-    nsl=0,                   -- current element number of slices
-    ks=0,                    -- solenoid strength
-    volt=0, freq=0, lag=0,   -- rfcavity parameters
+  mflw.name="--UNNAMED--"    -- current element name
+  mflw.el, mflw.lrad=0,0     -- current element lengths
+  mflw.eh, mflw.ang =0,0     -- current element curvatures
+  mflw.mang=0                -- current element misalignment angle
+  mflw.elc=0                 -- current element chord length
+  mflw.tlt=0                 -- current element tilt angle
+  mflw.clw=0                 -- current element cumulated length weights
+  mflw.nsl=0                 -- current element number of slices
+  mflw.ks, mflw.k1=0,0       -- strengths
+  mflw.ca, mflw.sa=0,0       -- angles
+  mflw.volt, mflw.freq=0,0   -- rfcavity parameters
+  mflw.lag , mflw.nbsl=0,0
 
-    algn=nil,                -- current element misalignment
-    nmul=0,                  -- current element number of multipoles
-    knl={[0]=0},             -- current element multipoles
-    ksl={[0]=0},             -- current element multipoles skew
-    npha=0,                  -- current element number of multiplole phases
-    pnl={[0]=0},             -- current element multipoles phases
-    psl={[0]=0},             -- current element multipoles shew phases
-  }, {__index=mflw})
+  mflw.algn=false            -- current element misalignment
+  mflw.nmul=0                -- current element number of multipoles
+  mflw.knl={[0]=0}           -- current element multipoles
+  mflw.ksl={[0]=0}           -- current element multipoles skew
+  mflw.snm=0                 -- current element sector nmul max
+  mflw.bfx={[0]=0}           -- current element curved field x coefficients
+  mflw.bfy={[0]=0}           -- current element curved field y coefficients
 
   -- for processing (thin) subelements (pre-alloc to avoid rehash)
   mflw.__sdat = setmetatable({
-    el=0, eh=0,              -- current subelement length and curvature
-    tlt=0,                   -- current element tilt angle
+    el=0, lrad=0,            -- current subelement lengths
+    eh=0,  ang=0,            -- current subelement curvature and angle
+    mang=0,                  -- current subelement misalignment angle
+    elc=0,                   -- current subelement chord length
+    tlt=0,                   -- current subelement tilt angle
     clw=0,                   -- current subelement cumulated length weights
+    nsl=0,                   -- current subelement number of slices
+    ks=0, k1=0, ca=0, sa=0,  -- strengths and angles
+    volt=0, freq=0, lag=0,   -- rfcavity parameters
+    nbsl=0,
 
+    algn=false,              -- current subelement misalignment
     nmul=0,                  -- current subelement number of multipoles
     knl={[0]=0},             -- current subelement multipoles
     ksl={[0]=0},             -- current subelement multipoles skew
-    npha=0,                  -- current subelement number of multiplole phases
-    pnl={[0]=0},             -- current subelement multipoles phases
-    psl={[0]=0},             -- current subelement multipoles shew phases
+    snm=0,                   -- current subelement sector nmul max
+    bfx={[0]=0},             -- current subelement curved field x coefficients
+    bfy={[0]=0},             -- current subelement curved field y coefficients
   }, {__index=mflw})
+
+  -- prepare tflw (and pflw) for C/C++ maps
+  if self.cmap and damo > 0 then make_cflow(mflw) end
 
   return mflw
 end
@@ -592,7 +749,7 @@ end
 
 local _id = {} -- identity (unique)
 
-local function is_dynmflow (a)
+local function is_dynmflw (a)
   return type(a) == "table" and a.__trck == _id
 end
 
@@ -605,7 +762,6 @@ local function exec (self)
     mflw       = self.mflow
     mflw.nstep = self.nstep or mflw.nstep  -- update volatile fields
     mflw.info  = self.info  or mflw.info
-    mflw.debug = self.debug or mflw.debug
     assert(is_integer(mflw.nstep), "invalid number of steps (integer expected)")
   else
     mflw = make_mflow(self)
@@ -621,15 +777,16 @@ local function exec (self)
   local ie
   repeat
     -- retrieve information
-    local s0, eidx, sequ, __sitr, __edat in mflw
+    local s0, eidx, sequ, __sitr in mflw
     local iter, state in __sitr
     local ne, ret = #sequ
     ie = nil
 
     -- dynamic tracking
     for ei,elm,spos,ds in iter, state, eidx do
-      mflw.eidx, mflw.spos, mflw.ds, __edat.clw = ei, s0+spos, ds, 0
-      ret = elm:track(__edat)
+      mflw.name, mflw.eidx, mflw.spos, mflw.ds, mflw.clw =
+       elm.name,      ei  ,   s0+spos,      ds,      0
+      ret = elm:track(mflw)
       mflw.nstep = mflw.nstep-1
 
       -- check remaining number of elements and particles/damaps to track
@@ -654,33 +811,41 @@ local track = command 'track' {
   s0=0,             -- initial s-position offset [m]                      (mflw)
   X0=0,             -- initial X coordinates (or damap, or beta block)    (mflw)
   O0=0,             -- initial O coordinates of reference orbit           (mflw)
-  deltap=nil,       -- initial deltap(s)                                  (mflw)
+  deltap=0,         -- initial deltap(s)                                  (mflw)
 
   nturn=1,          -- number of turns to track                           (iter)
   nstep=-1,         -- number of elements to track                        (iter)
   nslice=1,         -- number of slices (or weights) for each element     (mflw)
-  mapdef=false,     -- setup for damap (or list of, true => {})           (mflw)
-  method=2,         -- method or order for integration (1 to 8)           (mflw)
+  method=4,         -- method or order for integration (1 to 8)           (mflw)
   model='TKT',      -- model for integration ('DKD' or 'TKT')             (mflw)
-  ptcmodel=nil,     -- use strict PTC thick model (override option)       (mflw)
+  mapdef=false,     -- setup for damap (or list of, true => {})           (mflw)
+  secnmul=false,    -- maximun number of curved multipoles for bends      (mflw)
+  ptcmodel=false,   -- use strict PTC thick model (override option)       (mflw)
   implicit=false,   -- slice implicit elements too (e.g. plots)           (mflw)
   misalign=false,   -- consider misalignment                              (mflw)
+  aperture=false,   -- default aperture                                   (mflw)
   fringe=true,      -- enable fringe fields (see element.flags.fringe)    (mflw)
+  frngmax=2,        -- maximum multipole fringe field (default quad)      (mflw)
   radiate=false,    -- radiate at slices "damp", "quantum", "photon"      (mflw)
+  nocavity=false,   -- disable rfcavities (i.e. enforce 5D)               (mflw)
   totalpath=false,  -- variable 't' is the totalpath                      (mflw)
+  cmap=true,        -- use C/C++ maps when available                      (mflw)
 
-  save=true,        -- create mtable and save results                     (mtbl)
+  save=true,        -- create mtable and save results (default atsave)    (mtbl)
+  aper=true,        -- check for aperture (default atsave)                (mtbl)
   title=nil,        -- title of mtable (default seq.name)                 (mtbl)
   observe=1,        -- save only in observed elements (every n turns)     (mtbl)
-  savesel=fnil,     -- save selector (predicate)                          (mtbl)
-  savemap=false,    -- save damap in the in the column __map              (mflw)
+  savemap=false,    -- save damap in the in the column __map              (mtbl)
 
   atentry=fnil,     -- action called when entering an element             (mflw)
-  atslice=fnil,     -- action called after each element slices (ataper)   (mflw)
-  atexit=fnil,      -- action called when exiting an element   (atsave)   (mflw)
-  ataper=fnil,      -- action called when checking for aperture           (mflw)
-  atsave=fnil,      -- action called when saving in mtable                (mflw)
+  atslice=fnil,     -- action called after each element slices            (mflw)
+  atexit=fnil,      -- action called when exiting an element              (mflw)
+  atsave=fnil,      -- action called last when saving in mtable           (mflw)
+  ataper=fnil,      -- action called last when checking for aperture      (mflw)
   atdebug=fnil,     -- action called when debugging the maps              (mflw)
+
+  savesel=fnil,     -- save selector (predicate, default atexit)          (mflw)
+  apersel=fnil,     -- aper selector (predicate, default atentry)         (mflw)
 
   info=nil,         -- information level (output on terminal)             (mflw)
   debug=nil,        -- debugging information level (output on terminal)   (mflw)
@@ -691,17 +856,18 @@ local track = command 'track' {
 
   __attr = {        -- list of all setup attributes
     'sequence', 'beam', 'range', 'dir', 's0', 'X0', 'O0', 'deltap',
-    'nturn', 'nstep', 'mapdef', 'method', 'model', 'ptcmodel',
-    'implicit', 'misalign', 'fringe', 'radiate', 'totalpath',
-    'save', 'title', 'observe', 'savemap', 'info', 'debug', 'usrdef',
-    noeval = {'nslice', 'savesel',
-              'atentry', 'atslice', 'atexit', 'ataper', 'atsave', 'atdebug'},
+    'nturn', 'nstep', 'mapdef', 'method', 'model', 'secnmul', 'ptcmodel',
+    'implicit', 'misalign', 'aperture', 'fringe', 'frngmax', 'radiate',
+    'nocavity', 'totalpath', 'cmap', 'save', 'aper', 'title', 'observe',
+    'savemap', 'info', 'debug', 'usrdef',
+    noeval = {'nslice', 'savesel', 'apersel',
+              'atentry', 'atslice', 'atexit', 'atsave', 'ataper', 'atdebug'},
   }
 } :set_readonly()   -- reference track command is readonly
 
 -- env ------------------------------------------------------------------------o
 
-MAD.typeid.is_dynmflow = is_dynmflow
+MAD.typeid.is_dynmflw = is_dynmflw
 
 -- end ------------------------------------------------------------------------o
 return { track = track }

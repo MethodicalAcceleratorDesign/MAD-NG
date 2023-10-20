@@ -24,15 +24,15 @@
 -- locals ---------------------------------------------------------------------o
 
 local command, track, cofind, option, warn, vector, matrix        in MAD
-local normal, normal_ng, map2bet, bet2map, chr2bet, syn2bet, dp2pt,
+local normal, normal1, map2bet, bet2map, chr2bet, syn2bet, dp2pt,
       ofname, ofcname, ofhname, ofchname, cvindex, msort, par2vec in MAD.gphys
 local sign                                                        in MAD.gmath
 local chain, achain                                               in MAD.gfunc
 local tblcat, tblcpy, tblrep, assertf, errorf, printf             in MAD.utility
 local lbool                                                       in MAD.gfunc
 local is_nil, is_true, is_boolean, is_number, is_iterable,
-      is_mappable, is_callable, is_vector, is_damap               in MAD.typeid
-local atbegin, atstd                                              in MAD.symint
+      is_mappable, is_callable, is_table, is_vector, is_damap     in MAD.typeid
+local atfirst, atstd                                        in MAD.symint.slcsel
 local abs, min, max, sqrt, floor                                  in math
 
 local chromdp = 1e-6
@@ -60,10 +60,10 @@ local function twdump (mflw, msg_, str_)
   local fmt = option.numfmt
   local msg, str = msg_ or '', str_ or 'M'
   option.numfmt = "% 10.5f"
-  for i=1,mflw.npar or #mflw do
+  for i=1,mflw.npar do
     printf("%s%d: ", msg, i)
     mflw[i]:get0():print(str,1e-12,'line')
-    if mflw.debug >= 3 then mflw[i]:get1():print(' "     ') end
+    mflw[i]:get1():print(' "     ')
   end
   option.numfmt = fmt
 end
@@ -95,7 +95,6 @@ local function fill_sum (mflw)
         synch_1, synch_2, synch_3, synch_4, synch_5, synch_6, synch_8,
         alfap, etap, gammatr in __twdat
   local beam, len = mflw.beam, mtbl.length
-  local dpt = chrm and dp2pt(chrm, beam.beta) or nil
 
   for i=1,mflw.npar do
     local id = mflw[i].id
@@ -108,7 +107,7 @@ local function fill_sum (mflw)
       q3[id] = of.mu3
 
       if chrm then
-        local dpt = beam and dp2pt(chrm, beam.beta) or dpt
+        local dpt  = dp2pt(chrm, beam.beta)
         local ofdp = ofun[id+npar]
 
         dq1[id] = (ofdp.mu1 - of.mu1) / dpt
@@ -138,16 +137,16 @@ local function fill_sum (mflw)
   -- link data to mtbl
   for i=2,#cvtlst do -- skip deltap
     local k = cvtlst[i]
-    mtbl[k] = __twdat[k]
+    mtbl:var_set(k, __twdat[k])
   end
 
-  -- mute list of 0 or 1 number into 0 or the number in header
+  -- mute singleton list or empty list in the header into the value or 0
   for _,k in ipairs(cvtlst) do
     local v = mtbl[k]
     if is_iterable(v) then
       local n = #v
           if n == 0 then mtbl[k] = 0
-      elseif n == 1 then mtbl[k] = v[1]
+      elseif n == 1 then mtbl:var_set(k, v[1])
       end
     end
   end
@@ -156,21 +155,50 @@ end
 local function fill_row (elm, mflw, lw, islc)
   if not mflw.__twdat then return end -- not yet in twiss
 
-!  printf("tw_fill: islc=%2d, elm=%s\n", islc, elm.name)
+  local mtbl, info, saverdt in mflw
+  local nrow, ofun, rdt0, rdts, onam in mflw.__twdat
 
-  local mtbl in mflw
-  local nrow, ofun, onam in mflw.__twdat
+-- printf("tw_fill: islc=%2d, nrow=%4d, elm=%s\n", islc, nrow, elm.name)
 
--- print("twfill", elm.name, #mtbl, mflw.npar, nrow)
+  if info >= 3 and rdts then
+    printf("twiss: computing RDTs at :%4d:%s\n", nrow, elm.name)
+  end
 
   for i=1,mflw.npar do
     local m = mflw[i]
     if not m.nosave then
-      local id, of = m.id, ofun[m.id]
---      print("rank=", of.rank)
       nrow = nrow + 1
-      -- save optical functions (keep order !)
-      for _,k in ipairs(onam) do mtbl[k][nrow] = of[k] end
+
+      -- save optical functions (expand done by track!)
+      local of = ofun[m.id]
+      for _,k in ipairs(onam) do
+        local col = mtbl[k]
+        if not is_table(col) then col:_reshapeto(nrow) end
+        col[nrow] = of[k]
+      end
+
+      -- save RDTs (expand done by track!)
+      if rdts then
+        local nf0 = rdt0[m.id]
+        if m:eq(nf0.m_prev) then                  -- duplicate values
+          if saverdt then mtbl.__nf[nrow] = mtbl.__nf[nrow-1] end
+          for _,k in ipairs(rdts) do
+            nf0.m_dup = (nf0.m_dup or 0)+1
+            local col = mtbl[k]
+            if not is_table(col) then col:_reshapeto(nrow) end
+            col[nrow] = col[nrow-1]
+          end
+        else
+          local nf = nf0:analyse('gnf', m)        -- full gnf analysis
+          if saverdt then mtbl.__nf[nrow] = nf end
+          for _,k in ipairs(rdts) do
+            local col = mtbl[k]
+            if not is_table(col) then col:_reshapeto(nrow) end
+            col[nrow] = nf:gnfu(k:sub(2))
+          end
+          nf0.m_prev = m:copy(nf0.m_prev)
+        end
+      end
     end
   end
 
@@ -183,15 +211,17 @@ end
 local function twissact (elm, mflw, lw, islc)
   if not mflw.__twdat then return end -- not yet in twiss
 
-! printf("\ntw_ofun: '%s', npar=%2d, islc=%2d\n", elm.name, mflw.npar, islc)
+! printf("\ntw_ofun: islc=%2d, npar=%2d, elem=%s\n", islc, mflw.npar, elm.name)
+
+  local fst = atfirst(nil, nil , nil, islc)
+  local std = atstd  (nil, mflw, nil, islc)
+
+  if not (fst or std) then return end
 
   local ofun, chrm, npar in mflw.__twdat
 
-  local ent        = atbegin(nil, nil , nil, islc)
-  local ins_or_exi = atstd  (nil, mflw, nil, islc)
-
   -- map to beta0 block
-  if ins_or_exi then
+  if std then
     for i=1,mflw.npar do
       local m = mflw[i]
       map2bet(m, ofun[m.id])
@@ -199,7 +229,7 @@ local function twissact (elm, mflw, lw, islc)
   end
 
   -- synchrotron integrals
-  if chrm and ent then
+  if chrm and fst then
     for i=1,mflw.npar do
       local id in mflw[i]
       if id <= npar then syn2bet(ofun[id], mflw, elm) end
@@ -207,7 +237,7 @@ local function twissact (elm, mflw, lw, islc)
   end
 
   -- chromatic functions
-  if chrm and ins_or_exi then
+  if chrm and std then
     local beam in mflw
     local dpt = dp2pt(chrm, beam.beta)
     for i=1,mflw.npar do
@@ -231,7 +261,7 @@ local function chrom_dps (self)
   local chrom, deltap = self.chrom, self.deltap or 0
   local cdp = (chrom == true or chrom == 0) and chromdp or chrom
   local dps = is_number(deltap) and {deltap} or deltap
-  assert(is_number  (cdp), "invalid chrom attribute (number expected)")
+  assert(is_number  (cdp), "invalid chrom attribute (boolean or number expected)")
   assert(is_iterable(dps), "invalid deltap attribute (iterable expected)")
 
   if cdp then
@@ -261,7 +291,7 @@ local function twiss_cofind (self, mflw0)
   local j, X0, Xi = 1, table.new(npar,0), table.new(npar,0)
   for i=1,npar do -- use particles or (re)use damaps
     local m = mflw0[i]
-    if m.status == 'Xset' then
+    if m.status ~= 'Aset' then
       X0[j] = codiff and m:get0():totable() or m
       Xi[j], X0[j].beam, X0[j].nosave, X0[j].nocopy, j =
        m.id,     m.beam,     m.nosave,            i, j+1
@@ -307,8 +337,6 @@ end
 -- one-turn-maps --------------------------------------------------------------o
 
 local function twiss_track (self, mflw0)
-  -- Note: cofind already computed R, which is enough for normal1
-  -- TODO: high order normal forms need to track the full one-turn-maps
   local npar, info in mflw0
 
   -- process 'stable' damaps only (i.e. particles)
@@ -357,11 +385,16 @@ end
 
 local function twiss_nform (self, mflw0)
   local npar, sdir, info, debug in mflw0
-  local coupling in self
+  local coupling, trkrdt in self
+
+  -- compute normal form(s)
+  if info >= 2 then
+    io.write("twiss: computing normal form(s)...\n")
+  end
 
   -- prepare mflw0 to twiss extensions
-  mflw0.__twdat = {ofun={}}
-  local ofun in mflw0.__twdat
+  mflw0.__twdat = {ofun={}, rdt0={}}
+  local ofun, rdt0 in mflw0.__twdat
 
   for i=1,npar do
     local m = mflw0[i]
@@ -370,6 +403,9 @@ local function twiss_nform (self, mflw0)
     if m.status ~= 'Aset' then
       local nf = normal(m)
       nf.a:copy(m):set0(nf.x0).status = 'Aset'
+
+      -- save nf0 for RDTs calculation
+      if trkrdt then rdt0[m.id] = nf:analyse'all' ; nf.id = m.id end
     end
 
     -- create beta0 from damap
@@ -386,14 +422,14 @@ end
 -- extend track mflw and mtbl -------------------------------------------------o
 
 local twheader = {
-  'chrom', 'coupling', 'length',
+  'chrom', 'coupling', 'trkrdt', 'length',
   -- see also cvtlst above
   'q1', 'q2', 'q3', 'dq1', 'dq2', 'dq3', 'alfap', 'etap', 'gammatr',
   'synch_1', 'synch_2', 'synch_3', 'synch_4', 'synch_5', 'synch_6', 'synch_8',
 }
 
 local function twiss_init (self, mflw)
-  local save, chrom, coupling in self
+  local save, chrom, coupling, trkrdt, saverdt in self
   local npar, beam, mtbl, __twdat in mflw
   local n = npar
 
@@ -403,11 +439,16 @@ local function twiss_init (self, mflw)
     for i=1,n do mflw[i+n].nosave = i end
   end
 
+  -- check for trkrdt
+  if trkrdt == true then
+    trkrdt = {}
+  end
+
   -- add twiss data to mflw
   __twdat.npar = n
   __twdat.nrow = 0
-  __twdat.pclw = 0
   __twdat.chrm = chrom
+  __twdat.rdts = trkrdt
   __twdat.omat = matrix(6)
   __twdat.onam = coupling and (chrom and ofchname or ofcname) or
                                chrom and ofhname  or ofname
@@ -436,9 +477,19 @@ local function twiss_init (self, mflw)
 
     mtbl.chrom    = chrom
     mtbl.coupling = coupling
+    mtbl.trkrdt   = self.trkrdt
 
     -- add twiss columns and type to mtbl
-    for _,k in ipairs(mflw.__twdat.onam) do mtbl:addcol(k,{}) end
+    for _,k in ipairs(mflw.__twdat.onam) do mtbl:addcol(k,{0}) end
+
+    -- add rdts columns
+    if trkrdt then
+      for _,k in ipairs(trkrdt) do mtbl:addcol(k,{0}) end
+      if saverdt then
+        mflw.saverdt = saverdt
+        mtbl:addcol('__nf',{})
+      end
+    end
   end
 
   return mflw
@@ -469,7 +520,7 @@ local function make_mflow (self)
   if radiate then self.radiate = lbool(radiate) end
 
   -- ensure damaps (default order is 1)
-  assert(mapdef ~= false, "invalid mapdef, true or definition required")
+  assert(mapdef ~= false, "invalid mapdef, true, order or definition required")
 
   -- prepare template for final tracking of normal form
   local _, mflw = track { exec=false } :copy_variables(self) { nstep=0 }
@@ -481,7 +532,7 @@ local function make_mflow (self)
   -- check if cofind is needed
   local cofind
   for i=1,mflw.npar do
-    if mflw[i].status == 'Xset' then cofind = true ; break end
+    if mflw[i].status ~= 'Aset' then cofind = true ; break end
   end
 
   if cofind then
@@ -491,11 +542,9 @@ local function make_mflow (self)
     if mflw.debug >= 3 then twdump(mflw,'co.') end
 
     -- track one-turn-map (update mflw, keep order)
-    if self.codiff then -- see comment in twiss_track
-      twiss_track(self, mflw)
-      if mflw.npar == 0 then return mflw end -- no more particles...
-      if mflw.debug >= 3 then twdump(mflw,'tk.') end
-    end
+    twiss_track(self, mflw)
+    if mflw.npar == 0 then return mflw end -- no more particles...
+    if mflw.debug >= 3 then twdump(mflw,'tk.') end
   end
 
   -- compute normal forms (update mflw, keep order)
@@ -530,6 +579,11 @@ local function exec (self)
   end
 
   -- track the normal form(s)
+  if mflw.info >= 2 then
+    io.write("twiss: computing optics (and rdts)...\n")
+  end
+
+  -- track the normal form(s)
   local mtbl, mflw, ei = track { mflow=mflw }
 
   -- finalise twiss calculation (tunes, chromas, etc)
@@ -552,25 +606,32 @@ local twiss = command 'twiss' {
   deltap=nil,        -- initial deltap(s)                                 (trck)
   chrom=false,       -- compute chromatic functions by finite difference  (twss)
   coupling=false,    -- compute optical functions for coupling modes      (twss)
+  trkrdt=false,      -- compute (list of) RDTs                            (twss)
 
   nturn=nil,         -- number of turns                                   (trck)
   nstep=nil,         -- number of elements to track for last phase        (trck)
   nslice=nil,        -- number of slices (or len-frac) for each element   (trck)
-  mapdef=true,       -- always use damap formalism (true => {xy=1})       (twss)
   method=nil,        -- method or order for integration (1 to 8)          (trck)
   model=nil,         -- model for integration ('DKD' or 'TKT')            (trck)
+  mapdef=true,       -- always use damap formalism (true => {xy=1})       (twss)
+  secnmul=nil,       -- maximun number of curved multipoles for bends     (trck)
   ptcmodel=nil,      -- use strict PTC thick model (override option)      (trck)
   implicit=nil,      -- slice implicit elements too                       (trck)
   misalign=nil,      -- consider misalignment errors                      (trck)
+  aperture=nil,      -- default aperture                                  (trck)
   fringe=nil,        -- activate fringe fields (0..7)                     (trck)
+  frngmax=nil,       -- maximum multipole fringe field                    (trck)
   radiate=nil,       -- radiate at slices                                 (trck)
+  nocavity=nil,      -- disable rfcavities                                (trck)
   totalpath=nil,     -- 't' is the totalpath                              (trck)
+  cmap=nil,          -- use C/C++ maps when available                     (trck)
 
-  save=true,         -- create mtable and save results                    (mtbl)
+  save=true,         -- create mtable and save results                    (trck)
+  aper=nil,          -- check for aperture (default atsave)               (trck)
   title=nil,         -- title of mtable (default seq.name)                (mtbl)
-  observe=0,         -- save after all elements                           (mtbl)
-  savesel=nil,       -- save selector (predicate)                         (mtbl)
-  savemap=nil,       -- save damap in the mtable                          (twss)
+  observe=0,         -- save after all elements                           (trck)
+  savemap=nil,       -- save damap in the mtable, col __map               (trck)
+  saverdt=nil,       -- save analysed normal form in the mtable, col __nf (trck)
 
   atentry=nil,       -- action called when entering an element  (ataper)  (trck)
   atslice=nil,       -- action called after each element slices (atsave)  (trck)
@@ -579,13 +640,16 @@ local twiss = command 'twiss' {
   atsave=nil,        -- action called when saving in mtable               (trck)
   atdebug=nil,       -- action called when debugging the element maps     (trck)
 
-  codiff=nil,        -- finite differences step for jacobian (or true)    (cofn)
+  savesel=nil,       -- save selector (predicate)                         (trck)
+  apersel=nil,       -- aper selector (predicate, default atentry)        (trck)
+
   coiter=nil,        -- maximum number of iterations                      (cofn)
   cotol=nil,         -- closed orbit tolerance (i.e. |dX|)                (cofn)
+  codiff=nil,        -- finite differences step for jacobian (or true)    (cofn)
   O1=nil,            -- optional final coordinates translation            (cofn)
 
-  info=nil,          -- information level (output on terminal)            (cofn)
-  debug=nil,         -- debugging information level (output on terminal)  (cofn)
+  info=nil,          -- information level (output on terminal)            (trck)
+  debug=nil,         -- debugging information level (output on terminal)  (trck)
   usrdef=nil,        -- user defined data attached to the mflow           (trck)
 
   mflow=nil,         -- mflow, exclusive with other attributes except nstep
@@ -593,7 +657,7 @@ local twiss = command 'twiss' {
 
   __attr = tblcat(   -- list of all setup attributes
     cofind.__attr,
-    {'chrom', 'coupling'},
+    {'chrom', 'coupling', 'trkrdt', 'saverdt'},
     {noeval=cofind.__attr.noeval}
   )
 } :set_readonly() -- reference twiss command is readonly

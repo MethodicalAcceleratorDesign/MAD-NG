@@ -1,0 +1,252 @@
+-- ../mad test-all-maps.mad TestOctupole
+-- assume ../madx64 to be present...
+
+local object, tostring in MAD
+local tblcat           in MAD.utility
+local run_test         in require("trackvsptc")
+
+TestOctupole = {}
+
+-- The tests ------------------------------------------------------------------o
+function TestOctupole:testOCT() -- Test the body (~2 min)
+  local cfg = ref_cfg "oct" {
+    elm = "OCTUPOLE, at=0.75, l=1.5, k3=${k3}, k3s=${k3s}, fringe=0",
+    model  = 1..2,
+    method = 2..8..2,    
+    nslice = 1..3,
+    energy = {1, 6500},  -- {1, 450, 6500}
+
+    tol = 130,
+
+    k3     = {-15, 0, 20},
+    k3s    = { 15, 0, 20},
+    alist = tblcat(ref_cfg.alist, {"k3", "k3s"}),
+
+    plot_info = {
+      title       = "Octupole Body Comparison",
+      series      = {
+        "${method} == 2",
+        "${method} == 4",
+        "${method} == 6",
+        "${method} == 8",
+      },
+      legend      = {
+        y1 = "Method 2",
+        y2 = "Method 4",
+        y3 = "Method 6",
+        y4 = "Method 8",
+      },
+      filename = "oct-body-comparision.png",
+    }
+  }
+  run_test(cfg)
+end
+
+-- This test needs testing w/ fringe and frngmax
+function TestOctupole:testOCTm() -- Test the multipole (~2 min)
+  local cfg = ref_cfg "octm" {
+    elm = [[
+      OCTUPOLE, at=0.75, l=1.5, k3=${k3}, k3s=${k3s}, tilt=${tilt}*pi/16,
+      knl=${knl}, ksl=${ksl}, frngmax=${frngmax}, fringe=7
+    ]],
+    
+    tol = 300,
+
+    model  = {1}, 
+    method = {2},
+    nslice = {1},
+    energy = {1},       
+
+    k3   = {0, 20},  -- Test just multipole first
+    k3s  = \s->s.k3, !{0, -15, 20},  -- Test just multipole first
+    knl  = {
+      { }, 
+      {0.05, 0  , 0, 0 },
+      {0.05, 0.5, 5, 50},
+    },
+    ksl  = \s-> s.knl,
+    tilt = 0..2,
+    frngmax = 2..5,
+    alist = tblcat(
+      ref_cfg.alist, 
+      {"tilt", "k3s", "k3", "ksl", "knl", "frngmax"}
+    ),
+
+    plot_info = \s-> {
+      series = {
+        "'${knl}' == '" .. tostring(s.knl[1]) .. "'",
+        "'${knl}' == '" .. tostring(s.knl[2]) .. "'",
+        "'${knl}' == '" .. tostring(s.knl[3]) .. "'",
+      },
+      legend = {
+        y1 = "knl = \\{" .. tostring(s.knl[1]) .. "\\}",
+        y2 = "knl = \\{" .. tostring(s.knl[2]) .. "\\}",
+        y3 = "knl = \\{" .. tostring(s.knl[3]) .. "\\}",
+      },
+      title = "Octupole Multipole Comparison",
+      filename = "oct-mult-comparision.png",
+    }
+  }
+  run_test(cfg)
+end
+
+function TestOctupole:testOCTf() -- Test the fringe (~1 min)
+  local cfg = ref_cfg "octf" {
+    elm = [[
+      OCTUPOLE, at=0.75, l=1.5, k3=${k3}, k3s=${k3s}, tilt=${tilt}*pi/16,
+      fringe=${fringe}, f1=${f1}, f2=${f2}
+    ]],
+    
+    tol = 75,
+
+    model  = {1}, 
+    method = {2},    
+    nslice = {1},
+    energy = {1},
+
+    tilt   = 0..4,
+    fringe = 1..7,
+    k3   = {0, 20},
+    k3s  = \s->s.k3,
+    f1   = {0, 0.5, -0.7},
+    f2   = {0, -0.5, 0.7},
+    alist = tblcat(ref_cfg.alist, {"tilt", "fringe", "k3", "k3s", "f1", "f2"}),
+    plot_info = {
+      title       = "Octupole Fringe Comparison",
+      series      = {
+        "${k3} == 0",
+        "${k3} == 20",
+      },
+      legend      = {
+        y1 = "k3 = 0",
+        y2 = "k3 = 20",
+      },
+      filename    = "oct-fringe-comparision.png",
+    }
+  }
+  run_test(cfg)
+end
+
+function TestOctupole:testOCTh()
+  local cfg = ref_cfg "octh" {
+    elm = [[
+      OCTUPOLE, at=0.75, l=1.5, k3=${k3}, k3s=${k3s}, tilt=${tilt}*pi/16,
+      knl={${k0}}
+    ]],
+    
+    tol = 200,
+    
+    model  = {1}, -- Use DKD as otherwise PTC broken
+    method = {2},    
+    nslice = {1},
+    energy = {1},
+
+    tilt   = 0..4,
+    k3     = {0, 20},
+    k3s    = \s->s.k3,
+    k0     = {-0.05, 0, 0.05},
+    
+    alist = tblcat(ref_cfg.alist, {"tilt", "k3", "k3s", "k0"}),
+
+    plot_info = {
+      title       = "Octupole with k0 Comparison",
+      series      = {
+        "${k0} == -0.05",
+        "${k0} == 0",
+        "${k0} == 0.05",
+      },
+      legend      = {
+        y1 = "k0 = -0.05",
+        y2 = "k0 = 0",
+        y3 = "k0 = 0.05",
+      },
+      filename    = "oct-k0-comparision.png",
+    }
+  }
+  run_test(cfg)
+end
+
+-- Need fint(x) and hgap here
+function TestOctupole:testOCTfh() -- MAD-NG does bend fringe for fringe=3
+  local cfg = ref_cfg "octfh" {
+    elm = [[
+      OCTUPOLE, at=0.75, l=1.5, k3=${k3}, k3s=${k3s}, fringe=${fringe},
+      knl={${k0}}, fint=${fint}, fintx=${fintx}, hgap=${hgap}
+    ]],
+    
+    tol = 50,
+    
+    model  = {1},
+    method = {2},
+    nslice = {1},
+    energy = {1},
+
+    fringe      = 1..7,
+    k3          = {0, 20},
+    k3s         = \s->s.k3,
+    k0          = {0, 0.05},
+    fint        = {0, 0.4, 0.7}, 
+    fintx       = {0, 0.3, 0.8},
+    hgap        = {0, 0.04, 0.05},
+    alist = tblcat(
+      ref_cfg.alist, 
+      {"k3", "k3s", "k0", "fringe", "fint", "fintx", "hgap"}
+    ),
+
+    plot_info = {
+      title       = "Octupole with k0 and fringe Comparison",
+      series      = {
+        "${k0} == 0",
+        "${k0} == 0.05",
+      },
+      legend      = {
+        y1 = "k0 = 0",
+        y2 = "k0 = 0.05",
+      },
+      filename    = "oct-k0-fringe-comparision.png",
+    }
+  }
+  run_test(cfg)
+end
+
+function TestOctupole:testOCThe ()
+  local cfg = ref_cfg "octhe" {
+    elm = [[
+      OCTUPOLE, at=0.75, l=1.5, k3=${k3}, k3s=${k3s}, fringe=7,
+      knl={${k0}}, e1=${e1}, e2=${e2}, h1=${h1}, h2=${h2}
+    ]],
+    
+    tol = 4000,
+    
+    model  = {1},
+    method = {2},
+    nslice = {1},
+    energy = {1},
+
+    k3          = {0, 20},
+    k3s         = \s->s.k3,
+    k0          = {0, 0.05},
+    e1          = {0, 0.4, 0.7}, 
+    e2          = {0, 0.3, 0.8},
+    h1          = {0, 0.04, 0.05},
+    h2          = {0, 0.04, 0.05},
+    alist = tblcat(
+      ref_cfg.alist, 
+      {"k3", "k3s", "k0", "e1", "e2", "h1", "h2"}
+    ),
+
+    plot_info = {
+      title       = "Octupole with face and fringe Comparison",
+      series      = {
+        "${e1} == 0 and ${e2} == 0",
+        "${e1} ~= 0 or ${e2} ~= 0",
+      },
+      legend      = {
+        y1 = "e1 = e2 = 0",
+        y2 = "e1 != 0 or e2 != 0",
+      },
+      filename    = "oct-face-fringe-comparision.png",
+    }
+  }
+  run_test(cfg)
+end

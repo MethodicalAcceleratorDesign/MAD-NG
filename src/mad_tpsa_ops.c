@@ -17,7 +17,6 @@
  o-----------------------------------------------------------------------------o
 */
 
-#include <math.h>
 #include <assert.h>
 
 #include "mad_log.h"
@@ -286,12 +285,6 @@ do { \
   for (; i <           end_b   ; ++i) c->coef[i] = (               OPB b->coef[i]) OPC; \
 } while(0)
 
-#define TPSA_CLEAR(ORD) \
-do { \
-  const idx_t *o2i = c->d->ord2idx; \
-  for (idx_t i = o2i[ORD]; i < o2i[c_hi+1]; ++i) c->coef[i] = 0; \
-} while(0)
-
 void
 FUN(scl) (const T *a, NUM v, T *c)
 {
@@ -487,7 +480,9 @@ FUN(mul) (const T *a, const T *b, T *r)
     else if       (b0 != 0) TPSA_LINOP(2, b0*, + 0*, );
     else if       (a0 != 0) TPSA_LINOP(2,  0*, +a0*, );
     else                    TPSA_LINOP(2,  0*, + 0*, );
-    TPSA_CLEAR(ab_hi+1);
+
+    const idx_t *o2i = c->d->ord2idx;
+    for (idx_t i = o2i[ab_hi+1]; i < o2i[c_hi+1]; ++i) c->coef[i] = 0;
 
     if (a0 != 0) { c->nz |= mad_bit_lcut(b->nz,2); }
     if (b0 != 0) { c->nz |= mad_bit_lcut(a->nz,2); }
@@ -505,11 +500,9 @@ FUN(mul) (const T *a, const T *b, T *r)
     // order 3+
     if (c->hi > 2) {
 #ifdef _OPENMP
-//#ifdef MAD_TPSA_MUL_PAR
       if (d->ord2idx[c->hi+1] - d->ord2idx[c->lo] > 10000)
         hpoly_mul_par(a,b,c);
       else
-//#endif
 #endif
         hpoly_mul_ser(a,b,c);
     }
@@ -709,7 +702,7 @@ FUN(integ) (const T *a, T *r, int iv)
   T *t = GET_TMPX(r);
 
   FUN(setvar)(t, 0, iv, 0);
-  FUN(mul)(a, t, c);        // integrate
+  FUN(mul)(a, t, c);    // integrate
 
   ord_t **mono = d->To;
   for (ord_t o = MAX(c->lo,2); o <= c->hi; ++o)

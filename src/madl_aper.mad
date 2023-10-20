@@ -30,13 +30,11 @@ local M = {}
 
 local abs, min, max, sin, cos in math
 
-local _C, vector           in MAD
-local is_damap, is_matrix  in MAD.typeid
-local ftrue                in MAD.gfunc
-local errorf, printf       in MAD.utility
-local minang               in MAD.constant
-
-local getmetatable = getmetatable
+local _C, vector                    in MAD
+local is_damap, is_matrix           in MAD.typeid
+local ftrue                         in MAD.gfunc
+local assertf, errorf, printf       in MAD.utility
+local minang                        in MAD.constant
 
 -- aperture models ------------------------------------------------------------o
 
@@ -65,7 +63,7 @@ local apmodel = {
 
 local function lostpar (elm, mflw, i, islc)
   local npar, clw, spos, ds, turn, info, debug in mflw
-  local lw = islc<0 and -1-islc or clw
+  local lw = islc<0 and 1-islc%2 or clw
   local s = spos+ds*lw
   local m = mflw[i]
 
@@ -87,7 +85,7 @@ local function lostpar (elm, mflw, i, islc)
     end
 
     printf("lost: particle #%d%s in %s at %.3f m for turn #%d\n",
-                          m.id,pnam,name,   s,            turn)
+                          m.id,pnam,name, s,             turn)
     printf("lost: x=% -.2e, px=% -.2e, y=% -.2e, py=% -.2e, t=% -.2e, pt=% -.2e",
             x,        px,        y,        py,        t,        pt)
 
@@ -100,42 +98,22 @@ local function lostpar (elm, mflw, i, islc)
   -- information saved in lost particle/damap
   m.spos, m.turn, m.status = s, turn, "lost"
 
-  -- take care of mflw wrappers (e.g. __edat and __sdat in track)
-  m = assert(getmetatable(mflw).__index, "corrupted mflow wrapper (unexpected)")
+  -- take care of mflw wrappers (e.g. __sdat in track)
+  mflw = mflw.mflw
 
   -- check for lost photon
-  if m.tphot and m[i].beam and m[i].beam.particle == "photon" then
-    m.nphot = m.nphot-1
+  if mflw.nphot > 0 and m.beam and m.beam.particle == "photon" then
+    mflw.nphot = mflw.nphot-1
   end
 
   -- swap with last tracked particle/damap
-  m[i], m[m.npar], m.npar = m[m.npar], m[i], m.npar-1
-end
-
-local function checkbbox (elm, mflw, lw, islc)
-  local ap = elm.aperture
-
-  local i = 1
-  while i <= mflw.npar do
-    local x, px, y, py, t, pt in mflw[i]
-
-    if is_damap(mflw[i]) then
-      x, px, y, py, t, pt =
-      x:get0(), px:get0(), y:get0(), py:get0(), t:get0(), pt:get0()
-    end
-
-    if apmodel.bbox(abs(x),abs(px),abs(y),abs(py),ap) then
-      i = i + 1
-    else
-      lostpar(elm, mflw, i, islc)
-    end
-  end
-  return true
+  mflw[i], mflw[npar], mflw.npar = mflw[npar], mflw[i], npar-1
+  mflw:cmap_sync(i)
 end
 
 local function checkaper (chkap)
   return function (elm, mflw, _, islc)
-    local ap = elm.aperture
+    local ap = elm.aperture or mflw.aperture
     local tdir in mflw
     local tilt, xoff, yoff in ap
 
@@ -164,7 +142,7 @@ local function checkaper (chkap)
 end
 
 local function checkpoly (elm, mflw, _, islc)
-  local ap = elm.aperture
+  local ap = elm.aperture or mflw.aperture
   local tdir in mflw
   local tilt, xoff, yoff in ap
   local maper = ap.maper and apmodel[ap.maper.kind] or ftrue
@@ -198,6 +176,27 @@ local function checkpoly (elm, mflw, _, islc)
   return true
 end
 
+local function checkbbox (elm, mflw, _, islc)
+  local ap = elm.aperture or mflw.aperture
+
+  local i = 1
+  while i <= mflw.npar do
+    local x, px, y, py, t, pt in mflw[i]
+
+    if is_damap(mflw[i]) then
+      x, px, y, py, t, pt =
+      x:get0(), px:get0(), y:get0(), py:get0(), t:get0(), pt:get0()
+    end
+
+    if apmodel.bbox(abs(x),abs(px),abs(y),abs(py),ap) then
+      i = i + 1
+    else
+      lostpar(elm, mflw, i, islc)
+    end
+  end
+  return true
+end
+
 local apcheck = setmetatable({
   square      = checkaper(apmodel.square     ),
   rectangle   = checkaper(apmodel.rectangle  ),
@@ -215,8 +214,9 @@ local apcheck = setmetatable({
 for k,v in pairs(apcheck) do M[k] = v end
 
 function M.apercheck (elm, mflw, lw, islc)
+  local knd = elm.apertype or mflw.aperture.kind
 --print(elm.name, elm.apertype, elm.aperture)
-  return apcheck[elm.apertype](elm, mflw, lw, islc)
+  return apcheck[knd](elm, mflw, lw, islc)
 end
 
 function M.apersave (mflw)

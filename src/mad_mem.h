@@ -66,8 +66,9 @@ void   mad_mdump    (FILE*);
 // --- implementation (private) -----------------------------------------------o
 // ----------------------------------------------------------------------------o
 
-#define mad_malloc(s)    mad_mcheck(__func__, mad_malloc(s)  )
-#define mad_calloc(c,s)  mad_mcheck(__func__, mad_calloc(c,s))
+#define mad_malloc(s)    mad_mcheck(mad_logloc_, mad_malloc(s)   , (s))
+#define mad_calloc(c,s)  mad_mcheck(mad_logloc_, mad_calloc(c,s) , (s))
+#define mad_realloc(p,s) mad_mcheck(mad_logloc_, mad_realloc(p,s), (s))
 
 void* (mad_malloc) (size_t)        __attribute__((hot,malloc(mad_free,1),malloc,returns_nonnull));
 void* (mad_calloc) (size_t,size_t) __attribute__((hot,malloc(mad_free,1),malloc,returns_nonnull));
@@ -75,10 +76,10 @@ void* (mad_realloc)(void* ,size_t) __attribute__((hot,malloc(mad_free,1)));
 void  (mad_free  ) (void* )        __attribute__((hot));
 
 static inline void*
-mad_mcheck (str_t fname, void *ptr_)
+mad_mcheck (str_t loc, void *ptr_, size_t sz)
 {
-  if (!ptr_)
-    (mad_error)(fname, "invalid null pointer (out of memory?)");
+  if ((!ptr_ && sz) || sz > 1000000000000llu) // >1000 GB is probably an overflow...
+    (mad_error)(loc, "invalid allocation, p = %p, size = %zu (out of memory?)", ptr_, sz);
 
   return ptr_;
 }

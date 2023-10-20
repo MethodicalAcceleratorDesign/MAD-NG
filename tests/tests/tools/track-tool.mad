@@ -1,0 +1,319 @@
+-- locals ---------------------------------------------------------------------o
+local matrix, mtable, tostring, vector, object, damap            in MAD
+local eps                                                        in MAD.constant
+local is_number, is_string, is_table, is_nil, is_range           in MAD.typeid
+local tblcpy, val2keys, tblcat, openfile, strinter, setkeys,
+      strsplit, strtrim                                          in MAD.utility
+local abs, floor, log, max                                       in math
+local round                                                      in MAD.gmath
+
+-- Folders --------------------------------------------------------------------o
+local in_dir  = \s -> 'input/' ..(s or '')
+local out_dir = \s -> 'output/'..(s or '')
+
+os.execute("mkdir -p "..out_dir()) -- Create output dir if it doesn't exist
+-- Constants ------------------------------------------------------------------o
+local X0s = {{x=0   , px=0    , y=0    , py=0   , t=0   , pt=0   }, -- zero
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=0   }, -- 4D
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=2e-5}, -- 5D weak
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=0   , pt=3e-2}, -- 5D strong
+             {x=3e-3, px=-2e-4, y=-2e-3, py=3e-4, t=1e-5, pt=2e-5}} -- 6D
+
+local coord_str = [[
+x0  = ${x};
+px0 = ${px};
+y0  = ${y};
+py0 = ${py};
+t0  = ${t};
+pt0 = ${pt};
+]]
+
+local seq_ctx = [[
+seq: sequence, l=${seql} ;
+  elm: ${elm};
+endsequence ;
+]]
+local madx_script = [[
+${coords}
+model    = ${model};
+method   = ${method};
+nslice   = ${nslice};
+energy   = ${energy};
+snm      = ${snm};
+order    = ${order};
+icase    = ${icase};
+debug    = ${debug};
+ptcmodel = ${ptcmodel};
+cmap     = ${cmap};
+${seq_ctx}
+]]
+local ptc_strs = {
+  coord_str   = coord_str,
+  seq_ctx     = seq_ctx,
+  madx_script = madx_script,
+}
+
+local coords = {"x", "px", "y", "py", "t", "pt"}
+local mtable = mtable {novector=true} -- All mtables should be novector
+
+-- Preprocessing what configs to run ------------------------------------------o
+local function get_cfgs_to_run (cid)
+  if is_nil(cid) then -- cid has not been defined
+    return true
+  end
+  MAD.warn("cid is defined, not all the configurations will be run")
+  if is_table(cid) then
+    local cfgs_to_run = setkeys(cid)
+    return \s->cfgs_to_run[s.cur_cfg.cfgid + 1] -- +1 because we know cfgid is incremented after this function
+  elseif is_range(cid) then
+    return \s->s.cur_cfg.cfgid+1 >= cid.start and s.cur_cfg.cfgid+1 <= cid.stop
+  elseif is_number(cid) then
+    return \s->s.cur_cfg.cfgid+1 == cid
+  else
+    error("Invalid config id type")
+  end
+end
+
+-- Run MAD-X script -----------------------------------------------------------o
+local function run_madx(fnam)
+  -- Run MAD-X-PTC
+  assert(os.execute(
+    '../madx64 '.. in_dir(fnam .. "_ref.madx") 
+    ..' >' .. out_dir(fnam .. "_p.txt")
+  ))
+end
+
+-- Write MAD-X script to elmseq.seq and generate a MAD-NG script and return it-o
+local function create_madx_seq(cfg)
+  openfile(in_dir(cfg.name.."_seq.seq"), "w"):write(
+    strinter(strinter(madx_script, {
+      seq_ctx  = seq_ctx  % cfg, -- Relies on cfg.cur_cfg
+      coords   = coord_str % X0s[cfg.cur_cfg.x0i],
+    }, "="), cfg.cur_cfg, "=") % cfg
+    ):close()
+end
+-------------------------------------------------------------------------------o
+
+-- Grab the final map from the madx dump file ---------------------------------o
+local dum = damap() -- get a dummy damap object for reading
+local function get_last_ptc_map(filename)
+  local file = openfile(filename, "r")
+  local final_pos = 0
+  for line in file:lines() do
+    if line:sub(1, 2) == "@@" then
+    final_pos = file:seek("cur")
+    end
+  end
+  file:seek("set", final_pos)
+  local dam = dum:read(file)
+  file:close()
+  return dam
+end
+-------------------------------------------------------------------------------o
+
+-- Run track and PTC from cur_cfg and create results --------------------------o
+local function get_diff(ref, res, order)
+  -- Create results table
+ local dif_tbl = {}
+ local dif = ref:dif(res)
+
+ -- Setup max matrix (coords x order)
+ local max_difs = matrix(6, order+1)
+
+ for i, c in ipairs(coords) do
+   -- Get max idx for each coordinate at each order
+   local _, max_idxs = dif[c]:maxbyord()
+
+   -- Create dummy vector to store max values
+   local max_vals = vector(#max_idxs)
+
+   -- Get max value for each order
+   max_idxs:map(\x-> x~=0 and abs(dif[c]:get(x))/eps or 0, max_vals)
+
+   -- Add max values to row of matrix
+   max_difs:setrow(i, max_vals)
+
+   -- Get and add coordinate max to results table
+   dif_tbl[c.."_eps"] = max_vals:max()
+ end
+
+ -- Get and add order max to results table
+ for i = 1, max_difs.ncol do
+   dif_tbl["order"..i-1.."_eps"] = max_difs:getcol(i):max()
+ end
+ return dif_tbl, dif
+end
+
+local function chk_tol(res, tol, order)
+  for i = 1, order+1 do
+    local order_tol = is_table(tol) and tol[i] or tol
+    if res["order"..i-1.."_eps"] > order_tol then return false end
+  end
+  return true
+end
+
+local function store_results (cfg, res, results)
+  -- Add results and configuration to table
+  cfg.cur_cfg.cfgid = cfg.cur_cfg.cfgid + 1     -- Increment config id
+  results:addrow{
+    __cfg=tblcpy(cfg.cur_cfg),
+    __res=res,
+  }
+end
+
+local function prnt_results(cfg, res)
+  if cfg.doprnt < 2 then return end
+  io.write(cfg.cur_cfg.cfgid, "\t")
+  -- Print max dif for each order
+  for i = 1, cfg.order+1 do
+    local ord_max_dif = res["order"..i-1.."_eps"]
+    local tol = is_table(cfg.tol) and cfg.tol[i] or cfg.tol
+    io.write(
+      ord_max_dif > tol and (">e+" .. floor(log(ord_max_dif, 10)))
+      or string.format("%d", ord_max_dif),
+      "\t"
+    )
+  end
+  -- Print current configuration
+  for i, attr in ipairs(cfg.alist) do
+    io.write(attr, "=", tostring(cfg.cur_cfg[attr]), ",  ")
+  end
+  io.write("\n")
+end
+
+-- From cfg object, create every configuration through recursion --------------o
+local function gen_cfg(cfg, idx, gen_fun)
+  if cfg.stop then return end -- Stop if the stop flag is set
+  local k = cfg.alist[idx]
+  if not k then
+    return gen_fun() -- Could be changed to any function
+  end
+  for i, v in ipairs(cfg[k]) do
+    cfg.cur_cfg[k] = v
+    gen_cfg(cfg, idx+1, gen_fun) -- Index required as this needs to stay constant during each call
+  end
+end
+
+-- Add the generator columns to the table -------------------------------------o
+local function add_gen_cols(results, cfg)
+  -- Add the cfg columns to the mtable
+  results:addcol("cfgid", \ri, m -> m.__cfg[ri].cfgid)
+  for _, k in ipairs(cfg.alist) do
+    results:addcol(k, \ri, m =>
+      local v = m.__cfg[ri][k]
+      return is_table(v) and MAD.tostring(v) or v
+    end)
+  end
+
+  -- Add the result columns to the mtable
+  for _, k in ipairs(results.res_cols) do
+    results:addcol(k, \ri, m -> round(m.__res[ri][k], 2))
+  end
+end
+
+local function add_trk_gen_cols(results, cfg)
+  -- Create the result column names as a list
+  local ord_lst = {}
+  for i = 0, cfg.order do ord_lst[i+1] = "order"..i.."_eps" end
+  results.res_cols = tblcat(
+    ord_lst, 
+    {"x_eps", "px_eps", "y_eps", "py_eps", "t_eps", "pt_eps"}
+  )
+  add_gen_cols(results, cfg)
+end
+-------------------------------------------------------------------------------o
+
+--  Output results of test ----------------------------------------------------o
+local function get_lower_bnds(res, tol)
+  if is_string(tol) then
+    local bnds_file = mtable:read(tol)
+    assert(
+      #bnds_file == #res,
+      "The tolerance file must have the same number of rows as the configuration file"
+    )
+    return \o, ri->bnds_file[ri]["order"..o.."_eps"]
+  elseif is_number(tol) then
+    return \->tol
+  else
+    return \o->tol[o+1]
+  end
+end
+
+local function show_res(res, cfg, attr_cols, tol)
+  local tol = get_lower_bnds(res, tol)
+  local col_tbl = {}; for i = 0, res.max_order do col_tbl[i] = {} end
+  local dum_tbl = mtable(tblcpy(attr_cols))
+
+  io.write("For each order, the number of configurations that failed:\n")
+  for o = 0, res.max_order do
+    local err_tbl = dum_tbl:copy()
+    local max_err = 0
+    res:foreach(\r, ri =>
+      max_err = max(max_err, abs(res[ri]["order"..o.."_eps"]))
+      if res[ri]["order"..o.."_eps"] > tol(o, ri) then
+        for i, v in ipairs(attr_cols) do
+          err_tbl[v][ri] = cfg[ri][v]
+        end
+      end end)
+
+    -- Printing
+    io.write("\norder ", o, " (max error = ", max_err, ", tol = ", tostring(cfg.run_tol), "):\n")
+    for _, col_name in ipairs(attr_cols) do
+      if not (col_name == "cfgid") then
+        local _, key_cnt = val2keys(err_tbl:getcol(col_name))
+        io.write(col_name, "\t= ", tostring(key_cnt), "\n")
+      end
+    end
+  end
+end
+
+local function get_prev_res(test_name, out_dir)
+  -- Read the previous results
+  local cfg = mtable:read(out_dir(test_name.."_cfg.tfs"))
+  local res = mtable:read(out_dir(test_name.."_res.tfs"))
+  return cfg, res
+end
+
+local function save_res(cfg, res, cfg_cols_, res_cols_, hdr_lst_)
+  local hdr_lst = hdr_lst_ or {"name", "date", "time", "origin", "max_order", "run_tol"}
+  res:write(
+    out_dir(res.name.."_cfg.tfs"), 
+    tblcat(cfg_cols_ or {"cfgid"}, cfg.alist), 
+    hdr_lst
+  )
+  res:write(
+    out_dir(res.name.."_res.tfs"), 
+    tblcat(res_cols_ or {"cfgid"}, res.res_cols), 
+    hdr_lst
+  ) 
+end
+
+local function tbl2da (tbl)
+  local da = MAD.damap{nv = 6, mo = 1}
+  for i, c in ipairs(coords) do da[c]:set0(tbl[c]) end
+  return da
+end
+
+return {
+  get_cfgs_to_run  = get_cfgs_to_run ,
+  run_madx         = run_madx        ,
+  get_diff         = get_diff        ,
+  chk_tol          = chk_tol         ,
+  store_results    = store_results   ,
+  prnt_results     = prnt_results    ,
+  gen_cfg          = gen_cfg         ,
+  add_gen_cols     = add_gen_cols    ,
+  add_trk_gen_cols = add_trk_gen_cols,
+  show_res         = show_res        ,
+  get_prev_res     = get_prev_res    ,
+  in_dir           = in_dir          ,
+  out_dir          = out_dir         ,
+  get_lower_bnds   = get_lower_bnds  ,
+  ptc_strs         = ptc_strs        ,
+  X0s              = X0s             ,
+  create_madx_seq  = create_madx_seq ,
+  get_last_ptc_map = get_last_ptc_map,
+  save_res         = save_res        ,
+  tbl2da           = tbl2da          ,
+
+}

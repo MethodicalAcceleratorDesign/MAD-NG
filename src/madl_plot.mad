@@ -7,7 +7,7 @@
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  |          A. Bloch , aurelien.bloch at cern.ch
- | Contrib: F.R. Leiro, A.Z. Teska
+ | Contrib: F.R. Leiro, A.Z. Teska, J.M. Gray.
  |
  o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
@@ -27,7 +27,7 @@
 local ffi = require "ffi"
 local dat = require "madl_plotdat"
 
-local object, command, fun, vector, matrix, survey, filesys      in MAD
+local object, command, lfun, vector, matrix, survey, filesys     in MAD
 local sign, tan, sin, cos, abs, sqrt                             in MAD.gmath
 local ftrue                                                      in MAD.gfunc
 local inf, pi                                                    in MAD.constant
@@ -35,7 +35,7 @@ local fset                                                       in MAD.gfunc
 local kpairs, strinter, setkeys, tblcpy, runonce, fileexists,
       pause, atexit                                              in MAD.utility
 local is_nil, is_number, is_table, is_mtable, is_string,
-      is_sequence, is_rawtable                                   in MAD.typeid
+      is_sequence, is_rawtable, is_function                      in MAD.typeid
 
 local min, max in math
 
@@ -71,7 +71,7 @@ local _handlepool, max_tmp_file = {}, 25
 local _filepool, lock
 
 -- change the name of the tmp folder (for testing)
-local function set_tmp(self, name)
+local function set_tmp (self, name)
   assert(is_string(name), "invalid argument #2 (string expected)")
   tmpname   = name
   tmpfolder = tmpname .. "/"
@@ -147,7 +147,7 @@ local function clean_tmp ()
 end
 
 -- initialize the list of available tmp file
-local function setup_files()
+local function setup_files ()
   clean_tmp()
   local entry = 1
   local tmpfile = tmpfolder .. "madplot-"
@@ -163,7 +163,7 @@ end
 
 local plot_atexit = \ atexit(clean_tmp)
 -- return an available tmp file and its name (blocking)
-local function get_tmpfile(sid)
+local function get_tmpfile (sid)
   runonce(plot_atexit)
   if not is_rawtable(_filepool) then setup_files() end
   local fname = false
@@ -265,40 +265,64 @@ MAD_SET_TERM     = " \
 
 ]]
 
+local kill_sids = {}
+local function kill_plots()
+  pause("Closing plots, ") 
+  for sid, term in pairs(kill_sids) do
+    gplot:set_sid(sid)
+    gplot:printf("set term %s close", term)
+  end
+end
+
+local kill_atexit = \ atexit(kill_plots)
 -- dump header and set terminal to script file
 local function setup_cmd (self)
-  local output, scrdump in self
-  local file, fname = get_tmpfile(self.sid)
-  gplot:set_sid(self.sid)
+  local output, default, scrdump, font, fontsize, sid, term, closewin in self
+  local file, fname = get_tmpfile(sid)
+  gplot:set_sid(sid)
   file:write(init_cmd % self)
 
-  self.font     = self.font     or ""
-  self.fontsize = self.fontsize or ""
+  self.font     = font     or ""
+  self.fontsize = fontsize or ""
 
   if is_nil(output) then
     file:write("@MAD_INC_WID\n")
-    file:write("MAD_TERM = \"set term ${term} MAD_WID size ${wsizex},\z
-      ${wsizey} enhanced font '${font},${fontsize}'\"\n" % self)
-  elseif is_number(output) then
-    file:write("MAD_TERM = \"set term ${term} ${output} size ${wsizex},\z
-      ${wsizey} enhanced font '${font},${fontsize}'\"\n" % self)
+    output = "MAD_WID"                                                        -- So as not to mutate the object                                         
+  end
+  if is_number(output) or output == "MAD_WID" then
+    file:write(
+      ("MAD_TERM = \"set term ${term} " .. output .. " size ${wsizex},\z
+      ${wsizey} enhanced font '${font},${fontsize}'\"\n") % self
+    )
+    if closewin then
+      runonce(kill_atexit)
+      kill_sids[sid] = term
+    end
   elseif is_string(output) then
-    file:write("MAD_TERM = \"set term pdfcairo enhanced font \z
-      '${font},${fontsize}'; set out '${output}'\"\n" % self)
+    local ext = output:sub(-3, -1)
+    if ext == "png" then
+      file:write("MAD_TERM = \" set term png enhanced font '${font},\z
+        ${fontsize}' size ${wsizex},${wsizey}; set out '${output}'\"\n" % self)
+    elseif ext == "pdf" then
+      file:write("MAD_TERM = \"set term pdfcairo enhanced font \z
+        '${font},${fontsize}'; set out '${output}'\"\n" % self)
+    else
+      error("unsupported output file extension '".. ext .. "'")
+    end
   end
 
   file:write("@MAD_SET_TERM\n")
   return file, fname
 end
 
-local function gnuplot_rm(fname)
+local function gnuplot_rm (fname)
   if jit.os == "Windows"
   then gplot:printf("system 'del %s >nul 2>&1'", fname)
   else gplot:printf("system '\\rm -f %s'"      , fname)
   end
 end
 
-local function gnuplot_mv(fname, uname)
+local function gnuplot_mv (fname, uname)
   if jit.os == "Windows"
   then gplot:printf("system 'move /Y %s %s'", fname, uname)
   else gplot:printf("system '\\mv %s %s'"   , fname, uname)
@@ -327,46 +351,37 @@ end
 -- layout ---------------------------------------------------------------------o
 
 -- element flag for layout
-local flayout = MAD.element.flags.playout
+local flayang = MAD.element.flags.layangle
 
 --  adjust "out of plot" layout coordinate
-local adjust = \size  -> \xs,ys,shift,l =>
-  local shape  = vector(3):fill{xs, ys, 0}
-  local factor = vector(3):fill{l, size, 0}
-  return factor:emul(shape) + shift
-end
+local adjust = \size -> \xs,ys,shift,l -> vector{l*xs, size*ys, 0} + shift
 
---  adjust "in plot" layout coordinate
-local adjust_in = \size -> \xs,ys,data,l =>
-  local rot, shift = data[1], data[2]
-  local shapcoord  = matrix(3):fill{ 0, 1, 0,
-                                    -1, 0, 0,
-                                     0, 0, 0, }
-  local shapshift  = vector(3):fill{1, 0, 0}
-  local shape      = vector(3):fill{xs,ys,0}
-  local factor     = vector(3):fill{l, size, 0}
-  return rot*shapcoord*(factor:emul(shape+shapshift))+shift
-end
+--  adjust "in plot" layout coordinate -- Plot points are by default oriented along x
+local adjust_in = \size -> \xs,ys,surv,l,proj ->
+                    proj*(surv[2] + surv[1] * vector{size*(ys), 0, l*(xs+1)})
 
 -- return the shape of an element in x and y
 local function eShap (param, elem, dir)
-  local kindcolor in param
+  local kindcolor, laypos, elemshift in param
   local shape = dat[elem.kind]
   if not shape then
     error("element of kind: '" .. elem.kind
           .. "' doesn't have a corresponding shape")
   end
-  local el, dash, sh = shape.ellipse, shape.dashtype, shape.shape
+  local el, dash = shape.ellipse, shape.dashtype
+  local sh = (laypos == "in" or laypos == "middle" or laypos == "middle0") and 
+             shape.inshape or shape.shape
   local color, style, linecolor
+  local shapeColour = is_function(shape.fillcolor) and shape.fillcolor(elem) or shape.fillcolor
 
   if is_table(kindcolor) and kindcolor[elem.kind] then
     local cs = kindcolor[elem.kind]
-    color     = is_table(cs) and cs.fillcolor or is_string(cs) and cs or shape.fillcolor
+    color     = is_table(cs) and cs.fillcolor or is_string(cs) and cs or shapeColour
     style     = is_table(cs) and cs.fillstyle or shape.fillstyle
     linecolor = is_table(cs) and cs.linecolor or shape.linecolor
     dash      = is_table(cs) and cs.dashtype  or dash
   elseif kindcolor then
-    color, style, linecolor = shape.fillcolor, shape.fillstyle, shape.linecolor
+    color, style, linecolor = shapeColour, shape.fillstyle, shape.linecolor
   else
     color, style, linecolor = _dflt.ocolor, _dflt.ostyle, _dflt.olstyle
   end
@@ -383,7 +398,7 @@ local function eShap (param, elem, dir)
   if not is_table(sh) then return el, eStyle end
 
   local ysym, yscl, func = shape.ysym, (shape.yscl or 1), nil
-  local yshft = elem[shape.yshft] and sign(elem[shape.yshft]) or 0
+  local yshft = shape.yshft and shape.yshft(elem, elemshift) or 0
   yshft = yshft * (shape.yfact or 1)
   if is_number(ysym) then -- for symmetric shapes
     func = {
@@ -392,7 +407,11 @@ local function eShap (param, elem, dir)
     }
   else
     local fv = sign(elem[ysym] or 1)
-    ysym = (ysym == "angle") and fv*dir or fv
+    if fv == 0 then -- If the elem[ysym] is 0, we want to plot the shape in the middle
+      elemshift = false
+      yshft = shape.yshft and shape.yshft(elem, elemshift) or 0
+    end
+    ysym = ysym == "angle" and fv*dir or elemshift and fv or 1
     func = {\y -> yscl*(yshft + ysym*y)}
   end
   return el, eStyle, sh.x, sh.y, func
@@ -400,20 +419,22 @@ end
 
 -- stream polygon data
 local function layout_poly (param, len, data, x_sh, y_sh, eStyle, func)
-  local fpwrite, adjust, ref in param
+  local fpwrite, adjust, ref, layproj, layonly, laypos in param
   for i=1,#func do
     for j=1,#x_sh do
       local xj, yj = x_sh[j], y_sh[j]
       local dashtype = eStyle.dash and "dashtype '" .. eStyle.dash .. "'" or ""
-      fpwrite("set object %d polygon front fc rgb '%s' fs %s \z
+      fpwrite("set object %d polygon %s fc rgb '%s' fs %s \z
         border rgb '%s' %s \\\n",
-        param.oid, eStyle.color, eStyle.style, eStyle.linecolor, dashtype)
+        param.oid, 
+        (not layonly and (laypos == "in" or laypos == "middle")) and "back" or "front",
+        eStyle.color, eStyle.style, eStyle.linecolor, dashtype)
       local cmd = "from"
 
       for k=1,#xj do
         local xk, yk = xj[k], func[i](yj[k])
-        local pts  = adjust(xk, yk, data, len)
-        local next = (k == #xj) and "" or " \\"
+        local pts  = adjust(xk, yk, data, len, layproj)
+        local next = k == #xj and "" or " \\"
         fpwrite("  %s %.5e, %s %.5e%s\n", cmd, pts[1], ref, pts[2], next)
         cmd = "to"
       end
@@ -425,8 +446,8 @@ end
 
 -- stream ellipse data
 local function layout_ellipse (param, len, el, data, eStyle, size)
-  local fpwrite, adjust, ref in param
-  local pts = adjust(0, 0, data, len)
+  local fpwrite, adjust, ref, layproj in param
+  local pts = adjust(0, 0, data, len, layproj)
   local sx, sy = len, el*size
   local dashtype = eStyle.dash and "dashtype '" .. eStyle.dash .. "'" or ""
   fpwrite("set object %d ellipse front at %.5e, %s %.5e \\\n\z
@@ -437,9 +458,9 @@ local function layout_ellipse (param, len, el, data, eStyle, size)
 end
 
 -- stream element label data
-local function layout_label(param, name, kind, len, data)
-  local fpwrite, oid, ref, adjust in param
-  local pts  = adjust(0, 0, data, len/2)
+local function layout_label (param, name, kind, len, data)
+  local fpwrite, oid, ref, adjust, layproj in param
+  local pts  = adjust(0, 0, data, len/2, layproj)
   local label = name .. " [" .. kind .. "]"
   fpwrite("set label %d back at %.5e, %s %.5e '%s' hypertext \z
     point pt 4 ps 1 lc 'white'\n", oid, pts[1], ref, pts[2], label)
@@ -458,14 +479,14 @@ local function layout_bline (param, bline)
   end
   for i=size-1,1,-1 do
     local xi, yi = bline.x[i], bline.y[i]
-    local next   = (i == 1) and "" or " \\"
+    local next   = i == 1 and "" or " \\"
     fpwrite("  to %.5e, %s %.5e%s\n", xi, ref, yi, next)
   end
   param.oid = param.oid + 1
 end
 
 -- process data for "out of plot" layout
-local function layout_process(param, pseq)
+local function layout_process (param, pseq)
   local layshift, nturn, layangle                         in param
   local range, seq, disty, distx, xmin, xmax, ymin, ymax  in pseq
   local size     = seq:length_of(range, nturn)
@@ -479,12 +500,12 @@ local function layout_process(param, pseq)
     s_sh         = s + l2
     deltaY       = deltaY - tan(dir*angle)*(s_sh-prevs_sh)
     xs, ys       = s_sh + distx + layshift, deltaY
-    data[j]      = vector(3):fill{ xs, ys, 0 }
+    data[j]      = vector{ xs, ys, 0 }
     prevs_sh     = s_sh
     fstx         = fstx or xs - l2
     xmin, xmax   = min(xmin, xs), max(xmax, xs)
     ymin, ymax   = min(ymin, ys), max(ymax, ys)
-    if elem:test_flags(flayout) and layangle then
+    if elem:test_flags(flayang) and layangle then
       angle = angle + elem.angle
       table.insert(bline.x, xs); table.insert(bline.y, ys)
     end
@@ -499,36 +520,60 @@ local function layout_process(param, pseq)
   pseq.data, pseq.bline = data, bline
 end
 
-local ssel = \e -> not e:is_implicit()
+local projections = {
+  XZ       = matrix(3):fill{ 1, 0, 0 ; 0, 0, 1 ; 0, 0, 0 },
+  ["-XZ"]  = matrix(3):fill{-1, 0, 0 ; 0, 0, 1 ; 0, 0, 0 },
+  ["X-Z"]  = matrix(3):fill{ 1, 0, 0 ; 0, 0,-1 ; 0, 0, 0 },
+  ["-X-Z"] = matrix(3):fill{-1, 0, 0 ; 0, 0,-1 ; 0, 0, 0 },
+  ZX       = matrix(3):fill{ 0, 0, 1 ; 1, 0, 0 ; 0, 0, 0 },
+  ["-ZX"]  = matrix(3):fill{ 0, 0,-1 ; 1, 0, 0 ; 0, 0, 0 },
+  ["Z-X"]  = matrix(3):fill{ 0, 0, 1 ; 0, 0,-1 ; 0, 0, 0 },
+  ["-Z-X"] = matrix(3):fill{ 0, 0,-1 ; 0, 0,-1 ; 0, 0, 0 },
+}
 
 -- process data "in plot" layout (see help for formula)
-local function layout_process_in(param, pseq)
-  local nturn                           in param
+local function layout_process_in (param, pseq)
+  local nturn, layproj                  in param
   local range, seq, s0, X0, A0, W0, mis in pseq
-  local srv   = survey { sequence=seq, range=range, nturn=nturn, savesel=ssel,
-                         s0=s0, X0=X0, A0=A0, W0=W0, misalign=mis }
+  local srv, mflw = survey { sequence=seq, range=range, nturn=nturn,
+                         s0=s0, X0=X0, A0=A0, W0=W0, misalign=mis, savemap=true,
+                         save="atbound",
+                        }
   local data  = table.new(#srv, 0)
   local bline = { x=table.new(#srv, 0), y=table.new(#srv, 0) }
 
-  local v0, xz2xy = vector(3), matrix(3):fill{ 1, 0, 0 ; 0, 0, 1 ; 0, 0, 0 }
-  local shift
+  layproj = projections[layproj] or layproj or projections.XZ
 
+  local idx, shift = 1
   for i, line in srv:iter() do
-    local srvTranslat = vector(3):fill{line.x, line.y, line.z}
-    local rot = matrix(3):rotz(-line.theta - 0.5*line.angle)
-    shift = xz2xy*srvTranslat
+    shift = vector{line.x, line.y, line.z}
+    local elm = seq[line.eidx]
+    if not is_nil(elm) then
+      if line.slc == 0 then
+        local kind, e1, e2, true_rbend, angle in elm
+        local rot, patch = line.__map, matrix(3):eye()
+        if kind=="rbend" and true_rbend and e1 and e2 then                    -- For straight rbend, we don't want any angle
+          patch:rotzxy(0,  angle/2, 0)
+        elseif kind=="sbend" or kind=="rbend" and not true_rbend then         -- For sbend and curved rbend, we want half the angle
+          patch:rotzxy(0, -angle/2, 0)
+        end
+        data[idx] = {rot:mul(patch), shift}                                   -- Save the rotation and shift at slc == 0
+        idx = idx + 1
+      elseif line.slc == 1 and elm.kind == "rbend" then                       -- Patch to bline, rbend bline should go through the magnet center
+        shift[1] = srv[i-1].x
+      elseif elm.is_patch and line.slc == -2 then                             -- Patches don't have a slc 0
+        data[idx] = {line.__map, shift}
+        idx = idx + 1
+      end
+    end
 
-    data[i]              = {rot, shift}
+    shift = layproj * shift                                                   -- Rotate the shift to x-y plane for the bline
     pseq.xmin, pseq.xmax = min(pseq.xmin, shift[1]), max(pseq.xmax, shift[1])
     pseq.ymin, pseq.ymax = min(pseq.ymin, shift[2]), max(pseq.ymax, shift[2])
     table.insert(bline.x, shift[1]); table.insert(bline.y, shift[2])
   end
-  local fst, lst = xz2xy*v0:fill(X0), shift
-  table.insert(bline.x, 1, fst[1]); table.insert(bline.y, 1, fst[2])
-  table.insert(bline.x,    lst[1]); table.insert(bline.y,    lst[2])
-  pseq.xmin, pseq.xmax  = min(pseq.xmin, fst[1], shift[1]), max(pseq.xmax, fst[1], lst[1])
-  pseq.ymin, pseq.ymax  = min(pseq.ymin, fst[2], lst[2]  ), max(pseq.ymax, fst[2], lst[2])
   pseq.data, pseq.bline = data, bline
+  param.layproj = layproj
 end
 
 -- stream a single layout
@@ -539,15 +584,14 @@ local function layout (param, pseq)
 
   layout_bline(param, bline)
   for i, elem, s in seq:iter(range, nturn) do
-    local len, ekind   = elem.l, elem.kind
-    local is_flagged   = elem:test_flags(flayout)
+    local len, ekind = elem.l, elem.kind
     local dj = data[j]
 
-    if is_flagged or elemsel(elem) then
+    if elemsel(elem) then
       local sh_l = len / 2
       local el, eStyle, x_sh, y_sh, func = eShap(param, elem, dir)
 
-      if elemname  then layout_label(param, elem.name, ekind, len, dj) end
+      if elemname then layout_label(param, elem.name, ekind, len, dj) end
 
       if not is_nil(el) and len ~= 0 then
         layout_ellipse(param, len, el, dj, eStyle, elemwidth)
@@ -563,7 +607,7 @@ end
 
 -- compute bounding box and scale data accordingly
 -- post processing for "out of plot" layout
-local function layout_post(param, pseqs, xmin, xmax, ymin, ymax)
+local function layout_post (param, pseqs, xmin, xmax, ymin, ymax)
   local sequence, laypos, layonly, elemwidth, elemscale in param
   local padding, multisize, maxew, middle               in _dflt
   param.laysize  = param.laysize
@@ -573,21 +617,24 @@ local function layout_post(param, pseqs, xmin, xmax, ymin, ymax)
   elemwidth     = (elemwidth or _dflt.elemwidth) * elemscale
   local ybbox   = abs(ymax - ymin) + 2*maxew*elemwidth + 2*padding
   local yfactor = param.laysize / ybbox
-  if laypos=="top"    then laypos=1-( ymax+maxew*elemwidth+padding)*yfactor end
-  if laypos=="bottom" then laypos=  (-ymin+maxew*elemwidth+padding)*yfactor end
-  if laypos=="middle" then laypos=middle                                    end
+  -- print("yfactor", yfactor, param.laysize, ybbox, ymax, ymin)
+  if     laypos=="top"     then laypos=1-( ymax+maxew*elemwidth+padding)*yfactor 
+  elseif laypos=="bottom"  then laypos=  (-ymin+maxew*elemwidth+padding)*yfactor
+  elseif laypos=="middle"  then laypos=middle                                    
+  elseif laypos=="middle0" then laypos=0
+  end
   param.elemwidth = elemwidth * yfactor
   for i=1,#pseqs do
     local pseq = pseqs[i]
     local data, bline in pseq
-    fun.foreach(\v => v[2]=v[2]*yfactor + laypos end, data)
-    pseq.bline.y = fun.map(\y -> y*yfactor + laypos, bline.y):totable()
+    lfun.foreach(\v => v[2]=v[2]*yfactor + laypos end, data)
+    pseq.bline.y = lfun.map(\y -> y*yfactor + laypos, bline.y):totable()
   end
   param.xrng = { xmin, xmax }
 end
 
 -- post processing for "in plot" layout
-local function layout_post_in(param, xmin, xmax, ymin, ymax)
+local function layout_post_in (param, xmin, xmax, ymin, ymax)
   local elemwidth, elemscale         in param
   local maxew, elemwidth_in, padding in _dflt
   local diag = sqrt((xmax-xmin)^2 + (ymax-ymin)^2)
@@ -604,8 +651,9 @@ end
 local function multi_layout (param)
   local sequence, s0, X0, A0, W0, fpwrite, range, misalign, laydistx,
         laydisty, elemwidth, laypos in param
-  local is_in = (laypos == "in")
-  param.ref = is_in and "" or "screen"
+  local is_in = laypos == "in"
+  local is_middle0 = laypos == "middle0"
+  param.ref = is_in and "" or is_middle0 and "first" or "screen"
   local xmin, xmax, ymin, ymax = inf, -inf, inf, -inf
   local pseqs = { }
   local seqs = is_rawtable(sequence) and sequence or
@@ -808,9 +856,10 @@ local function cmd_interpolate (param)
   else
     local cmdi = "${cmd${id}}${data${id}}${index${id}}${using${id}}\z
                   with ${style${id}}${lines${id}}${points${id}}\z
-                  ${color${id}}${title${id}}${axes${id}}${smooth${id}},\\\n"
+                  ${color${id}}${title${id}}${axes${id}}${smooth${id}}"
     for i=1,intpol.id-1 do
       cmd = cmd .. strinter(cmdi, { id = i }, '=')
+      if i == intpol.id-1 then cmd = cmd .. "\n" else cmd = cmd .. ",\\\n" end
     end
   end
   if is_table(plotvar) then intpol:setvar(plotvar) end
@@ -874,7 +923,7 @@ local function set_misc (param)
   end
 end
 
-local function set_frame(param)
+local function set_frame (param)
   set_ranges(param)
   set_label (param)
   set_tics  (param)
@@ -908,6 +957,8 @@ local function composed_plot (param)
   local laysize in param
   if laypos == "top" or laypos == "bottom" then
     param.psizey = psizey or _dflt.psizey - laysize
+  elseif laypos == "middle0" then 
+    param.psizey = laysize
   end
   param.originy = originy or laypos == "bottom" and laysize
                           or _dflt.originy
@@ -915,7 +966,7 @@ local function composed_plot (param)
 end
 
 -- initialize the table of parameters
-local function init_param(self, file)
+local function init_param (self, file)
   local table, objshft, name, date, time in self
   local param = {
     version = tostring(MAD.env.version),
@@ -993,6 +1044,7 @@ local plot = command "plot" {
 
   -- output
   output      = nil,        -- ("filename") -> pdf | number -> wid
+  closewin    = true,       -- boolean, close all plots windows on exit or not
   scrdump     = nil,        -- ("filename")
 
   -- title
@@ -1016,17 +1068,19 @@ local plot = command "plot" {
   W0          = nil,        -- W0                | {W0, W0, ...}
 
   -- layout style
-  laypos      = "top",      -- "top" | "bottom" | "middle" | "in" | 0 < y < 1
+  laypos      = "top",      -- "top" | "bottom" | "middle" | "middle0" | "in" | 0 < y < 1
   laysize     = nil,        -- 0 < y < 1
   layonly     = nil,        -- boolean
   laydisty    = 0,          -- y >= 0 | { y1, y2, ... }
   laydistx    = 0,          -- x >= 0 | { x1, x2, ... }
   layshift    = 0,          -- x >= 0
+  layproj     = nil,        -- custom matrix or string (only XZ or ZX so far) 
   layangle    = true,       -- boolean
   elemsel     = ftrue,      -- element selector (i.e. predicate)
   elemname    = true,       -- boolean
   elemwidth   = nil,        -- unsigned size of element before elemscale
   elemscale   = 1,          -- multiplier or default size
+  elemshift   = true,       -- boolean (shift element based on strength (quadrupole etc.))
   kindcolor   = true,       -- {
                             --   quadrupole = "blue",
                             --   sbend = {
@@ -1050,17 +1104,17 @@ local plot = command "plot" {
                             -- x1y1 = "y1",
 
   -- labels
-  title       = "${name} MAD ${version}, ${date}, ${time}",
+  title       = "${name} MAD ${version} ${date} ${time}",
   legend      = nil,        -- { y = "distance" }
   xlabel      = nil,        -- strings
-  x2label     = nil,        -- strings
   ylabel      = nil,        -- strings
+  x2label     = nil,        -- strings
   y2label     = nil,        -- strings
 
   -- axis ranges
   xrange      = nil,        -- { min, max }
-  x2range     = nil,        -- { min, max }
   yrange      = nil,        -- { min, max }
+  x2range     = nil,        -- { min, max }
   y2range     = nil,        -- { min, max }
 
   -- plot customization

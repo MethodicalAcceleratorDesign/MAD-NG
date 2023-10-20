@@ -128,7 +128,7 @@ void mad_ctpsa_cabs (const ctpsa_t *a, tpsa_t *c)
   mad_ctpsa_real(a, re);
   mad_ctpsa_imag(a, im);
   mad_tpsa_hypot(re, im, c);
-  REL_TMPR(re); REL_TMPR(im);
+  REL_TMPR(im); REL_TMPR(re);
   DBGFUN(<-);
 }
 
@@ -140,7 +140,7 @@ void mad_ctpsa_carg (const ctpsa_t *a, tpsa_t *c)
   mad_ctpsa_real(a, re);
   mad_ctpsa_imag(a, im);
   mad_tpsa_atan2(im, re, c);
-  REL_TMPR(re); REL_TMPR(im);
+  REL_TMPR(im); REL_TMPR(re);
   DBGFUN(<-);
 }
 
@@ -158,7 +158,7 @@ void mad_ctpsa_rect (const ctpsa_t *a, ctpsa_t *c)
   mad_tpsa_mul   (re, im, im); // im = rho * sin(arg)
   mad_ctpsa_cplx (re, im, c );
 
-  REL_TMPR(re); REL_TMPR(im); REL_TMPR(t);
+  REL_TMPR(t); REL_TMPR(im); REL_TMPR(re);
 
   DBGTPSA(c); DBGFUN(<-);
 }
@@ -176,7 +176,7 @@ void mad_ctpsa_polar (const ctpsa_t *a, ctpsa_t *c)
   mad_tpsa_atan2(im, re, im); // im = arg(z)
   mad_ctpsa_cplx(t , im, c );
 
-  REL_TMPR(re); REL_TMPR(im); REL_TMPR(t);
+  REL_TMPR(t); REL_TMPR(im); REL_TMPR(re);
 
   DBGTPSA(c); DBGFUN(<-);
 }

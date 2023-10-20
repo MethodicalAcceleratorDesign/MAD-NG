@@ -70,14 +70,14 @@ local dir = { [0]='vec', [1]='row', [2]='col', [3]='diag',
 
 ffi.cdef 
 [[ // warning: must be kept identical to C definition
-struct  matrix { const ssz_t nrow, ncol; num_t _dat[?]; };
-struct cmatrix { const ssz_t nrow, ncol; cpx_t _dat[?]; };
-struct imatrix { const ssz_t nrow, ncol; idx_t _dat[?]; };
+struct  matrix_ { const ssz_t nrow, ncol; num_t _dat[?]; };
+struct cmatrix_ { const ssz_t nrow, ncol; cpx_t _dat[?]; };
+struct imatrix_ { const ssz_t nrow, ncol; idx_t _dat[?]; };
 ]]
 
-local  matrix_ctor  = ffi.typeof 'struct  matrix'
-local cmatrix_ctor  = ffi.typeof 'struct cmatrix'
-local imatrix_ctor  = ffi.typeof 'struct imatrix'
+local  matrix_ctor  = ffi.typeof 'struct  matrix_'
+local cmatrix_ctor  = ffi.typeof 'struct cmatrix_'
+local imatrix_ctor  = ffi.typeof 'struct imatrix_'
 
 local  matrix_size  = ffi.offsetof( matrix_ctor, '_dat')
 local cmatrix_size  = ffi.offsetof(cmatrix_ctor, '_dat')
@@ -285,24 +285,27 @@ end
 
 function MR.__copy (x, y_)
   if rawequal(x,y_) then return y_ end
-  local y = chksiz(y_,x) or x:same()
+  local y = y_ or x:same()
   assert(is_matrix(y), "incompatible matrix type (matrix expected)")
+  assert(y.nrow >= x.nrow and y.ncol >= x.ncol, "incompatible matrix sizes")
   ffi.copy(y._dat, x._dat, x:bytesize())
   return y
 end
 
 function MC.__copy (x, y_)
   if rawequal(x,y_) then return y_ end
-  local y = chksiz(y_,x) or x:same()
-  assert(is_cmatrix(y), "incompatible matrix type (matrix expected)")
+  local y = y_ or x:same()
+  assert(is_cmatrix(y), "incompatible matrix type (cmatrix expected)")
+  assert(y.nrow >= x.nrow and y.ncol >= x.ncol, "incompatible matrix sizes")
   ffi.copy(y._dat, x._dat, x:bytesize())
   return y
 end
 
 function MI.__copy (x, y_)
   if rawequal(x,y_) then return y_ end
-  local y = chksiz(y_,x) or x:same()
-  assert(is_imatrix(y), "incompatible matrix type (matrix expected)")
+  local y = y_ or x:same()
+  assert(is_imatrix(y), "incompatible matrix type (imatrix expected)")
+  assert(y.nrow >= x.nrow and y.ncol >= x.ncol, "incompatible matrix sizes")
   ffi.copy(y._dat, x._dat, x:bytesize())
   return y
 end
@@ -350,6 +353,23 @@ function MI._reshapeto (x, nr, nc_)
 end
 
 -- properties -----------------------------------------------------------------o
+
+function MR.isnul (x)
+  return x:isval()
+end
+
+function MR.isval (x, v_)
+  return mad_vec_isval(x._dat, v_ or 0, size(x))
+end
+
+function MC.isval (x, v_)
+  v_ = complex(v_ or 0)
+  return mad_cvec_isval(x._dat, v_.re, v_.im, size(x))
+end
+
+function MI.isval (x, v_)
+  return mad_ivec_isval(x._dat, v_ or 0, size(x))
+end
 
 function MR.is_const (x, tol_)
   local tol, e = tol_ or 0, geti0(x,0)
@@ -793,27 +813,28 @@ MI.getdidx = MR.getdidx
 
 -- getx, setx, swpx, insx, remx -----------------------------------------------o
 
-function MR.getvec (x, ij, r_)
-  if is_number(ij) then ij = {ij} end
-  assert(is_iterable(ij), "invalid argument #2 (non-empty iterable expected)")
-  local r = r_ or x:same(#ij,1)
+function MR.getvec (x, ij_, r_)
+  if is_nil(ij_) then ij_ = 1..#x elseif is_number(ij_) then ij_ = {ij_} end
+  assert(is_iterable(ij_), "invalid argument #2 (non-empty iterable expected)")
+  local r = r_ or x:same(#ij_,1)
   assert(is_iterable(r), "invalid argument #3 (iterable expected)")
-  for i,ii in ipairs(ij) do r[i] = geti_s(x,ii) end
+  for i,ii in ipairs(ij_) do r[i] = geti_s(x,ii) end
   return r
 end
 
-function MR.setvec (x, ij, y, p_, s_) -- inplace
-  if is_number(ij) then ij = {ij} end
+function MR.setvec (x, ij_, y, p_, s_) -- inplace
+  if not is_nil(ij_) and is_nil(y) then y, ij_ = ij_, nil end -- right shift
+  if is_nil(ij_) then ij_ = 1..#x elseif is_number(ij_) then ij_ = {ij_} end
   if is_scalar(y) then y = rep(y) end
-  assert(is_iterable(ij), "invalid argument #2 (iterable expected)")
+  assert(is_iterable(ij_), "invalid argument #2 (iterable expected)")
   if is_nil(p_) then
     assert(is_iterable(y), "invalid argument #3 (scalar or iterable expected)")
     local ny = #y
-    for i,ii in ipairs(ij) do seti_s(x,ii,y[(i-1)%ny+1]) end
+    for i,ii in ipairs(ij_) do seti_s(x,ii,y[(i-1)%ny+1]) end
   else  -- stateless iterator
     assert(is_callable(y), "invalid argument #3 (scalar or callable expected)")
     local v
-    for _,ii in ipairs(ij) do s_,v = y(p_,s_) ; seti_s(x,ii,v) end
+    for _,ii in ipairs(ij_) do s_,v = y(p_,s_) ; seti_s(x,ii,v) end
   end
   return x
 end
@@ -2168,6 +2189,34 @@ end
 
 MC.__pow = MR.__pow -- fully polymorphic
 
+-- dif : r_i = (x_i - y_i) / max(|x_i|, 1)
+
+function MR.dif (x, y, r)
+  if is_matrix(y) and is_matrix(x) then          -- mat ~ mat
+    r = chksiz(r,x,y) or matrix_alloc(x:sizes())
+    _C.mad_vec_dif(x._dat, y._dat, r._dat, size(r)) return r
+  elseif is_cmatrix(y) then                      -- mat ~ cmat
+    r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
+    _C.mad_vec_difv(x._dat, y._dat, r._dat, size(r)) return r
+  else
+    error("invalid 'matrix ~ ?' operation")
+  end
+  return r
+end
+
+function MC.dif (x, y, r)
+  if is_cmatrix(y) and is_cmatrix(x) then        -- cmat ~ cmat
+    r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
+    _C.mad_cvec_dif(x._dat, y._dat, r._dat, size(r))
+  elseif is_matrix(y) then                       -- cmat ~ mat
+    r = chksiz(r,x,y) or cmatrix_alloc(x:sizes())
+    _C.mad_cvec_difv(x._dat, y._dat, r._dat, size(r))
+  else
+    error("invalid 'cmatrix ~ ?' operation")
+  end
+  return r
+end
+
 -- kadd (in place)
 
 local kmax = 100
@@ -3069,7 +3118,6 @@ MI.read = MR.read
 -- metamethods ----------------------------------------------------------------o
 
 MR.unm = \x,r_ -> MR.__unm(x,nil,r_)
-
 MI.unm = MR.unm
 
 MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  pow =
@@ -3099,55 +3147,60 @@ MC.__emul, MC.__ediv, MC.__emod, MC.__epow
 MI.  emul, MI.  ediv, MI.  emod, MI.  epow =
 MI.__emul, MI.__ediv, MI.__emod, MI.__epow
 
+!MR.__call  = MR.get -- dangerous to make matrix callable, see fold
+
 local function iter (x, i)
   if i < size(x) then return i+1, geti0(x, i) end
 end
-
-!MR.__call  = MR.get -- dangerous to make matrix callable, see fold
 
 MR.__ipairs = \s -> (iter, s, 0)
 MC.__ipairs = MR.__ipairs
 MI.__ipairs = MR.__ipairs
 
+local getvec, setvec in MR -- polymorphic methods...
+
 function MR.__index (s, i)
-  if type(i) == 'number'
-  then return geti_s(s, i)
-  else return MR[i]
+      if type(i) == 'number' then return geti_s(s,i) -- index
+  elseif type(i) == 'string' then return MR[i]       -- method
+  elseif is_iterable(i)      then return getvec(s,i) -- subvec
+  else error("invalid matrix read access '".. tostring(i) .."'")
   end
 end
 
 function MC.__index (s, i)
-  if type(i) == 'number'
-  then return geti_s(s, i)
-  else return MC[i]
+      if type(i) == 'number' then return geti_s(s,i)  -- index
+  elseif type(i) == 'string' then return MC[i]        -- method
+  elseif is_iterable(i)      then return getvec(s,i)  -- subvec
+  else error("invalid cmatrix read access '".. tostring(i) .."'")
   end
 end
 
 function MI.__index (s, i)
-  if type(i) == 'number'
-  then return geti_s(s, i)
-  else return MI[i]
+      if type(i) == 'number' then return geti_s(s,i)  -- index
+  elseif type(i) == 'string' then return MI[i]        -- method
+  elseif is_iterable(i)      then return getvec(s,i)  -- subvec
+  else error("invalid imatrix read access '".. tostring(i) .."'")
   end
 end
 
 function MR.__newindex (s, i, x)
-  if type(i) == 'number'
-  then seti_s(s, i, x)
-  else error("invalid matrix member '".. tostring(i) .."'")
+      if type(i) == 'number' then seti_s(s,i,x)       -- index
+  elseif is_iterable(i)      then setvec(s,i,x)       -- subvec
+  else error("invalid matrix write access '".. tostring(i) .."'")
   end
 end
 
 function MC.__newindex (s, i, x)
-  if type(i) == 'number'
-  then seti_s(s, i, x)
-  else error("invalid cmatrix member '".. tostring(i) .."'")
+      if type(i) == 'number' then seti_s(s,i,x)       -- index
+  elseif is_iterable(i)      then setvec(s,i,x)       -- subvec
+  else error("invalid cmatrix write access '".. tostring(i) .."'")
   end
 end
 
 function MI.__newindex (s, i, x)
-  if type(i) == 'number'
-  then seti_s(s, i, x)
-  else error("invalid imatrix member '".. tostring(i) .."'")
+      if type(i) == 'number' then seti_s(s,i,x)       -- index
+  elseif is_iterable(i)      then setvec(s,i,x)       -- subvec
+  else error("invalid imatrix write access '".. tostring(i) .."'")
   end
 end
 

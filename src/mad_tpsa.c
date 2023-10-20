@@ -22,6 +22,7 @@
 #include <string.h>
 #include <assert.h>
 #include <limits.h>
+#include <math.h>
 
 #include "mad_mem.h"
 #include "mad_desc_impl.h"
@@ -233,7 +234,7 @@ FUN(newd) (const D *d, ord_t mo)
   if (mo == mad_tpsa_default) mo = d->mo;
   else ensure(mo <= d->mo, "GTPSA order exceeds descriptor maximum order");
 
-  ssz_t nc = mad_desc_ordlen(d, mo);
+  ssz_t nc = mad_desc_maxlen(d, mo);
   T *t = mad_malloc(sizeof(T) + nc * sizeof(NUM));
   t->d = d, t->uid = 0, t->mo = mo, t->nam[0] = 0;
   FUN(reset0)(t);
@@ -292,6 +293,16 @@ FUN(setnam) (T *t, str_t nam)
 }
 
 void
+FUN(setval) (T *t, NUM v)
+{
+  assert(t); DBGFUN(->); DBGTPSA(t);
+
+  t->lo = t->hi = 0, t->nz = !!v, t->coef[0] = v;
+
+  DBGTPSA(t); DBGFUN(<-);
+}
+
+void
 FUN(setvar) (T *t, NUM v, idx_t iv, NUM scl)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
@@ -330,7 +341,7 @@ FUN(setvar) (T *t, NUM v, idx_t iv, NUM scl)
 void
 FUN(copy) (const T *t, T *r)
 {
-  assert(t && r); DBGFUN(->); DBGTPSA(t); DBGTPSA(r);
+  assert(t && r); DBGFUN(->); DBGTPSA(t);
   if (t != r) {
     const D *d = t->d;
     ensure(d == r->d, "incompatible GTPSAs descriptors 0x%p vs 0x%p", d, r->d);
@@ -351,7 +362,7 @@ FUN(copy) (const T *t, T *r)
 void
 FUN(sclord) (const T *t, T *r, log_t inv)
 {
-  assert(t && r); DBGFUN(->);
+  assert(t && r); DBGFUN(->); DBGTPSA(t);
 
   FUN(copy)(t,r);
 
@@ -425,11 +436,35 @@ FUN(cutord) (const T *t, T *r, int ord)
   DBGTPSA(r); DBGFUN(<-);
 }
 
+idx_t
+FUN(maxord) (const T *t, ssz_t n, idx_t idx_[n])
+{
+  assert(t); DBGFUN(->); DBGTPSA(t);
+
+  if (idx_) for (ord_t o=0; o < n; ++o) idx_[o] = -1;
+
+  const idx_t *o2i = t->d->ord2idx;
+  num_t mv =  0; // max of all values
+  idx_t mi = -1; // idx of max for all
+  for (ord_t o = t->lo; o < MIN(n,t->hi+1); ++o)
+    if (mad_bit_tst(t->nz,o)) {
+      num_t mo = 0; // max of this order
+      for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
+        if (mo < fabs(t->coef[i])) {
+          mo = fabs(t->coef[i]);        // save max for this order
+          if (idx_) idx_[o] = i;        // save idx for this order
+          if (mv < mo) mv = mo, mi = i; // save max and idx for all orders
+        }
+    }
+  DBGFUN(<-); return mi;
+}
+
 void
 FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
 {
   assert(t && r_); DBGFUN(->); DBGTPSA(t); DBGTPSA(r_);
-  ensure(pb >= -1 && pb <= 1, "invalid pb value %d, {-1, 0, 1} expected", pb);
+  ensure(pb >= -1 && pb <= 1,
+         "invalid Poisson bracket direction %d, {-1, 0, 1} expected", pb);
 
   // fast branch for (almost) compatible cases avoiding monomials translation
   if (!t2r_) {
@@ -448,8 +483,8 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
     }
   }
 
+  // slow branch for non-compatible cases with monomials translation
   T *r = t == r_ ? GET_TMPX(r_) : FUN(reset0)(r_);
-
   ssz_t rn = r->d->nv, tn = t->d->nv;
   ord_t rm[rn], tm[tn];
   idx_t t2r[tn]; // if t2r[i]>=0 then rm[t2r[i]] = tm[i] for i=0..tn-1
@@ -462,20 +497,20 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
     for (; i < MIN(tn, n); ++i) {
       t2r[i] = t2r_[i] >= 0 && t2r_[i] < rn ? t2r_[i] : -1; // -1 discard var
       pbs[i] = pb*(t2r[i]-i)%2 < 0; // pb sign, ignored for discarded vars
-    }
+    } // fromptc: pt => 1*(6-5)<0=0, t => 1*(5-6)<0=1, x,px,y,py => 1*(i-i)<0=0
   for (; i < tn; i++) t2r[i] = -1;  // discard remaining vars
 
   const idx_t *o2i = t->d->ord2idx;
   ord_t t_hi = MIN(t->hi, r->mo, t->d->to);
   for (idx_t ti = o2i[t->lo]; ti < o2i[t_hi+1]; ++ti) {
     if (t->coef[ti] == 0) goto skip;
-    mad_desc_mono(t->d, tn, tm, ti);              // get tm mono at index ti
+    mad_desc_mono(t->d, ti, tn, tm);              // get tm mono at index ti
     mad_mono_fill(rn, rm, 0);
     int sgn = 0;
     for (idx_t i = 0; i < tn; ++i) {              // set rm mono
       if (t2r[i] < 0 && tm[i]) goto skip;         // discard coef
       rm[t2r[i]] = tm[i];                         // translate tm to rm
-      sgn = sgn - !!tm[i] * pbs[i];               // poisson bracket
+      sgn = sgn - pbs[i] * (tm[i] & 1);           // poisson bracket
     }
     idx_t ri = mad_desc_idxm(r->d, rn, rm);       // get index ri of mono rm
 #if DEBUG > 2
@@ -495,10 +530,10 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
 // --- indexing / monomials ---------------------------------------------------o
 
 ord_t
-FUN(mono) (const T *t, ssz_t n, ord_t m_[n], idx_t i)
+FUN(mono) (const T *t, idx_t i, ssz_t n, ord_t m_[n])
 {
   assert(t); DBGTPSA(t);
-  ord_t ret = mad_desc_mono(t->d, n, m_, i);
+  ord_t ret = mad_desc_mono(t->d, i, n, m_);
   DBGFUN(<-); return ret;
 }
 
@@ -527,7 +562,7 @@ FUN(idxsm) (const T *t, ssz_t n, const idx_t m[n])
 }
 
 idx_t
-FUN(cycle) (const T *t, ssz_t n, ord_t m_[n], idx_t i, NUM *v_)
+FUN(cycle) (const T *t, idx_t i, ssz_t n, ord_t m_[n], NUM *v_)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
   const D *d = t->d;
@@ -805,6 +840,9 @@ void FUN(setsm_r) (T *t, ssz_t n, const idx_t m[n], num_t a_re, num_t a_im, num_
 
 void FUN(setvar_r) (T *t, num_t v_re, num_t v_im, idx_t iv, num_t scl_re, num_t scl_im)
 { FUN(setvar)(t, CPX(v), iv, CPX(scl)); }
+
+void FUN(setval_r) (T *t, num_t v_re, num_t v_im)
+{ FUN(setval)(t, CPX(v)); }
 
 #endif // MAD_CTPSA_IMPL
 

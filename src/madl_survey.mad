@@ -33,15 +33,15 @@ Notes about directions and quantities:
 
 local vector, matrix, mtable, command, element, show            in MAD
 
-local is_sequence, is_boolean, is_number, is_integer,
-      is_callable, is_mappable, is_matrix                       in MAD.typeid
+local is_sequence, is_boolean, is_number, is_integer, is_natural,
+      is_nznatural, is_callable, is_mappable, is_matrix         in MAD.typeid
 local fnil, ffalse, chain, achain, swapv                        in MAD.gfunc
 local rangle                                                    in MAD.gmath
-local atins, atins1, action, actionat                           in MAD.symint
+local slcsel, slcbit, action, actionat, getslcbit               in MAD.symint
 local printf                                                    in MAD.utility
 local tobit, band                                               in MAD.gfunc
 local is_implicit                                               in element.drift
-
+   -- atins, atins1
 local io, type, assert =
       io, type, assert
 
@@ -58,34 +58,25 @@ end
 
 -- debug ----------------------------------------------------------------------o
 
---[[ Unix command to retrieve debug=4 values in a matrix
-./mad script_dump.mad | \
-  awk 'BEGIN{printf("MAD.matrix{")} END{printf("}")}
-  /@@/{printf("{");for(i=4;i<=NF;i++)printf("%s, ",$i);printf("},\n")}'
---]]
+local fmt = "% -.10e % -.10e % -.10e "
 
-local shtfmt = "% -.6e % -.6e % -.6e "
-local lngfmt = "% -.16e % -.16e % -.16e "
-local nodump = {marker=true}
+local function mdump (elm, mflw, str)
+  local dbg = mflw.debug
+  if dbg < 4 then return end -- print mflw[1], require debug >= 4
 
-local function mdump (elm, mflw, lw_, str_) -- require debug >= 4
-  if str_ and mflw.debug < 4 then return end
-
-  if is_number(elm) then
-    printf("@@ %-15s %-15s % -.16e\n", 'number', str_, elm) return
-  end
-  if nodump[elm.kind] then return end
-
-  printf("@@ %-15s %-15s ", elm.name, str_ or 'exit')
+  assert(not is_number(elm), "invalid element (elm as number is obsolete)")
+  printf("@@ %-15s %-15s ", elm.name, str)
 
   local V, W in mflw
-  local fmt = mflw.debug >= 5 and lngfmt or shtfmt
 
+  -- global orbit output
   printf(fmt, V[1], V[2], V[3])
 
+  -- orientation output
   for i=1,W.nrow do
     printf(fmt, W:get(i,1), W:get(i,2), W:get(i,3))
   end
+
   io.write('\n')
 end
 
@@ -97,10 +88,10 @@ local function save_dat (elm, mflw, lw, islc)
   end
 
   local name, kind in elm
-  local A, V, W, ds, ang, eidx, clw, tlt, sdir, tdir, spos, turn,
+  local A, V, W, ds, ang, eidx, clw, tlt, sdir, tdir, spos, turn, sdir,
         mtbl, savemap in mflw
 
-  local lw = islc<0 and -1-islc or clw
+  local lw = islc<0 and 1-islc%2 or clw*sdir -- ds, sdir and lw have the same sign
   local dsw = ds*lw
 
   local x, y, z = V[1], V[2], V[3]
@@ -108,7 +99,7 @@ local function save_dat (elm, mflw, lw, islc)
   phi, the, psi = -phi, rangle(the, A[1]), rangle(psi, A[3])
   A[1], A[2], A[3] = the, phi, psi
 
-  W = savemap and W:copy()
+  W = savemap and W:copy() or nil
   eidx = is_implicit(elm) and eidx+0.5*sdir or eidx
 
   -- keep order!
@@ -148,9 +139,7 @@ end
 -- reset/chnage sequence iterator (e.g. track again) --------------------------o
 
 local function reset_si (mflw)
-  local mt = getmetatable(mflw)
-  local m = mt and mt.__index or mflw
-
+  local m = mflw.mflw
   local sequ, range, nturn, sdir, s0 in m.__sitr
   local iter, state, eidx = sequ:siter(range, nturn, sdir)
 
@@ -167,9 +156,7 @@ local function reset_si (mflw)
 end
 
 local function change_si (mflw, sequ, range_, nturn_, dir_)
-  local mt = getmetatable(mflw)
-  local m = mt and mt.__index or mflw
-
+  local m = mflw.mflw
   local range = range_ or sequ.range
   local iter, state, eidx = sequ:siter(range, nturn_, dir_)
 
@@ -186,11 +173,6 @@ local function change_si (mflw, sequ, range_, nturn_, dir_)
 end
 
 -- survey mflow ---------------------------------------------------------------o
-
--- see (track)
-local slicebit = { [false]=tobit(0), [true]=tobit(4),
-                   atentry=tobit(1), atslice=tobit(2), atexit=tobit(4),
-                   atbound=tobit(5), atbody =tobit(6), atall =tobit(7) }
 
 local function make_mflow (self)
   -- check sequence
@@ -209,17 +191,9 @@ local function make_mflow (self)
   local iter, state, eidx = sequ:siter(range, nturn, dir)
 
   -- saving data, build mtable
-  local save, implicit, observe in self
-  local savebit = slicebit[save]
-
-  assert(is_number(savebit)  ,
-              "invalid save directive (boolean or valid atxxx string expected)")
+  local implicit, observe in self
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
-  assert(is_integer(observe) and observe >= 0
-                             , "invalid observe (positive integer expected)")
-
-  local savesel = self:var_get'savesel'
-  assert(is_callable(savesel), "invalid savesel (callable expected)")
+  assert(is_natural(observe) , "invalid observe (positive integer expected)")
 
   -- sequence and time direction
   local edir = sequ.dir
@@ -230,7 +204,7 @@ local function make_mflow (self)
   local nslice = self:var_get 'nslice'
   local nslc = is_number(nslice) and nslice or is_callable(nslice) and 1
                                             or is_iterable(nslice) and #nslice
-  assert(is_integer(nslc) and nslc > 0,
+  assert(is_nznatural(nslc),
          "invalid nslice (integer>0 or iterable of or generator of slice weights expected)")
 
   -- setup default misalign
@@ -243,31 +217,45 @@ local function make_mflow (self)
   local atexit  = self:var_get 'atexit'
   local atsave  = self:var_get 'atsave'
   local atdebug = self:var_get 'atdebug'
+  local savesel = self:var_get 'savesel'
 
   assert(is_callable(atentry), "invalid atentry (callable expected)")
   assert(is_callable(atslice), "invalid atslice (callable expected)")
   assert(is_callable(atexit ), "invalid atexit (callable expected)")
   assert(is_callable(atsave ), "invalid atsave (callable expected)")
   assert(is_callable(atdebug), "invalid atdebug (callable expected)")
+  assert(is_callable(savesel), "invalid savesel (callable expected)")
 
-  local mtbl
+  -- saving data, build mtable
+  local save, mtbl = self.save
   if save then
     mtbl = make_mtable(self, range)
     if atsave ~= ffalse then
       local fill = observe > 0 and save_obs or save_dat
       atsave = achain(fill, atsave)
 
+      local savebit
+      if savesel ~= fnil then
+        savebit = getslcbit(savesel)
+      elseif save == true then
+        savebit = slcbit.atexit
+        savesel = slcsel.atexit
+      else
+        savebit = slcbit[save]
+        savesel = slcsel[save]
+        assert(is_number(savebit)  ,
+              "invalid save directive (boolean or valid atxxx string expected)")
+      end
+
       if savebit > 0 then
-        local saveact, ex = action 'atsave'
-        if band(savebit, slicebit.atentry) ~= 0 then
+        local saveact = actionat('atsave', savesel)
+        if band(savebit, slcbit.atentry) ~= 0 then
           atentry = chain(atentry, saveact)
         end
-        if band(savebit, slicebit.atexit) ~= 0 then
+        if band(savebit, slcbit.atexit) ~= 0 then
           atexit = chain(atexit, saveact)
-          ex = true
         end
-        if band(savebit, slicebit.atslice) ~= 0 then
-          local saveact = actionat('atsave', ex and atins or atins1)
+        if band(savebit, slcbit.atslice) ~= 0 then
           atslice = chain(atslice, saveact)
         end
       end
@@ -305,6 +293,7 @@ local function make_mflow (self)
   local psi = A0.psi   or A0[3] or 0
 
   -- complete mflow
+  mflw.mflw=mflw             -- the "main" mflw
   mflw.sequ=sequ             -- current sequence
   mflw.mtbl=mtbl             -- current mtable (nil if no save)
   mflw.sdir=dir              -- s-direction of tracking
@@ -348,8 +337,8 @@ local function make_mflow (self)
   mflw.A=vector(3):fill{the,phi,psi}    -- oriented angles
 
   -- methods to reset/change tracking
-  mflw.reset_si=reset_si      -- reset  sequence iterator
-  mflw.change_si=change_si    -- change sequence iterator
+  mflw.reset_si=reset_si     -- reset  sequence iterator
+  mflw.change_si=change_si   -- change sequence iterator
 
   -- for processing sequence elements by nstep
   mflw.__sitr={sequ=sequ, sdir=dir,             -- sequence information
@@ -357,14 +346,12 @@ local function make_mflow (self)
                s0=s0, range=range, nturn=nturn} -- sequence iterator reset
 
   -- for processing elements local frame (pre-alloc to avoid rehash)
-  mflw.__edat = setmetatable({
-    el=0,                    -- current element length and curvature
-    tlt=0,                   -- current element tilt angle
-    ang=0,                   -- current element angle
-    clw=0,                   -- current element cumulated length weights
-    nsl=0,                   -- current element number of slices
-    algn=nil,                -- current element misalignment
-  }, {__index=mflw})
+  mflw.el=0                  -- current element length and curvature
+  mflw.tlt=0                 -- current element tilt angle
+  mflw.ang=0                 -- current element angle
+  mflw.clw=0                 -- current element cumulated length weights
+  mflw.nsl=0                 -- current element number of slices
+  mflw.algn=nil              -- current element misalignment
 
   -- for processing (thin) subelements (pre-alloc to avoid rehash)
   mflw.__sdat = setmetatable({
@@ -372,6 +359,7 @@ local function make_mflow (self)
     tlt=0,                   -- current subelement tilt angle
     ang=0,                   -- current subelement angle
     clw=0,                   -- current subelement cumulated length weights
+    algn=nil,
   }, {__index=mflw})
 
   return mflw
@@ -381,7 +369,7 @@ end
 
 local _id = {} -- identity (unique)
 
-local function is_geomflow (a)
+local function is_geomflw (a)
   return type(a) == "table" and a.__surv == _id
 end
 
@@ -394,7 +382,6 @@ local function exec (self)
     mflw       = self.mflow
     mflw.nstep = self.nstep or mflw.nstep  -- update volatile fields
     mflw.info  = self.info  or mflw.info
-    mflw.debug = self.debug or mflw.debug
     assert(is_integer(mflw.nstep), "invalid number of steps (integer expected)")
   else
     mflw = make_mflow(self)
@@ -410,15 +397,15 @@ local function exec (self)
   local ie
   repeat
     -- retrieve information
-    local s0, eidx, sequ, __sitr, __edat in mflw
+    local s0, eidx, sequ, __sitr in mflw
     local iter, state in __sitr
     local ne, ret = #sequ
     ie = nil
 
     -- geometric tracking
     for ei,elm,spos,ds in iter, state, eidx do
-      mflw.eidx, mflw.spos, mflw.ds, __edat.clw = ei, s0+spos, ds, 0
-      ret = elm:survey(__edat)
+      mflw.eidx, mflw.spos, mflw.ds, mflw.clw = ei, s0+spos, ds, 0
+      ret = elm:survey(mflw)
       mflw.nstep = mflw.nstep-1
 
       -- check remaining number of elements to track
@@ -449,7 +436,6 @@ local survey = command 'survey' {
   save=true,        -- create mtable and save results                     (mtbl)
   title=nil,        -- title of mtable (default seq.name)                 (mtbl)
   observe=0,        -- save only in observed elements (every n turns)     (mtbl)
-  savesel=fnil,     -- save selector (predicate)                          (mtbl)
   savemap=false,    -- save the orientation matrix W in the column __map  (mflw)
 
   atentry=fnil,     -- action called when entering an element             (mflw)
@@ -457,6 +443,7 @@ local survey = command 'survey' {
   atexit=fnil,      -- action called when exiting an element   (atsave)   (mflw)
   atsave=fnil,      -- action called when saving in mtable                (mflw)
   atdebug=fnil,     -- action called when debugging the element maps      (mflw)
+  savesel=fnil,     -- save selector (predicate)                          (mtbl)
 
   info=nil,         -- information level (output on terminal)             (mflw)
   debug=nil,        -- debugging information level (output on terminal)   (mflw)
@@ -476,7 +463,7 @@ local survey = command 'survey' {
 
 -- env ------------------------------------------------------------------------o
 
-MAD.typeid.is_geomflow = is_geomflow
+MAD.typeid.is_geomflw = is_geomflw
 
 -- end ------------------------------------------------------------------------o
 return { survey = survey }

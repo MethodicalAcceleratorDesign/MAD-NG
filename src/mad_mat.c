@@ -1178,7 +1178,8 @@ mad_mat_div (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_
   mad_alloc_tmp(num_t, rr, ldb*nm);
   mad_mat_copy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
   dgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank, &sz, &lwork, &info); // query
-  mad_alloc_tmp(num_t, wk, lwork=sz);
+  lwork=sz;
+  mad_alloc_tmp(num_t, wk, lwork);
   dgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank,  wk, &lwork, &info); // compute
   mad_mat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
   mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(a);
@@ -1215,7 +1216,8 @@ mad_mat_divm (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz
   mad_alloc_tmp(cpx_t, rr, ldb*nm);
   mad_mat_copym(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank, &sz, &lwork, rwk, &info); // query
-  mad_alloc_tmp(cpx_t, wk, lwork=creal(sz));
+  lwork=creal(sz);
+  mad_alloc_tmp(cpx_t, wk, lwork);
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
   mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
   mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(a);
@@ -1252,7 +1254,8 @@ mad_cmat_div (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz
   mad_alloc_tmp(cpx_t, rr, ldb*nm);
   mad_cmat_copy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank, &sz, &lwork, rwk, &info); // query
-  mad_alloc_tmp(cpx_t, wk, lwork=creal(sz));
+  lwork=creal(sz);
+  mad_alloc_tmp(cpx_t, wk, lwork);
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
   mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
   mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(a);
@@ -1289,7 +1292,8 @@ mad_cmat_divm (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t m, ssz_t n, ss
   mad_alloc_tmp(cpx_t, rr, ldb*nm);
   mad_cmat_copy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank, &sz, &lwork, rwk, &info); // query
-  mad_alloc_tmp(cpx_t, wk, lwork=creal(sz));
+  lwork=creal(sz);
+  mad_alloc_tmp(cpx_t, wk, lwork);
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
   mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
   mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(a);
@@ -1318,7 +1322,8 @@ mad_mat_svd (const num_t x[], num_t u[], num_t s[], num_t v[], ssz_t m, ssz_t n)
   mad_alloc_tmp(num_t, ra, m*n);
   mad_mat_trans(x, ra, m, n);
   dgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn, &sz, &lwork, iwk, &info); // query
-  mad_alloc_tmp(num_t, wk, lwork=sz);
+  lwork=sz;
+  mad_alloc_tmp(num_t, wk, lwork);
   dgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn,  wk, &lwork, iwk, &info); // compute
   mad_free_tmp(wk); mad_free_tmp(ra);
   mad_mat_trans(u, u, m, m);
@@ -1344,7 +1349,8 @@ mad_cmat_svd (const cpx_t x[], cpx_t u[], num_t s[], cpx_t v[], ssz_t m, ssz_t n
   mad_alloc_tmp(cpx_t, ra, m*n);
   mad_cmat_trans(x, ra, m, n);
   zgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn, &sz, &lwork, rwk, iwk, &info); // query
-  mad_alloc_tmp(cpx_t, wk, lwork=creal(sz));
+  lwork=creal(sz);
+  mad_alloc_tmp(cpx_t, wk, lwork);
   zgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn,  wk, &lwork, rwk, iwk, &info); // compute
   mad_free_tmp(wk); mad_free_tmp(ra); mad_free_tmp(rwk);
   mad_cmat_trans(u, u, m, m);
@@ -1374,7 +1380,8 @@ mad_mat_solve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ss
   mad_mat_trans(tb, tb, mn, p);
   mad_mat_trans(a , ta, m , n);
   dgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, pvt, &rcond, &rank, &sz, &lwork, &info); // query
-  mad_alloc_tmp(num_t, wk, lwork=sz);
+  lwork=sz;
+  mad_alloc_tmp(num_t, wk, lwork);
   dgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, pvt, &rcond, &rank,  wk, &lwork, &info); // compute
   mad_mat_trans(tb, tb, p, mn);
   mad_vec_copy (tb,  x, n*p);
@@ -1404,7 +1411,8 @@ mad_cmat_solve (const cpx_t a[], const cpx_t b[], cpx_t x[], ssz_t m, ssz_t n, s
   mad_cmat_trans(tb, tb, mn, p);
   mad_cmat_trans(a , ta, m , n);
   zgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, pvt, &rcond, &rank, &sz, &lwork, rwk, &info); // query
-  mad_alloc_tmp(cpx_t, wk, lwork=creal(sz));
+  lwork=creal(sz);
+  mad_alloc_tmp(cpx_t, wk, lwork);
   zgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, pvt, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
   mad_cmat_trans(tb, tb, p, mn);
   mad_cvec_copy (tb,  x, n*p);
@@ -1434,7 +1442,8 @@ mad_mat_ssolve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, s
   mad_mat_trans(tb, tb, mn, p);
   mad_mat_trans(a , ta, m , n);
   dgelsd_(&nm, &nn, &np, ta, &nm, tb, &mn, ts, &rcond, &rank, &sz, &lwork, &isz, &info); // query
-  mad_alloc_tmp(num_t,  wk, lwork=sz);
+  lwork=sz;
+  mad_alloc_tmp(num_t,  wk, lwork);
   mad_alloc_tmp(int  , iwk, isz);
   dgelsd_(&nm, &nn, &np, ta, &nm, tb, &mn, ts, &rcond, &rank,  wk, &lwork,  iwk, &info); // compute
   mad_mat_trans(tb, tb, p, mn);
@@ -1469,7 +1478,8 @@ mad_cmat_ssolve (const cpx_t a[], const cpx_t b[], cpx_t x[], ssz_t m, ssz_t n, 
   mad_cmat_trans(tb, tb, mn, p);
   mad_cmat_trans(a , ta, m , n);
   zgelsd_(&nm, &nn, &np, ta, &nm, tb, &mn, ts, &rcond, &rank, &sz, &lwork, &rsz, &isz, &info); // query
-  mad_alloc_tmp(cpx_t,  wk, lwork=creal(sz));
+  lwork=creal(sz);
+  mad_alloc_tmp(cpx_t,  wk, lwork);
   mad_alloc_tmp( num_t, rwk, (int)rsz);
   mad_alloc_tmp( int  , iwk, isz);
   zgelsd_(&nm, &nn, &np, ta, &nm, tb, &mn, ts, &rcond, &rank,  wk, &lwork,  rwk,  iwk, &info); // compute
@@ -1509,7 +1519,8 @@ mad_mat_gsolve (const num_t a[], const num_t b[], const num_t c[], const num_t d
   mad_vec_copy (c, tc, m);
   mad_vec_copy (d, td, p);
   dgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x, &sz, &lwork, &info); // query
-  mad_alloc_tmp(num_t, wk, lwork=sz);
+  lwork=sz;
+  mad_alloc_tmp(num_t, wk, lwork);
   dgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x,  wk, &lwork, &info); // compute
 
   if (nrm_) *nrm_ = mad_vec_norm(tc+(n-p), m-(n-p)); // residues
@@ -1543,7 +1554,8 @@ mad_cmat_gsolve (const cpx_t a[], const cpx_t b[], const cpx_t c[], const cpx_t 
   mad_cvec_copy (c, tc, m);
   mad_cvec_copy (d, td, p);
   zgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x, &sz, &lwork, &info); // query
-  mad_alloc_tmp(cpx_t, wk, lwork=sz);
+  lwork=sz;
+  mad_alloc_tmp(cpx_t, wk, lwork);
   zgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x,  wk, &lwork, &info); // compute
 
   if (nrm_) *nrm_ = mad_cvec_norm(tc+(n-p), m-(n-p)); // residues
@@ -1575,7 +1587,8 @@ mad_mat_gmsolve (const num_t a[], const num_t b[], const num_t d[],
   mad_mat_trans(b, tb, m, p);
   mad_vec_copy (d, td, m);
   dggglm_(&nm, &nn, &np, ta, &nm, tb, &nm, td, x, y, &sz, &lwork, &info); // query
-  mad_alloc_tmp(num_t, wk, lwork=sz);
+  lwork=sz;
+  mad_alloc_tmp(num_t, wk, lwork);
   dggglm_(&nm, &nn, &np, ta, &nm, tb, &nm, td, x, y,  wk, &lwork, &info); // compute
 
   mad_free_tmp(wk);
@@ -1605,7 +1618,8 @@ mad_cmat_gmsolve (const cpx_t a[], const cpx_t b[], const cpx_t d[],
   mad_cmat_trans(b, tb, m, p);
   mad_cvec_copy (d, td, m);
   zggglm_(&nm, &nn, &np, ta, &nm, tb, &nm, td, x, y, &sz, &lwork, &info); // query
-  mad_alloc_tmp(cpx_t, wk, lwork=sz);
+  lwork=sz;
+  mad_alloc_tmp(cpx_t, wk, lwork);
   zggglm_(&nm, &nn, &np, ta, &nm, tb, &nm, td, x, y,  wk, &lwork, &info); // compute
 
   mad_free_tmp(wk);
@@ -1638,7 +1652,8 @@ mad_mat_eigen (const num_t x[], cpx_t w[], num_t vl_[], num_t vr_[], ssz_t n)
   mad_alloc_tmp(num_t, ra, n*n);
   mad_mat_trans(x, ra, n, n);
   dgeev_(vls, vrs, &nn, ra, &nn, wr, wi, vl_, &nn, vr_, &nn, &sz, &lwork, &info); // query
-  mad_alloc_tmp(num_t, wk, lwork=sz);
+  lwork=sz;
+  mad_alloc_tmp(num_t, wk, lwork);
   dgeev_(vls, vrs, &nn, ra, &nn, wr, wi, vl_, &nn, vr_, &nn,  wk, &lwork, &info); // compute
   mad_vec_cplx(wr, wi, w, n);
   mad_free_tmp(wk); mad_free_tmp(ra);
@@ -1667,7 +1682,8 @@ mad_cmat_eigen (const cpx_t x[], cpx_t w[], cpx_t vl_[], cpx_t vr_[], ssz_t n)
   mad_alloc_tmp(cpx_t, ra, n*n);
   mad_cmat_trans(x, ra, n, n);
   zgeev_(vls, vrs, &nn, ra, &nn, w, vl_, &nn, vr_, &nn, &sz, &lwork, rwk, &info); // query
-  mad_alloc_tmp(cpx_t, wk, lwork=creal(sz));
+  lwork=creal(sz);
+  mad_alloc_tmp(cpx_t, wk, lwork);
   zgeev_(vls, vrs, &nn, ra, &nn, w, vl_, &nn, vr_, &nn,  wk, &lwork, rwk, &info); // compute
   mad_free_tmp(wk); mad_free_tmp(ra); mad_free_tmp(rwk);
 //if (vl_) mad_cmat_trans(vl_, vl_, n, n);
@@ -2092,7 +2108,7 @@ vec_sort (num_t v[], idx_t c[], ssz_t n)
   FOR(i,n) c[i] = i;
 
   // Sort values by ascending order.
-  FOR(i,1,n) RFOR(j,i,0)
+  FOR(i,1,n) RFOR(j,i+1)
     if (v[j-1] > v[j]) {
       SWAP(v[j-1], v[j], tr);
       SWAP(c[j-1], c[j], ti);
@@ -2105,7 +2121,7 @@ ivec_sort (idx_t v[], ssz_t n, log_t rmdup)
   idx_t ti;
 
   // Sort indexes by ascending order.
-  FOR(i,1,n) RFOR(j,i,0)
+  FOR(i,1,n) RFOR(j,i+1)
     if (v[j-1] > v[j]) SWAP(v[j-1], v[j], ti);
 
   // Remove duplicates.
@@ -2195,7 +2211,7 @@ mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
 #define V(i,j) V[(i)*n+(j)]
 
   // Loop over increasing singular values.
-  RFOR(i,mn-1,mn-1-N) {
+  RFOR(i,mn,mn-N) {
     // Singular value is large, stop checking.
     if (S[i] > rcond*S[0]) break;
 
@@ -2261,7 +2277,7 @@ mad_cmat_svdcnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
 #define V(i,j) V[(i)*n+(j)]
 
   // Loop over increasing singular values.
-  RFOR(i,mn-1,mn-1-N) {
+  RFOR(i,mn,mn-N) {
     // Singular value is large, stop checking.
     if (S[i] > rcond*S[0]) break;
 
@@ -2568,7 +2584,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
     }
 
     // Box 7: Recalculate solution vector x. Here, sqr[1..k] = -sigma[1..k].
-    RFOR(i,k,-1) {
+    RFOR(i,k+1) {
       X[i] = B[i];
       FOR(j,i+1,k+1) X[i] -= A(i,j) * X[j];
       X[i] /= sqr[i];
@@ -2576,7 +2592,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
 
     // Box 8: Compute original residual vector by backward transformation.
     mad_vec_copy(B, R, m);
-    RFOR(j,k,-1) {
+    RFOR(j,k+1) {
       R[j] = hh = 0;
       FOR(i,j,m) hh += A(i,j) * R[i];
       hh /= sqr[j] * A(j,j);
@@ -2631,7 +2647,7 @@ mad_mat_rtbar (num_t Rb[NN],       num_t Tb[N], num_t el, num_t ang, num_t tlt,
     } else { // R = I
       mad_vec_copy(T, Tb, N);                 // Tb = T
       mad_mat_eye (Rb, 1, N, N, N);           // Rb = I
-     }
+    }
 
   } else {                                    // -- curved --------------------o
     num_t rho = el/ang;
@@ -2658,7 +2674,7 @@ mad_mat_rtbar (num_t Rb[NN],       num_t Tb[N], num_t el, num_t ang, num_t tlt,
     } else { // R = I
       mad_mat_tmul(We, T , Tb, N, 1, N);      // Tb = We:t()*T
       mad_mat_eye (Rb,      1, N, N, N);      // Rb = I
-     }
+    }
   }
 }
 

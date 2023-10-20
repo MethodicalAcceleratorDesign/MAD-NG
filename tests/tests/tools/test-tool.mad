@@ -1,0 +1,233 @@
+local is_vector, is_table, is_integer in MAD.typeid
+local fnil                            in MAD.gfunc
+local atexit, tblcpy                  in MAD.utility
+
+local help_usage = [[Usage: ../mad <your_test_suite.mad> [options] [testname1 [testname2] ... ]
+Options:
+  -h, --help:             Print this help
+  -v, --verbose:          Print during and after the test.
+  -d, --debug:            Stop on first failure and run dbgmap on PTC and MAD output (saved in output/)
+  -s, --save:             Save the config and results to a file
+  -n, --norun:            Do not run tests, just read cfg and res files and continue with other options
+  -f, --figure:           Generate a figure for each test in output/plots
+  -p, --pattern PATTERN:  Execute all test names matching the Lua PATTERN
+                          May be repeated to include several patterns
+                          Make sure you escape magic chars like +? with %
+  -x, --exclude PATTERN:  Exclude all test names matching the Lua PATTERN
+                          May be repeated to exclude several patterns
+                          Make sure you escape magic chars like +? with %
+  testname1, testname2, ... : tests to run in the form of TestClass or TestClass.testMethod
+]]
+
+local unittest_help = [[
+
+Additional/Augmented options for unit tests:
+  -v, --verbose:          Augmented to also print during the test.
+  -d, --debug:            Run dbgmap on PTC and MAD output (saved in output/) before assertion failure
+  -s, --save:             Save the config and results to a file
+  -t, --test:             Do not run unittests, instead run as a test where PTC is 
+                          run for every configuration. See -t -h for more details.
+Note: Plots are automatically generated for all utests in output/plots
+]]
+
+
+local args_dict = { -- Do opposite to default
+  ["--save"   ] = "dosave" ,
+  ["-s"       ] = "dosave" ,
+
+  ["--verbose"] = "doprnt" ,
+  ["-v"       ] = "doprnt" ,
+
+  ["--debug"  ] = "dodbg"  ,
+  ["-d"       ] = "dodbg"  ,
+
+  ["--figure" ] = "doplot" ,
+  ["-f"       ] = "doplot" ,
+
+  ["--norun"  ] = "dorun"  ,
+  ["-n"       ] = "dorun"  ,
+
+  ["-h"       ] = "help"   ,
+  ["--help"   ] = "help"   ,
+
+  ["-p"       ] = "pattern",
+  ["--pattern"] = "pattern",
+
+  ["-x"       ] = "exclude",
+  ["--exclude"] = "exclude",
+
+  ["-t"       ] = "test"   ,
+  ["--test"   ] = "test"   ,
+}
+
+-- Some test specific tables
+local patterns, excludes, tests_to_run = {}, {}, {__RUN_ALL__ = true}
+
+local global_cfg   = {dorun = true, cmap=true} ---- Change the default for the release 0.9.8
+local mad_args     = tblcpy(MAD.env.arg) -- Copy the arg list for manipulation
+
+local args_to_cfg = \cfg => for k, v in pairs(global_cfg) do cfg[k] = v end end
+
+local args_in_utest = {
+  doprnt   = true,
+  doplot   = true,
+  pattern  = true,
+  exclude  = true,
+  help     = true,
+}
+
+local function remove_arg (is_unittest, i, arg) -- this assumes you are looping over the arg list
+  if is_unittest and not args_in_utest[arg] then
+    table.remove(MAD.env.arg, i + (#MAD.env.arg - #mad_args))  -- Remove the arg from the arg list
+  end
+end
+
+local function run_help (is_unittest) 
+  if is_unittest then atexit(\->print(unittest_help)) 
+  else                print(help_usage) ; os.exit(0) 
+  end
+end
+
+-- A function to get the pattern or exclude from the arg list
+local function get_pttrn_or_excl (i, is_unittest, tbl)
+  if is_unittest then return end
+  local pttrn = mad_args[i + 1]
+  if not pttrn or pttrn:sub(1,1)=="-" then -- Check if the next arg is a pattern
+    error("Missing argument for option: "..mad_args[i]) 
+  end
+  -- Add pattern to corresponding table and remove the pattern from the arg list
+  tbl[#tbl+1], mad_args[i+1] = pttrn, ""
+end
+ 
+local function get_print_level (i, is_unittest)
+  local lvl = tonumber(mad_args[i + 1])
+  if not is_integer(lvl) 
+  then lvl = 1 
+  else 
+    remove_arg(is_unittest, i+1, lvl) 
+    mad_args[i+1] = ""
+  end
+  assert(lvl >= 0, "Invalid argument for option: "..mad_args[i]) 
+  global_cfg.doprnt = lvl
+end
+
+local arg_fun = {
+  pattern = \i, iut-> get_pttrn_or_excl(i, iut, patterns),
+  exclude = \i, iut-> get_pttrn_or_excl(i, iut, excludes),
+  help    = \_, iut-> run_help(iut),
+  test    = fnil,
+  doprnt  = \i, iut-> get_print_level(i, iut)
+}
+
+local function parse_cmd_args(is_unittest) -- Parse the command line arguments
+  -- First check if this is a unittest
+  if type(is_unittest) == "nil" then is_unittest = true end
+  for _, v in ipairs(mad_args) do
+    if args_dict[v] == "test" then is_unittest = false end
+  end
+
+  -- Now parse other arguments
+  for i, v in ipairs(mad_args) do
+
+    --Check if the argument is an option
+    if v:sub(1,1) == "-" then
+      local arg = args_dict[v] -- Get the argument name
+
+      if arg_fun[arg] then
+        -- If the argument has a function, run it
+        arg_fun[arg](i, is_unittest) 
+        remove_arg(is_unittest, i, arg)
+      elseif arg then
+        -- If the argument is a known cfg boolean, set it (True for all but norun and cmap (sets dorun and cmap to false))
+        global_cfg[arg] = not global_cfg[arg]
+
+        -- For compatibility with unittests, remove the arg from the arg list, except for verbose option
+        remove_arg(is_unittest, i, arg)
+      else
+        error("Unknown option: "..v)
+      end
+
+    -- Check if the argument is a test name 
+    -- "" is a special case that can only occur due to get_pttrn_or_excl
+    elseif v ~= "" then 
+      tests_to_run.__RUN_ALL__ = false -- Set to false if a test name is given
+      -- Find the position of the dot (if any)
+      local dot_pos = string.find(v, "%.") or 0
+      if dot_pos == 0 then 
+        tests_to_run[v] = true 
+      else
+        -- Get the module and test name, using the dot position, then
+        -- add the test to the list of tests to run
+        local mod, test = v:sub(1, dot_pos-1), v:sub(dot_pos+1)
+        if tests_to_run[mod] then tests_to_run[mod][test] = true
+        else                      tests_to_run[mod] = {[test] = true} 
+        end
+      end
+    end
+  end
+  return not is_unittest -- Return true if this is not a unittest
+end
+
+local function chk_test(mod_name, test_name) -- Check if the test should be run
+  -- Check if any module was specified
+  if not tests_to_run.__RUN_ALL__ then
+    if not tests_to_run[mod_name] then -- If the module is not specified, don't run
+      return false
+    elseif is_table(tests_to_run[mod_name]) then
+      -- If the module is specified and the test is specified, run if test name is here
+      return tests_to_run[mod_name][test_name]
+    end
+  end
+  -- If no patterns or excludes, run all/entire module if no tests are specified
+  if #patterns == 0 and #excludes == 0 then return true end
+
+  -- Now either module is specified and mod_name matches that or module is not specified
+  local chk = true
+
+  -- Check if the test name matches any of the patterns (ignoring 'test')
+  for _, p in ipairs(patterns) do 
+    if not (string.find(test_name, p) or string.find(mod_name, p)) 
+    then chk = false end
+  end
+
+  -- Now check if the test name matches any of the excludes (ignoring 'test')
+  for _, x in ipairs(excludes) do -- Exclude has priority
+    if string.find(test_name, x) or string.find(mod_name, x)
+    then chk = false end
+  end
+  return chk
+end
+
+local function chk_unknown_tests (ran_tests)
+  for t, _ in pairs(tests_to_run) do
+    if t ~= "__RUN_ALL__" and (not _G[t] or ran_tests[t]) then -- t can be a module or a test
+      print("Could not find and run the following test:  ".. t)
+    end
+  end
+end
+
+local is_test_name = \s -> type(s) == "string" and string.sub(s, 1, 4):lower() == 'test'
+local function run_tests ()
+  local test_names = {}
+  for k, v in pairs(_G) do
+    if is_test_name(k) then
+      assert(type(v) == "table", "All tests must be placed in a module")      -- Possibly limiting?
+      for t, f in pairs(v) do
+        if is_test_name(t) and chk_test(k, t) then test_names[t] = f end
+      end
+    end
+  end
+  chk_unknown_tests(test_names)
+  for t, f in pairs(test_names) do f() end
+end
+
+return {
+  parse_cmd_args = parse_cmd_args,
+  args_to_cfg    = args_to_cfg   ,
+  run_tests      = run_tests     ,
+
+  -- For adapting the unittests
+  args_dict      = args_dict     ,
+  arg_fun        = arg_fun       ,
+  global_cfg     = global_cfg    ,
+}

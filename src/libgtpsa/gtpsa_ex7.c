@@ -25,7 +25,7 @@
 int main(void)
 {
   // descriptor for TPSA with 2 variables of order 63 (max) and 1 parameter order 1
-  const desc_t *d = mad_desc_newvp(2, 1, 63, 1);
+  const desc_t *d = mad_desc_newvp(2, 63, 1, 1);
 
   // two TPSAs, t1 has maximum order, t2 is same as t1
   tpsa_t *t1 = mad_tpsa_newd(d, mad_tpsa_default);
@@ -46,6 +46,6 @@ int main(void)
   mad_tpsa_del(t2);
 
   // destroy all created descriptors (optional cleanup)
-  mad_desc_cleanup();
+  mad_desc_del(0);
   return 0;
 }

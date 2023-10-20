@@ -65,6 +65,7 @@ end
 local I  = matrix(6):eye()
 local I4 = matrix(4):eye()
 local X4 = vector(4)
+local Y4 = vector(4)
 local R4 = matrix(4)
 local r4 = 1..4
 
@@ -73,8 +74,11 @@ local function newton (X0, X, R, T, tol)
 
   if not T and has_dpt(R) then
     -- 6D case
-    dx, rnk = (R-I):solve(X-X0)
-    dx:unm(dx)
+    dx, rnk = X-X0, 6
+    if dx:maxabs() > tol then
+      dx, rnk = (R-I):solve(dx)
+      dx:unm(dx)
+    end
 
     if rnk < 6 then
       return dx, rnk, "singular"
@@ -87,9 +91,12 @@ local function newton (X0, X, R, T, tol)
 
   else
     -- 4D case
-    X0:getvec(r4, X4) ; R:getsub(r4,r4, R4)
-    dx, rnk = (R4-I4):solve(X:getvec(r4)-X4)
-    dx:unm(dx)
+    dx, rnk = X:getvec(r4) - X0:getvec(r4,X4), 4
+    if dx:maxabs() > tol then
+      R:getsub(r4,r4, R4)
+      dx, rnk = (R4-I4):solve(dx)
+      dx:unm(dx)
+    end
 
     if rnk < 4 then
       return dx, rnk, "singular"
@@ -323,6 +330,7 @@ local function cofind_map (self, mflw)
 
     -- update the number of damap to track
     mflw.npar = n
+    mflw:cmap_sync()
 
     -- all damaps have been processed
     if n == 0 then break end
@@ -386,20 +394,25 @@ local cofind = command 'cofind' {
 
   nturn=nil,         -- number of turns to track                          (trck)
   nslice=nil,        -- number of slices (or weights) for each element    (trck)
-  mapdef=true,       -- setup for damap (or list of, true => {})          (trck)
   method=nil,        -- method or order for integration (1 to 8)          (trck)
   model=nil,         -- model for integration ('DKD' or 'TKT')            (trck)
+  mapdef=true,       -- setup for damap (or list of, true => {})          (trck)
+  secnmul=nil,       -- maximun number of curved multipoles for bends     (trck)
   ptcmodel=nil,      -- use strict PTC thick model (override option)      (trck)
   implicit=nil,      -- slice implicit elements too (e.g. plots)          (trck)
   misalign=nil,      -- consider misalignment                             (trck)
+  aperture=nil,      -- default aperture                                  (trck)
   fringe=nil,        -- enable fringe fields (see element.flags.fringe)   (trck)
+  frngmax=nil,       -- maximum multipole fringe field                    (trck)
   radiate=nil,       -- radiate at slices                                 (trck)
+  nocavity=nil,      -- disable rfcavities                                (trck)
   totalpath=nil,     -- variable 't' is the totalpath                     (trck)
+  cmap=nil,          -- use C/C++ maps when available                     (trck)
 
-  save=false,        -- create mtable and save results                    (mtbl)
+  save=false,        -- create mtable and save results                    (trck)
+  aper=nil,          -- check for aperture (default atsave)               (trck)
   title=nil,         -- title of mtable (default seq.name)                (mtbl)
-  observe=nil,       -- save only in observed elements (every n turns)    (mtbl)
-  savesel=nil,       -- save selector (predicate)                         (mtbl)
+  observe=nil,       -- save only in observed elements (every n turns)    (trck)
   savemap=nil,       -- save damap in the column __map                    (trck)
 
   atentry=nil,       -- action called when entering an element            (trck)
@@ -409,13 +422,16 @@ local cofind = command 'cofind' {
   atsave=nil,        -- action called when saving in mtable               (trck)
   atdebug=nil,       -- action called when debugging the element maps     (trck)
 
-  codiff=1e-10,      -- finite differences step for jacobian              (cofn)
+  savesel=nil,       -- save selector (predicate)                         (trck)
+  apersel=nil,       -- aper selector (predicate, default atentry)        (trck)
+
   coiter=20,         -- maximum number of iterations                      (cofn)
   cotol=1e-8,        -- closed orbit tolerance (i.e. min |dx|)            (cofn)
+  codiff=1e-10,      -- finite differences step for jacobian              (cofn)
   O1=0,              -- optional final coordinates translation            (cofn)
 
-  info=nil,          -- information level (output on terminal)            (cofn)
-  debug=nil,         -- debugging information level (output on terminal)  (cofn)
+  info=nil,          -- information level (output on terminal)            (trck)
+  debug=nil,         -- debugging information level (output on terminal)  (trck)
   usrdef=nil,        -- user defined data attached to the mflow           (trck)
 
   mflow=nil,         -- mflow, exclusive with other attributes
@@ -423,7 +439,7 @@ local cofind = command 'cofind' {
 
   __attr = tblcat(   -- list of all setup attributes
     track.__attr,
-    {'codiff', 'coiter', 'cotol', 'O1'},
+    {'coiter', 'cotol', 'codiff', 'O1'},
     {noeval=track.__attr.noeval}
   )
 } :set_readonly()    -- reference cofind command is readonly

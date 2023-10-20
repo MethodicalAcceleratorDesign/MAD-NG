@@ -29,14 +29,15 @@ local vector, cvector, matrix, monomial, damap, cdamap,
 local assertf, errorf, printf, num2str, tbl2str, setkeys, tblcat,
       mockfile, openfile                                         in MAD.utility
 local lbool                                                      in MAD.gfunc
-local twopi                                                      in MAD.constant
-local abs, sqrt, exp, log, sin, cos, tan, atan2,
+local pi, twopi                                                  in MAD.constant
+local abs, sqrt, exp, log, sin, cos, tan, atan2, tgamma, lgamma,
       sinh, cosh, real, imag, cplx, fact, rangle, hypot          in MAD.gmath
     
 local is_nil, is_boolean, is_number, is_positive, is_nonzero, is_integer,
-      is_natural, is_even, is_odd, is_string, is_table, is_mappable,
+      is_natural, is_nznatural, is_even, is_odd, is_string, is_table,
+      is_mappable, is_indexable, is_monomial,
       is_matrix, is_cmatrix, isa_matrix, is_vector, is_cvector,
-      is_damap, is_cdamap, isa_damap, wrestrict                  in MAD.typeid
+      is_tpsa, is_damap, is_cdamap, isa_damap, wrestrict         in MAD.typeid
 
 local min, max in math
 
@@ -50,8 +51,9 @@ local I56 = matrix(6):set(5,5,1):set(6,6,1)
 local S4  = matrix(4):symp() -- [4x4] symplectic matrix S
 local S6  = matrix(6):symp() -- [6x6] symplectic matrix S
 
-              -- i,j,k,l, i,j,k,l, i,j,k,l, i,j,k,l,
-local blkidx = { 3,1,1,3, 3,3,1,1 } --, 5,1,1,5, 5,3,3,5 } -- keep order!
+                -- i,j,k,l, i,j,k,l, i,j,k,l, i,j,k,l,
+local blkidx   = { 3,1,1,3, 3,3,1,1 } --, 5,1,1,5, 5,3,3,5 } -- keep order!
+local blkidx_n = #blkidx
 
 -- implementation -------------------------------------------------------------o
 
@@ -70,15 +72,15 @@ local gphys = {
 
   -- optical functions names (index -> name)
   ofname = {
-    'alfa11', 'beta11', 'gama11', 'mu1', 'dx', 'dpx', 'Dx', 'Dpx',
-    'alfa22', 'beta22', 'gama22', 'mu2', 'dy', 'dpy', 'Dy', 'Dpy',
+    'alfa11', 'beta11', 'gama11', 'mu1', 'dx', 'dpx',
+    'alfa22', 'beta22', 'gama22', 'mu2', 'dy', 'dpy',
     'alfa33', 'beta33', 'gama33', 'mu3',
   },
 
   -- optical functions names with coupling (index -> name)
   ofcname = {
-    'alfa11', 'beta11', 'gama11', 'alfa12', 'beta12', 'gama12', 'alfa13', 'beta13', 'gama13', 'mu1', 'dx', 'dpx', 'Dx', 'Dpx',
-    'alfa21', 'beta21', 'gama21', 'alfa22', 'beta22', 'gama22', 'alfa23', 'beta23', 'gama23', 'mu2', 'dy', 'dpy', 'Dy', 'Dpy',
+    'alfa11', 'beta11', 'gama11', 'alfa12', 'beta12', 'gama12', 'alfa13', 'beta13', 'gama13', 'mu1', 'dx', 'dpx',
+    'alfa21', 'beta21', 'gama21', 'alfa22', 'beta22', 'gama22', 'alfa23', 'beta23', 'gama23', 'mu2', 'dy', 'dpy',
     'alfa31', 'beta31', 'gama31', 'alfa32', 'beta32', 'gama32', 'alfa33', 'beta33', 'gama33', 'mu3',
   },
 
@@ -206,7 +208,7 @@ end
 
 -- sort particles/damaps, adjust npar
 function gphys.msort (mflw, cmp_)
-  assert(typeid.is_dynmflow(mflw),"invalid argument #1 (dynamic mflow expected)")
+  assert(typeid.is_dynmflw(mflw),"invalid argument #1 (dynamic mflow expected)")
 
   mflw.npar = #mflw
   if mflw.npar > 1 then table.sort(mflw, cmp_ or gphys.mcmp) end
@@ -215,7 +217,8 @@ function gphys.msort (mflw, cmp_)
   for i=mflw.npar,1,-1 do
     if mrnk[mflw[i].status] <= mrnk.stable then mflw.npar=i break end
   end
-  return mflw
+
+  return mflw:cmap_sync()
 end
 
 -- checkers -------------------------------------------------------------------o
@@ -225,7 +228,7 @@ local function chksysiz (V, W)
     assert(is_matrix(V), "invalid argument #1 (matrix expected)")
     assert((V.nrow == 6 or V.nrow == 4) and V.nrow == V.ncol,
            "invalid sizes (4D/6D matrix expected)")
-    if W then
+    if not is_nil(W) then
       assert(is_cvector(W), "invalid argument #2 (cvector expected)")
       assert(W.nrow == V.nrow, "invalid size (4D/6D cvector expected)")
     end
@@ -242,6 +245,13 @@ local eig_tol in phystol
 local function is_eigsys (M, V, W, eigtol_)
   local tol = eigtol_ or eig_tol
   assert(is_positive(tol), "invalid argument #4 (positive number expected)")
+
+  if option.debug >= 2 then
+    io.write("**Eigensystem:\n")
+    M:print('Input vectors ')
+    W:print('Eigenvalues ')
+    V:print('Eigenvectors ')
+  end
 
   for i=2,#W,2 do
     local dW = W[i-1]-W[i]:conj()
@@ -264,7 +274,7 @@ local function is_eigsys (M, V, W, eigtol_)
   return true
 end
 
-gphys.is_eigsys = \V,W,M,tol -> is_eigsys(chksysiz(M,W),chksysiz(V,W), W, tol)
+gphys.is_eigsys = \V,W,M,tol -> is_eigsys(chksysiz(M,W), chksysiz(V,W), W, tol)
 
 -- check for delta pt in one-turn map using dptol tolerance
 
@@ -311,7 +321,7 @@ local function has_cpl (M, cpltol_)
   return v >= tol
 end
 
-gphys.has_cpl = \M, tol -> has_cpl(chksysiz(M), tol)
+gphys.has_cpl = \M,tol -> has_cpl(chksysiz(M), tol)
 
 -- helpers --------------------------------------------------------------------o
 
@@ -353,7 +363,7 @@ local function get_eigval (M, V, W)
   return W
 end
 
-gphys.get_eigval = \M, V, W -> get_eigval(chksysiz(M), chksysiz(V, W))
+gphys.get_eigval = \M,V,W -> get_eigval(chksysiz(M), chksysiz(V,W))
 
 -- stability ------------------------------------------------------------------o
 
@@ -375,7 +385,7 @@ local function make_stable (M)
   -- eps, hence it will remove only numerical noise as the one-turn-map is
   -- supposed to be around the identity where eps represents both a relative
   -- and an absolute numerical error.
-  for idx=1,#blkidx,4 do
+  for idx=1,blkidx_n,4 do
     if blkidx[idx] > M.nrow then break end
     local i,j,k,l = blkidx[idx], blkidx[idx+1], blkidx[idx+2], blkidx[idx+3]
     local mx = max(abs(M:get(i  ,j)), abs(M:get(i  ,j+1)),
@@ -442,35 +452,47 @@ local function closed_form (M, A_)
   local R4 = M:getsub(r4,r4)
   local C4, rnk = (I4-R4):solve(D4) ;
   (A_ or M):setsub(r4,pt,C4)
+
+  if option.debug >= 2 then
+    io.write("**Closed dispersion:\n")
+    C4:print("Dispersion ") ;
+    (A_ or M):print("AorM")
+  end
 end
 
-gphys.closed_form = \M, A_ -> closed_form(chksysiz(M), chksysiz(A_))
+gphys.closed_form = \M,A_ -> closed_form(chksysiz(M,A_))
 
 -- order in place eigenvectors and eigenvalues by planes (x,px), (y,py) and
 -- (t,pt), detect by horizontal, vertical, longitudinal order (MAD-NG order)
 
 local function order_eigen (V, W)  -- default
-  for i=1,V.nrow-3,2 do
+  local n = min(V:sizes())
+  for i=1,n-3,2 do
     local mv, k = 0
 
-    for j=i,V.nrow-1,2 do
+    for j=i,n-1,2 do
       local pv = V:get(i,j  )^2 + V:get(i+1,j  )^2 + -- real part
                  V:get(i,j+1)^2 + V:get(i+1,j+1)^2   -- imag part
       if pv > mv then mv, k = pv, j end
     end
 
     if i ~= k then
-      -- swap eigenvectors pairs (i,i+1) with (k,k+1)
-      local col = {1,2,3,4}
-      col[i], col[i+1] = k, k+1
-      V:swpcol(col)
-      -- swap eigenvalues pairs (i,i+1) with (k,k+1)
-      W[i], W[i+1], W[k], W[k+1] = W[k], W[k+1], W[i], W[i+1]
+      -- swap eigenvectors/eigenvalues pairs (i,i+1) with (k,k+1)
+      V:swpcol({i,i+1}, {k,k+1})
+      if not is_nil(W) then
+        W[i], W[i+1], W[k], W[k+1] = W[k], W[k+1], W[i], W[i+1]
+      end
     end
+  end
+
+  if option.debug >= 2 then
+    io.write("**Ordered eigensystem:\n")
+    V:print('Eigenvectors ')
+    if not is_nil(W) then W:print('Eigenvalues ') end
   end
 end
 
-gphys.order_eigen = \V, W -> order_eigen(chksysiz(V,W))
+gphys.order_eigen = \V,W -> order_eigen(chksysiz(V,W))
 
 -- order in place eigenvectors and eigenvalues by planes (x,px), (y,py) and
 -- (t,pt), detect by vertical, horizontal, longitudinal order (MAD-X order)
@@ -478,16 +500,16 @@ gphys.order_eigen = \V, W -> order_eigen(chksysiz(V,W))
 local idx_p = {3,1,5} -- vertical, horizontal, longitudinal
 local idx_l = {[1]=3,[3]=1,[4]=5,[6]=3,[8]=1}
 
-local function order_eigen_madx (V, W)  -- for comparison
-  local get, set, n, idx, sel = V.get, V.set, min(V.nrow,6), {0,0}, {}
+local function order_eigen_madx (V)  -- for comparison
+  local n, idx, sel = min(V.nrow,6), {0,0}, {}
 
   -- collect columns with largest components for each plane
   for k=1,n/2-1 do
     local i, mv = idx_p[k], 0
     for j=1,n-1,2 do
       if not sel[j] then -- not yet selected
-        local pv = get(V,i,j  )^2 + get(V,i+1,j  )^2 + -- real part
-                   get(V,i,j+1)^2 + get(V,i+1,j+1)^2   -- imag part
+        local pv = V:get(i,j  )^2 + V:get(i+1,j  )^2 + -- real part
+                   V:get(i,j+1)^2 + V:get(i+1,j+1)^2   -- imag part
         if pv > mv then mv, idx[k], sel[j] = pv, j, true end
       end
     end
@@ -498,20 +520,26 @@ local function order_eigen_madx (V, W)  -- for comparison
   idx[1], idx[2] = idx[2], idx[1]
 
   -- reorder eigenvectors and eigenvalues
-  local Vc, Wc = V:copy(), W:copy()
+  local Vc = V:copy()
   for kk,j in ipairs(idx) do
     local k = 2*kk-1
     if k ~= j then
       for i=1,n do
-        set(V,i,k  , get(Vc,i,j  ))
-        set(V,i,k+1, get(Vc,i,j+1))
+        V:set(i,k  , Vc:get(i,j  ))
+        V:set(i,k+1, Vc:get(i,j+1))
       end
-      W[k], W[k+1] = Wc[j], Wc[j+1]
     end
+  end
+
+  if option.debug >= 2 then
+    io.write("**Ordered eigensystem (madx-like):")
+    for kk,j in ipairs(idx) do io.write(' ',j,'->',2*kk-1) end
+    io.write('\n')
+    V:print('Eigenvectors ')
   end
 end
 
-gphys.order_eigen_madx = \V, W -> order_eigen_madx(chksysiz(V,W))
+gphys.order_eigen_madx = \V -> order_eigen_madx(chksysiz(V))
 
 -- normalize in place eigenvectors such that [x,px]=1, [y,py]=1 and [t,pt]=1
 
@@ -527,6 +555,11 @@ local function norml_eigen (A)
       A:set(i,j-1, A:get(i,j-1) * (spb / pb))
       A:set(i,j  , A:get(i,j  ) /  spb      )
     end
+  end
+
+  if option.debug >= 2 then
+    io.write("**Normalized eigensystem:\n")
+    A:print('Eigenvectors ') ; io.write("symperr=", num2str(A:symperr()), "\n")
   end
 end
 
@@ -554,7 +587,14 @@ local function phase_eigen (A)
 -- A*P=[ a11  a12 ][ a11/d  -a12/d ]=[      d (>0)                0          ]
 --     [ a21  a22 ][ a12/d   a11/d ] [ (a11a21+a12a22)/d  (-a12a21+a11a22)/d ]
 
-  return A:mul(P,A) -- A = A*P (rotate planes of A => a12=a34=0)
+  A:mul(P,A) -- A = A*P (rotate planes of A => a12=a34=0)
+
+  if option.debug >= 2 then
+    io.write("**Rephased eigenvectors:\n")
+    A:print('Eigenvectors ') ; io.write("symperr=", num2str(A:symperr()), "\n")
+  end
+
+  return A
 end
 
 gphys.phase_eigen = \A -> phase_eigen(chksysiz(A))
@@ -572,6 +612,11 @@ function gphys.is_normal1 (A, R, nrmtol_)
 
   -- use 'true' inverse in case of large symplectic deviation
   local N = A:inv() * R * A
+
+  if option.debug >= 2 then
+    io.write("**Normalized form:\n")
+    N:print("N = A^-1 R A ") ; (A:bar() * R * A) :print("Abar R A ")
+  end
 
   for i = 1,n-1,2 do
     local a1 = atan2( get(N,i,i+1), get(N,i  ,i  ))
@@ -595,14 +640,28 @@ end
 
 -- linear normal form in matrix A from one-turn-map R in place ----------------o
 
-function gphys.normal1 (R, nocheck_) -- matrix combining normal_a0 and normal_a1
-  chksysiz(R)
+function gphys.normal1 (m, nocheck_) -- combines normal_a0 and normal_a1
+  assert(is_damap(m), "invalid argument #1 (damap expected)")
+
+  -- already a normal form
+  if m.status == 'Aset' then return end
 
   local fmt
+  if option.debug >= 2 then
+    io.write("-> Normal form\n")
+    fmt, option.numfmt = option.numfmt, "% .5e"
+  end
 
-  local nr, nc = R:sizes()
+  -- one-turn map R
+  local R = m:get1() ; chksysiz(R)
+
+  if option.debug >= 2 then
+    io.write("One-turn map (input):\n")
+    R:print('R ') ; io.write("symperr=", num2str(R:symperr()), "\n")
+  end
 
   -- detect rank of the system
+  local nr, nc = R:sizes()
   local dim = min(nr,nc)
   local rnk = has_dpt(R) and 6 or 4
   local R6
@@ -616,7 +675,7 @@ function gphys.normal1 (R, nocheck_) -- matrix combining normal_a0 and normal_a1
   -- symplectifiy R if needed
   make_symp(R)
 
-  -- get eigenvalues (W) and right eigenvectors A of R
+  -- get eigenvalues (W) and right eigenvectors (A) of R
   local W, info, A = R:eigen(R:same())
 
   -- check that system is eigen
@@ -626,7 +685,7 @@ function gphys.normal1 (R, nocheck_) -- matrix combining normal_a0 and normal_a1
   norml_eigen(A)
 
   -- order eigenvalues and eigenvectors by planes
-  order_eigen(A, W)
+  order_eigen(A)
 
   -- rephase eigen vectors to Courant-Snyder form
   phase_eigen(A)
@@ -640,6 +699,13 @@ function gphys.normal1 (R, nocheck_) -- matrix combining normal_a0 and normal_a1
     closed_form(R, A)
   end
 
+  if option.debug >= 2 then
+    io.write("Normalising map (output):\n")
+    A:print('A ') ;
+    option.numfmt = fmt
+    io.write("<- Normal form\n")
+  end
+
   return A, rnk, info
 end
 
@@ -648,58 +714,309 @@ end
 local nf_id = {}
 local is_nf = \a -> a.__id == nf_id
 
-local nf_knd = {all='all', ham='gnf', gnf='gnf', anh='anh'}
+local nf_knd = {all='all', anh='anh', gnf='gnf', ham='ham'}
 
-local function nfana (nf, k_, m_)
-  if is_damap(k_) and is_nil(m_) then m_, k_ = k_ end -- right shift
+local function nfcpy (nf, a_)
+  assert(is_nf (nf), "invalid argument #1 (normal form expected)")
+  assert(is_nil(a_) or is_cdamap(a_), "invalid argument #3 (cdamap expected)")
+
+  -- make a copy for nfana
+  local cpy = {
+    __id    = nf_id,
+
+    -- "methods"
+    analyse = nf.analyse,
+    copy    = nf.copy,
+    q1      = nf.q1,
+    q2      = nf.q2,
+    dq1     = nf.dq1,
+    dq2     = nf.dq2,
+    anhx    = nf.anhx,
+    anhy    = nf.anhy,
+    gnfu    = nf.gnfu,
+    haml    = nf.haml,
+    getms   = nf.getms,
+    getpms  = nf.getpms,
+
+    -- "data"
+    nn      = nf.nn,         -- #(variables + parameters)
+    nv      = nf.nv,         -- #(variables)
+    lam     = nf.lam,        -- eigentunes
+    a       = a_ or nf.a,    -- normalizing map (output)
+    c       = nf.c,          -- maps to go to phasor basis
+    ci      = nf.ci,
+
+    q1_     = nf.q1_,
+    q2_     = nf.q2_,
+    q3_     = nf.q3_,
+
+    t_op    = nf.t_op,
+    anh     = nf.anh,
+    gnf     = nil,
+    ham     = nil,
+  }
+
+  return cpy
+end
+
+-- getters --
+
+local function nf_pms (nf, ki_, ko_)
+  assert(is_nf(nf), "invalid argument #1 (normal form expected)")
+  local np, ki, ko = nf.nn - nf.nv, ki_ or 0, ko_ or 1
+  assert(is_natural  (ki), "invalid knob index (ki >= 0 expected)")
+  assert(is_nznatural(ko), "invalid knob order (ko >= 1 expected)")
+  if ki > 0
+  then return ("0"):rep(ki-1) .. ko .. ("0"):rep(np-(ki-1)-1)
+  else return ("0"):rep(np)
+  end
+end
+
+local function nf_ms (nf, ms, ki_, ko_)
+  assert(is_nf(nf), "invalid argument #1 (normal form expected)")
+  if is_table(ms) then ms, ki_, ko_ = ms[1], ms[2], ms[3] end
+  if is_monomial(ms) then ms = ms:tostring() end
+  assert(is_string(ms), "invalid argument #2 (monomial or string expected)")
+  if ki_
+  then if #ms < nf.nv then ms = ms..("0"):rep(nf.nv - #ms) end
+           ms = ms..nf_pms(nf, ki_, ko_)
+  else if #ms < nf.nn then ms = ms..("0"):rep(nf.nn - #ms) end
+  end
+  return ms
+end
+
+local function nf_q (nf, ord, x, y)
+  local ms = table.concat{x, 0, y, 0, 0, 0}
+  local ks = nf_pms(nf, ord[2])
+  return nf.anh[ms..ks] or 0
+end
+
+local function nf_dq (nf, ord, x, y)
+  local ms = table.concat{x, 0, y, 0, 0, ord[1]}
+  local ks = nf_pms(nf, ord[2])
+  return nf.anh[ms..ks] or 0
+end
+
+local function nf_anh (nf, ord, x, y)
+  local mn = {ord[1]+x, ord[1], ord[2]+y, ord[2], ord[3] or 0, ord[3] or 0}
+  local ms = table.concat(mn)
+  local ks = nf_pms(nf, ord[4])
+  local rv = nf.anh[ms..ks] or 0
+  return rv -- and rv/(max(1,mn[1])*max(1,mn[3])) or nil
+end
+
+-- tunes --
+
+local function nf_q1 (nf, ord)
+  if ord == nil then ord = {1} elseif is_number(ord) then ord = {ord} end
+  assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
+  assert(is_nznatural(ord[1]), "invalid q order (q > 0 expected)")
+  if ord[1] == 1 and (ord[2] or 0) == 0 then return nf.q1_ end
+  return nf_q(nf, ord, ord[1], 0)
+end
+
+local function nf_q2 (nf, ord)
+  if ord == nil then ord = {1} elseif is_number(ord) then ord = {ord} end
+  assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
+  assert(is_nznatural(ord[1]), "invalid q order (q > 0 expected)")
+  if ord[1] == 1 and (ord[2] or 0) == 0 then return nf.q2_ end
+  return nf_q(nf, ord, 0, ord[1])
+end
+
+-- chromaticities --
+
+local function nf_dq1 (nf, ord)
+  if ord == nil then ord = {1} elseif is_number(ord) then ord = {ord} end
+  assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
+  assert(is_nznatural(ord[1]), "invalid pt order (pt > 0 expected)")
+  return nf_dq(nf, ord, 1, 0)
+end
+
+local function nf_dq2 (nf, ord)
+  if ord == nil then ord = {1} elseif is_number(ord) then ord = {ord} end
+  assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
+  assert(is_nznatural(ord[1]), "invalid pt order (pt > 0 expected)")
+  return nf_dq(nf, ord, 0, 1)
+end
+
+-- anharmonicities --
+
+local function nf_anhx (nf, ord)
+  if ord == nil then ord = {1,0} elseif is_number(ord) then ord = {ord,0} end
+  assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
+  assert(is_nznatural(ord[1]), "invalid x order (x > 0 expected)")
+  return nf_anh(nf, ord, 1, 0)
+end
+
+local function nf_anhy (nf, ord)
+  if ord == nil then ord = {0,1} elseif is_number(ord) then ord = {0,ord} end
+  assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
+  assert(is_nznatural(ord[2]), "invalid y order (y > 0 expected)")
+  return nf_anh(nf, ord, 0, 1)
+end
+
+-- generating functions --
+
+local function nf_gnfu (nf, ms, ki_, ko_)
+  local ms = nf_ms(nf, ms, ki_, ko_)
+  return nf.gnf[ms] or 0i
+end
+
+-- hamiltonian terms --
+
+local function nf_haml (nf, ms, ki_, ko_)
+  local ms = nf_ms(nf, ms, ki_, ko_)
+  return nf.ham[ms] or 0i
+end
+
+-- analyse anh, gnf, ham --
+
+local T1, T11, T12, T2, T21, T22, T3, T4, T5 = 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+local function time_nfana ()
+  printf("time_rot1=% 8.2fs %d%%\n", T11, T11/(T1 > 0 and T1 or 1)*100)
+  printf("time_rot2=% 8.2fs %d%%\n", T12, T12/(T1 > 0 and T1 or 1)*100)
+  printf("time_rot =% 8.2fs\n", T1)
+  printf("time_log1=% 8.2fs %d%%\n", T21, T21/(T2 > 0 and T2 or 1)*100)
+  printf("time_log2=% 8.2fs %d%%\n", T22, T22/(T2 > 0 and T2 or 1)*100)
+  printf("time_log =% 8.2fs\n", T2 )
+  printf("time_gnf =% 8.2fs\n", T3 )
+  printf("time_anh =% 8.2fs\n", T4 )
+  printf("time_tun =% 8.2fs\n", T5 )
+  printf("time_tot =% 8.2fs\n", T1+T2+T3+T4+T5)
+end
+
+-- uncomment to print the timings at exit
+!MAD.utility.atexit(time_nfana)
+
+--[[
+                                            Total
+time_rot1=  457.77s 72%  normal_a0          [25%]
+time_rot2=  169.21s 26%  compose rotation   [ 9%]
+time_rot =  628.20s                          34%
+time_log1=  312.26s 26%  phasors similarity [18%]
+time_log2=  844.11s 72%  factor_map (logpb) [46%]
+time_log = 1156.81s                          64%
+time_gnf =   34.38s                           2%
+time_anh =    0.02s                           0%
+time_tun =    0.02s                           0%
+time_tot = 1819.42s                         100%
+--]]
+
+local normal_a0 -- forward local decl
+
+local function nfana (nf, k_, a_)
+  if is_damap(k_) and is_nil(a_) then a_, k_ = k_ end -- right shift
 
   assert(is_nf (nf), "invalid argument #1 (normal form expected)")
-  assert(is_nil(k_) or nf_knd[k_]  , "invalid argument #2 (kind expected)" )
-  assert(is_nil(m_) or is_damap(m_), "invalid argument #3 (damap expected)")
+  assert(is_nil(k_) or nf_knd[k_]   , "invalid argument #2 (kind expected)" )
+  assert(is_nil(a_) or isa_damap(a_), "invalid argument #3 (A-damap expected)")
 
-  local knd = nf_knd[k_ or 'all']
+  local t0  = os.clock()
+  local t11, t12 = t0, t0
 
-  local a, c, ci, nv, nn, lam, t_op in nf
-  local ham, gnf, anh = {}, {}, {}
-  local mono = monomial(nn)
+  -- propagated normal form, apply rotations
+  if a_ then
+    local nfa = normal_a0(a_) ; a_ = nfa.m_n
+    t11 = os.clock()
+    local mu1 =                 atan2(a_.x:get(3), a_.x:get(2))-- mu1 = atan2(A12, A11)
+    local mu2 =                 atan2(a_.y:get(5), a_.y:get(4))
+    local mu3 = nf.npt == 0 and atan2(a_.t:get(7), a_.t:get(6)) or 0
 
-  -- GNF and HAM
-  if knd == 'gnf' or knd == 'all' then
-    local g = (ci*a*c):factor_map(-1):fld2vec()
-    g:cutord(-2, g) -- keep only orders 3..
-
-    local i, v = 0
-    while true do
-      i, v = g:cycle(i, mono)
-      if i == 0 then break; end
-      local ms = mono:tostring()
-      local s, p = 0, 1
-      for j=2,nv,2 do
-        s = s +       abs(mono[j-1]-mono[j])
-        p = p * lam[j-1]^(mono[j-1]-mono[j])
-      end
-      gnf[#gnf+1], gnf[ms] = ms, v                                  -- gnf terms
-      ham[#ham+1], ham[ms] = ms, v * (1-p)                          -- ham terms
+    if abs(mu1)+abs(mu2)+abs(mu3) > 0 then
+      local ri = a_:same():eye()
+      ri. x:set(2, cos(mu1)) ; ri. x:set(3,-sin(mu1))
+      ri.px:set(2, sin(mu1)) ; ri.px:set(3, cos(mu1))
+      ri. y:set(4, cos(mu2)) ; ri. y:set(5,-sin(mu2))
+      ri.py:set(4, sin(mu2)) ; ri.py:set(5, cos(mu2))
+      ri. t:set(6, cos(mu3)) ; ri. t:set(7,-sin(mu3))
+      ri.pt:set(6, sin(mu3)) ; ri.pt:set(7, cos(mu3))
+      a_ = a_*ri
     end
+    t12 = os.clock()
+
+    nf = nf:copy(a_:cplx():set0(0))
   end
 
-  -- ANH and HAM (?)
-  if knd == 'anh' or knd == 'all' then
+  local t1 = os.clock()
+  local t2, t21, t22 = t1, t1, t1
+
+  local kind = nf_knd[k_]
+  local mono = monomial(nf.nn)
+
+  -- GNF and HAM
+  if is_nil(nf.gnf) and (kind == 'all' or kind == 'gnf' or kind == 'ham') then
+    local a, c, ci, nv, nn, nt, lam in nf
+    local gnf, ham = {}, {}
+    local g = ci*a*c
+    t21 = os.clock()
+    g = g:factor_map(-1)
+    t22 = os.clock()
+    g = g:fld2vec()
+    g:cutord(-2, g) -- keep only orders 3..
+    t2 = os.clock()
+
+    if nt ~= 0 then nv = 4 end -- t,pt are parameters
+
+    for i,v in g:iter(mono) do
+      local ms = mono:tostring()
+      gnf[#gnf+1], gnf[ms] = ms, v                                  -- gnf terms
+
+      if kind == 'ham' then
+        local p = 1
+        for j=2,nv,2 do p = p*lam[j-1]^(mono[j-1]-mono[j]) end
+        ham[#ham+1], ham[ms] = ms, v*(1-p)                          -- ham terms
+      end
+    end
+    nf.gnf, nf.ham = gnf, ham
+
+    -- add access methods
+    nf.gnfu, nf.haml = nf_gnfu, nf_haml
+  end
+
+  local t3 = os.clock()
+
+  -- ANH
+  if is_nil(nf.anh) and (kind == 'all' or kind == 'anh') then
+    local nv, t_op in nf
+    local anh = {}
     for o=2,#t_op do
       for n=1,nv,2 do
-        local k, i, v = t_op[o][n], 0
-        while true do
-          i, v = k:cycle(i, mono)
-          if i == 0 then break; end
+        for _,v in t_op[o][n]:iter(mono) do
           local ms, pf = mono:tostring(), mono:ordpf(2)
-        --if pf > 1 then io.write("q",(n+1)/2,"[",ms,"]!! = ",pf,"\n") end
           anh[#anh+1], anh[ms] = ms, -v:imag()*pf/twopi             -- anh terms
         end
       end
     end
+    nf.anh = anh
+
+    -- add access methods
+    nf.q1, nf.q2, nf.dq1, nf.dq2, nf.anhx, nf.anhy =
+    nf_q1, nf_q2, nf_dq1, nf_dq2, nf_anhx, nf_anhy
   end
 
-  nf.ham, nf.gnf, nf.anh = ham, gnf, anh
+  local t4 = os.clock()
+
+  -- TUNES (fractionnal part)
+  if is_nil(nf.q1_) then
+    local lam in nf
+    nf.q1_ = lam[1]:carg()/twopi ; if nf.q1_ < 0 then nf.q1_ = nf.q1_+1 end
+    nf.q2_ = lam[3]:carg()/twopi ; if nf.q2_ < 0 then nf.q2_ = nf.q2_+1 end
+    nf.q3_ = lam[5]:carg()/twopi ; if nf.q3_ < 0 then nf.q3_ = nf.q3_+1 end
+
+    -- add access methods
+    nf.q1, nf.q2 =
+    nf_q1, nf_q2
+  end
+
+  -- method for ks and ms
+  nf.getpms, nf.getms = nf_pms, nf_ms
+
+  local t5 = os.clock()
+
+  T1, T2, T3, T4, T5 = T1+t1-t0, T2+t2-t1, T3+t3-t2, T4+t4-t3, T5+t5-t4
+  T11, T12, T21, T22 = T11+t11-t0, T12+t12-t11, T21+t21-t1, T22+t22-t21
+
   return nf
 end
 
@@ -724,9 +1041,9 @@ local function normal_init (m, urdt_)
   assert(is_damap(m), "invalid argument #1 (damap expected)")
   assert(is_nil(urdt_) or is_table(urdt_), "invalid argument #2 (table expected)")
 
-  local sav  = option.fortid > 0 and nfsave or nosave
-  local ndpt = not has_dpt(m)
-  local ndt  = ndpt and m.t ~= nil
+  local nfsav = option.fortid > 0 and nfsave or nosave
+  local ndpt  = not has_dpt(m)
+  local ndt   = ndpt and m.t ~= nil
 
   -- 0 1 2  3 4    5  6  nv       nn
   -- | x px y py | t  pt | params |  6D  (nv==6 and ndpt==false -> nt=0, npt=0)
@@ -735,10 +1052,11 @@ local function normal_init (m, urdt_)
   -- | x px y py |       | params |  4D  (nv==4 and ndpt==true  -> nt=0, npt=0)
 
   local nf = {
-   __id     = nf_id,                     -- is_nf
-    sav     = sav,                       -- dump (c)damap/matrix in fort_n.N
     analyse = nfana,                     -- compute rdt, fill ham, gnf, anh
+    copy    = nfcpy,                     -- make a copy
+    dump    = nfsav,                     -- dump (c)damap/matrix in fort_n.N
 
+    __id = nf_id,                        -- is_nf
     nn   = m.__td.nn,                    -- #(variables + parameters)
     nv   = m.__td.nv,                    -- #(variables)
     nt   = ndt and 5 or 0,               -- index of t  when coasting
@@ -762,7 +1080,7 @@ end
 
 -- closed form (fix point) = a0^-1 * m * a0 -----------------------------------o
 
-local function normal_a0 (nf, ord_)
+function normal_a0 (nf, ord_)
   if is_damap(nf) then nf = normal_init(nf) end
   assert(is_nf(nf), "invalid argument #1 (normal form expected)")
 
@@ -798,7 +1116,7 @@ local function normal_a0 (nf, ord_)
         x[i], x[i-1] = -a0[i-1], a0[i]              -- swap
         v[i], v[i-1] = x[i]:deriv(npt), x[i-1]:deriv(npt)
         t1 = t1 - m1:setvar(0,i  ) * v[i  ]         -- 1st order
-                - m1:setvar(0,i-1) * v[i-1]         -- 1st order
+                - m1:setvar(0,i-1) * v[i-1]         --  "
                 - 0.5*(x[i-1]*v[i] - x[i]*v[i-1])   -- 2nd order
       end
       a0.t = t1                                     -- will make t symplectic
@@ -824,9 +1142,8 @@ local function normal_a0 (nf, ord_)
 -- end
 
 -- io.write("a0 out\n") -- debug pnf
+  return nf
 end
-
-gphys.normal_a0 = normal_a0 -- export, can be used alone
 
 -- linear normal form = a1^-1 * a0^-1 * m * a0 * a1 ---------------------------o
 
@@ -847,10 +1164,10 @@ local function normal_a1 (nf)
   make_stable(M)                  -- stabilise    M if needed
   make_symp  (M)                  -- symplectifiy M if needed
                                   -- eigenvalues (W) and right eigenvectors (A)
-  local W, info, A = M:eigen(M:same())
+  local _, info, A = M:eigen(M:same())
 
   norml_eigen(A)                  -- normalize eigen system
-  order_eigen(A, W)               -- order eigval and eigvec by planes
+  order_eigen(A)                  -- order eigval and eigvec by planes
   phase_eigen(A)                  -- rephase eigen vectors to CS form
 
   local a1 = m_n:same():eye():set1(A)
@@ -881,8 +1198,8 @@ local function phasor (nf, inv_)
   local c, rk = m_n:same(0i):eye(), npt ~= 0 and 4 or 6
 
   for i=2,rk,2 do -- 2,4,6,..
-    c[i-1]:clear():set(i, 0, v[1]):set(i+1, 0, v[2]) -- c[1]
-    c[i  ]:clear():set(i, 0, v[3]):set(i+1, 0, v[4]) -- c[2]
+    c[i-1]:clear():set(i, 0, v[1]):set(i+1, 0, v[2]) -- c[1] -- clear?
+    c[i  ]:clear():set(i, 0, v[3]):set(i+1, 0, v[4]) -- c[2] -- clear?
   end
 
   return c, r
@@ -912,7 +1229,7 @@ local function normal_c (nf)
 -- io.write("c out\n") -- debug pnf
 end
 
--- full normal form (PTC) -----------------------
+-- full normal form (PTC-like) ------------------
 
 function gphys.normal (m, urdt_)
   assert(is_damap(m), "invalid argument #1 (damap expected)")
@@ -920,11 +1237,25 @@ function gphys.normal (m, urdt_)
   -- already a normalizing form
   if m.status == 'Aset' then return nil end
 
+  -- initialization -----------------------------
+
+  local closed_only
+  if urdt_ == "closed" then closed_only, urdt_ = true, nil end
+
+  local nf = normal_init(m, urdt_) -- one-turn map
+
+  -- closed form --------------------------------
+
+  normal_a0(nf)                    -- closed form (fix point)
+
+  -- stop here for closed form
+  if closed_only then
+    nf.a = nf.a0
+    return nf
+  end
+
   -- linear normal form -------------------------
 
-  local nf =
-  normal_init(m, urdt_)            -- one-turn map
-  normal_a0(nf)                    -- closed form (fix point)
   normal_a1(nf)                    -- linear normal form (Courant-Snyder basis)
 
   -- stop here for order 1
@@ -951,8 +1282,8 @@ function gphys.normal (m, urdt_)
   local mono = monomial(nn)
 
   -- linear map (only) in phasors basis
-  local r1 = m_n:getord(1)                                                      ; nf:sav(r1,"r1")
-  local r1i = r1^-1                                                             ; nf:sav(r1i,"r1^-1")
+  local r1 = m_n:getord(1)                                                      ; nf:dump(r1,"r1")
+  local r1i = r1^-1                                                             ; nf:dump(r1i,"r1^-1")
 
   -- retrieve the eigentunes (lambda)
   local lam = cvector(nv)
@@ -966,7 +1297,7 @@ function gphys.normal (m, urdt_)
     end
 
     -- project remaining orders on resonance basis
-    local n_n = (m_n * r1i):lieexppb(t_op, -1):getord(n)                        ; nf:sav(n_n,"n_n @"..n)
+    local n_n = (m_n * r1i):lieexppb(t_op, -1):getord(n)                        ; nf:dump(n_n,"n_n @"..n)
 
 -- n_n:write(io.stderr, "n_n("..n..")", true)
 
@@ -978,13 +1309,9 @@ function gphys.normal (m, urdt_)
         io.stderr:write("****************************************\n")
         io.stderr:write("Field ",k,", fid=", option.fortid, "\n")
       end
-      local i, v = 0
 
       -- select/reject resonances
-      while true do
-        i, v = n_n[k]:cycle(i, mono)
-        if i == 0 then break; end
-
+      for i,v in n_n[k]:iter(mono) do
         local ms = mono:tostring()
         local mt = mono:totable()
 
@@ -1015,20 +1342,21 @@ function gphys.normal (m, urdt_)
         else
           t_n[k]:set(mono, 1, v)
         end
-      end -- cycle
+      end -- iter
     end -- for k
 
     -- save vector fields
-    f_op[n], t_op[n] = f_n, t_n                                                 ; nf:sav(f_n,"f_n @"..n):sav(t_n,"t_n @"..n)
+    f_op[n], t_op[n] = f_n, t_n                                                 ; nf:dump(f_n,"f_n @"..n):dump(t_n,"t_n @"..n)
     if n == m_n:maxord() then break end
 
-    m_n = f_n:exppb((-f_n):exppb(id) * m_n)                                     ; nf:sav(m_n, "m_n("..n..")")
+    m_n = f_n:exppb((-f_n):exppb(id) * m_n)                                     ; nf:dump(m_n, "m_n("..n..")")
   end -- for n
 
   -- the normalizing map A
-  nf.lieex = id:lieexppb(f_op)                                                  ; nf:sav"lieex"
+  local lieex = id:lieexppb(f_op)                                               ; nf:dump(lieex, "lieex")
 
-  nf.a = nf.a0 * nf.a1 * nf.c * nf.lieex * nf.ci                                ; nf:sav"a"
+  nf.a2 = nf.c * lieex * nf.ci
+  nf.a = nf.a0 * nf.a1 * nf.a2                                                  ; nf:dump"a"
 --nf.a:real():copy(m):set0(nf.x0).status = 'Aset'
 
 --  if fid then io.stderr:write("end of normal form\n") end
@@ -1052,11 +1380,11 @@ function gphys.normal_ng (m, urdt_)
 
   if option.fortid ~= 0 then io.stderr:write("linear normal form\n") end
 
-  local nf = normal_init(m, urdt_) ; nf:sav(nf.m_n,"m1(--)")  -- one-turn map
-  normal_a0(nf)                    ; nf:sav(nf.m_n,"m1(a1)")  -- closed form
-                                       :sav(nf.a0 ,"a1"    )
-  normal_a1(nf)                    ; nf:sav(nf.m_n,"m1(a2)")  -- linear normal form
-                                       :sav(nf.a1 ,"a2"    )
+  local nf = normal_init(m, urdt_) ; nf:dump(nf.m_n,"m1(--)")  -- one-turn map
+  normal_a0(nf)                    ; nf:dump(nf.m_n,"m1(a1)")  -- closed form
+                                       :dump(nf.a0 ,"a1"    )
+  normal_a1(nf)                    ; nf:dump(nf.m_n,"m1(a2)")  -- linear normal form
+                                       :dump(nf.a1 ,"a2"    )
 
   -- stop here for order 1
   if min(m:maxord(), m:gtrunc()) == 1 then
@@ -1069,8 +1397,8 @@ function gphys.normal_ng (m, urdt_)
 
   if option.fortid ~= 0 then io.stderr:write("phasor basis\n") end
 
-  normal_c(nf)                    ; nf:sav(nf.m_n,"m1(ri)") -- resonance basis
-                                      :sav(nf.ci ,"ri"    )
+  normal_c(nf)                    ; nf:dump(nf.m_n,"m1(ri)") -- resonance basis
+                                      :dump(nf.ci ,"ri"    )
 
   -- non-linear normal form ---------------------
 
@@ -1086,7 +1414,7 @@ function gphys.normal_ng (m, urdt_)
 
   -- linear map (only) in phasors basis
   local r1 = m_n:getord(1)
-  local r1i = r1^-1              !; nf:sav(r1,"r1"):sav(r1i,"r1^-1")
+  local r1i = r1^-1              !; nf:dump(r1,"r1"):dump(r1i,"r1^-1")
 
   -- retrieve the eigentunes (lambda)
   local lam = cvector(nv)
@@ -1110,18 +1438,14 @@ function gphys.normal_ng (m, urdt_)
     fil:write("Order ",n,", fid=", nf.fid,"\n")
 
     -- project remaining orders on resonance basis
-    local n_n = (m_n * r1i):lieexppb(t_op, -1):getord(n) ; nf:sav(n_n,"n_n @"..n)
+    local n_n = (m_n * r1i):lieexppb(t_op, -1):getord(n) ; nf:dump(n_n,"n_n @"..n)
 
     -- compute pseudo-hamiltonian
     local g_n = n_n:convert(tc):fld2vec()                !; g_n:print("g_n @ "..n)
     local f_pb, t_pb = g_n:same(), g_n:same()
-    local i, v = 0
 
     -- select/reject resonances
-    while true do
-      i, v = g_n:cycle(i, mono)
-      if i == 0 then break; end
-
+    for i,v in g_n:iter(mono) do
       local ms = mono:tostring()
 
       local s = 0
@@ -1157,7 +1481,7 @@ function gphys.normal_ng (m, urdt_)
         anh[#anh+1], anh[ms] = ms, -mono:ordpf(2)*v:imag()/twopi              -- anh terms
         fil:write("anh[",ms,"]=", num2str(anh[ms]), ", v=", v:tostring(), "\n")
       end
-    end -- cycle
+    end -- iter
 
     -- f_pb:print("f_pb @ "..n)
 
@@ -1170,18 +1494,18 @@ function gphys.normal_ng (m, urdt_)
     if n == m_n:maxord() and nf.fid == 0 then break end
 
     -- kill resonances in the map
-!   local m_n_1 = (-f_n):exppb(id) ; nf:sav(m_n_1, "m_n_1 @"..n)
-!   local m_n_2 = m_n_1 * m_n      ; nf:sav(m_n_2, "m_n_2 @"..n)
-!   local m_n_3 = f_n:exppb(m_n_2) ; nf:sav(m_n_3, "m_n_3 @"..n)
-!   nf:sav(t_n,"t_n @"..n):sav(f_n,"f_n @"..n):sav(m_n,"m_n @"..n)
+!   local m_n_1 = (-f_n):exppb(id) ; nf:dump(m_n_1, "m_n_1 @"..n)
+!   local m_n_2 = m_n_1 * m_n      ; nf:dump(m_n_2, "m_n_2 @"..n)
+!   local m_n_3 = f_n:exppb(m_n_2) ; nf:dump(m_n_3, "m_n_3 @"..n)
+!   nf:dump(t_n,"t_n @"..n):dump(f_n,"f_n @"..n):dump(m_n,"m_n @"..n)
 
-    m_n = f_n:exppb((-f_n):exppb(id) * m_n) ; nf:sav(m_n, "m1("..n..")")
+    m_n = f_n:exppb((-f_n):exppb(id) * m_n) ; nf:dump(m_n, "m1("..n..")")
   end -- for n
 
   -- the normalizing map A
-  nf.lieex = id:lieexppb(f_op) !; nf:sav"lieex"
+  nf.lieex = id:lieexppb(f_op) !; nf:dump"lieex"
 
-  nf.a = nf.a0 * nf.a1 * nf.c * nf.lieex * nf.ci ; nf:sav"a"
+  nf.a = nf.a0 * nf.a1 * nf.c * nf.lieex * nf.ci ; nf:dump"a"
   nf.a:real():copy(m):set0(nf.x0).status = 'Aset'
 
   nf.fil:write("fid(a)=", nf.fid, "\n")
@@ -1513,7 +1837,7 @@ function gphys.syn2bet(bb0, mflw, elm) -- TODO: move to beta0?
 
   if el == 0 or (eh == 0 and (nmul < 2 or knl[2] == 0)) then return end
 
-  local debug in mflw
+  local debug in option
   local synch_1, synch_2, synch_3, synch_4, synch_5, synch_6, synch_8 =
               0,       0,       0,       0,       0,       0,       0
 
@@ -1604,6 +1928,46 @@ function gphys.syn2bet(bb0, mflw, elm) -- TODO: move to beta0?
            synch_1, synch_2, synch_3, synch_4, synch_5, synch_6, synch_8)
     print('')
   end
+end
+
+-- beam size extraction -------------------------------------------------------o
+
+--[[
+  Compute Eq. 7 from paper
+  R. Tomas, "Nonlinear optimization of beam lines", PhysRev. Accel&Beams, 2006
+
+  Eq. 7 assumes centered Gaussians distributions in all dimensions but in z,
+  where it needs to be centered rectangular. The twiss parameters at the start
+  must satisfy alfax = alfay = Dx = Dpx = Dy= Dpy = 0. This yields the typical
+  mistake to apply Eq. 7 without satisfying this...
+--]]
+
+local function is_even (m)
+  for k=1,#m do if m[k]%2 ~= 0 then return false end end
+  return true
+end
+
+function gphys.beamsize(x, sig)
+  assert(is_tpsa(x), "invalid argument #1 (real TPSA expected)")
+  assert(is_indexable(sig) and #sig >= 5,
+                     "invalid argument #2 (iterable with 5+ values expected")
+  local nv, xs = x:nv(), 0
+  local mi, mj, mm = monomial(nv), monomial(nv), monomial(nv)
+
+  for i,xi in x:iter(mi)   do
+  for j,xj in x:iter(mj,i) do
+    if mj >= mi and is_even(mi:add(mj,mm)) then
+      local sk, xx = 0, (i == j and 1 or 2)*xi*xj
+      for k=1,4 do
+        xx = xx * sig[k]^mm[k] * tgamma((1+mm[k])/2)
+        sk = sk + mm[k]
+      end
+      xx = xx * sig[5]^mm[6] * 2^(sk/2-mm[6]) / ((1+mm[6])*pi^2)
+      xs = xs + xx
+    end
+  end end
+
+  return sqrt(xs)
 end
 
 -- env ------------------------------------------------------------------------o

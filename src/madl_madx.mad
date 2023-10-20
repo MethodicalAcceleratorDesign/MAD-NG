@@ -447,6 +447,7 @@ local function load2madx (madx, src, dst, reload_)
     if fct == nil and err ~= nil then
       local fil = is_string(src) and src or "?"
       io.stderr:write("MADX parse error:", fil,':',li,': ', out[li], '\n')
+      error(err)
     end
     madx:load_env(assert( fct, err ))
   end
@@ -475,23 +476,23 @@ end
 
 -- MADX helpers ---------------------------------------------------------------o
 
-local sinc in MAD.gmath
+local cord2arc, arc2cord in MAD.gmath
 
--- from cord to arc
-local cord2arc = function (e)
+-- wrap element length: from cord to arc (unused)
+local function cord2arc_w (e)
   local l = e:var_get 'l'
   if is_callable(l)
-  then e.l = \s l(s)/sinc(0.5*s.angle)
-  else e.l = \s l   /sinc(0.5*s.angle)
+  then e.l = \s -> cord2arc(l(s), s.angle)
+  else e.l = \s -> cord2arc(l   , s.angle)
   end
 end
 
--- from arc to cord
-local arc2cord = function (e)
+-- wrap element length: from arc to cord (unused)
+local function arc2cord_w (e)
   local l = e:var_get 'l'
   if is_callable(l)
-  then e.l = \s l(s)*sinc(0.5*s.angle)
-  else e.l = \s l   *sinc(0.5*s.angle)
+  then e.l = \s -> arc2cord(l(s), s.angle)
+  else e.l = \s -> arc2cord(l   , s.angle)
   end
 end
 
@@ -547,8 +548,10 @@ MADX:set_methods {
   sinc    = MAD.gmath.sinc,
 
 -- extra functions
-  cord2arc = cord2arc,
-  arc2cord = arc2cord,
+  cord2arc = MAD.gmath.cord2arc,
+  arc2cord = MAD.gmath.arc2cord,
+  cord2arc_w = cord2arc_w,
+  arc2cord_w = arc2cord_w,
 }
 
 -- constants
@@ -557,7 +560,7 @@ MADX:set_variables(MAD.constant)
 -- elements
 MADX:set_variables(MAD.element)
 
-local multipole, collimator in MAD.element
+local multipole, collimator, translate, elseparator in MAD.element
 
 -- backward compatibility (survey)
 -- note: only Mutipole knl[1] should affect the global frame,
@@ -568,6 +571,8 @@ MADX.multipole.angle = \s -> s.knl and s.knl[1] or 0     -- not in MAD multipole
 -- aliases (not in MAD)
 MADX.rcollimator = collimator 'rcollimator' { }
 MADX.ecollimator = collimator 'ecollimator' { }
+MADX.translation = translate  'translation' { }
+MADX.elseparator = elseparator 'elseparator' { exl=\s->s.ex_l, eyl=\s->s.ey_l }
 
 -- strings as identifiers (should be detected by parser?)
 do

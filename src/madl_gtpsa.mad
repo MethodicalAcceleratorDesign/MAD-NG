@@ -30,15 +30,16 @@ local ffi = require 'ffi'
 local istype   in ffi
 local min, max in math
 
-local _C, option, tostring, complex, vector, cvector, monomial in MAD
+local _C, option, tostring, complex, vector, cvector, ivector,
+      monomial                                                 in MAD
 local log, exp                                                 in MAD.gmath
-local openfile, strtrim                                        in MAD.utility
+local openfile, strtrim, num2str                               in MAD.utility
 
 -- To review
-local is_nil, is_number, is_integer, is_complex, is_scalar,
-      is_string, is_table, is_matrix, is_cmatrix, is_vector,
-      is_cvector, is_monomial, is_lengthable, is_iterable,
-      is_mappable, get_metamethod                              in MAD.typeid
+local is_nil, is_boolean, is_number, is_integer, is_complex, is_scalar,
+      is_matrix, is_cmatrix, is_vector, is_ivector, is_cvector,
+      is_monomial, is_string, is_table, is_lengthable,
+      is_iterable, is_mappable, get_metamethod                 in MAD.typeid
 
 -- tmp for returned values
 local  res = ffi.new 'num_t[1]'
@@ -60,14 +61,14 @@ local gmm = get_metamethod
 ffi.cdef [[
 typedef uint64_t bit_t; // mad_bit.h
 
-struct desc { // warning: must be kept identical to C definition
+struct desc_ { // warning: must be kept identical to C definition
   const int   id;          // index in list of registered descriptors
   const int   nn, nv, np;  // #variables, #parameters, nn=nv+np <= 100000
   const ord_t mo, po, to;  // max order of vars & params, global order of truncation
   const ord_t *const no;   // orders of each vars & params, no[nn]
-};            // end of compatibility with Lua FFI (rest is not visible)
+};             // end of compatibility with Lua FFI (rest is not visible)
 
-struct tpsa { // warning: must be kept identical to C definition and ctpsa
+struct tpsa_ { // warning: must be kept identical to C definition and ctpsa
   const desc_t *const d;  // ptr to tpsa descriptor
   int32_t           uid;  // special "user" field for external use (padding)
   const ord_t mo, lo, hi; // max ord (allocated), lowest/highest used ord
@@ -76,7 +77,7 @@ struct tpsa { // warning: must be kept identical to C definition and ctpsa
   const num_t coef[?];
 };
 
-struct ctpsa { // warning: must be kept identical to C definition and tpsa
+struct ctpsa_ { // warning: must be kept identical to C definition and tpsa
   const desc_t *const d;  // ptr to cptsa descriptor
   int32_t           uid;  // special "user" field for external use (padding)
   const ord_t mo, lo, hi; // max ord (allocated), lowest/highest used ord
@@ -86,12 +87,12 @@ struct ctpsa { // warning: must be kept identical to C definition and tpsa
 };
 ]]
 
-local gtpsad_ctor = ffi.typeof 'struct  desc'
-local   tpsa_ctor = ffi.typeof 'struct  tpsa'
-local  ctpsa_ctor = ffi.typeof 'struct ctpsa'
+local gtpsad_ctor = ffi.typeof 'struct  desc_'
+local   tpsa_ctor = ffi.typeof 'struct  tpsa_'
+local  ctpsa_ctor = ffi.typeof 'struct ctpsa_'
 
-local  tpsa_cref  = ffi.typeof 'struct  tpsa&'
-local ctpsa_cref  = ffi.typeof 'struct ctpsa&'
+local  tpsa_cref  = ffi.typeof 'struct  tpsa_&'
+local ctpsa_cref  = ffi.typeof 'struct ctpsa_&'
 
 local  tpsa_size  = ffi.offsetof( tpsa_ctor, 'coef')
 local ctpsa_size  = ffi.offsetof(ctpsa_ctor, 'coef')
@@ -115,9 +116,10 @@ local cval = ffi.new 'cpx_t[1]'
 
   nv: number of vars         (number)
   mo: max vars order         (number)
-  np: number of parameters   (number of parameters, as right part of variables)
-  no: vars+params orders     (string or array, discard/override nv and mo)
-  po: parameters cross-order (number)
+  np: number of parameters   (number of parameters)
+  po: parameters order       (number)
+  no: vars+params orders     (string or array, override nv, mo, np and po)
+  vo: max vars order         (number) alias for mo
 
   default: nv=6, mo=1, np=0, po=0, no=nil
 
@@ -130,30 +132,30 @@ local cval = ffi.new 'cpx_t[1]'
   gtpsad{nv=4,mo=2,np=2,po=1}            : ..2 parameters of order 1.
   gtpsad{nv=6,mo=2,np=94,po=1}           : 6 vars of order 2 and..
                                          : ..94 parameters of order 1.
-  gtpsad{nv=2,np=2,no={3,3,1,1},po=1}    : 2 vars + 2 params of orders 3,3,1,1..
+  gtpsad{nv=2,np=2,po=1,no={3,3,1,1}}    : 2 vars + 2 params of orders 3,3,1,1..
          -> mo=3                         : with x-order limited to 1.
 --]=]
 
-local function gtpsad (nv_, mo_, np_, po_)
+local function gtpsad (nv_, mo_, np_, po_, no_)
   local is = is_mappable(nv_)
-  local nv = is and nv_.nv or nv_ or 6   -- number of variables
-  local mo = is and nv_.mo or mo_ or 1   -- variables order
-  local np = is and nv_.np or np_ or 0   -- number of parameters
-  local po = is and nv_.po or po_ or 0   -- parameters max cross-order
-  local no = is and nv_.no or nil        -- variables orders
+  local nv = is and  nv_.nv or nv_ or 6             -- number of variables
+  local mo = is and (nv_.mo or nv_.vo) or mo_ or 1  -- variables max order
+  local np = is and  nv_.np or np_ or 0             -- number of parameters
+  local po = is and  nv_.po or po_ or 0             -- parameters max order
+  local no = is and  nv_.no or no_ or nil           -- var. and parm. orders
   local d
   if is_nil(no) then
-    d = _C.mad_desc_newvp(nv,np,mo,po)
+    d = _C.mad_desc_newvp(nv,mo,np,po)
   else
     if not is_monomial(no) then no = monomial(no) end
     assert(#no == nv+np, "invalid number of orders (#no ~= nv+np)")
-    d = _C.mad_desc_newvpo(nv,np,no._dat,po)
+    d = _C.mad_desc_newvpo(nv,mo,np,po,no._dat)
   end
   return assert(d, "unexpected null descriptor")
 end
 
-local function gtpsad_release (td)
-  _C.mad_desc_del(td)
+local function gtpsad_del (td_)
+  _C.mad_desc_del(td_)
 end
 
 gtpsad() -- build and set default desc to nv=6,mo=1
@@ -161,7 +163,7 @@ gtpsad() -- build and set default desc to nv=6,mo=1
 -- allocators -----------------------------------------------------------------o
 
 local function tpsa_alloc (d, mo)
-  local len = _C.mad_desc_ordlen(d, mo)
+  local len = _C.mad_desc_maxlen(d, mo)
   assert(len <= 2^30, "tpsa is too large")
   local tpsa = tpsa_ctor(len) -- VLA (hooked immediately before calling C)
   _C.mad_tpsa_init(tpsa, d, mo)
@@ -169,7 +171,7 @@ local function tpsa_alloc (d, mo)
 end
 
 local function ctpsa_alloc (d, mo)
-  local len = _C.mad_desc_ordlen(d, mo)
+  local len = _C.mad_desc_maxlen(d, mo)
    assert(len <= 2^29, "ctpsa is too large")
   local ctpsa = ctpsa_ctor(len) -- VLA (hooked immediately before calling C)
   _C.mad_ctpsa_init(ctpsa, d, mo)
@@ -241,9 +243,8 @@ MC.ord    = \x     -> _C.mad_ctpsa_ord(x)
 
 MR.nv     = \x     -> _C.mad_desc_getnv (x.d,nil,nil,nil)
 MR.np     = \x     => _C.mad_desc_getnv (x.d,nil,int,ord) return int[0],ord[0] end
-MR.maxord = \x     -> _C.mad_desc_maxord(x.d)
-MR.maxlen = \x     -> _C.mad_desc_maxlen(x.d)
-MR.ordlen = \x,mo_ -> _C.mad_desc_ordlen(x.d,mo_ or x.mo)
+MR.maxord = \x     -> _C.mad_desc_maxord(x.d, 0, nil)
+MR.maxlen = \x,mo_ -> _C.mad_desc_maxlen(x.d,mo_ or x.mo)
 MR.gtrunc = \x,to_ -> _C.mad_desc_gtrunc(x.d,to_ or _C.mad_tpsa_same)
 
 MR.nam    = \x     -> ffi.string(_C.mad_tpsa_nam (x))
@@ -388,6 +389,22 @@ function MC.cutord (x, o, y_)
   return y_
 end
 
+function MR.maxbyord (x, v_)
+  local v = v_ or ivector(x.mo+1)
+  assert(is_ivector(v), "invalid argument #2 (ivector expected)")
+  local i = _C.mad_tpsa_maxord(x, #v, v._dat)
+  for o=1,#v do v[o] = v[o]+1 end
+  return i+1, v
+end
+
+function MC.maxbyord (x, v_)
+  local v = v_ or ivector(x.mo+1)
+  assert(is_ivector(v), "invalid argument #2 (ivector expected)")
+  local i = _C.mad_ctpsa_maxord(x, #v, v._dat)
+  for o=1,#v do v[o] = v[o]+1 end
+  return i+1, v
+end
+
 function MR.convert (x, y, tbl_, pb_)
   assert(is_tpsa(y), "invalid argument #2 (tpsa expected)")
   local pb, n, m = pb_ or 0, 0, nil
@@ -410,6 +427,15 @@ function MC.convert (x, y, tbl_, pb_)
     m = int_arr(n) ; for i=1,n do m[i-1] = tbl_[i]-1 end
   end
   _C.mad_ctpsa_convert(x, y, n, m, pb) return y
+end
+
+function MR.setval (x, e_) -- clear + set0(e)
+  _C.mad_tpsa_setval(x, e_ or 0) return x
+end
+
+function MC.setval (x, e_) -- clear + set0(e)
+  e_ = complex(e_ or 0)
+  _C.mad_ctpsa_setval_r(x, e_.re, e_.im) return x
 end
 
 function MR.setvar (x, e_, iv_, scl_) -- clear + set0(e) + set1(iv, scl or 1)
@@ -464,43 +490,21 @@ function MR.get_mono (x, i, r) -- idx -> mono
   assert(is_integer(i), "invalid argument #2 (index expected)")
   local m = r or monomial(x.d.nn)
   assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-  return _C.mad_tpsa_mono(t, m.n, m._dat, i-1) -- set m, return order
+  return m, _C.mad_tpsa_mono(x, i-1, m.n, m._dat) -- return mono and order
 end
 
 function MC.get_mono (x, i, r) -- idx -> mono
   assert(is_integer(i), "invalid argument #2 (index expected)")
   local m = r or monomial(x.d.nn)
   assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-  return _C.mad_ctpsa_mono(t, m.n, m._dat, i-1) -- set m, return order
-end
-
-function MR.cycle (x, i, m_) -- loop over indexes for non-zero value, (i=0 means end)
-  if m_ then
-    if not is_monomial(m_) then m_ = monomial(m_) end
-    i = _C.mad_tpsa_cycle(x, m_.n, m_._dat, i-1, val)
-  else
-    i = _C.mad_tpsa_cycle(x, 0   , nil    , i-1, val)
-  end
-  return i+1, val[0], m_
-end
-
-function MC.cycle (x, i, m_) -- loop over indexes for non-zero value, (i=0 means end)
-  if m_ then
-    if not is_monomial(m_) then m_ = monomial(m_) end
-    i = _C.mad_ctpsa_cycle(x, m_.n, m_._dat, i-1, cval)
-  else
-    i = _C.mad_ctpsa_cycle(x, 0   , nil    , i-1, cval)
-  end
-  return i+1, cval[0], m_
+  return m, _C.mad_ctpsa_mono(x, i-1, m.n, m._dat) -- return mono and order
 end
 
 function MR.totable (x, p)
   local m = monomial(p == true and x.d.nn or x.d.nv)
   local t = table.new(#x,#x)
-  local i, n, v = 0, 1
-  while true do
-    i, v = x:cycle(i, m)
-    if i == 0 then break end
+  local n = 1
+  for i, v in x:iter(m) do
     local s = m:tostring()
     t[n], t[s], n = s, v, n+1
   end
@@ -669,8 +673,8 @@ end
 
 -- evaluate x at a+h ----------------------------------------------------------o
 
-local  tarr1 = ffi.new 'struct  tpsa* [1]'
-local ctarr1 = ffi.new 'struct ctpsa* [1]'
+local  tarr1 = ffi.new 'struct  tpsa_* [1]'
+local ctarr1 = ffi.new 'struct ctpsa_* [1]'
 
 function MR.eval (x, h)
   tarr1[0], val[0] = x, h
@@ -853,7 +857,7 @@ function MR.__add (x, y, r)
     _C.mad_ctpsa_set0_r(r, 1, 0, y.re, y.im)
   elseif is_ctpsa(y) then                        -- tpsa + ctpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
-    _C.mad_ctpsa_tadd(x, y, r)
+    _C.mad_ctpsa_addt(y, x, r)
   else                                           -- tpsa + ?
     return assert(gmm(y,'__add_tpsa'), "invalid 'tpsa + ?' operation")(x, y, r)
   end
@@ -1178,7 +1182,10 @@ end
 
 -- dif : r_i = (x_i - y_i) / max(|x_i|, 1)
 
-function MR.dif (x, y, r)
+local difsum, prtsum
+
+function MR.dif (x, y, r, sum)
+  if is_boolean(r) then sum, r = r end
   if is_tpsa(y) and is_tpsa(x) then              -- tpsa ~ tpsa
     r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_tpsa_dif(x, y, r)
@@ -1188,10 +1195,11 @@ function MR.dif (x, y, r)
   else
     error("invalid 'tpsa ~ ?' operation")
   end
-  return r
+  return r, sum and difsum(r) or nil
 end
 
-function MC.dif (x, y, r)
+function MC.dif (x, y, r, sum)
+  if is_boolean(r) then sum, r = r end
   if is_ctpsa(y) and is_ctpsa(x) then            -- ctpsa ~ ctpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_dif(x, y, r)
@@ -1201,7 +1209,45 @@ function MC.dif (x, y, r)
   else
     error("invalid 'ctpsa ~ ?' operation")
   end
-  return r
+  return r, sum and difsum(r, true) or nil
+end
+
+-- dif summary
+
+function difsum (x, iscpx)
+  local i, v = x:maxbyord()
+  local s = { nam = x:nam(), mi = i, c={}, m={}, print=prtsum, iscpx=iscpx }
+  for i=1,#v do
+    s[i] = v[i]
+    if v[i] > 0 then
+      s.c[i] = x:get     (v[i])
+      s.m[i] = x:get_mono(v[i])
+    end
+  end
+  return s
+end
+
+-- print dif summary (method of summary)
+
+function prtsum (s)
+  local printf in MAD.utility
+
+  printf(" %s = \n", s.nam:upper())
+  if s.mi == 0 then
+    io.write("         ALL COMPONENTS ZERO\n")
+    return s
+  end
+
+  local fmt = option.numfmt ; option.numfmt = "% -.16e"
+  for i=1,#s do
+    if s[i]>0 then
+      printf(" %-6d %s%-2d  %s  %s\n", s[i], s[i] == s.mi and "*" or " ",
+             s.m[i]:ord(), s.iscpx and s.c[i]:tostring() or num2str(s.c[i]),
+             s.m[i]:tostring())
+    end
+  end
+  option.numfmt = fmt
+  return s
 end
 
 -- tpsa functions -------------------------------------------------------------o
@@ -1867,6 +1913,41 @@ function MR.read (x_, filnam_, kind_)
   return x -- return nil if no GTPSA found
 end
 
+-- iterators ------------------------------------------------------------------o
+
+local function riterx (x, i)
+  i = _C.mad_tpsa_cycle(x, i, 0, nil, val)
+  if i >= 0 then return i, val[0] end
+end
+
+local function citerx (x, i)
+  i = _C.mad_ctpsa_cycle(x, i, 0, nil, cval)
+  if i >= 0 then return i, cval[0] end
+end
+
+local function riters (s, i)
+  i = _C.mad_tpsa_cycle(s.x, i, s.m.n, s.m._dat, val)
+  if i >= 0 then return i, val[0], s.m end
+end
+
+local function citers (s, i)
+  i = _C.mad_ctpsa_cycle(s.x, i, s.m.n, s.m._dat, cval)
+  if i >= 0 then return i, cval[0], s.m end
+end
+
+local function mkiter (x, m_, i_)
+  if is_number(m_) and is_nil(i_) then i_, m_ = m_, nil end -- right shift
+  if m_ then
+    if not is_monomial(m_) then m_ = monomial(m_) end
+    return is_tpsa(x) and riters or citers, {x=x, m=m_}, (i_ or 0)-1
+  else
+    return is_tpsa(x) and riterx or citerx, x, (i_ or 0)-1
+  end
+end
+
+MR.__ipairs, MR.iter = mkiter, mkiter
+MC.__ipairs, MC.iter = mkiter, mkiter
+
 -- metamethods ----------------------------------------------------------------o
 
 MR.unm = \x,r_ -> MR.__unm(x,nil,r_)
@@ -1925,6 +2006,6 @@ return {
    tpsa  =  tpsa,
   ctpsa  = ctpsa,
   gtpsad = gtpsad,
-  gtpsad_release = gtpsad_release,
+  gtpsad_del = gtpsad_del,
   -- __help = require 'madh_gtpsa',
 }

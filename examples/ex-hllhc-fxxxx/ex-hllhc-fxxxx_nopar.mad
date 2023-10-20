@@ -1,0 +1,72 @@
+local doplot = true
+local dopdf  = true
+
+local beam, twiss, damap, plot   in MAD
+local abs                        in MAD.gmath
+local printf                     in MAD.utility
+
+local function plot_rdt (mtbl, rdt)
+  if not doplot then return end
+
+  local seq, rdt_a = mtbl.__seq, {}
+
+  mtbl.rdt_a = rdt_a
+  for i,k in ipairs(rdt) do
+    rdt_a[i] = '|'..k..'|'
+    mtbl:addcol(rdt_a[i], \ri->mtbl[k][ri]:abs())
+  end
+
+  io.write("** Plotting RDTs\n")
+  plot { table=mtbl, sequence=seq,
+         title="HL-LHC RDTs ("..seq.name..")",
+         xlabel = "s [m]",
+         ylabel = "|f_{jklm}|",
+         x1y1 = { s=rdt_a },
+         styles = 'lines',
+         output = dopdf and 'madplot.pdf' or nil,
+  }
+end
+
+-- HL-LHC setup
+MADX:load("hllhc_saved.seq", "hllhc_saved.mad")
+MADX.lhcb1.beam = beam {particle="proton", energy=450}
+MADX.lhcb2.beam = beam {particle="proton", energy=450}
+MADX.lhcb2.dir  = -1 -- bv = -1
+
+-- list of RDTs
+local rdts = {"f4000", "f3100", "f2020", "f1120"}
+
+-- loop over lhcb1 and lhcb2
+for _,lhc in ipairs{MADX.lhcb1, MADX.lhcb2} do
+
+  -- create phase-space damap at 4th order
+  local X0 = damap {nv=6, mo=4}
+
+  -- compute RDTs along HL-LHC
+  collectgarbage()  collectgarbage()
+  local m0 = collectgarbage("count")
+  local t0 = os.clock()
+  local mtbl = twiss {sequence=lhc, X0=X0, trkrdt=rdts, info=2, saverdt=true}
+  local t1 = os.clock()
+  collectgarbage()  collectgarbage()
+  local m1 = collectgarbage("count")
+  printf("twiss: time, memory = %.2fs, %.2fKb\n", t1-t0, m1-m0)
+
+  -- add 4Qy as post processing
+  rdts[#rdts+1] = "f0040"
+  mtbl:addcol("f0040", \ri->mtbl.__nf[ri]:gnfu"0040")
+
+  -- print RDTs at the end
+  for _,k in ipairs(rdts) do
+    printf("|%s| = % -.6e\n", k, mtbl[k][#mtbl]:abs())
+  end
+
+  -- save Twiss TFS table, includes RDTs
+  mtbl:write(lhc.name.."_rdts")
+
+  -- plot RDTs along LHC
+  plot_rdt(mtbl, rdts)
+
+  -- remove 4Qy from the list
+  rdts[#rdts] = nil
+end -- end of loop

@@ -31,10 +31,11 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 // --- types -----------------------------------------------------------------o
 
-typedef _Bool            log_t;
+typedef bool             log_t;
 typedef int32_t          idx_t;
 typedef int32_t          ssz_t;
 typedef uint32_t         u32_t;
@@ -72,9 +73,9 @@ typedef const void*      ptr_t;
 #define FOR_3(i,i0,n,s)  for (idx_t i=(i0); i<(n); i+=(s))
 
 #define RFOR(i,...)      MKNAME(RFOR_,NARG(__VA_ARGS__))(i,__VA_ARGS__)
-#define RFOR_1(i,n)      for (idx_t i=  0 ; i>(n); i--)
-#define RFOR_2(i,i0,n)   for (idx_t i=(i0); i>(n); i--)
-#define RFOR_3(i,i0,n,s) for (idx_t i=(i0); i>(n); i-=(s))
+#define RFOR_1(i,n)      for (idx_t i=(n)-1; i>=  0 ; i--)
+#define RFOR_2(i,n,i0)   for (idx_t i=(n)-1; i>=(i0); i--)
+#define RFOR_3(i,n,i0,s) for (idx_t i=(n)-1; i>=(i0); i-=(s))
 
 #define MKSTR(...)       MKSTR_OP_(__VA_ARGS__)
 #define MKSTR_OP_(...)   #__VA_ARGS__

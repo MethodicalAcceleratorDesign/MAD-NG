@@ -38,8 +38,8 @@ local _nyi
 
 M.element = object 'element' { kind='element',
   l=0, lrad=\s -> s.l, angle=0, tilt=0, -- TBR: l, lrad, lfld, lmag, lint, lmech
-  model=false, method=false, nslice=false, misalign=false,
-  aperture={kind='circle', 1}, apertype=\s -> s.aperture.kind or 'circle',
+  model=false, method=false, nslice=false, misalign=false, secnmul=false,
+  frngmax=false, aperture=false, apertype=\s -> ((s.aperture or {}).kind),
 }
 
 -- identity -------------------------------------------------------------------o
@@ -69,8 +69,8 @@ M.flags = {
   -- implicit elements (e.g. implicit drifts)
   implicit = fbit(3),
 
-  -- plot layout (e.g. use angle in top layout)
-  playout  = fbit(4),
+  -- plot layout (e.g. layout plot uses angle except for "in" layout)
+  layangle  = fbit(4),
 
   -- bits  5..26 are free
   -- bist 29..31 are used
@@ -83,9 +83,6 @@ M.flags = {
 
 local selected, disabled, observed, implicit, fringe in M.flags
 
-local is_bline    = \a -> a.kind == 'bline'
-local is_rawbline = \a -> a.kind == 'bline' and not a.__rep
-
 M.element :set_methods {
   select      = \s,f ->   set_flags(s, f or selected),
   deselect    = \s,f -> clear_flags(s, f or selected),
@@ -97,25 +94,14 @@ M.element :set_methods {
 } :set_metamethods {
   -- identity
   __elem = _id,
-  -- concatenation
   __add = \a,b => assert(is_element(a) and is_element(b), "elements expected")
-                  if is_rawbline(a) then     a:insert(b)
-              elseif is_rawbline(b) then a = b:insert(1, a)
-              else a = M.bline { a, b } end
-              return a
-            end,
-  -- repetition
+            return M.bline { a, b }        -- concatenation
+          end,
   __mul = \a,b => if is_number(b) then a,b = b,a end -- swap
-              assert(is_number(a) and is_element(b), "number and element expected")
-              if is_bline(b) then b.__rep = a * (b.__rep or 1)
-              else b = M.bline { __rep=a, b } end
-              return b
-            end,
-  -- reflection
-  __unm = \a   => if is_bline(a) then a.__rep = -(a.__rep or 1)
-                else a = M.bline { __rep=-1, a } end
-              return a
-            end,
+            assert(is_number(a) and is_element(b), "number and element expected")
+            return M.bline { __rep=a, b }  -- repetition (and reflection)
+          end,
+  __unm = \a -> M.bline { __rep=-1, a },   -- reflection
   -- dump
   __tostring = \s -> string.format("%s: '%s' %p", s.kind, s.name, s),
 
@@ -182,8 +168,8 @@ M. thin_element = M.element  'thin_element' { is_thin =true, knl={}, ksl={}, dkn
                                                                 :set_methods(defmth)
 M.drift_element = M.element 'drift_element' { is_drift=true }   :set_methods(defmth):set_methods(satmth)
 M.thick_element = M.element 'thick_element' { is_thick=true, knl={}, ksl={}, dknl={}, dksl={}, fringe=0,
-                                                             e1=0, e2=0, h1=0, h2=0, hgap=0, fint=0, fintx=false,
-                                                             fringemax=2, kill_ent_fringe=false, kill_exi_fringe=false }
+                                                             e1=0, e2=0, h1=0, h2=0, f1=0, f2=0, hgap=0, fint=0, fintx=false,
+                                                             frngmax=2, kill_ent_fringe=false, kill_exi_fringe=false }
                                                                 :set_methods(defmth):set_methods(satmth)
 M.patch_element = M.element 'patch_element' { is_patch  =true } :set_methods(defmth)
 M.extrn_element = M.element 'extrn_element' { is_extern =true } :set_methods(defmth)
@@ -205,18 +191,18 @@ M.instrument  = M.drift_element 'instrument'   { }
 M.placeholder = M.drift_element 'placeholder'  { }
 
 -- thick elements
-M.sbend       = M.thick_element 'sbend'        { k0=\s->s.angle/s.l, k0s=0, k1=0, k1s=0, k2=0, k2s=0, fringe=fringe.bend, }
+M.sbend       = M.thick_element 'sbend'        { k0=\s->s.angle/s.l, k0s=0, k1=0, k1s=0, k2=0, k2s=0, fringe=fringe.bend }
 M.rbend       = M.thick_element 'rbend'        { k0=\s->s.angle/s.l, k0s=0, k1=0, k1s=0, k2=0, k2s=0, fringe=fringe.bend, true_rbend=false }
-M.quadrupole  = M.thick_element 'quadrupole'   { k0=0, k0s=0, k1=0, k1s=0, k2=0, k2s=0, f1=0, f2=0 }
+M.quadrupole  = M.thick_element 'quadrupole'   { k0=0, k0s=0, k1=0, k1s=0, k2=0, k2s=0 }
 M.sextupole   = M.thick_element 'sextupole'    { k2=0, k2s=0 }
 M.octupole    = M.thick_element 'octupole'     { k3=0, k3s=0 }
 M.decapole    = M.thick_element 'decapole'     { k4=0, k4s=0 }
 M.dodecapole  = M.thick_element 'dodecapole'   { k5=0, k5s=0 }
-M.solenoid    = M.thick_element 'solenoid'     { ks=0, ksi=0 }
+M.solenoid    = M.thick_element 'solenoid'     { ks=0, ksi=0, new_fringe=false }
 M.tkicker     = M.thick_element 'tkicker'      { hkick=0, vkick=0 }
 M.wiggler     = M.thick_element 'wiggler'      { _nyi }
 M.elseparator = M.thick_element 'elseparator'  { ex=0, ey=0, exl=0, eyl=0 }
-M.rfcavity    = M.thick_element 'rfcavity'     { volt=0, freq=0, lag=0, harmon=0, n_bessel=0, totalpath=true }
+M.rfcavity    = M.thick_element 'rfcavity'     { volt=0, freq=0, lag=0, harmon=0, n_bessel=0, no_cavity_totalpath=false }
 M.genmap      = M.thick_element 'genmap'       { damap=nil, nslice=1, update=false }
 
 -- thin elements

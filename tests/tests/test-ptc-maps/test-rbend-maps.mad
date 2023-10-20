@@ -1,0 +1,232 @@
+-- ../mad test-all-maps.mad TestRBend
+-- assume ../madx64 to be present...
+
+local object, tostring in MAD
+local tblcat           in MAD.utility
+local run_test         in require("trackvsptc")
+
+TestRBend = {}
+
+-- The tests ------------------------------------------------------------------o
+function TestRBend:testRBEND()
+  local cfg = ref_cfg "rbend"{
+    elm =  [[
+      RBEND, at=0.75, l=1.5, angle=${k0}*2*pi/1e2,
+      kill_ent_fringe=${no_fringe}, kill_exi_fringe=${no_fringe},
+      true_rbend=${true_rbend};
+    ]],
+    model  = 1..2,
+    method = 2..8..2,    
+    nslice = 1..3,
+    energy = {1, 6500},  -- {1, 450, 6500}
+    order = 4,
+
+    tol = 4000,
+
+    alist = tblcat(ref_cfg.alist, {"k0", "no_fringe", "true_rbend"}),
+    k0         = -0.5..0.5..0.2,
+    no_fringe  = {true, false},
+    true_rbend = {false, true},
+
+    plot_info = {
+      x_axis_attr = "(${k0}*2*math.pi/1e2)/${nslice}",
+      title       = "RBend Body Comparison",
+      series      = {"${model} == 1", "${model} == 2"},
+      legend      = {y1 = "DKD"     , y2 = "TKT"     },
+      xlabel      = "Angle per slice [rad]",
+      -- xrange      = {7e-5, 1},
+      plotcfg     = "set logscale x;",
+      filename    = "rbend-body-comparison.png",
+    }
+  }
+  run_test(cfg)
+end
+
+function TestRBend:testRBENDfr()
+  local cfg = ref_cfg "rbendfr"{
+    elm = [[
+      RBEND, at=0.75, l=1.5, angle=${k0}*2*pi/1e2, tilt=${tilt}*pi/8,
+      kill_ent_fringe=${no_fringe}, kill_exi_fringe=${no_fringe},
+      true_rbend=true;
+    ]],
+    tol = 50,
+    model  = {1},
+    method = {2},    
+    nslice = {1},
+    energy = {1},
+    
+    alist = tblcat(ref_cfg.alist, {"k0", "no_fringe", "tilt"}), 
+    k0        = {0.5},
+    no_fringe = {true, false},
+    tilt      = 0..4,
+
+    plot_info = {
+      x_axis_attr = "${tilt}",
+      xlabel      = "Tilt [pi/8]",
+      title       = "RBend Fringe Comparison",
+      xrange      = {-0.1, 4.1},
+      filename    = "rbend-fringe-comparison.png",
+    }
+  }
+  run_test(cfg)
+end
+
+-- MAD-X only supports e1 as an input for RBEND, and changes the output edge
+-- to ensure parralel faces + some extra physics. 
+-- So failure is expected for e1, e2 ~= 0 
+function TestRBend:testRBENDfe() 
+  local cfg = ref_cfg "rbendfe"{
+    elm = [[
+      RBEND, at=0.75, l=1.5, angle=${k0}*2*pi/1e2, k0=${k0}*2*pi/1e2/1.5,
+      e1=${e1}*2*pi/1e2, e2=${e2}*2*pi/1e2, true_rbend=${true_rbend},
+      kill_ent_fringe=${no_fringe}, kill_exi_fringe=${no_fringe}
+    ]],
+    tol = 300,
+    model  = {1, 2},
+    method = {2},    
+    nslice = {1},
+    energy = {1},
+    
+    alist = tblcat(ref_cfg.alist, {"k0", "no_fringe", "e2", "e1", "true_rbend"}), 
+    k0        = {0.5},
+    no_fringe = {true, false},
+    e2        = {-0.15, 0, 0.05},
+    e1        = {0, 0.2},
+    true_rbend = {true, false},
+
+    plot_info = {
+      title       = "RBend Face Comparison",
+      series      = { "${e1} ~= 0 or ${e2} ~= 0", "${e1} == 0 and ${e2} == 0" },
+      legend      = {y1 = "e1 or e2 non zero", y2 = "e1 and e2 zero"},
+      filename    = "rbend-face-comparison.png",
+    }
+
+  }
+  run_test(cfg)
+end
+
+function TestRBend:testRBENDfh() -- E1 and E2 are modified by MAD-X for rbend to work.
+  local cfg = ref_cfg "rbendfh"{
+    elm = [[
+      RBEND, at=0.75, l=1.5, angle=${k0}*2*pi/1e2, 
+      hgap=${hgap}, fint=${fint}, fintx=${fintx}, h1=${h1}, h2=${h2},
+      kill_ent_fringe=${no_fringe}, kill_exi_fringe=${no_fringe},
+      true_rbend=true, e1=${e1}*2*pi/1e2, e2=${e2}*2*pi/1e2;
+    ]],
+    tol = 400,
+    model  = {1},
+    method = {2},    
+    nslice = {1},
+    energy = {1},
+    
+    alist = tblcat(
+      ref_cfg.alist, 
+      {"k0", "no_fringe", "hgap", "fint", "fintx", "h1", "h2", "e1", "e2"}
+    ), 
+
+    k0        = {0.5},
+    no_fringe = {true, false},
+    hgap      = {0, 0.05},
+    fint      = {0, 0.7},
+    fintx     = \s -> s.fint,
+    h1        = {0, 0.5},
+    h2        = {0, -0.4},
+    e2        = {0, 0.1, -0.3},
+    e1        = \s -> s.e2,
+
+    plot_info = {
+      series      = { "${e1} ~= 0 or ${e2} ~= 0", "${e1} == 0 and ${e2} == 0" },
+      legend      = {y1 = "e1 or e2 non zero", y2 = "e1 and e2 zero"},
+      title       = "RBend Fringe and Face Comparison",
+      filename    = "rbend-fringe-face-comparison.png",
+    }
+  }
+  run_test(cfg)
+end
+
+-- E1 and E2 are modified by MAD-X for rbend to work.
+-- Therefore the method needs investigation before testing it.
+function TestRBend:testRBENDfhs()
+  local cfg = ref_cfg "rbendfhs"{
+    elm = [[
+      RBEND, at=0.75, l=1.5, angle=${k0}*2*pi/1e2, k1 = ${k1},
+      hgap=${hgap}, fint=${fint}, fintx=${fintx}, f1=${f1}, f2=${f2},
+      kill_ent_fringe=${no_fringe}, kill_exi_fringe=${no_fringe},
+      true_rbend=${true_rbend}, e1=${e1}*2*pi/1e2, e2=${e2}*2*pi/1e2;
+    ]], 
+    snm = 5,
+    tol = 800,
+    model  = {1},
+    method = {2},    
+    nslice = {1},
+    energy = {1},
+    
+    alist = tblcat(
+      ref_cfg.alist,
+      {"k0", "no_fringe", "hgap", "fint", "fintx", "e1", "e2", "k1", "f1", "f2", "true_rbend"}
+    ), 
+    k0        = {0.5},
+    k1        = {0, 0.5},
+    no_fringe = {true, false},
+    hgap      = \s-> s.cur_cfg.no_fringe and {0} or {0, 0.05},
+    fint      = \s-> s.cur_cfg.no_fringe and {0} or {0, 0.7},
+    fintx     = \s-> s.cur_cfg.no_fringe and {0} or {0, 0.7},
+    f1        = \s-> s.cur_cfg.no_fringe and {0} or {0, 0.3},
+    f2        = \s-> s.cur_cfg.no_fringe and {0} or {0, 0.8},
+    e2        = {0, 0.1, -0.3},
+    e1        = \s -> s.e2,
+    true_rbend = {true, false},
+
+    plot_info = {
+      series      = { "${e1} ~= 0 or ${e2} ~= 0", "${e1} == 0 and ${e2} == 0" },
+      legend      = {y1 = "e1 or e2 non zero", y2 = "e1 and e2 zero"},
+      title       = "RBend Fringe and Face with k1 Comparison",
+      filename    = "rbend-fringe-face-k1-comparison.png",
+    }
+  }
+  run_test(cfg)
+end
+
+function TestRBend:testRBENDfm()
+  local cfg = ref_cfg "rbendfm" {
+    elm = [[
+      RBEND, at=0.75, l=1.5, angle=${k0}*2*pi/1e2, knl=${knl}, ksl=${ksl}, true_rbend=true,
+      kill_ent_fringe=${no_fringe}, kill_exi_fringe=${no_fringe},
+      fringe=${fringe}, frngmax=${frngmax}
+    ]],
+
+    tol = 4e3,
+    model  = {1},
+    method = {2},    
+    nslice = {1},
+    energy = {1},
+    fringe = \s-> s.cur_cfg.no_fringe and 0 or 7,
+    
+    alist = tblcat(
+      ref_cfg.alist, 
+      {"k0", "no_fringe", "knl", "ksl", "frngmax"}
+    ), 
+    k0        = {0.5},
+    no_fringe = {true, false},
+    frngmax   = \s-> s.cur_cfg.no_fringe and {0} or 2..5,
+    knl       = {
+      {}, 
+      {0, 0.15, 2.2, 31, 78}
+    },
+    ksl       = \s-> s.knl,
+
+    plot_info = \s -> {
+      title       = "RBend Multiple Fringe Comparison",
+      series      = {
+        "'${knl}' == '" .. tostring(s.knl[1]) .. "'",
+        "'${knl}' == '" .. tostring(s.knl[2]) .. "'", 
+      },
+      legend = {
+        y1 = "Empty knl",
+        y2 = "Filled knl",
+      },
+      filename    = "rbend-fringe-CFM-comparison.png",
+    }
+  }
+  run_test(cfg)
+end

@@ -1,0 +1,259 @@
+local doplot = true
+local dopdf  = true
+
+local beam, track, twiss, match, damap, plot   in MAD
+local normal                                   in MAD.gphys
+local abs, real, imag                          in MAD.gmath
+local printf, tblcat                           in MAD.utility
+local is_nil                                   in MAD.typeid
+
+MADX:load("hllhc_saved.seq", "hllhc_saved.mad") -- convert on need
+!MADX:load("lhc_vars0.mad")
+
+local lhcb1, lhcb2 in MADX
+
+-- need to create a "new" particle for MAD-X compatibility (old pmass?)
+local lhc_beam = beam {particle="proton", energy=450}
+lhcb1.beam = lhc_beam
+lhcb2.beam = lhc_beam
+lhcb2.dir  = -1 -- bv = -1
+
+-- track and twiss columns
+local tkcols  = {'name','s','l','x','px','y','py'}
+local twcols  = {'name','s','beta11','beta22','mu1','mu2','dx','dy','x','y'}
+
+-------------------------------------------------------------------------------o
+-- small checks                                                              --o
+-------------------------------------------------------------------------------o
+
+if false then -- set to true to run twiss checks
+
+local tw1 = twiss {sequence=lhcb1, observe=1}
+local tw2 = twiss {sequence=lhcb2, observe=1}
+
+!MAD.option.numfmt = "% -.16e"
+
+tw1:write("twiss_b1_n.tfs", twcols)
+tw2:write("twiss_b2_n.tfs", twcols)
+
+os.exit()
+end
+
+-------------------------------------------------------------------------------o
+-- helpers                                                                   --o
+-------------------------------------------------------------------------------o
+
+-- Print RDTs for debug
+-- e.g. prt_rdt(nf, 'anh') ; prt_rdt(nf, 'gnf')
+
+local function prt_rdt (nf, kind)
+  local a = assert(nf[kind], "invalid kind '"..kind.."'")
+  for i,k in ipairs(a) do
+    local v = nf[kind][k]
+    printf("%4d: %s[%s] A=% .6e, C=% .6e, S=% .6e\n",i,kind,k,abs(v),real(v),imag(v))
+  end
+end
+
+local function plot_rdt (mtbl, rdt)
+  if not doplot then return end
+
+  local seq, rdt_a = mtbl.__seq, {}
+
+  mtbl.rdt_a = rdt_a
+  for i,k in ipairs(rdt) do
+    rdt_a[i] = '|'..k..'|'
+    mtbl:addcol(rdt_a[i], \ri->mtbl[k][ri]:abs())
+  end
+
+  io.write("** Plotting RDTs\n")
+  plot { table=mtbl, sequence=seq,
+         title="HL-LHC RDTs ("..seq.name..")",
+         xlabel = "s [m]",
+         ylabel = "|f_{jklm}|",
+         x1y1 = { s=rdt_a },
+         styles = 'lines',
+         output = dopdf and 'madplot.pdf' or nil,
+  }
+end
+
+-------------------------------------------------------------------------------o
+-- RDTs                                                                      --o
+-------------------------------------------------------------------------------o
+
+local usetws = true
+
+local function get_rdt(lhc, X0, rdt)
+  if usetws then
+    io.write("** Running Twiss RDTs...\n")
+
+    collectgarbage() ; collectgarbage()
+    local t0, m0 = os.clock(), collectgarbage("count")
+
+    local mtbl, mflw = twiss {sequence=lhc, X0=X0, trkrdt=rdt, info=2}
+
+    collectgarbage() ; collectgarbage()
+    local t1, m1 = os.clock(), collectgarbage("count")
+
+    printf("Twiss RDTs (%.2fs, %.2fKb)\n", t1-t0, m1-m0)
+
+    return mtbl
+
+  else
+
+    io.write("** Tracking Map ")
+
+    collectgarbage() ; collectgarbage()
+    local t0, m0 = os.clock(), collectgarbage("count")
+
+    X0:write("trk_M0")
+
+    local _, mflw = track{sequence=lhc, save=false, X0=X0}
+    collectgarbage() ; collectgarbage()
+    local t1, m1 = os.clock(), collectgarbage("count")
+
+    mflw[1]:write("trk_M")
+
+    printf("(%.2fs, %.2fKb)\n** Computing NF ", t1-t0, m1-m0)
+    local nf = normal(mflw[1])
+    collectgarbage() ; collectgarbage()
+    local t2, m2 = os.clock(), collectgarbage("count")
+
+    printf("(%.2fs, %.2fKb)\n** Tracking NF ", t2-t1, m2-m1)
+    local NF = nf.a:real():set0(nf.x0) ; NF.status = 'Aset'
+
+    NF:write("trk_A0")
+
+    local mtbl, mflw = track{sequence=lhc, observe=0, savemap=true, X0=NF}
+    collectgarbage() ; collectgarbage()
+    local t3, m3 = os.clock(), collectgarbage("count")
+
+    mflw[1]:write("trk_A")
+
+    printf("(%.2fs, %.2fKb)\n** Analysing NFs ", t3-t2, m3-m2) io.flush()
+    local nfs = { nf:analyse('gnf',mtbl[1].__map) }
+
+    mtbl[1].__map:write("trk_NFmap")
+    nfs[1].a:real():write("trk_NFana1")
+
+    os.exit()
+
+    local nsh = 0
+    for ri=2,#mtbl do
+      if mtbl[ri].__map:eq(mtbl[ri-1].__map) then
+        nfs[ri], nsh = nfs[ri-1], nsh+1
+      else
+        nfs[ri] = nf:analyse('gnf',mtbl[ri].__map)
+      end
+    end
+    collectgarbage() ; collectgarbage()
+    local t4, m4 = os.clock(), collectgarbage("count")
+
+    printf("(%.2fs, %.2fKb) [share %d/%d]\n** Adding GNF columns:\n", t4-t3, m4-m3, nsh, #mtbl)
+    mtbl:addcol("nfs", nfs)
+    for _,k in ipairs(rdt) do
+      io.write(k," ")
+      mtbl:addcol(k, \ri->nfs[ri]:gnfu(k:sub(2)))
+    end
+    io.write("\n")
+    return mtbl, nfs
+
+  end
+end
+
+-------------------------------------------------------------------------------o
+-- Main                                                                      --o
+-------------------------------------------------------------------------------o
+
+-- list of RDTs
+
+local rdts = {
+  "f40000000",
+  "f40000010",
+  "f40000020",
+  "f40000001",
+  "f40000002",
+  "f40000011",
+}
+--[[
+local rdts = {
+  "f4000",
+  "f3100",
+  "f2020",
+  "f1120",
+
+  "f4000001",
+  "f3100001",
+  "f2020001",
+  "f1120001",
+
+  "f40000001",
+  "f31000001",
+  "f20200001",
+  "f11200001",
+}
+--]]
+
+local knbs = {
+  LHCB1 = {'ksf1.a45b1','ksf2.a45b1'},
+  LHCB2 = {'ksf1.a45b2','ksf2.a45b2'},
+}
+
+-- loop over lhcb1 and lhcb2
+for _,lhc in ipairs{lhcb1,lhcb2} do
+
+printf("** %s **\n", lhc.name)
+
+-- select knobs
+local knb = knbs[lhc.name]
+
+-- create phase space damap at 5th order
+local X0 = damap{nv=6, mo=6, np=2, po=2, pn=knb}
+
+MADX[knb[1]] = MADX[knb[1]] + X0[knb[1]]
+MADX[knb[2]] = MADX[knb[2]] + X0[knb[2]]
+
+local mtbl = get_rdt(lhc, X0, rdts)
+
+MADX[knb[1]] = X0[knb[1]]:get0()
+MADX[knb[2]] = X0[knb[2]]:get0()
+
+-- RDTs at the end
+io.write("** RDTs@end\n")
+for _,k in ipairs(rdts) do
+  printf("|%s| = % -.6e\n", k, mtbl[k][#mtbl]:abs())
+end
+
+mtbl:write("rdts_"..lhc.name, tblcat(tkcols, rdts))
+
+plot_rdt(mtbl, rdts)
+
+end
+
+--[[
+** LHCB1 **
+** Tracking Map (1.2 s)
+** Computing NF (0.0 s)
+** Tracking NF (0.8 s)
+** Analysing NFs (19.0 s [share 2126/13431])
+** Adding GNF columns:
+f4000 f3100 f2020 f1120
+** RDTs@end
+f4000 =  1.679671e+03
+f3100 =  1.029907e+04
+f2020 =  8.605895e+03
+f1120 =  1.761836e+04
+** Plotting RDTs
+** LHCB2 **
+** Tracking Map (0.8 s)
+** Computing NF (0.0 s)
+** Tracking NF (0.5 s)
+** Analysing NFs (24.5 s [share 2134/13445])
+** Adding GNF columns:
+f4000 f3100 f2020 f1120
+** RDTs@end
+f4000 =  4.833209e+03
+f3100 =  8.370242e+03
+f2020 =  1.618611e+04
+f1120 =  2.724439e+04
+** Plotting RDTs
+--]]

@@ -27,7 +27,7 @@ program gtpsa_ex2
 
   ! descriptor for TPSA with 4 variables  of order 4 and
   !                          2 parameters of order 3
-  d=mad_desc_newvp(4, 2, 5_1, 3_1)
+  d=mad_desc_newvp(4, 5_1, 2, 3_1)
 
   ! two TPSAs, t1 has maximum order, t2 is same as t1
   t1=mad_tpsa_newd(d , mad_tpsa_default)
@@ -49,6 +49,6 @@ program gtpsa_ex2
   call mad_tpsa_del  (t2); t2=c_null     ! see the accuracy of asin(sin)
 
   ! destroy all created descriptors (optional cleanup)
-  call mad_desc_cleanup();
+  call mad_desc_del(c_null);
 
 end program gtpsa_ex2

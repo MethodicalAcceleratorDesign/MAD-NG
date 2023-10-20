@@ -145,8 +145,15 @@ static inline void
 mono_realloc (D *d, ssz_t nc)
 {
   assert(d);
+  if (nc > 10*DESC_WARN_MONO)
+    error("gtpsa are too large (%d > %d monomials)", nc, 10*DESC_WARN_MONO);
+
+#if DEBUG_DESC > 1
+  printf("desc nc: %d\n", nc);
+#endif
+
   d->nc = nc;
-  d->monos = mad_realloc(d->monos, nc*d->nn * sizeof *d->monos);
+  d->monos = mad_realloc(d->monos, nc*(d->nn * sizeof *d->monos));
 }
 
 static inline void
@@ -156,9 +163,10 @@ set_monos (D *d) // builds the monomials matrix in Tv order
   assert(d && d->no);
 
   int n = d->nn;
-  d->nc = max_nc(n, d->mo);   // upper bound
-  if (!d->nc || d->nc > DESC_WARN_MONO)
-    d->nc = max_nc(6,8);     // overflow or too large, start with (6,8)=3003
+  u64_t nc = max_nc(n, d->mo); // upper bound
+
+  // check for overflow, then start with (6,8)=3003
+  d->nc = nc <= 0 || nc > DESC_WARN_MONO ? (ssz_t)max_nc(6,8) : (ssz_t)nc;
   mono_realloc(d, d->nc);
 
   ord_t m[n];
@@ -175,6 +183,12 @@ set_monos (D *d) // builds the monomials matrix in Tv order
   // resize the matrix (shrink)
   mono_realloc(d, i);
   d->size += d->nc*d->nn * sizeof *d->monos;
+
+  if (d->nc > DESC_WARN_MONO)
+    warn("gtpsa are very large (%d monomials),\n\t"
+         "building descriptor may take some time,\n\t"
+         "consider that multiplication is quadratic in size.", d->nc);
+
   DBGFUN(<-);
 }
 
@@ -404,7 +418,7 @@ tbl_solve_H(D *d)
     for (; i < ni && !H[j*ni+i]; ++i) {   // for each unknown..
       mad_mono_copy(n, To[o2i[i]-1], m);  // monomial without the unknown
       m[j]++;                             // add the unknown               // 2.
-      if (!mono_isvalid(d, n, m)) {      // monomial blocked by po
+      if (!mono_isvalid(d, n, m)) {       // monomial blocked by po
         for (; i < ni && !H[j*ni+i]; ++i) H[j*ni+i] = -1;
         break;
       }
@@ -536,16 +550,23 @@ tbl_build_LC (ord_t oa, ord_t ob, D *d)
   const ssz_t cols = o2i[oa+1] - o2i[oa], // sizes of orders
               rows = o2i[ob+1] - o2i[ob];
 
-#if DEBUG_DESC > 2
-  printf("LC[%d,%d]=%d index slots\n", rows, cols, rows*cols);
-#endif
   // allocation lc[rows,cols]: lc[ib,ia] = lc[(ib-o2i[ob])*cols + ia-o2i[oa]]
-  ssz_t mat_size = rows*cols;
+  size_t mat_size = (size_t)rows*cols;
+
+#if DEBUG_DESC > 2
+  printf("LC[%d,%d]=%zu index slots\n", rows, cols, mat_size);
+#endif
+
+  if (mat_size > INT32_MAX)
+    error("gtpsa are too large (%d monomials),\n\t"
+          "indexing matrix #slots for orders %d x %d = %zu > 2^31",
+          d->nc, oa, ob, mat_size);
+
   idx_t *lc = mad_malloc(mat_size * sizeof *lc);
   d->size += mat_size * sizeof *lc;
 
   // initialisation
-  for (ssz_t i=0; i < mat_size; ++i) lc[i] = -1;
+  for (size_t i=0; i < mat_size; ++i) lc[i] = -1;
 
   // loop over indexes of order ob
   for (idx_t ib=o2i[ob]; ib < o2i[ob+1]; ++ib) {
@@ -815,7 +836,7 @@ set_thread (D *d)
   // [0] serial(all), [1..nth] parallel(split)
   int nth = d->nth + (d->nth > 1);
 
-  d->ocs = mad_malloc(nth * sizeof *(d->ocs));
+  d->ocs = mad_malloc(nth * sizeof *d->ocs);
   d->size += nth * sizeof *(d->ocs);
 
   int sizes[nth];
@@ -908,7 +929,7 @@ static int desc_max = 0;
 static D *Ds[DESC_MAX_ARR];
 
 static inline D*
-desc_init (int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
+desc_init (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
 {
   DBGFUN(->);
   ensure(mo <= DESC_MAX_ORD, // variables max orders validation
@@ -947,9 +968,6 @@ desc_init (int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
 #endif
 
   set_monos(d);
-  if (d->nc > DESC_WARN_MONO)
-    warn("gtpsa will be very large (%d monomials)", d->nc);
-
   d->nth = omp_get_max_threads();
 
   DBGFUN(<-);
@@ -957,10 +975,10 @@ desc_init (int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
 }
 
 static D*
-desc_build (int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
+desc_build (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
 {
   DBGFUN(->);
-  D *d = desc_init(nn, mo, no_, np, po);
+  D *d = desc_init(nn, mo, np, po, no_);
   int err = 0, eid=0;
 
   tbl_by_var(d);
@@ -998,7 +1016,7 @@ error:
 }
 
 static inline int
-desc_equiv (const D *d, int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
+desc_equiv (const D *d, int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
 {
   int same = d->nn == nn && d->mo == mo && d->np == np && (np ? d->po == po : 1);
 
@@ -1008,17 +1026,17 @@ desc_equiv (const D *d, int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
 }
 
 static inline D*
-get_desc (int nn, ord_t mo, const ord_t no_[nn], int np, ord_t po)
+get_desc (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
 {
   DBGFUN(->);
   for (int i=0; i < desc_max; ++i)
-    if (Ds[i] && desc_equiv(Ds[i], nn, mo, no_, np, po)) {
+    if (Ds[i] && desc_equiv(Ds[i], nn, mo, np, po, no_)) {
       DBGFUN(<-); return mad_desc_curr=Ds[i], Ds[i];
     }
 
   for (int i=0; i < DESC_MAX_ARR; ++i)
     if (!Ds[i]) {
-      Ds[i] = desc_build(nn, mo, no_, np, po);
+      Ds[i] = desc_build(nn, mo, np, po, no_);
       Ds[i]->id = i;
       if (i == desc_max) ++desc_max;
       DBGFUN(<-); return mad_desc_curr=Ds[i], Ds[i];
@@ -1097,7 +1115,7 @@ mad_desc_nxtbyord (const D *d, ssz_t n, ord_t m[n])
 }
 
 ord_t
-mad_desc_mono (const D *d, ssz_t n, ord_t m_[n], idx_t i)
+mad_desc_mono (const D *d, idx_t i, ssz_t n, ord_t m_[n])
 {
   DBGFUN(->);
   assert(d);
@@ -1151,38 +1169,23 @@ mad_desc_getnv (const D *d, ord_t *mo_, int *np_, ord_t *po_)
 }
 
 ord_t
-mad_desc_getno (const D *d, int n, ord_t no_[n])
+mad_desc_maxord (const D *d, int n, ord_t no_[n])
 {
   assert(d); DBGFUN(->);
   if (no_) {
-    ensure(n == d->nn, "invalid monomial length %d (%d orders expected)", n,d->nn);
-    mad_mono_copy(d->nn, d->no, no_);
+    ensure(n <= d->nn, "invalid monomial length %d (max %d orders expected)", n, d->nn);
+    mad_mono_copy(n, d->no, no_);
   }
   ord_t ret = d->mo;
   DBGFUN(<-); return ret;
 }
 
-ord_t
-mad_desc_maxord (const D *d)
-{
-  assert(d); DBGFUN(->);
-  ssz_t ret = d->mo;
-  DBGFUN(<-); return ret;
-}
-
 ssz_t
-mad_desc_maxlen (const D *d)
+mad_desc_maxlen (const D *d, ord_t mo)
 {
   assert(d); DBGFUN(->);
-  ssz_t ret = d->nc;
-  DBGFUN(<-); return ret;
-}
-
-ssz_t
-mad_desc_ordlen (const D *d, ord_t mo)
-{
-  assert(d); DBGFUN(->);
-  ensure(mo <= d->mo, "invalid order (exceeds maximum order)");
+  if (mo == mad_tpsa_default) mo = d->mo;
+  ensure(mo <= d->mo, "invalid order %d (exceeds maximum order %d)", mo, d->mo);
   ssz_t ret = d->ord2idx[mo+1];
   DBGFUN(<-); return ret;
 }
@@ -1227,114 +1230,127 @@ mad_desc_newv (int nv, ord_t mo)
   DBGFUN(->);
   ensure(0 < nv && nv <= DESC_MAX_VAR,
          "invalid number of variables: %d (0<?<=%d)", nv, DESC_MAX_VAR);
-  ensure(mo <= DESC_MAX_ORD,
-         "invalid maximum order: %d (0<=?<=%d)", mo, DESC_MAX_ORD);
+  ensure(0 < mo && mo <= DESC_MAX_ORD,
+         "invalid maximum order: %d (0<?<=%d)", mo, DESC_MAX_ORD);
 
 #if DEBUG_DESC > 1
-  printf(">> nv=%d,mo=%d\n", nv, mo);
+  printf(">> nv=%d, mo=%d\n", nv, mo);
 #endif
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wnonnull"
-  const desc_t* ret = get_desc(nv, mo, NULL, 0, 0);
+  const desc_t* ret = get_desc(nv, mo, 0, 0, NULL);
 #pragma GCC diagnostic pop
 
   DBGFUN(<-); return ret;
 }
 
 const desc_t*
-mad_desc_newvp(int nv, int np, ord_t mo, ord_t po_)
+mad_desc_newvp(int nv, ord_t mo, int np_, ord_t po_)
 {
-  DBGFUN(->);
-  if (!np) {
-    const desc_t* ret = mad_desc_newv(nv, mo); DBGFUN(<-); return ret;
-  }
-  int nn = nv+np;
+  if (np_ <= 0) return mad_desc_newv(nv, mo);
 
+  DBGFUN(->);
+  int np = MAX(np_,0);
+  int nn = nv+np;
   ensure(0 < nn && nn <= DESC_MAX_VAR,
          "invalid number of variables+parameters: %d (0<?<=%d)", nn, DESC_MAX_VAR);
-  ensure(mo <= DESC_MAX_ORD,
-         "invalid maximum order: %d (0<=?<=%d)", mo, DESC_MAX_ORD);
+  ensure(0 < mo && mo <= DESC_MAX_ORD,
+         "invalid maximum order: %d (0<?<=%d)", mo, DESC_MAX_ORD);
 
-  ord_t po = po_ ? MIN(mo,po_) : mo;
+  ord_t po = MAX(po_,1);
+  ensure(0 < po && po <= mo,
+         "invalid parameter order: %d (0<?<=%d)", po, mo);
 
 #if DEBUG_DESC > 1
-  printf(">> nn=%d,mo=%d,np=%d,po=%d[%d]\n", nn, mo, np, po,po_);
+  printf(">> nn=%d, mo=%d, np=%d, po=%d[%d]\n", nn, mo, np, po, po_);
 #endif
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wnonnull"
-  const desc_t* ret = get_desc(nn, mo, NULL, np, po);
+  const desc_t* ret = get_desc(nn, mo, np, po, NULL);
 #pragma GCC diagnostic pop
 
   DBGFUN(<-); return ret;
 }
 
 const desc_t*
-mad_desc_newvpo(int nv, int np, const ord_t no[/*nv+np*/], ord_t po_)
+mad_desc_newvpo(int nv, ord_t mo, int np_, ord_t po_, const ord_t no_[nv+np_])
 {
-  DBGFUN(->);
-  assert(no);
-  int nn = nv+np;
+  if (!no_) return mad_desc_newvp(nv, mo, np_, po_);
 
+  DBGFUN(->);
+  int np = MAX(np_,0);
+  int nn = nv+np;
   ensure(0 < nn && nn <= DESC_MAX_VAR,
          "invalid number of variables & parameters: %d (0<?<=%d)", nn, DESC_MAX_VAR);
-  ensure(mad_mono_min(nn, no) > 0,
-         "some variables have invalid zero order");
+  ensure(mad_mono_min(nn, no_) > 0,
+         "some variables (or parameters) have invalid zero order");
 
-  ord_t mo = mad_mono_max(nn, no), po = mo;
-  ensure(mo <= DESC_MAX_ORD,
-         "invalid maximum order: %d (0<=?<=%d)", mo, DESC_MAX_ORD);
+  ord_t mo_ = mad_mono_max(nn, no_); mo = MAX(mo, mo_);
+  ensure(0 < mo && mo <= DESC_MAX_ORD,
+         "invalid maximum order: %d (0<?<=%d)", mo, DESC_MAX_ORD);
 
+  ord_t po = MAX(po_,1);
   if (np) {
-    po = mad_mono_max(np, no+nv);
-    po = MIN(mo,MAX(po_,po));
+    ord_t po_ = mad_mono_max(np, no_+nv); po = MAX(po, po_);
+    ensure(0 < po && po <= mo,
+           "invalid parameter order: %d (0<?<=%d)", po, mo);
   }
 
 #if DEBUG_DESC > 1
-  printf(">> nn=%d,mo=%d,np=%d,po=%d[%d]\n", nn, mo, np, po,po_);
+  printf(">> nn=%d, mo=%d, np=%d, po=%d[%d]\n", nn, mo, np, po, po_);
 #endif
 
-  const desc_t* ret = get_desc(nn, mo, no, np, po);
+  const desc_t* ret = get_desc(nn, mo, np, po, no_);
   DBGFUN(<-); return ret;
+}
+
+static void
+mad_desc_cleanup (void)
+{
+  for (idx_t i=0; i < desc_max; ++i)
+    if (Ds[i]) mad_desc_del(Ds[i]);
 }
 
 void
-mad_desc_del (const D *d)
+mad_desc_del (const D *d_)
 {
-  assert(d); DBGFUN(->);
-  D *d_ = (void*)d;
+  if (d_ == NULL) { mad_desc_cleanup(); return; }
 
-  mad_free((void*)d_->no);
-  mad_free(d_->monos);
-  mad_free(d_->ords);
-  mad_free(d_->To);
-  mad_free(d_->Tv);
-  mad_free(d_->ord2idx);
-  mad_free(d_->tv2to);
-  mad_free(d_->to2tv);
-  mad_free(d_->H);
+  DBGFUN(->);
+  D *d = (void*)d_;
+
+  mad_free((void*)d->no);
+  mad_free(d->monos);
+  mad_free(d->ords);
+  mad_free(d->To);
+  mad_free(d->Tv);
+  mad_free(d->ord2idx);
+  mad_free(d->tv2to);
+  mad_free(d->to2tv);
+  mad_free(d->H);
 
   if (d->L) {  // if L exists, then L_idx exists too
     for (idx_t i=0; i < 1 + d->mo * (d->mo/2); ++i) {
       mad_free(d_->L[i]);
       if (d->L_idx[i]) {
-        mad_free(*d_->L_idx[i]);  // allocated as single block
-        mad_free( d_->L_idx[i]);
+        mad_free(*d->L_idx[i]);  // allocated as single block
+        mad_free( d->L_idx[i]);
       }
     }
-    mad_free(d_->L);
-    mad_free(d_->L_idx);
+    mad_free(d->L);
+    mad_free(d->L_idx);
   }
 
   if (d->ocs) {
     int nth = d->nth + (d->nth > 1);
-    for (int t=0; t < nth; ++t) mad_free(d_->ocs[t]);
-    mad_free(d_->ocs);
+    for (int t=0; t < nth; ++t) mad_free(d->ocs[t]);
+    mad_free(d->ocs);
   }
 
   // destroy temporaries
-  del_temps(d_);
+  del_temps(d);
 
   // remove descriptor from global array
   if (d == mad_desc_curr) mad_desc_curr = NULL;
@@ -1344,15 +1360,8 @@ mad_desc_del (const D *d)
     desc_max = i;
   }
   Ds[d->id] = NULL;
-  mad_free(d_);
+  mad_free(d);
   DBGFUN(<-);
-}
-
-void
-mad_desc_cleanup (void)
-{
-  for (idx_t i=0; i < desc_max; ++i)
-    if (Ds[i]) mad_desc_del(Ds[i]);
 }
 
 // --- end --------------------------------------------------------------------o

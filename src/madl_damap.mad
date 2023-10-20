@@ -34,7 +34,7 @@ local round                in MAD.gmath
 local _C, option, warn                                               in MAD
 local gtpsad, tpsa, ctpsa, vector, cvector, matrix, cmatrix, complex in MAD
 
-local openfile, strtrim                                              in MAD.utility
+local openfile, strtrim, tblcat                                      in MAD.utility
 
 local is_nil, is_boolean, is_number, is_integer, is_complex, is_scalar,
       is_table, is_string, is_indexable, is_iterable, is_mappable,
@@ -51,9 +51,9 @@ local gmm = get_metamethod
 
 -- types ----------------------------------------------------------------------o
 
-local   int_arr = ffi.typeof           'int [?]'
-local  tpsa_arr = ffi.typeof 'struct  tpsa* [?]'
-local ctpsa_arr = ffi.typeof 'struct ctpsa* [?]'
+local   int_arr = ffi.typeof          'int   [?]'
+local  tpsa_arr = ffi.typeof 'struct  tpsa_* [?]'
+local ctpsa_arr = ffi.typeof 'struct ctpsa_* [?]'
 
 -- names ----------------------------------------------------------------------o
 
@@ -119,7 +119,7 @@ local function map_alloc (td, vn, mt)
     xx, td, vn, mt = td, td.__td, td.__vn, getmetatable(td)
   end
 
-  local nn = min(vn.__n, td.nn)
+  local nn = min(#vn, td.nn)
   local ct = mt == MC and ctpsa or tpsa
   local ta = mt == MC and ctpsa_arr(td.nn) or tpsa_arr(td.nn)
   local mv = table.new(td.nn, nn+3) -- + __ta, __td, __vn
@@ -149,9 +149,9 @@ end
 
 local function map_ctor (arg, mt)
   -- specification of damap by variables orders.
-  if arg.mo or arg.no then
+  if arg.mo or arg.no or arg.vo then
     local td = gtpsad(arg)
-    local vn = arg.vn and cvname_dup(arg.vn) or cvname[min(td.nv,6)]
+    local vn = tblcat(arg.vn or cvname[min(td.nv,6)], arg.pn or {})
     return map_alloc(td, vn, mt)
   end
 
@@ -159,8 +159,7 @@ local function map_ctor (arg, mt)
   local xy = arg.xy or 1
   local pt = arg.pt or xy
   local t  = arg.t  or pt
-  local vn = arg.vn and cvname_dup(arg.vn) or cvname[6]
-
+  local vn = tblcat(arg.vn or cvname[6], arg.pn or {})
   local np = arg.np or 0
   local po = np > 0 and (arg.po or 1) or 0
   local nv, mo, no
@@ -174,7 +173,7 @@ local function map_ctor (arg, mt)
     for i=1,np do no[6+i] = po end
   end
 
-  local td = gtpsad{nv=nv, mo=mo, np=np, no=no, po=po}
+  local td = gtpsad{nv=nv, mo=mo, np=np, po=po, no=no}
   return map_alloc(td, vn, mt)
 end
 
@@ -241,6 +240,24 @@ end
 
 MC.__copy = MR.__copy -- fully polymorphic
 
+-- equal ----------------------------------------------------------------------o
+
+function MR.__eq (x, y, tol_)
+  if is_nil(y) or is_nil(x) then return false end
+  assert(isa_damap(x), "invalid argument #1 (damap expected)")
+  assert(isa_damap(y), "invalid argument #2 (damap expected)")
+  if x.__ta == y.__ta then return true end
+  if #x ~= #y then return false end
+  tol_ = tol_ or 0
+  assert(is_number(tol_), "invalid argument #3 (number expected)")
+  for i=1,#x do
+    if not x[i]:eq(y[i], tol_) then return false end
+  end
+  return true
+end
+
+MC.__eq = MR.__eq -- fully polymorphic
+
 -- conversion -----------------------------------------------------------------o
 
 function MR.cplx (re_, im_, y_) -- (re,im) -> r
@@ -253,7 +270,7 @@ function MR.cplx (re_, im_, y_) -- (re,im) -> r
     assert(re.__td == y_.__td, "incompatible damaps")
   end
   re_, im_ = re_ or {}, im_ or {}
-  for i=1,y.__td.nn do
+  for i=1,y_.__td.nn do
     _C.mad_ctpsa_cplx(re_[i], im_[i], y_[i])
   end
   return y_
@@ -379,13 +396,13 @@ function MR.set0 (x, v, a_)
   assert(is_number(v) or is_iterable(v),
          "invalid argument #2 (number or iterable expected)")
   local a = a_ or 0
-  if is_iterable(v) then
-    for i=1,min(#x,#v) do
-      _C.mad_tpsa_set0(x[i], a, v[i])
-    end
-  else
+  if is_number(v) then
     for i=1,#x do
       _C.mad_tpsa_set0(x[i], a, v)
+    end
+  else
+    for i=1,min(#x,#v) do
+      _C.mad_tpsa_set0(x[i], a, v[i])
     end
   end
   return x
@@ -395,14 +412,14 @@ function MC.set0 (x, v, a_)
   assert(is_scalar(v) or is_iterable(v),
          "invalid argument #2 (is_scalar or iterable expected)")
   local a = complex(a_ or 0)
-  if is_iterable(v) then
-    for i=1,min(#x,#v) do
-      local b = complex(v[i])
+  if is_scalar(v) then
+    local b = complex(v)
+    for i=1,#x do
       _C.mad_ctpsa_set0_r(x[i], a.re, a.im, b.re, b.im)
     end
   else
-    local b = complex(v)
-    for i=1,#x do
+    for i=1,min(#x,#v) do
+      local b = complex(v[i])
       _C.mad_ctpsa_set0_r(x[i], a.re, a.im, b.re, b.im)
     end
   end
@@ -940,23 +957,17 @@ function MC.convert (x, r, tbl_, pb_)
   return r
 end
 
-function MR.fromptc (x, r)
-  if is_nil(r) and x:nv() < 6 then r = damap{nv=6, mo=x:maxord()} end
-  if x:nv() <= 4 then x:copy(r) else x:convert(r, {1,2,3,4,6,5}, 1) end
+local function fromptc (x, r, ctor)
+  if is_nil(r) and x:nv() < 6 then r = ctor{nv=6, mo=x:maxord()} end
+  if x:nv() <= 4 then r = x:copy(r) else r = x:convert(r, {1,2,3,4,6,5}, 1) end
   for i=4,r:nv() do if r[i]:isnul() then r[i]:setvar(nil,i) end end
   return r
 end
 
-function MC.fromptc (x, r)
-  if is_nil(r) and x:nv() < 6 then r = cdamap{nv=6, mo=x:maxord()} end
-  if x:nv() <= 4 then x:copy(r) else x:convert(r, {1,2,3,4,6,5}, 1) end
-  for i=4,r:nv() do if r[i]:isnul() then r[i]:setvar(nil,i) end end
-  return r
-end
+MR.fromptc = \x,r -> fromptc(x, r,  damap)
+MC.fromptc = \x,r -> fromptc(x, r, cdamap)
 
-function MR.toptc (x, r)
-  return x:nv() > 4 and x:convert(r, {1,2,3,4,6,5}, -1) or x:copy(r)
-end
+MR.toptc   = \x,r -> x:nv() > 4 and x:convert(r, {1,2,3,4,6,5}, -1) or x:copy(r)
 
 -- operators ------------------------------------------------------------------o
 
@@ -1214,16 +1225,19 @@ MC.__pow = MR.__pow -- fully polymorphic
 
 -- dif : r_i = (x_i - y_i) / max(|x_i|, 1)
 
-function MR.dif (x, y, r)
-  assert(is_damap(y), "invalid argument #2 (damap expected)")
-  r = r or map_alloc(x)
-  for i=1,#r do x[i]:dif(y[i], r[i]) end return r
+-- _, s = m1:dif(m2,true) ; s:print()
+local function prtsum (s)
+  for _,v in ipairs(s) do io.write("\n") ; v:print() end
+  return s
 end
 
-function MC.dif (x, y, r)
-  assert(is_cdamap(y), "invalid argument #2 (cdamap expected)")
-  r = r or map_alloc(x)
-  for i=1,#r do x[i]:dif(y[i], r[i]) end return r
+function MR.dif (x, y, r_, sum)
+  if is_boolean(r_) then sum, r_ = r_ end -- right shift
+  local r, s = r_ or x:same(), {print=prtsum}
+  assert(isa_damap(y), "invalid argument #2 (damap expected)")
+  assert(isa_damap(r), "invalid argument #3 (damap expected)")
+  local dum for i=1,#r do dum, s[i] = x[i]:dif(y[i], r[i], sum) end
+  return r, sum and s or nil
 end
 
 -- I/O ------------------------------------------------------------------------o
@@ -1238,9 +1252,9 @@ function MR.write (x, filnam, name_, all_, eps_)
 
   local file = assert(openfile(filnam, 'w', '.dat'),
                       "unable to open DA map file in write mode")
---  if name_ then
-  file:write('[', #x, is_damap(x) and 'R' or 'C', '] ', name_ or "-UNNAMED-", ' =\n\n')
---  end
+  if name_ ~= "no-header" then
+    file:write('[', #x, is_damap(x) and 'R' or 'C', '] ', name_ or "-UNNAMED-", ' =\n')
+  end
 
   local nn = all_ and min(#x.__vn, x.__td.nn) or #x
   for i=1,nn do
@@ -1265,9 +1279,9 @@ function MR.read (x_, filnam_, kind_, vname_)
   local file, x = assert(openfile(filnam_, 'r'),
                          "unable to open DA map file in read mode")
 
-  local hdr = file:read() or ""
-  local cnt, knd, nam = (kind_ or hdr):match("[[ ]*(%d*)([RC]?)[] ]*([^=]*)")   -- sub(6,-3)
---io.write("\ndamap read -> cnt=", cnt, ", knd=", knd, ", nam=", nam, ", hdr='", hdr, "'\n")
+  local hdr = kind_ or file:read() or ""
+  local cnt, knd, nam = hdr:match("%s*%[?(%d+)([RC])%]?%s*([^= ]*)")   -- sub(6,-3)
+  -- io.write("\ndamap:read -> cnt=", cnt or 'nil', ", knd=", knd or 'nil', ", nam=", nam or 'nil', ", hdr='", hdr, "'\n")
   local x1 = x_[1]:read(file, knd)
   -- print('\n1', x1) ; if x1 then print("X1=") ; x1:print() end
   if x1 ~= nil then  -- valid input
@@ -1288,9 +1302,10 @@ function MR.read (x_, filnam_, kind_, vname_)
       x[i] = x1
     end
   end
+
   if is_string(filnam_) then file:close() end
---io.write("\ndamap read <- cnt=", cnt, ", knd=", knd, ", nam=", nam, "\n")
-  return x, strtrim(nam)
+
+  return x, strtrim(nam or "")
 end
 
 -- metamethods ----------------------------------------------------------------o
@@ -1355,11 +1370,11 @@ MC.__same, MC.__copy, MC.__len
 MR.unm = \x,r_ -> MR.__unm(x,nil,r_)
 MC.unm = \x,r_ -> MC.__unm(x,nil,r_)
 
-MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  pow =
-MR.__add, MR.__sub, MR.__mul, MR.__div, MR.__pow
+MR.  add, MR.  sub, MR.  mul, MR.  div, MR.  pow, MR.  eq =
+MR.__add, MR.__sub, MR.__mul, MR.__div, MR.__pow, MR.__eq
 
-MC.  add, MC.  sub, MC.  mul, MR.  div, MC.  pow =
-MC.__add, MC.__sub, MC.__mul, MR.__div, MC.__pow
+MC.  add, MC.  sub, MC.  mul, MR.  div, MC.  pow, MC.  eq =
+MC.__add, MC.__sub, MC.__mul, MR.__div, MC.__pow, MC.__eq
 
 -- MR -> MC -------------------------------------------------------------------o
 

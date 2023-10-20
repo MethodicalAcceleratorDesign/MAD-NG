@@ -3244,9 +3244,9 @@ end
                 break
             end
         end
-        if(not  M.LuaUnit.asFunction( result ) ) then
-            result = _G[key]
-        end
+--        if(not  M.LuaUnit.asFunction( result ) ) then
+--            result = _G[key]
+--        end
         return result
     end
 
@@ -3466,7 +3466,7 @@ end
     end
 
     function M.LuaUnit:runSuite( ... )
-        testNames = self:initFromArguments(...)
+        local testNames = self:initFromArguments(...)
         self:registerSuite()
         self:internalRunSuiteByNames( testNames or M.LuaUnit.collectTests() )
         self:unregisterSuite()
