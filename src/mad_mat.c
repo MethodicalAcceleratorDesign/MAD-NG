@@ -2200,10 +2200,10 @@ mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
   if (N > mn || N <= 0) N = mn;
 
   // Tolerance on components similarity in V columns.
-  tol = MAX(tol, DBL_EPSILON);
+  tol = MAX(fabs(tol), DBL_EPSILON);
 
   // Tolerance on keeping singular values.
-  rcond = MAX(rcond, DBL_EPSILON);
+  rcond = MAX(fabs(rcond), DBL_EPSILON);
 
   // Number of columns to remove.
   idx_t nc = 0;
@@ -2212,7 +2212,7 @@ mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
 
   // Loop over increasing singular values.
   RFOR(i,mn,mn-N) {
-    // Singular value is large, stop checking.
+    // Singular value is large enough, stop checking.
     if (S[i] > rcond*S[0]) break;
 
     // Loop over rows of V (i.e. columns of V^T)
@@ -2266,10 +2266,10 @@ mad_cmat_svdcnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
   if (N > mn || N <= 0) N = mn;
 
   // Tolerance on components similarity in V columns.
-  tol = MAX(tol, DBL_EPSILON);
+  tol = MAX(fabs(tol), DBL_EPSILON);
 
   // Tolerance on keeping singular values.
-  rcond = MAX(rcond, DBL_EPSILON);
+  rcond = MAX(fabs(rcond), DBL_EPSILON);
 
   // Number of columns to remove.
   idx_t nc = 0;
@@ -2278,7 +2278,7 @@ mad_cmat_svdcnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
 
   // Loop over increasing singular values.
   RFOR(i,mn,mn-N) {
-    // Singular value is large, stop checking.
+    // Singular value is large enough, stop checking.
     if (S[i] > rcond*S[0]) break;
 
     // Loop over rows of V (i.e. columns of V^T)
