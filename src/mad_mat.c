@@ -1144,6 +1144,114 @@ int
 mad_cmat_invc_r (const cpx_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t m, ssz_t n, num_t rcond)
 { return mad_cmat_invc(y, CPX(x_re,x_im), r, m, n, rcond); }
 
+// -- pseudo-inverse ----------------------------------------------------------o
+
+// SVD decomposition A = U * S * V.t()
+// A:[m x n], U:[m x m], S:[min(m,n)], V:[n x n]
+
+int
+mad_mat_pinvn (const num_t y[], num_t x, num_t r[], ssz_t m, ssz_t n, num_t rcond, int ncond)
+{
+  CHKYR; // compute x/Y[m x n]
+  ssz_t mn = MIN(m,n);
+  mad_alloc_tmp(num_t, s, mn );
+  mad_alloc_tmp(num_t, U, m*m);
+  mad_alloc_tmp(num_t, V, n*n);
+  mad_alloc_tmp(num_t, S, n*m); mad_vec_fill(0, S, n*m);
+
+  int rnk  = 0;
+  int info = mad_mat_svd(y, U, s, V, m, n);
+  if (info != 0) goto finalize;
+
+  // Remove ncond (largest) singular values
+  idx_t k = 0;
+  if (ncond < 0) FOR(i,MIN(mn,-ncond)) s[k++] = 0;
+
+  // Tolerance on keeping singular values.
+  rcond = MAX(fabs(rcond), DBL_EPSILON);
+
+  // Keep relevant singular values and reject ncond (smallest) singular values
+  FOR(i,k,mn)
+    if (mn-i >= ncond && s[i] >= rcond*s[k]) S[i*m+i] = (++rnk, 1/s[i]);
+    else break;
+
+  mad_mat_muld(V, S, r, n, m, n);
+  mad_mat_mult(r, U, r, n, m, m);
+
+  if (x != 1) mad_vec_muln(r, x, r, m*n);
+
+finalize:
+  mad_free_tmp(s);
+  mad_free_tmp(U);
+  mad_free_tmp(V);
+  mad_free_tmp(S);
+
+  return rnk;
+}
+
+int // without complex-by-value version
+mad_mat_pinvc_r (const num_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t m, ssz_t n, num_t rcond, int ncond)
+{ return mad_mat_pinvc(y, CPX(x_re,x_im), r, m, n, rcond, ncond); }
+
+int
+mad_mat_pinvc (const num_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcond, int ncond)
+{
+  CHKYR; // compute x/Y[m x n]
+  mad_alloc_tmp(num_t, rr, m*n);
+  int info = mad_mat_pinvn(y, 1, rr, m, n, rcond, ncond);
+  if (!info) mad_vec_mulc(rr, x, r, m*n);
+  mad_free_tmp(rr);
+  return info;
+}
+
+int
+mad_cmat_pinvc_r (const cpx_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t m, ssz_t n, num_t rcond, int ncond)
+{ return mad_cmat_pinvc(y, CPX(x_re,x_im), r, m, n, rcond, ncond); }
+
+int
+mad_cmat_pinvn (const cpx_t y[], num_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcond, int ncond)
+{ return mad_cmat_pinvc(y, CPX(x,0), r, m, n, rcond, ncond); }
+
+int
+mad_cmat_pinvc (const cpx_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcond, int ncond)
+{
+  CHKYR; // compute x/Y[m x n]
+  ssz_t mn = MIN(m,n);
+  mad_alloc_tmp(num_t, s, mn );
+  mad_alloc_tmp(cpx_t, U, m*m);
+  mad_alloc_tmp(cpx_t, V, n*n);
+  mad_alloc_tmp(num_t, S, n*m); mad_vec_fill(0, S, n*m);
+
+  int rnk  = 0;
+  int info = mad_cmat_svd(y, U, s, V, m, n);
+  if (info != 0) goto finalize;
+
+  // Remove ncond (largest) singular values
+  idx_t k = 0;
+  if (ncond < 0) FOR(i,MIN(mn,-ncond)) s[k++] = 0;
+
+  // Tolerance on keeping singular values.
+  rcond = MAX(fabs(rcond), DBL_EPSILON);
+
+  // Keep relevant singular values and reject ncond (smallest) singular values
+  FOR(i,k,mn)
+    if (mn-i >= ncond && s[i] >= rcond*s[k]) S[i*m+i] = (++rnk, 1/s[i]);
+    else break;
+
+  mad_cmat_muldm(V, S, r, n, m, n);
+  mad_cmat_mult (r, U, r, n, m, m);
+
+  if (x != 1) mad_cvec_mulc(r, x, r, m*n);
+
+finalize:
+  mad_free_tmp(s);
+  mad_free_tmp(U);
+  mad_free_tmp(V);
+  mad_free_tmp(S);
+
+  return rnk;
+}
+
 // -- divide ------------------------------------------------------------------o
 
 // note:
