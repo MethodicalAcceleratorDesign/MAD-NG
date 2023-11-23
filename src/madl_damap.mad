@@ -34,7 +34,7 @@ local round                in MAD.gmath
 local _C, option, warn                                               in MAD
 local gtpsad, tpsa, ctpsa, vector, cvector, matrix, cmatrix, complex in MAD
 
-local openfile, strtrim, tblcat                                      in MAD.utility
+local openfile, strtrim                                           in MAD.utility
 
 local is_nil, is_boolean, is_number, is_integer, is_complex, is_scalar,
       is_table, is_string, is_indexable, is_iterable, is_mappable,
@@ -59,12 +59,12 @@ local ctpsa_arr = ffi.typeof 'struct ctpsa_* [?]'
 
 -- default variable names (and indexes)
 local cvname = {
-  {'x'                            , x=1                            , __n=1},
-  {'x', 'px'                      , x=1, px=2                      , __n=2},
-  {'x', 'px', 'pt'                , x=1, px=2,                 pt=3, __n=3},
-  {'x', 'px', 'y', 'py'           , x=1, px=2, y=3, py=4           , __n=4},
-  {'x', 'px', 'y', 'py', 'pt'     , x=1, px=2, y=3, py=4,      pt=5, __n=5},
-  {'x', 'px', 'y', 'py', 't', 'pt', x=1, px=2, y=3, py=4, t=5, pt=6, __n=6},
+  { 'x'                            , x=1                             },
+  { 'x', 'px'                      , x=1, px=2                       },
+  { 'x', 'px', 'pt'                , x=1, px=2,                 pt=3 },
+  { 'x', 'px', 'y', 'py'           , x=1, px=2, y=3, py=4            },
+  { 'x', 'px', 'y', 'py', 'pt'     , x=1, px=2, y=3, py=4,      pt=5 },
+  { 'x', 'px', 'y', 'py', 't', 'pt', x=1, px=2, y=3, py=4, t=5, pt=6 },
 }
 
 -- protected version exported
@@ -81,9 +81,19 @@ local wcvname = wprotect {
 
 local function cvname_dup (vn)
   local n = #vn
-  local cvn = table.new(n, n+1)
+  local cvn = table.new(n, n)
   for i=1,n do cvn[i], cvn[vn[i]] = vn[i], i end
-  cvn.__n = n
+  return cvn
+end
+
+local function cvname_cat (vn1, vn2)
+  local n1, n2 = #vn1, #vn2
+  local cvn = table.new(n1+n2, n1+n2)
+  for i=1,n1 do cvn[i], cvn[vn1[i]] = vn1[i], i end
+  for i=1,n2 do
+    assert(is_nil(cvn[vn2[i]]), "invalid duplicated variable/parameter name")
+    cvn[i+n1], cvn[vn2[i]] = vn2[i], i
+  end
   return cvn
 end
 
@@ -151,7 +161,7 @@ local function map_ctor (arg, mt)
   -- specification of damap by variables orders.
   if arg.mo or arg.no or arg.vo then
     local td = gtpsad(arg)
-    local vn = tblcat(arg.vn or cvname[min(td.nv,6)], arg.pn or {})
+    local vn = cvname_cat(arg.vn or cvname[min(td.nv,6)], arg.pn or {})
     return map_alloc(td, vn, mt)
   end
 
@@ -159,7 +169,7 @@ local function map_ctor (arg, mt)
   local xy = arg.xy or 1
   local pt = arg.pt or xy
   local t  = arg.t  or pt
-  local vn = tblcat(arg.vn or cvname[6], arg.pn or {})
+  local vn = cvname_cat(arg.vn or cvname[6], arg.pn or {})
   local np = arg.np or 0
   local po = np > 0 and (arg.po or 1) or 0
   local nv, mo, no
@@ -1286,7 +1296,7 @@ function MR.read (x_, filnam_, kind_, vname_)
   -- print('\n1', x1) ; if x1 then print("X1=") ; x1:print() end
   if x1 ~= nil then  -- valid input
     local td = x1.d
-    local vn = vname_ and cvname_dup(vname_) or cvname[min(td.nv,6)]
+    local vn = cvname_dup(vname_ or cvname[min(td.nv,6)])
     x = map_alloc(td, vn, is_tpsa(x1) and MR or MC) -- never share params
     x[1] = x1
     --x1:print("X1."..1)
