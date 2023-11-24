@@ -1165,7 +1165,7 @@ mad_mat_pinvn (const num_t y[], num_t x, num_t r[], ssz_t m, ssz_t n, num_t rcon
 
   // Remove ncond (largest) singular values
   idx_t k = 0;
-  if (ncond < 0) FOR(i,MIN(mn,-ncond)) s[k++] = 0;
+  FOR(i,MIN(mn,-ncond)) s[k++] = 0;
 
   // Tolerance on keeping singular values.
   rcond = MAX(fabs(rcond), DBL_EPSILON);
@@ -1228,7 +1228,7 @@ mad_cmat_pinvc (const cpx_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rco
 
   // Remove ncond (largest) singular values
   idx_t k = 0;
-  if (ncond < 0) FOR(i,MIN(mn,-ncond)) s[k++] = 0;
+  FOR(i,MIN(mn,-ncond)) s[k++] = 0;
 
   // Tolerance on keeping singular values.
   rcond = MAX(fabs(rcond), DBL_EPSILON);
