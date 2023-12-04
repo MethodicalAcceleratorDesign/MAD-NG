@@ -114,16 +114,10 @@ end
 -- cofind using jacobian ------------------------------------------------------o
 
 local function cofind_jac (self, mflw)
-  local cotol, coiter, codiff, totalpath in self
-
-  -- sanity check and adjustment
-  if cotol < codiff*10 then
-    warn("cotol < codiff*10, adjusting codiff to ctol/100")
-    codiff = cotol/100
-  end
+  local coitr, cotol, costp, totalpath in self
 
   -- save current orbits, extend mflw of n particles to n*(1+6) particles
-  local n, X0 = mflw.npar, table.new(mflw.npar,0)
+  local n, X0, dH = mflw.npar, table.new(mflw.npar,0), table.new(mflw.npar,0)
   for i=n,1,-1 do
     local m, ii = mflw[i], 7*(i-1)+1
     local mt = {__index=m, __newindex=
@@ -134,7 +128,9 @@ local function cofind_jac (self, mflw)
       setmetatable(mc,mt)  -- connect secondary particles to primary particle
     end
     mflw[ii], m.id, m.coid = m, ii, m.id
-    X0[i] = par2vec(m)     -- save current orbit
+    X0[i] = par2vec(m)                 -- save current orbit
+    dH[i] = costp * X0[i]:norm()       -- save current diff step
+    if dH[i] == 0 then dH[i] = max(costp, cotol) end
   end
   mflw.npar, mflw.tpar, n = 7*n, 7*n, 7*n
 
@@ -142,10 +138,10 @@ local function cofind_jac (self, mflw)
   --       id   = primary and secondary particle id (i.e. in track)
 
   -- save finite differences, final translation, temporaries
-  local dH, O1, X, R = par2vec(codiff), par2vec(self.O1), vector(6), matrix(6)
+  local O1, X, R = par2vec(self.O1), vector(6), matrix(6)
 
   -- search for fix points
-  for itr=1,coiter do
+  for itr=1,coitr do
     -- sanity check
     assert(n%7 == 0, "unexpected corrupted set of particle blocks")
     -- for i=1,n do print("itr="..itr, mflw[i]) end
@@ -159,7 +155,7 @@ local function cofind_jac (self, mflw)
         m = mflw[i+j]
         assert(m.coid == coid, "unexpected corrupted set of particle blocks")
         vec2par(X0[coid], m)
-        m[vn[j]] = X0[coid][j] + dH[j]
+        m[vn[j]] = X0[coid][j] + dH[coid]
       end
     end
 
@@ -170,7 +166,7 @@ local function cofind_jac (self, mflw)
     if n ~= mflw.npar then
       warn("cofind: lost %d particles at iteration %d", n-mflw.npar, itr)
       -- save information (spos, turn and status set by lostpar)
-      for i=mflw.npar+1,n do mflw[i].coiter = itr end
+      for i=mflw.npar+1,n do mflw[i].coitr = itr end
       n = mflw.npar
 
       -- filter out particles with at least one lost particle in their block
@@ -198,9 +194,9 @@ local function cofind_jac (self, mflw)
       local m = mflw[i]
 
       -- retrieve previous orbit, current orbit and jacobian
-      local X0 = X0[m.coid] ; par2vec(m, X)
+      local X0, dh = X0[m.coid], dH[m.coid] ; par2vec(m, X)
       for j=1,6 do ; for k=1,6 do -- compute jacobian R_jk = df(x_j)/dx_k
-        R:set(j,k, (mflw[i+k][vn[j]] - X[j])/dH[k])
+        R:set(j,k, (mflw[i+k][vn[j]] - X[j])/dh)
       end end
 
       -- update X0 = X0-dx if |dx| > cotol, where dx solves (R-I)dx = (X-O1)-X0
@@ -212,12 +208,12 @@ local function cofind_jac (self, mflw)
 
       if typ then -- "stable/singular"
         if typ == "stable"
-        then vec2par(X0, m)
+        then vec2par(X0, m) ; dH[m.coid] = costp * X0:norm()
         else warn("cofind: singular matrix (rnk=%d) at iteration %d \z
                    for particle %d.", rnk, itr, m.coid)
         end
         -- save information in stable/singular primary particle
-        m.rank, m.status, m.coiter = rnk, typ, itr
+        m.rank, m.status, m.coitr = rnk, typ, itr
         -- swap with last tracked block
         for j=0,6 do mflw[i+j], mflw[n-6+j] = mflw[n-6+j], mflw[i+j] end
         n = n - 7
@@ -238,9 +234,9 @@ local function cofind_jac (self, mflw)
 
   -- 5. mark remaining particles as unstable
   if n ~= 0 then
-    warn("cofind: closed orbit(s) did not converge in %d iterations", coiter)
+    warn("cofind: closed orbit(s) did not converge in %d iterations", coitr)
     for i=1,n do
-      mflw[i].coiter, mflw[i].status = coiter, "unstable"
+      mflw[i].coitr, mflw[i].status = coitr, "unstable"
     end
   end
 
@@ -266,7 +262,7 @@ end
 -- cofind using map -----------------------------------------------------------o
 
 local function cofind_map (self, mflw)
-  local cotol, coiter, totalpath in self
+  local coitr, cotol, totalpath in self
 
   -- save current orbits and truncate computation at order 1
   local X0, n  = table.new(mflw.npar,0), mflw.npar
@@ -280,7 +276,7 @@ local function cofind_map (self, mflw)
   local O1, X, R = par2vec(self.O1), vector(6), matrix(6)
 
   -- search for fix points
-  for itr=1,coiter do
+  for itr=1,coitr do
 
     -- 1. set order 0 to orbit, order 1 to I, higher orders to 0 (if any)
     for i=1,n do mflw[i]:setvar(X0[mflw[i].id]) end
@@ -292,7 +288,7 @@ local function cofind_map (self, mflw)
     if n ~= mflw.npar then
       warn("cofind: lost %d particles at iteration %d", n-mflw.npar, itr)
       -- save information (spos, turn and status set by lostpar)
-      for i=mflw.npar+1,n do mflw[i].coiter = itr end
+      for i=mflw.npar+1,n do mflw[i].coitr = itr end
       n = mflw.npar
     end
 
@@ -319,7 +315,7 @@ local function cofind_map (self, mflw)
                    for damap %d.", rnk, itr, m.id)
         end
         -- save information in stable/singular damap
-        m.rank, m.status, m.coiter = rnk, typ, itr
+        m.rank, m.status, m.coitr = rnk, typ, itr
         -- swap with last tracked damap
         mflw[i], mflw[n] = mflw[n], mflw[i]
         n = n - 1
@@ -341,9 +337,9 @@ local function cofind_map (self, mflw)
 
   -- 5. mark remaining damap as unstable
   if n ~= 0 then
-    warn("cofind: closed orbit(s) did not converge in %d iterations", coiter)
+    warn("cofind: closed orbit(s) did not converge in %d iterations", coitr)
     for i=1,n do
-      mflw[i].coiter, mflw[i].status = coiter, "unstable"
+      mflw[i].coitr, mflw[i].status = coitr, "unstable"
     end
   end
 
@@ -363,10 +359,10 @@ end
 -- output status: stable, unstable, singular, lost.
 
 local function exec (self)
-  local mapdef, radiate, cotol, coiter, codiff in self
-  assertf(is_positive(cotol ), "invalid cotol %.15g (positive number expected)" , cotol )
-  assertf(is_positive(coiter), "invalid coiter %d (positive number expected)"   , coiter)
-  assertf(is_positive(codiff), "invalid codiff %.15g (positive number expected)", codiff)
+  local mapdef, radiate, coitr, cotol, costp in self
+  assertf(is_positive(coitr), "invalid coitr %d (positive number expected)"   , coitr)
+  assertf(is_positive(cotol), "invalid cotol %.15g (positive number expected)", cotol)
+  assertf(is_positive(costp), "invalid costp %.15g (positive number expected)", costp)
 
   -- prepare template for tracking, block quantum radiation and photon tracking
   local _, mflw = track { exec=false } :copy_variables(self)
@@ -425,9 +421,9 @@ local cofind = command 'cofind' {
   savesel=nil,       -- save selector (predicate)                         (trck)
   apersel=nil,       -- aper selector (predicate, default atentry)        (trck)
 
-  coiter=20,         -- maximum number of iterations                      (cofn)
+  coitr=20,          -- maximum number of iterations                      (cofn)
   cotol=1e-8,        -- closed orbit tolerance (i.e. min |dx|)            (cofn)
-  codiff=1e-10,      -- finite differences step for jacobian              (cofn)
+  costp=1e-8,        -- relative finite differences step for jacobian     (cofn)
   O1=0,              -- optional final coordinates translation            (cofn)
 
   info=nil,          -- information level (output on terminal)            (trck)
@@ -438,9 +434,7 @@ local cofind = command 'cofind' {
   exec=exec,         -- command to execute upon children creation
 
   __attr = tblcat(   -- list of all setup attributes
-    track.__attr,
-    {'coiter', 'cotol', 'codiff', 'O1'},
-    {noeval=track.__attr.noeval}
+    track.__attr, {}, {noeval=track.__attr.noeval}
   )
 } :set_readonly()    -- reference cofind command is readonly
 

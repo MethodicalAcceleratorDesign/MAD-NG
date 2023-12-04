@@ -741,10 +741,15 @@ local function nfcpy (nf, a_)
     -- "data"
     nn      = nf.nn,         -- #(variables + parameters)
     nv      = nf.nv,         -- #(variables)
-    lam     = nf.lam,        -- eigentunes
+    nt      = nf.nt,         -- index of t  when coasting
+    npt     = nf.npt,        -- index of pt when constant
+    urdt    = nf.urdt,       -- user defined rdt (optional)
+    x0      = nf.x0,         -- backup initial orbit
+    m0      = nf.m0,         -- backup initial one-turn map
     a       = a_ or nf.a,    -- normalizing map (output)
     c       = nf.c,          -- maps to go to phasor basis
     ci      = nf.ci,
+    lam     = nf.lam,        -- eigentunes
 
     q1_     = nf.q1_,
     q2_     = nf.q2_,
@@ -788,21 +793,26 @@ end
 local function nf_q (nf, ord, x, y)
   local ms = table.concat{x, 0, y, 0, 0, 0}
   local ks = nf_pms(nf, ord[2])
-  return nf.anh[ms..ks] or 0
+  local rv = nf.anh[ms..ks] or 0
+  --print("nf_q"..(x==1 and '1' or y==1 and '2' or '0'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
+  return rv
 end
 
 local function nf_dq (nf, ord, x, y)
   local ms = table.concat{x, 0, y, 0, 0, ord[1]}
   local ks = nf_pms(nf, ord[2])
-  return nf.anh[ms..ks] or 0
+  local rv = nf.anh[ms..ks] or 0
+  --print("nf_dq"..(x==1 and '1' or y==1 and '2' or '0'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
+  return rv
 end
 
 local function nf_anh (nf, ord, x, y)
-  local mn = {ord[1]+x, ord[1], ord[2]+y, ord[2], ord[3] or 0, ord[3] or 0}
+  local mn = {ord[1]+x, ord[1], ord[2]+y, ord[2], nf.npt==0 and ord[3] or 0, ord[3] or 0}
   local ms = table.concat(mn)
   local ks = nf_pms(nf, ord[4])
   local rv = nf.anh[ms..ks] or 0
-  return rv -- and rv/(max(1,mn[1])*max(1,mn[3])) or nil
+  --print("nf_anh"..(x==1 and 'x' or y==1 and 'y' or '?'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
+  return rv
 end
 
 -- tunes --
@@ -842,16 +852,16 @@ end
 -- anharmonicities --
 
 local function nf_anhx (nf, ord)
-  if ord == nil then ord = {1,0} elseif is_number(ord) then ord = {ord,0} end
-  assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
-  assert(is_nznatural(ord[1]), "invalid x order (x > 0 expected)")
+  if ord == nil then ord = {0,0} elseif is_number(ord) then ord = {ord,0} end
+  assert(is_indexable(ord), "invalid argument #2 (order or indexable expected)")
+  assert(is_natural(ord[1]),"invalid x order (x >= 0 expected)")
   return nf_anh(nf, ord, 1, 0)
 end
 
 local function nf_anhy (nf, ord)
-  if ord == nil then ord = {0,1} elseif is_number(ord) then ord = {0,ord} end
-  assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
-  assert(is_nznatural(ord[2]), "invalid y order (y > 0 expected)")
+  if ord == nil then ord = {0,0} elseif is_number(ord) then ord = {0,ord} end
+  assert(is_indexable(ord), "invalid argument #2 (order or indexable expected)")
+  assert(is_natural(ord[2]),"invalid y order (y >= 0 expected)")
   return nf_anh(nf, ord, 0, 1)
 end
 
@@ -984,11 +994,12 @@ local function nfana (nf, k_, a_)
       for n=1,nv,2 do
         for _,v in t_op[o][n]:iter(mono) do
           local ms, pf = mono:tostring(), mono:ordpf(2)
+          --print("ms=", ms, "pf=", pf, "anh=", -v:imag()/twopi)
           anh[#anh+1], anh[ms] = ms, -v:imag()*pf/twopi             -- anh terms
         end
       end
     end
-    nf.anh = anh
+    nf.anh, nf.t_op = anh, nil
 
     -- add access methods
     nf.q1, nf.q2, nf.dq1, nf.dq2, nf.anhx, nf.anhy =
@@ -1297,7 +1308,7 @@ function gphys.normal (m, urdt_)
     end
 
     -- project remaining orders on resonance basis
-    local n_n = (m_n * r1i):lieexppb(t_op, -1):getord(n)                        ; nf:dump(n_n,"n_n @"..n)
+    local n_n = (m_n * r1i):lieexppb(t_op, -1):getord(n)                        ; nf:dump(n_n,"n_n @"..n) --; nfsave(nf,n_n,"n_n @"..n)
 
 -- n_n:write(io.stderr, "n_n("..n..")", true)
 
@@ -1331,6 +1342,7 @@ function gphys.normal (m, urdt_)
           end
         end
 
+        -- print("ms=", ms, "k=", k, "s=", s, "v=", v)
         if s ~= 0 then
           local p = 1
           for j=1,rk do p = p * lam[j]^mt[j] end
@@ -1362,8 +1374,8 @@ function gphys.normal (m, urdt_)
 --  if fid then io.stderr:write("end of normal form\n") end
 
   -- hook the results
-  nf.lam, nf.m_n, nf.f_op, nf.t_op =
-     lam,    m_n,    f_op,    t_op
+  nf.lam, nf.m_n, nf.t_op =
+     lam,    m_n,    t_op
 
   return nf
 end
@@ -1512,8 +1524,8 @@ function gphys.normal_ng (m, urdt_)
   nf.fil:close() ; nf.fil = nil
 
   -- hook the results
-  nf.ham_, nf.gnf_, nf.anh, nf.lam, nf.m_n, nf.f_op, nf.t_op =
-     ham ,    gnf ,    anh,    lam,    m_n,    f_op,    t_op
+  nf.ham_, nf.gnf_, nf.anh, nf.lam, nf.m_n, nf.t_op =
+     ham ,    gnf ,    anh,    lam,    m_n,    t_op
 
   return nf
 end
