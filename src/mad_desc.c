@@ -298,24 +298,29 @@ tbl_by_ord(D *d)
   d->tv2to   = mad_malloc( d->nc    * sizeof *d->tv2to  );
   d->to2tv   = mad_malloc( d->nc    * sizeof *d->to2tv  );
   d->ords    = mad_malloc( d->nc    * sizeof *d->ords   );
+  d->prms    = mad_malloc( d->nc    * sizeof *d->prms   );
   d->ord2idx = mad_malloc((d->mo+2) * sizeof *d->ord2idx);
 
   d->size +=  d->nc    * sizeof *d->To;
   d->size +=  d->nc*2  * sizeof *d->tv2to; // tv2to + to2tv
   d->size +=  d->nc    * sizeof *d->ords;
+  d->size +=  d->nc    * sizeof *d->prms;
   d->size += (d->mo+2) * sizeof *d->ord2idx;
 
   cmp_d = d;
   for (idx_t i=0; i < d->nc; ++i) d->to2tv[i] = i;
   qsort(d->to2tv, d->nc, sizeof *d->to2tv, cmp_mono);
 
-  d->To[0] = d->monos, d->tv2to[0] = 0, d->ords[0] = 0, d->ord2idx[0] = 0;
+  d->To[0] = d->monos;
+  d->tv2to[0] = 0, d->ord2idx[0] = 0, d->ords[0] = d->prms[0] = 0;
 
   for (idx_t i=1, j=0; i < d->nc; ++i) {
     d->tv2to[d->to2tv[i]] = i;
     d->To[i] = d->monos + d->to2tv[i]*d->nn;
     d->ords[i] = mad_mono_ord(d->nn, d->To[i]);
+    d->prms[i] = mad_mono_ord(d->np, d->To[i]+d->nv);
     if (d->ords[i] > d->ords[i-1]) d->ord2idx[++j] = i;
+//  printf("i=%d, o=%d, p=%d\n", i, d->ords[i], d->prms[i]);
   }
   d->ord2idx[d->mo+1] = d->nc;
 
@@ -1115,12 +1120,13 @@ mad_desc_nxtbyord (const D *d, ssz_t n, ord_t m[n])
 }
 
 ord_t
-mad_desc_mono (const D *d, idx_t i, ssz_t n, ord_t m_[n])
+mad_desc_mono (const D *d, idx_t i, ssz_t n, ord_t m_[n], ord_t *p_)
 {
   DBGFUN(->);
   assert(d);
   ensure(0 <= i && i < d->nc, "index out of bounds");
   if (m_ && n > 0) mad_mono_copy(MIN(n,d->nn), d->To[i], m_);
+  if (p_) *p_ = d->prms[i];
   ord_t ret = d->ords[i];
   DBGFUN(<-);
   return ret;
@@ -1324,6 +1330,7 @@ mad_desc_del (const D *d_)
   mad_free((void*)d->no);
   mad_free(d->monos);
   mad_free(d->ords);
+  mad_free(d->prms);
   mad_free(d->To);
   mad_free(d->Tv);
   mad_free(d->ord2idx);
