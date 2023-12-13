@@ -93,8 +93,8 @@ local function save_adjrej (rej, ivc)
 end
 
 local function disp_adjrej (env, ivc, msg)
-  if env.info >= 3 then
-    printf("nlopt: %s no %s", msg, ivc.n > 0 and "" or "-")
+  if env.info >= 3 and ivc.n > 0 then
+    printf("nlopt: %s no ", msg)
     for i=1,ivc.n do io.write(ivc[i], " ") end
     io.write("\n")
   end
@@ -102,6 +102,23 @@ local function disp_adjrej (env, ivc, msg)
 end
 
 -- Check/adjust variables to domain -------------------------------------------o
+
+local function adjust_move (env, dx, msg)
+  local var, trc = env.__var, env.info >= 4
+  local x, xrmov in var
+
+  -- adjust move
+  if xrmov < inf then
+    local xn, dxn = x:norm(), dx:norm()
+    if xn > 0 and dxn > xn*xrmov then
+      local scl = xn*xrmov/dxn
+      if trc then
+        printf("nlopt: adjusting variable move%s by %-.5e\n", msg or "", scl)
+      end
+      dx:mul(scl, dx)
+    end
+  end
+end
 
 local function adjust_vars (env)
   local var, obj, trc = env.__var, env.objective, env.info >= 4
@@ -284,7 +301,7 @@ local function ld_lmdif (env)
     end
 
     -- build system (A + mu.diag(A))h = -g
-    local nrm  = J:norm()*2 -- conditioning
+    local nrm  = J:norm() -- conditioning
     local A, g = J:tmul(J)/nrm, J:tmul(b)/nrm
 
     -- initialise damping terms
@@ -293,7 +310,7 @@ local function ld_lmdif (env)
 
     -- debug info
     if env.debug >= 2 then
-      printf("N-JAC =\n  % -.16e\n", nrm)
+      printf("|JAC| = % -.16e\n", nrm)
       A:print"A" ; g:print"g"
     end
 
@@ -319,15 +336,20 @@ local function ld_lmdif (env)
     while itr <= jiter do
       -- one Gauss-Newton step using SVD to find min_h ||g - Ah||
       rdx, rk, sv = Amu:ssolve(g, rcond)
-      -- turn the solution into min_h ||Ah + g||
-      rdx:unm(rdx)
+      adjust_move(env, rdx:unm(rdx))
 
-      -- debug info
+      -- info
       if env.info >= 3 then
         printf("nlopt: Gauss-Newton step using SVD, \z
                rank=%d, rcond=%-.3e, scond=%-.3e\n",
                rk, rcond, sv[rk]/sv[1])
-        if env.info >= 4 then sv:print("LMDIF-SV", 'line') end
+      end
+
+      -- debug
+      if env.debug >= 2 then
+        local fmt = option.numfmt ; option.numfmt = "% -.5e"
+        sv :print("JLV", 'line')
+        option.numfmt = fmt
       end
 
       -- no variable reduction
@@ -435,15 +457,31 @@ local function ld_jacobian (env)
     while itr <= jiter do
       -- one Newton-Raphson step using SVD to find min_h ||b - Jh||
       rdx, rk, sv = J:ssolve(b, rcond)
-      -- turn the solution into min_h ||Jh + b||
-      rdx:unm(rdx)
+      adjust_move(env, rdx:unm(rdx))
 
-      -- debug info
+      -- info
       if env.info >= 3 then
         printf("nlopt: Newton-Raphson step using SVD, \z
                rank=%d, rcond=%-.3e, scond=%-.3e\n",
                rk, rcond, sv[rk]/sv[1])
-        if env.info >= 4 then sv :print("JACOB-SV:", 'line') end
+      end
+
+      -- debug
+      if env.debug >= 2 then
+        local fmt = option.numfmt ; option.numfmt = "% -.5e"
+        sv :print("JSV", 'line')
+        if itr == 1 and var.cjac_f then
+          local rdx_f, rk_f, sv_f = var.cjac_f:ssolve(b, rcond)
+          adjust_move(env, rdx_f:unm(rdx_f), " (dx_f)")
+          rdx_f:print("RDX-F", 'line')
+          local rdiv = rdx:map(\a -> abs(a) < 1 and 1 or abs(a))
+          local rdxd = (rdx_f-rdx):ediv(rdiv)
+          local rdxr = rdx_f:ediv(rdx)
+          printf("|RDX-D|_max=%-.8e\n", rdxd:maxabs())
+          printf("|RDX-R|_minmax=%-.8e %-.8e\n", rdxr:minmax()) ;
+          (rx..rdx..rdx_f..rdxd..rdxr):print("RDX-FDR")
+        end
+        option.numfmt = fmt
       end
 
       -- no variable reduction
