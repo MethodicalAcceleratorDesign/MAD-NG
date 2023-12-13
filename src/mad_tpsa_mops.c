@@ -427,7 +427,7 @@ FUN(mconv) (ssz_t sa, const T *ma[sa], ssz_t sc, T *mc[sc], ssz_t n, idx_t t2r_[
 
   FOR(i,MIN(n,sa)) {
     idx_t ii = t2r_[i];
-    if (ii < 0) continue; // discard vars
+    if (ii < 0) continue; // discard var
     ensure(0 <= ii && ii < sc, "translation index out of range 0 <= %d < %d", ii, sc);
     FUN(convert)(ma[i], mc[ii], n, t2r_, pb);
     int ss = (ii-i)%2 * pb;
