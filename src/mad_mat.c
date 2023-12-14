@@ -34,24 +34,18 @@
 #if 0
 #include <stdio.h>
 
-static void __attribute__((unused))
+static inline void __attribute__((unused))
 mprint(str_t name, const num_t a[], ssz_t m, ssz_t n)
 {
   printf("%s[%dx%d]=\n", name, m, n);
-  FOR(i,m) {
-  FOR(j,n) printf("% -10.5f ", a[i*n+j]);
-           printf("\n");
-  }
+  FOR(i,m) { FOR(j,n) printf("% -.5e ", a[i*n+j]); printf("\n"); }
 }
 
-static void __attribute__((unused))
+static inline void __attribute__((unused))
 iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 {
   printf("%s[%dx%d]=\n", name, m, n);
-  FOR(i,m) {
-    FOR(j,n) printf("% 3d ", a[i*n+j]);
-             printf("\n");
-  }
+  FOR(i,m) { FOR(j,n) printf("% 3d ", a[i*n+j]); printf("\n"); }
 }
 #endif
 
@@ -1159,7 +1153,7 @@ mad_mat_pinvn (const num_t y[], num_t x, num_t r[], ssz_t m, ssz_t n, num_t rcon
   mad_alloc_tmp(num_t, V, n*n);
   mad_alloc_tmp(num_t, S, n*m); mad_vec_fill(0, S, n*m);
 
-  int rnk  = 0;
+  int rank = 0;
   int info = mad_mat_svd(y, U, s, V, m, n);
   if (info != 0) goto finalize;
 
@@ -1172,7 +1166,7 @@ mad_mat_pinvn (const num_t y[], num_t x, num_t r[], ssz_t m, ssz_t n, num_t rcon
 
   // Keep relevant singular values and reject ncond (smallest) singular values
   FOR(i,k,mn)
-    if (mn-i >= ncond && s[i] >= rcond*s[k]) S[i*m+i] = (++rnk, 1/s[i]);
+    if (mn-i >= ncond && s[i] >= rcond*s[k]) S[i*m+i] = (++rank, 1/s[i]);
     else break;
 
   mad_mat_muld(V, S, r, n, m, n);
@@ -1186,7 +1180,7 @@ finalize:
   mad_free_tmp(V);
   mad_free_tmp(S);
 
-  return rnk;
+  return rank;
 }
 
 int // without complex-by-value version
@@ -1198,10 +1192,10 @@ mad_mat_pinvc (const num_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcon
 {
   CHKYR; // compute x/Y[m x n]
   mad_alloc_tmp(num_t, rr, m*n);
-  int info = mad_mat_pinvn(y, 1, rr, m, n, rcond, ncond);
-  if (!info) mad_vec_mulc(rr, x, r, m*n);
+  int rank = mad_mat_pinvn(y, 1, rr, m, n, rcond, ncond);
+  mad_vec_mulc(rr, x, r, m*n);
   mad_free_tmp(rr);
-  return info;
+  return rank;
 }
 
 int
@@ -1222,7 +1216,7 @@ mad_cmat_pinvc (const cpx_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rco
   mad_alloc_tmp(cpx_t, V, n*n);
   mad_alloc_tmp(num_t, S, n*m); mad_vec_fill(0, S, n*m);
 
-  int rnk  = 0;
+  int rank = 0;
   int info = mad_cmat_svd(y, U, s, V, m, n);
   if (info != 0) goto finalize;
 
@@ -1235,7 +1229,7 @@ mad_cmat_pinvc (const cpx_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rco
 
   // Keep relevant singular values and reject ncond (smallest) singular values
   FOR(i,k,mn)
-    if (mn-i >= ncond && s[i] >= rcond*s[k]) S[i*m+i] = (++rnk, 1/s[i]);
+    if (mn-i >= ncond && s[i] >= rcond*s[k]) S[i*m+i] = (++rank, 1/s[i]);
     else break;
 
   mad_cmat_muldm(V, S, r, n, m, n);
@@ -1249,7 +1243,7 @@ finalize:
   mad_free_tmp(V);
   mad_free_tmp(S);
 
-  return rnk;
+  return rank;
 }
 
 // -- divide ------------------------------------------------------------------o
@@ -1534,11 +1528,19 @@ mad_cmat_solve (const cpx_t a[], const cpx_t b[], cpx_t x[], ssz_t m, ssz_t n, s
 }
 
 int
-mad_mat_ssolve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, num_t s_[])
+mad_mat_ssolve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, int ncond, num_t s_[])
 {
   assert( a && b && x );
   int info=0;
   const int nm=m, nn=n, np=p, mn=MAX(m,n);
+
+  if (ncond) {
+    mad_alloc_tmp(num_t, ai, m*n);
+    int rank = mad_mat_pinvn(a, 1, ai, m, n, rcond, ncond);
+    mad_mat_mul(ai, b, x, n, p, m);
+    mad_free_tmp(ai);
+    return rank;
+  }
 
   num_t sz;
   int lwork=-1, rank, isz;
@@ -1569,11 +1571,19 @@ mad_mat_ssolve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, s
 }
 
 int
-mad_cmat_ssolve (const cpx_t a[], const cpx_t b[], cpx_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, num_t s_[])
+mad_cmat_ssolve (const cpx_t a[], const cpx_t b[], cpx_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, int ncond, num_t s_[])
 {
   assert( a && b && x );
   int info=0;
   const int nm=m, nn=n, np=p, mn=MAX(m,n);
+
+  if (ncond) {
+    mad_alloc_tmp(cpx_t, ai, m*n);
+    int rank = mad_cmat_pinvc(a, 1, ai, m, n, rcond, ncond);
+    mad_cmat_mul(ai, b, x, n, p, m);
+    mad_free_tmp(ai);
+    return rank;
+  }
 
   num_t rsz;
   cpx_t sz;
