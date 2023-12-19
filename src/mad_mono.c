@@ -107,7 +107,6 @@ mad_mono_ordpf (ssz_t n, const ord_t a[n], idx_t stp)
   return p;
 }
 
-
 log_t
 mad_mono_eq (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
