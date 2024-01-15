@@ -737,7 +737,7 @@ FUN(asin) (const T *a, T *c)                     // checked for real and complex
   assert(a && c); DBGFUN(->); DBGTPSA(a);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
-  ensure(fabs(a0) < 1, "invalid domain asin("FMT")", VAL(a0));
+  ensure(SELECT(fabs(a0) < 1, 1), "invalid domain asin("FMT")", VAL(a0));
   NUM f0 = asin(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
@@ -784,7 +784,7 @@ FUN(acos) (const T *a, T *c)                     // checked for real and complex
   assert(a && c); DBGFUN(->); DBGTPSA(a);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
-  ensure(fabs(a0) < 1, "invalid domain acos("FMT")", VAL(a0));
+  ensure(SELECT(fabs(a0) < 1, 1), "invalid domain acos("FMT")", VAL(a0));
   NUM f0 = acos(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
