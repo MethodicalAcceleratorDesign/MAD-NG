@@ -631,17 +631,19 @@ FUN(atan2) (const T *y, const T *x, T *r)
   assert(x && y && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(r);
   ensure(x->d == y->d && x->d == r->d, "incompatible GTPSA (descriptors differ)");
   NUM x0 = x->coef[0], y0 = y->coef[0];
+  NUM a0 = atan2(y0, x0);
 
-  if (x0 != 0) {
+  if (fabs(a0) < M_PI_2-0.1 || fabs(a0) > M_PI_2+0.1) {
     FUN(div)(y, x, r);
     FUN(atan)(r, r);
-    if (x0 < 0) { // no copy ok
-      mad_tpsa_scl(r, -1, r);
-      if (y0 >= 0) FUN(set0)(r, 1,  M_PI_2);
-      else         FUN(set0)(r, 1, -M_PI_2);
-    }
-  } else
-    FUN(setvar)(r, atan2(y0,x0), 0,0); // Let C handle signs for ±pi/2
+  } else {
+    FUN(axypbvwpc)(1,x,x, 1,y,y, 0, r);
+    FUN(invsqrt)(r, 1, r);
+    FUN(mul)(x, r, r);
+    FUN(acos)(r, r);
+    if (y0 < 0) FUN(scl)(r, -1, r);
+  }
+  FUN(set0)(r, 0, a0);
 
   DBGTPSA(r); DBGFUN(<-);
 }
