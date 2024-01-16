@@ -799,18 +799,17 @@ ret:
 }
 
 void
-FUN(poisbra) (const T *a, const T *b, T *c, int nv)                 // C = [A,B]
+FUN(poisbra) (const T *a, const T *b, T *r, int nv)                 // C = [A,B]
 {
-  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b); DBGTPSA(c);
+  assert(a && b && r); DBGFUN(->); DBGTPSA(a); DBGTPSA(b); DBGTPSA(r);
   const D *d = a->d;
-  ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(d == b->d && d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   nv = nv>0 ? nv/2 : d->nv/2;
 
   T *is[3];
   for (int i=0; i < 3; ++i) is[i] = FUN(new)(a, d->to);
-
-  FUN(reset0)(c);
+  T *c = a == r || b == r ? GET_TMPX(r) : FUN(reset0)(r);
 
   for (int i = 1; i <= nv; ++i) {
     FUN(deriv)(a, is[0], 2*i - 1); // res = res + da/dq_i * db/dp_i
@@ -824,9 +823,9 @@ FUN(poisbra) (const T *a, const T *b, T *c, int nv)                 // C = [A,B]
     FUN(sub)  (c, is[2], c);
   }
 
+  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
   for (int i=0; i < 3; ++i) FUN(del)(is[i]);
-
-  DBGTPSA(c); DBGFUN(<-);
+  DBGTPSA(r); DBGFUN(<-);
 }
 
 // --- high level functions ---------------------------------------------------o
