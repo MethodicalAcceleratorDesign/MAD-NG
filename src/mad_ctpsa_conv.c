@@ -149,16 +149,17 @@ void mad_ctpsa_rect (const ctpsa_t *a, ctpsa_t *c)
   assert(a && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(c);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  tpsa_t *re = GET_TMPR(c), *im = GET_TMPR(c), *t = GET_TMPR(c);
+  tpsa_t *re = GET_TMPR(c), *im = GET_TMPR(c),
+         *st = GET_TMPR(c), *ct = GET_TMPR(c);
 
   mad_ctpsa_real (a , re); // rho
   mad_ctpsa_imag (a , im); // arg
-  mad_tpsa_sincos(im, im, t );
-  mad_tpsa_mul   (re, t , re); // re = rho * cos(arg)
-  mad_tpsa_mul   (re, im, im); // im = rho * sin(arg)
-  mad_ctpsa_cplx (re, im, c );
+  mad_tpsa_sincos(im, st, ct);
+  mad_tpsa_mul   (re, st, im); // im = rho * sin(arg)
+  mad_tpsa_mul   (re, ct, st); // re = rho * cos(arg)
+  mad_ctpsa_cplx (st, im, c );
 
-  REL_TMPR(t); REL_TMPR(im); REL_TMPR(re);
+  REL_TMPR(ct); REL_TMPR(st); REL_TMPR(im); REL_TMPR(re);
 
   DBGTPSA(c); DBGFUN(<-);
 }
