@@ -110,15 +110,16 @@ sincos_taylor (const T *a, T *s, T *c,
   assert(a && s && c && sin_coef && cos_coef);
   assert(n_s >= 1 && n_c >= 1);
 
+  ord_t n = MAX(n_s,n_c);
+  T *acp = GET_TMPX(c); FUN(copy)(a,acp);
+
   // n=1
-  FUN(scl)(a, sin_coef[1], s); FUN(set0)(s, 0, sin_coef[0]);
-  FUN(scl)(a, cos_coef[1], c); FUN(set0)(c, 0, cos_coef[0]);
+  FUN(scl)(acp, sin_coef[1], s); FUN(set0)(s, 0, sin_coef[0]);
+  FUN(scl)(acp, cos_coef[1], c); FUN(set0)(c, 0, cos_coef[0]);
 
   // n=2
-  ord_t n = MAX(n_s,n_c);
   if (n >= 2) {
-    T *acp = GET_TMPX(c), *pow = GET_TMPX(c);
-    FUN(copy)(a,acp);
+    T *pow = GET_TMPX(c);
     FUN(set0)(acp,0,0);
     FUN(mul)(acp,acp,pow);
     if (n_s >= 2) FUN(acc)(pow,sin_coef[2],s);
@@ -138,9 +139,9 @@ sincos_taylor (const T *a, T *s, T *c,
       if (n & 1) SWAP(pow,tmp,t); // enforce even number of swaps
       REL_TMPX(tmp);
     }
-
-    REL_TMPX(pow), REL_TMPX(acp);
+    REL_TMPX(pow);
   }
+  REL_TMPX(acp);
 }
 
 // --- public -----------------------------------------------------------------o
@@ -737,7 +738,7 @@ FUN(asin) (const T *a, T *c)                     // checked for real and complex
   assert(a && c); DBGFUN(->); DBGTPSA(a);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
-  ensure(fabs(a0) < 1, "invalid domain asin("FMT")", VAL(a0));
+  ensure(SELECT(fabs(a0) < 1, 1), "invalid domain asin("FMT")", VAL(a0));
   NUM f0 = asin(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
@@ -784,7 +785,7 @@ FUN(acos) (const T *a, T *c)                     // checked for real and complex
   assert(a && c); DBGFUN(->); DBGTPSA(a);
   ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
-  ensure(fabs(a0) < 1, "invalid domain acos("FMT")", VAL(a0));
+  ensure(SELECT(fabs(a0) < 1, 1), "invalid domain acos("FMT")", VAL(a0));
   NUM f0 = acos(a0);
 
   ord_t to = MIN(c->mo,c->d->to);

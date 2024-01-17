@@ -543,51 +543,52 @@ local function compute_fval (env)
   return fval
 end
 
--- compute gradient and (in)equalities jacobians
+-- compute gradient and (in)equalities jacobian
 local function compute_fgrd (env)
   local var, trc = env.__var, env.info >= 3
 
   if env.jacobian then
     local cres, fval, fgrd, cjac in var
     if is_nil(cres) then return nil end   -- invalid domain
-    env.jacobian(cres, fgrd, cjac, env)
-    return fval
+    local jret = env.jacobian(cres, fgrd, cjac, env)
+    if jret ~= 'debug' then return fval end
+    var.cjac_f = cjac:copy(var.cjac_f)
   end
 
   local n, x, h, c, xstp, xslp, xmin, xmax, fval, fgrd, cjac, prv, bak in var
-  local bro = env.objective.broyden and prv.c
 
   -- backup states
   backup(var, bak)
 
-  -- estimate dh from last step or current point
+  -- last step norm
   local hn = h:norm()
-  local dh = 1e-4*hn
-  if dh == 0 then dh = 1e-8*x:norm() end
-  if dh == 0 then dh = 1e-10 end
 
-  if trc then printf("nlopt: computing derivatives with dh=%-.8e\n", dh) end
-
-  local Bc
-  if bro then Bc = cjac + (c - prv.c - cjac*h)*h:t()/hn^2 end -- /hn better?
+  -- Broyden's Jacobian update
+  local bro, Bc = env.objective.broyden and prv.c ~= nil and hn ~= 0
+  if bro then
+    if trc then printf("nlopt: Broyden's update with |hn|=%-.8e\n", hn) end
+    Bc = cjac + (c - prv.c - cjac*h)*h:t()/hn^2
+  end
 
   -- compute jacobian
   for iv=1,n do
     if bro and h[iv] >= 0.8*hn then             -- Broyden's rank one update
       cjac:setcol(iv, Bc:getcol(iv))
-      if trc then printf("nlopt: Broyden's update for variable %d\n", iv) end
+      if trc then
+        printf("nlopt: Broyden's update for variable %d (%-.8e)\n", iv, h[iv])
+      end
     else                                        -- finite difference required
-      if xstp[iv] ~= 0 then dh = xstp[iv] end
-      x[iv] = x[iv]+dh ; var.fval = fval
-      if dh*xslp[iv] < 0 or x[iv] < xmin[iv] or x[iv] > xmax[iv] then
-        x[iv], dh = x[iv]-2*dh, -dh   -- take -dh if slope or bbox are violated
+      local ih = x[iv] ~= 0 and x[iv]*xstp[iv] or 1e-12
+      x[iv] = x[iv]+ih ; var.fval = fval
+      if x[iv] < xmin[iv] or x[iv] > xmax[iv] then
+        x[iv], ih = x[iv]-2*ih, -ih   -- take -ih if bbox are violated
       end
 
       local dfval = compute_fval(env)
       if is_nil(dfval) then fval = nil ; break end
 
-      fgrd[iv] = (dfval-fval)/dh
-      cjac:setcol(iv, (c - bak.c)/dh)
+      fgrd[iv] = (dfval-fval)/ih
+      cjac:setcol(iv, (c - bak.c)/ih)
 
       x[iv] = bak.x[iv]
     end
@@ -619,12 +620,32 @@ local function opt_fun (env)
 
     -- some debug display
     if env.debug >= 2 and fval then
-      printf("fval=%-.16e\n", fval)
-      printf("ccnt=%d\n", var.ccnt)
-      var.x:print"X"
-      var.c:print"C"
-      if var.fgrd then var.fgrd:print"F-GRD" end
-      if var.cjac then var.cjac:print"C-JAC" end
+      local fmt = option.numfmt ; option.numfmt = "% -.5e"
+      if var.funf then
+        printf("fval=%-.16e\n", fval)
+        printf("ccnt=%d\n", var.ccnt)
+        var.x:print("X",'line')
+        var.c:print("C",'line')
+      end
+      if var.grdf then
+        if var.fgrd then
+          printf("|GRD|=%-.8e\n", var.fgrd:norm())
+          var.fgrd:print("GRD",'line')
+        end
+        if var.cjac then
+          printf("|JAC|=%-.8e\n", var.cjac:norm())
+          var.cjac:print("JAC")
+        end
+        if var.cjac_f then
+          local jdiv = var.cjac:map(\a -> abs(a) < 1 and 1 or abs(a))
+          local jacd = (var.cjac_f-var.cjac):ediv(jdiv)
+          local jacr = var.cjac_f:ediv(var.cjac)
+          printf("|JAC-F|=%-.8e\n", var.cjac_f:norm())    var.cjac_f:print("JAC-F")
+          printf("|JAC-D|_max=%-.8e\n", jacd:maxabs())          jacd:print("JAC-D")
+          printf("|JAC-R|_minmax=%-.8e %-.8e\n", jacr:minmax()) jacr:print("JAC-R")
+        end
+      end
+      option.numfmt = fmt
     end
 
     -- display intermediate summary (no if jacobian only)
@@ -722,11 +743,12 @@ local function exec (self)
       x     = vector(n),                  -- variables values
       h     = vector(n),                  -- variables steps
       x0    = vector(n),                  -- variables initial values
-      xstp  = vector(n),                  -- variables initial steps
+      xstp  = vector(n),                  -- variables relative steps
       xslp  = vector(n),                  -- variables slopes
       xmin  = vector(n),                  -- variables minimum bounds
       xmax  = vector(n),                  -- variables maximum bounds
       xtol  = vector(n),                  -- variables tolerances
+      xrmov = variables.rmov or inf,      -- variables relative maximum move
       xrtol = variables.rtol or eps,      -- variables relative tolerance
       xtolf = false,                      -- variables tolerance flag
       xadj  = {n=0, cur={n=0}},           -- variables adjusted (index)
@@ -792,9 +814,9 @@ local function exec (self)
     local v = variables[i] or {}
     if v.get then var.x0[i] = v.get(env) end
     var.x   [i] = var.x0[i]
-    var.xstp[i] = v.step   or variables.step  or 0
-    var.xslp[i] = v.slope  or variables.slope or 0
-    var.xtol[i] = v.tol    or variables.tol   or 0
+    var.xstp[i] = v.rstp   or variables.rstp  or  1e-8
+    var.xslp[i] = v.slope  or variables.slope or  0
+    var.xtol[i] = v.tol    or variables.tol   or  0
     var.xmin[i] = v.min    or variables.min   or -inf
     var.xmax[i] = v.max    or variables.max   or  inf
 
@@ -878,8 +900,8 @@ local match = command 'match' {
   jacobian = nil,
   -- state variables
   variables = {
-  ! { var=nil, step=nil, min=nil, max=nil, sign=nil, slope=nil, tol=nil, name=nil, get=nil, set=nil },
-     nvar=nil, step=nil, min=nil, max=nil, sign=nil, slope=nil, tol=nil, rtol=nil, get=nil, set=nil,
+  ! { var=nil, rstp=nil, min=nil, max=nil, sign=nil, slope=nil, tol=nil, name=nil,           get=nil, set=nil },
+     nvar=nil, rstp=nil, min=nil, max=nil, sign=nil, slope=nil, tol=nil, rtol=nil, rmov=nil, get=nil, set=nil,
      nowarn=nil,
   },
   -- equalities constraints (i.e. val = expr(cres, env))
@@ -899,7 +921,7 @@ local match = command 'match' {
     method=nil, submethod=nil, fmin=nil, tol=nil, rtol=nil,
     exec=nil, grad=nil, reset=nil, bstra=nil, broyden=nil,
     -- jacobian and lmdif only
-    bisec=nil, rcond=nil, jtol=nil, jiter=nil, jstra=nil, jrand=nil
+    bisec=nil, rcond=nil, ncond=nil, jtol=nil, jiter=nil, jstra=nil, jrand=nil
   },
 
   maxcall=nil,          -- call limit

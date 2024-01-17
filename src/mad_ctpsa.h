@@ -64,7 +64,7 @@ ord_t    mad_ctpsa_ordn    (ssz_t n, const ctpsa_t *t[]); // max order of all
 
 // initialization
 void     mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *r);
-void     mad_ctpsa_sclord  (const ctpsa_t *t, ctpsa_t *r, log_t inv); // t[i]*o[i]
+void     mad_ctpsa_sclord  (const ctpsa_t *t, ctpsa_t *r, log_t inv, log_t prm); // t[i]*o[i]
 void     mad_ctpsa_getord  (const ctpsa_t *t, ctpsa_t *r, ord_t ord);
 void     mad_ctpsa_cutord  (const ctpsa_t *t, ctpsa_t *r, int   ord); // ord..mo = 0 or 0..-ord=0
 idx_t    mad_ctpsa_maxord  (const ctpsa_t *t,             ssz_t n, idx_t idx_[]);
@@ -86,7 +86,7 @@ void     mad_ctpsa_rect    (const ctpsa_t *t, ctpsa_t *r);
 void     mad_ctpsa_polar   (const ctpsa_t *t, ctpsa_t *r);
 
 // indexing / monomials (return idx_t = -1 if invalid)
-ord_t    mad_ctpsa_mono    (const ctpsa_t *t, idx_t i, ssz_t n,       ord_t m_[]);
+ord_t    mad_ctpsa_mono    (const ctpsa_t *t, idx_t i, ssz_t n,       ord_t m_[], ord_t *p_);
 idx_t    mad_ctpsa_idxs    (const ctpsa_t *t,          ssz_t n,       str_t s   ); // string mono "[0-9]*"
 idx_t    mad_ctpsa_idxm    (const ctpsa_t *t,          ssz_t n, const ord_t m []);
 idx_t    mad_ctpsa_idxsm   (const ctpsa_t *t,          ssz_t n, const int   m []); // sparse mono [(i,o)]

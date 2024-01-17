@@ -52,6 +52,7 @@ struct desc_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
 
   ord_t *monos,      // 'matrix' storing the monomials (sorted by var)
         *ords,       // order of each mono of To
+        *prms,       // order of parameters in each mono of To (zero = no prms)
        **To,         // Table by orders -- pointers to monos, sorted by order
        **Tv,         // Table by vars   -- pointers to monos, sorted by vars
        **ocs;        // ocs[t,i] -> o; in mul, compute o on thread t; 3 <= o <= mo; terminated with 0

@@ -360,7 +360,7 @@ FUN(copy) (const T *t, T *r)
 }
 
 void
-FUN(sclord) (const T *t, T *r, log_t inv)
+FUN(sclord) (const T *t, T *r, log_t inv, log_t prm)
 {
   assert(t && r); DBGFUN(->); DBGTPSA(t);
 
@@ -368,16 +368,19 @@ FUN(sclord) (const T *t, T *r, log_t inv)
 
   // scale coefs
   const idx_t *o2i = r->d->ord2idx;
+  const ord_t *po  = r->d->prms;
+  const int np     = !prm;
   if (inv) {
     for (ord_t o = MAX(r->lo,2); o <= r->hi; ++o)
       if (mad_bit_tst(r->nz,o))
-        for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
-          r->coef[i] /= o; // scale coefs by 1/order
+        for (idx_t i = o2i[o]; i < o2i[o+1]; ++i) {
+          r->coef[i] /= o - po[i] * np; // scale coefs by 1/order
+        }
   } else {
     for (ord_t o = MAX(r->lo,2); o <= r->hi; ++o)
       if (mad_bit_tst(r->nz,o))
         for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
-          r->coef[i] *= o; // scale coefs by order
+          r->coef[i] *= o - po[i] * np; // scale coefs by order
   }
 
   DBGTPSA(r); DBGFUN(<-);
@@ -504,7 +507,7 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
   ord_t t_hi = MIN(t->hi, r->mo, t->d->to);
   for (idx_t ti = o2i[t->lo]; ti < o2i[t_hi+1]; ++ti) {
     if (t->coef[ti] == 0) goto skip;
-    mad_desc_mono(t->d, ti, tn, tm);              // get tm mono at index ti
+    mad_desc_mono(t->d, ti, tn, tm, NULL);        // get tm mono at index ti
     mad_mono_fill(rn, rm, 0);
     int sgn = 0;
     for (idx_t i = 0; i < tn; ++i) {              // set rm mono
@@ -530,10 +533,10 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
 // --- indexing / monomials ---------------------------------------------------o
 
 ord_t
-FUN(mono) (const T *t, idx_t i, ssz_t n, ord_t m_[n])
+FUN(mono) (const T *t, idx_t i, ssz_t n, ord_t m_[n], ord_t *p_)
 {
   assert(t); DBGTPSA(t);
-  ord_t ret = mad_desc_mono(t->d, i, n, m_);
+  ord_t ret = mad_desc_mono(t->d, i, n, m_, p_);
   DBGFUN(<-); return ret;
 }
 

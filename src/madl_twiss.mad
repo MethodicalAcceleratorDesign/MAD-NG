@@ -32,8 +32,10 @@ local tblcat, tblcpy, tblrep, assertf, errorf, printf             in MAD.utility
 local lbool                                                       in MAD.gfunc
 local is_nil, is_true, is_boolean, is_number, is_iterable,
       is_mappable, is_callable, is_table, is_vector, is_damap     in MAD.typeid
-local atfirst, atstd                                        in MAD.symint.slcsel
+local ofun_tol                                                    in MAD.gphys.tol
+local atfirst, atstd                                              in MAD.symint.slcsel
 local abs, min, max, sqrt, floor                                  in math
+
 
 local chromdp = 1e-6
 
@@ -91,7 +93,7 @@ local function fill_sum (mflw)
   mtbl.length = mflw.spos + mflw.ds - mflw.s0
 
   -- momentum compaction & phase slip factors, gamma transition
-  local npar, ofun, chrm, q1, q2, q3, dq1, dq2, dq3,
+  local npar, ofun, chrm, q1, q2, q3, dq1, dq2, dq3, nf0,
         synch_1, synch_2, synch_3, synch_4, synch_5, synch_6, synch_8,
         alfap, etap, gammatr in __twdat
   local beam, len = mflw.beam, mtbl.length
@@ -99,8 +101,9 @@ local function fill_sum (mflw)
   for i=1,mflw.npar do
     local id = mflw[i].id
     if id <= npar then
-      local beam = mflw[i].beam or beam
-      local of = ofun[id]
+      local m    = mflw[i]
+      local of   = ofun[id]
+      local beam = m.beam or beam
 
       q1[id] = of.mu1
       q2[id] = of.mu2
@@ -121,10 +124,15 @@ local function fill_sum (mflw)
         synch_5[id] = of.synch_5
         synch_6[id] = of.synch_6
         synch_8[id] = of.synch_8
+      elseif m:maxord() >= 2 and nf0[id] then
+        local nf = nf0[id]:analyse'anh'
+        dq1[id] = nf:dq1{1} ; if abs(dq1[id]) < ofun_tol then dq1[id] = 0 end
+        dq2[id] = nf:dq2{1} ; if abs(dq2[id]) < ofun_tol then dq2[id] = 0 end
+        dq3[id] = nf:dq3{1} ; if abs(dq3[id]) < ofun_tol then dq3[id] = 0 end
       end
 
       -- calculation from MAD-X, need to be reviewed
-      local R  = mflw[i]:get1()
+      local R  = m:get1()
       local sd = R:get(5,6) + R:get(5,1)*of.dx + R:get(5,2)*of.dpx
                             + R:get(5,3)*of.dy + R:get(5,4)*of.dpy
 
@@ -156,7 +164,7 @@ local function fill_row (elm, mflw, lw, islc)
   if not mflw.__twdat then return end -- not yet in twiss
 
   local mtbl, info, saverdt in mflw
-  local nrow, ofun, rdt0, rdts, onam in mflw.__twdat
+  local nrow, ofun, nf0, rdts, onam in mflw.__twdat
 
 -- printf("tw_fill: islc=%2d, nrow=%4d, elm=%s\n", islc, nrow, elm.name)
 
@@ -179,7 +187,7 @@ local function fill_row (elm, mflw, lw, islc)
 
       -- save RDTs (expand done by track!)
       if rdts then
-        local nf0 = rdt0[m.id]
+        local nf0 = nf0[m.id]
         if m:eq(nf0.m_prev) then                  -- duplicate values
           if saverdt then mtbl.__nf[nrow] = mtbl.__nf[nrow-1] end
           for _,k in ipairs(rdts) do
@@ -189,6 +197,7 @@ local function fill_row (elm, mflw, lw, islc)
             col[nrow] = col[nrow-1]
           end
         else
+          nf0.m_prev = m:copy(nf0.m_prev)
           local nf = nf0:analyse('gnf', m)        -- full gnf analysis
           if saverdt then mtbl.__nf[nrow] = nf end
           for _,k in ipairs(rdts) do
@@ -196,7 +205,6 @@ local function fill_row (elm, mflw, lw, islc)
             if not is_table(col) then col:_reshapeto(nrow) end
             col[nrow] = nf:gnfu(k:sub(2))
           end
-          nf0.m_prev = m:copy(nf0.m_prev)
         end
       end
     end
@@ -393,19 +401,19 @@ local function twiss_nform (self, mflw0)
   end
 
   -- prepare mflw0 to twiss extensions
-  mflw0.__twdat = {ofun={}, rdt0={}}
-  local ofun, rdt0 in mflw0.__twdat
+  mflw0.__twdat = {ofun={}, nf0={}}
+  local ofun, nf0 in mflw0.__twdat
 
   for i=1,npar do
     local m = mflw0[i]
 
     -- convert in place one-turn-map M into normal form A
     if m.status ~= 'Aset' then
-      local nf = normal(m)
+      local nf = normal(m) ; nf0[m.id] = nf ; nf.id = m.id
       nf.a:copy(m):set0(nf.x0).status = 'Aset'
 
-      -- save nf0 for RDTs calculation
-      if trkrdt then rdt0[m.id] = nf:analyse'all' ; nf.id = m.id end
+      -- RDTs calculation at nf0
+      if trkrdt then nf:analyse'all' end
     end
 
     -- create beta0 from damap
@@ -484,7 +492,10 @@ local function twiss_init (self, mflw)
 
     -- add rdts columns
     if trkrdt then
-      for _,k in ipairs(trkrdt) do mtbl:addcol(k,{0}) end
+      for _,k in ipairs(trkrdt) do
+        assert(k:sub(1,1) == 'f', "invalid rdt's name (must start by 'f')")
+        mtbl:addcol(k,{0})
+      end
       if saverdt then
         mflw.saverdt = saverdt
         mtbl:addcol('__nf',{})

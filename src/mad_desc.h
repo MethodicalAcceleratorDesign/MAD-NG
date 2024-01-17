@@ -76,7 +76,7 @@ idx_t mad_desc_idxm      (const desc_t *d,          ssz_t n, const ord_t m []); 
 idx_t mad_desc_idxsm     (const desc_t *d,          ssz_t n, const idx_t m []); // sparse mono
 idx_t mad_desc_nxtbyvar  (const desc_t *d,          ssz_t n,       ord_t m []);
 idx_t mad_desc_nxtbyord  (const desc_t *d,          ssz_t n,       ord_t m []);
-ord_t mad_desc_mono      (const desc_t *d, idx_t i, ssz_t n,       ord_t m_[]);
+ord_t mad_desc_mono      (const desc_t *d, idx_t i, ssz_t n,       ord_t m_[], ord_t *p_);
 
 // for debugging
 void  mad_desc_info      (const desc_t *d, FILE *fp_);

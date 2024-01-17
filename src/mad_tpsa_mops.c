@@ -387,7 +387,7 @@ FUN(fld2vec) (ssz_t sa, const T *ma[sa], T *c) // getpb
 
     FUN(setvar)(t2, 0, iv, 0); // q_i -> p_i monomial, p_i -> q_i monomial
     FUN(mul)(ma[i], t2, t1);   // integrate by monomial of "paired" canon. var.
-    FUN(sclord)(t1, t1, TRUE); // scale coefs by orders, i.e. integrate order
+    FUN(sclord)(t1, t1, TRUE, FALSE); // scale coefs by orders, i.e. integ. var.
 
     (i & 1 ? FUN(add) : FUN(sub))(c, t1, c); // \sum p_i - q_i to c
   }
@@ -427,7 +427,7 @@ FUN(mconv) (ssz_t sa, const T *ma[sa], ssz_t sc, T *mc[sc], ssz_t n, idx_t t2r_[
 
   FOR(i,MIN(n,sa)) {
     idx_t ii = t2r_[i];
-    if (ii < 0) continue; // discard vars
+    if (ii < 0) continue; // discard var
     ensure(0 <= ii && ii < sc, "translation index out of range 0 <= %d < %d", ii, sc);
     FUN(convert)(ma[i], mc[ii], n, t2r_, pb);
     int ss = (ii-i)%2 * pb;

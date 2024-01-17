@@ -631,17 +631,19 @@ FUN(atan2) (const T *y, const T *x, T *r)
   assert(x && y && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(r);
   ensure(x->d == y->d && x->d == r->d, "incompatible GTPSA (descriptors differ)");
   NUM x0 = x->coef[0], y0 = y->coef[0];
+  NUM a0 = atan2(y0, x0);
 
-  if (x0 != 0) {
+  if (fabs(a0) < M_PI_2-0.1 || fabs(a0) > M_PI_2+0.1) {
     FUN(div)(y, x, r);
     FUN(atan)(r, r);
-    if (x0 < 0) { // no copy ok
-      mad_tpsa_scl(r, -1, r);
-      if (y0 >= 0) FUN(set0)(r, 1,  M_PI_2);
-      else         FUN(set0)(r, 1, -M_PI_2);
-    }
-  } else
-    FUN(setvar)(r, atan2(y0,x0), 0,0); // Let C handle signs for ±pi/2
+  } else {
+    FUN(axypbvwpc)(1,x,x, 1,y,y, 0, r);
+    FUN(invsqrt)(r, 1, r);
+    FUN(mul)(x, r, r);
+    FUN(acos)(r, r);
+    if (y0 < 0) FUN(scl)(r, -1, r);
+  }
+  FUN(set0)(r, 0, a0);
 
   DBGTPSA(r); DBGFUN(<-);
 }
@@ -797,18 +799,17 @@ ret:
 }
 
 void
-FUN(poisbra) (const T *a, const T *b, T *c, int nv)                 // C = [A,B]
+FUN(poisbra) (const T *a, const T *b, T *r, int nv)                 // C = [A,B]
 {
-  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b); DBGTPSA(c);
+  assert(a && b && r); DBGFUN(->); DBGTPSA(a); DBGTPSA(b); DBGTPSA(r);
   const D *d = a->d;
-  ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(d == b->d && d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   nv = nv>0 ? nv/2 : d->nv/2;
 
   T *is[3];
   for (int i=0; i < 3; ++i) is[i] = FUN(new)(a, d->to);
-
-  FUN(reset0)(c);
+  T *c = a == r || b == r ? GET_TMPX(r) : FUN(reset0)(r);
 
   for (int i = 1; i <= nv; ++i) {
     FUN(deriv)(a, is[0], 2*i - 1); // res = res + da/dq_i * db/dp_i
@@ -822,9 +823,9 @@ FUN(poisbra) (const T *a, const T *b, T *c, int nv)                 // C = [A,B]
     FUN(sub)  (c, is[2], c);
   }
 
+  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
   for (int i=0; i < 3; ++i) FUN(del)(is[i]);
-
-  DBGTPSA(c); DBGFUN(<-);
+  DBGTPSA(r); DBGFUN(<-);
 }
 
 // --- high level functions ---------------------------------------------------o
@@ -939,10 +940,10 @@ FUN(axypbzpc) (NUM a, const T *x, const T *y, NUM b, const T *z, NUM c, T *r)
   ensure(x->d == y->d && y->d == z->d && z->d == r->d,
          "incompatibles GTPSA (descriptors differ)");
 
-  T *t = z == r ? GET_TMPX(r) : FUN(reset0)(r);
+  T *t = GET_TMPX(r);
   FUN(mul)(x,y,t);
   FUN(axpbypc)(a,t,b,z,c,r);
-  if (t != r) REL_TMPX(t);
+  REL_TMPX(t);
 
   DBGTPSA(r); DBGFUN(<-);
 }
@@ -973,10 +974,10 @@ FUN(ax2pby2pcz2) (NUM a, const T *x, NUM b, const T *y, NUM c, const T *z, T *r)
   ensure(x->d == y->d && y->d == z->d && z->d == r->d,
          "incompatibles GTPSA (descriptors differ)");
 
-  T *t = z == r ? GET_TMPX(r) : FUN(reset0)(r);
-  FUN(axypbvwpc)(a,x,x, b,y,y, 0, t);
-  FUN(axypbzpc)(c,z,z, 1,t, 0, r);
-  if (t != r) REL_TMPX(t);
+  T *t = GET_TMPX(r);
+  FUN(axypbvwpc)(a,x,x,b,y,y,0,t);
+  FUN(axypbzpc)(c,z,z,1,t,0,r);
+  REL_TMPX(t);
 
   DBGTPSA(r); DBGFUN(<-);
 }
@@ -987,11 +988,11 @@ FUN(axpsqrtbpcx2) (const T *x, NUM a, NUM b, NUM c, T *r)
   assert(x && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(r);
   ensure(x->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
-  T *t = x == r ? GET_TMPX(r) : FUN(reset0)(r);
+  T *t = GET_TMPX(r);
   FUN(axypb)(c,x,x,b,t);
   FUN(sqrt)(t,t);
   FUN(axpbypc)(a,x,1,t,0,r);
-  if (t != r) REL_TMPX(t);
+  REL_TMPX(t);
 
   DBGTPSA(r); DBGFUN(<-);
 }
