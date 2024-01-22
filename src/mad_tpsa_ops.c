@@ -675,13 +675,16 @@ num_t
 FUN(nrm) (const T *a)
 {
   assert(a); DBGFUN(->); DBGTPSA(a);
-
-  num_t nrm = 0;
   ord_t hi  = MIN(a->hi, a->d->to);
+  num_t nrm = 0;
+
   if (mad_bit_hcut(a->nz,hi)) {
     const idx_t *o2i = a->d->ord2idx;
-    for (idx_t i = o2i[a->lo]; i < o2i[hi+1]; ++i)
-      nrm += fabs(a->coef[i]);
+    for (ord_t o = a->lo; o <= hi ; ++o) {
+      if (!mad_bit_tst(a->nz,o)) continue;
+      for (idx_t i = o2i[o]; i < o2i[o+1]; ++i)
+        nrm += fabs(a->coef[i]);
+    }
   }
 
   DBGFUN(<-); return nrm;
