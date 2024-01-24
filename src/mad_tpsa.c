@@ -569,20 +569,26 @@ FUN(cycle) (const T *t, idx_t i, ssz_t n, ord_t m_[n], NUM *v_)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
   const D *d = t->d;
-  i += 1;
-  ensure(0 <= i && i <= d->nc, "index %d out of bounds", i);
+  if (++i == d->nc) { DBGFUN(<-); return -1; }
+  ensure(0 <= i && i < d->nc, "index %d out of bounds", i);
 
   const idx_t *o2i = d->ord2idx;
-  idx_t ni = o2i[MIN(t->hi,d->to)+1];
-  for (i = MAX(i,o2i[t->lo]); i < ni && t->coef[i] == 0; ++i) ;
+  ord_t lo = MAX(t->lo, d->ords[i]);
+  idx_t hi = MIN(t->hi, d->to);
 
-  if (i >= ni) { DBGFUN(<-); return -1; }
+  for (ord_t o = lo; o <= hi ; ++o) {
+    if (!mad_bit_tst(t->nz,o)) continue;
+    for (i = MAX(i,o2i[o]); i < o2i[o+1] && !t->coef[i]; ++i) ;
+    if (i < o2i[o+1] && t->coef[i]) break;
+  }
 
+  if (i >= o2i[hi+1]) { DBGFUN(<-); return -1; }
+
+  if (v_) *v_ = t->coef[i];
   if (m_) {
     ensure(0 <= n && n <= d->nn, "invalid monomial length %d", n);
     mad_mono_copy(n, d->To[i], m_);
   }
-  if (v_) *v_ = t->coef[i];
 
   DBGFUN(<-); return i;
 }
@@ -604,7 +610,7 @@ FUN(geti) (const T *t, idx_t i)
   const D *d = t->d;
   ensure(0 <= i && i < d->nc, "index %d out of bounds", i);
   ord_t o = d->ords[i];
-  NUM ret = t->lo <= o && o <= MIN(t->hi,d->to) ? t->coef[i] : 0;
+  NUM ret = t->lo <= o && o <= MIN(t->hi,d->to) && mad_bit_tst(t->nz,o) ? t->coef[i] : 0;
   DBGFUN(<-); return ret;
 }
 
@@ -617,7 +623,7 @@ FUN(gets) (const T *t, ssz_t n, str_t s)
   idx_t i = mad_desc_idxs(d,n,s);
   ensure(i >= 0, "invalid monomial");
   ord_t o = d->ords[i];
-  NUM ret = t->lo <= o && o <= MIN(t->hi,d->to) ? t->coef[i] : 0;
+  NUM ret = t->lo <= o && o <= MIN(t->hi,d->to) && mad_bit_tst(t->nz,o) ? t->coef[i] : 0;
   DBGFUN(<-); return ret;
 }
 
@@ -629,7 +635,7 @@ FUN(getm) (const T *t, ssz_t n, const ord_t m[n])
   idx_t i = mad_desc_idxm(d,n,m);
   ensure(i >= 0, "invalid monomial");
   ord_t o = d->ords[i];
-  NUM ret = t->lo <= o && o <= MIN(t->hi,d->to) ? t->coef[i] : 0;
+  NUM ret = t->lo <= o && o <= MIN(t->hi,d->to) && mad_bit_tst(t->nz,o) ? t->coef[i] : 0;
   DBGFUN(<-); return ret;
 }
 
@@ -642,7 +648,7 @@ FUN(getsm) (const T *t, ssz_t n, const idx_t m[n])
   idx_t i = mad_desc_idxsm(d,n,m);
   ensure(i >= 0, "invalid monomial");
   ord_t o = d->ords[i];
-  NUM ret = t->lo <= o && o <= MIN(t->hi,d->to) ? t->coef[i] : 0;
+  NUM ret = t->lo <= o && o <= MIN(t->hi,d->to) && mad_bit_tst(t->nz,o) ? t->coef[i] : 0;
   DBGFUN(<-); return ret;
 }
 
@@ -658,7 +664,7 @@ FUN(getv) (const T *t, idx_t i, ssz_t n, NUM v[n])
   const ord_t *ord = d->ords+i;
   const NUM  *coef = t->coef+i;
   for (idx_t j = 0; j < n; ++j)
-    v[j] = t->lo <= ord[j] && ord[j] <= hi ? coef[j] : 0;
+    v[j] = t->lo <= ord[j] && ord[j] <= hi && mad_bit_tst(t->nz,ord[j]) ? coef[j] : 0;
 
   DBGFUN(<-);
 }
