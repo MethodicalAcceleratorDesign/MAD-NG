@@ -560,13 +560,18 @@ local function compute_fgrd (env)
   -- backup states
   backup(var, bak)
 
-  -- last step norm
+  -- estimate dh from last step or current point
   local hn = h:norm()
+  local dh = 1e-4*hn
+  if dh == 0 then dh = 1e-8*x:norm() end
+  if dh == 0 then dh = 1e-10 end
+
+  if trc then printf("nlopt: computing derivatives with dh=%-.5e\n", dh) end
 
   -- Broyden's Jacobian update
   local bro, Bc = env.objective.broyden and prv.c ~= nil and hn ~= 0
   if bro then
-    if trc then printf("nlopt: Broyden's update with |hn|=%-.8e\n", hn) end
+    if trc then printf("nlopt: Broyden's update with |hn|=%-.5e\n", hn) end
     Bc = cjac + (c - prv.c - cjac*h)*h:t()/hn^2
   end
 
@@ -575,12 +580,13 @@ local function compute_fgrd (env)
     if bro and h[iv] >= 0.8*hn then             -- Broyden's rank one update
       cjac:setcol(iv, Bc:getcol(iv))
       if trc then
-        printf("nlopt: Broyden's update for variable %d (%-.8e)\n", iv, h[iv])
+        printf("nlopt: Broyden's update for variable %d (%-.5e)\n", iv, h[iv])
       end
     else                                        -- finite difference required
-      local ih = x[iv] ~= 0 and x[iv]*xstp[iv] or 1e-12
+      local ih = x[iv]*xstp[iv]
+      if ih == 0 then ih = dh end
       x[iv] = x[iv]+ih ; var.fval = fval
-      if x[iv] < xmin[iv] or x[iv] > xmax[iv] then
+      if x[iv] < xmin[iv] or x[iv] > xmax[iv] or ih*xslp[iv] < 0 then
         x[iv], ih = x[iv]-2*ih, -ih   -- take -ih if bbox are violated
       end
 
@@ -814,7 +820,7 @@ local function exec (self)
     local v = variables[i] or {}
     if v.get then var.x0[i] = v.get(env) end
     var.x   [i] = var.x0[i]
-    var.xstp[i] = v.rstp   or variables.rstp  or  1e-8
+    var.xstp[i] = v.rstp   or variables.rstp  or  0
     var.xslp[i] = v.slope  or variables.slope or  0
     var.xtol[i] = v.tol    or variables.tol   or  0
     var.xmin[i] = v.min    or variables.min   or -inf
