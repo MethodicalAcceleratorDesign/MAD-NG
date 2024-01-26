@@ -36,7 +36,7 @@ local is_number, is_function                                    in MAD.typeid
 local fnil, fcut, ftst, bind3rd                                 in MAD.gfunc
 local fact, arc2cord, sqrt, sin, cos, atan2                     in MAD.gmath
 local assertf, errorf                                           in MAD.utility
-local minlen, minang, minstr, clight, twopi, pi_2               in MAD.constant
+local minlen, minang, minstr, clight, mu0, twopi, pi_2          in MAD.constant
 local is_implicit                                               in element.drift
 
 local type = type
@@ -89,6 +89,9 @@ local rfcav_kick, rfcav_kickn             , rfcav_fringe           in MAD.dynmap
 
 -- beambeam
 local bbeam_kick, bbeam_kick6D                                     in MAD.dynmap
+
+-- wire
+local wire_kick                                                    in MAD.dynmap
 
 -- generic damap
 local genm_thick                                                   in MAD.dynmap
@@ -305,6 +308,7 @@ local map = {
     [nllens_kick ] =            nllens_kick   ,
     [bbeam_kick  ] =            bbeam_kick    ,
     [bbeam_kick6D] =            bbeam_kick6D  ,
+    [wire_kick   ] =            wire_kick     ,
     [genm_thick  ] =            genm_thick    ,
     [xrotation   ] = _C.mad_trk_xrotation_r   ,
     [yrotation   ] = _C.mad_trk_yrotation_r   ,
@@ -348,6 +352,7 @@ local map = {
     [nllens_kick ] =            nllens_kick   ,
     [bbeam_kick  ] =            bbeam_kick    ,
     [bbeam_kick6D] =            bbeam_kick6D  ,
+    [wire_kick   ] =            wire_kick     ,
     [genm_thick  ] =            genm_thick    ,
     [xrotation   ] = _C.mad_trk_xrotation_t   ,
     [yrotation   ] = _C.mad_trk_yrotation_t   ,
@@ -391,6 +396,7 @@ local map = {
     [nllens_kick ] =            nllens_kick   ,
     [bbeam_kick  ] =            bbeam_kick    ,
     [bbeam_kick6D] =            bbeam_kick6D  ,
+    [wire_kick   ] =            wire_kick     ,
     [genm_thick  ] =            genm_thick    ,
     [xrotation   ] = _C.mad_trk_xrotation_p   ,
     [yrotation   ] = _C.mad_trk_yrotation_p   ,
@@ -821,27 +827,6 @@ local function track_multipole (elm, m)
   end
 
   trackelm(elm, m, thinonly, kick, nil, fnil)
-end
-
-local function track_bbeam (elm, m)
-  if not elm.enabled then return track_marker(elm, m) end
-
-  if m.cmap then
-    -- TODO: not yet implemented
-  end
-
-  local kick = elm.bb6D and bbeam_kick6D or bbeam_kick
-  trackelm(elm, m, thinonly, kick)
-end
-
-local function track_nllens (elm, m)
-  if not elm.enabled then return track_marker(elm, m) end
-
-  if m.cmap then
-    -- TODO: not yet implemented
-  end
-
-  trackelm(elm, m, thinonly, nllens_kick)
 end
 
 local function track_sbend (elm, m, e1_, e2_)
@@ -1313,6 +1298,53 @@ local function track_crabcavity (elm, m)
   local l, volt in elm
   m.knl[1] = m.knl[1] + volt*l*1e-3
   track_rfcavgen(elm, m, true)
+end
+
+-- wire element
+
+local function track_wire (elm, m)
+  local l, l_int, current, xma, yma in elm
+
+  m.el, m.eh = l, 0
+  m.xma, m.yma = xma, yma
+  m.l21, m.l22 = (l_int+l)^2, (l_int-l)^2
+  m.wa = 0.5*mu0*current*clight/twopi
+
+  local model  = elm.model  or m.model
+  local method = elm.method or mth_ or m.method
+  local inter, thick, kick, fringe
+
+  if l < minlen then
+    inter, thick, kick = thinonly, wire_kick, fnil
+  elseif current == 0 then
+    inter, thick, kick = thickonly, strex_drift, fnil
+  else
+    inter, thick, kick = DKD[method], strex_drift, wire_kick
+  end
+
+  local track = #elm == 0 and trackelm or tracksub
+  track(elm, m, inter, thick, kick, fnil)
+end
+
+local function track_bbeam (elm, m)
+  if not elm.enabled then return track_marker(elm, m) end
+
+  if m.cmap then
+    -- TODO: not yet implemented
+  end
+
+  local kick = elm.bb6D and bbeam_kick6D or bbeam_kick
+  trackelm(elm, m, thinonly, kick)
+end
+
+local function track_nllens (elm, m)
+  if not elm.enabled then return track_marker(elm, m) end
+
+  if m.cmap then
+    -- TODO: not yet implemented
+  end
+
+  trackelm(elm, m, thinonly, nllens_kick)
 end
 
 -- genmap element
