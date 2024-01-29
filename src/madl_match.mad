@@ -368,11 +368,11 @@ local function disp_summ (env)
   io.write"--------------------------------------------------------------------------------\n"
 
   for i=1,n do
-    local xmin = var.xmin[i] > -1e200 and strfmt("% -.5e",var.xmin[i]) or '  .'
-    local xmax = var.xmax[i] <  1e200 and strfmt("% -.5e",var.xmax[i]) or '  .'
+    local umin = var.umin[i] > -1e200 and strfmt("% -.5e",var.umin[i]) or '  .'
+    local umax = var.umax[i] <  1e200 and strfmt("% -.5e",var.umax[i]) or '  .'
     local e = variables[i] or {}
     printf("%2d % -23s % -.5e % -.5e % -12s % -12s%s\n", i, e.name or e.var or '',
-           v1[i], v2[i], xmin, xmax,
+           v1[i], v2[i], umin, umax,
            xr[i] == xr.n and ' *' or xa[i] == xa.n and ' #' or '')
   end
 
@@ -399,9 +399,16 @@ local function chkstp (env)
   end
 
   if var.ccnt == 0 or obj.bstra == 0 then -- feasible point
-    local fval, fstp, fmin, ftol, frtol in var
+    local fval, fstp, fmin, ftol, frtol, umin, umax, x, n in var
 
-    if fval <= fmin then
+    local vbnd = false
+    for iv=1,n do
+      if x[iv] < umin[iv] or x[iv] > umax[iv] then vbnd = true ; break end
+    end
+
+    if vbnd then
+      -- out of bound, not a feasible point
+    elseif fval <= fmin then
       var.status = _C.NLOPT_STOPVAL_REACHED  ; return true
 
     elseif abs(fstp)-ftol <= 0 or abs(fstp)-frtol*(abs(fval)+eps) <= 0 then
@@ -520,7 +527,7 @@ local function compute_fval (env)
   if var.optf
   then for i=p+1,m do -- nlopt algorithms prefer to have full jacobian
     if c[i] > ctol[i] then cn[i] = 1               end cv = cv+c[i]^2 end
-  else for i=p+1,m do -- mad algorithms prefer to have reduced jacobian
+  else for i=p+1,m do -- madng algorithms prefer to have reduced jacobian
     if c[i] > ctol[i] then cn[i] = 1 else c[i] = 0 end cv = cv+c[i]^2 end
   end
 
@@ -555,7 +562,7 @@ local function compute_fgrd (env)
     var.cjac_f = cjac:copy(var.cjac_f)
   end
 
-  local n, x, h, c, xstp, xslp, xmin, xmax, fval, fgrd, cjac, prv, bak in var
+  local n, x, h, c, xstp, xslp, xmin, xmax, xtra, fval, fgrd, cjac, prv, bak in var
 
   -- backup states
   backup(var, bak)
@@ -586,7 +593,7 @@ local function compute_fgrd (env)
       local ih = x[iv]*xstp[iv]
       if ih == 0 then ih = dh end
       x[iv] = x[iv]+ih ; var.fval = fval
-      if x[iv] < xmin[iv] or x[iv] > xmax[iv] or ih*xslp[iv] < 0 then
+      if x[iv] < xmin[iv] or x[iv] > xmax[iv] or 0 > xslp[iv]*ih then
         x[iv], ih = x[iv]-2*ih, -ih   -- take -ih if bbox are violated
       end
 
@@ -753,6 +760,9 @@ local function exec (self)
       xslp  = vector(n),                  -- variables slopes
       xmin  = vector(n),                  -- variables minimum bounds
       xmax  = vector(n),                  -- variables maximum bounds
+      umin  = vector(n),                  -- variables minimum bounds from user
+      umax  = vector(n),                  -- variables maximum bounds from user
+      xtra  = vector(n),                  -- variables relative extra bounds
       xtol  = vector(n),                  -- variables tolerances
       xrmov = variables.rmov or inf,      -- variables relative maximum move
       xrtol = variables.rtol or eps,      -- variables relative tolerance
@@ -825,6 +835,7 @@ local function exec (self)
     var.xtol[i] = v.tol    or variables.tol   or  0
     var.xmin[i] = v.min    or variables.min   or -inf
     var.xmax[i] = v.max    or variables.max   or  inf
+    var.xtra[i] = v.rxtr   or variables.rxtr  or  1
 
     if var.xmin[i] > var.xmax[i] then
       var.xmin[i], var.xmax[i] = var.xmax[i], var.xmin[i]
@@ -836,6 +847,10 @@ local function exec (self)
     if var.x[i] < var.xmin[i] or var.x[i] > var.xmax[i] then
       warn("invalid initial value %d (out of bounds)", i)
     end
+
+    var.umin[i], var.umax[i] = var.xmin[i], var.xmax[i]
+    var.xmin[i] = var.xmin[i]*(var.xmin[i] <= 0 and var.xtra[i] or 1/var.xtra[i])
+    var.xmax[i] = var.xmax[i]*(var.xmax[i] >= 0 and var.xtra[i] or 1/var.xtra[i])
   end
 
   -- xtol and xrtol flag
