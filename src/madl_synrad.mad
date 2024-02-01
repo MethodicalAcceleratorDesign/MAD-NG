@@ -34,6 +34,7 @@ local hypot, rand, randp         in MAD.gmath
 local is_damap                   in MAD.typeid
 local printf                     in MAD.utility
 local eps, minang, hbar, clight  in MAD.constant
+local atborder                   in MAD.symint.slcsel
 
 local abs, sqrt in math
 
@@ -53,10 +54,10 @@ local function track_photon (elm, m, i, ph_fac, beam)
                status='Xset'}
 
   if m.info >= 2 then
-    printf("photon: emitting #%d in %s at %.3f m for turn #%d\n",
+    printf("photon: emitting #%d in %s at %.5f m for turn #%d\n",
                            ph.id, elm.name, s,         m.turn)
-    printf("photon: x=% -.2e, px=% -.2e, y=% -.2e, py=% -.2e\n",
-                        ph.x,     ph.px,     ph.y,     ph.py)
+    printf("photon: x=%-.5e, px=%-.5e, y=%-.5e, py=%-.5e\n",
+                      ph.x,     ph.px,   ph.y,     ph.py)
   end
 
   m.npar, m.tpar, m.nphot = m.npar+1, m.tpar+1, m.nphot+1
@@ -65,130 +66,113 @@ end
 
 -- synchrotron radiation ------------------------------------------------------o
 
--- backup initial px, py
+-- backup initial x, px, y, py
 
 function M.srad_save (elm, m, lw, islc)
---print("srad_save", elm.name, elm.l, lw, islc)
+-- print("srad_save", elm.name, elm.l, lw, islc)
+  if elm.lrad == 0 then return end
   for i=1,m.npar do
     local beam in m[i]
     if beam and beam.charge == 0 then goto continue end
-    local px, py, pt in m[i]
+    local px, py in m[i]
     if is_damap(m[i]) then px, py = px:get0(), py:get0() end
-    m[i].px0, m[i].py0 = px, py
+    m[i].px00, m[i].py00 = px, py
     ::continue::
   end
   m.pclw = 0
 end
 
--- damping synchrotron radiation, backup px, py
-
-function M.srad_damp_ng (elm, m, lw, islc)
---print("srad_damp", elm.name, elm.l, lw, islc, m.clw)
-  local eh, sdir, info in m
-  local elw = (m.clw-m.pclw) * elm.lrad
-  local aelw = abs(elw)
-  m.pclw = m.clw
-
+local function srad_save1 (elm, m, lw, islc)
+-- print("srad_save1", elm.name, elm.l, lw, islc)
   for i=1,m.npar do
     local beam in m[i]
     if beam and beam.charge == 0 then goto continue end
-    local x, px, py, pt, px0, py0 in m[i]
-    if is_damap(m[i]) then px, py, pt = px:get0(), py:get0(), pt:get0() end
-
-    local  dpx  = px-px0 + elw*eh
-    local  dpy  = py-py0
-    local  kck2 = dpx^2+dpy^2
-
-
-    if kck2 > 0 then
-      local  beam = beam or m.beam
-      local _bet0 = 1/beam.beta
-      local  dpp1 = sqrt(1 + (2*_bet0)*pt + pt^2)
-      local _beta = (_bet0+pt) / dpp1
-      local  rfac = 2/3 * beam.emrad * (dpp1*beam.betgam)^3 * kck2 / aelw
-
---[[
- rfac = (hx**2 + hy**2) * (length / two * (one + h*x) - tan(e1)*x)
- rfac =      kck2        /       aelw
---]]
-
-      local  damp = sqrt(1 + rfac*(rfac-2)*_beta^2)
-
-      if sdir < 0 then damp, rfac = 1/damp, -rfac end
-
-      -- scalar or tpsa
-      m[i].px, px = m[i].px*damp , px*damp
-      m[i].py, py = m[i].py*damp , py*damp
-      m[i].pt     = m[i].pt*(1-rfac) - rfac*_bet0
-
---print("npar=", i, "kck2=", kck2, "elw=", elw, "rfac=", rfac, "px=", px, "px0=", px0)
-
-      if info >= 2 and rfac ~= 0 then
-        printf("synrad: particle #%d lost %.2e GeV in slice %d of %s (rfac=%.16e)\n",
-               m[i].id, rfac*beam.energy, islc, elm.name, rfac)
-      end
+    local x, px, y, py, t, pt in m[i]
+    if is_damap(m[i]) then
+      m[i].dpx0, m[i].px00 = px:get0()-m[i].px00, 0
+      m[i].dpy0, m[i].py00 = py:get0()-m[i].py00, 0
+      m[i].x0  , m[i].px0  = x:copy(m[i].x0), px:copy(m[i].px0)
+      m[i].y0  , m[i].py0  = y:copy(m[i].y0), py:copy(m[i].py0)
+      m[i].t0  , m[i].pt0  = t:copy(m[i].t0), pt:copy(m[i].pt0)
+    else
+      m[i].dpx0, m[i].px00 = px-m[i].px00, 0
+      m[i].dpy0, m[i].py00 = py-m[i].py00, 0
+      m[i].x0  , m[i].px0  = x, px
+      m[i].y0  , m[i].py0  = y, py
+      m[i].t0  , m[i].pt0  = t, pt
     end
-
-    -- backup
-    m[i].px0, m[i].py0 = px, py
-
     ::continue::
   end
+  m.redo = true
 end
+
+-- damping synchrotron radiation, backup px, py
 
 function M.srad_damp (elm, m, lw, islc)
 --print("srad_damp", elm.name, elm.l, lw, islc, m.clw)
+  if elm.lrad == 0 then return end
+
+  if atborder(elm,m,lw,islc) then
+    if islc == 0  then return srad_save1(elm,m,lw,islc) end
+    if not m.redo then return end
+  end
+
   local eh, sdir, info in m
   local elw = (m.clw-m.pclw) * elm.lrad
   local aelw = abs(elw)
-  m.pclw = m.clw
+  local facr = m.pclw == 0 and 0.5 or 1
 
   for i=1,m.npar do
     local beam in m[i]
     if beam and beam.charge == 0 then goto continue end
-    local x, px, py, pt, px0, py0 in m[i]
+    local x, px, py, pt, px0, py0, dpx0, dpy0 in m[i]
 
     if is_damap(m[i]) then
-      px, py, pt = px:get0(), py:get0(), pt:get0()
+      x, px , py , pt  = x:get0(), px :get0(), py :get0(), pt:get0()
+         px0, py0      =           px0:get0(), py0:get0()
     end
 
-    local  dpx  = px-px0 + elw*eh
-    local  dpy  = py-py0
-    local  kck2 = dpx^2+dpy^2
+    local dpx  = px-px0+dpx0 - eh
+    local dpy  = py-py0+dpy0
+    local kck2 = dpx^2+dpy^2
 
     if kck2 > 0 then
       local  beam = beam or m.beam
       local _bet0 = 1/beam.beta
       local  dpp1 = sqrt(1 + (2*_bet0)*pt + pt^2)
       local _beta = (_bet0+pt) / dpp1
-      local  rfac = 2/3 * beam.emrad * (dpp1*beam.betgam)^3 * kck2 / aelw
+      local  rfac = 2/3 * beam.emrad * beam.betgam^3 * dpp1 * kck2 * aelw*(1+eh*x) * facr
 
---[[
- rfac = (hx**2 + hy**2) * (length / two * (one + h*x) - tan(e1)*x)
- rfac =      kck2        /       aelw
---]]
+-- print("i=", i, "hx=", dpx, "hy=", dpy, "rfac=", rfac, "aelw=", aelw*(1+eh*x), "eh=", eh)
 
-      local  damp = sqrt(1 + rfac*(rfac-2)*_beta^2)
+      local damp = sqrt(1 + rfac*(rfac-2)*_beta^2)
 
       if sdir < 0 then damp, rfac = 1/damp, -rfac end
 
-      -- scalar or tpsa
-      m[i].px, px = m[i].px*damp , px*damp
-      m[i].py, py = m[i].py*damp , py*damp
-      m[i].pt     = m[i].pt*(1-rfac) - rfac*_bet0
-
---print("npar=", i, "kck2=", kck2, "elw=", elw, "rfac=", rfac, "px=", px, "px0=", px0)
+      if m.redo then
+        m[i].x, m[i].px = m[i].x0, m[i].px0*damp
+        m[i].y, m[i].py = m[i].y0, m[i].py0*damp
+        m[i].t, m[i].pt = m[i].t0, m[i].pt0*(1-rfac) - rfac*_bet0
+      else
+        m[i].px = m[i].px*damp
+        m[i].py = m[i].py*damp
+        m[i].pt = m[i].pt*(1-rfac) - rfac*_bet0
+      end
 
       if info >= 2 and rfac ~= 0 then
-        printf("synrad: particle #%d lost %.2e GeV in slice %d of %s (rfac=%.16e)\n",
+        printf("synrad: particle #%d lost %.5e GeV in slice %d of %s (rfac=%.5e)\n",
                m[i].id, rfac*beam.energy, islc, elm.name, rfac)
       end
     end
 
     -- backup
-    m[i].px0, m[i].py0 = px, py
+    if not m.redo then
+      m.pclw = m.clw
+      m[i].px0, m[i].dpx0 = m[i].px, 0
+      m[i].py0, m[i].dpy0 = m[i].py, 0
+    end
 
-    ::continue::
+  ::continue::
   end
 end
 
@@ -197,23 +181,25 @@ end
 local kcrit = 1.5*hbar*clight
 
 function M.srad_quant (elm, m, lw, islc)
---print("srad_quant", elm.name, elm.l, lw, islc)
+--print("srad_quant", elm.name, elm.l, lw, islc, m.clw)
+
+  if elm.lrad == 0 or atborder(elm,m,lw,islc) then return end
+
   local eh, sdir, radiate, info in m
-  local elw = islc>0 and lw*elm.lrad or m.clw-m.pclw
+  local elw = (m.clw-m.pclw) * elm.lrad
   local aelw = abs(elw)
-  m.pclw = m.clw
 
   for i=1,m.npar do
     local beam in m[i]
     if beam and beam.charge == 0 then goto continue end
-    local px, py, pt, px0, py0 in m[i]
+    local x, px, py, pt, px00, py00 in m[i]
 
     if is_damap(m[i]) then
-      px, py, pt = px:get0(), py:get0(), pt:get0()
+      x, px, y, py, pt = x:get0(), px:get0(), y:get0(), py:get0(), pt:get0()
     end
 
-    local dpx = px-px0 + elw*eh
-    local dpy = py-py0
+    local dpx = px-px00 - eh
+    local dpy = py-py00
     local kck = hypot(dpx, dpy)
 
     if kck > 0 then
@@ -221,9 +207,9 @@ function M.srad_quant (elm, m, lw, islc)
       local  bet0 = beam.beta
       local _bet0 = 1/bet0
       local  dpp1 = sqrt(1 + (2*_bet0)*pt + pt^2)
-      local _beta = (_bet0 + pt) / dpp1
+      local _beta = (_bet0+pt) / dpp1
       local  gama = (bet0*pt + 1)*beam.gamma
-      local ucrit = kcrit * gama^2/beam.mass * kck / aelw
+      local ucrit = kcrit * gama^2/beam.mass * kck * aelw*(1+eh*x)
       local aphot = beam.aphot * dpp1 * kck
       local nphot = randp(aphot)
       local  rfac = 0
@@ -242,24 +228,24 @@ function M.srad_quant (elm, m, lw, islc)
 
       if sdir < 0 then damp, rfac = 1/damp, -rfac end
 
+      m[i].px = m[i].px*damp
+      m[i].py = m[i].py*damp
+      m[i].pt = m[i].pt*(1-rfac) - rfac*_bet0
+
       if info >= 2 and rfac ~= 0 or nphot > 2 then
-        printf("synrad: particle #%d lost %.4e GeV [%d photons] in slice %d of %s (pt=%.5e)\n",
+        printf("synrad: particle #%d lost %.5e GeV [%d photons] in slice %d of %s (pt=%.5e)\n",
                 m[i].id, rfac*beam.energy, nphot, islc, elm.name, pt)
         if nphot > 5 then
-          warn(">5 photons emitted, synch. radiat. too high at x=%.2e, y=%.2e", x, y)
+          warn(">5 photons emitted, synch. radiat. too high at x=%.5e, y=%.5e", x, y)
         elseif nphot > 2 then
           warn(">2 photons emitted, thinner slicing strongly recommended")
         end
       end
-
-      -- scalar or tpsa
-      m[i].px, px = m[i].px*damp , px*damp
-      m[i].py, py = m[i].py*damp , py*damp
-      m[i].pt     = m[i].pt*(1-rfac) - rfac*_bet0
     end
 
     -- backup
-    m[i].px0, m[i].py0 = px, py
+    m.pclw = m.clw
+    m[i].px00, m[i].py00 = px, py
 
     ::continue::
   end
