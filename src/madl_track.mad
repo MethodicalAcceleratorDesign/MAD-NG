@@ -44,7 +44,7 @@ local band                                                      in MAD.gfunc
 local apercheck                                                 in MAD.aperture
 local srad_save, srad_damp, srad_quant                          in MAD.synrad
 local is_implicit                                               in element.drift
-local slcsel, slcbit, action, actionat, getslcbit               in symint
+local slcsel, slcbit, noredo, action, actionat, getslcbit       in symint
 local abs, max in math
 
 local io, type, setmetatable, assert =
@@ -500,21 +500,24 @@ local function make_mflow (self)
     end
   end
 
-  -- activate radiation
+  -- activate radiation (action put in front of the list)
   if radiate then
-    local radact
-    atentry = chain(achain(slcsel.atbegin, srad_save), atentry)
+    local radact = srad_save
+    atentry = chain(achain(slcsel.atbegin, radact), achain(noredo, atentry))
     if string.find(radiate, "damp", 1, true) then
       radact = srad_damp
     elseif string.find(radiate, "quant", 1, true) or
            string.find(radiate, "phot" , 1, true) then
       radact = srad_quant
     else error("invalid radiate value '"..radiate.."'") end
-    atslice = chain(achain(slcsel.atcore, radact), atslice)
-    atexit  = chain(achain(slcsel.atend,  radact), atexit )
+    atslice = chain(                      radact , achain(noredo, atslice))
+    atexit  = chain(achain(slcsel.atend,  radact), achain(noredo, atexit ))
 
     if save then mtbl.radiate = radiate end -- update mtbl
     if string.find(radiate, "phot", 1, true) then radiate = "photon" end
+
+    -- ensure min 3 slices if radiation is on
+    -- nslc = max(nslc, 3)
   end
 
   -- totalpath
@@ -639,6 +642,7 @@ local function make_mflow (self)
   mflw.tpar=mflw.npar        -- total number of particles or damaps
   mflw.damo=damo             -- damap max variables  order (0 means no DA)
   mflw.dapo=dapo             -- damap max parameters order (0 means no parameters)
+  mflw.redo=false            -- flag to redo/repeat a slice
   mflw.nslc=nslc             -- minimum number of slices for all elements
   mflw.nslice=nslice         -- slices for each element (num, fun or iterable)
   mflw.deltap=deltap         -- delta p
@@ -719,7 +723,7 @@ local function make_mflow (self)
   mflw.bfx={[0]=0}           -- current element curved field x coefficients
   mflw.bfy={[0]=0}           -- current element curved field y coefficients
 
-  -- for processing (thin) subelements (pre-alloc to avoid rehash)
+  -- for processing subelements (pre-alloc to avoid rehash)
   mflw.__sdat = setmetatable({
     el=0, lrad=0,            -- current subelement lengths
     eh=0,  ang=0,            -- current subelement curvature and angle
