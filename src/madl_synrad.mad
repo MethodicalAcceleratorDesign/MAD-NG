@@ -74,9 +74,11 @@ function M.srad_save (elm, m, lw, islc)
   for i=1,m.npar do
     local beam in m[i]
     if beam and beam.charge == 0 then goto continue end
-    local px, py in m[i]
-    if is_damap(m[i]) then px, py = px:get0(), py:get0() end
+    local x, px, y, py in m[i]
+    if is_damap(m[i]) then x, px, py = x:get0(), px:get0(), py:get0() end
+    m[i]. x00            =  x
     m[i].px00, m[i].py00 = px, py
+    m[i].dpx0, m[i].dpy0 = 0 , 0
     ::continue::
   end
   m.pclw = 0
@@ -125,25 +127,26 @@ function M.srad_damp (elm, m, lw, islc)
   for i=1,m.npar do
     local beam in m[i]
     if beam and beam.charge == 0 then goto continue end
-    local x, px, py, pt, px0, py0, dpx0, dpy0 in m[i]
+    local x, px, py, pt, px0, py0, x00, dpx0, dpy0 in m[i]
 
     if is_damap(m[i]) then
-      x, px , py , pt  = x:get0(), px :get0(), py :get0(), pt:get0()
-         px0, py0      =           px0:get0(), py0:get0()
+      x, px , py , pt = x:get0(), px :get0(), py :get0(), pt:get0()
+         px0, py0     =           px0:get0(), py0:get0()
     end
 
-    local dpx  = px-px0+dpx0 - eh
-    local dpy  = py-py0+dpy0
-    local kck2 = dpx^2+dpy^2
+    local hlw = aelw*(1+0.5*eh*(x+x00))
+    local hx  = (px-px0+dpx0)/hlw - eh
+    local hy  = (py-py0+dpy0)/hlw
+    local kck = hx^2+hy^2
 
-    if kck2 > 0 then
+    if kck > 0 then
       local  beam = beam or m.beam
       local _bet0 = 1/beam.beta
       local  dpp1 = sqrt(1 + (2*_bet0)*pt + pt^2)
       local _beta = (_bet0+pt) / dpp1
-      local  rfac = 2/3 * beam.emrad * beam.betgam^3 * dpp1 * kck2 * aelw*(1+eh*x) * facr
+      local  rfac = 2/3 * beam.emrad * beam.betgam^3 * dpp1 * kck * hlw * facr
 
--- print("i=", i, "hx=", dpx, "hy=", dpy, "rfac=", rfac, "aelw=", aelw*(1+eh*x), "eh=", eh)
+-- print("i=", i, "hx=", hx, "hy=", hy, "hlw=", hlw, "eh=", eh, "rfac=", rfac)
 
       local damp = sqrt(1 + rfac*(rfac-2)*_beta^2)
 
@@ -168,6 +171,7 @@ function M.srad_damp (elm, m, lw, islc)
     -- backup
     if not m.redo then
       m.pclw = m.clw
+      m[i].x00            = m[i].x
       m[i].px0, m[i].dpx0 = m[i].px, 0
       m[i].py0, m[i].dpy0 = m[i].py, 0
     end
@@ -185,21 +189,22 @@ function M.srad_quant (elm, m, lw, islc)
 
   if elm.lrad == 0 or atborder(elm,m,lw,islc) then return end
 
-  local eh, sdir, radiate, info in m
+  local eh, sdir, info, radiate in m
   local elw = (m.clw-m.pclw) * elm.lrad
   local aelw = abs(elw)
 
   for i=1,m.npar do
     local beam in m[i]
     if beam and beam.charge == 0 then goto continue end
-    local x, px, py, pt, px00, py00 in m[i]
+    local x, px, py, pt, x00, px00, py00 in m[i]
 
     if is_damap(m[i]) then
       x, px, y, py, pt = x:get0(), px:get0(), y:get0(), py:get0(), pt:get0()
     end
 
-    local dpx = px-px00 - eh
-    local dpy = py-py00
+    local hlw = aelw*(1+0.5*eh*(x+x00))
+    local hx  = (px-px00)/hlw - eh
+    local hy  = (py-py00)/hlw
     local kck = hypot(dpx, dpy)
 
     if kck > 0 then
@@ -209,7 +214,7 @@ function M.srad_quant (elm, m, lw, islc)
       local  dpp1 = sqrt(1 + (2*_bet0)*pt + pt^2)
       local _beta = (_bet0+pt) / dpp1
       local  gama = (bet0*pt + 1)*beam.gamma
-      local ucrit = kcrit * gama^2/beam.mass * kck * aelw*(1+eh*x)
+      local ucrit = kcrit * gama^2/beam.mass * kck * hlw
       local aphot = beam.aphot * dpp1 * kck
       local nphot = randp(aphot)
       local  rfac = 0
@@ -245,7 +250,7 @@ function M.srad_quant (elm, m, lw, islc)
 
     -- backup
     m.pclw = m.clw
-    m[i].px00, m[i].py00 = px, py
+    m[i].x00, m[i].px00, m[i].py00 = x, px, py
 
     ::continue::
   end
