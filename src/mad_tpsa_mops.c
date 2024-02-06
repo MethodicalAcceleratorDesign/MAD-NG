@@ -90,7 +90,7 @@ liebra (ssz_t sa, const T *ma[sa], const T *mb[sa], T *mc[sa], T *t[3])
   FOR(i,sa) {
     fgrad(sa, mb, ma[i], mc[i], t);
     fgrad(sa, ma, mb[i], t[2] , t);
-    FUN(sub)(mc[i], t[2], mc[i]);
+    FUN(sub)(t[2], mc[i], mc[i]);
   }
 }
 
