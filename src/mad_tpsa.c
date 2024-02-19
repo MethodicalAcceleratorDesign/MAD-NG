@@ -418,7 +418,7 @@ FUN(cutord) (const T *t, T *r, int ord)
   const D *d = t->d;
   ensure(d == r->d, "incompatible GTPSAs descriptors 0x%p vs 0x%p", d, r->d);
 
-  if (ord < 0) { // cut 0..|ord|, see copy0 with t->lo = |ord|+1
+  if (ord <= 0) { // cut 0..|ord|, see copy0 with t->lo = |ord|+1
     r->hi = MIN(t->hi, r->mo, d->to);
     r->nz = mad_bit_hcut(mad_bit_lcut(t->nz, -ord+1), r->hi);
     if (!r->nz) { FUN(reset0)(r); DBGFUN(<-); return; }
