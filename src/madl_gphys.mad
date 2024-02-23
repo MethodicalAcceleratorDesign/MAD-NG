@@ -31,7 +31,7 @@ local assertf, errorf, printf, num2str, tbl2str, setkeys, tblcat,
 local lbool                                                      in MAD.gfunc
 local pi, twopi                                                  in MAD.constant
 local abs, sqrt, exp, log, sin, cos, tan, atan2, tgamma, lgamma,
-      sinh, cosh, real, imag, cplx, fact, rangle, hypot          in MAD.gmath
+      sinh, cosh, real, imag, cplx, fact, rangle, hypot, sign    in MAD.gmath
     
 local is_nil, is_boolean, is_number, is_positive, is_nonzero, is_integer,
       is_natural, is_nznatural, is_even, is_odd, is_string, is_table,
@@ -82,6 +82,7 @@ local gphys = {
     'alfa11', 'beta11', 'gama11', 'alfa12', 'beta12', 'gama12', 'alfa13', 'beta13', 'gama13', 'mu1', 'dx', 'dpx',
     'alfa21', 'beta21', 'gama21', 'alfa22', 'beta22', 'gama22', 'alfa23', 'beta23', 'gama23', 'mu2', 'dy', 'dpy',
     'alfa31', 'beta31', 'gama31', 'alfa32', 'beta32', 'gama32', 'alfa33', 'beta33', 'gama33', 'mu3',
+    'betx'  , 'bety'  , 'alfx'  , 'alfy'  , 'r11'   , 'r12'   , 'r21'   , 'r22' -- Edwards-Teng
   },
 
   -- optical functions names with chromatic functions (index -> name)
@@ -96,6 +97,7 @@ local gphys = {
     'alfa11', 'beta11', 'gama11', 'alfa12', 'beta12', 'gama12', 'alfa13', 'beta13', 'gama13', 'mu1', 'dmu1', 'dx', 'dpx', 'Dx', 'Dpx', 'ddx', 'ddpx', 'wx', 'phix',
     'alfa21', 'beta21', 'gama21', 'alfa22', 'beta22', 'gama22', 'alfa23', 'beta23', 'gama23', 'mu2', 'dmu2', 'dy', 'dpy', 'Dy', 'Dpy', 'ddy', 'ddpy', 'wy', 'phiy',
     'alfa31', 'beta31', 'gama31', 'alfa32', 'beta32', 'gama32', 'alfa33', 'beta33', 'gama33', 'mu3', 'dmu3',
+    'betx'  , 'bety'  , 'alfx'  , 'alfy'  , 'r11'   , 'r12'   , 'r21'   , 'r22' -- Edwards-Teng
   },
 
   -- optical functions names converter (e.g. from MAD-X), see also beta0
@@ -982,11 +984,11 @@ local function nfana (nf, k_, a_)
     local gnf, ham = {}, {}
     local g, l = ci*a*c
     t21 = os.clock()
-    g, l = g:factor_map(-1)
+    g, l = g:factor_map(-1) -- ; l:print("L") ; l:fld2vec():print("V") ; l:logpb():print("log(L)")
     t22 = os.clock()
-    g, l = g:fld2vec(), l:fld2vec()
+    g = g:fld2vec() -- l = l:fld2vec() ; if abs(l:get0()) > 0 then l = l:log() end  -- wrong...
     g:cutord(-2, g) -- keep only orders 3..
-    g = g+l         -- add order 2
+    -- g = g+l      -- add order 2
     t2 = os.clock()
 
     if nt ~= 0 then nv = 4 end -- t,pt are parameters
@@ -1665,7 +1667,7 @@ end
 
 local pha_tol in phystol
 
-function gphys.map2bet (map, rnk_, cpl_, dir_) -- TODO: move to beta0
+function gphys.map2bet (map, rnk_, cpl_, bet_, dir_) -- TODO: move to beta0
   assert(is_damap(map), "invalid argument #1 (damap expected)")
 
   local bb0, ini
@@ -1675,7 +1677,7 @@ function gphys.map2bet (map, rnk_, cpl_, dir_) -- TODO: move to beta0
     assert(typeid.is_beta0(bb0), "invalid beta0 block (not created from damap)")
   else
     ini = true
-    bb0 = MAD.beta0 {rank = rnk_, cplg = cpl_, sdir = dir_ or 1}
+    bb0 = MAD.beta0 {rank = rnk_, cplg = cpl_, beta = bet_, sdir = dir_}
   end
 
   bb0.X = map:get0(bb0.X)
@@ -1793,6 +1795,53 @@ function gphys.map2bet (map, rnk_, cpl_, dir_) -- TODO: move to beta0
     bb0.mu1, bb0.mu1_, bb0.dmu1_  = bb0.mu1+dmu1_, mu1_, dmu1_
     bb0.mu2, bb0.mu2_, bb0.dmu2_  = bb0.mu2+dmu2_, mu2_, dmu2_
     bb0.mu3, bb0.mu3_, bb0.dmu3_  = bb0.mu3+dmu3_, mu3_, dmu3_
+  end
+
+  -- Edwards-Teng coupling formalism (Lebedev & Bogacz 2010)
+
+  if bb0.cplg then
+    local dpp1 = sqrt(1 + 2/bb0.beta*bb0.pt + bb0.pt^2)
+    bb0.betx = bb0.beta11*dpp1
+    bb0.bety = bb0.beta22*dpp1
+    bb0.alfx = bb0.alfa11
+    bb0.alfy = bb0.alfa22
+
+    local kx2 = bb0.beta12/bb0.beta11                                 -- eq. 4.7
+    local ky2 = bb0.beta21/bb0.beta22
+    local kxy = kx2*ky2
+
+    if abs(kx2-ky2) >= stab_tol and abs(1-kxy) >= stab_tol then -- eq. 4.8 & 4.9
+      local kx, ky = sqrt(kx2), sqrt(ky2)
+      local ax = (bb0.alfa11*kx - bb0.alfa12/kx);                     -- eq. 4.7
+      local ay = (bb0.alfa22*ky - bb0.alfa21/ky);
+      local ku = kxy*(1+(ax*ax-ay*ay)/(kx2-ky2)*(1-kxy))              -- eq. 4.8
+      local u = -kxy/(1-kxy)
+      if ku >= stab_tol then
+        local su = sqrt(ku)
+        u = u + (kxy <= su and +1 or -1) * su/(1-kxy)                -- eq. 4.8
+      end
+      local kpa = 1-u
+
+      bb0.betx = bb0.betx/kpa                                        -- eq. 7.16
+      bb0.bety = bb0.bety/kpa
+      bb0.alfx = bb0.alfx/kpa
+      bb0.alfy = bb0.alfy/kpa
+
+      local bx  = kx*kpa + u/kx                                      -- eq. 4.10
+      local by  = ky*kpa + u/ky
+      local cx  = kx*kpa - u/kx
+      local cy  = ky*kpa - u/ky
+      local evp = (ax + 1i*bx) / (ay - 1i*by)
+      local evm = (ax + 1i*cx) / (ay + 1i*cy)
+      local ev1 = sqrt(evp*evm)                                      -- eq. 4.11
+      local ev2 = sqrt(evp/evm)
+                                                                     -- eq. 7.11
+      bb0.r11  =  sqrt(bb0.beta22/bb0.beta12) * (u*ev2.re + bb0.alfa12*ev2.im)/kpa
+      bb0.r22  = -sqrt(bb0.beta11/bb0.beta21) * (u*ev1.re + bb0.alfa21*ev1.im)/kpa
+      bb0.r12  =  sqrt(bb0.beta11*bb0.beta21) * ev1.im/kpa
+      bb0.r21  = (ev2.re*(bb0.alfa12*kpa - bb0.alfa22*u) -
+                  ev2.im*(bb0.alfa12*bb0.alfa22 + kpa*u)) / (kpa*sqrt(bb0.beta12*bb0.beta22))
+    end
   end
 
   return bb0
