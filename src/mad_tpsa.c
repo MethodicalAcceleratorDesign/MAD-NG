@@ -423,7 +423,7 @@ FUN(cutord) (const T *t, T *r, int ord)
     r->nz = mad_bit_hcut(mad_bit_lcut(t->nz, -ord+1), r->hi);
     if (!r->nz) { FUN(reset0)(r); DBGFUN(<-); return; }
     r->lo = -ord+1; r->coef[0] = 0;
-  } else {      // cut |ord|..mo, see copy0 with t->hi = |ord|-1
+  } else {       // cut |ord|..mo, see copy0 with t->hi = |ord|-1
     r->hi = MIN(ord-1, r->mo, d->to);
     r->nz = mad_bit_hcut(t->nz, r->hi);
     if (!r->nz) { FUN(reset0)(r); DBGFUN(<-); return; }
