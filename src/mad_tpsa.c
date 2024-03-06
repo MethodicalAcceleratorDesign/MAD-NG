@@ -293,45 +293,55 @@ FUN(setnam) (T *t, str_t nam)
 }
 
 void
-FUN(setval) (T *t, NUM v)
-{
-  assert(t); DBGFUN(->); DBGTPSA(t);
-
-  t->lo = t->hi = 0, t->nz = !!v, t->coef[0] = v;
-
-  DBGTPSA(t); DBGFUN(<-);
-}
-
-void
 FUN(setvar) (T *t, NUM v, idx_t iv, NUM scl)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
   const D *d = t->d;
-  const int nfo = !(iv && t->mo && d->to);
 
-  // v=0 and no first order: reset
-  if (nfo && !v) {
-    FUN(reset0)(t); DBGFUN(<-); return;
-  }
+  ensure(t->mo >= 1, "variables must be a GPTSA of order >= 1, got %d", t->mo);
+  ensure(0 < iv && iv <= d->nv,
+         "index 1 <= %d <= %d is not a GPTSA variable", iv, d->nv);
 
   t->coef[0] = v;
-
-  // no first order: set lo, hi, nz
-  if (nfo) {
-    t->lo = t->hi = 0, t->nz = !!v;
-    DBGTPSA(t); DBGFUN(<-); return;
-  }
-
-  ensure(0 <= iv && iv <= d->nv,
-         "index %d exceeds GPTSA number of variables %d", iv, d->nv);
 
   // clear first order
   const idx_t *o2i = d->ord2idx;
   for (idx_t i = o2i[1]; i < o2i[2]; ++i) t->coef[i] = 0;
 
   // set lo, hi, nz, coef[iv]
-  t->hi = 1, t->lo = !v, t->nz = v ? 3 : 2;
-  t->coef[iv] = scl ? scl : 1;
+  t->hi = 1, t->lo = !v, t->nz = 2+!!v, t->coef[iv] = scl ? scl : 1;
+
+  DBGTPSA(t); DBGFUN(<-);
+}
+
+void
+FUN(setprm) (T *t, NUM v, idx_t ip)
+{
+  assert(t); DBGFUN(->); DBGTPSA(t);
+  const D *d = t->d;
+
+  ensure(t->mo == 1 , "parameters must be a GPTSA of order 1, got %d", t->mo);
+  ensure(0 < ip && ip <= d->np,
+         "index 1 <= %d <= %d is not a GPTSA parameter", ip, d->np);
+
+  t->coef[0] = v;
+
+  // clear first order
+  const idx_t *o2i = d->ord2idx;
+  for (idx_t i = o2i[1]; i < o2i[2]; ++i) t->coef[i] = 0;
+
+  // set lo, hi, nz, coef[ip]
+  t->hi = 1, t->lo = !v, t->nz = 2+!!v, t->coef[ip+d->nv] = 1;
+
+  DBGTPSA(t); DBGFUN(<-);
+}
+
+void
+FUN(setval) (T *t, NUM v)
+{
+  assert(t); DBGFUN(->); DBGTPSA(t);
+
+  t->lo = t->hi = 0, t->nz = !!v, t->coef[0] = v;
 
   DBGTPSA(t); DBGFUN(<-);
 }
