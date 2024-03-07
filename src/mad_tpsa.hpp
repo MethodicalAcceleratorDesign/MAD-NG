@@ -80,8 +80,9 @@ struct tpsa_base {
   D& set(const std::string &s)         { mad_tpsa_setnam(ptr(), s.c_str());  return self(); }
 
   // set value and variables
-  D& set(num_t a)                      { mad_tpsa_setval(ptr(), a      );    return self(); }
-  D& set(num_t a, idx_t v)             { mad_tpsa_setvar(ptr(), a, v, 0);    return self(); }
+  D& set (num_t a)                     { mad_tpsa_setval(ptr(), a      );    return self(); }
+  D& set (num_t a, idx_t v)            { mad_tpsa_setvar(ptr(), a, v, 0);    return self(); }
+  D& setp(num_t a, idx_t v)            { mad_tpsa_setprm(ptr(), a, v   );    return self(); }
 
   // debug
   log_t isvalid() const { return mad_ctpsa_isvalid(ptr()); }
