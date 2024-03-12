@@ -39,7 +39,7 @@ check_same_desc(ssz_t na, const T *ma[na])
 {
   assert(ma);
   FOR(i,1,na)
-    ensure(ma[i]->d == ma[i-1]->d, "incompatibles GTPSA (descriptors differ)");
+    ensure(ma[i]->d == ma[i-1]->d, "inconsistent GTPSAs (descriptors differ)");
 }
 
 static inline void
@@ -49,7 +49,7 @@ check_minv(ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
   ensure(nb <= ma[0]->d->nv, "invalid nb > #vars");
   check_same_desc(na,   ma);
   check_same_desc(na,TC mc);
-  ensure(ma[0]->d == mc[0]->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(ma[0]->d == mc[0]->d, "incompatible GTPSAs (descriptors differ)");
 }
 
 static void
