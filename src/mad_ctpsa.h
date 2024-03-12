@@ -263,8 +263,8 @@ void     mad_ctpsa_exppb    (ssz_t na, const ctpsa_t *ma[], const ctpsa_t *mb[],
 void     mad_ctpsa_logpb    (ssz_t na, const ctpsa_t *ma[], const ctpsa_t *mb[], ctpsa_t *mc[]); // exp(log(:F:)) K
 
 num_t    mad_ctpsa_mnrm     (ssz_t na, const ctpsa_t *ma[]);
-void     mad_ctpsa_minv     (ssz_t na, const ctpsa_t *ma[],                                ctpsa_t *mc[]);
-void     mad_ctpsa_pminv    (ssz_t na, const ctpsa_t *ma[],                                ctpsa_t *mc[], idx_t select[]);
+void     mad_ctpsa_minv     (ssz_t na, const ctpsa_t *ma[], ssz_t nb,                      ctpsa_t *mc[]);
+void     mad_ctpsa_pminv    (ssz_t na, const ctpsa_t *ma[], ssz_t nb,                      ctpsa_t *mc[], idx_t select[]);
 void     mad_ctpsa_compose  (ssz_t na, const ctpsa_t *ma[], ssz_t nb, const ctpsa_t *mb[], ctpsa_t *mc[]);
 void     mad_ctpsa_translate(ssz_t na, const ctpsa_t *ma[], ssz_t nb, const cpx_t    tb[], ctpsa_t *mc[]);
 void     mad_ctpsa_eval     (ssz_t na, const ctpsa_t *ma[], ssz_t nb, const cpx_t    tb[], cpx_t    tc[]);

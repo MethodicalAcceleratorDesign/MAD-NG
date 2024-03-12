@@ -35,26 +35,27 @@
 #define TC (const T**)
 
 static inline void
-check_same_desc(ssz_t sa, const T *ma[sa])
+check_same_desc(ssz_t na, const T *ma[na])
 {
   assert(ma);
-  FOR(i,1,sa)
+  FOR(i,1,na)
     ensure(ma[i]->d == ma[i-1]->d, "incompatibles GTPSA (descriptors differ)");
 }
 
 static inline void
-check_minv(ssz_t sa, const T *ma[sa], T *mc[sa])
+check_minv(ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
 {
-  ensure(sa == ma[0]->d->nv, "non-square system"); // 'square' matrix, ignoring params
-  check_same_desc(sa,   ma);
-  check_same_desc(sa,TC mc);
+  ensure(na <= ma[0]->d->nn, "invalid na > #vars+#params");
+  ensure(nb <= ma[0]->d->nv, "invalid nb > #vars");
+  check_same_desc(na,   ma);
+  check_same_desc(na,TC mc);
   ensure(ma[0]->d == mc[0]->d, "incompatibles GTPSA (descriptors differ)");
 }
 
 static void
-split_and_inv(const D *d, const T *ma[], T *lininv[], T *nonlin[])
+split_and_inv(const D *d, ssz_t na, const T *ma[na], ssz_t nb, T *lininv[na], T *nonlin[na])
 {
-  ssz_t nn = d->nn, nv = d->nv, np = d->np; // #vars+params, #vars, #params
+  ssz_t nn = na, nv = nb, np = na-nb;  // #vars+params, #vars, #params
   mad_alloc_tmp(NUM, mat_var , nv*nv); // canonical vars
   mad_alloc_tmp(NUM, mat_vari, nv*nv); // inverse of vars
   mad_alloc_tmp(NUM, mat_par , nv*np); // params
@@ -116,26 +117,32 @@ split_and_inv(const D *d, const T *ma[], T *lininv[], T *nonlin[])
 // --- public -----------------------------------------------------------------o
 
 void
-FUN(minv) (ssz_t sa, const T *ma[sa], T *mc[sa])
+FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
 {
   DBGFUN(->);
   assert(ma && mc);
-  check_minv(sa,ma,mc);
-  FOR(i,sa) {
+  ensure(na >= nb, "invalid subtitution ranks, na >= nb expected");
+  check_minv(na, ma, nb, mc);
+  FOR(i,na) {
     DBGTPSA(ma[i]); DBGTPSA(mc[i]);
     ensure(mad_bit_tst(ma[i]->nz,1),
            "invalid rank-deficient map (1st order has zero row)");
   }
 
   const D *d = ma[0]->d;
-  T *lininv[sa], *nonlin[sa], *tmp[sa];
-  FOR(i,sa) {
+  T *lininv[na], *nonlin[na], *tmp[na];
+  FOR(i,nb) { // vars
     lininv[i] = FUN(newd)(d,1);
     nonlin[i] = FUN(new)(ma[i], mad_tpsa_same);
     tmp[i]    = FUN(new)(ma[i], mad_tpsa_same);
   }
+  FOR(i,nb,na) { // params
+    lininv[i] = (T*)ma[i];
+    nonlin[i] = (T*)ma[i];
+    tmp[i]    = (T*)ma[i];
+  }
 
-  split_and_inv(d, ma, lininv, nonlin);
+  split_and_inv(d, na, ma, nb, lininv, nonlin);
 
   // iteratively compute higher orders of the inverse:
   // al  = mc[ord=1]
@@ -144,7 +151,7 @@ FUN(minv) (ssz_t sa, const T *ma[sa], T *mc[sa])
   // mc[ord=i] = al^-1 o ( anl o mc[ord=i-1] + id ) ; i > 1
 
   log_t isnul = TRUE;
-  FOR(i,sa) {
+  FOR(i,nb) {
     FUN(copy)(lininv[i], mc[i]);
     isnul &= FUN(isnul)(nonlin[i]);
   }
@@ -153,17 +160,17 @@ FUN(minv) (ssz_t sa, const T *ma[sa], T *mc[sa])
     ord_t o_prev = mad_desc_gtrunc(d, 1);
     for (ord_t o = 2; o <= d->mo; ++o) {
       mad_desc_gtrunc(d, o);
-      FUN(compose)(sa, TC nonlin, sa, TC mc, tmp);
+      FUN(compose)(nb, TC nonlin, na, TC mc, tmp);
 
-      for (idx_t v = 0; v < sa; ++v) FUN(seti)(tmp[v], v+1, 1,1); // add identity
+      for (idx_t v = 0; v < nb; ++v) FUN(seti)(tmp[v], v+1, 1,1); // add identity
 
-      FUN(compose)(sa, TC lininv, sa, TC tmp, mc);
+      FUN(compose)(nb, TC lininv, na, TC tmp, mc);
     }
     mad_desc_gtrunc(d, o_prev);
   }
 
   // cleanup
-  FOR(i,sa) {
+  FOR(i,nb) {
     FUN(del)(lininv[i]);
     FUN(del)(nonlin[i]);
     FUN(del)(tmp[i]);
@@ -173,12 +180,13 @@ FUN(minv) (ssz_t sa, const T *ma[sa], T *mc[sa])
 }
 
 void
-FUN(pminv) (ssz_t sa, const T *ma[sa], T *mc[sa], idx_t select[sa])
+FUN(pminv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na], idx_t select[na])
 {
   DBGFUN(->);
   assert(ma && mc && select);
-  check_minv(sa,ma,mc);
-  FOR(i,sa) {
+  ensure(na >= nb, "invalid subtitution rank, na >= nb expected");
+  check_minv(na, ma, nb, mc);
+  FOR(i,na) {
     if (select[i]) {
       DBGTPSA(ma[i]); DBGTPSA(mc[i]);
       ensure(mad_bit_tst(ma[i]->nz,1),
@@ -189,8 +197,8 @@ FUN(pminv) (ssz_t sa, const T *ma[sa], T *mc[sa], idx_t select[sa])
   // split input map into rows that are inverted and rows that are not
 
   const D *d = ma[0]->d;
-  T *mUsed[sa], *mUnused[sa], *mInv[sa];
-  FOR(i,sa) {
+  T *mUsed[na], *mUnused[na], *mInv[na];
+  FOR(i,nb) { // vars
     if (select[i]) {
       mUsed  [i] = FUN(new) (ma[i], mad_tpsa_same);
       mInv   [i] = FUN(new) (ma[i], mad_tpsa_same);
@@ -203,16 +211,21 @@ FUN(pminv) (ssz_t sa, const T *ma[sa], T *mc[sa], idx_t select[sa])
       mInv   [i] = FUN(newd)(d,1);
       mUnused[i] = FUN(new) (ma[i], mad_tpsa_same);
       FUN(copy)(ma[i],mUnused[i]);
-      FUN(seti)(mUsed[i], i+1, 0,1);
+      FUN(seti)(mUsed[i], i+1, 0,1); // set identity
     }
     FUN(set0)(mUsed  [i], 0,0);
     FUN(set0)(mUnused[i], 0,0);
   }
+  FOR(i,nb,na) { // params
+    mUsed  [i] = (T*)ma[i];
+    mInv   [i] = (T*)ma[i];
+    mUnused[i] = (T*)ma[i];
+  }
 
-  FUN(minv)   (sa, TC mUsed  ,       mInv);
-  FUN(compose)(sa, TC mUnused,sa, TC mInv,mc);
+  FUN(minv)   (na, TC mUsed  , nb,    mInv);
+  FUN(compose)(nb, TC mUnused, na, TC mInv, mc);
 
-  FOR(i,sa) {
+  FOR(i,nb) {
     FUN(del)(mUsed[i]);
     FUN(del)(mUnused[i]);
     FUN(del)(mInv[i]);

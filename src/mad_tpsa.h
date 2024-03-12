@@ -188,8 +188,8 @@ void    mad_tpsa_exppb    (ssz_t na, const tpsa_t *ma[], const tpsa_t *mb[], tps
 void    mad_tpsa_logpb    (ssz_t na, const tpsa_t *ma[], const tpsa_t *mb[], tpsa_t *mc[]); // exp(log(:F:))K
 
 num_t   mad_tpsa_mnrm     (ssz_t na, const tpsa_t *ma[]);
-void    mad_tpsa_minv     (ssz_t na, const tpsa_t *ma[],                               tpsa_t *mc[]);
-void    mad_tpsa_pminv    (ssz_t na, const tpsa_t *ma[],                               tpsa_t *mc[], idx_t select[]);
+void    mad_tpsa_minv     (ssz_t na, const tpsa_t *ma[], ssz_t nb,                     tpsa_t *mc[]);
+void    mad_tpsa_pminv    (ssz_t na, const tpsa_t *ma[], ssz_t nb,                     tpsa_t *mc[], idx_t select[]);
 void    mad_tpsa_compose  (ssz_t na, const tpsa_t *ma[], ssz_t nb, const tpsa_t *mb[], tpsa_t *mc[]);
 void    mad_tpsa_translate(ssz_t na, const tpsa_t *ma[], ssz_t nb, const num_t   tb[], tpsa_t *mc[]);
 void    mad_tpsa_eval     (ssz_t na, const tpsa_t *ma[], ssz_t nb, const num_t   tb[], num_t   tc[]);
