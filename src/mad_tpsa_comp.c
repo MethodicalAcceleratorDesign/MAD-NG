@@ -157,12 +157,12 @@ FUN(eval) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], NUM tc[sa])
   mad_alloc_tmp(      T*, mc, sa);
   FOR(ib,sb) {
     T *t = FUN(newd)(ma[0]->d, 0);
-    FUN(set0)(t, 0, tb[ib]);
+    FUN(setvar)(t, tb[ib], 0,0);
     mb[ib] = t;
   }
   FOR(ic,sa) {
     T *t = FUN(newd)(ma[0]->d, 0);
-    FUN(set0)(t, 0, tc[ic]);
+    FUN(setvar)(t, tc[ic], 0,0);
     mc[ic] = t;
   }
 

@@ -299,10 +299,22 @@ FUN(setvar) (T *t, NUM v, idx_t iv, NUM scl)
   const D *d = t->d;
 
   ensure(t->mo >= 1, "variables must be a GPTSA of order >= 1, got %d", t->mo);
-  ensure(0 < iv && iv <= d->nv,
-         "index 1 <= %d <= %d is not a GPTSA variable", iv, d->nv);
+
+  // v=0 and no first order: reset
+  if (!iv && !v) {
+    FUN(reset0)(t); DBGFUN(<-); return;
+  }
 
   t->coef[0] = v;
+
+  // no first order: set lo, hi, nz
+  if (!iv) {
+    t->lo = t->hi = 0, t->nz = !!v;
+    DBGTPSA(t); DBGFUN(<-); return;
+  }
+
+  ensure(0 <= iv && iv <= d->nv,
+         "index %d exceeds GPTSA number of variables %d", iv, d->nv);
 
   // clear first order
   const idx_t *o2i = d->ord2idx;
