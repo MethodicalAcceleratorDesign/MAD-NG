@@ -229,10 +229,12 @@ FUN(newd) (const D *d, ord_t mo)
 {
   DBGFUN(->);
   if (!d) d = mad_desc_curr;
-  ensure(d, "GTPSA descriptor not found (no current one?)");
+  ensure(d, "GTPSA default descriptor not found (no current one yet?)");
 
   if (mo == mad_tpsa_default) mo = d->mo;
-  else ensure(mo <= d->mo, "GTPSA order exceeds descriptor maximum order");
+  else
+    ensure(mo <= d->mo,
+           "GTPSA order exceeds descriptor maximum order, %d <= %d", mo, d->mo);
 
   ssz_t nc = d->ord2idx[mo+1]; // was mad_desc_maxlen(d, mo);
   T *t = mad_malloc(sizeof(T) + nc * sizeof(NUM));
