@@ -38,6 +38,8 @@ enum { DESC_WARN_MONO  = 1000000, // warn if tpsa can have 1e6 coefs or more
        TPSA_STRICT_NZ  = 1 // enforce strict nz (chk can be quadratic at level 3)
 };
 
+#define DESC_USE_TMP 0 // 0: use new, 1: use TMP
+
 // --- types ------------------------------------------------------------------o
 
 struct desc_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
@@ -67,9 +69,11 @@ struct desc_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
   size_t size;       // bytes used by desc
 
   // permanent temporaries per thread for internal use
+#if DESC_USE_TMP
    tpsa_t ** t;      // tmp for  tpsa
   ctpsa_t **ct;      // tmp for ctpsa
   idx_t *ti, *cti;   // index of tmp used
+#endif
 };
 
 // --- interface --------------------------------------------------------------o
@@ -110,14 +114,23 @@ hpoly_idx (idx_t ib, idx_t ia, ssz_t ia_size)
 
 // --- macros for temporaries -------------------------------------------------o
 
+#if DESC_USE_TMP
 #define TRC_TMPX(a) (void)func // a
 
 #define GET_TMPX(t)       FUN(gettmp)(t, __func__)
 #define REL_TMPX(t)       FUN(reltmp)(t, __func__)
 #define GET_TMPC(t) mad_ctpsa_gettmpt(t, __func__)
-#define REL_TMPC(t) mad_ctpsa_reltmp (t, __func__)
 #define GET_TMPR(t)  mad_tpsa_gettmpt(t, __func__)
+#define REL_TMPC(t) mad_ctpsa_reltmp (t, __func__)
 #define REL_TMPR(t)  mad_tpsa_reltmp (t, __func__)
+#else
+#define GET_TMPX(t)          FUN(new)(t, t->mo)
+#define REL_TMPX(t)          FUN(del)(t)
+#define GET_TMPC(t)     mad_ctpsa_new((ctpsa_t*)t, t->mo)
+#define GET_TMPR(t)      mad_tpsa_new( (tpsa_t*)t, t->mo)
+#define REL_TMPC(t)     mad_ctpsa_del(t)
+#define REL_TMPR(t)      mad_tpsa_del(t)
+#endif // DESC_USE_TMP
 
 // --- end --------------------------------------------------------------------o
 

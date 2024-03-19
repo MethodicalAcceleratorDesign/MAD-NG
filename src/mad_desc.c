@@ -882,6 +882,8 @@ set_thread (D *d)
   DBGFUN(<-);
 }
 
+#if DESC_USE_TMP
+
 static inline void
 set_temp (D *d)
 {
@@ -924,6 +926,8 @@ del_temps (D *d)
   }
   DBGFUN(<-);
 }
+
+#endif // DESC_USE_TMP
 
 // --- descriptor management --------------------------------------------------o
 
@@ -988,7 +992,9 @@ desc_build (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
   tbl_set_H (d); if ((err = tbl_check_H(d))) { eid=2; goto error; }
   tbl_set_L (d); if ((err = tbl_check_L(d))) { eid=3; goto error; }
   set_thread(d);
+#if DESC_USE_TMP
   set_temp  (d);
+#endif
 
 #if DEBUG_DESC > 1
   printf("desc nc: %d ---- Total desc size: %ld bytes\n", d->nc, d->size);
@@ -1347,7 +1353,9 @@ mad_desc_del (const D *d_)
   }
 
   // destroy temporaries
+#if DESC_USE_TMP
   del_temps(d);
+#endif
 
   // remove descriptor from global array
   if (d == mad_desc_curr) mad_desc_curr = NULL;

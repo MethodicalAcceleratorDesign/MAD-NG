@@ -102,6 +102,8 @@ mad_ctpsa_update0 (ctpsa_t *t, ord_t lo, ord_t hi)
   return t;
 }
 
+#if DESC_USE_TMP
+
 static inline ctpsa_t*
 mad_ctpsa_gettmp (const ctpsa_t *t, const str_t func)
 {
@@ -131,6 +133,8 @@ mad_ctpsa_gettmpt (const tpsa_t *t, const str_t func)
 {
   return mad_ctpsa_gettmp((const ctpsa_t*)t, func);
 }
+
+#endif // DESC_USE_TMP
 
 // --- end --------------------------------------------------------------------o
 
