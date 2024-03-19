@@ -294,7 +294,7 @@ FUN(scl) (const T *a, NUM v, T *c)
   ensure(d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   if (!v || a->hi == 0) {
-    FUN(setvar)(c,v*a->coef[0],0,0); DBGFUN(<-); return;
+    FUN(setval)(c,v*a->coef[0]); DBGFUN(<-); return;
   }
 
   FUN(copy0)(a,c);
@@ -557,7 +557,7 @@ FUN(powi) (const T *a, int n, T *c)
   T *t1 = GET_TMPX(c);
 
   switch (n) {
-    case 0: FUN(setvar) (c,1,0,0); break; // ok: no copy
+    case 0: FUN(setval) (c, 1);    break; // ok: no copy
     case 1: FUN(copy  ) (a, c);    break; // ok: 1 copy
     case 2: FUN(mul   ) (a,a, c);  break; // ok: 1 copy if a==c
     case 3: FUN(mul   ) (a,a, t1); FUN(mul)(t1,a,  c); break; // ok: 1 copy if a==c
@@ -566,7 +566,7 @@ FUN(powi) (const T *a, int n, T *c)
       T *t2 = GET_TMPX(c), *t;
       int ns = 0;
       FUN(copy)(a, t1);
-      FUN(setvar)(c,1,0,0);
+      FUN(setval)(c, 1);
       for (;;) {
         if (n  & 1)   FUN(mul)(c ,t1, c ); // ok: 1 copy
         if (n /= 2) { FUN(mul)(t1,t1, t2); SWAP(t1,t2,t); ++ns; } // ok: no copy
@@ -736,7 +736,7 @@ FUN(deriv) (const T *a, T *r, int iv)
 
   if (!a->hi) goto ret; // empty
 
-  FUN(setvar)(c, FUN(geti)(a,iv), 0,0);
+  FUN(setval)(c, FUN(geti)(a,iv));
 
   c->lo = a->lo ? a->lo-1 : 0;  // initial guess, readjusted after computation
   c->hi = MIN(a->hi-1, c->mo, d->to);
@@ -783,7 +783,7 @@ FUN(derivm) (const T *a, T *r, ssz_t n, const ord_t mono[n])
   ensure(der_ord > 0, "invalid derivative order");
 
   // ord 0 & setup
-  FUN(setvar)(c, FUN(geti)(a,idx) * der_coef(idx,idx,der_ord,d), 0,0);
+  FUN(setval)(c, FUN(geti)(a,idx) * der_coef(idx,idx,der_ord,d));
   if (a->hi <= der_ord) goto ret;
 
   // ords 1..a->hi - 1
@@ -891,7 +891,7 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
 
   c->nz = mad_bit_hcut(a->nz|b->nz, c_hi);
   if (!c->nz) {
-    FUN(setvar)(c, c1*a->coef[0]+c2*b->coef[0]+c3, 0,0); DBGFUN(<-); return;
+    FUN(setval)(c, c1*a->coef[0]+c2*b->coef[0]+c3); DBGFUN(<-); return;
   }
 
   if (a->lo > b->lo)  {
