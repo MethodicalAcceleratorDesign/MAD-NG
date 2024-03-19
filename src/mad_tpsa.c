@@ -234,7 +234,7 @@ FUN(newd) (const D *d, ord_t mo)
   if (mo == mad_tpsa_default) mo = d->mo;
   else ensure(mo <= d->mo, "GTPSA order exceeds descriptor maximum order");
 
-  ssz_t nc = mad_desc_maxlen(d, mo);
+  ssz_t nc = d->ord2idx[mo+1]; // was mad_desc_maxlen(d, mo);
   T *t = mad_malloc(sizeof(T) + nc * sizeof(NUM));
   t->d = d, t->uid = 0, t->mo = mo, t->nam[0] = 0;
   FUN(reset0)(t);
