@@ -298,30 +298,18 @@ FUN(setvar) (T *t, NUM v, idx_t iv, NUM scl)
   assert(t); DBGFUN(->); DBGTPSA(t);
   const D *d = t->d;
 
-  ensure(t->mo >= 1, "variables must be a GPTSA of order >= 1, got %d", t->mo);
-
-  // v=0 and no first order: reset
-  if (!iv && !v) {
-    FUN(reset0)(t); DBGFUN(<-); return;
-  }
-
-  t->coef[0] = v;
-
-  // no first order: set lo, hi, nz
-  if (!iv) {
-    t->lo = t->hi = 0, t->nz = !!v;
-    DBGTPSA(t); DBGFUN(<-); return;
-  }
-
-  ensure(0 <= iv && iv <= d->nv,
-         "index %d exceeds GPTSA number of variables %d", iv, d->nv);
+  ensure(t->mo >= 1, "variables must have an order >= 1, got %d", t->mo);
+  ensure(0 < iv && iv <= d->nv,
+         "index 1<= %d <=%d is not a GTPSA variable", iv, d->nv);
 
   // clear first order
-  const idx_t *o2i = d->ord2idx;
-  for (idx_t i = o2i[1]; i < o2i[2]; ++i) t->coef[i] = 0;
+  if (mad_bit_tst(t->nz,1)) {
+    const idx_t *o2i = d->ord2idx;
+    FOR(i,o2i[1],o2i[2]) t->coef[i] = 0;
+  }
 
-  // set lo, hi, nz, coef[iv]
-  t->hi = 1, t->lo = !v, t->nz = 2+!!v, t->coef[iv] = scl ? scl : 1;
+  // set coef[0], lo, hi, nz, coef[iv]
+  t->coef[0] = v, t->lo = !v, t->hi = 1, t->nz = 2+!!v, t->coef[iv] = scl?scl:1;
 
   DBGTPSA(t); DBGFUN(<-);
 }
@@ -336,14 +324,14 @@ FUN(setprm) (T *t, NUM v, idx_t ip)
   ensure(0 < ip && ip <= d->np,
          "index 1 <= %d <= %d is not a GPTSA parameter", ip, d->np);
 
-  t->coef[0] = v;
-
   // clear first order
-  const idx_t *o2i = d->ord2idx;
-  for (idx_t i = o2i[1]; i < o2i[2]; ++i) t->coef[i] = 0;
+  if (mad_bit_tst(t->nz,1)) {
+    const idx_t *o2i = d->ord2idx;
+    FOR(i,o2i[1],o2i[2]) t->coef[i] = 0;
+  }
 
-  // set lo, hi, nz, coef[ip]
-  t->hi = 1, t->lo = !v, t->nz = 2+!!v, t->coef[ip+d->nv] = 1;
+  // set coef[0], lo, hi, nz, coef[ip]
+  t->coef[0] = v, t->lo = !v, t->hi = 1, t->nz = 2+!!v, t->coef[ip+d->nv] = 1;
 
   DBGTPSA(t); DBGFUN(<-);
 }
@@ -353,7 +341,7 @@ FUN(setval) (T *t, NUM v)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
 
-  t->lo = t->hi = 0, t->nz = !!v, t->coef[0] = v;
+  t->coef[0] = v, t->lo = t->hi = 0, t->nz = !!v;
 
   DBGTPSA(t); DBGFUN(<-);
 }
