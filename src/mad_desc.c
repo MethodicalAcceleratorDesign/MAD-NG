@@ -66,7 +66,8 @@ max_nc(ssz_t nn, ssz_t mo)
 static inline log_t
 mono_isvalid (const D *d, ssz_t n, const ord_t m[n])
 {
-  assert(d && m && n <= d->nn);
+  assert(d && m);
+  ensure(0 <= n && n <= d->nn, "invalid monomial length, 0<= %d <=%d", n,d->nn);
   return mad_mono_le (n, m, d->no)
       && mad_mono_ord(n, m)             <= d->mo
       && mad_mono_ord(n-d->nv, m+d->nv) <= d->po;
@@ -75,9 +76,9 @@ mono_isvalid (const D *d, ssz_t n, const ord_t m[n])
 static inline log_t
 mono_isvalidsm (const D *d, ssz_t n, const idx_t m[n])
 {
-  assert(d && m && n <= d->nn);
-  if (n > 0 && n & 1) return FALSE;
-
+  assert(d && m);
+  ensure(0 <= n && n/2 <= d->nn && !(n&1),
+                             "invalid monomial length, 0<= %d <=%d", n/2,d->nn);
   idx_t prev = -1;
   ord_t mo = 0, po = 0;
 
@@ -934,7 +935,7 @@ desc_init (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
 {
   DBGFUN(->);
   ensure(mo <= DESC_MAX_ORD, // variables max orders validation
-         "gtpsa order exceeds maximum order (%u > %u)", mo, DESC_MAX_ORD);
+         "invalid gtpsa order exceeds maximum order, %u < %u", mo, DESC_MAX_ORD);
 
 #if DEBUG_DESC > 1
   printf("desc in: nn=%d, mo=%d, np=%d, po=%d\n", nn, mo, np, po);
@@ -1064,11 +1065,10 @@ mad_desc_isvalids (const D *d, ssz_t n, str_t s)
   DBGFUN(->);
   assert(d && s);
   if (n <= 0) n = strlen(s);
-  if (n > d->nn) return FALSE;
 
   ord_t m[n];
   n = mad_mono_str(n, m, s); // n can be shrinked by '\0'
-  log_t ret = mono_isvalid(d, n, m);
+  log_t ret = 0 <= n && n <= d->nn && mono_isvalid(d, n, m);
   DBGFUN(<-);
   return ret;
 }
@@ -1088,7 +1088,6 @@ mad_desc_nxtbyvar (const D *d, ssz_t n, ord_t m[n])
 {
   DBGFUN(->);
   assert(d && m);
-  ensure(n == d->nn, "invalid monomial length %d (%d orders expected)", n, d->nn);
 
   if (!mono_isvalid(d,n,m)) { DBGFUN(<-); return -1; }
 
@@ -1104,7 +1103,6 @@ mad_desc_nxtbyord (const D *d, ssz_t n, ord_t m[n])
 {
   DBGFUN(->);
   assert(d && m);
-  ensure(n == d->nn, "invalid monomial length %d (%d orders expected)", n, d->nn);
 
   if (!mono_isvalid(d,n,m)) { DBGFUN(<-); return -1; }
 
@@ -1143,7 +1141,6 @@ mad_desc_idxs (const D *d, ssz_t n, str_t s)
 {
   assert(d && s); DBGFUN(->);
   if (n <= 0) n = strlen(s);
-  if (n > d->nn) { DBGFUN(<-); return 0; }
 
   ord_t m[n];
   n = mad_mono_str(n, m, s); // n can be shrinked by '\0'
@@ -1175,7 +1172,7 @@ mad_desc_maxord (const D *d, int n, ord_t no_[n])
 {
   assert(d); DBGFUN(->);
   if (no_) {
-    ensure(n <= d->nn, "invalid monomial length %d (max %d orders expected)", n, d->nn);
+    ensure(0 <= n && n <= d->nn, "invalid monomial length, 0<= %d <=%d", n,d->nn);
     mad_mono_copy(n, d->no, no_);
   }
   ord_t ret = d->mo;
@@ -1187,7 +1184,7 @@ mad_desc_maxlen (const D *d, ord_t mo)
 {
   assert(d); DBGFUN(->);
   if (mo == mad_tpsa_default) mo = d->mo;
-  ensure(mo <= d->mo, "invalid order %d (exceeds maximum order %d)", mo, d->mo);
+  ensure(mo <= d->mo, "invalid order %d (exceeds maximum order %d)", mo,d->mo);
   ssz_t ret = d->ord2idx[mo+1];
   DBGFUN(<-); return ret;
 }
@@ -1206,7 +1203,7 @@ mad_desc_gtrunc (const D *d, ord_t to)
 
   if (to == mad_tpsa_default) to = d->mo;
 
-  ensure(to <= d->mo, "invalid order (exceeds maximum order)");
+  ensure(to <= d->mo, "invalid order %d (exceeds maximum order %d)", to,d->mo);
   DBGFUN(<-); return d_->to = to, old;
 }
 
@@ -1231,9 +1228,9 @@ mad_desc_newv (int nv, ord_t mo)
 {
   DBGFUN(->);
   ensure(0 < nv && nv <= DESC_MAX_VAR,
-         "invalid number of variables: %d (0<?<=%d)", nv, DESC_MAX_VAR);
+         "invalid #variables, 0< %d <=%d", nv, DESC_MAX_VAR);
   ensure(0 < mo && mo <= DESC_MAX_ORD,
-         "invalid maximum order: %d (0<?<=%d)", mo, DESC_MAX_ORD);
+         "invalid maximum order, 0< %d <=%d", mo, DESC_MAX_ORD);
 
 #if DEBUG_DESC > 1
   printf(">> nv=%d, mo=%d\n", nv, mo);
@@ -1256,13 +1253,12 @@ mad_desc_newvp(int nv, ord_t mo, int np_, ord_t po_)
   int np = MAX(np_,0);
   int nn = nv+np;
   ensure(0 < nn && nn <= DESC_MAX_VAR,
-         "invalid number of variables+parameters: %d (0<?<=%d)", nn, DESC_MAX_VAR);
+         "invalid #variables+#parameters, 0< %d <=%d", nn, DESC_MAX_VAR);
   ensure(0 < mo && mo <= DESC_MAX_ORD,
-         "invalid maximum order: %d (0<?<=%d)", mo, DESC_MAX_ORD);
+         "invalid maximum order, 0< %d <=%d", mo, DESC_MAX_ORD);
 
   ord_t po = MAX(po_,1);
-  ensure(0 < po && po <= mo,
-         "invalid parameter order: %d (0<?<=%d)", po, mo);
+  ensure(0 < po && po <= mo, "invalid parameter order, 0< %d <=%d", po, mo);
 
 #if DEBUG_DESC > 1
   printf(">> nn=%d, mo=%d, np=%d, po=%d[%d]\n", nn, mo, np, po, po_);
@@ -1285,19 +1281,18 @@ mad_desc_newvpo(int nv, ord_t mo, int np_, ord_t po_, const ord_t no_[nv+np_])
   int np = MAX(np_,0);
   int nn = nv+np;
   ensure(0 < nn && nn <= DESC_MAX_VAR,
-         "invalid number of variables & parameters: %d (0<?<=%d)", nn, DESC_MAX_VAR);
+         "invalid #variables+#parameters, 0< %d <=%d", nn, DESC_MAX_VAR);
   ensure(mad_mono_min(nn, no_) > 0,
          "some variables (or parameters) have invalid zero order");
 
   ord_t mo_ = mad_mono_max(nn, no_); mo = MAX(mo, mo_);
   ensure(0 < mo && mo <= DESC_MAX_ORD,
-         "invalid maximum order: %d (0<?<=%d)", mo, DESC_MAX_ORD);
+         "invalid maximum order, 0< %d <=%d", mo, DESC_MAX_ORD);
 
   ord_t po = MAX(po_,1);
   if (np) {
     ord_t po_ = mad_mono_max(np, no_+nv); po = MAX(po, po_);
-    ensure(0 < po && po <= mo,
-           "invalid parameter order: %d (0<?<=%d)", po, mo);
+    ensure(0 < po && po <= mo, "invalid parameter order, 0< %d <=%d", po, mo);
   }
 
 #if DEBUG_DESC > 1
