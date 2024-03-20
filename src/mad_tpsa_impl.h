@@ -92,16 +92,14 @@ static inline tpsa_t* // update t_lo, t_hi and t_nz for zero hpoly in [lo,hi]
 mad_tpsa_update0 (tpsa_t *t, ord_t lo, ord_t hi)
 {
   assert(t);
-  const idx_t *o2i = t->d->ord2idx;
   t->nz = mad_bit_clr(t->nz, 0);
-  for (ord_t o = lo; o <= hi; ++o)
-    if (mad_bit_tst(t->nz, o)) {
-      idx_t i = o2i[o], ni = o2i[o+1]-1;
-      num_t c = t->coef[ni]; t->coef[ni] = 1; // set stopper
-      while (!t->coef[i]) ++i;
-      if (i == ni && !c) t->nz = mad_bit_clr(t->nz, o);
-      t->coef[ni] = c; // restore value
-    }
+  TPSA_SCAN_Z(t,lo,hi) {
+    idx_t i = o2i[o], ni = o2i[o+1]-1;
+    num_t c = t->coef[ni]; t->coef[ni] = 1; // set stopper
+    while (!t->coef[i]) ++i;
+    if (i == ni && !c) t->nz = mad_bit_clr(t->nz, o);
+    t->coef[ni] = c; // restore value
+  }
   if (!t->nz) return mad_tpsa_reset0(t);
   t->lo = mad_bit_lowest (t->nz);
   t->hi = mad_bit_highest(t->nz);
