@@ -40,8 +40,8 @@
 // --- globals ----------------------------------------------------------------o
 
 // must be global variables for access from LuaJIT FFI.
-const  ord_t  mad_tpsa_default = -1;
-const  ord_t  mad_tpsa_same    = -2;
+const  ord_t  mad_tpsa_dflt = -1;
+const  ord_t  mad_tpsa_same = -2;
 
 // last descriptor created or searched (used to create GTPSA when d is NULL)
 const desc_t *mad_desc_curr    = NULL;
@@ -1061,8 +1061,7 @@ mad_desc_isvalidm (const D *d, ssz_t n, const ord_t m[n])
   DBGFUN(->);
   assert(d && m);
   log_t ret = 0 <= n && n <= d->nn && mono_isvalid(d, n, m);
-  DBGFUN(<-);
-  return ret;
+  DBGFUN(<-); return ret;
 }
 
 log_t
@@ -1075,8 +1074,7 @@ mad_desc_isvalids (const D *d, ssz_t n, str_t s)
   ord_t m[n];
   n = mad_mono_str(n, m, s); // n can be shrinked by '\0'
   log_t ret = 0 <= n && n <= d->nn && mono_isvalid(d, n, m);
-  DBGFUN(<-);
-  return ret;
+  DBGFUN(<-); return ret;
 }
 
 log_t
@@ -1085,8 +1083,7 @@ mad_desc_isvalidsm (const D *d, ssz_t n, const idx_t m[n])
   DBGFUN(->);
   assert(d && m);
   log_t ret = 0 <= n && n <= d->nn && mono_isvalidsm(d, n, m);
-  DBGFUN(<-);
-  return ret;
+  DBGFUN(<-); return ret;
 }
 
 idx_t
@@ -1128,8 +1125,7 @@ mad_desc_mono (const D *d, idx_t i, ssz_t n, ord_t m_[n], ord_t *p_)
   if (m_ && n > 0) mad_mono_copy(MIN(n,d->nn), d->To[i], m_);
   if (p_) *p_ = d->prms[i];
   ord_t ret = d->ords[i];
-  DBGFUN(<-);
-  return ret;
+  DBGFUN(<-); return ret;
 }
 
 idx_t
@@ -1138,8 +1134,7 @@ mad_desc_idxm (const D *d, ssz_t n, const ord_t m[n])
   DBGFUN(->);
   assert(d && m);
   idx_t ret = mono_isvalid(d,n,m) ? d->tv2to[tbl_index_H(d,n,m)] : -1;
-  DBGFUN(<-);
-  return ret;
+  DBGFUN(<-); return ret;
 }
 
 idx_t
@@ -1189,8 +1184,9 @@ ssz_t
 mad_desc_maxlen (const D *d, ord_t mo)
 {
   assert(d); DBGFUN(->);
-  if (mo == mad_tpsa_default) mo = d->mo;
+  if (mo == mad_tpsa_dflt) mo = d->mo; else
   ensure(mo <= d->mo, "invalid order %d (exceeds maximum order %d)", mo,d->mo);
+
   ssz_t ret = d->ord2idx[mo+1];
   DBGFUN(<-); return ret;
 }
@@ -1207,9 +1203,9 @@ mad_desc_gtrunc (const D *d, ord_t to)
   ord_t old = d->to;
   D* d_ = (void*)d;
 
-  if (to == mad_tpsa_default) to = d->mo;
-
+  if (to == mad_tpsa_dflt) to = d->mo; else
   ensure(to <= d->mo, "invalid order %d (exceeds maximum order %d)", to,d->mo);
+
   DBGFUN(<-); return d_->to = to, old;
 }
 
