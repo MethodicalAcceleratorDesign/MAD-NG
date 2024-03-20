@@ -95,8 +95,8 @@ mad_ctpsa_update0 (ctpsa_t *t, ord_t lo, ord_t hi)
     if (mad_bit_tst(t->nz, o)) {
       idx_t i = o2i[o], ni = o2i[o+1]-1;
       cpx_t c = t->coef[ni]; t->coef[ni] = 1; // set stopper
-      while (t->coef[i] == 0) ++i;
-      if (i == ni && c == 0) t->nz = mad_bit_clr(t->nz, o);
+      while (!t->coef[i]) ++i;
+      if (i == ni && !c) t->nz = mad_bit_clr(t->nz, o);
       t->coef[ni] = c; // restore value
     }
   if (!t->nz) return mad_ctpsa_reset0(t);
