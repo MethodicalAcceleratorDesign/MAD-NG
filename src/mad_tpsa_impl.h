@@ -54,6 +54,7 @@ struct tpsa_ {  // warning: must be identical to LuaJIT def (see mad_cmad.mad)
 static inline tpsa_t* // reset TPSA
 mad_tpsa_reset0 (tpsa_t *t)
 {
+  assert(t);
   t->lo = t->hi = 0, t->nz = 0, t->coef[0] = 0;
   return t;
 }
@@ -61,16 +62,18 @@ mad_tpsa_reset0 (tpsa_t *t)
 static inline tpsa_t* // copy t_lo, t_hi(r_mo,d_to), t_nz(r_hi) but not coefs!
 mad_tpsa_copy0 (const tpsa_t *t, tpsa_t *r)
 {
-  r->hi = MIN(t->hi, r->mo, t->d->to, r->d->to);
+  assert(t && r && t->d == r->d);
+  r->hi = MIN(t->hi, r->mo, r->d->to);
   r->nz = mad_bit_hcut(t->nz, r->hi);
   if (!r->nz) return mad_tpsa_reset0(r);
-  if ((r->lo=MIN(t->lo, r->hi))) r->coef[0] = 0;
+  if ((r->lo = MIN(t->lo, r->hi))) r->coef[0] = 0;
   return r;
 }
 
 static inline tpsa_t* // clear t_coef[0], adjust t_lo, t_nz
 mad_tpsa_clear0 (tpsa_t *t)
 {
+  assert(t);
   t->nz = mad_bit_clr(t->nz, 0);
   if (!t->nz) return mad_tpsa_reset0(t);
   t->lo = mad_bit_lowest(t->nz);
@@ -81,6 +84,7 @@ mad_tpsa_clear0 (tpsa_t *t)
 static inline tpsa_t* // update t_lo, t_hi and t_nz for zero hpoly in [lo,hi]
 mad_tpsa_update0 (tpsa_t *t, ord_t lo, ord_t hi)
 {
+  assert(t);
   const idx_t *o2i = t->d->ord2idx;
   for (ord_t o = lo; o <= hi; ++o)
     if (mad_bit_tst(t->nz, o)) {
@@ -102,6 +106,7 @@ mad_tpsa_update0 (tpsa_t *t, ord_t lo, ord_t hi)
 static inline tpsa_t*
 mad_tpsa_gettmp (const tpsa_t *t, const str_t func)
 {
+  assert(t);
   const desc_t *d = t->d;
   int tid = omp_get_thread_num();
   assert(d->ti[tid] < DESC_MAX_TMP);
@@ -115,6 +120,7 @@ mad_tpsa_gettmp (const tpsa_t *t, const str_t func)
 static inline void
 mad_tpsa_reltmp (tpsa_t *tmp, const str_t func)
 {
+  assert(tmp);
   const desc_t *d = tmp->d;
   int tid = omp_get_thread_num();
   TRC_TMPX(printf("REL_TMPX%d[%d]: %p in %s()\n",

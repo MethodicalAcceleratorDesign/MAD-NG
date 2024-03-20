@@ -36,7 +36,7 @@
 // --- debugging --------------------------------------------------------------o
 
 /*
-GTPSA are defined in [0] U [lo,hi], and nz[o] == 0 in [0,lo) U (hi,mo]
+GTPSA are *defined* in [0] U [lo,hi], and nz[o] == 0 for o in [0,lo) U (hi,mo]
 GTPSA just initialized have lo=0, hi=0, nz=0, coef[0]=0 (see reset0)
 in [lo,hi]: nz[o] == 0 <=> all coef[[o]] == 0
             nz[o] == 1 <=> any coef[[o]] != 0 (or none: conservative)
