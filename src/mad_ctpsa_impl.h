@@ -56,41 +56,49 @@ struct ctpsa_ { // warning: must be identical to LuaJIT def (see mad_cmad.mad)
 
 // --- helpers ----------------------------------------------------------------o
 
+// loop to scan non-zero homogeneous polynomials (i.e. doesn't include coef[0]!)
+#define TPSA_SCAN(...)       MKNAME(TPSA_SCAN_,NARG(__VA_ARGS__))(__VA_ARGS__)
+#define TPSA_SCAN_1(t)       TPSA_SCAN_3(t,(t)->lo,(t)->hi)
+#define TPSA_SCAN_2(t,hi)    TPSA_SCAN_3(t,(t)->lo,hi)
+#define TPSA_SCAN_3(t,lo,hi) TPSA_SCAN_Z(t,lo,hi) FOR(i, o2i[o], o2i[o+1])
+#define TPSA_SCAN_Z(t,lo,hi) \
+  const idx_t *o2i = (t)->d->ord2idx; \
+  for (ord_t o = (lo); o <= (hi); o++) \
+    if (mad_bit_tst((t)->nz, o))
+
 static inline ctpsa_t* // reset TPSA
 mad_ctpsa_reset0 (ctpsa_t *t)
 {
   assert(t);
-  t->lo = t->hi = 0, t->nz = 0, t->coef[0] = 0;
+  t->lo = 1, t->hi = 0, t->nz = 0, t->coef[0] = 0;
+  return t;
+}
+
+static inline ctpsa_t* // trunc TPSA order to d->to
+mad_ctpsa_trunc0 (ctpsa_t *t)
+{
+  assert(t);
+  t->hi = MIN(t->hi, t->d->to);
+  t->nz = mad_bit_hcut(t->nz, t->hi);
   return t;
 }
 
 static inline ctpsa_t* // copy t_lo, t_hi(r_mo,d_to), t_nz(r_hi) but not coefs!
 mad_ctpsa_copy0 (const ctpsa_t *t, ctpsa_t *r)
 {
-  assert(t && r && t->d == r->d);
+  assert(t && r);
+  r->lo = MIN(t->lo, r->mo); if (!r->lo) r->lo = 1;
   r->hi = MIN(t->hi, r->mo, r->d->to);
   r->nz = mad_bit_hcut(t->nz, r->hi);
-  if (!r->nz) return mad_ctpsa_reset0(r);
-  if ((r->lo = MIN(t->lo, r->hi))) r->coef[0] = 0;
   return r;
-}
-
-static inline ctpsa_t* // clear t_coef[0], adjust t_lo, t_nz
-mad_ctpsa_clear0 (ctpsa_t *t)
-{
-  assert(t);
-  t->nz = mad_bit_clr(t->nz, 0);
-  if (!t->nz) return mad_ctpsa_reset0(t);
-  t->lo = mad_bit_lowest(t->nz);
-  t->coef[0] = 0;
-  return t;
 }
 
 static inline ctpsa_t* // update t_lo, t_hi and t_nz for zero hpoly in [lo,hi]
 mad_ctpsa_update0 (ctpsa_t *t, ord_t lo, ord_t hi)
 {
-  assert(t);
+  assert(t && lo);
   const idx_t *o2i = t->d->ord2idx;
+  t->nz = mad_bit_clr(t->nz, 0); // for sanity
   for (ord_t o = lo; o <= hi; ++o)
     if (mad_bit_tst(t->nz, o)) {
       idx_t i = o2i[o], ni = o2i[o+1]-1;
@@ -102,9 +110,10 @@ mad_ctpsa_update0 (ctpsa_t *t, ord_t lo, ord_t hi)
   if (!t->nz) return mad_ctpsa_reset0(t);
   t->lo = mad_bit_lowest (t->nz);
   t->hi = mad_bit_highest(t->nz);
-  if (t->lo) t->coef[0] = 0;
   return t;
 }
+
+// --- temporaries ------------------------------------------------------------o
 
 #if DESC_USE_TMP
 
