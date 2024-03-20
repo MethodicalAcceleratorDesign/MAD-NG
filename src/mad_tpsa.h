@@ -42,7 +42,7 @@ typedef struct tpsa_ tpsa_t;
 
 // --- globals ----------------------------------------------------------------o
 
-extern const ord_t mad_tpsa_default;
+extern const ord_t mad_tpsa_dflt;
 extern const ord_t mad_tpsa_same;
 
 // --- interface --------------------------------------------------------------o
