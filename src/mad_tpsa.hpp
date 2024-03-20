@@ -57,7 +57,7 @@ extern "C" {
 namespace mad {
 
 // constants
-const int dflt = mad_tpsa_default;
+const int dflt = mad_tpsa_dflt;
 const int same = mad_tpsa_same;
 
 // forward decl

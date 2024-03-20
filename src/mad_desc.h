@@ -39,7 +39,7 @@ typedef struct desc_ desc_t;
 
 // --- globals ----------------------------------------------------------------o
 
-extern const  ord_t  mad_tpsa_default;
+extern const  ord_t  mad_tpsa_dflt;
 extern const  ord_t  mad_tpsa_same;
 extern const desc_t *mad_desc_curr;
 

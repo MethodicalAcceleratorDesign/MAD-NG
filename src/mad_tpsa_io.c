@@ -386,7 +386,7 @@ FUN(scan) (FILE *stream_)
   char name[NAMSZ];
   const D *d = FUN(scan_hdr)(&knd, name, stream_);
   if (d) {
-    t = FUN(newd)(d, mad_tpsa_default);
+    t = FUN(newd)(d, mad_tpsa_dflt);
     FUN(scan_coef)(t, stream_);
     FUN(setnam)   (t, name   );
   }
