@@ -47,9 +47,7 @@ mad_ctpsa_real (const ctpsa_t *t, tpsa_t *c)
   for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
     c->coef[i] = creal(t->coef[i]);
 
-  if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
-
-  DBGFUN(<-);
+  FUN(update)(c); DBGFUN(<-);
 }
 
 void
@@ -71,9 +69,7 @@ mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *c)
   for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
     c->coef[i] = cimag(t->coef[i]);
 
-  if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
-
-  DBGFUN(<-);
+  FUN(update)(c); DBGFUN(<-);
 }
 
 void // special unique case, should be in mad_tpsa_conv.c to use FUN

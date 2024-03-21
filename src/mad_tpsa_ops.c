@@ -337,7 +337,7 @@ FUN(acc) (const T *a, NUM v, T *c)
   c->lo = new_lo;
   c->hi = MAX(new_hi, c->hi);
   if (c->lo) c->coef[0] = 0;
-  if (TPSA_STRICT_NZ > 1) FUN(update0)(c, c->lo, c->hi);
+  FUN(update)(c);
 
   DBGTPSA(c); DBGFUN(<-);
 }
@@ -363,7 +363,7 @@ FUN(add) (const T *a, const T *b, T *c)
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
   if (c->lo) c->coef[0] = 0;
-  if (TPSA_STRICT_NZ > 1) FUN(update0)(c, c->lo, c->hi);
+  FUN(update)(c);
 
   DBGTPSA(c); DBGFUN(<-);
 }
@@ -391,7 +391,7 @@ FUN(sub) (const T *a, const T *b, T *c)
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
   if (c->lo) c->coef[0] = 0;
-  if (TPSA_STRICT_NZ > 1) FUN(update0)(c, c->lo, c->hi);
+  FUN(update)(c);
 
   DBGTPSA(c); DBGFUN(<-);
 }
@@ -427,7 +427,7 @@ FUN(dif) (const T *a, const T *b, T *c)
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
   if (c->lo) c->coef[0] = 0;
-  if (TPSA_STRICT_NZ > 1) FUN(update0)(c, c->lo, c->hi);
+  FUN(update)(c);
 
   DBGTPSA(c); DBGFUN(<-);
 }
@@ -508,7 +508,7 @@ FUN(mul) (const T *a, const T *b, T *r)
     }
   }
 
-  if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
+  FUN(update)(c);
 
 ret:
   assert(a != c && b != c);
@@ -751,12 +751,7 @@ FUN(deriv) (const T *a, T *r, int iv)
     if (mad_bit_tst(a->nz,oc+1))
       hpoly_der_gt(ca, c->coef+o2i[oc], iv, oc, der_ord, &c->nz, d);
 
-  if (c->nz) {
-    c->lo = mad_bit_lowest (c->nz);
-    c->hi = mad_bit_highest(c->nz);
-    if (c->lo) c->coef[0] = 0;
-    if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
-  } else FUN(reset0)(c);
+  FUN(update)(c);
 
 ret:
   if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
@@ -789,12 +784,7 @@ FUN(derivm) (const T *a, T *r, ssz_t n, const ord_t mono[n])
   // ords 1..a->hi - 1
   hpoly_der(a, idx, der_ord, c);
 
-  if (c->nz) {
-    c->lo = mad_bit_lowest (c->nz);
-    c->hi = mad_bit_highest(c->nz);
-    if (c->lo) c->coef[0] = 0;
-    if (TPSA_STRICT_NZ) FUN(update0)(c, c->lo, c->hi);
-  } else FUN(reset0)(c);
+  FUN(update)(c);
 
 ret:
   if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
@@ -918,7 +908,8 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   c->hi = c_hi;
   if (c->lo) c->coef[0] = 0;
   if (c3) FUN(set0)(c,1,c3);
-  if (TPSA_STRICT_NZ > 1) FUN(update0)(c, c->lo, c->hi);
+
+  FUN(update)(c);
 
   DBGTPSA(c); DBGFUN(<-);
 }

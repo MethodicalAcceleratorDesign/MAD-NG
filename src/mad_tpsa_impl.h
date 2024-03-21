@@ -55,11 +55,25 @@ struct tpsa_ {  // warning: must be identical to LuaJIT def (see mad_cmad.mad)
 #define TPSA_SCAN(...)       MKNAME(TPSA_SCAN_,NARG(__VA_ARGS__))(__VA_ARGS__)
 #define TPSA_SCAN_1(t)       TPSA_SCAN_3(t,(t)->lo,(t)->hi)
 #define TPSA_SCAN_2(t,hi)    TPSA_SCAN_3(t,(t)->lo,hi)
-#define TPSA_SCAN_3(t,lo,hi) TPSA_SCAN_Z(t,lo,hi) FOR(i, o2i[o], o2i[o+1])
+#define TPSA_SCAN_3(t,lo,hi) TPSA_SCAN_Z(t,lo,hi) FOR(i,o2i[o],o2i[o+1])
+
+#define TPSA_SCAN_O(t,o) \
+   const idx_t *o2i = (t)->d->ord2idx; \
+   FOR(i,o2i[o],o2i[(o)+1])
+
 #define TPSA_SCAN_Z(t,lo,hi) \
-  const idx_t *o2i = (t)->d->ord2idx; \
-  for (ord_t o = (lo); o <= (hi); o++) \
-    if (mad_bit_tst((t)->nz, o))
+  const idx_t *o2i = (t)->d->ord2idx; (void)o2i; \
+  const ord_t hi_z = MIN((hi),(t)->d->to); \
+  const bit_t nz_z = mad_bit_hcut((t)->nz,hi_z); \
+  for (ord_t o = (lo); o <= hi_z; o++) \
+    if (mad_bit_tst(nz_z,o))
+
+static inline log_t // check if TPSA is nul
+mad_tpsa_isnul0 (const tpsa_t *t)
+{
+  assert(t);
+  return !(t->nz || t->coef[0]);
+}
 
 static inline tpsa_t* // reset TPSA
 mad_tpsa_reset0 (tpsa_t *t)
@@ -69,7 +83,7 @@ mad_tpsa_reset0 (tpsa_t *t)
   return t;
 }
 
-static inline tpsa_t* // trunc TPSA order to d->to
+static inline tpsa_t* // trunc TPSA orders to d->to
 mad_tpsa_trunc0 (tpsa_t *t)
 {
   assert(t);
@@ -78,7 +92,7 @@ mad_tpsa_trunc0 (tpsa_t *t)
   return t;
 }
 
-static inline tpsa_t* // copy t_lo, t_hi(r_mo,d_to), t_nz(r_hi) but not coefs!
+static inline tpsa_t* // copy TPSA orders but not coefs!
 mad_tpsa_copy0 (const tpsa_t *t, tpsa_t *r)
 {
   assert(t && r);
@@ -88,21 +102,35 @@ mad_tpsa_copy0 (const tpsa_t *t, tpsa_t *r)
   return r;
 }
 
-static inline tpsa_t* // update t_lo, t_hi and t_nz for zero hpoly in [lo,hi]
-mad_tpsa_update0 (tpsa_t *t, ord_t lo, ord_t hi)
+static inline tpsa_t* // adjust TPSA orders lo, hi to nz
+mad_tpsa_adjust0 (tpsa_t *t)
 {
   assert(t);
-  t->nz = mad_bit_clr(t->nz, 0);
-  TPSA_SCAN_Z(t,lo,hi) {
-    idx_t i = o2i[o], ni = o2i[o+1]-1;
-    num_t c = t->coef[ni]; t->coef[ni] = 1; // set stopper
-    while (!t->coef[i]) ++i;
-    if (i == ni && !c) t->nz = mad_bit_clr(t->nz, o);
-    t->coef[ni] = c; // restore value
-  }
-  if (!t->nz) return mad_tpsa_reset0(t);
+  if (mad_tpsa_isnul0(t)) return mad_tpsa_reset0(t);
   t->lo = mad_bit_lowest (t->nz);
   t->hi = mad_bit_highest(t->nz);
+  return t;
+}
+
+static inline tpsa_t* // clear TPSA order but doesn't adjust lo,hi
+mad_tpsa_clear0 (tpsa_t *t, ord_t o)
+{
+  assert(t);
+  TPSA_SCAN_O(t,o) t->coef[i] = 0;
+  t->nz = mad_bit_clr(t->nz,o);
+  return t;
+}
+
+static inline tpsa_t* // update TPSA order from coefs but doesn't adjust lo,hi
+mad_tpsa_update0 (tpsa_t *t, ord_t o)
+{
+  assert(t);
+  const idx_t *o2i = t->d->ord2idx;
+  idx_t i = o2i[o], ni = o2i[o+1]-1;
+  num_t c = t->coef[ni]; t->coef[ni] = 1; // set stopper
+  while (!t->coef[i]) ++i;
+  if (i == ni && !c) t->nz = mad_bit_clr(t->nz,o);
+  t->coef[ni] = c; // restore value
   return t;
 }
 
@@ -133,7 +161,7 @@ mad_tpsa_reltmp (tpsa_t *tmp, const str_t func)
   TRC_TMPX(printf("REL_TMPX%d[%d]: %p in %s()\n",
                   tid, d->ti[tid]-1, (void*)tmp, func));
   assert(d->t[ tid*DESC_MAX_TMP + d->ti[tid]-1 ] == tmp);
-  --d->ti[tid]; //, tmp->mo = d->mo; // ensure stack-like usage of temps
+  --d->ti[tid]; // ensure stack-like usage of temps
 }
 
 static inline tpsa_t*

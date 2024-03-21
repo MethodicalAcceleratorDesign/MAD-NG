@@ -60,11 +60,25 @@ struct ctpsa_ { // warning: must be identical to LuaJIT def (see mad_cmad.mad)
 #define TPSA_SCAN(...)       MKNAME(TPSA_SCAN_,NARG(__VA_ARGS__))(__VA_ARGS__)
 #define TPSA_SCAN_1(t)       TPSA_SCAN_3(t,(t)->lo,(t)->hi)
 #define TPSA_SCAN_2(t,hi)    TPSA_SCAN_3(t,(t)->lo,hi)
-#define TPSA_SCAN_3(t,lo,hi) TPSA_SCAN_Z(t,lo,hi) FOR(i, o2i[o], o2i[o+1])
+#define TPSA_SCAN_3(t,lo,hi) TPSA_SCAN_Z(t,lo,hi) FOR(i,o2i[o],o2i[o+1])
+
+#define TPSA_SCAN_O(t,o) \
+   const idx_t *o2i = (t)->d->ord2idx; \
+   FOR(i,o2i[o],o2i[(o)+1])
+
 #define TPSA_SCAN_Z(t,lo,hi) \
-  const idx_t *o2i = (t)->d->ord2idx; \
-  for (ord_t o = (lo); o <= (hi); o++) \
-    if (mad_bit_tst((t)->nz, o))
+  const idx_t *o2i = (t)->d->ord2idx; (void)o2i; \
+  const ord_t hi_z = MIN((hi),(t)->d->to); \
+  const bit_t nz_z = mad_bit_hcut((t)->nz,hi_z); \
+  for (ord_t o = (lo); o <= hi_z; o++) \
+    if (mad_bit_tst(nz_z,o))
+
+static inline log_t // check if TPSA is nul
+mad_ctpsa_isnul0 (const ctpsa_t *t)
+{
+  assert(t);
+  return !(t->nz || t->coef[0]);
+}
 
 static inline ctpsa_t* // reset TPSA
 mad_ctpsa_reset0 (ctpsa_t *t)
@@ -83,7 +97,7 @@ mad_ctpsa_trunc0 (ctpsa_t *t)
   return t;
 }
 
-static inline ctpsa_t* // copy t_lo, t_hi(r_mo,d_to), t_nz(r_hi) but not coefs!
+static inline ctpsa_t* // copy TPSA orders but not coefs!
 mad_ctpsa_copy0 (const ctpsa_t *t, ctpsa_t *r)
 {
   assert(t && r);
@@ -93,21 +107,35 @@ mad_ctpsa_copy0 (const ctpsa_t *t, ctpsa_t *r)
   return r;
 }
 
-static inline ctpsa_t* // update t_lo, t_hi and t_nz for zero hpoly in [lo,hi]
-mad_ctpsa_update0 (ctpsa_t *t, ord_t lo, ord_t hi)
+static inline ctpsa_t* // adjust TPSA orders lo,hi to nz
+mad_ctpsa_adjust0 (ctpsa_t *t)
 {
-  assert(t && lo);
-  t->nz = mad_bit_clr(t->nz, 0); // for sanity
-  TPSA_SCAN_Z(t,lo,hi) {
-    idx_t i = o2i[o], ni = o2i[o+1]-1;
-    cpx_t c = t->coef[ni]; t->coef[ni] = 1; // set stopper
-    while (!t->coef[i]) ++i;
-    if (i == ni && !c) t->nz = mad_bit_clr(t->nz, o);
-    t->coef[ni] = c; // restore value
-  }
-  if (!t->nz) return mad_ctpsa_reset0(t);
+  assert(t);
+  if (mad_ctpsa_isnul0(t)) return mad_ctpsa_reset0(t);
   t->lo = mad_bit_lowest (t->nz);
   t->hi = mad_bit_highest(t->nz);
+  return t;
+}
+
+static inline ctpsa_t* // clear TPSA order but doesn't adjust lo,hi
+mad_ctpsa_clear0 (ctpsa_t *t, ord_t o)
+{
+  assert(t);
+  TPSA_SCAN_O(t,o) t->coef[i] = 0;
+  t->nz = mad_bit_clr(t->nz,o);
+  return t;
+}
+
+static inline ctpsa_t* // update TPSA order from coefs but doesn't adjust lo,hi
+mad_ctpsa_update0 (ctpsa_t *t, ord_t o)
+{
+  assert(t);
+  const idx_t *o2i = t->d->ord2idx;
+  idx_t i = o2i[o], ni = o2i[o+1]-1;
+  cpx_t c = t->coef[ni]; t->coef[ni] = 1; // set stopper
+  while (!t->coef[i]) ++i;
+  if (i == ni && !c) t->nz = mad_bit_clr(t->nz,o);
+  t->coef[ni] = c; // restore value
   return t;
 }
 

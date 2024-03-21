@@ -58,6 +58,7 @@ desc_t*  mad_ctpsa_desc    (const ctpsa_t *t);
 int32_t  mad_ctpsa_uid     (      ctpsa_t *t, int32_t uid_); // set uid if != 0
 ssz_t    mad_ctpsa_len     (const ctpsa_t *t);
 str_t    mad_ctpsa_nam     (const ctpsa_t *t);
+log_t    mad_ctpsa_isnul   (const ctpsa_t *t);
 ord_t    mad_ctpsa_ord     (const ctpsa_t *t);
 ord_t    mad_ctpsa_ordv    (const ctpsa_t *t, ...);       // max order of all
 ord_t    mad_ctpsa_ordn    (ssz_t n, const ctpsa_t *t[]); // max order of all
@@ -74,7 +75,7 @@ void     mad_ctpsa_setprm  (      ctpsa_t *t, cpx_t v, idx_t ip);
 void     mad_ctpsa_setval  (      ctpsa_t *t, cpx_t v);
 void     mad_ctpsa_setnam  (      ctpsa_t *t, str_t nam);
 void     mad_ctpsa_clear   (      ctpsa_t *t);
-log_t    mad_ctpsa_isnul   (const ctpsa_t *t);
+log_t    mad_ctpsa_update  (      ctpsa_t *t);
 
 // real, imaginary, norm, phase, conversion
 void     mad_ctpsa_cplx    (const  tpsa_t *re_, const tpsa_t *im_, ctpsa_t *r);

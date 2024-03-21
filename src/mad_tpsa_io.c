@@ -368,7 +368,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
     warn("unable to parse GTPSA coefficients for '%s'",
          t->nam[0] ? t->nam : "-UNNAMED-");
   else
-    FUN(update0)(t, t->lo, t->hi);
+    FUN(update)(t);
 
   DBGTPSA(t); DBGFUN(<-);
 }
@@ -430,26 +430,22 @@ FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
 
 coeffonly: ;
   idx_t idx = 0;
-  FUN(update0)((T*)t, t->lo, t->hi);
-  if (t->nz != 0) {
+  FUN(update)((T*)t);
+  if (!FUN(isnul(t))) {
     // print coefficients
-    const idx_t *o2i = d->ord2idx;
-    for (ord_t o = t->lo; o <= t->hi ; ++o) {
-      if (!mad_bit_tst(t->nz,o)) continue;
-      for (idx_t i = o2i[o]; i < o2i[o+1]; ++i) {
+    TPSA_SCAN(t) {
 #ifndef MAD_CTPSA_IMPL
-        if (fabs(t->coef[i]) < eps_) continue;
-        if (idx == 0)
-          fprintf(stream_, "\n     I   COEFFICIENT             ORDER   EXPONENTS");
-        fprintf(stream_, "\n%6d  %23.16lE   %2hhu   "           , ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
+      if (fabs(t->coef[i]) < eps_) continue;
+      if (idx == 0)
+        fprintf(stream_, "\n     I   COEFFICIENT             ORDER   EXPONENTS");
+      fprintf(stream_, "\n%6d  %23.16lE   %2hhu   "           , ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
 #else
-        if (fabs(creal(t->coef[i])) < eps_ && fabs(cimag(t->coef[i])) < eps_) continue;
-        if (idx == 0)
-          fprintf(stream_, "\n     I   COEFFICIENT                                      ORDER   EXPONENTS");
-        fprintf(stream_, "\n%6d  %23.16lE %+23.16lEi   %2hhu   ", ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
+      if (fabs(creal(t->coef[i])) < eps_ && fabs(cimag(t->coef[i])) < eps_) continue;
+      if (idx == 0)
+        fprintf(stream_, "\n     I   COEFFICIENT                                      ORDER   EXPONENTS");
+      fprintf(stream_, "\n%6d  %23.16lE %+23.16lEi   %2hhu   ", ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
 #endif
-        print_ords(d->nv, d->np, 0, d->To[i], stream_);
-      }
+      print_ords(d->nv, d->np, 0, d->To[i], stream_);
     }
     if (!idx)
          fprintf(stream_, "\n\n         ALL COMPONENTS ZERO (EPS=%.1lE)", eps_);
