@@ -366,7 +366,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
     warn("unable to parse GTPSA coefficients for '%s'",
          t->nam[0] ? t->nam : "-UNNAMED-");
   else
-    FUN(update)(t);
+    FUN(update)(t,0);
 
   DBGTPSA(t); DBGFUN(<-);
 }
@@ -428,7 +428,7 @@ FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
 
 coeffonly: ;
   idx_t idx = 0;
-  FUN(update)((T*)t);
+  FUN(update)((T*)t,0);
   if (!FUN(isnul(t))) {
     // print coefficients
     TPSA_SCAN(t) {

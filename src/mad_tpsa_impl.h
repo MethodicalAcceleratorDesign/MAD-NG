@@ -141,7 +141,11 @@ static inline tpsa_t* // round TPSA coefs with magnitude below eps to zero
 mad_tpsa_stabilize0 (tpsa_t *t, ord_t o, num_t eps)
 {
   assert(t);
-  TPSA_SCAN_O(t,o) if (fabs(t->coef[i]) <= eps) t->coef[i] = 0;
+  log_t nz = FALSE;
+  TPSA_SCAN_O(t,o)
+    if (!t->coef[i] || fabs(t->coef[i]) < eps) t->coef[i] = 0;
+    else nz = TRUE;
+  if (!nz) t->nz = mad_bit_clr(t->nz,o);
   return t;
 }
 

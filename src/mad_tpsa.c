@@ -298,11 +298,12 @@ FUN(setval) (T *t, NUM v)
 }
 
 log_t
-FUN(update) (T *t)
+FUN(update) (T *t, num_t eps)
 {
   assert(t); DBGFUN(->);
   const bit_t nz = t->nz;
-  TPSA_SCAN_Z(t,t->lo,t->hi) FUN(update0)(t,o);
+  if (eps <= 0) { TPSA_SCAN_Z(t,t->lo,t->hi) FUN(stabilize0)(t,o,eps); }
+  else          { TPSA_SCAN_Z(t,t->lo,t->hi) FUN(update0   )(t,o    ); }
   const log_t up = t->nz != nz;
   if (up) FUN(adjust0)(t);
   DBGTPSA(t); DBGFUN(<-); return up;
@@ -692,7 +693,7 @@ FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
   // activate nz bits that might be affected by vector content
   t->nz |= mad_bit_mask(~0ull, t->lo, t->hi);
 
-  FUN(update)(t);
+  FUN(update)(t,0);
   DBGTPSA(t); DBGFUN(<-);
 }
 

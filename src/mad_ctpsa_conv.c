@@ -39,7 +39,7 @@ mad_ctpsa_real (const ctpsa_t *t, tpsa_t *c)
 
   TPSA_SCAN(c) c->coef[i] = creal(t->coef[i]);
 
-  mad_tpsa_update(c); DBGFUN(<-);
+  mad_tpsa_update(c,0); DBGFUN(<-);
 }
 
 void
@@ -55,10 +55,10 @@ mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *c)
 
   TPSA_SCAN(c) c->coef[i] = cimag(t->coef[i]);
 
-  mad_tpsa_update(c); DBGFUN(<-);
+  mad_tpsa_update(c,0); DBGFUN(<-);
 }
 
-void // special unique case, should be in mad_tpsa_conv.c to use FUN
+void // special unique case
 mad_ctpsa_cplx (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
 {
   assert((re_ || im_) && c); DBGFUN(->);
@@ -86,8 +86,8 @@ mad_ctpsa_cplx (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
   case 3: { // re_ && im_
     TPSA_SCAN(c) {
       c->coef[i] = 0;
-      if (mad_bit_tst(re_,o)) c->coef[i] += re_->coef[i];
-      if (mad_bit_tst(im_,o)) c->coef[i] += im_->coef[i]*I;
+      if (mad_bit_tst(re_->nz,o)) c->coef[i] += re_->coef[i];
+      if (mad_bit_tst(im_->nz,o)) c->coef[i] += im_->coef[i]*I;
     }}
   }
   DBGFUN(<-);

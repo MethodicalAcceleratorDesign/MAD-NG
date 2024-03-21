@@ -74,8 +74,8 @@ void     mad_ctpsa_setvar  (      ctpsa_t *t, cpx_t v, idx_t iv, cpx_t scl_);
 void     mad_ctpsa_setprm  (      ctpsa_t *t, cpx_t v, idx_t ip);
 void     mad_ctpsa_setval  (      ctpsa_t *t, cpx_t v);
 void     mad_ctpsa_setnam  (      ctpsa_t *t, str_t nam);
+log_t    mad_ctpsa_update  (      ctpsa_t *t, num_t eps_);
 void     mad_ctpsa_clear   (      ctpsa_t *t);
-log_t    mad_ctpsa_update  (      ctpsa_t *t);
 
 // real, imaginary, norm, phase, conversion
 void     mad_ctpsa_cplx    (const  tpsa_t *re_, const tpsa_t *im_, ctpsa_t *r);
