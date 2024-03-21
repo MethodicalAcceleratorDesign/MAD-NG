@@ -20,9 +20,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
-#include <assert.h>
 #include <limits.h>
-#include <math.h>
 
 #include "mad_mem.h"
 #include "mad_desc_impl.h"

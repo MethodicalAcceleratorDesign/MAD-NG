@@ -17,10 +17,8 @@
  o-----------------------------------------------------------------------------o
 */
 
-#include <math.h>
 #include <ctype.h>
 #include <string.h>
-#include <assert.h>
 
 #include "mad_mem.h"
 #include "mad_str.h"

@@ -17,8 +17,6 @@
  o-----------------------------------------------------------------------------o
 */
 
-#include <assert.h>
-
 #include "mad_mem.h"
 #include "mad_vec.h"
 #include "mad_mat.h"

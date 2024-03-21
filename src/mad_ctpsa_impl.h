@@ -19,6 +19,7 @@
  o-----------------------------------------------------------------------------o
 */
 
+#include <assert.h>
 #include <tgmath.h>
 #include <complex.h>
 
@@ -136,6 +137,14 @@ mad_ctpsa_update0 (ctpsa_t *t, ord_t o)
   while (!t->coef[i]) ++i;
   if (i == ni && !c) t->nz = mad_bit_clr(t->nz,o);
   t->coef[ni] = c; // restore value
+  return t;
+}
+
+static inline ctpsa_t* // round TPSA coefs with magnitude below eps to zero
+mad_ctpsa_stabilize0 (ctpsa_t *t, ord_t o, num_t eps)
+{
+  assert(t);
+  TPSA_SCAN_O(t,o) if (cabs(t->coef[i]) <= eps) t->coef[i] = 0;
   return t;
 }
 

@@ -17,8 +17,6 @@
  o-----------------------------------------------------------------------------o
 */
 
-#include <math.h>
-#include <assert.h>
 #include <string.h>
 #include <errno.h>
 

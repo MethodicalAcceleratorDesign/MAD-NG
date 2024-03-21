@@ -17,8 +17,6 @@
  o-----------------------------------------------------------------------------o
 */
 
-#include <assert.h>
-
 #include "mad_log.h"
 #include "mad_cst.h"
 #include "mad_num.h"

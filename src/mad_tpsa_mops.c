@@ -16,10 +16,8 @@
  o-----------------------------------------------------------------------------o
 */
 
-#include <math.h>
 #include <float.h>
 #include <string.h>
-#include <assert.h>
 
 #include "mad_mem.h"
 #include "mad_desc_impl.h"

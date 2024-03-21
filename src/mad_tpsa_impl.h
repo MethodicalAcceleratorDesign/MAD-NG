@@ -20,6 +20,9 @@
  o-----------------------------------------------------------------------------o
 */
 
+#include <math.h>
+#include <assert.h>
+
 #include "mad_bit.h"
 #include "mad_tpsa.h"
 
@@ -131,6 +134,14 @@ mad_tpsa_update0 (tpsa_t *t, ord_t o)
   while (!t->coef[i]) ++i;
   if (i == ni && !c) t->nz = mad_bit_clr(t->nz,o);
   t->coef[ni] = c; // restore value
+  return t;
+}
+
+static inline tpsa_t* // round TPSA coefs with magnitude below eps to zero
+mad_tpsa_stabilize0 (tpsa_t *t, ord_t o, num_t eps)
+{
+  assert(t);
+  TPSA_SCAN_O(t,o) if (fabs(t->coef[i]) <= eps) t->coef[i] = 0;
   return t;
 }
 
