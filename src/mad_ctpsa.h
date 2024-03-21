@@ -60,8 +60,8 @@ ssz_t    mad_ctpsa_len     (const ctpsa_t *t);
 str_t    mad_ctpsa_nam     (const ctpsa_t *t);
 log_t    mad_ctpsa_isnul   (const ctpsa_t *t);
 ord_t    mad_ctpsa_ord     (const ctpsa_t *t);
-ord_t    mad_ctpsa_ordv    (const ctpsa_t *t, ...);       // max order of all
-ord_t    mad_ctpsa_ordn    (ssz_t n, const ctpsa_t *t[]); // max order of all
+ord_t    mad_ctpsa_ordv    (const ctpsa_t *t, ...);                 // max order of all
+ord_t    mad_ctpsa_ordn    (ssz_t n, const ctpsa_t *t[], log_t hi); // max order of all
 
 // initialization
 void     mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *r);

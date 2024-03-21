@@ -60,8 +60,8 @@ ssz_t   mad_tpsa_len     (const tpsa_t *t);
 str_t   mad_tpsa_nam     (const tpsa_t *t);
 log_t   mad_tpsa_isnul   (const tpsa_t *t);
 ord_t   mad_tpsa_ord     (const tpsa_t *t);
-ord_t   mad_tpsa_ordv    (const tpsa_t *t, ...);       // max order of all
-ord_t   mad_tpsa_ordn    (ssz_t n, const tpsa_t *t[]); // max order of all
+ord_t   mad_tpsa_ordv    (const tpsa_t *t, ...);                 // max order of all
+ord_t   mad_tpsa_ordn    (ssz_t n, const tpsa_t *t[], log_t hi); // max order of all
 
 // initialization
 void    mad_tpsa_copy    (const tpsa_t *t, tpsa_t *r);

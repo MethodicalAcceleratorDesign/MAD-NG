@@ -71,15 +71,9 @@ split_and_inv(const D *d, ssz_t na, const T *ma[na], ssz_t nb, T *lininv[na], T 
 
     FUN(copy)(ma[i], t);
 
-    // clear constant and linear part of coef
+    // clear constant and linear part of coef, set nz, adjust lo,hi
     FOR(c,d->ord2idx[2]) t->coef[c] = 0;
-
-    // clear constant and linear part of nz, adjust lo, hi
-    t->nz = mad_bit_mclr(t->nz,3);
-    if (t->nz) {
-      t->lo = mad_bit_lowest (t->nz);
-      t->hi = mad_bit_highest(t->nz);
-    } else FUN(reset0)(t);
+    t->nz = mad_bit_mclr(t->nz,3); FUN(adjust0)(t);
 
     FUN(scl)(t,-1,t);
   }

@@ -170,12 +170,13 @@ ord_t
 }
 
 ord_t
-FUN(ordn) (ssz_t n, const T *t[n])
+FUN(ordn) (ssz_t n, const T *t[n], log_t hi)
 {
   assert(t); DBGFUN(->);
-  ord_t mo = 0;
-  FOR(i,n) if (t[i]->mo > mo) mo = t[i]->mo;
-  DBGFUN(<-); return mo;
+  ord_t mx = 0;
+  if (hi) { FOR(i,n) if (t[i]->hi > mx) mx = t[i]->hi; }
+  else    { FOR(i,n) if (t[i]->mo > mx) mx = t[i]->mo; }
+  DBGFUN(<-); return mx;
 }
 
 log_t

@@ -95,8 +95,7 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
     mc_[ic] = FUN(newd)(d, d->to);
   }
 
-  ord_t hi_ord = 0;
-  FOR(i,sa) if (ma[i]->hi > hi_ord) hi_ord = ma[i]->hi;
+  ord_t hi_ord = FUN(ordn)(sa,ma,TRUE);
   hi_ord = MIN(hi_ord, d->to);
 
   #ifdef _OPENMP
