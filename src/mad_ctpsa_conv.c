@@ -16,8 +16,6 @@
  o-----------------------------------------------------------------------------o
 */
 
-#include <assert.h>
-
 #include "mad_mem.h"
 #include "mad_desc_impl.h"
 
@@ -34,20 +32,14 @@ mad_ctpsa_real (const ctpsa_t *t, tpsa_t *c)
   assert(t && c); DBGFUN(->);
   ensure(t->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  const D* d = t->d;
+  mad_tpsa_copy0((const tpsa_t*)t, c);
+  c->coef[0] = creal(t->coef[0]);
 
-  c->hi = MIN(t->hi, c->mo, d->to);
-  c->nz = mad_bit_hcut(t->nz,c->hi);
-  if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
+  if (mad_tpsa_isnul(c)) { mad_tpsa_reset0(c); DBGFUN(<-); return; }
 
-  c->lo = t->lo;
-  c->coef[0] = 0;
+  TPSA_SCAN(c) c->coef[i] = creal(t->coef[i]);
 
-  const idx_t *o2i = d->ord2idx;
-  for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
-    c->coef[i] = creal(t->coef[i]);
-
-  FUN(update)(c); DBGFUN(<-);
+  mad_tpsa_update(c); DBGFUN(<-);
 }
 
 void
@@ -56,20 +48,14 @@ mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *c)
   assert(t && c); DBGFUN(->);
   ensure(t->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  const D* d = t->d;
+  mad_tpsa_copy0((const tpsa_t*)t, c);
+  c->coef[0] = cimag(t->coef[0]);
 
-  c->hi = MIN(t->hi, c->mo, d->to);
-  c->nz = mad_bit_hcut(t->nz,c->hi);
-  if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
+  if (mad_tpsa_isnul(c)) { mad_tpsa_reset0(c); DBGFUN(<-); return; }
 
-  c->lo = t->lo;
-  c->coef[0] = 0;
+  TPSA_SCAN(c) c->coef[i] = cimag(t->coef[i]);
 
-  const idx_t *o2i = d->ord2idx;
-  for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
-    c->coef[i] = cimag(t->coef[i]);
-
-  FUN(update)(c); DBGFUN(<-);
+  mad_tpsa_update(c); DBGFUN(<-);
 }
 
 void // special unique case, should be in mad_tpsa_conv.c to use FUN
@@ -83,33 +69,26 @@ mad_ctpsa_cplx (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
   ord_t lo = MIN(re->lo, im->lo),
         hi = MAX(re->hi, im->hi);
 
-  const D *d = c->d;
+  c->lo = MIN(lo, c->mo); if (!c->lo) c->lo = 1; // see copy0
+  c->hi = MIN(hi, c->mo, c->d->to);
+  c->nz = mad_bit_hcut(re->nz|im->nz, c->hi);
+  c->coef[0] = (re_ ? re_->coef[0] : 0) +
+               (im_ ? im_->coef[0] : 0)*I;
 
-  c->hi = MIN(hi, c->mo, d->to);
-  c->nz = mad_bit_hcut(re->nz|im->nz,c->hi);
-  if (!c->nz) { mad_ctpsa_reset0(c); DBGFUN(<-); return; }
+  if (mad_ctpsa_isnul(c)) { mad_ctpsa_reset0(c); DBGFUN(<-); return; }
 
-  c->lo = lo;
-  c->coef[0] = 0;
-
-  const idx_t *o2i = d->ord2idx;
   switch(!!re_ + 2*!!im_) {
-  case 1: // re_ && !im_
-    for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
-      c->coef[i] = re_->coef[i];
-    break;
-
-  case 2: // !re_ && im_
-    for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
-      c->coef[i] = im_->coef[i]*I;
-    break;
-
-  case 3: // re_ && im_
-    for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i) {
-      c->coef[i] = 0;
+  case 1: { // re_ && !im_
+    TPSA_SCAN(c) c->coef[i] = re_->coef[i];
+    break; }
+  case 2: { // !re_ && im_
+    TPSA_SCAN(c) c->coef[i] = im_->coef[i]*I;
+    break; }
+  case 3: { // re_ && im_
+    TPSA_SCAN(c) {
       if (o2i[re_->lo] <= i && i < o2i[re_->hi+1]) c->coef[i] += re_->coef[i];
       if (o2i[im_->lo] <= i && i < o2i[im_->hi+1]) c->coef[i] += im_->coef[i]*I;
-    }
+    } break; }
   }
   DBGFUN(<-);
 }
