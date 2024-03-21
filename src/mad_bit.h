@@ -52,6 +52,9 @@ static bit_t mad_bit_clr     (bit_t b, int n);
 // other
 static bit_t mad_bit_lcut    (bit_t b, int n);
 static bit_t mad_bit_hcut    (bit_t b, int n);
+static bit_t mad_bit_mask    (bit_t b, int lo, int hi);
+
+// special
 static int   mad_bit_lowest  (bit_t b);
 static int   mad_bit_highest (bit_t b);
 
@@ -144,6 +147,12 @@ static inline bit_t __attribute__((const))
 mad_bit_hcut (bit_t b, int n) // clear bits > n
 {
   return mad_bit_mget(b, (2ull << n)-1);
+}
+
+static inline bit_t __attribute__((const))
+mad_bit_mask (bit_t b, int lo, int hi) // clear bits not in [lo,hi]
+{
+  return mad_bit_hcut(mad_bit_lcut(b, lo), hi);
 }
 
 static inline int __attribute__((const))
