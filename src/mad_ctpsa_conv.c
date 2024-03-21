@@ -72,8 +72,7 @@ mad_ctpsa_cplx (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
   c->lo = MIN(lo, c->mo); if (!c->lo) c->lo = 1; // see copy0
   c->hi = MIN(hi, c->mo, c->d->to);
   c->nz = mad_bit_hcut(re->nz|im->nz, c->hi);
-  c->coef[0] = (re_ ? re_->coef[0] : 0) +
-               (im_ ? im_->coef[0] : 0)*I;
+  c->coef[0] = (re_ ? re_->coef[0] : 0) + (im_ ? im_->coef[0] : 0)*I;
 
   if (mad_ctpsa_isnul(c)) { mad_ctpsa_reset0(c); DBGFUN(<-); return; }
 
@@ -86,9 +85,10 @@ mad_ctpsa_cplx (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
     break; }
   case 3: { // re_ && im_
     TPSA_SCAN(c) {
-      if (o2i[re_->lo] <= i && i < o2i[re_->hi+1]) c->coef[i] += re_->coef[i];
-      if (o2i[im_->lo] <= i && i < o2i[im_->hi+1]) c->coef[i] += im_->coef[i]*I;
-    } break; }
+      c->coef[i] = 0;
+      if (mad_bit_tst(re_,o)) c->coef[i] += re_->coef[i];
+      if (mad_bit_tst(im_,o)) c->coef[i] += im_->coef[i]*I;
+    }}
   }
   DBGFUN(<-);
 }
