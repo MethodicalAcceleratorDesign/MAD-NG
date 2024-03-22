@@ -386,7 +386,7 @@ FUN(scan) (FILE *stream_)
   if (d) {
     t = FUN(newd)(d, mad_tpsa_dflt);
     FUN(scan_coef)(t, stream_);
-    FUN(setnam)   (t, name   );
+    FUN(nam)      (t, name   );
   }
   DBGFUN(<-);
   return t;
