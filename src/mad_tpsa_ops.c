@@ -755,7 +755,7 @@ ret:
 void
 FUN(derivm) (const T *a, T *r, ssz_t n, const ord_t mono[n])
 {
-  assert(a && r); DBGFUN(->); DBGTPSA(a); DBGTPSA(r);
+  assert(a && r); DBGFUN(->); DBGTPSA(a);
   const D *d = a->d;
   const idx_t *o2i = d->ord2idx;
 
@@ -788,7 +788,7 @@ ret:
 void
 FUN(poisbra) (const T *a, const T *b, T *r, int nv)                 // C = [A,B]
 {
-  assert(a && b && r); DBGFUN(->); DBGTPSA(a); DBGTPSA(b); DBGTPSA(r);
+  assert(a && b && r); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
   const D *d = a->d;
   ensure(d == b->d && d == r->d, "incompatibles GTPSA (descriptors differ)");
 
