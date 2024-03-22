@@ -35,13 +35,11 @@ hpoly_diag_mul(const NUM *ca, const NUM *cb, NUM *cc, ssz_t nb,
                  const idx_t l[], const idx_t *idx[])
 {
   // asymm: c[2 2] = a[2 0]*b[0 2] + a[0 2]*b[2 0]
-  for (idx_t ib = 0; ib < nb; ib++)
-    if (cb[ib] || ca[ib])
-      for (idx_t ia = idx[0][ib]; ia < idx[1][ib]; ia++) {
-        idx_t ic = l[hpoly_idx(ib,ia,nb)];
-        if (ic >= 0)
-          cc[ic] = cc[ic] + ca[ia]*cb[ib] + (ia == ib ? 0 : ca[ib]*cb[ia]);
-      }
+  FOR(ib,nb) if (cb[ib] || ca[ib])
+    FOR(ia, idx[0][ib], idx[1][ib]) {
+      idx_t ic = l[hpoly_idx(ib,ia,nb)];
+      if (ic >= 0) cc[ic] = cc[ic] + ca[ia]*cb[ib] + (ia != ib)*ca[ib]*cb[ia];
+    }
 }
 
 static inline void
@@ -49,13 +47,11 @@ hpoly_sym_mul(const NUM *ca1, const NUM *cb1, const NUM *ca2, const NUM *cb2,
               NUM *cc, ssz_t na, ssz_t nb, const idx_t l[], const idx_t *idx[])
 {
   // na > nb so longer loop is inside
-  for (idx_t ib=0; ib < nb; ib++)
-    if (cb1[ib] || ca2[ib])
-      for (idx_t ia=idx[0][ib]; ia < idx[1][ib]; ia++) {
-        idx_t ic = l[hpoly_idx(ib, ia, na)];
-        if (ic >= 0)
-          cc[ic] = cc[ic] + ca1[ia]*cb1[ib] + ca2[ib]*cb2[ia];
-      }
+  FOR(ib,nb) if (cb1[ib] || ca2[ib])
+    FOR(ia, idx[0][ib], idx[1][ib]) {
+      idx_t ic = l[hpoly_idx(ib,ia,na)];
+      if (ic >= 0) cc[ic] = cc[ic] + ca1[ia]*cb1[ib] + ca2[ib]*cb2[ia];
+    }
 }
 
 static inline void
@@ -63,13 +59,11 @@ hpoly_asym_mul(const NUM *ca, const NUM *cb, NUM *cc, ssz_t na, ssz_t nb,
                const idx_t l[], const idx_t *idx[])
 {
   // oa > ob so longer loop is inside
-  for (idx_t ib=0; ib < nb; ib++)
-    if (cb[ib])
-      for (idx_t ia=idx[0][ib]; ia < idx[1][ib]; ia++) {
-        idx_t ic = l[hpoly_idx(ib,ia,na)];
-        if (ic >= 0)
-          cc[ic] = cc[ic] + ca[ia]*cb[ib];
-      }
+  FOR(ib,nb) if (cb[ib])
+    FOR(ia, idx[0][ib], idx[1][ib]) {
+      idx_t ic = l[hpoly_idx(ib,ia,na)];
+      if (ic >= 0) cc[ic] = cc[ic] + ca[ia]*cb[ib];
+    }
 }
 
 static inline void
@@ -78,7 +72,7 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, log_t in_p
   const D *d = c->d;
   const idx_t *o2i = d->ord2idx;
   const NUM *ca = a->coef, *cb = b->coef;
-  NUM *cc = c->coef;
+  NUM   *cc = c->coef;
   idx_t hod = d->mo/2;
   bit_t nza = a->nz, nzb = b->nz;
   ord_t lo = MAX(c->lo,3);
@@ -104,17 +98,17 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, log_t in_p
        assert(lc); assert(idx[0] && idx[1]);
 
       if (mad_bit_tst(nza & nzb,oa) && mad_bit_tst(nza & nzb,ob)) {
-//        printf("hpoly__sym_mul (%d) %2d+%2d=%2d\n", ocs[0], oa,ob,oc);
+//      printf("hpoly__sym_mul (%d) %2d+%2d=%2d\n", ocs[0], oa,ob,oc);
         hpoly_sym_mul(ca+o2i[oa],cb+o2i[ob],ca+o2i[ob],cb+o2i[oa],cc,na,nb,lc,idx);
         *cnz = mad_bit_set(*cnz,oc);
       }
       else if (mad_bit_tst(nza,oa) && mad_bit_tst(nzb,ob)) {
-//        printf("hpoly_asym_mul1(%d) %2d+%2d=%2d\n", ocs[0], oa,ob,oc);
+//      printf("hpoly_asym_mul1(%d) %2d+%2d=%2d\n", ocs[0], oa,ob,oc);
         hpoly_asym_mul(ca+o2i[oa],cb+o2i[ob],cc,na,nb,lc,idx);
         *cnz = mad_bit_set(*cnz,oc);
       }
       else if (mad_bit_tst(nza,ob) && mad_bit_tst(nzb,oa)) {
-//        printf("hpoly_asym_mul2(%d) %2d+%2d=%2d\n", ocs[0], ob,oa,oc);
+//      printf("hpoly_asym_mul2(%d) %2d+%2d=%2d\n", ocs[0], ob,oa,oc);
         hpoly_asym_mul(cb+o2i[oa],ca+o2i[ob],cc,na,nb,lc,idx);
         *cnz = mad_bit_set(*cnz,oc);
       }
@@ -152,7 +146,6 @@ hpoly_mul_par(const T *a, const T *b, T *c) // parallel version
     ord_t i = 0; while (d->ocs[1+t][i] > c->hi+1) ++i;
     hpoly_mul(a, b, c, &d->ocs[1+t][i], &c_nzs[t], TRUE);
   }
-
   FOR(t,d->nth) c->nz |= c_nzs[t];
 
 //  FUN(debug)(c,"cout",0,0);
@@ -186,7 +179,7 @@ der_coef(idx_t ia, idx_t idx, ord_t ord, const D* d)
     return 0;
 
   num_t c = 1;
-  for (int v = 0; v < d->nv; ++v)
+  FOR(v,d->nv)
     for (ord_t o = 0; o < derm[v]; ++o)
       c *= srcm[v] - o;
   return c;
@@ -200,7 +193,7 @@ hpoly_der_lt(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cn
   const idx_t *lc = d->L[ord*ho + oc], *o2i = d->ord2idx;
   idx_t nc = o2i[oc+1] - o2i[oc], cols = o2i[ord+1] - o2i[ord];
   idx_t idx_shifted = idx - o2i[ord];
-  for (idx_t ic = 0; ic < nc; ++ic) {
+  FOR(ic,nc) {
     idx_t ia = lc[hpoly_idx(ic,idx_shifted,cols)];
     if (ia >= 0 && ca[ia]) {
       assert(o2i[oc+ord] <= ia && ia < o2i[oc+ord+1]);
@@ -218,7 +211,7 @@ hpoly_der_eq(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cn
   const idx_t *lc = d->L[ord*ho + oc], *o2i = d->ord2idx;
   idx_t nc = o2i[ord+1] - o2i[ord];
   idx_t idx_shifted = idx - o2i[ord];
-  for (idx_t ic = 0; ic < nc; ++ic) {
+  FOR(ic,nc) {
     idx_t ia = lc[hpoly_idx(MAX(ic,idx_shifted),MIN(ic,idx_shifted),nc)];
     if (ia >= 0 && ca[ia]) {
       assert(o2i[oc+ord] <= ia && ia < o2i[oc+ord+1]);
@@ -236,7 +229,7 @@ hpoly_der_gt(const NUM ca[], NUM cc[], idx_t idx, ord_t oc, ord_t ord, bit_t *cn
   const idx_t *lc = d->L[oc*ho + ord], *o2i = d->ord2idx;
   idx_t nc = o2i[oc+1] - o2i[oc];
   idx_t idx_shifted = idx - o2i[ord];
-  for (idx_t ic = 0; ic < nc; ++ic) {
+  FOR(ic,nc) {
     idx_t ia = lc[hpoly_idx(idx_shifted,ic,nc)];
     if (ia >= 0 && ca[ia]) {
       assert(o2i[oc+ord] <= ia && ia < o2i[oc+ord+1]);
@@ -296,16 +289,9 @@ FUN(scl) (const T *a, NUM v, T *c)
 
   FUN(copy0)(a,c);
 
-  const idx_t *o2i = d->ord2idx;
-  if (v == 1)
-    for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
-      c->coef[i] = a->coef[i];
-  else if (v == -1)
-    for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
-      c->coef[i] = -a->coef[i];
-  else
-    for (idx_t i = o2i[c->lo]; i < o2i[c->hi+1]; ++i)
-      c->coef[i] = v * a->coef[i];
+       if (v ==  1) { TPSA_SCAN(c) c->coef[i] =   a->coef[i]; }
+  else if (v == -1) { TPSA_SCAN(c) c->coef[i] =  -a->coef[i]; }
+  else              { TPSA_SCAN(c) c->coef[i] = v*a->coef[i]; }
 
   DBGTPSA(c); DBGFUN(<-);
 }
@@ -313,28 +299,27 @@ FUN(scl) (const T *a, NUM v, T *c)
 void
 FUN(acc) (const T *a, NUM v, T *c)
 {
-  assert(a && c); DBGFUN(->); DBGTPSA(a);  DBGTPSA(c);
+  assert(a && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(c);
   const D *d = c->d;
   ensure(a->d == d, "incompatibles GTPSA (descriptors differ)");
 
   if (!v) { DBGFUN(<-); return; }
 
-  const idx_t *o2i = d->ord2idx;
-  ord_t new_lo = MIN (a->lo,c->lo);
-  ord_t new_hi = MIN(a->hi,c->mo,d->to);
+  ord_t hi = MIN(a->hi, c->mo, d->to); // see copy0
+  c->lo = MIN(a->lo, c->lo);
+  c->hi = MAX(hi   , c->hi);
+  c->nz = mad_bit_hcut(c->nz|a->nz, c->hi);
 
-  c->nz = mad_bit_hcut(c->nz|a->nz, MAX(new_hi, c->hi));
-  if (!c->nz) { FUN(reset0)(c); DBGFUN(<-); return; }
+  if (FUN(isnul0)(c)) { FUN(reset0)(c); DBGFUN(<-); return; }
 
-  for (idx_t i = o2i[new_lo ]; i < o2i[c->lo   ]; ++i) c->coef[i]  = 0;
-  for (idx_t i = o2i[c->hi+1]; i < o2i[new_hi+1]; ++i) c->coef[i]  = 0;
-  for (idx_t i = o2i[a->lo  ]; i < o2i[new_hi+1]; ++i) c->coef[i] += v * a->coef[i];
+  // accumulate non-zero a[o] in c[lo,hi]
+  c->coef[0] += v*a->coef[0];
+  TPSA_SCAN(a,c->lo,c->hi) c->coef[i] += v*a->coef[i];
 
-  c->lo = new_lo;
-  c->hi = MAX(new_hi, c->hi);
-  FUN(update)(c,0);
-  DBGFUN(<-);
+  DBGTPSA(c); DBGFUN(<-);
 }
+
+// TODO...
 
 void
 FUN(add) (const T *a, const T *b, T *c)
