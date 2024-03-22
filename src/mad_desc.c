@@ -1160,12 +1160,11 @@ mad_desc_idxsm (const D *d, ssz_t n, const idx_t m[n])
 int
 mad_desc_getnv (const D *d, ord_t *mo_, int *np_, ord_t *po_)
 {
-  assert(d); DBGFUN(->);
+  assert(d);
   if (mo_) *mo_ = d->mo;
   if (np_) *np_ = d->np;
   if (po_) *po_ = d->po;
-  const int ret = d->nv;
-  DBGFUN(<-); return ret;
+  return d->nv;
 }
 
 ord_t
@@ -1176,8 +1175,7 @@ mad_desc_maxord (const D *d, int n, ord_t no_[n])
     ensure(0 <= n && n <= d->nn, "invalid monomial length, 0<= %d <=%d", n,d->nn);
     mad_mono_copy(n, d->no, no_);
   }
-  const ord_t ret = d->mo;
-  DBGFUN(<-); return ret;
+  DBGFUN(<-); return d->mo;
 }
 
 ssz_t
@@ -1186,26 +1184,20 @@ mad_desc_maxlen (const D *d, ord_t mo)
   assert(d); DBGFUN(->);
   if (mo == mad_tpsa_dflt) mo = d->mo; else
   ensure(mo <= d->mo, "invalid order %d (exceeds maximum order %d)", mo,d->mo);
-
-  const ssz_t ret = d->ord2idx[mo+1];
-  DBGFUN(<-); return ret;
+  DBGFUN(<-); return d->ord2idx[mo+1];
 }
 
 ord_t
 mad_desc_gtrunc (const D *d, ord_t to)
 {
-  assert(d); DBGFUN(->);
+  assert(d);
+  if (to == mad_tpsa_same) return d->to;
 
-  if (to == mad_tpsa_same) {
-    DBGFUN(<-); return d->to;
-  }
-
+  DBGFUN(->);
   if (to == mad_tpsa_dflt) to = d->mo; else
   ensure(to <= d->mo, "invalid order %d (exceeds maximum order %d)", to,d->mo);
-
   const ord_t old = d->to;
   ((D*)d)->to = to;
-
   DBGFUN(<-); return old;
 }
 
@@ -1213,13 +1205,11 @@ void
 mad_desc_info (const D *d, FILE *fp_)
 {
   assert(d); DBGFUN(->);
-
   char s[d->nn+1];
   fprintf(fp_ ? fp_ : stdout,
           "id=%d, nn=%d, nv=%d, np=%d, mo=%d, po=%d, to=%d, uno=%d, no=[%s]\n",
            d->id, d->nn, d->nv, d->np, d->mo, d->po, d->to, d->uno,
            mad_mono_prt(d->nn, d->no, s));
-
   DBGFUN(<-);
 }
 
