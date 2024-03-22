@@ -348,8 +348,8 @@ FUN(scan_coef) (T *t, FILE *stream_)
     ensure(mad_mono_ord(nn,ords) == o,
            "invalid monomial order at index %d of '%s'", i, t->nam);
 
-    // discard too high mononial
-    if (o <= t->mo) FUN(setm)(t,nn,ords,0,v);
+    // discard too high mononial and zeros
+    if (o <= t->mo && v) FUN(setm)(t,nn,ords,0,v);
 
     // finish line (handle no '\n' before EOF)
     skip_line(stream_);
@@ -363,7 +363,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
     warn("unable to parse GTPSA coefficients for '%s'",
          t->nam[0] ? t->nam : "-UNNAMED-");
   else
-    FUN(update)(t,0);
+    FUN(adjust0)(t);
 
   DBGTPSA(t); DBGFUN(<-);
 }
@@ -423,7 +423,6 @@ FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
 
 onlycoef: ;
   idx_t idx = 0;
-  FUN(update)((T*)t,0);
   if (!FUN(isnul0)(t)) {
     TPSA_SCAN(t) {
 #ifndef MAD_CTPSA_IMPL
