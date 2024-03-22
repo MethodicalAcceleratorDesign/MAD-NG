@@ -286,8 +286,7 @@ do { \
 void
 FUN(scl) (const T *a, NUM v, T *c)
 {
-  assert(a && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(c);
-
+  assert(a && c); DBGFUN(->); DBGTPSA(a);
   const D *d = a->d;
   ensure(d == c->d, "incompatibles GTPSA (descriptors differ)");
 
@@ -314,8 +313,7 @@ FUN(scl) (const T *a, NUM v, T *c)
 void
 FUN(acc) (const T *a, NUM v, T *c)
 {
-  assert(a && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(c);
-
+  assert(a && c); DBGFUN(->); DBGTPSA(a);  DBGTPSA(c);
   const D *d = c->d;
   ensure(a->d == d, "incompatibles GTPSA (descriptors differ)");
 
@@ -335,14 +333,13 @@ FUN(acc) (const T *a, NUM v, T *c)
   c->lo = new_lo;
   c->hi = MAX(new_hi, c->hi);
   FUN(update)(c,0);
-
-  DBGTPSA(c); DBGFUN(<-);
+  DBGFUN(<-);
 }
 
 void
 FUN(add) (const T *a, const T *b, T *c)
 {
-  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b); DBGTPSA(c);
+  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
 
   const D *d = a->d;
   ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
@@ -360,14 +357,13 @@ FUN(add) (const T *a, const T *b, T *c)
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
   FUN(update)(c,0);
-
-  DBGTPSA(c); DBGFUN(<-);
+  DBGFUN(<-);
 }
 
 void
 FUN(sub) (const T *a, const T *b, T *c)
 {
-  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b); DBGTPSA(c);
+  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
 
   const D *d = a->d;
   ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
@@ -387,14 +383,13 @@ FUN(sub) (const T *a, const T *b, T *c)
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
   FUN(update)(c,0);
-
-  DBGTPSA(c); DBGFUN(<-);
+  DBGFUN(<-);
 }
 
 void
 FUN(dif) (const T *a, const T *b, T *c)
 {
-  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b); DBGTPSA(c);
+  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
 
   const D *d = a->d;
   ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
@@ -422,14 +417,13 @@ FUN(dif) (const T *a, const T *b, T *c)
   c->lo = a->lo; // a->lo <= b->lo  (because of swap)
   c->hi = c_hi;
   FUN(update)(c,0);
-
-  DBGTPSA(c); DBGFUN(<-);
+  DBGFUN(<-);
 }
 
 void
 FUN(mul) (const T *a, const T *b, T *r)
 {
-  assert(a && b && r); DBGFUN(->); DBGTPSA(a); DBGTPSA(b); DBGTPSA(r);
+  assert(a && b && r); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
 
   const D *d = a->d;
   ensure(d == b->d && d == r->d, "incompatibles GTPSA (descriptors differ)");
@@ -501,20 +495,18 @@ FUN(mul) (const T *a, const T *b, T *r)
         hpoly_mul_ser(a,b,c);
     }
   }
-
   FUN(update)(c,0);
 
 ret:
   assert(a != c && b != c);
-  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
-
-  DBGTPSA(r); DBGFUN(<-);
+  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); } else DBGTPSA(r);
+  DBGFUN(<-);
 }
 
 void
 FUN(div) (const T *a, const T *b, T *c)
 {
-  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b); DBGTPSA(c);
+  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   NUM b0 = b->coef[0];
@@ -540,7 +532,7 @@ FUN(div) (const T *a, const T *b, T *c)
 void
 FUN(powi) (const T *a, int n, T *c)
 {
-  assert(a && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(c);
+  assert(a && c); DBGFUN(->); DBGTPSA(a);
 
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
@@ -572,9 +564,8 @@ FUN(powi) (const T *a, int n, T *c)
   }
   REL_TMPX(t1);
 
-  if (inv) FUN(inv)(c,1,c);
-
-  DBGTPSA(c); DBGFUN(<-);
+  if (inv) FUN(inv)(c,1,c); else DBGTPSA(c);
+  DBGFUN(<-);
 }
 
 log_t
@@ -610,7 +601,7 @@ FUN(equ) (const T *a, const T *b, num_t tol_)
 void
 FUN(abs) (const T *a, T *c)
 {
-  assert(a && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(c);
+  assert(a && c); DBGFUN(->); DBGTPSA(a);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   if (a->coef[0] < 0) FUN(scl) (a, -1, c);
@@ -622,7 +613,7 @@ FUN(abs) (const T *a, T *c)
 void
 FUN(atan2) (const T *y, const T *x, T *r)
 {
-  assert(x && y && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(r);
+  assert(x && y && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y);
   ensure(x->d == y->d && x->d == r->d, "incompatible GTPSA (descriptors differ)");
   NUM x0 = x->coef[0], y0 = y->coef[0];
   NUM a0 = atan2(y0, x0);
@@ -647,7 +638,7 @@ FUN(atan2) (const T *y, const T *x, T *r)
 void
 FUN(conj) (const T *a, T *c) // c = a.re - a.im I
 {
-  assert(a && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(c);
+  assert(a && c); DBGFUN(->); DBGTPSA(a);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   c->lo = a->lo;
@@ -687,7 +678,7 @@ FUN(nrm) (const T *a)
 void
 FUN(integ) (const T *a, T *r, int iv)
 {
-  assert(a && r); DBGFUN(->); DBGTPSA(a); DBGTPSA(r);
+  assert(a && r); DBGFUN(->); DBGTPSA(a);
   const D *d = a->d;
   const idx_t *o2i = d->ord2idx;
 
@@ -712,14 +703,14 @@ FUN(integ) (const T *a, T *r, int iv)
   REL_TMPX(t);
 
 ret:
-  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
-  DBGTPSA(r); DBGFUN(<-);
+  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); } else DBGTPSA(r);
+  DBGFUN(<-);
 }
 
 void
 FUN(deriv) (const T *a, T *r, int iv)
 {
-  assert(a && r); DBGFUN(->); DBGTPSA(a); DBGTPSA(r);
+  assert(a && r); DBGFUN(->); DBGTPSA(a);
   const D *d = a->d;
   const idx_t *o2i = d->ord2idx;
 
@@ -748,8 +739,8 @@ FUN(deriv) (const T *a, T *r, int iv)
   FUN(update)(c,0);
 
 ret:
-  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
-  DBGTPSA(r); DBGFUN(<-);
+  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); } else DBGTPSA(r);
+  DBGFUN(<-);
 }
 
 void
@@ -781,8 +772,8 @@ FUN(derivm) (const T *a, T *r, ssz_t n, const ord_t mono[n])
   FUN(update)(c,0);
 
 ret:
-  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
-  DBGTPSA(r); DBGFUN(<-);
+  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); } else DBGTPSA(r);
+  DBGFUN(<-);
 }
 
 void
@@ -794,10 +785,10 @@ FUN(poisbra) (const T *a, const T *b, T *r, int nv)                 // C = [A,B]
 
   nv = nv>0 ? nv/2 : d->nv/2;
 
-  T *is[3];
-  for (int i=0; i < 3; ++i) is[i] = FUN(new)(a, d->to);
   T *c = a == r || b == r ? GET_TMPX(r) : FUN(reset0)(r);
 
+  T *is[3];
+  FOR(i,3) is[i] = FUN(new)(a, d->to);
   for (int i = 1; i <= nv; ++i) {
     FUN(deriv)(a, is[0], 2*i - 1); // res = res + da/dq_i * db/dp_i
     FUN(deriv)(b, is[1], 2*i    );
@@ -809,10 +800,10 @@ FUN(poisbra) (const T *a, const T *b, T *r, int nv)                 // C = [A,B]
     FUN(mul)  (is[0],is[1],is[2]);
     FUN(sub)  (c, is[2], c);
   }
+  FOR(i,3) FUN(del)(is[i]);
 
-  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
-  for (int i=0; i < 3; ++i) FUN(del)(is[i]);
-  DBGTPSA(r); DBGFUN(<-);
+  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); } else DBGTPSA(r);
+  DBGFUN(<-);
 }
 
 // --- high level functions ---------------------------------------------------o
@@ -820,18 +811,16 @@ FUN(poisbra) (const T *a, const T *b, T *r, int nv)                 // C = [A,B]
 void
 FUN(unit) (const T *x, T *r)
 {
-  assert(x && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(r);
+  assert(x && r); DBGFUN(->);
   ensure(x->d == r->d, "incompatibles GTPSA (descriptors differ)");
-
   FUN(scl)(x, 1/fabs(x->coef[0]), r);
-
-  DBGTPSA(r); DBGFUN(<-);
+  DBGFUN(<-);
 }
 
 void
 FUN(hypot) (const T *x, const T *y, T *r)
 {
-  assert(x && y && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(r);
+  assert(x && y && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y);
   ensure(x->d == y->d && y->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   FUN(axypbvwpc)(1,x,x, 1,y,y, 0,r);
@@ -843,7 +832,7 @@ FUN(hypot) (const T *x, const T *y, T *r)
 void
 FUN(hypot3) (const T *x, const T *y, const T *z, T *r)
 {
-  assert(x && y && z && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(z); DBGTPSA(r);
+  assert(x && y && z && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(z);
   ensure(x->d == r->d && y->d == r->d && z->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   FUN(ax2pby2pcz2)(1,x, 1,y, 1,z, r);
@@ -855,19 +844,17 @@ FUN(hypot3) (const T *x, const T *y, const T *z, T *r)
 void
 FUN(axpb) (NUM a, const T *x, NUM b, T *r)
 {
-  assert(x && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(r);
-
+  assert(x && r); DBGFUN(->); DBGTPSA(x);
   ensure(x->d == r->d, "incompatibles GTPSA (descriptors differ)");
   FUN(scl)(x,a,r);
   if (b) FUN(set0)(r,1,b);
-
-  DBGTPSA(r); DBGFUN(<-);
+  DBGFUN(<-);
 }
 
 void
 FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
 {            //    a           x       b           y      c      r
-  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b); DBGTPSA(c);
+  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
   ensure(a->d == b->d && b->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   ord_t   hi = MAX(a->hi,b->hi);
@@ -903,14 +890,13 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   if (c3) FUN(set0)(c,1,c3);
 
   FUN(update)(c,0);
-
-  DBGTPSA(c); DBGFUN(<-);
+  DBGFUN(<-);
 }
 
 void
 FUN(axypb) (NUM a, const T *x, const T *y, NUM b, T *r)
 {
-  assert(x && y && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(r);
+  assert(x && y && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y);
   ensure(x->d == y->d && y->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   FUN(mul)(x,y,r);
@@ -923,16 +909,14 @@ void
 FUN(axypbzpc) (NUM a, const T *x, const T *y, NUM b, const T *z, NUM c, T *r)
 {
   assert(x && y && z && r);
-  DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(z); DBGTPSA(r);
+  DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(z);
   ensure(x->d == y->d && y->d == z->d && z->d == r->d,
          "incompatibles GTPSA (descriptors differ)");
 
   T *t = GET_TMPX(r);
   FUN(mul)(x,y,t);
   FUN(axpbypc)(a,t,b,z,c,r);
-  REL_TMPX(t);
-
-  DBGTPSA(r); DBGFUN(<-);
+  REL_TMPX(t); DBGFUN(<-);
 }
 
 void
@@ -940,7 +924,7 @@ FUN(axypbvwpc) (NUM a, const T *x, const T *y,
                 NUM b, const T *v, const T *w, NUM c, T *r)
 {
   assert(x && y && v && w && r);
-  DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(v); DBGTPSA(w); DBGTPSA(r);
+  DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(v); DBGTPSA(w);
   ensure(x->d == y->d && y->d == v->d && v->d == w->d && w->d == r->d,
          "incompatibles GTPSA (descriptors differ)");
 
@@ -948,58 +932,51 @@ FUN(axypbvwpc) (NUM a, const T *x, const T *y,
   FUN(mul)(x,y,t);
   FUN(mul)(v,w,r);
   FUN(axpbypc)(a,t,b,r,c,r);
-  REL_TMPX(t);
-
-  DBGTPSA(r); DBGFUN(<-);
+  REL_TMPX(t); DBGFUN(<-);
 }
 
 void
 FUN(ax2pby2pcz2) (NUM a, const T *x, NUM b, const T *y, NUM c, const T *z, T *r)
 {
   assert(x && y && z && r);
-  DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(z); DBGTPSA(r);
+  DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(z);
   ensure(x->d == y->d && y->d == z->d && z->d == r->d,
          "incompatibles GTPSA (descriptors differ)");
 
   T *t = GET_TMPX(r);
   FUN(axypbvwpc)(a,x,x,b,y,y,0,t);
   FUN(axypbzpc)(c,z,z,1,t,0,r);
-  REL_TMPX(t);
-
-  DBGTPSA(r); DBGFUN(<-);
+  REL_TMPX(t); DBGFUN(<-);
 }
 
 void
 FUN(axpsqrtbpcx2) (const T *x, NUM a, NUM b, NUM c, T *r)
 {
-  assert(x && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(r);
+  assert(x && r); DBGFUN(->); DBGTPSA(x);
   ensure(x->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   T *t = GET_TMPX(r);
   FUN(axypb)(c,x,x,b,t);
   FUN(sqrt)(t,t);
   FUN(axpbypc)(a,x,1,t,0,r);
-  REL_TMPX(t);
-
-  DBGTPSA(r); DBGFUN(<-);
+  REL_TMPX(t); DBGFUN(<-);
 }
 
 void
 FUN(logaxpsqrtbpcx2) (const T *x, NUM a, NUM b, NUM c, T *r)
 {
-  assert(x && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(r);
+  assert(x && r); DBGFUN(->); DBGTPSA(x);
   ensure(x->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
-  FUN(axpsqrtbpcx2)(x, a, b, c, r);
-  FUN(log)(r, r);
-
-  DBGTPSA(r); DBGFUN(<-);
+  FUN(axpsqrtbpcx2)(x,a,b,c,r);
+  FUN(log)(r,r);
+  DBGFUN(<-);
 }
 
 void
 FUN(logxdy) (const T *x, const T *y, T *r)
 {
-  assert(x && y && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(r);
+  assert(x && y && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y);
   ensure(x->d == y->d && y->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   NUM x0 = FUN(get0)(x), y0 = FUN(get0)(y);
@@ -1011,8 +988,7 @@ FUN(logxdy) (const T *x, const T *y, T *r)
     FUN(log)(r, r);
     FUN(scl)(r, -1, r);
   }
-
-  DBGTPSA(r); DBGFUN(<-);
+  DBGFUN(<-);
 }
 
 // --- without complex-by-value version ---------------------------------------o
