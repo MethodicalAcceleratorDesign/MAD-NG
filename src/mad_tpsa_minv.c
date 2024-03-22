@@ -145,7 +145,7 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
   log_t isnul = TRUE;
   FOR(i,nb) {
     FUN(copy)(lininv[i], mc[i]);
-    isnul &= FUN(isnul)(nonlin[i]);
+    isnul &= FUN(isnul0)(nonlin[i]);
   }
 
   if (!isnul) {

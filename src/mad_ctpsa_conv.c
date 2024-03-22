@@ -35,7 +35,7 @@ mad_ctpsa_real (const ctpsa_t *t, tpsa_t *c)
 
   FUN(copy0)((const tpsa_t*)t, c)->coef[0] = creal(t->coef[0]);
 
-  if (FUN(isnul)(c)) { FUN(reset0)(c); DBGFUN(<-); return; }
+  if (FUN(isnul0)(c)) { FUN(reset0)(c); DBGFUN(<-); return; }
   TPSA_SCAN(c) c->coef[i] = creal(t->coef[i]);
   FUN(update)(c,0); DBGFUN(<-);
 }
@@ -49,7 +49,7 @@ mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *c)
 
   FUN(copy0)((const tpsa_t*)t, c)->coef[0] = cimag(t->coef[0]);
 
-  if (FUN(isnul)(c)) { FUN(reset0)(c); DBGFUN(<-); return; }
+  if (FUN(isnul0)(c)) { FUN(reset0)(c); DBGFUN(<-); return; }
   TPSA_SCAN(c) c->coef[i] = cimag(t->coef[i]);
   FUN(update)(c,0); DBGFUN(<-);
 }

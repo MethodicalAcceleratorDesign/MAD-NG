@@ -424,8 +424,7 @@ FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
 onlycoef: ;
   idx_t idx = 0;
   FUN(update)((T*)t,0);
-  if (!FUN(isnul(t))) {
-    // print coefficients
+  if (!FUN(isnul0)(t)) {
     TPSA_SCAN(t) {
 #ifndef MAD_CTPSA_IMPL
       if (fabs(t->coef[i]) < eps_) continue;
