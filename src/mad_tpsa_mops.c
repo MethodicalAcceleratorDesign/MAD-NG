@@ -405,8 +405,7 @@ num_t
 FUN(mnrm) (ssz_t na, const T *ma[na])
 {
   assert(ma); DBGFUN(->);
-  num_t nrm = 0;
-  FOR(i,na) nrm += FUN(nrm)(ma[i]);
+  num_t nrm = mnrm(na,ma);
   DBGFUN(<-); return nrm;
 }
 
