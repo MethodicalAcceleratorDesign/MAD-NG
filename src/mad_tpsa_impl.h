@@ -120,7 +120,6 @@ mad_tpsa_clear0 (tpsa_t *t, ord_t o)
 {
   assert(t);
   TPSA_SCAN_O(t,o) t->coef[i] = 0;
-  t->nz = mad_bit_clr(t->nz,o);
   return t;
 }
 

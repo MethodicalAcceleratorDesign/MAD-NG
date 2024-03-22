@@ -240,8 +240,8 @@ end
 MR.__len  = \x     -> _C.mad_tpsa_len (x)
 MC.__len  = \x     -> _C.mad_ctpsa_len(x)
 
-MR.ord    = \x     -> _C.mad_tpsa_ord (x)
-MC.ord    = \x     -> _C.mad_ctpsa_ord(x)
+MR.ord    = \x,hi  -> _C.mad_tpsa_ord (x,hi)
+MC.ord    = \x,hi  -> _C.mad_ctpsa_ord(x,hi)
 
 MR.nv     = \x     -> _C.mad_desc_getnv (x.d,nil,nil,nil)
 MR.np     = \x     => _C.mad_desc_getnv (x.d,nil,int,ord) return int[0],ord[0] end
@@ -249,11 +249,11 @@ MR.maxord = \x     -> _C.mad_desc_maxord(x.d, 0, nil)
 MR.maxlen = \x,mo_ -> _C.mad_desc_maxlen(x.d,mo_ or x.mo)
 MR.gtrunc = \x,to_ -> _C.mad_desc_gtrunc(x.d,to_ or _C.mad_tpsa_same)
 
-MR.nam    = \x     -> ffi.string(_C.mad_tpsa_nam (x))
-MC.nam    = \x     -> ffi.string(_C.mad_ctpsa_nam(x))
+MR.nam    = \x     -> ffi.string(_C.mad_tpsa_nam (x,nil))
+MC.nam    = \x     -> ffi.string(_C.mad_ctpsa_nam(x,nil))
 
-MR.setnam = \x,s   => _C.mad_tpsa_setnam (x,s) return x end
-MC.setnam = \x,s   => _C.mad_ctpsa_setnam(x,s) return x end
+MR.setnam = \x,s   => _C.mad_tpsa_nam (x,s) return x end
+MC.setnam = \x,s   => _C.mad_ctpsa_nam(x,s) return x end
 
 MR.isvalid = \x    -> _C.mad_tpsa_isvalid (x)
 MC.isvalid = \x    -> _C.mad_ctpsa_isvalid(x)
@@ -323,6 +323,16 @@ function MC.__copy (x, y_)
     _C.mad_ctpsa_real(chksiz(x,y_), y_)
   end
   return y_
+end
+
+function MR.clrord (x, o)
+  _C.mad_tpsa_clrord(x, o)
+  return x
+end
+
+function MC.clrord (x, o)
+  _C.mad_ctpsa_clrord(x, o)
+  return x
 end
 
 function MR.sclord (x, inv_, prm_, y_)
@@ -607,6 +617,28 @@ function MC.set (x, m, a, b)
   return x
 end
 
+function MR.cpy (x, m, r) -- idx or str or mono -> num
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+      if is_integer(m) then _C.mad_tpsa_cpyi(x, r, m-1)
+  elseif is_string (m) then _C.mad_tpsa_cpys(x, r, #m, m)
+  else
+    if not is_monomial(m) then m = monomial(m) end
+    _C.mad_tpsa_cpym(x, r, m.n, m._dat)
+  end
+  return r
+end
+
+function MC.cpy (x, m, r) -- idx or str or mono -> cpx
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+      if is_integer(m) then _C.mad_ctpsa_cpyi(x, r, m-1)
+  elseif is_string (m) then _C.mad_ctpsa_cpys(x, r, #m, m)
+  else
+    if not is_monomial(m) then m = monomial(m) end
+    _C.mad_ctpsa_cpym(x, r, m.n, m._dat)
+  end
+  return r
+end
+
 -- sparse getters and setters -------------------------------------------------o
 
 function MR.get_sparse (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... } -> num
@@ -638,6 +670,24 @@ function MC.set_sparse (x, tbl, a, b) -- tbl = {idx1, ord1, idx2, ord2, ... }
   local n = #tbl
   local m = int_arr(n) ; for i=1,n do m[i-1] = tbl[i] end
   _C.mad_ctpsa_setsm_r(x, n, m, a.re, a.im, b.re, b.im) return x
+end
+
+function MR.cpy_sparse (x, tbl, r) -- tbl = {idx1, ord1, idx2, ord2, ... }
+  assert(is_table(tbl), "invalid argument #2 (table expected)")
+  local n = #tbl
+  local m = int_arr(n) ; for i=1,n do m[i-1] = tbl[i] end
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_cpysm(x, r, n, m)
+  return r
+end
+
+function MC.cpy_sparse (x, tbl, r) -- tbl = {idx1, ord1, idx2, ord2, ... }
+  assert(is_table(tbl), "invalid argument #2 (table expected)")
+  local n = #tbl
+  local m = int_arr(n) ; for i=1,n do m[i-1] = tbl[i] end
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_cpysm(x, r, n, m)
+  return r
 end
 
 -- table/vector getters and setters -------------------------------------------o
@@ -1932,8 +1982,8 @@ function MR.read (x_, filnam_, kind_)
   local d, x = _C.mad_tpsa_scan_hdr(int, cbuf, file)
   if d ~= nil then
     if int[0] == 1
-    then x = ctpsa(d) _C.mad_ctpsa_setnam(x,cbuf) _C.mad_ctpsa_scan_coef(x,file)
-    else x = tpsa (d) _C.mad_tpsa_setnam (x,cbuf) _C.mad_tpsa_scan_coef (x,file)
+    then x = ctpsa(d) _C.mad_ctpsa_nam(x,cbuf) _C.mad_ctpsa_scan_coef(x,file)
+    else x = tpsa (d) _C. mad_tpsa_nam(x,cbuf) _C. mad_tpsa_scan_coef(x,file)
     end
   end
 
