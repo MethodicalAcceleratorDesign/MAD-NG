@@ -395,6 +395,16 @@ FUN(fld2vec) (ssz_t na, const T *ma[na], T *c) // getpb
   DBGFUN(<-);
 }
 
+ord_t
+FUN(mord) (ssz_t n, const T *t[n], log_t hi)
+{
+  assert(t); DBGFUN(->);
+  ord_t mx = 0;
+  if (hi) { FOR(i,n) if (t[i]->hi > mx) mx = t[i]->hi; }
+  else    { FOR(i,n) if (t[i]->mo > mx) mx = t[i]->mo; }
+  DBGFUN(<-); return mx;
+}
+
 num_t
 FUN(mnrm) (ssz_t na, const T *ma[na])
 {
