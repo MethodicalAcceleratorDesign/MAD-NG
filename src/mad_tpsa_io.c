@@ -89,14 +89,11 @@ print_ords(int nv, int np, ord_t po, const ord_t ords[nv+np], FILE *stream)
   assert(ords && stream);
 
   // print variables
-  for (int i=0; i < nv-1; i += 2)
-    fprintf(stream, "  %hhu %hhu", ords[i], ords[i+1]);
-  if (nv % 2)
-    fprintf(stream, "  %hhu"     , ords[nv-1]);
+  FOR(i,0,nv-1,2) fprintf(stream, "  %hhu %hhu", ords[i], ords[i+1]);
+  if (nv % 2)     fprintf(stream, "  %hhu"     , ords[nv-1]);
 
   // print parameters
-  for (int i=nv; i < nv+np; i++)
-    if (ords[i] != po) fprintf(stream, "  %d^%hhu", i+1, ords[i]);
+  FOR(i,nv,nv+np) if (ords[i] != po) fprintf(stream, "  %d^%hhu", i+1, ords[i]);
 }
 
 static inline void
@@ -110,7 +107,7 @@ read_ords(int nv, int np, ord_t po, ord_t ords[nv+np], FILE *stream, int ci, str
   mad_mono_fill(np, ords+nv, po);
 
   // read variables
-  for (int i=0; i < nv-1; i += 2)
+  FOR(i,0,nv-1,2)
     if (fscanf(stream, "%*[ ]%hhu%*[ ]%hhu", &ords[i], &ords[i+1]) != 2)
       error("invalid monomial input at index %d of '%s'", ci, name);
   if (nv % 2)
@@ -120,7 +117,7 @@ read_ords(int nv, int np, ord_t po, ord_t ords[nv+np], FILE *stream, int ci, str
   // read parameters
   idx_t idx;
   ord_t ord;
-  for (int i=nv; i < nv+np; i++) {
+  FOR(i,nv,nv+np) {
     idx = 0, ord = -1;
     int cnt = fscanf(stream, "%*[ ]%d^%hhu", &idx, &ord);
 
@@ -406,10 +403,8 @@ FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
 #else
   const char typ = 'C';
 #endif
-
   const D *d = t->d;
-
-  if (nohdr_) goto coeffonly;
+  if (nohdr_) goto onlycoef;
 
   // print header
   fprintf(stream_, d->np || d->uno
@@ -426,7 +421,7 @@ FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
   fprintf(stream_, "***********************");
 #endif
 
-coeffonly: ;
+onlycoef: ;
   idx_t idx = 0;
   FUN(update)((T*)t,0);
   if (!FUN(isnul(t))) {
@@ -434,24 +429,20 @@ coeffonly: ;
     TPSA_SCAN(t) {
 #ifndef MAD_CTPSA_IMPL
       if (fabs(t->coef[i]) < eps_) continue;
-      if (idx == 0)
-        fprintf(stream_, "\n     I   COEFFICIENT             ORDER   EXPONENTS");
+      if (!idx) fprintf(stream_, "\n     I   COEFFICIENT             ORDER   EXPONENTS");
       fprintf(stream_, "\n%6d  %23.16lE   %2hhu   "           , ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
 #else
       if (fabs(creal(t->coef[i])) < eps_ && fabs(cimag(t->coef[i])) < eps_) continue;
-      if (idx == 0)
-        fprintf(stream_, "\n     I   COEFFICIENT                                      ORDER   EXPONENTS");
+      if (!idx) fprintf(stream_, "\n     I   COEFFICIENT                                      ORDER   EXPONENTS");
       fprintf(stream_, "\n%6d  %23.16lE %+23.16lEi   %2hhu   ", ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
 #endif
       print_ords(d->nv, d->np, 0, d->To[i], stream_);
     }
-    if (!idx)
-         fprintf(stream_, "\n\n         ALL COMPONENTS ZERO (EPS=%.1lE)", eps_);
-  } else fprintf(stream_, "\n\n         ALL COMPONENTS ZERO");
+    if (!idx) fprintf(stream_, "\n\n         ALL COMPONENTS ZERO (EPS=%.1lE)", eps_);
+  } else      fprintf(stream_, "\n\n         ALL COMPONENTS ZERO");
 
   fprintf(stream_, "\n");
-
-  DBGTPSA(t); DBGFUN(<-);
+  DBGFUN(<-);
 }
 
 // --- end --------------------------------------------------------------------o
