@@ -68,8 +68,8 @@ struct ctpsa_base {
         D& self()       { return static_cast<      D&>(*this);        }
 
   // set name
-  D& set(str_t              s)  { mad_ctpsa_setnam(ptr(), s);          return self(); }
-  D& set(const std::string &s)  { mad_ctpsa_setnam(ptr(), s.c_str());  return self(); }
+  D& set(str_t              s)  { mad_ctpsa_nam(ptr(), s);             return self(); }
+  D& set(const std::string &s)  { mad_ctpsa_nam(ptr(), s.c_str());     return self(); }
 
   // set value and variables
   D& set(CPX a)                 { mad_ctpsa_setval(ptr(), C(a)      ); return self(); }
