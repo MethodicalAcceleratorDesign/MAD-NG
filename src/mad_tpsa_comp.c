@@ -20,8 +20,6 @@
 #include <string.h>
 
 #include "mad_mem.h"
-#include "mad_desc_impl.h"
-
 #ifdef    MAD_CTPSA_IMPL
 #include "mad_ctpsa_impl.h"
 #else

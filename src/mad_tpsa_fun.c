@@ -18,21 +18,15 @@
 */
 
 #include <string.h>
-#include <errno.h>
+#include <complex.h>
 
 #include "mad_cst.h"
 #include "mad_log.h"
 #include "mad_num.h"
-#include "mad_desc_impl.h"
-
 #ifdef    MAD_CTPSA_IMPL
 #include "mad_ctpsa_impl.h"
-#define   MAD_TPSA_NOHELPER
-#include "mad_tpsa_impl.h"
 #else
 #include "mad_tpsa_impl.h"
-#define   MAD_TPSA_NOHELPER
-#include "mad_ctpsa_impl.h"
 #endif
 
 // --- local ------------------------------------------------------------------o

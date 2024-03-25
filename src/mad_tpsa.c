@@ -23,8 +23,6 @@
 #include <limits.h>
 
 #include "mad_mem.h"
-#include "mad_desc_impl.h"
-
 #ifdef    MAD_CTPSA_IMPL
 #include "mad_ctpsa_impl.h"
 #else
@@ -338,7 +336,9 @@ FUN(getord) (const T *t, T *r, ord_t ord)
   r->coef[0] = 0, r->lo = r->hi = ord, r->nz = mad_bit_set(0, ord);
 
   // copy data
-  if (t != r) { TPSA_SCAN_O(r,ord) r->coef[i] = t->coef[i]; }
+  if (t != r) {
+    TPSA_SCAN_O(r, ord) r->coef[i] = t->coef[i];
+  }
 
   DBGTPSA(r); DBGFUN(<-);
 }
@@ -380,7 +380,7 @@ FUN(maxord) (const T *t, ssz_t n, idx_t idx_[n])
   ord_t hi = MIN(n-1,t->hi,t->d->to);
   TPSA_SCAN_Z(t,t->lo,hi) {
     num_t mo = 0; // max of this order
-    TPSA_SCAN_O(t,o)
+    TPSA_SCAN_O(t)
       if (mo < fabs(t->coef[i])) {
         mo = fabs(t->coef[i]);        // save max for this order
         if (idx_) idx_[o] = i;        // save idx for this order

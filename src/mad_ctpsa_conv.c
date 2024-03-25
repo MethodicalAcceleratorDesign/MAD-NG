@@ -17,12 +17,7 @@
 */
 
 #include "mad_mem.h"
-#include "mad_desc_impl.h"
-
-#include "mad_tpsa_impl.h"
-#define   MAD_TPSA_NOHELPER
 #include "mad_ctpsa_impl.h"
-#undef    MAD_TPSA_NOHELPER
 
 // --- conversion (special cases) ---------------------------------------------o
 
