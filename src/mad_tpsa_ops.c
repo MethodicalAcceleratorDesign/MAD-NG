@@ -36,7 +36,7 @@ hpoly_diag_mul(const NUM *ca, const NUM *cb, NUM *cc, ssz_t nb,
   FOR(ib,nb) if (cb[ib] || ca[ib])
     FOR(ia, idx[0][ib], idx[1][ib]) {
       idx_t ic = l[hpoly_idx(ib,ia,nb)];
-      if (ic >= 0) cc[ic] = cc[ic] + ca[ia]*cb[ib] + (ia != ib)*ca[ib]*cb[ia];
+      if (ic >= 0) cc[ic] += ca[ia]*cb[ib] + (ia != ib)*ca[ib]*cb[ia];
     }
 }
 
@@ -48,7 +48,7 @@ hpoly_sym_mul(const NUM *ca1, const NUM *cb1, const NUM *ca2, const NUM *cb2,
   FOR(ib,nb) if (cb1[ib] || ca2[ib])
     FOR(ia, idx[0][ib], idx[1][ib]) {
       idx_t ic = l[hpoly_idx(ib,ia,na)];
-      if (ic >= 0) cc[ic] = cc[ic] + ca1[ia]*cb1[ib] + ca2[ib]*cb2[ia];
+      if (ic >= 0) cc[ic] += ca1[ia]*cb1[ib] + ca2[ib]*cb2[ia];
     }
 }
 
@@ -60,7 +60,7 @@ hpoly_asym_mul(const NUM *ca, const NUM *cb, NUM *cc, ssz_t na, ssz_t nb,
   FOR(ib,nb) if (cb[ib])
     FOR(ia, idx[0][ib], idx[1][ib]) {
       idx_t ic = l[hpoly_idx(ib,ia,na)];
-      if (ic >= 0) cc[ic] = cc[ic] + ca[ia]*cb[ib];
+      if (ic >= 0) cc[ic] += ca[ia]*cb[ib];
     }
 }
 
@@ -98,17 +98,17 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, log_t in_p
       if (mad_bit_tst(nza & nzb,oa) && mad_bit_tst(nza & nzb,ob)) {
 //      printf("hpoly__sym_mul (%d) %2d+%2d=%2d\n", ocs[0], oa,ob,oc);
         hpoly_sym_mul(ca+o2i[oa],cb+o2i[ob],ca+o2i[ob],cb+o2i[oa],cc,na,nb,lc,idx);
-        *cnz = mad_bit_set(*cnz,oc);
+        assert(mad_bit_tst(*cnz,oc)); // *cnz = mad_bit_set(*cnz,oc);
       }
       else if (mad_bit_tst(nza,oa) && mad_bit_tst(nzb,ob)) {
 //      printf("hpoly_asym_mul1(%d) %2d+%2d=%2d\n", ocs[0], oa,ob,oc);
         hpoly_asym_mul(ca+o2i[oa],cb+o2i[ob],cc,na,nb,lc,idx);
-        *cnz = mad_bit_set(*cnz,oc);
+        assert(mad_bit_tst(*cnz,oc)); // *cnz = mad_bit_set(*cnz,oc);
       }
       else if (mad_bit_tst(nza,ob) && mad_bit_tst(nzb,oa)) {
 //      printf("hpoly_asym_mul2(%d) %2d+%2d=%2d\n", ocs[0], ob,oa,oc);
         hpoly_asym_mul(cb+o2i[oa],ca+o2i[ob],cc,na,nb,lc,idx);
-        *cnz = mad_bit_set(*cnz,oc);
+        assert(mad_bit_tst(*cnz,oc)); // *cnz = mad_bit_set(*cnz,oc);
       }
     }
     // even oc, diagonal case
@@ -121,7 +121,7 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t *cnz, log_t in_p
       assert(lc); assert(idx[0] && idx[1]);
 //      printf("hpoly_diag_mul (%d) %2d+%2d=%2d\n", ocs[0], hoc,hoc,oc);
       hpoly_diag_mul(ca+o2i[hoc],cb+o2i[hoc],cc,nb,lc,idx);
-      *cnz = mad_bit_set(*cnz,oc);
+      assert(mad_bit_tst(*cnz,oc)); // *cnz = mad_bit_set(*cnz,oc);
     }
   }
 }
@@ -246,7 +246,7 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
   const NUM *ca = a->coef;
         NUM *cc;
 
-  c->hi = MIN(c->mo, d->to, a->hi-ord);  // initial guess, readjust based on nz
+  c->hi = MIN(a->hi-ord, c->mo, d->to);  // initial guess, readjust based on nz
   for (ord_t oc = 1; oc <= c->hi; ++oc) {
     if (mad_bit_tst(a->nz,oc+ord)) {
       cc = c->coef + o2i[oc];
@@ -389,59 +389,42 @@ FUN(mul) (const T *a, const T *b, T *r)
 
   T *c = (a == r || b == r) ? GET_TMPX(r) : FUN(reset0)(r);
 
-  c->lo = a->lo + b->lo;
-  c->hi = MIN(a->hi + b->hi, c->mo, d->to);
-  // empty
-  if (c->lo > c->hi) { FUN(reset0)(c); goto ret; }
   // a is the left-most one
   if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
 
-  // order 0
-  NUM a0 = a->coef[0], b0 = b->coef[0];
-  c->coef[0] = a0 * b0;
-  c->nz = c->coef[0] != 0;
-  if (!c->hi) goto ret;
+  ord_t anz = a->nz, bnz = b->nz;
+  if (a->coef[0]) anz = mad_bit_set(anz,0);
+  if (b->coef[0]) bnz = mad_bit_set(bnz,0);
 
-  // order 1
-  if (c->lo <= 1) {
-    idx_t max_ord1 = d->ord2idx[2];
-    if (mad_bit_tst(a->nz & b->nz,1) && a0 != 0 && b0 != 0) {
-      for (idx_t i=1; i < max_ord1; ++i) c->coef[i] = a0*b->coef[i] + b0*a->coef[i];
-      c->nz = mad_bit_set(c->nz,1);
-    }
-    else if (mad_bit_tst(a->nz,1) && b0 != 0) {
-      for (idx_t i=1; i < max_ord1; ++i) c->coef[i] = b0*a->coef[i];
-      c->nz = mad_bit_set(c->nz,1);
-    }
-    else if (mad_bit_tst(b->nz,1) && a0 != 0) {
-      for (idx_t i=1; i < max_ord1; ++i) c->coef[i] = a0*b->coef[i];
-      c->nz = mad_bit_set(c->nz,1);
-    }
-    else for (idx_t i=1; i < max_ord1; ++i) c->coef[i] = 0;
+  c->hi = MIN(a->hi+b->hi, c->mo, d->to); // see copy00
+  c->nz = mad_bit_hcut(anz*bnz, c->hi);
+
+  // order 0
+  c->coef[0] = a->coef[0] * b->coef[0];
+
+  if (FUN(isnul)(c)) { FUN(reset0)(c); goto ret; } else
+  if (!c->nz)  { c->lo = 1, c->hi = 0; goto ret; }
+
+  c->lo = mad_bit_lowest(c->nz); if (!c->lo) c->lo = 1;
+
+  // order 1+ (linear)
+  NUM a0 = a->coef[0], b0 = b->coef[0];
+  TPSA_SCAN_Z(c) {
+         if (mad_bit_tst(a->nz&b->nz,o)) TPSA_SCAN_O(c) c->coef[i] = a0*b->coef[i] + b0*a->coef[i];
+    else if (mad_bit_tst(a->nz      ,o)) TPSA_SCAN_O(c) c->coef[i] = b0*a->coef[i];
+    else if (mad_bit_tst(      b->nz,o)) TPSA_SCAN_O(c) c->coef[i] = a0*b->coef[i];
+    else                                 TPSA_SCAN_O(c) c->coef[i] = 0;
   }
 
   // order 2+
   if (c->hi > 1) {
-    ord_t c_hi = c->hi, ab_hi = MAX(a->hi,b->hi);
-    if (a0 != 0 && b0 != 0) TPSA_LINOP(2, b0*, +a0*, );
-    else if       (b0 != 0) TPSA_LINOP(2, b0*, + 0*, );
-    else if       (a0 != 0) TPSA_LINOP(2,  0*, +a0*, );
-    else                    TPSA_LINOP(2,  0*, + 0*, );
-
-    const idx_t *o2i = c->d->ord2idx;
-    for (idx_t i = o2i[ab_hi+1]; i < o2i[c_hi+1]; ++i) c->coef[i] = 0;
-
-    if (a0 != 0) { c->nz |= mad_bit_lcut(b->nz,2); }
-    if (b0 != 0) { c->nz |= mad_bit_lcut(a->nz,2); }
-                   c->nz  = mad_bit_hcut(c->nz,c_hi);
-
-    if (mad_bit_tst(a->nz & b->nz,1)) {
-      const idx_t *o2i = d->ord2idx, hod = d->mo/2;
+    if (mad_bit_tst(a->nz&b->nz,1)) {
+      const idx_t hod = d->mo/2;
       const idx_t *lc = d->L[hod+1];
       const idx_t *idx[2] = { d->L_idx[hod+1][0], d->L_idx[hod+1][2] };
       assert(lc);
       hpoly_diag_mul(a->coef+o2i[1], b->coef+o2i[1], c->coef, o2i[2]-o2i[1], lc, idx);
-      c->nz = mad_bit_set(c->nz,2);
+      assert(mad_bit_tst(c->nz,2));
     }
 
     // order 3+
@@ -454,7 +437,6 @@ FUN(mul) (const T *a, const T *b, T *r)
         hpoly_mul_ser(a,b,c);
     }
   }
-  FUN(update)(c,0);
 
 ret:
   assert(a != c && b != c);
