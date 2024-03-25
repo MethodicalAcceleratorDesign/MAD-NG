@@ -58,6 +58,20 @@ struct ctpsa_ { // warning: must be identical to LuaJIT def (see mad_cmad.mad)
 
 // --- helpers ----------------------------------------------------------------o
 
+static inline ctpsa_t* // trunc TPSA order to d->to, don't use coef
+mad_ctpsa_trunc0 (ctpsa_t *t)
+{ return (ctpsa_t*) mad_tpsa_trunc0((tpsa_t*)t); }
+
+static inline ctpsa_t* // copy TPSA orders, don't use coef.
+mad_ctpsa_copy0 (const ctpsa_t *t, ctpsa_t *r)
+{ return (ctpsa_t*) mad_tpsa_copy0((const tpsa_t*)t, (tpsa_t*)r); }
+
+static inline ctpsa_t* // copy TPSA orders, don't use coef.
+mad_ctpsa_copy00 (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *r)
+{ return (ctpsa_t*) mad_tpsa_copy00((const tpsa_t*)a, (const tpsa_t*)b, (tpsa_t*)r); }
+
+// --- functions accessing coef[0]
+
 static inline log_t // check if TPSA is nul
 mad_ctpsa_isnul0 (const ctpsa_t *t)
 {
@@ -73,21 +87,17 @@ mad_ctpsa_reset0 (ctpsa_t *t)
   return t;
 }
 
-static inline ctpsa_t* // trunc TPSA order to d->to
-mad_ctpsa_trunc0 (ctpsa_t *t)
-{ return (ctpsa_t*) mad_tpsa_trunc0 ((tpsa_t*)t); }
-
-static inline ctpsa_t* // copy TPSA orders but not coefs!
-mad_ctpsa_copy0 (const ctpsa_t *t, ctpsa_t *r)
-{ return (ctpsa_t*) mad_tpsa_copy0 ((const tpsa_t*)t, (tpsa_t*)r); }
-
-static inline ctpsa_t* // copy TPSA orders but not coefs!
-mad_ctpsa_copy00 (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *r)
-{ return (ctpsa_t*) mad_tpsa_copy00((const tpsa_t*)a, (const tpsa_t*)b, (tpsa_t*)r); }
-
 static inline ctpsa_t* // adjust TPSA orders lo,hi to nz
 mad_ctpsa_adjust0 (ctpsa_t *t)
-{ return (ctpsa_t*) mad_tpsa_adjust0((tpsa_t*)t); }
+{
+  assert(t);
+  if (mad_ctpsa_isnul0(t)) return mad_ctpsa_reset0(t);
+  t->lo = mad_bit_lowest (t->nz);
+  t->hi = mad_bit_highest(t->nz);
+  return t;
+}
+
+// --- functions accessing coef[o]
 
 static inline ctpsa_t* // clear TPSA order but doesn't adjust lo,hi
 mad_ctpsa_clear0 (ctpsa_t *t, ord_t o)

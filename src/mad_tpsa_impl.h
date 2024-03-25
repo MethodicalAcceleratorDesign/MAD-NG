@@ -77,21 +77,6 @@ struct tpsa_ {  // warning: must be identical to LuaJIT def (see mad_cmad.mad)
   const idx_t *o2i = (t)->d->ord2idx; \
   FOR(i,o2i[o],o2i[(o)+1])
 
-static inline log_t // check if TPSA is nul
-mad_tpsa_isnul0 (const tpsa_t *t)
-{
-  assert(t);
-  return !(t->nz || t->coef[0]);
-}
-
-static inline tpsa_t* // reset TPSA
-mad_tpsa_reset0 (tpsa_t *t)
-{
-  assert(t);
-  t->lo = 1, t->hi = 0, t->nz = 0, t->coef[0] = 0;
-  return t;
-}
-
 static inline tpsa_t* // trunc TPSA orders to d->to
 mad_tpsa_trunc0 (tpsa_t *t)
 {
@@ -122,6 +107,23 @@ mad_tpsa_copy00 (const tpsa_t *a, const tpsa_t *b, tpsa_t *r)
   return r;
 }
 
+// --- functions accessing coef[0]
+
+static inline log_t // check if TPSA is nul
+mad_tpsa_isnul0 (const tpsa_t *t)
+{
+  assert(t);
+  return !(t->nz || t->coef[0]);
+}
+
+static inline tpsa_t* // reset TPSA
+mad_tpsa_reset0 (tpsa_t *t)
+{
+  assert(t);
+  t->lo = 1, t->hi = 0, t->nz = 0, t->coef[0] = 0;
+  return t;
+}
+
 static inline tpsa_t* // adjust TPSA orders lo, hi to nz
 mad_tpsa_adjust0 (tpsa_t *t)
 {
@@ -131,6 +133,8 @@ mad_tpsa_adjust0 (tpsa_t *t)
   t->hi = mad_bit_highest(t->nz);
   return t;
 }
+
+// --- functions accessing coef[o]
 
 static inline tpsa_t* // clear TPSA order but doesn't adjust lo,hi
 mad_tpsa_clear0 (tpsa_t *t, ord_t o)
