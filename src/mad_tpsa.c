@@ -270,8 +270,8 @@ FUN(update) (T *t, num_t eps_)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
   bit_t nz = t->nz;
-  if (eps_ <= 0) { TPSA_SCAN_Z(t,t->lo,t->hi) FUN(stabilize0)(t,o,eps_); }
-  else           { TPSA_SCAN_Z(t,t->lo,t->hi) FUN(update0   )(t,o     ); }
+  if (eps_ <= 0) { TPSA_SCAN_Z(t) FUN(stabilize0)(t,o,eps_); }
+  else           { TPSA_SCAN_Z(t) FUN(update0   )(t,o     ); }
   log_t up = t->nz != nz;
   if (up) FUN(adjust0)(t);
   DBGTPSA(t); DBGFUN(<-); return up;
