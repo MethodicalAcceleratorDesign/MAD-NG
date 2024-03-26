@@ -259,19 +259,6 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
 
 // --- binary ops -------------------------------------------------------------o
 
-#define TPSA_LINOP(ORD, OPA, OPB, OPC) \
-do { \
-  const idx_t *o2i = c->d->ord2idx; \
-  idx_t start_a = o2i[ORD?MAX(a->lo,ORD):a->lo], end_a = o2i[MIN(a->hi,c_hi)+1]; \
-  idx_t start_b = o2i[ORD?MAX(b->lo,ORD):b->lo], end_b = o2i[MIN(b->hi,c_hi)+1]; \
-  idx_t i = start_a; \
-  for (; i < MIN(end_a,start_b); ++i) c->coef[i] = (OPA a->coef[i]               ) OPC; \
-  for (; i <           start_b ; ++i) c->coef[i] = (0                            ) OPC; \
-  for (; i < MIN(end_a,end_b)  ; ++i) c->coef[i] = (OPA a->coef[i] OPB b->coef[i]) OPC; \
-  for (; i <     end_a         ; ++i) c->coef[i] = (OPA a->coef[i]               ) OPC; \
-  for (; i <           end_b   ; ++i) c->coef[i] = (               OPB b->coef[i]) OPC; \
-} while(0)
-
 void
 FUN(scl) (const T *a, NUM v, T *c)
 {
@@ -301,10 +288,11 @@ FUN(acc) (const T *a, NUM v, T *c)
 
   FUN(copy00)(a,c,c);
 
-  if (FUN(isnul0)(c)) { FUN(reset0)(c); DBGFUN(<-); return; }
+  c->coef[0] += v*a->coef[0];
+
+  if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
 
   // accumulate non-zero a[o] in c[lo,hi]
-  c->coef[0] += v*a->coef[0];
   TPSA_SCAN(a,c->lo,c->hi) c->coef[i] += v*a->coef[i];
 
   DBGTPSA(c); DBGFUN(<-);
@@ -320,11 +308,12 @@ FUN(add) (const T *a, const T *b, T *c)
 
   FUN(copy00)(a,b,c);
 
-  if (FUN(isnul0)(c)) { FUN(reset0)(c); DBGFUN(<-); return; }
+  c->coef[0] = a->coef[0] + b->coef[0];
+
+  if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
 
   bit_t az = a->nz, nz = a->nz & b->nz;
-  c->coef[0] = a->coef[0] + b->coef[0];
-  TPSA_SCAN_Z(c,c->lo,c->hi) {
+  TPSA_SCAN_Z(c) {
     if (mad_bit_tst(nz,o)) TPSA_SCAN_O(c) c->coef[i] = a->coef[i]+b->coef[i]; else
     if (mad_bit_tst(az,o)) TPSA_SCAN_O(c) c->coef[i] = a->coef[i];            else
                            TPSA_SCAN_O(c) c->coef[i] =            b->coef[i];
@@ -342,11 +331,12 @@ FUN(sub) (const T *a, const T *b, T *c)
 
   FUN(copy00)(a,b,c);
 
-  if (FUN(isnul0)(c)) { FUN(reset0)(c); DBGFUN(<-); return; }
+  c->coef[0] = a->coef[0] - b->coef[0];
+
+  if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
 
   bit_t az = a->nz, nz = a->nz & b->nz;
-  c->coef[0] = a->coef[0] - b->coef[0];
-  TPSA_SCAN_Z(c,c->lo,c->hi) {
+  TPSA_SCAN_Z(c) {
     if (mad_bit_tst(nz,o)) TPSA_SCAN_O(c) c->coef[i] = a->coef[i]-b->coef[i]; else
     if (mad_bit_tst(az,o)) TPSA_SCAN_O(c) c->coef[i] = a->coef[i];            else
                            TPSA_SCAN_O(c) c->coef[i] =           -b->coef[i];
@@ -367,13 +357,14 @@ FUN(dif) (const T *a, const T *b, T *c)
 
   FUN(copy00)(a,b,c);
 
-  if (FUN(isnul0)(c)) { FUN(reset0)(c); DBGFUN(<-); return; }
+  c->coef[0] = dif(a->coef[0],b->coef[0]);
+
+  if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
 
   bit_t az = a->nz, nz = a->nz & b->nz;
-  c->coef[0] = a->coef[0] - b->coef[0];
-  TPSA_SCAN_Z(c,c->lo,c->hi) {
+  TPSA_SCAN_Z(c) {
     if (mad_bit_tst(nz,o)) TPSA_SCAN_O(c) c->coef[i] = dif(a->coef[i],b->coef[i]); else
-    if (mad_bit_tst(az,o)) TPSA_SCAN_O(c) c->coef[i] =                a->coef[i];  else
+    if (mad_bit_tst(az,o)) TPSA_SCAN_O(c) c->coef[i] =     a->coef[i];             else
                            TPSA_SCAN_O(c) c->coef[i] =               -b->coef[i];
   }
   DBGFUN(<-);
@@ -392,28 +383,28 @@ FUN(mul) (const T *a, const T *b, T *r)
   // a is the left-most one
   if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
 
-  ord_t anz = a->nz, bnz = b->nz;
+  bit_t anz = a->nz, bnz = b->nz;
   if (a->coef[0]) anz = mad_bit_set(anz,0);
   if (b->coef[0]) bnz = mad_bit_set(bnz,0);
 
   c->hi = MIN(a->hi+b->hi, c->mo, d->to); // see copy00
-  c->nz = mad_bit_hcut(anz*bnz, c->hi);
+  c->nz = mad_bit_hcut(mad_bit_clr(anz*bnz,0), c->hi);
 
   // order 0
   c->coef[0] = a->coef[0] * b->coef[0];
 
-  if (FUN(isnul)(c)) { FUN(reset0)(c); goto ret; } else
-  if (!c->nz)  { c->lo = 1, c->hi = 0; goto ret; }
+  if (!c->nz) { FUN(setval)(c, c->coef[0]); goto ret; }
 
-  c->lo = mad_bit_lowest(c->nz); if (!c->lo) c->lo = 1;
+  c->lo = mad_bit_lowest(c->nz);
 
   // order 1+ (linear)
   NUM a0 = a->coef[0], b0 = b->coef[0];
+  bit_t nz = anz & bnz;
   TPSA_SCAN_Z(c) {
-         if (mad_bit_tst(a->nz&b->nz,o)) TPSA_SCAN_O(c) c->coef[i] = a0*b->coef[i] + b0*a->coef[i];
-    else if (mad_bit_tst(a->nz      ,o)) TPSA_SCAN_O(c) c->coef[i] = b0*a->coef[i];
-    else if (mad_bit_tst(      b->nz,o)) TPSA_SCAN_O(c) c->coef[i] = a0*b->coef[i];
-    else                                 TPSA_SCAN_O(c) c->coef[i] = 0;
+    if (mad_bit_tst( nz,o)) TPSA_SCAN_O(c) c->coef[i] = a0*b->coef[i] + b0*a->coef[i]; else
+    if (mad_bit_tst(anz,o)) TPSA_SCAN_O(c) c->coef[i] = b0*a->coef[i];                 else
+    if (mad_bit_tst(bnz,o)) TPSA_SCAN_O(c) c->coef[i] = a0*b->coef[i];                 else
+                            TPSA_SCAN_O(c) c->coef[i] = 0;
   }
 
   // order 2+
@@ -430,7 +421,7 @@ FUN(mul) (const T *a, const T *b, T *r)
     // order 3+
     if (c->hi > 2) {
 #ifdef _OPENMP
-      if (d->ord2idx[c->hi+1] - d->ord2idx[c->lo] > 10000)
+      if (o2i[c->hi+1] - o2i[c->lo] > 10000)
         hpoly_mul_par(a,b,c);
       else
 #endif
@@ -509,30 +500,33 @@ FUN(powi) (const T *a, int n, T *c)
   DBGFUN(<-);
 }
 
+static inline log_t
+neq (NUM a, NUM b, num_t tol) { return fabs(a - b) > tol; }
+
 log_t
-FUN(equ) (const T *a, const T *b, num_t tol_)
+FUN(equ) (const T *a, const T *b, num_t tol)
 {
   assert(a && b); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
   ensure(a->d == b->d, "incompatibles GTPSA (descriptors differ)");
 
-  if (!(a->nz|b->nz)) return TRUE;
+  if (tol <= 0) tol = mad_cst_EPS;
 
-  if (tol_ <= 0) tol_ = mad_cst_EPS;
+  T c_ = {.d=a->d, .mo=a->d->mo}, *c = &c_; // fake TPSA
 
-  if (a->lo > b->lo) { const T* t; SWAP(a,b,t); }
+  FUN(copy00)(a,b,c);
 
-  const idx_t *o2i = a->d->ord2idx;
-  const idx_t start_a = o2i[a->lo], end_a = o2i[a->hi+1];
-  const idx_t start_b = o2i[b->lo], end_b = o2i[b->hi+1];
-  idx_t i = start_a;
+  if (!(c->nz || neq(a->coef[0], b->coef[0], tol))) { DBGFUN(<-); return TRUE; }
 
-  for (; i < MIN(end_a,start_b); ++i) if (fabs(a->coef[i]) > tol_)              { DBGFUN(<-); return FALSE; }
-  i = start_b;
-  for (; i < MIN(end_a,end_b)  ; ++i) if (fabs(a->coef[i] - b->coef[i]) > tol_) { DBGFUN(<-); return FALSE; }
-  for (; i <     end_a         ; ++i) if (fabs(a->coef[i]) > tol_)              { DBGFUN(<-); return FALSE; }
-  for (; i <           end_b   ; ++i) if (fabs(b->coef[i]) > tol_)              { DBGFUN(<-); return FALSE; }
+  bit_t az = a->nz, nz = a->nz & b->nz;
+  TPSA_SCAN_Z(c) {
+    if (mad_bit_tst(nz,o)) { TPSA_SCAN_O(c) if (neq(a->coef[i],b->coef[i],tol)) goto ret; } else
+    if (mad_bit_tst(az,o)) { TPSA_SCAN_O(c) if (neq(a->coef[i],0         ,tol)) goto ret; } else
+                           { TPSA_SCAN_O(c) if (neq(0         ,b->coef[i],tol)) goto ret; }
+  }
 
   DBGFUN(<-); return TRUE;
+ret:
+  DBGFUN(<-); return FALSE;
 }
 
 // --- functions --------------------------------------------------------------o
@@ -584,9 +578,10 @@ FUN(conj) (const T *a, T *c) // c = a.re - a.im I
 
   FUN(copy0)(a,c);
 
-  if (FUN(isnul)(c)) { FUN(reset0)(c); DBGFUN(<-); return; }
-
   c->coef[0] = conj(a->coef[0]);
+
+  if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
+
   TPSA_SCAN(c) c->coef[i] = conj(a->coef[i]);
 
   DBGTPSA(c); DBGFUN(<-);
@@ -789,39 +784,18 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
   ensure(a->d == b->d && b->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  ord_t   hi = MAX(a->hi,b->hi);
-  ord_t c_hi = MIN(hi, c->mo, c->d->to);
+  FUN(copy00)(a,b,c);
 
-  c->nz = mad_bit_hcut(a->nz|b->nz, c_hi);
-  if (!c->nz) {
-    FUN(setval)(c, c1*a->coef[0]+c2*b->coef[0]+c3); DBGFUN(<-); return;
+  c->coef[0] = c1*a->coef[0] + c2*b->coef[0] + c3;
+
+  if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
+
+  bit_t az = a->nz, nz = a->nz & b->nz;
+  TPSA_SCAN_Z(c) {
+    if (mad_bit_tst(nz,o)) TPSA_SCAN_O(c) c->coef[i] = c1*a->coef[i]+c2*b->coef[i]; else
+    if (mad_bit_tst(az,o)) TPSA_SCAN_O(c) c->coef[i] = c1*a->coef[i];               else
+                           TPSA_SCAN_O(c) c->coef[i] =               c2*b->coef[i];
   }
-
-  if (a->lo > b->lo)  {
-    const T* t; SWAP(a ,b ,t);
-    NUM n;      SWAP(c1,c2,n);
-  }
-
-  if (c1 == 1) {
-         if (c2 ==  1) TPSA_LINOP(0, , +   , );
-    else if (c2 == -1) TPSA_LINOP(0, , -   , );
-    else               TPSA_LINOP(0, , +c2*, );
-  } else
-  if (c1 == -1) {
-         if (c2 ==  1) TPSA_LINOP(0, -, +   , );
-    else if (c2 == -1) TPSA_LINOP(0, -, -   , );
-    else               TPSA_LINOP(0, -, +c2*, );
-  } else {
-         if (c2 ==  1) TPSA_LINOP(0, c1*, +   , );
-    else if (c2 == -1) TPSA_LINOP(0, c1*, -   , );
-    else               TPSA_LINOP(0, c1*, +c2*, );
-  }
-
-  c->lo = a->lo; // a->lo <= b->lo  (because of swap)
-  c->hi = c_hi;
-  if (c3) FUN(set0)(c,1,c3);
-
-  FUN(update)(c,0);
   DBGFUN(<-);
 }
 
