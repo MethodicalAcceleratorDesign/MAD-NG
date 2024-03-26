@@ -30,8 +30,10 @@ mad_ctpsa_real (const ctpsa_t *t, tpsa_t *c)
 
   FUN(copy0)((const tpsa_t*)t, c)->coef[0] = creal(t->coef[0]);
 
-  if (FUN(isnul0)(c)) { FUN(reset0)(c); DBGFUN(<-); return; }
+  if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
+
   TPSA_SCAN(c) c->coef[i] = creal(t->coef[i]);
+
   FUN(update)(c,0); DBGFUN(<-);
 }
 
@@ -44,8 +46,10 @@ mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *c)
 
   FUN(copy0)((const tpsa_t*)t, c)->coef[0] = cimag(t->coef[0]);
 
-  if (FUN(isnul0)(c)) { FUN(reset0)(c); DBGFUN(<-); return; }
+  if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
+
   TPSA_SCAN(c) c->coef[i] = cimag(t->coef[i]);
+
   FUN(update)(c,0); DBGFUN(<-);
 }
 
@@ -57,24 +61,16 @@ mad_ctpsa_cplx (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
   const tpsa_t *im = im_ ? im_ : re_; DBGTPSA(im);
   ensure(re->d == c->d && im->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  ord_t lo = MIN(re->lo, im->lo),
-        hi = MAX(re->hi, im->hi);
+  FUN(copy00)(re, im, (tpsa_t*)c);
 
-  c->lo = MIN(lo, c->mo); if (!c->lo) c->lo = 1; // see copy0
-  c->hi = MIN(hi, c->mo, c->d->to);
-  c->nz = mad_bit_hcut(re->nz|im->nz, c->hi);
   c->coef[0] = (re_ ? re_->coef[0] : 0) + (im_ ? im_->coef[0] : 0)*I;
 
-  if (mad_ctpsa_isnul(c)) { mad_ctpsa_reset0(c); DBGFUN(<-); return; }
+  if (!c->nz) { mad_ctpsa_setval(c, c->coef[0]); DBGFUN(<-); return; }
 
   switch(!!re_ + 2*!!im_) {
-  case 1: { // re_ && !im_
-    TPSA_SCAN(c) c->coef[i] = re_->coef[i];
-    break; }
-  case 2: { // !re_ && im_
-    TPSA_SCAN(c) c->coef[i] = im_->coef[i]*I;
-    break; }
-  case 3: { // re_ && im_
+  case 1: { TPSA_SCAN(c) c->coef[i] = re_->coef[i];   break; }
+  case 2: { TPSA_SCAN(c) c->coef[i] = im_->coef[i]*I; break; }
+  case 3: {
     TPSA_SCAN(c) {
       c->coef[i] = 0;
       if (mad_bit_tst(re_->nz,o)) c->coef[i] += re_->coef[i];
