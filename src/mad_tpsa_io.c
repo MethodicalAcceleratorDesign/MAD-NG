@@ -360,8 +360,6 @@ FUN(scan_coef) (T *t, FILE *stream_)
   if (i == -1) // no coef read
     warn("unable to parse GTPSA coefficients for '%s'",
          t->nam[0] ? t->nam : "-UNNAMED-");
-  else
-    FUN(adjust0)(t);
 
   DBGTPSA(t); DBGFUN(<-);
 }
@@ -421,22 +419,20 @@ FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
 
 onlycoef: ;
   idx_t idx = 0;
-  if (!FUN(isnul0)(t)) {
-    TPSA_SCAN(t) {
+  bit_t tnz = mad_bit_set(t->nz,0);
+  TPSA_SCAN(t,0,t->hi,tnz) {
 #ifndef MAD_CTPSA_IMPL
-      if (fabs(t->coef[i]) < eps_) continue;
-      if (!idx) fprintf(stream_, "\n     I   COEFFICIENT             ORDER   EXPONENTS");
-      fprintf(stream_, "\n%6d  %23.16lE   %2hhu   "           , ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
+    if (fabs(t->coef[i]) < eps_) continue;
+    if (!idx) fprintf(stream_, "\n     I   COEFFICIENT             ORDER   EXPONENTS");
+    fprintf(stream_, "\n%6d  %23.16lE   %2hhu   "           , ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
 #else
-      if (fabs(creal(t->coef[i])) < eps_ && fabs(cimag(t->coef[i])) < eps_) continue;
-      if (!idx) fprintf(stream_, "\n     I   COEFFICIENT                                      ORDER   EXPONENTS");
-      fprintf(stream_, "\n%6d  %23.16lE %+23.16lEi   %2hhu   ", ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
+    if (fabs(creal(t->coef[i])) < eps_ && fabs(cimag(t->coef[i])) < eps_) continue;
+    if (!idx) fprintf(stream_, "\n     I   COEFFICIENT                                      ORDER   EXPONENTS");
+    fprintf(stream_, "\n%6d  %23.16lE %+23.16lEi   %2hhu   ", ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
 #endif
-      print_ords(d->nv, d->np, 0, d->To[i], stream_);
-    }
-    if (!idx) fprintf(stream_, "\n\n         ALL COMPONENTS ZERO (EPS=%.1lE)", eps_);
-  } else      fprintf(stream_, "\n\n         ALL COMPONENTS ZERO");
-
+    print_ords(d->nv, d->np, 0, d->To[i], stream_);
+  }
+  if (!idx) fprintf(stream_, "\n\n         ALL COMPONENTS ZERO (EPS=%.1lE)", eps_);
   fprintf(stream_, "\n");
   DBGFUN(<-);
 }
