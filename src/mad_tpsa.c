@@ -49,15 +49,18 @@ FUN(check) (const T *t, ord_t *o_, idx_t *i_)
   if (!t->d || t->mo > t->d->mo || t->hi > t->mo ||
       (t->lo > t->hi && t->lo != 1)) goto ret;
 
+  if (isnan(t->coef[0])) { _i = 0; goto ret; }
+
   FOR(o,t->lo)
     if (mad_bit_tst(t->nz,o)) { _o = o; goto ret; }
 
   FOR(o,t->hi+1,t->mo+1)
     if (mad_bit_tst(t->nz,o)) { _o = o; goto ret; }
 
-  TPSA_SCAN(t) {
-    if (t->coef[i]) continue; // ensure one non-zero
-    if (i+1 == o2i[o+1]) { _o = o, _i = i; goto ret; }
+  TPSA_SCAN_Z(t) {
+    idx_t i = o2i[o]; // ensure one non-zero
+    for (; i < o2i[o+1]; i++) if (t->coef[i]) break;
+    if (i == o2i[o+1]) { _o = o, _i = i-1; goto ret; }
   }
   return TRUE;
 
@@ -70,10 +73,15 @@ ret:
 void
 FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
 {
+  static log_t dbg = 0;
+  if (dbg) return; else dbg = 1;
   assert(t);
 
   ord_t o; idx_t i;
-  if (FUN(check)(t,&o,&i)) return;
+  if (FUN(check)(t,&o,&i)) {
+    if (DEBUG > 2) FUN(print)(t, name_, 0,0,0);
+    dbg = 0; return;
+  }
 
   const D* d = t->d;
   if (!stream_) stream_ = stdout;
@@ -85,15 +93,15 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
 
   if (!d) { fprintf(stream_," }\n"); fflush(stream_); assert(d); }
 
-  char bnz[DESC_MAX_ORD+2] = {0};
-  for (ord_t b = 0; b <= t->mo; ++b)
-    bnz[b] = '0' + mad_bit_tst(t->nz,b);
-  fprintf(stream_," nz=%s ** bug @ o=%d i=%d }\n", bnz, o, i); fflush(stream_);
+  char bnz[DESC_MAX_ORD+2];
+  fprintf(stream_," nz=%s ** bug @ o=%d i=%d }\n",
+          mad_bit_tostr(t->nz, t->mo+2, bnz), o, i); fflush(stream_);
 
   const idx_t *o2i = d->ord2idx;
   idx_t ni = o2i[MIN(t->mo,d->to)+1];
   FOR(i,ni) fprintf(stream_," [%d:%d]=" FMT "\n", i,d->ords[i],VAL(t->coef[i]));
   fprintf(stream_,"\n"); fflush(stream_);
+  dbg = 0; return;
 }
 
 // --- introspection ----------------------------------------------------------o
@@ -233,7 +241,7 @@ FUN(setvar) (T *t, NUM v, idx_t iv, NUM scl)
 
   // set lo, hi, nz, coef[iv]
   t->lo = t->hi = 1, t->nz = 2, t->coef[iv] = scl ? scl : 1;
-  DBGFUN(<-);
+  DBGTPSA(t); DBGFUN(<-);
 }
 
 void
@@ -254,7 +262,7 @@ FUN(setprm) (T *t, NUM v, idx_t ip)
 
   // set lo, hi, nz, coef[ip]
   t->lo = t->hi = 1, t->nz = 2, t->coef[ip+d->nv] = 1;
-  DBGFUN(<-);
+  DBGTPSA(t); DBGFUN(<-);
 }
 
 void
@@ -268,16 +276,16 @@ FUN(setval) (T *t, NUM v)
 log_t
 FUN(update) (T *t, num_t eps_)
 {
-  assert(t); DBGFUN(->); DBGTPSA(t);
+  assert(t); DBGFUN(->);
   bit_t nz = t->nz;
-  if (eps_ <= 0) { TPSA_SCAN_Z(t) FUN(stabilize0)(t,o,eps_); }
-  else           { TPSA_SCAN_Z(t) FUN(update0   )(t,o     ); }
+  if (eps_ > 0) { TPSA_SCAN_Z(t) FUN(stabilize0)(t,o,eps_); }
+  else          { TPSA_SCAN_Z(t) FUN(update0   )(t,o     ); }
   log_t up = t->nz != nz;
   if (up) FUN(adjust0)(t);
   DBGTPSA(t); DBGFUN(<-); return up;
 }
 
-// --- copy, update, convert, swap --------------------------------------------o
+// --- copy, convert, swap ----------------------------------------------------o
 
 void
 FUN(copy) (const T *t, T *r)
@@ -336,9 +344,7 @@ FUN(getord) (const T *t, T *r, ord_t ord)
   r->coef[0] = 0, r->lo = r->hi = ord, r->nz = mad_bit_set(0, ord);
 
   // copy data
-  if (t != r) {
-    TPSA_SCAN_O(r, ord) r->coef[i] = t->coef[i];
-  }
+  if (t != r) { TPSA_SCAN_O(r, ord) r->coef[i] = t->coef[i]; }
 
   DBGTPSA(r); DBGFUN(<-);
 }
@@ -353,7 +359,7 @@ FUN(cutord) (const T *t, T *r, int ord)
   if (ord <= 0) { // cut 0..|ord|, see copy0 with t->lo = |ord|+1
     r->hi = MIN(t->hi, r->mo, d->to);
     r->lo = MIN(1-ord, r->hi);
-    r->nz = mad_bit_hcut(mad_bit_lcut(t->nz, r->lo), r->hi);
+    r->nz = mad_bit_mask(t->nz, r->lo, r->hi);
     r->coef[0] = 0;
   } else {        // cut |ord|..mo, see copy0 with t->hi = |ord|-1
     r->lo = t->lo;
@@ -373,20 +379,20 @@ FUN(maxord) (const T *t, ssz_t n, idx_t idx_[n])
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
 
-  if (idx_) FOR(i,n) idx_[i] = -1;
+  if (idx_) idx_[0] = 0;
 
-  num_t mv =  0; // max of all values
-  idx_t mi = -1; // idx of max for all
+  idx_t mi = 0;                       // idx of mv
+  num_t mv = fabs(t->coef[0]);        // max of all values
   ord_t hi = MIN(n-1,t->hi,t->d->to);
   TPSA_SCAN_Z(t,t->lo,hi) {
-    num_t mo = 0; // max of this order
+    num_t mo = 0;                     // max of this order
     TPSA_SCAN_O(t)
       if (mo < fabs(t->coef[i])) {
         mo = fabs(t->coef[i]);        // save max for this order
         if (idx_) idx_[o] = i;        // save idx for this order
         if (mv < mo) mv = mo, mi = i; // save max and idx for all orders
       }
-  }
+  } else if (idx_) idx_[o] = -1;
   DBGFUN(<-); return mi;
 }
 
@@ -395,18 +401,16 @@ FUN(cycle) (const T *t, idx_t i, ssz_t n, ord_t m_[n], NUM *v_)
 {
   assert(t); DBGFUN(->); DBGTPSA(t);
   const D *d = t->d;
-  const ord_t mo = MIN(t->mo, d->to);
-  if (++i >= d->ord2idx[mo+1] || i < 0) { DBGFUN(<-); return -1; }
+  idx_t ni = d->ord2idx[MIN(t->mo, d->to)+1];
+  if (++i >= ni || i < 0) { DBGFUN(<-); return -1; }
+  if (!i && t->coef[0]) goto ret;
 
-  if (i || !t->coef[0]) {
-    ord_t lo = MAX(t->lo, d->ords[i]);
-    idx_t hi = MIN(t->hi, d->to);
-    TPSA_SCAN_Z(t,lo,hi) {
-      for (i = MAX(i,o2i[o]); i < o2i[o+1]; i++)
-        if (t->coef[i]) goto ret;
-    }
-    DBGFUN(<-); return -1;
-  }
+  ord_t lo = MAX(t->lo, d->ords[i]);
+  idx_t hi = MIN(t->hi, d->to);
+  TPSA_SCAN_Z(t,lo,hi)
+    for (i = MAX(i,o2i[o]); i < o2i[o+1]; i++)
+      if (t->coef[i]) goto ret;
+  DBGFUN(<-); return -1;
 
 ret:
   if (v_) *v_ = t->coef[i];
@@ -460,7 +464,11 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
 #if DEBUG > 2
     printf("cvt %d -> %d %c : ", i+1, ri+1, i==ri?' ' : SIGN1(sgn%2)<0?'-':'+');
     mad_mono_print(tn, tm, 0); printf(" -> "); mad_mono_print(rn, rm, 0);
-    printf(" : %-.16e\n", t->coef[i]); // works only for real, warn for complex
+#ifndef MAD_CTPSA_IMPL
+    printf(" : %-.16e\n", t->coef[i]);
+#else
+    printf(" : %-.16e%+.16ei\n", creal(t->coef[i]), cimag(t->coef[i]));
+#endif
 #endif
     if (ri >= 0) {
       r->nz = mad_bit_set(r->nz, ords[ri]);
@@ -635,9 +643,12 @@ FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
   if (t->lo > vlo) t->lo = vlo;
   if (t->hi < vhi) t->hi = vhi;
 
-  // activate nz bits that are affected by vector content
-  t->nz |= mad_bit_mask(~0ull, vlo, vhi);
-  FUN(update)(t,0); DBGFUN(<-); return nj;
+  // check nz bits that are affected by vector content (see update)
+  bit_t nz = t->nz;
+  t->nz = mad_bit_mset(nz, mad_bit_mask(~0ull, vlo, vhi));
+  TPSA_SCAN_Z(t,vlo,vhi) FUN(update0)(t,o);
+  if (t->nz != nz) FUN(adjust0)(t);
+  DBGFUN(<-); return nj;
 }
 
 void
