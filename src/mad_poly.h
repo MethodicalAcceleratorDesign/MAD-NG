@@ -29,7 +29,7 @@
 // --- interface --------------------------------------------------------------o
 
 // polygon contains a point? (winding number algo)
-log_t mad_pol_inside (num_t px, num_t py, const num_t *vx, const num_t *vy, ssz_t n);
+log_t mad_pol_inside(num_t px, num_t py, ssz_t n, const num_t vx[], const num_t vy[]);
 
 // ----------------------------------------------------------------------------o
 

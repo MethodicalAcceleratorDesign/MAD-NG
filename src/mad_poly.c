@@ -20,34 +20,29 @@
 
 #include "mad_poly.h"
 
-// Check if a point p is inside a polygon v (vector of points)
+// Check if a point p is inside a closed polygon v (vector of points)
 //   based on the winding number test for a point in a polygon
 // Input:   px,py = a point,
-//          vx,vy = vector of points of a polygon v[n] with v[n-1]=v[0]
+//          vx,vy = vector of n points of a polygon v with v[n-1]=v[0]
 // Return:  wn = the winding number (=0 only when p is outside)
+// Ref: http://geomalgorithms.com/a03-_inclusion.html
 
-static inline log_t
-is_left (num_t px, num_t py, const num_t *vx, const num_t *vy, ssz_t i)
+static inline num_t __attribute__((pure))
+is_left (num_t px, num_t py, const num_t vx[], const num_t vy[], ssz_t i)
 {
-  return (vx[i+1]-vx[i]) * (py-vy[i]) > (px-vx[i]) * (vy[i+1]-vy[i]);
-}
-
-static inline log_t
-is_right (num_t px, num_t py, const num_t *vx, const num_t *vy, ssz_t i)
-{
-  return (vx[i+1]-vx[i]) * (py-vy[i]) < (px-vx[i]) * (vy[i+1]-vy[i]);
+  return (vx[i+1]-vx[i]) * (py-vy[i]) - (px-vx[i]) * (vy[i+1]-vy[i]);
 }
 
 log_t
-mad_pol_inside(num_t px, num_t py, const num_t *vx, const num_t *vy, ssz_t n)
+mad_pol_inside(num_t px, num_t py, ssz_t n, const num_t vx[n], const num_t vy[n])
 {
   assert(vx && vy);
   int wn = 0; // the winding number counter
 
-  for (ssz_t i = 0; i < n-1; i++) {
-    if (vy[i  ] <= py && vy[i+1] > py && is_left (px, py, vx, vy, i)) ++wn;
+  for (ssz_t i=0; i < n-1; i++) {
+    if (vy[i  ] <= py && vy[i+1] > py && is_left(px, py, vx, vy, i) > 0) ++wn;
     else
-    if (vy[i+1] <= py &&                 is_right(px, py, vx, vy, i)) --wn;
+    if (vy[i+1] <= py &&                 is_left(px, py, vx, vy, i) < 0) --wn;
   }
 
   return !wn;
