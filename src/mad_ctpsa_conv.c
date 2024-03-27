@@ -28,13 +28,20 @@ mad_ctpsa_real (const ctpsa_t *t, tpsa_t *c)
   if (DEBUG > 1) mad_ctpsa_debug(t,"t",__func__,__LINE__,0);
   ensure(t->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  FUN(copy0)((const tpsa_t*)t, c)->coef[0] = creal(t->coef[0]);
+  FUN(copy0)((const tpsa_t*)t, c);
+
+  c->coef[0] = creal(t->coef[0]);
 
   if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
 
-  TPSA_SCAN(c) c->coef[i] = creal(t->coef[i]);
-
-  FUN(update)(c,0); DBGFUN(<-);
+  bit_t cnz = c->nz;
+  TPSA_SCAN_Z(c) {
+    log_t nz = 0;
+    TPSA_SCAN_O(c) c->coef[i] = creal(t->coef[i]), nz |= !!c->coef[i];
+    if (!nz) cnz = mad_bit_clr(cnz,o);
+  }
+  if (c->nz != cnz) c->nz = cnz, FUN(adjust0)(c);
+  DBGTPSA(c); DBGFUN(<-);
 }
 
 void
@@ -44,13 +51,20 @@ mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *c)
   if (DEBUG > 1) mad_ctpsa_debug(t,"t",__func__,__LINE__,0);
   ensure(t->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  FUN(copy0)((const tpsa_t*)t, c)->coef[0] = cimag(t->coef[0]);
+  FUN(copy0)((const tpsa_t*)t, c);
+
+  c->coef[0] = cimag(t->coef[0]);
 
   if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
 
-  TPSA_SCAN(c) c->coef[i] = cimag(t->coef[i]);
-
-  FUN(update)(c,0); DBGFUN(<-);
+  bit_t cnz = c->nz;
+  TPSA_SCAN_Z(c) {
+    log_t nz = 0;
+    TPSA_SCAN_O(c) c->coef[i] = cimag(t->coef[i]), nz |= !!c->coef[i];
+    if (!nz) cnz = mad_bit_clr(cnz,o);
+  }
+  if (c->nz != cnz) c->nz = cnz, FUN(adjust0)(c);
+  DBGTPSA(c); DBGFUN(<-);
 }
 
 void
@@ -122,7 +136,7 @@ void mad_ctpsa_rect (const ctpsa_t *a, ctpsa_t *c)
 
 void mad_ctpsa_polar (const ctpsa_t *a, ctpsa_t *c)
 {
-  assert(a && c); DBGFUN(->); DBGTPSA(a);
+  assert(a && c); DBGFUN(->);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
   tpsa_t *re = GET_TMPR(c), *im = GET_TMPR(c), *t = GET_TMPR(c);
   mad_ctpsa_real(a , re);
