@@ -103,7 +103,7 @@ mad_tpsa_copy00 (const tpsa_t *a, const tpsa_t *b, tpsa_t *r)
   ord_t hi = MAX(a->hi, b->hi);
   r->lo = MIN(a->lo, b->lo, r->mo); if (!r->lo) r->lo = 1;
   r->hi = MIN(hi, r->mo, r->d->to);
-  r->nz = mad_bit_hcut(a->nz|b->nz, r->hi);
+  r->nz = mad_bit_add(a->nz, b->nz, r->hi);
   return r;
 }
 
@@ -161,10 +161,10 @@ static inline tpsa_t* // round TPSA coefs with magnitude below eps to zero
 mad_tpsa_stabilize0 (tpsa_t *t, ord_t o, num_t eps)
 {
   assert(t);
-  log_t nz = FALSE;
+  log_t nz = 0;
   TPSA_SCAN_O(t,o)
-    if (!t->coef[i] || fabs(t->coef[i]) < eps) t->coef[i] = 0;
-    else nz = TRUE;
+    if (fabs(t->coef[i]) < eps) t->coef[i] = 0;
+    else nz |= !!t->coef[i];
   if (!nz) t->nz = mad_bit_clr(t->nz,o);
   return t;
 }
