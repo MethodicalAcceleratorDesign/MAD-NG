@@ -122,13 +122,13 @@ mad_bit_tst (bit_t b, int n)
   return mad_bit_mtst(b, 1ull << n);
 }
 
-static inline bit_t  __attribute__((const))
+static inline bit_t __attribute__((const))
 mad_bit_get (bit_t b, int n)
 {
   return mad_bit_mget(b, 1ull << n);
 }
 
-static inline bit_t  __attribute__((const))
+static inline bit_t __attribute__((const))
 mad_bit_set (bit_t b, int n)
 {
   return mad_bit_mset(b, 1ull << n);
