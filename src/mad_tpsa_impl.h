@@ -55,24 +55,27 @@ struct tpsa_ {  // warning: must be identical to LuaJIT def (see mad_cmad.mad)
 
 // --- helpers ----------------------------------------------------------------o
 
-// loop to scan non-zero homogeneous polynomials (i.e. doesn't include coef[0]!)
-#define TPSA_SCAN(...)        MKNAME(TPSA_SCAN_,NARG(__VA_ARGS__))(__VA_ARGS__)
-#define TPSA_SCAN_1(t)        TPSA_SCAN_Z3(t,(t)->lo,(t)->hi) TPSA_SCAN_O1(t)
-#define TPSA_SCAN_2(t,hi)     TPSA_SCAN_Z3(t,(t)->lo,     hi) TPSA_SCAN_O1(t)
-#define TPSA_SCAN_3(t,lo,hi)  TPSA_SCAN_Z3(t,     lo,     hi) TPSA_SCAN_O1(t)
-
+// loop to scan non-zero homogeneous polynomials (doesn't include coef[0]!)
+#define TPSA_SCAN(  ...)      MKNAME(TPSA_SCAN_ ,NARG(__VA_ARGS__))(__VA_ARGS__)
 #define TPSA_SCAN_Z(...)      MKNAME(TPSA_SCAN_Z,NARG(__VA_ARGS__))(__VA_ARGS__)
-#define TPSA_SCAN_Z1(t)       TPSA_SCAN_Z3(t,(t)->lo,(t)->hi)
-#define TPSA_SCAN_Z2(t,hi)    TPSA_SCAN_Z3(t,(t)->lo,     hi)
-#define TPSA_SCAN_Z3(t,lo,hi) \
+#define TPSA_SCAN_O(...)      MKNAME(TPSA_SCAN_O,NARG(__VA_ARGS__))(__VA_ARGS__)
+
+#define TPSA_SCAN_1(...)      TPSA_SCAN_Z(__VA_ARGS__) TPSA_SCAN_O1()
+#define TPSA_SCAN_2(...)      TPSA_SCAN_Z(__VA_ARGS__) TPSA_SCAN_O1()
+#define TPSA_SCAN_3(...)      TPSA_SCAN_Z(__VA_ARGS__) TPSA_SCAN_O1()
+#define TPSA_SCAN_4(...)      TPSA_SCAN_Z(__VA_ARGS__) TPSA_SCAN_O1()
+
+#define TPSA_SCAN_Z1(t)       TPSA_SCAN_Z4(t,(t)->lo,(t)->hi,(t)->nz)
+#define TPSA_SCAN_Z2(t,hi)    TPSA_SCAN_Z4(t,(t)->lo,     hi,(t)->nz)
+#define TPSA_SCAN_Z3(t,lo,hi) TPSA_SCAN_Z4(t,     lo,     hi,(t)->nz)
+#define TPSA_SCAN_Z4(t,lo,hi,nz) \
   const idx_t *o2i = (t)->d->ord2idx; (void)o2i; \
   const ord_t hi_z = MIN((hi),(t)->d->to); \
-  const bit_t nz_z = mad_bit_hcut((t)->nz,hi_z); \
+  const bit_t nz_z = mad_bit_hcut(nz,hi_z); \
   for (ord_t o = (lo); o <= hi_z; o++) \
     if (mad_bit_tst(nz_z,o))
 
-#define TPSA_SCAN_O(...)      MKNAME(TPSA_SCAN_O,NARG(__VA_ARGS__))(__VA_ARGS__)
-#define TPSA_SCAN_O1(t)       FOR(i,o2i[o],o2i[o+1])
+#define TPSA_SCAN_O1(t) FOR(i,o2i[o],o2i[o+1])
 #define TPSA_SCAN_O2(t,o) \
   const idx_t *o2i = (t)->d->ord2idx; \
   FOR(i,o2i[o],o2i[(o)+1])
