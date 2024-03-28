@@ -146,9 +146,7 @@ FUN(taylor) (const T *a, ssz_t n, const NUM coef[n], T *c)
   ensure(n > 0, "invalid number of coefficients (>0 expected)");
 
   ord_t to = MIN(n-1,c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,coef[0]); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,coef[0]); DBGTPSA(c); DBGFUN(<-); return; }
 
   fun_taylor(a,c,to,coef);
   DBGTPSA(c); DBGFUN(<-);
@@ -168,9 +166,7 @@ FUN(inv) (const T *a, NUM v, T *c) // c = v/a    // checked for real and complex
 #endif
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,v*f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,v*f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -198,9 +194,7 @@ FUN(invsqrt) (const T *a, NUM v, T *c) // v/sqrt(a),checked for real and complex
 #endif
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,v*f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,v*f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -222,9 +216,7 @@ FUN(sqrt) (const T *a, T *c)                     // checked for real and complex
   NUM f0 = sqrt(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
 #ifdef MAD_CTPSA_IMPL
   NUM _a0 = mad_cpx_inv(a0);
@@ -249,9 +241,7 @@ FUN(exp) (const T *a, T *c)                      // checked for real and complex
   NUM a0 = a->coef[0], f0 = exp(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -272,9 +262,7 @@ FUN(log) (const T *a, T *c)                      // checked for real and complex
   NUM f0 = log(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1], _a0 = 1/a0;
   ord_coef[0] = f0;
@@ -320,8 +308,7 @@ FUN(sincos) (const T *a, T *s, T *c)             // checked for real and complex
   if (a->hi == 0) {
     FUN(setval)(s, sa);
     FUN(setval)(c, ca);
-    DBGTPSA(c); DBGTPSA(s); DBGFUN(<-);
-    return;
+    DBGTPSA(c); DBGTPSA(s); DBGFUN(<-); return;
   }
 
   ord_t sto = MIN(s->mo,s->d->to),
@@ -331,8 +318,7 @@ FUN(sincos) (const T *a, T *s, T *c)             // checked for real and complex
     else      FUN(sin)(a,s);
     if (!cto) FUN(setval)(c, ca);
     else      FUN(cos)(a,c);
-    DBGTPSA(c); DBGTPSA(s); DBGFUN(<-);
-    return;
+    DBGTPSA(c); DBGTPSA(s); DBGFUN(<-); return;
   }
 
   // ord 0, 1
@@ -358,9 +344,7 @@ FUN(sin) (const T *a, T *c)                      // checked for real and complex
   NUM a0 = a->coef[0], f0 = sin(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -380,9 +364,7 @@ FUN(cos) (const T *a, T *c)                      // checked for real and complex
   NUM a0 = a->coef[0], f0 = cos(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -404,17 +386,13 @@ FUN(tan) (const T *a, T *c)                      // checked for real and complex
   NUM f0 = tan(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
     T *t = GET_TMPX(c);
     FUN(sincos)(a,t,c);
     FUN(div)(t,c,c);
-    REL_TMPX(t);
-    DBGTPSA(c); DBGFUN(<-);
-    return;
+    REL_TMPX(t); DBGTPSA(c); DBGFUN(<-); return;
   }
 
   NUM ord_coef[to+1], f2 = f0*f0;
@@ -443,16 +421,12 @@ FUN(cot) (const T *a, T *c)                      // checked for real and complex
   NUM f0 = tan(M_PI_2 - a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   T *t = GET_TMPX(c);
   FUN(sincos)(a,t,c);
   FUN(div)(c,t,c);
-  REL_TMPX(t);
-  DBGTPSA(c); DBGFUN(<-);
-  return;
+  REL_TMPX(t); DBGTPSA(c); DBGFUN(<-); return;
 
 #if 0
   // Inaccurate expansion for small a0, need some work...
@@ -482,7 +456,7 @@ FUN(sinc) (const T *a, T *c)
   NUM a0 = a->coef[0];
   ord_t to = MIN(c->mo,c->d->to);
 
-  if (!to || a->hi == 0) {
+  if (!to || !a->hi) {
 #ifdef MAD_CTPSA_IMPL
     NUM f0 = mad_cpx_sinc(a0);
 #else
@@ -496,8 +470,7 @@ FUN(sinc) (const T *a, T *c)
     FUN(sin)(a,t);
     FUN(div)(t,a,c);
     REL_TMPX(t);
-    DBGTPSA(c); DBGFUN(<-);
-    return;
+    DBGTPSA(c); DBGFUN(<-); return;
   }
 // prefer explicit above? not better in term of stability...
 //    NUM sa = sin(a0), ca = cos(a0), _a0 = 1/a0, f1;
@@ -532,8 +505,7 @@ FUN(sincosh) (const T *a, T *sh, T *ch)          // checked for real and complex
   if (a->hi == 0) {
     FUN(setval)(sh, sa);
     FUN(setval)(ch, ca);
-    DBGTPSA(ch); DBGTPSA(sh); DBGFUN(<-);
-    return;
+    DBGTPSA(ch); DBGTPSA(sh); DBGFUN(<-); return;
   }
 
   ord_t sto = MIN(sh->mo,sh->d->to),
@@ -543,8 +515,7 @@ FUN(sincosh) (const T *a, T *sh, T *ch)          // checked for real and complex
     else      FUN(sinh)(a,sh);
     if (!cto) FUN(setval)(ch, ca);
     else      FUN(cosh)(a,ch);
-    DBGTPSA(ch); DBGTPSA(sh); DBGFUN(<-);
-    return;
+    DBGTPSA(ch); DBGTPSA(sh); DBGFUN(<-); return;
   }
 
   // ord 0, 1
@@ -570,9 +541,7 @@ FUN(sinh) (const T *a, T *c)                     // checked for real and complex
   NUM a0 = a->coef[0], f0 = sinh(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -592,9 +561,7 @@ FUN(cosh) (const T *a, T *c)                     // checked for real and complex
   NUM a0 = a->coef[0], f0 = cosh(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -614,17 +581,13 @@ FUN(tanh) (const T *a, T *c)                     // checked for real and complex
   NUM a0 = a->coef[0], f0 = tanh(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
     T *t = GET_TMPX(c);
     FUN(sincosh)(a,t,c);
     FUN(div)(t,c,c);
-    REL_TMPX(t);
-    DBGTPSA(c); DBGFUN(<-);
-    return;
+    REL_TMPX(t); DBGTPSA(c); DBGFUN(<-); return;
   }
 
   NUM ord_coef[to+1], f2 = f0*f0;
@@ -657,17 +620,13 @@ FUN(coth) (const T *a, T *c)                     // checked for real and complex
 #endif
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
     T *t = GET_TMPX(c);
     FUN(sincosh)(a,t,c);
     FUN(div)(c,t,c);
-    REL_TMPX(t);
-    DBGTPSA(c); DBGFUN(<-);
-    return;
+    REL_TMPX(t); DBGTPSA(c); DBGFUN(<-); return;
   }
 
   NUM ord_coef[to+1], f2 = f0*f0;
@@ -695,7 +654,7 @@ FUN(sinhc) (const T *a, T *c)
   NUM a0 = a->coef[0];
   ord_t to = MIN(c->mo,c->d->to);
 
-  if (!to || a->hi == 0) {
+  if (!to || !a->hi) {
 #ifdef MAD_CTPSA_IMPL
     NUM f0 = mad_cpx_sinhc(a0);
 #else
@@ -709,8 +668,7 @@ FUN(sinhc) (const T *a, T *c)
     FUN(sinh)(a,t);
     FUN(div)(t,a,c);
     REL_TMPX(t);
-    DBGTPSA(c); DBGFUN(<-);
-    return;
+    DBGTPSA(c); DBGFUN(<-); return;
   }
 
   // sinhc(x) at x=0
@@ -734,9 +692,7 @@ FUN(asin) (const T *a, T *c)                     // checked for real and complex
   NUM f0 = asin(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // asin(x) = -i*ln(i*x + sqrt(1-x^2))
@@ -751,8 +707,7 @@ FUN(asin) (const T *a, T *c)                     // checked for real and complex
     mad_ctpsa_real(t, c);
     REL_TMPC(t);
 #endif
-    DBGTPSA(c); DBGFUN(<-);
-    return;
+    DBGTPSA(c); DBGFUN(<-); return;
   }
 
   NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/sqrt(1-a2), f2 = f1*f1, f4 = f2*f2;
@@ -781,9 +736,7 @@ FUN(acos) (const T *a, T *c)                     // checked for real and complex
   NUM f0 = acos(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {  // use simpler and faster approach?
     // acos(x) = -i*ln(x+i*sqrt(1-x^2)) = -asin(x)+pi/2
@@ -798,8 +751,7 @@ FUN(acos) (const T *a, T *c)                     // checked for real and complex
     mad_ctpsa_real(t, c);
     REL_TMPC(t);
 #endif
-    DBGTPSA(c); DBGFUN(<-);
-    return;
+    DBGTPSA(c); DBGFUN(<-); return;
   }
 
   NUM ord_coef[to+1], a2 = a0*a0, f1 = -1/sqrt(1-a2), f2 = f1*f1, f4 = f2*f2;
@@ -826,9 +778,7 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
   NUM a0 = a->coef[0], f0 = atan(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // atan(x) = i/2 ln((i+x) / (i-x))
@@ -848,9 +798,7 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
     mad_ctpsa_scl(tn, I/2, tn);
     mad_ctpsa_real(tn, c);
 #endif
-    REL_TMPC(td), REL_TMPC(tn);
-    DBGTPSA(c); DBGFUN(<-);
-    return;
+    REL_TMPC(td), REL_TMPC(tn); DBGTPSA(c); DBGFUN(<-); return;
   }
 
   NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/(1+a2), f2 = f1*f1, f4 = f2*f2;
@@ -883,9 +831,7 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
 #endif
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // acot(x) = i/2 ln((x-i) / (x+i))
@@ -907,9 +853,7 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
     mad_ctpsa_scl(tn, I/2, tn);
     mad_ctpsa_real(tn, c);
 #endif
-    REL_TMPC(td), REL_TMPC(tn);
-    DBGTPSA(c); DBGFUN(<-);
-    return;
+    REL_TMPC(td), REL_TMPC(tn); DBGTPSA(c); DBGFUN(<-); return;
   }
 
   NUM ord_coef[to+1], a2 = a0*a0, f1 = -1/(1+a2), f2 = f1*f1, f4 = f2*f2;
@@ -937,7 +881,7 @@ FUN(asinc) (const T *a, T *c)
   NUM a0 = a->coef[0];
   ord_t to = MIN(c->mo,c->d->to);
 
-  if (!to || a->hi == 0) {
+  if (!to || !a->hi) {
 #ifdef MAD_CTPSA_IMPL
     NUM f0 = mad_cpx_asinc(a0);
 #else
@@ -950,9 +894,7 @@ FUN(asinc) (const T *a, T *c)
     T *t = GET_TMPX(c);
     FUN(asin)(a,t);
     FUN(div)(t,a,c);
-    REL_TMPX(t);
-    DBGTPSA(c); DBGFUN(<-);
-    return;
+    REL_TMPX(t); DBGTPSA(c); DBGFUN(<-); return;
   }
 
   // asinc(x) at x=0
@@ -974,15 +916,12 @@ FUN(asinh) (const T *a, T *c)                    // checked for real and complex
   NUM a0 = a->coef[0], f0 = asinh(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // asinh(x) = log(x + sqrt(x^2+1))
     FUN(logaxpsqrtbpcx2)(a, 1, 1, 1, c);
-    DBGTPSA(c); DBGFUN(<-);
-    return;
+    DBGTPSA(c); DBGFUN(<-); return;
   }
 
   NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/sqrt(a2+1), f2 = f1*f1, f4 = f2*f2;
@@ -1011,15 +950,12 @@ FUN(acosh) (const T *a, T *c)                    // checked for real and complex
   NUM f0 = acosh(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // acosh(x) = ln(x + sqrt(x^2-1))
     FUN(logaxpsqrtbpcx2)(a, 1, -1, 1, c);
-    DBGTPSA(c); DBGFUN(<-);
-    return;
+    DBGTPSA(c); DBGFUN(<-); return;
   }
 
   NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/sqrt(a2-1), f2 = f1*f1, f4 = f2*f2;
@@ -1048,9 +984,7 @@ FUN(atanh) (const T *a, T *c)                    // checked for real and complex
   NUM f0 = atanh(a0);
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // atanh(x) = 1/2 ln((1+x) / (1-x))
@@ -1060,9 +994,7 @@ FUN(atanh) (const T *a, T *c)                    // checked for real and complex
     FUN(axpb)(-1, a, 1, td);
     FUN(logxdy)(tn, td, c);
     FUN(scl)(c, 0.5, c);
-    REL_TMPX(td), REL_TMPX(tn);
-    DBGTPSA(c); DBGFUN(<-);
-    return;
+    REL_TMPX(td), REL_TMPX(tn); DBGTPSA(c); DBGFUN(<-); return;
   }
 
   NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/(1-a2), f2 = f1*f1, f4 = f2*f2;
@@ -1095,9 +1027,7 @@ FUN(acoth) (const T *a, T *c)                    // checked for real and complex
 #endif
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // acoth(x) = 1/2 ln((x+1) / (x-1))
@@ -1108,9 +1038,7 @@ FUN(acoth) (const T *a, T *c)                    // checked for real and complex
     FUN(set0)(td, 1, -1);
     FUN(logxdy)(tn, td, c);
     FUN(scl)(c, 0.5, c);
-    REL_TMPX(td), REL_TMPX(tn);
-    DBGTPSA(c); DBGFUN(<-);
-    return;
+    REL_TMPX(td), REL_TMPX(tn); DBGTPSA(c); DBGFUN(<-); return;
   }
 
   NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/(1-a2), f2 = f1*f1, f4 = f2*f2;
@@ -1138,7 +1066,7 @@ FUN(asinhc) (const T *a, T *c)
   NUM a0 = a->coef[0];
   ord_t to = MIN(c->mo,c->d->to);
 
-  if (!to || a->hi == 0) {
+  if (!to || !a->hi) {
 #ifdef MAD_CTPSA_IMPL
     NUM f0 = mad_cpx_asinhc(a0);
 #else
@@ -1151,9 +1079,7 @@ FUN(asinhc) (const T *a, T *c)
     T *t = GET_TMPX(c);
     FUN(asinh)(a,t);
     FUN(div)(t,a,c);
-    REL_TMPX(t);
-    DBGTPSA(c); DBGFUN(<-);
-    return;
+    REL_TMPX(t); DBGTPSA(c); DBGFUN(<-); return;
   }
 
   // asinhc(x) at x=0
@@ -1182,9 +1108,7 @@ FUN(erf) (const T *a, T *c)
 #endif
 
   ord_t to = MIN(c->mo,c->d->to);
-  if (!to || a->hi == 0) {
-    FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return;
-  }
+  if (!to || !a->hi) { FUN(setval)(c,f0); DBGTPSA(c); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1], a2 = a0*a0, f1 = M_2_SQRTPI*exp(-a2);
   ord_coef[0] = f0;
