@@ -282,8 +282,7 @@ FUN(pow) (const T *a, const T *b, T *c)          // checked for real and complex
   FUN(log)(a,t);
   FUN(mul)(b,t,c);
   FUN(exp)(c,c);
-  REL_TMPX(t);
-  DBGTPSA(c); DBGFUN(<-);
+  REL_TMPX(t); DBGTPSA(c); DBGFUN(<-);
 }
 
 void
@@ -294,8 +293,7 @@ FUN(pown) (const T *a, NUM v, T *c)              // checked for real and complex
   FUN(log)(a,t);
   FUN(scl)(t,v,c);
   FUN(exp)(c,c);
-  REL_TMPX(t);
-  DBGTPSA(c); DBGFUN(<-);
+  REL_TMPX(t); DBGTPSA(c); DBGFUN(<-);
 }
 
 void
@@ -469,8 +467,7 @@ FUN(sinc) (const T *a, T *c)
     T *t = GET_TMPX(c);
     FUN(sin)(a,t);
     FUN(div)(t,a,c);
-    REL_TMPX(t);
-    DBGTPSA(c); DBGFUN(<-); return;
+    REL_TMPX(t); DBGTPSA(c); DBGFUN(<-); return;
   }
 // prefer explicit above? not better in term of stability...
 //    NUM sa = sin(a0), ca = cos(a0), _a0 = 1/a0, f1;
@@ -667,8 +664,7 @@ FUN(sinhc) (const T *a, T *c)
     T *t = GET_TMPX(c);
     FUN(sinh)(a,t);
     FUN(div)(t,a,c);
-    REL_TMPX(t);
-    DBGTPSA(c); DBGFUN(<-); return;
+    REL_TMPX(t); DBGTPSA(c); DBGFUN(<-); return;
   }
 
   // sinhc(x) at x=0
