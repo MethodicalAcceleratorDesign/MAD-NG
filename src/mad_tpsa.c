@@ -73,13 +73,13 @@ ret:
 void
 FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
 {
-  static log_t dbg = 0;
+  static log_t dbg = 0; // prevent reentering
   if (dbg) return; else dbg = 1;
   assert(t);
 
   ord_t o; idx_t i;
   if (FUN(check)(t,&o,&i)) {
-    if (DEBUG > 2) FUN(print)(t, name_, 0,0,0);
+    if (mad_tpsa_dbga) FUN(print)(t, name_, 0,0,0);
     dbg = 0; return;
   }
 
@@ -98,7 +98,7 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
           mad_bit_tostr(t->nz, t->mo+2, bnz), o, i); fflush(stream_);
 
   const idx_t *o2i = d->ord2idx;
-  idx_t ni = o2i[MIN(t->mo,d->to)+1];
+  idx_t ni = o2i[MIN(t->mo,d->to)+1]; // corrupted TPSA cannot use print
   FOR(i,ni) fprintf(stream_," [%d:%d]=" FMT "\n", i,d->ords[i],VAL(t->coef[i]));
   fprintf(stream_,"\n"); fflush(stream_);
   dbg = 0;

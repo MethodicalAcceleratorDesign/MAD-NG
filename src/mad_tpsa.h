@@ -210,10 +210,12 @@ tpsa_t* mad_tpsa_scan     (                                                     
 const
 desc_t* mad_tpsa_scan_hdr (     int *kind_, char  name_[NAMSZ],                  FILE *stream_);
 void    mad_tpsa_scan_coef(      tpsa_t *t,                                      FILE *stream_);
-void    mad_tpsa_debug    (const tpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
 
 // unsafe operation (mo vs allocated!!)
-tpsa_t* mad_tpsa_init (tpsa_t *t, const desc_t *d, ord_t mo);
+tpsa_t* mad_tpsa_init     (      tpsa_t *t, const desc_t *d, ord_t mo);
+
+// debug
+void    mad_tpsa_debug    (const tpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
 
 // --- end --------------------------------------------------------------------o
 

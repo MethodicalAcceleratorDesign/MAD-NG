@@ -288,10 +288,12 @@ ctpsa_t* mad_ctpsa_scan     (                                                   
 const
 desc_t*  mad_ctpsa_scan_hdr (      int *kind_, char  name_[NAMSZ],                  FILE *stream_);
 void     mad_ctpsa_scan_coef(      ctpsa_t *t,                                      FILE *stream_);
-void     mad_ctpsa_debug    (const ctpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
 
 // unsafe operation (mo vs allocated!!)
-ctpsa_t* mad_ctpsa_init (ctpsa_t *t, const desc_t *d, ord_t mo);
+ctpsa_t* mad_ctpsa_init     (      ctpsa_t *t, const desc_t *d, ord_t mo);
+
+// debug
+void     mad_ctpsa_debug    (const ctpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
 
 // ---------------------------------------------------------------------------o
 
