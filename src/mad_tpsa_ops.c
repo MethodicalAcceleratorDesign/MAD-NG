@@ -268,14 +268,17 @@ FUN(scl) (const T *a, NUM v, T *c)
   const D *d = a->d;
   ensure(d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  if (!v || a->hi == 0) { FUN(setval)(c,v*a->coef[0]); DBGFUN(<-); return; }
+  if (!v) { FUN(reset0)(c); DBGFUN(<-); return; }
 
   FUN(copy0)(a,c);
+
+  c->coef[0] = v*a->coef[0];
+
+  if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
 
        if (v ==  1) { TPSA_SCAN(c) c->coef[i] =   a->coef[i]; }
   else if (v == -1) { TPSA_SCAN(c) c->coef[i] =  -a->coef[i]; }
   else              { TPSA_SCAN(c) c->coef[i] = v*a->coef[i]; }
-
   DBGTPSA(c); DBGFUN(<-);
 }
 
