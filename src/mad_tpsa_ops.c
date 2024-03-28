@@ -398,6 +398,41 @@ FUN(dif) (const T *a, const T *b, T *c)
   DBGTPSA(c); DBGFUN(<-);
 }
 
+static inline log_t
+neq (NUM a, NUM b, num_t tol) {
+  NUM d = a - b;
+#ifndef MAD_CTPSA_IMPL
+  return fabs(d) > tol; }
+#else
+  return fabs(creal(d)) > tol || fabs(cimag(d)) > tol; }
+#endif
+
+log_t
+FUN(equ) (const T *a, const T *b, num_t tol)
+{
+  assert(a && b); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
+  ensure(a->d == b->d, "incompatibles GTPSA (descriptors differ)");
+
+  T c_ = {.d=a->d, .mo=a->d->mo}, *c = &c_; // fake TPSA
+
+  FUN(copy00)(a,b,c);
+
+  if (!c->nz) { DBGFUN(<-); return !neq(a->coef[0], b->coef[0], tol); }
+
+  bit_t anz = a->nz, xnz = a->nz & b->nz;
+  TPSA_SCAN_Z(c) {
+    if (mad_bit_tst(xnz,o)) {
+      TPSA_SCAN_O(c) if (neq(a->coef[i],b->coef[i],tol)) goto ret; }
+    else if (mad_bit_tst(anz,o)) {
+      TPSA_SCAN_O(c) if (neq(a->coef[i],0         ,tol)) goto ret; }
+    else {
+      TPSA_SCAN_O(c) if (neq(0         ,b->coef[i],tol)) goto ret; }
+  }
+  DBGFUN(<-); return TRUE;
+ret:
+  DBGFUN(<-); return FALSE;
+}
+
 void
 FUN(mul) (const T *a, const T *b, T *r)
 {
@@ -530,37 +565,6 @@ FUN(powi) (const T *a, int n, T *c)
 
   if (inv) FUN(inv)(c,1,c); else DBGTPSA(c);
   DBGFUN(<-);
-}
-
-static inline log_t
-neq (NUM a, NUM b, num_t tol) { return fabs(a - b) > tol; }
-
-log_t
-FUN(equ) (const T *a, const T *b, num_t tol)
-{
-  assert(a && b); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
-  ensure(a->d == b->d, "incompatibles GTPSA (descriptors differ)");
-
-  if (tol <= 0) tol = mad_cst_EPS;
-
-  T c_ = {.d=a->d, .mo=a->d->mo}, *c = &c_; // fake TPSA
-
-  FUN(copy00)(a,b,c);
-
-  if (!(c->nz || neq(a->coef[0], b->coef[0], tol))) { DBGFUN(<-); return TRUE; }
-
-  bit_t anz = a->nz, xnz = a->nz & b->nz;
-  TPSA_SCAN_Z(c) {
-    if (mad_bit_tst(xnz,o)) {
-      TPSA_SCAN_O(c) if (neq(a->coef[i],b->coef[i],tol)) goto ret; }
-    else if (mad_bit_tst(anz,o)) {
-      TPSA_SCAN_O(c) if (neq(a->coef[i],0         ,tol)) goto ret; }
-    else {
-      TPSA_SCAN_O(c) if (neq(0         ,b->coef[i],tol)) goto ret; }
-  }
-  DBGFUN(<-); return TRUE;
-ret:
-  DBGFUN(<-); return FALSE;
 }
 
 // --- functions --------------------------------------------------------------o
