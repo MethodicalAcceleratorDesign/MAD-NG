@@ -144,7 +144,7 @@ void mad_ctpsa_polar (const ctpsa_t *a, ctpsa_t *c)
   mad_tpsa_hypot(im, re, t ); // re = |z|
   mad_tpsa_atan2(im, re, im); // im = arg(z)
   mad_ctpsa_cplx(t , im, c );
-  REL_TMPR(im); REL_TMPR(re); DBGFUN(<-);
+  REL_TMPR(t); REL_TMPR(im); REL_TMPR(re); DBGFUN(<-);
 }
 
 log_t mad_ctpsa_equt (const ctpsa_t *a, const tpsa_t *b, num_t tol_)
