@@ -456,7 +456,7 @@ FUN(mul) (const T *a, const T *b, T *r)
   // order 0
   c->coef[0] = a->coef[0]*b->coef[0];
 
-  if (!c->nz) { FUN(setval)(c, c->coef[0]); printf("\n"); goto ret; }
+  if (!c->nz) { FUN(setval)(c, c->coef[0]); goto ret; }
 
   c->lo = mad_bit_lowest(c->nz);
 
