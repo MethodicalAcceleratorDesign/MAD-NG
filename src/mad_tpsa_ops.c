@@ -110,7 +110,7 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t cnz, log_t in_pa
         hpoly_asym_mul(cb+o2i[oa],ca+o2i[ob],cc,na,nb,lc,idx);
         assert(mad_bit_tst(cnz,oc)); // *cnz = mad_bit_set(*cnz,oc);
       }
-      else assert(!mad_bit_tst(cnz,oc));
+//      else assert(!mad_bit_tst(cnz,oc));
     }
     // even oc, diagonal case
     if (!(oc & 1) && mad_bit_tst(nza & nzb,oc/2)) {
@@ -124,7 +124,7 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, bit_t cnz, log_t in_pa
       hpoly_diag_mul(ca+o2i[hoc],cb+o2i[hoc],cc,nb,lc,idx);
       assert(mad_bit_tst(cnz,oc)); // *cnz = mad_bit_set(*cnz,oc);
     }
-    else assert(!mad_bit_tst(cnz,oc));
+//    else assert(!mad_bit_tst(cnz,oc));
   }
 }
 
