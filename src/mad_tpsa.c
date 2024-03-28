@@ -101,7 +101,9 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
   idx_t ni = o2i[MIN(t->mo,d->to)+1];
   FOR(i,ni) fprintf(stream_," [%d:%d]=" FMT "\n", i,d->ords[i],VAL(t->coef[i]));
   fprintf(stream_,"\n"); fflush(stream_);
-  dbg = 0; return;
+  dbg = 0;
+
+  exit(EXIT_FAILURE);
 }
 
 // --- introspection ----------------------------------------------------------o
