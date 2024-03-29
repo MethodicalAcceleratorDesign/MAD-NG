@@ -121,6 +121,16 @@ mad_tpsa_copy00 (const tpsa_t *a, const tpsa_t *b, tpsa_t *r)
   return r;
 }
 
+static inline void // copy TPSA orders but not coefs!
+mad_tpsa_print0 (const tpsa_t *a, str_t nam_)
+{
+  assert(a && a->d);
+  char nz[DESC_MAX_ORD+2];
+  printf("'%s' { lo=%d hi=%d mo=%d to=%d uid=%d did=%d nz=%s }\n",
+         nam_?nam_:"?", a->lo, a->hi, a->mo, a->d->to, a->uid, a->d->id,
+         mad_bit_tostr(a->nz, a->mo+2, nz));
+}
+
 // --- functions accessing coef[0]
 
 static inline log_t // check if TPSA is nul

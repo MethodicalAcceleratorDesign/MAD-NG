@@ -74,6 +74,10 @@ static inline ctpsa_t* // copy TPSA orders, don't use coef.
 mad_ctpsa_copy00 (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *r)
 { return (ctpsa_t*) mad_tpsa_copy00((const tpsa_t*)a, (const tpsa_t*)b, (tpsa_t*)r); }
 
+static inline void // print TPSA header (for debug)
+mad_ctpsa_print0 (const ctpsa_t *t, str_t nam_)
+{ mad_tpsa_print0((const tpsa_t*)t, nam_); }
+
 // --- functions accessing coef[0]
 
 static inline log_t // check if TPSA is nul
