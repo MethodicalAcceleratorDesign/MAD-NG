@@ -85,11 +85,8 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, sa);
-  FOR(ib,sb) DBGTPSA(mb[ib]);
-  FOR(ic,sa) {
-    DBGTPSA(ma[ic]); DBGTPSA(mc[ic]);
-    mc_[ic] = FUN(newd)(d, d->to);
-  }
+  FOR(ia,sa) { DBGTPSA(ma[ia]); mc_[ia] = FUN(newd)(d, d->to); }
+  FOR(ib,sb)   DBGTPSA(mb[ib]);
 
   ord_t hi_ord = FUN(mord)(sa,ma,TRUE);
   hi_ord = MIN(hi_ord, d->to);
@@ -109,10 +106,10 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
     compose_serial(sa,ma,sb,mb,mc_,hi_ord);
 
   // copy back
-  FOR(ic,sa) {
-    FUN(copy)(mc_[ic], mc[ic]);
-    FUN(del )(mc_[ic]);
-    DBGTPSA(mc[ic]);
+  FOR(ia,sa) {
+    FUN(copy)(mc_[ia], mc[ia]);
+    FUN(del )(mc_[ia]);
+    DBGTPSA(mc[ia]);
   }
   mad_free_tmp(mc_);
   DBGFUN(<-);
