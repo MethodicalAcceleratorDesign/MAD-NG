@@ -22,11 +22,8 @@
 
 #include "mad_log.h"
 #include "mad_num.h"
-#ifdef    MAD_CTPSA_IMPL
-#include "mad_ctpsa_impl.h"
-#else
 #include "mad_tpsa_impl.h"
-#endif
+#include "mad_ctpsa_impl.h"
 
 // --- local ------------------------------------------------------------------o
 
