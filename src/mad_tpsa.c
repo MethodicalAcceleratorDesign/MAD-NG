@@ -22,6 +22,7 @@
 #include <string.h>
 #include <limits.h>
 
+#include "mad_cst.h"
 #include "mad_mem.h"
 #ifdef    MAD_CTPSA_IMPL
 #include "mad_ctpsa_impl.h"
@@ -74,35 +75,37 @@ void
 FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
 {
   static log_t dbg = 0; // prevent reentering
-  if (dbg) return; else dbg = 1;
-  assert(t);
+  if (dbg) return;
+  assert(t); dbg = 1;
 
-  ord_t o; idx_t i;
-  if (FUN(check)(t,&o,&i)) {
-    if (mad_tpsa_dbga) FUN(print)(t, name_, 0,0,0);
-    dbg = 0; return;
-  }
+  ord_t o; idx_t i; log_t ok = FUN(check)(t,&o,&i);
+
+  if (ok && !mad_tpsa_dbga) { dbg = 0; return; }
 
   const D* d = t->d;
   if (!stream_) stream_ = stdout;
 
-  fprintf(stream_, "%s:%d: '%s' { lo=%d hi=%d mo=%d uid=%d, did=%d",
-          fname_ ? fname_ : "??", line_, name_ ? name_ : "?",
-          t->lo, t->hi, t->mo, t->uid, d ? d->id : -1);
-  fflush(stream_);
-
-  if (!d) { fprintf(stream_," }\n"); fflush(stream_); assert(d); }
-
   char bnz[DESC_MAX_ORD+2];
-  fprintf(stream_," nz=%s ** bug @ o=%d i=%d }\n",
-          mad_bit_tostr(t->nz, t->mo+2, bnz), o, i); fflush(stream_);
+  fprintf(stream_, "%s:%d: '%s' { lo=%d hi=%d mo=%d uid=%d did=%d nz=%s",
+          fname_ ? fname_ : "??", line_, name_ ? name_ : "?",
+          t->lo, t->hi, t->mo, t->uid, d ? d->id : -1,
+          mad_bit_tostr(t->nz, t->mo+2, bnz));
 
-  const idx_t *o2i = d->ord2idx;
-  idx_t ni = o2i[MIN(t->mo,d->to)+1]; // corrupted TPSA cannot use print
-  FOR(i,ni) fprintf(stream_," [%d:%d]=" FMT "\n", i,d->ords[i],VAL(t->coef[i]));
-  fprintf(stream_,"\n"); fflush(stream_);
+  if (ok) {
+    fprintf(stream_," }\n"); fflush(stream_);
+    FUN(print)(t, 0, mad_cst_TINY, 0, stream_);
+    dbg = 0; return;
+  }
+
+  fprintf(stream_," ** bug @ o=%d i=%d }\n", o, i); fflush(stream_);
+
+  if (d) {
+    const idx_t *o2i = d->ord2idx;
+    idx_t ni = o2i[MIN(t->mo,d->to)+1]; // corrupted TPSA cannot use print
+    FOR(i,ni) fprintf(stream_," [%d:%d]=" FMT "\n", i,d->ords[i],VAL(t->coef[i]));
+    fprintf(stream_,"\n"); fflush(stream_);
+  }
   dbg = 0;
-
   exit(EXIT_FAILURE);
 }
 
