@@ -50,7 +50,7 @@ FUN(check) (const T *t, ord_t *o_, idx_t *i_)
   if (!t->d || t->mo > t->d->mo || t->hi > t->mo ||
       (t->lo > t->hi && t->lo != 1)) goto ret;
 
-  if (isnan(t->coef[0])) { _i = 0; goto ret; }
+  if (t->coef[0] != t->coef[0]) { _i = 0; goto ret; } // isnan
 
   FOR(o,t->lo)
     if (mad_bit_tst(t->nz,o)) { _o = o; goto ret; }
