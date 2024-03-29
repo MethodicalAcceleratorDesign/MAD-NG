@@ -99,7 +99,7 @@ void     mad_ctpsa_del  (const ctpsa_t *t);
 // --- trace functions --------------------------------------------------------o
 
 #if DEBUG > 1
-#  define DBGFUN(a) printf(#a " %s:%d:\n",__func__,__LINE__)
+#  define DBGFUN(a) ((void)(mad_tpsa_dbgf && printf(#a " %s:%d:\n",__func__,__LINE__)))
 #else
 #  define DBGFUN(a)
 #endif
