@@ -18,7 +18,6 @@
 */
 
 #include "mad_log.h"
-#include "mad_cst.h"
 #include "mad_num.h"
 #ifdef    MAD_CTPSA_IMPL
 #include "mad_ctpsa_impl.h"
@@ -292,8 +291,8 @@ FUN(acc) (const T *a, NUM v, T *c)
   if (!v) { DBGFUN(<-); return; }
 
   bit_t xnz = a->nz & c->nz;
-  FUN(copy00)(a,c,c);
-
+  c = FUN(copy00)(a,c,c); // reassign to enforce computation (gcc bug!)
+                          // if (mad_tpsa_dbga) FUN(print0)(c,"c");
   c->coef[0] += v*a->coef[0];
 
   if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
