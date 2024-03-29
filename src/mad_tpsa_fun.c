@@ -20,7 +20,6 @@
 #include <string.h>
 #include <complex.h>
 
-#include "mad_cst.h"
 #include "mad_log.h"
 #include "mad_num.h"
 #ifdef    MAD_CTPSA_IMPL
