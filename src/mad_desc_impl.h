@@ -38,7 +38,7 @@ enum { DESC_WARN_MONO  = 1000000, // warn if tpsa can have 1e6 coefs or more
        TPSA_STRICT_NZ  = 1 // enforce strict nz (chk can be quadratic at level 3)
 };
 
-#define DESC_USE_TMP 1 // 0: use new, 1: use TMP
+#define DESC_USE_TMP 0 // 0: use new, 1: use TMP
 
 // --- types ------------------------------------------------------------------o
 
