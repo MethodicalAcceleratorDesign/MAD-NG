@@ -297,16 +297,13 @@ FUN(acc) (const T *a, NUM v, T *c)
 
   if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
 
-  bit_t cnz = c->nz;
   TPSA_SCAN_Z(a,c->lo,c->hi) { // accumulate non-zero a[o] in c[lo,hi]
-    log_t nz = 0;
     if (mad_bit_tst(xnz,o))
-      TPSA_SCAN_O(c) c->coef[i] += v*a->coef[i], nz |= !!c->coef[i];
+      TPSA_SCAN_O(c) c->coef[i] += v*a->coef[i];
     else
-      TPSA_SCAN_O(c) c->coef[i]  = v*a->coef[i], nz |= !!c->coef[i];
-    if (!nz) cnz = mad_bit_clr(cnz,o);
+      TPSA_SCAN_O(c) c->coef[i]  = v*a->coef[i];
   }
-  if (c->nz != cnz) c->nz = cnz, FUN(adjust0)(c);
+  FUN(update)(c,0);
   DBGTPSA(c); DBGFUN(<-);
 }
 
@@ -324,18 +321,16 @@ FUN(add) (const T *a, const T *b, T *c)
 
   if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
 
-  bit_t cnz = c->nz;
   TPSA_SCAN_Z(c) {
-    log_t nz = 0;
     if (mad_bit_tst(xnz,o))
-      TPSA_SCAN_O(c) c->coef[i] = a->coef[i]+b->coef[i], nz |= !!c->coef[i];
+      TPSA_SCAN_O(c) c->coef[i] = a->coef[i]+b->coef[i];
     else if (mad_bit_tst(anz,o))
-      TPSA_SCAN_O(c) c->coef[i] = a->coef[i]           , nz |= !!c->coef[i];
+      TPSA_SCAN_O(c) c->coef[i] = a->coef[i];
     else
-      TPSA_SCAN_O(c) c->coef[i] =            b->coef[i], nz |= !!c->coef[i];
-    if (!nz) cnz = mad_bit_clr(cnz,o);
+      TPSA_SCAN_O(c) c->coef[i] = b->coef[i];
   }
-  if (c->nz != cnz) c->nz = cnz, FUN(adjust0)(c);
+  FUN(update)(c,0);
+
   DBGTPSA(c); DBGFUN(<-);
 }
 
@@ -353,18 +348,16 @@ FUN(sub) (const T *a, const T *b, T *c)
 
   if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
 
-  bit_t cnz = c->nz;
   TPSA_SCAN_Z(c) {
-    log_t nz = 0;
     if (mad_bit_tst(xnz,o))
-      TPSA_SCAN_O(c) c->coef[i] = a->coef[i]-b->coef[i], nz |= !!c->coef[i];
+      TPSA_SCAN_O(c) c->coef[i] = a->coef[i]-b->coef[i];
     else if (mad_bit_tst(anz,o))
-      TPSA_SCAN_O(c) c->coef[i] = a->coef[i]           , nz |= !!c->coef[i];
+      TPSA_SCAN_O(c) c->coef[i] = a->coef[i];
     else
-      TPSA_SCAN_O(c) c->coef[i] =           -b->coef[i], nz |= !!c->coef[i];
-    if (!nz) cnz = mad_bit_clr(cnz,o);
+      TPSA_SCAN_O(c) c->coef[i] = -b->coef[i];
   }
-  if (c->nz != cnz) c->nz = cnz, FUN(adjust0)(c);
+  FUN(update)(c,0);
+
   DBGTPSA(c); DBGFUN(<-);
 }
 
@@ -385,18 +378,16 @@ FUN(dif) (const T *a, const T *b, T *c)
 
   if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
 
-  bit_t cnz = c->nz;
   TPSA_SCAN_Z(c) {
-    log_t nz = 0;
     if (mad_bit_tst(xnz,o))
-      TPSA_SCAN_O(c) c->coef[i] = dif(a->coef[i],b->coef[i]), nz |= !!c->coef[i];
+      TPSA_SCAN_O(c) c->coef[i] = dif(a->coef[i],b->coef[i]);
     else if (mad_bit_tst(anz,o))
-      TPSA_SCAN_O(c) c->coef[i] =     a->coef[i]            , nz |= !!c->coef[i];
+      TPSA_SCAN_O(c) c->coef[i] = a->coef[i];
     else
-      TPSA_SCAN_O(c) c->coef[i] =               -b->coef[i] , nz |= !!c->coef[i];
-    if (!nz) cnz = mad_bit_clr(cnz,o);
+      TPSA_SCAN_O(c) c->coef[i] = -b->coef[i];
   }
-  if (c->nz != cnz) c->nz = cnz, FUN(adjust0)(c);
+  FUN(update)(c,0);
+
   DBGTPSA(c); DBGFUN(<-);
 }
 
@@ -828,18 +819,16 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
 
   if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
 
-  bit_t cnz = c->nz;
   TPSA_SCAN_Z(c) {
-    log_t nz = 0;
     if (mad_bit_tst(xnz,o))
-      TPSA_SCAN_O(c) c->coef[i] = c1*a->coef[i]+c2*b->coef[i], nz |= !!c->coef[i];
+      TPSA_SCAN_O(c) c->coef[i] = c1*a->coef[i]+c2*b->coef[i];
     else if (mad_bit_tst(anz,o))
-      TPSA_SCAN_O(c) c->coef[i] = c1*a->coef[i]              , nz |= !!c->coef[i];
+      TPSA_SCAN_O(c) c->coef[i] = c1*a->coef[i];
     else
-      TPSA_SCAN_O(c) c->coef[i] =               c2*b->coef[i], nz |= !!c->coef[i];
-    if (!nz) cnz = mad_bit_clr(cnz,o);
+      TPSA_SCAN_O(c) c->coef[i] = c2*b->coef[i];
   }
-  if (c->nz != cnz) c->nz = cnz, FUN(adjust0)(c);
+  FUN(update)(c,0);
+
   DBGTPSA(c); DBGFUN(<-);
 }
 

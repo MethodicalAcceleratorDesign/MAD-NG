@@ -34,13 +34,9 @@ mad_ctpsa_real (const ctpsa_t *t, tpsa_t *c)
 
   if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
 
-  bit_t cnz = c->nz;
-  TPSA_SCAN_Z(c) {
-    log_t nz = 0;
-    TPSA_SCAN_O(c) c->coef[i] = creal(t->coef[i]), nz |= !!c->coef[i];
-    if (!nz) cnz = mad_bit_clr(cnz,o);
-  }
-  if (c->nz != cnz) c->nz = cnz, FUN(adjust0)(c);
+  TPSA_SCAN(c) c->coef[i] = creal(t->coef[i]);
+  FUN(update)(c,0);
+
   DBGTPSA(c); DBGFUN(<-);
 }
 
@@ -57,13 +53,9 @@ mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *c)
 
   if (!c->nz) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
 
-  bit_t cnz = c->nz;
-  TPSA_SCAN_Z(c) {
-    log_t nz = 0;
-    TPSA_SCAN_O(c) c->coef[i] = cimag(t->coef[i]), nz |= !!c->coef[i];
-    if (!nz) cnz = mad_bit_clr(cnz,o);
-  }
-  if (c->nz != cnz) c->nz = cnz, FUN(adjust0)(c);
+  TPSA_SCAN(c) c->coef[i] = cimag(t->coef[i]);
+  FUN(update)(c,0);
+
   DBGTPSA(c); DBGFUN(<-);
 }
 
