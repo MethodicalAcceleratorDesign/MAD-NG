@@ -286,7 +286,17 @@ FUN(update) (T *t, num_t eps_)
   if (eps_ > 0) { TPSA_SCAN_Z(t) FUN(stabilize0)(t,o,eps_); }
   else          { TPSA_SCAN_Z(t) FUN(update0   )(t,o     ); }
   log_t up = t->nz != nz;
-  if (up) FUN(adjust0)(t);
+  if (up) {
+    ord_t lo = t->lo, hi = t->hi;
+    t = FUN(adjust0)(t);
+    if (t->lo == lo && t->hi == hi) {
+      char str[DESC_MAX_ORD+2];
+      mad_bit_tostr(   nz, hi+2, str);
+      printf("*** update: lo=%d, hi=%d, nz='%s'\n", lo, hi, str);
+      mad_bit_tostr(t->nz, t->hi+2, str);
+      printf("        --> lo=%d, hi=%d, nz='%s'\n", t->lo, t->hi, str);
+    }
+  }
   DBGTPSA(t); DBGFUN(<-); return up;
 }
 
