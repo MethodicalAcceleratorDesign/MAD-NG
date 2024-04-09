@@ -49,7 +49,7 @@ check_minv(ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
 }
 
 static void
-split_and_inv(const D *d, ssz_t na, const T *ma[na], ssz_t nb, T *lininv[na], T *nonlin[na])
+split_and_inv(ssz_t na, const T *ma[na], ssz_t nb, T *lininv[na], T *nonlin[na])
 {
   ssz_t nn = na, nv = nb, np = na-nb;  // #vars+params, #vars, #params
   mad_alloc_tmp(NUM, mat_var , nv*nv); // canonical vars
@@ -67,11 +67,9 @@ split_and_inv(const D *d, ssz_t na, const T *ma[na], ssz_t nb, T *lininv[na], T 
 
     FUN(copy)(ma[i], t);
 
-    // clear constant and linear part of coef, set nz, adjust lo,hi
-    FOR(c,d->ord2idx[2]) t->coef[c] = 0;
-    t->nz = mad_bit_mclr(t->nz,3); FUN(adjust0)(t);
-
-    FUN(scl)(t,-1,t);
+    // clear constant and linear part of coef, adjust lo
+    if (t->hi < 2) FUN(reset0)(t);
+    else t->coef[0] = 0, t->lo = MAX(t->lo,2), FUN(scl)(t,-1,t);
   }
 
   // invert linear part: mat_vari = mat_var^-1
@@ -115,8 +113,8 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
   check_minv(na, ma, nb, mc);
   FOR(i,na) {
     DBGTPSA(ma[i]); DBGTPSA(mc[i]);
-    ensure(mad_bit_tst(ma[i]->nz,1),
-           "invalid rank-deficient map (1st order has zero row)");
+    ensure(ma[i]->lo == 1 && ma[i]->hi,
+           "invalid rank-deficient map (1st order has row(s) full of zeros)");
   }
 
   const D *d = ma[0]->d;
@@ -132,7 +130,7 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
     tmp[i]    = (T*)ma[i];
   }
 
-  split_and_inv(d, na, ma, nb, lininv, nonlin);
+  split_and_inv(na, ma, nb, lininv, nonlin);
 
   // iteratively compute higher orders of the inverse:
   // al  = mc[ord=1]
@@ -143,7 +141,7 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
   log_t isnul = TRUE;
   FOR(i,nb) {
     FUN(copy)(lininv[i], mc[i]);
-    isnul &= FUN(isnul0)(nonlin[i]);
+    isnul &= FUN(isnul)(nonlin[i]);
   }
 
   if (!isnul) {
@@ -179,8 +177,8 @@ FUN(pminv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na], idx_t select[na])
   FOR(i,na) {
     if (select[i]) {
       DBGTPSA(ma[i]); DBGTPSA(mc[i]);
-      ensure(mad_bit_tst(ma[i]->nz,1),
-             "invalid rank-deficient map (1st order has zero row)");
+      ensure(ma[i]->lo == 1 && ma[i]->hi,
+             "invalid rank-deficient map (1st order has row(s) full of zeros)");
     }
   }
 

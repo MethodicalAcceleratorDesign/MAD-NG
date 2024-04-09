@@ -73,7 +73,7 @@ void    mad_tpsa_clrord  (      tpsa_t *t, ord_t ord);
 void    mad_tpsa_setvar  (      tpsa_t *t, num_t v, idx_t iv, num_t scl_);
 void    mad_tpsa_setprm  (      tpsa_t *t, num_t v, idx_t ip);
 void    mad_tpsa_setval  (      tpsa_t *t, num_t v);
-log_t   mad_tpsa_update  (      tpsa_t *t, num_t eps_);
+void    mad_tpsa_update  (      tpsa_t *t);
 void    mad_tpsa_clear   (      tpsa_t *t);
 
 // indexing / monomials (return idx_t = -1 if invalid)
@@ -101,8 +101,8 @@ void    mad_tpsa_cpym    (const tpsa_t *t, tpsa_t *r, ssz_t n, const ord_t m[]);
 void    mad_tpsa_cpysm   (const tpsa_t *t, tpsa_t *r, ssz_t n, const idx_t m[]); // sparse mono [(i,o)]
 
 // accessors vector based
-ssz_t   mad_tpsa_getv    (const tpsa_t *t, idx_t i, ssz_t n,       num_t v[]); // return copied length
-ssz_t   mad_tpsa_setv    (      tpsa_t *t, idx_t i, ssz_t n, const num_t v[]); // return copied length
+void    mad_tpsa_getv    (const tpsa_t *t, idx_t i, ssz_t n,       num_t v[]); // return copied length
+void    mad_tpsa_setv    (      tpsa_t *t, idx_t i, ssz_t n, const num_t v[]); // return copied length
 
 // operators
 log_t   mad_tpsa_equ     (const tpsa_t *a, const tpsa_t *b, num_t tol_);
@@ -117,6 +117,7 @@ void    mad_tpsa_pown    (const tpsa_t *a, num_t         v, tpsa_t *c);
 
 // functions
 num_t   mad_tpsa_nrm     (const tpsa_t *a);
+void    mad_tpsa_unit    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_abs     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_sqrt    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_exp     (const tpsa_t *a, tpsa_t *c);
@@ -145,7 +146,6 @@ void    mad_tpsa_acoth   (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_asinhc  (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_erf     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_erfc    (const tpsa_t *a, tpsa_t *c);
-void    mad_tpsa_unit    (const tpsa_t *a, tpsa_t *c);
 
 void    mad_tpsa_acc     (const tpsa_t *a, num_t v, tpsa_t *c); // c += v*a, aliasing OK
 void    mad_tpsa_scl     (const tpsa_t *a, num_t v, tpsa_t *c); // c  = v*a

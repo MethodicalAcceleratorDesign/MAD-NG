@@ -73,7 +73,7 @@ void     mad_ctpsa_clrord  (      ctpsa_t *t, ord_t ord);
 void     mad_ctpsa_setvar  (      ctpsa_t *t, cpx_t v, idx_t iv, cpx_t scl_);
 void     mad_ctpsa_setprm  (      ctpsa_t *t, cpx_t v, idx_t ip);
 void     mad_ctpsa_setval  (      ctpsa_t *t, cpx_t v);
-log_t    mad_ctpsa_update  (      ctpsa_t *t, num_t eps_);
+void     mad_ctpsa_update  (      ctpsa_t *t);
 void     mad_ctpsa_clear   (      ctpsa_t *t);
 
 // initialization without complex-by-value
@@ -87,7 +87,6 @@ void     mad_ctpsa_real    (const ctpsa_t *t,  tpsa_t *r);
 void     mad_ctpsa_imag    (const ctpsa_t *t,  tpsa_t *r);
 void     mad_ctpsa_cabs    (const ctpsa_t *t,  tpsa_t *r);
 void     mad_ctpsa_carg    (const ctpsa_t *t,  tpsa_t *r);
-void     mad_ctpsa_unit    (const ctpsa_t *t, ctpsa_t *r);
 void     mad_ctpsa_rect    (const ctpsa_t *t, ctpsa_t *r);
 void     mad_ctpsa_polar   (const ctpsa_t *t, ctpsa_t *r);
 
@@ -128,8 +127,8 @@ void     mad_ctpsa_setm_r  (      ctpsa_t *t, ssz_t n, const ord_t m[], num_t a_
 void     mad_ctpsa_setsm_r (      ctpsa_t *t, ssz_t n, const idx_t m[], num_t a_re, num_t a_im, num_t b_re, num_t b_im);
 
 // accessors vector based
-ssz_t    mad_ctpsa_getv    (const ctpsa_t *t, idx_t i, ssz_t n,       cpx_t v[]); // return copied length
-ssz_t    mad_ctpsa_setv    (      ctpsa_t *t, idx_t i, ssz_t n, const cpx_t v[]); // return copied length
+void     mad_ctpsa_getv    (const ctpsa_t *t, idx_t i, ssz_t n,       cpx_t v[]); // return copied length
+void     mad_ctpsa_setv    (      ctpsa_t *t, idx_t i, ssz_t n, const cpx_t v[]); // return copied length
 
 // operators
 log_t    mad_ctpsa_equ     (const ctpsa_t *a, const ctpsa_t *b, num_t tol_);
@@ -160,6 +159,7 @@ void     mad_ctpsa_tpow    (const  tpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 
 // functions
 num_t    mad_ctpsa_nrm     (const ctpsa_t *a);
+void     mad_ctpsa_unit    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_conj    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_sqrt    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_exp     (const ctpsa_t *a, ctpsa_t *c);
@@ -188,7 +188,6 @@ void     mad_ctpsa_acoth   (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_asinhc  (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_erf     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_erfc    (const ctpsa_t *a, ctpsa_t *c);
-void     mad_ctpsa_unit    (const ctpsa_t *a, ctpsa_t *c);
 
 void     mad_ctpsa_acc     (const ctpsa_t *a, cpx_t v, ctpsa_t *c); // c += v*a, aliasing OK
 void     mad_ctpsa_scl     (const ctpsa_t *a, cpx_t v, ctpsa_t *c); // c  = v*a

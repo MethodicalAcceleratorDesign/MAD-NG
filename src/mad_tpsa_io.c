@@ -28,6 +28,7 @@
 #include "mad_tpsa_impl.h"
 #endif
 
+//local debug level
 //#undef  DEBUG
 //#define DEBUG 3
 
@@ -388,10 +389,12 @@ FUN(scan) (FILE *stream_)
 void
 FUN(print) (const T *t, str_t name_, num_t eps, int nohdr, FILE *stream_)
 {
-  assert(t); DBGFUN(->); DBGTPSA(t);
-
+  assert(t); DBGFUN(->);
   if (!name_  ) name_   = t->nam[0] ? t->nam : "-UNNAMED-";
   if (!stream_) stream_ = stdout;
+
+  // avoid to double debug TPSA (string start set by DBGTPSA)
+  if (strncmp(name_,"§@#$%^&*",8)) DBGTPSA(t);
 
 #ifndef MAD_CTPSA_IMPL
   const char typ = 'R';
@@ -418,8 +421,9 @@ FUN(print) (const T *t, str_t name_, num_t eps, int nohdr, FILE *stream_)
 
 onlycoef: ;
   idx_t idx = 0;
-  bit_t tnz = mad_bit_set(t->nz,0);
-  TPSA_SCAN(t,0,t->hi,tnz) {
+  ord_t lo = 0, hi = 0;
+hiorders: ;
+  TPSA_SCAN(t,lo,hi) {
 #ifndef MAD_CTPSA_IMPL
     if (fabs(t->coef[i]) < eps) continue;
     if (!idx) fprintf(stream_, "\n     I   COEFFICIENT             ORDER   EXPONENTS");
@@ -431,6 +435,7 @@ onlycoef: ;
 #endif
     print_ords(d->nv, d->np, 0, d->To[i], stream_);
   }
+  if (!lo) { lo = t->lo, hi = t->hi; goto hiorders; }
   if (!idx) fprintf(stream_, "\n\n         ALL COMPONENTS ZERO (EPS=%.1lE)", eps);
   fprintf(stream_, "\n");
   DBGFUN(<-);
