@@ -141,10 +141,16 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
   log_t isnul = TRUE;
   FOR(i,nb) {
     FUN(copy)(lininv[i], mc[i]);
-    isnul &= FUN(isnul0)(nonlin[i]);
+    isnul &= FUN(isnul)(nonlin[i]);
   }
 
   if (!isnul) {
+//  assert(nb<=6);
+//  static str_t str[6] = {
+//    "nonlin.x","nonlin.px","nonlin.y","nonlin.py","nonlin.t","nonlin.pt",
+//  };
+//  FOR(i,nb) FUN(print)(nonlin[i], str[i], 0,0,0);
+
     ord_t o_prev = mad_desc_gtrunc(d, 1);
     for (ord_t o = 2; o <= d->mo; ++o) {
       mad_desc_gtrunc(d, o);
