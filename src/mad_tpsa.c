@@ -596,9 +596,9 @@ FUN(getv) (const T *t, idx_t i, ssz_t n, NUM v[n])
   ssz_t nj = MAX(o2i[lo  ], i );
   ssz_t ni = MIN(o2i[hi+1], nn);
 
-  printf("getv: i=%d, n=%d, lo=%d, hi=%d, n0=%d, ni=%d, nj=%d, nn=%d %c\n",
-                i   , n   , lo   , hi   , n0   , ni   , nj   , nn,
-                ni == i+n ? ' ' : '*');
+//printf("getv: i=%d, n=%d, lo=%d, hi=%d, n0=%d, ni=%d, nj=%d, nn=%d %c\n",
+//              i   , n   , lo   , hi   , n0   , ni   , nj   , nn,
+//              ni == i+n ? ' ' : '*');
 
   FOR(j, i,n0) v[j-i] = 0;
   FOR(j,nj,ni) v[j-i] = t->coef[j];
@@ -711,9 +711,9 @@ FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
   ssz_t ni = MIN(o2i[hi+1], nn);
   ssz_t nj = t->hi < hi ? o2i[hi+1] : MAX(o2i[lo], nn);
 
-  printf("setv: i=%d, n=%d, lo=%d, hi=%d, n0=%d, ni=%d, nj=%d, nn=%d %c\n",
-                i   , n   , lo   , hi   , n0   , ni   , nj   , nn,
-                ni == i+n ? ' ' : '*');
+//printf("setv: i=%d, n=%d, lo=%d, hi=%d, n0=%d, ni=%d, nj=%d, nn=%d %c\n",
+//              i   , n   , lo   , hi   , n0   , ni   , nj   , nn,
+//              ni == i+n ? ' ' : '*');
 
   FOR(j,n0, i) t->coef[j] = 0;
   FOR(j, i,ni) t->coef[j] = v[j-i];
