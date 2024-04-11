@@ -34,7 +34,7 @@
   GTPSA are *defined* in [0] U [lo,hi] with 0 < lo <= hi <= mo <= d->mo <= 253
     - scalar GTPSA have lo=1, hi=0, the only case where hi=0 and i.e. lo > hi.
     - new/clear/reset GTPSA are scalar GTPSA with coef[0]=0 (see reset0).
-    - coef[0] is always defined and lo >= 1 even if coef[0] != 0.
+    - always true: coef[0] is defined and lo >= 1, even if coef[0] != 0.
 ------------------------------------------------------------------------------*/
 
 // --- debugging --------------------------------------------------------------o
@@ -62,16 +62,17 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
   if (dbg) return;
   assert(t); dbg = 1;
 
-  ord_t o; log_t ok = FUN(check)(t,&o);
+  ord_t o;
+  log_t ok = FUN(check)(t,&o);
 
   if (ok && !mad_tpsa_dbga) { dbg = 0; return; }
 
   const D* d = t->d;
   if (!stream_) stream_ = stdout;
 
-  fprintf(stream_, "%s:%d: '%s' { lo=%d hi=%d mo=%d uid=%d did=%d",
+  fprintf(stream_, "%s:%d: '%s' { lo=%d hi=%d mo=%d ao=%d uid=%d did=%d",
           fname_ ? fname_ : "??", line_, name_ ? name_ : "?",
-          t->lo, t->hi, t->mo, t->uid, d ? d->id : -1);
+          t->lo, t->hi, t->mo, t->ao, t->uid, d ? d->id : -1);
 
   if (ok) {
     char name[48] = "§@#$%^&*";
@@ -115,7 +116,7 @@ str_t
 FUN(nam) (T *t, str_t nam_)
 {
   assert(t); DBGFUN(->);
-  if (nam_) strncpy(t->nam, nam_, NAMSZ-1), t->nam[NAMSZ-1] = 0;
+  if (nam_) strncpy(t->nam, nam_, NAMSZ), t->nam[NAMSZ-1] = 0;
   DBGFUN(<-); return t->nam;
 }
 
@@ -154,7 +155,7 @@ T*
 FUN(init) (T *t, const D *d, ord_t mo)
 {
   assert(t && d && mo <= d->mo); DBGFUN(->);
-  FUN(reset0)(t)->d = d, t->uid = 0, t->mo = mo, t->nam[0] = 0;
+  FUN(reset0)(t)->d = d, t->uid = 0, t->ao = t->mo = mo, t->nam[0] = 0;
   DBGFUN(<-); return t;
 }
 
@@ -166,7 +167,7 @@ FUN(newd) (const D *d, ord_t mo)
   assert(d); DBGFUN(->);
   mo = MIN(mo, d->mo);
   T *t = mad_malloc(sizeof(T) + d->ord2idx[mo+1] * sizeof(NUM)); assert(t);
-  FUN(reset0)(t)->d = d, t->uid = 0, t->mo = mo, t->nam[0] = 0;
+  FUN(reset0)(t)->d = d, t->uid = 0, t->ao = t->mo = mo, t->nam[0] = 0;
   DBGFUN(<-); return t;
 }
 
@@ -177,7 +178,7 @@ FUN(new) (const T *r, ord_t mo)
   const D *d = r->d;
   mo = mo == mad_tpsa_same ? r->mo : MIN(mo, d->mo);
   T *t = mad_malloc(sizeof(T) + d->ord2idx[mo+1] * sizeof(NUM)); assert(t);
-  FUN(reset0)(t)->d = d, t->uid = 0, t->mo = mo, t->nam[0] = 0;
+  FUN(reset0)(t)->d = d, t->uid = 0, t->ao = t->mo = mo, t->nam[0] = 0;
   DBGFUN(<-); return t;
 }
 
@@ -207,7 +208,7 @@ FUN(update) (T *t)
   idx_t j;
   if ((j=FUN(nzero0 )(t,t->lo,        t->hi)) > 0 &&
       (j=FUN(nzero0r)(t,t->lo=ords[j],t->hi)) > 0) t->hi=ords[j];
-  else t->lo=1, t->hi=0;
+  else t->lo=1, t->hi=0; // see reset0
   DBGTPSA(t); DBGFUN(<-);
 }
 
@@ -310,14 +311,12 @@ FUN(clrord) (T *t, ord_t o)
   assert(t); DBGFUN(->);
   const D *d = t->d;
 
-  if (o < t->lo || o > MIN(t->hi, d->to)) { if (!o) t->coef[0] = 0; } else
-  if (o > t->lo && o < t->hi && o <= d->to) FUN(clear0)(t, o, o);
-  else {
-    idx_t j = 0;
-    if (o == t->lo && (j=FUN(nzero0 )(t,t->lo+1,t->hi)) > 0) t->lo = d->ords[j]; else
-    if (o == t->hi && (j=FUN(nzero0r)(t,t->lo,t->hi-1)) > 0) t->hi = d->ords[j]; else
-    if (j < 0) t->lo = 1, t->hi = 0;
-  }
+  idx_t j = 0;
+  if (!o) t->coef[0] = 0;                                                      else
+  if (o  > t->lo && o < t->hi) FUN(clear0)(t, o, o);                           else
+  if (o == t->lo && (j=FUN(nzero0 )(t,t->lo+1,t->hi)) > 0) t->lo = d->ords[j]; else
+  if (o == t->hi && (j=FUN(nzero0r)(t,t->lo,t->hi-1)) > 0) t->hi = d->ords[j]; else
+  if (j < 0) t->lo = 1, t->hi = 0; // see reset0
   DBGTPSA(t); DBGFUN(<-);
 }
 
@@ -350,18 +349,17 @@ FUN(cutord) (const T *t, T *r, int o)
   ensure(d == r->d, "incompatible GTPSAs descriptors 0x%p vs 0x%p", d, r->d);
 
   if (o <= 0) { // cut 0..|o|, see copy0 with t->lo = |o|+1
+    r->lo = 1-o;                    // min 1 -> keep 1..
     r->hi = MIN(t->hi, r->mo, d->to);
-    r->lo = MIN(1-o, r->hi);
     r->coef[0] = 0;
   } else {      // cut |o|..mo, see copy0 with t->hi = |o|-1
     r->lo = t->lo;
-    r->hi = MIN(o-1, r->mo, d->to);
+    r->hi = MIN(o-1, r->mo, d->to); // min 0 -> cut 1..
     r->coef[0] = t->coef[0];
   }
 
-  if (!r->hi) FUN(setval)(r, t->coef[0]); else
-  // copy data
-  if (r != t) { TPSA_SCAN(r) r->coef[i] = t->coef[i]; }
+  if (r->lo > r->hi) FUN(setval)(r, r->coef[0]); else
+  if (r != t) { TPSA_SCAN(r) r->coef[i] = t->coef[i]; } // copy data
 
   DBGTPSA(r); DBGFUN(<-);
 }
