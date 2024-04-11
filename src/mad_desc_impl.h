@@ -23,8 +23,6 @@
 #include "mad_log.h"
 #include "mad_bit.h"
 #include "mad_desc.h"
-#include "mad_tpsa.h"
-#include "mad_ctpsa.h"
 
 // --- constants --------------------------------------------------------------o
 
@@ -37,7 +35,7 @@ enum { DESC_WARN_MONO  = 1000000, // warn if tpsa can have 1e6 coefs or more
        DESC_MAX_TMP    = 8,       // max number of temp. per thread in each desc
 };
 
-#define TPSA_DEBUG   0 // 1-3: print fname in/out, print TPSA content, more I/O
+#define TPSA_DEBUG   2 // 1-3: print fname in/out, print TPSA content, more I/O
 #define DESC_DEBUG   0 // 1-3: print debug info during build
 #define DESC_USE_TMP 0 // 0: use new, 1: use TMP
 
@@ -81,12 +79,6 @@ struct desc_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
 
 #define D desc_t
 
-tpsa_t*  mad_tpsa_newd  (const desc_t *d, ord_t mo);
-void     mad_tpsa_del   (const tpsa_t *t);
-
-ctpsa_t* mad_ctpsa_newd (const desc_t *d, ord_t mo);
-void     mad_ctpsa_del  (const ctpsa_t *t);
-
 // --- TPSA sanity checks -----------------------------------------------------o
 
 #if TPSA_DEBUG > 0
@@ -112,6 +104,9 @@ hpoly_idx (idx_t ib, idx_t ia, ssz_t ia_size)
 }
 
 // --- macros for temporaries -------------------------------------------------o
+
+#include "mad_tpsa.h"
+#include "mad_ctpsa.h"
 
 #if DESC_USE_TMP
 #define TRC_TMPX(a) (void)func // a
