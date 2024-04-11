@@ -494,22 +494,23 @@ FUN(mul) (const T *a, const T *b, T *r)
   TPSA_SCAN_I(c,bhi+1,  ahi       ) c->coef[i] = b0*a->coef[i];
   TPSA_SCAN_I(c,ahi+1,      bhi   ) c->coef[i] = a0*b->coef[i];
 
-  // FUN(print)(c,"§@#$%^&* c.1",1e-16,0,0);
+  // FUN(print)(c,"!@#$%^&* c.1",1e-16,0,0);
 
   // order 2+
   if (c->hi > 1) {
     TPSA_SCAN_I(c,MAX(ahi,bhi)+1,c->hi) c->coef[i] = 0;
 
-    // FUN(print)(c,"§@#$%^&* c.2",1e-16,0,0);
+    // FUN(print)(c,"!@#$%^&* c.2",1e-16,0,0);
 
     if (ahi && bhi && alo == 1 && blo == 1) {
+
       const idx_t hod = d->mo/2;
       const idx_t *lc = d->L[hod+1];
       const idx_t *idx[2] = { d->L_idx[hod+1][0], d->L_idx[hod+1][2] };
       assert(lc);
       hpoly_diag_mul(a->coef+o2i[1], b->coef+o2i[1], c->coef, o2i[2]-o2i[1], lc, idx);
 
-      // FUN(print)(c,"§@#$%^&* c.3",1e-16,0,0);
+      // FUN(print)(c,"!@#$%^&* c.3",1e-16,0,0);
     }
 
     // order 3+
@@ -521,14 +522,14 @@ FUN(mul) (const T *a, const T *b, T *r)
 #endif
         hpoly_mul_ser(a,b,c);
 
-      // FUN(print)(c,"§@#$%^&* c.4",1e-16,0,0);
+      // FUN(print)(c,"!@#$%^&* c.4",1e-16,0,0);
     }
   }
   FUN(update)(c);
 
 ret:
   assert(a != c && b != c);
-  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); } else DBGTPSA(r);
+  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
   DBGFUN(<-);
 }
 

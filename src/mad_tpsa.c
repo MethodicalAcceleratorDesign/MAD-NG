@@ -75,7 +75,7 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
           t->lo, t->hi, t->mo, t->ao, t->uid, d ? d->id : -1);
 
   if (ok) {
-    char name[48] = "§@#$%^&*";
+    char name[48] = "!@#$%^&*";
     strncpy(name+8, name_ ? name_ : t->nam, 40); name[47] = '\0';
     fprintf(stream_," }\n"); fflush(stream_);
     FUN(print)(t, 0, mad_cst_TINY, 0, stream_);
@@ -629,7 +629,7 @@ FUN(seti) (T *t, idx_t i, NUM a, NUM b)
   const ord_t o = d->ords[i];
   if (o > MIN(t->mo, d->to)) { DBGFUN(<-); return; }
 
-  NUM v = t->lo >= o && o <= t->hi ? a*t->coef[i]+b : b;
+  NUM v = t->lo <= o && o <= t->hi ? a*t->coef[i]+b : b;
 
   if (v) {
     if (o < t->lo) { FUN(clear0)(t,o,t->lo-1); t->lo = o; } else
@@ -642,6 +642,7 @@ FUN(seti) (T *t, idx_t i, NUM a, NUM b)
     if (o == t->hi && (j=FUN(nzero0r)(t,t->lo,t->hi)) > 0) t->hi = d->ords[j]; else
     if (j < 0) t->lo = 1, t->hi = 0;
   }
+
   DBGTPSA(t); DBGFUN(<-);
 }
 

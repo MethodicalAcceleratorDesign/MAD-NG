@@ -394,7 +394,7 @@ FUN(print) (const T *t, str_t name_, num_t eps, int nohdr, FILE *stream_)
   if (!stream_) stream_ = stdout;
 
   // avoid to double debug TPSA (string start set by DBGTPSA)
-  if (strncmp(name_,"§@#$%^&*",8)) DBGTPSA(t);
+  if (strncmp(name_,"!@#$%^&*",8)) DBGTPSA(t);
 
 #ifndef MAD_CTPSA_IMPL
   const char typ = 'R';
