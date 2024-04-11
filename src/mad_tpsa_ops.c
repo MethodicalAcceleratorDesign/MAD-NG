@@ -259,7 +259,8 @@ FUN(scl) (const T *a, NUM v, T *c)
   const D *d = a->d;
   ensure(d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  if (!v) { FUN(reset0)(c); DBGFUN(<-); return; }
+  if (v == 0) { FUN(reset0)(c); DBGFUN(<-); return; }
+  if (v == 1) { FUN(copy)(a,c); DBGFUN(<-); return; }
 
   FUN(copy0)(a,c);
 
@@ -267,9 +268,8 @@ FUN(scl) (const T *a, NUM v, T *c)
 
   if (!c->hi) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
 
-       if (v ==  1) { TPSA_SCAN(c) c->coef[i] =   a->coef[i]; }
-  else if (v == -1) { TPSA_SCAN(c) c->coef[i] =  -a->coef[i]; }
-  else              { TPSA_SCAN(c) c->coef[i] = v*a->coef[i]; }
+  if (v == -1) { TPSA_SCAN(c) c->coef[i] =  -a->coef[i]; }
+  else         { TPSA_SCAN(c) c->coef[i] = v*a->coef[i]; }
   DBGTPSA(c); DBGFUN(<-);
 }
 
@@ -291,7 +291,9 @@ FUN(acc) (const T *a, NUM v, T *c)
   const D *d = c->d;
   ensure(a->d == d, "incompatibles GTPSA (descriptors differ)");
 
-  if (!v) { DBGFUN(<-); return; }
+  if (v ==  0) { DBGFUN(<-); return; }
+  if (v ==  1) { FUN(add)(c,a,c); DBGFUN(<-); return; }
+  if (v == -1) { FUN(sub)(c,a,c); DBGFUN(<-); return; }
 
   ord_t alo = a->lo, ahi = a->hi;
   ord_t clo = c->lo, chi = c->hi;
@@ -425,7 +427,7 @@ FUN(equ) (const T *a, const T *b, num_t tol)
   const D *d = a->d;
   ensure(d == b->d, "incompatibles GTPSA (descriptors differ)");
 
-  T c_ = {.d=d, .mo=d->mo}, *c = &c_; // fake TPSA
+  T c_ = {.d=d, .mo=d->mo, .ao=d->mo}, *c = &c_; // fake TPSA
 
   // a is the left-most one
   if (a->lo > b->lo) { const T *t; SWAP(a,b,t); }
@@ -477,6 +479,7 @@ FUN(mul) (const T *a, const T *b, T *r)
   if (ahi > c->hi) ahi = c->hi;
   if (bhi > c->hi) bhi = c->hi;
 
+  // printf("0: c->lo=%d, c->hi=%d\n", c->lo, c->hi);
   // printf("1: %d->%d (a  )\n", alo,MIN(ahi,blo-1));
   // printf("2: %d->%d (0  )\n", ahi+1,      blo-1 );
   // printf("3: %d->%d (a+b)\n", blo,MIN(ahi,bhi)  );
@@ -491,22 +494,22 @@ FUN(mul) (const T *a, const T *b, T *r)
   TPSA_SCAN_I(c,bhi+1,  ahi       ) c->coef[i] = b0*a->coef[i];
   TPSA_SCAN_I(c,ahi+1,      bhi   ) c->coef[i] = a0*b->coef[i];
 
-  // FUN(print)(c,"§@#$ c.1",0,0,0);
+  // FUN(print)(c,"§@#$%^&* c.1",1e-16,0,0);
 
   // order 2+
   if (c->hi > 1) {
     TPSA_SCAN_I(c,MAX(ahi,bhi)+1,c->hi) c->coef[i] = 0;
 
-    // FUN(print)(c,"§@#$ c.2",0,0,0);
+    // FUN(print)(c,"§@#$%^&* c.2",1e-16,0,0);
 
-    if (ahi && bhi) {
+    if (ahi && bhi && alo == 1 && blo == 1) {
       const idx_t hod = d->mo/2;
       const idx_t *lc = d->L[hod+1];
       const idx_t *idx[2] = { d->L_idx[hod+1][0], d->L_idx[hod+1][2] };
       assert(lc);
       hpoly_diag_mul(a->coef+o2i[1], b->coef+o2i[1], c->coef, o2i[2]-o2i[1], lc, idx);
 
-      // FUN(print)(c,"§@#$ c.3",0,0,0);
+      // FUN(print)(c,"§@#$%^&* c.3",1e-16,0,0);
     }
 
     // order 3+
@@ -517,6 +520,8 @@ FUN(mul) (const T *a, const T *b, T *r)
       else
 #endif
         hpoly_mul_ser(a,b,c);
+
+      // FUN(print)(c,"§@#$%^&* c.4",1e-16,0,0);
     }
   }
   FUN(update)(c);
@@ -536,7 +541,7 @@ FUN(div) (const T *a, const T *b, T *c)
   NUM b0 = b->coef[0];
   ensure(b0 != 0, "invalid domain");
 
-  if (b->hi == 0) {
+  if (!b->hi) {
 #ifdef MAD_CTPSA_IMPL
     FUN(scl)(a, mad_cpx_inv(b0), c);
 #else
@@ -549,7 +554,6 @@ FUN(div) (const T *a, const T *b, T *c)
   FUN(inv)(b,1,t);
   FUN(mul)(a,t,c);
   if (t != c) REL_TMPX(t);
-
   DBGTPSA(c); DBGFUN(<-);
 }
 
