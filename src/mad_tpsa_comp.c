@@ -78,15 +78,16 @@ print_damap (ssz_t sa, const T *ma[sa], FILE *fp_)
 void
 FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 {
-  DBGFUN(->);
+  assert(ma && mb && mc); DBGFUN(->);
+  FOR(ia,sa) DBGTPSA(ma[ia]);
+  FOR(ib,sb) DBGTPSA(mb[ib]);
   check_compose(sa, ma, sb, mb, mc);
 
   const D *d = ma[0]->d;
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, sa);
-  FOR(ia,sa) { DBGTPSA(ma[ia]); mc_[ia] = FUN(newd)(d, d->to); }
-  FOR(ib,sb)   DBGTPSA(mb[ib]);
+  FOR(ia,sa) mc_[ia] = FUN(newd)(d, d->to);
 
   ord_t hi_ord = FUN(mord)(sa,ma,TRUE);
   hi_ord = MIN(hi_ord, d->to);
@@ -109,9 +110,10 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
   FOR(ia,sa) {
     FUN(copy)(mc_[ia], mc[ia]);
     FUN(del )(mc_[ia]);
-    DBGTPSA(mc[ia]);
   }
   mad_free_tmp(mc_);
+
+  FOR(ia,sa) DBGTPSA(mc[ia]);
   DBGFUN(<-);
 }
 
