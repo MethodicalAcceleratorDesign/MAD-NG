@@ -40,7 +40,7 @@
 // must be global variables for access from LuaJIT FFI.
 const  ord_t  mad_tpsa_dflt = -1;
 const  ord_t  mad_tpsa_same = -2;
-       log_t  mad_tpsa_dbgf = TRUE;  // effective only with DEBUG > 1
+       log_t  mad_tpsa_dbgf = FALSE; // effective only with DEBUG > 1
        log_t  mad_tpsa_dbga = FALSE; // effective only with DEBUG > 2
 
 // last descriptor created or searched (used to create GTPSA when d is NULL)
