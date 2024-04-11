@@ -51,7 +51,7 @@ check_minv(ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
 static void
 split_and_inv(ssz_t na, const T *ma[na], ssz_t nb, T *lininv[na], T *nonlin[na])
 {
-  ssz_t nn = na, nv = nb, np = na-nb;  // #vars+params, #vars, #params
+  ssz_t nv = nb, np = na-nb;           // #vars, #params
   mad_alloc_tmp(NUM, mat_var , nv*nv); // canonical vars
   mad_alloc_tmp(NUM, mat_vari, nv*nv); // inverse of vars
   mad_alloc_tmp(NUM, mat_par , nv*np); // params
@@ -59,30 +59,26 @@ split_and_inv(ssz_t na, const T *ma[na], ssz_t nb, T *lininv[na], T *nonlin[na])
 
   // split linear, (-1 * nonlinear)
   FOR(i,nv) {
+    FUN(getv)(ma[i], 1   , nv, mat_var + i*nv);
+    FUN(getv)(ma[i], 1+nv, np, mat_par + i*np);
+
     T *t = nonlin[i];
-
-    idx_t v = 0;
-    for (; v < nv; ++v) mat_var[i*nv +  v    ] = ma[i]->coef[v+1];
-    for (; v < nn; ++v) mat_par[i*np + (v-nv)] = ma[i]->coef[v+1];
-
     FUN(copy)(ma[i], t);
-
-    // clear constant and linear part of coef, adjust lo
-    if (t->hi < 2) FUN(reset0)(t);
-    else t->coef[0] = 0, t->lo = MAX(t->lo,2), FUN(scl)(t,-1,t);
+    FUN(cutord)(t,t,-1); // keep orders 2+ (i.e. cut 0..1)
+    FUN(scl)(t,-1,t);
   }
 
   // invert linear part: mat_vari = mat_var^-1
 # ifndef MAD_CTPSA_IMPL
   mad_mat_invn(mat_var, 1, mat_vari, nv, nv, -1);
-  if (np != 0) {
+  if (np) {
     // mat_pari = - mat_vari * mat_par
     mad_mat_mul(mat_vari, mat_par, mat_pari, nv, np, nv);
     mad_vec_muln(mat_pari, -1, mat_pari, nv*np);
   }
 # else
   mad_cmat_invn(mat_var, 1, mat_vari, nv, nv, -1);
-  if (np != 0) {
+  if (np) {
     // mat_pari = - mat_vari * mat_par
     mad_cmat_mul(mat_vari, mat_par, mat_pari, nv, np, nv);
     mad_cvec_muln(mat_pari, -1, mat_pari, nv*np);
@@ -91,9 +87,8 @@ split_and_inv(ssz_t na, const T *ma[na], ssz_t nb, T *lininv[na], T *nonlin[na])
 
   // copy result into TPSA
   FOR(i,nv) {
-    T *t = lininv[i];
-    FOR(v,nv) FUN(seti)(t, v   +1, 0, mat_vari[i*nv + v]);
-    FOR(p,np) FUN(seti)(t, p+nv+1, 0, mat_pari[i*np + p]);
+    FUN(setv)(lininv[i], 1   , nv, mat_vari + i*nv);
+    FUN(setv)(lininv[i], 1+nv, np, mat_pari + i*np);
   }
 
   mad_free_tmp(mat_var );
@@ -107,15 +102,14 @@ split_and_inv(ssz_t na, const T *ma[na], ssz_t nb, T *lininv[na], T *nonlin[na])
 void
 FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
 {
-  DBGFUN(->);
-  assert(ma && mc);
+  assert(ma && mc); DBGFUN(->);
+  FOR(i,na) DBGTPSA(ma[i]);
   ensure(na >= nb, "invalid subtitution ranks, na >= nb expected");
+
   check_minv(na, ma, nb, mc);
-  FOR(i,na) {
-    DBGTPSA(ma[i]); DBGTPSA(mc[i]);
-    ensure(ma[i]->lo == 1 && ma[i]->hi,
+  FOR(i,na)
+    ensure(ma[i]->hi && ma[i]->lo == 1,
            "invalid rank-deficient map (1st order has row(s) full of zeros)");
-  }
 
   const D *d = ma[0]->d;
   T *lininv[na], *nonlin[na], *tmp[na];
@@ -145,22 +139,14 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
   }
 
   if (!isnul) {
-//  assert(nb<=6);
-//  static str_t str[6] = {
-//    "nonlin.x","nonlin.px","nonlin.y","nonlin.py","nonlin.t","nonlin.pt",
-//  };
-//  FOR(i,nb) FUN(print)(nonlin[i], str[i], 0,0,0);
-
-    ord_t o_prev = mad_desc_gtrunc(d, 1);
-    for (ord_t o = 2; o <= d->mo; ++o) {
+    ord_t mo = mad_desc_gtrunc(d, 1); // TODO: use mo & ao
+    for (ord_t o = 2; o <= mo; ++o) {
       mad_desc_gtrunc(d, o);
       FUN(compose)(nb, TC nonlin, na, TC mc, tmp);
-
-      for (idx_t v = 0; v < nb; ++v) FUN(seti)(tmp[v], v+1, 1,1); // add identity
-
+      FOR(v,nb) FUN(seti)(tmp[v], v+1, 1,1); // add identity
       FUN(compose)(nb, TC lininv, na, TC tmp, mc);
     }
-    mad_desc_gtrunc(d, o_prev);
+    mad_desc_gtrunc(d, mo);
   }
 
   // cleanup
@@ -176,17 +162,13 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
 void
 FUN(pminv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na], idx_t select[na])
 {
-  DBGFUN(->);
-  assert(ma && mc && select);
+  assert(ma && mc && select); DBGFUN(->);
+  FOR(i,na) DBGTPSA(ma[i]);
   ensure(na >= nb, "invalid subtitution rank, na >= nb expected");
   check_minv(na, ma, nb, mc);
-  FOR(i,na) {
-    if (select[i]) {
-      DBGTPSA(ma[i]); DBGTPSA(mc[i]);
-      ensure(ma[i]->lo == 1 && ma[i]->hi,
-             "invalid rank-deficient map (1st order has row(s) full of zeros)");
-    }
-  }
+  FOR(i,na) if (select[i])
+    ensure(ma[i]->hi && ma[i]->lo == 1,
+           "invalid rank-deficient map (1st order has row(s) full of zeros)");
 
   // split input map into rows that are inverted and rows that are not
 
