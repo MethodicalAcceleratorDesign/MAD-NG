@@ -36,14 +36,18 @@
 #include "mad_mono.h"
 #include "mad_desc.h"
 
-// --- types ------------------------------------------------------------------o
+// --- constants --------------------------------------------------------------o
 
-typedef struct tpsa_ tpsa_t;
+enum { NAMSZ=16 };
 
 // --- globals ----------------------------------------------------------------o
 
 extern const ord_t mad_tpsa_dflt;
 extern const ord_t mad_tpsa_same;
+
+// --- types ------------------------------------------------------------------o
+
+typedef struct tpsa_ tpsa_t;
 
 // --- interface --------------------------------------------------------------o
 
@@ -203,8 +207,6 @@ void    mad_tpsa_eval     (ssz_t na, const tpsa_t *ma[], ssz_t nb, const num_t  
 void    mad_tpsa_mconv    (ssz_t na, const tpsa_t *ma[], ssz_t nc,                     tpsa_t *mc[], ssz_t n, idx_t t2r_[], int pb);
 
 // I/O
-#define NAMSZ 16
-
 void    mad_tpsa_print    (const tpsa_t *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_);
 tpsa_t* mad_tpsa_scan     (                                                      FILE *stream_);
 const
