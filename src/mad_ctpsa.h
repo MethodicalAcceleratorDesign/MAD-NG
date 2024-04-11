@@ -40,11 +40,6 @@
 
 typedef struct ctpsa_ ctpsa_t;
 
-// --- globals ---------------------------------------------------------------o
-
-extern const ord_t mad_tpsa_dflt;
-extern const ord_t mad_tpsa_same;
-
 // --- interface -------------------------------------------------------------o
 
 // ctors, dtor
@@ -277,9 +272,6 @@ void     mad_ctpsa_compose  (ssz_t na, const ctpsa_t *ma[], ssz_t nb, const ctps
 void     mad_ctpsa_translate(ssz_t na, const ctpsa_t *ma[], ssz_t nb, const cpx_t    tb[], ctpsa_t *mc[]);
 void     mad_ctpsa_eval     (ssz_t na, const ctpsa_t *ma[], ssz_t nb, const cpx_t    tb[], cpx_t    tc[]);
 void     mad_ctpsa_mconv    (ssz_t na, const ctpsa_t *ma[], ssz_t nc,                      ctpsa_t *mc[], ssz_t n, idx_t t2r_[], int pb);
-
-// I/O
-#define NAMSZ 16
 
 // I/O
 void     mad_ctpsa_print    (const ctpsa_t *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_);
