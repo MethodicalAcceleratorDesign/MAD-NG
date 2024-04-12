@@ -39,6 +39,14 @@
 
 // --- debugging --------------------------------------------------------------o
 
+static inline num_t
+FUN(ratio) (const T *t, num_t eps)
+{
+  long nz = 0;
+  TPSA_SCAN(t) if (fabs(t->coef[i]) > eps) ++nz;
+  return (num_t)nz / (o2i[t->hi+1] - o2i[t->lo]);
+}
+
 static inline log_t
 FUN(check) (const T *t, ord_t *o_)
 {
@@ -47,7 +55,10 @@ FUN(check) (const T *t, ord_t *o_)
   if (!t->d || t->mo > t->d->mo || t->hi > t->mo ||
       (t->lo > t->hi && t->lo != 1)) goto ret;
 
-  if (t->hi) { TPSA_SCAN_Z(t) if (FUN(nzero0)(t,o,o) < 0) {_o = o; goto ret;}}
+  if (t->hi) {
+    if (FUN(nzero0)(t,t->lo,t->lo) < 0) {_o = t->lo; goto ret;}
+    if (FUN(nzero0)(t,t->hi,t->hi) < 0) {_o = t->hi; goto ret;}
+  }
   return TRUE;
 
 ret:
@@ -55,17 +66,17 @@ ret:
   return FALSE;
 }
 
-void
+int
 FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
 {
-  static log_t dbg = 0; // prevent reentering
-  if (dbg) return;
+  static log_t dbg = 0; // prevent reentering (not thread-safe!)
+  if (dbg) return 0;
   assert(t); dbg = 1;
 
   ord_t o;
   log_t ok = FUN(check)(t,&o);
 
-  if (ok && !mad_tpsa_dbga) { dbg = 0; return; }
+  if (ok && mad_tpsa_dbga == 1) { dbg = 0; return ok; }
 
   const D* d = t->d;
   if (!stream_) stream_ = stdout;
@@ -75,11 +86,15 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
           t->lo, t->hi, t->mo, t->ao, t->uid, d ? d->id : -1);
 
   if (ok) {
-    char name[48] = "!@#$%^&*";
-    strncpy(name+8, name_ ? name_ : t->nam, 40); name[47] = '\0';
-    fprintf(stream_," }\n"); fflush(stream_);
-    FUN(print)(t, 0, mad_cst_TINY, 0, stream_);
-    dbg = 0; return;
+    num_t d = FUN(ratio)(t, 1e-40);
+    fprintf(stream_," r=%.2f }\n", d); fflush(stream_);
+
+    if (mad_tpsa_dbga > 1) {
+      char name[48] = "@#$&";
+      strncpy(name+4, name_ ? name_ : t->nam, 44); name[47] = '\0';
+      FUN(print)(t, name, 1e-40, 0, stream_);
+    }
+    dbg = 0; return ok;
   }
 
   fprintf(stream_," ** bug @ o=%d }\n", o); fflush(stream_);
@@ -92,6 +107,7 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
   }
   dbg = 0;
   exit(EXIT_FAILURE);
+  return ok;
 }
 
 // --- introspection ----------------------------------------------------------o
@@ -115,9 +131,9 @@ FUN(uid) (T *t, int32_t uid_) // set uid if uid != 0
 str_t
 FUN(nam) (T *t, str_t nam_)
 {
-  assert(t); DBGFUN(->);
+  assert(t);
   if (nam_) strncpy(t->nam, nam_, NAMSZ), t->nam[NAMSZ-1] = 0;
-  DBGFUN(<-); return t->nam;
+  return t->nam;
 }
 
 ssz_t
@@ -144,10 +160,17 @@ FUN(isnul) (const T *t)
 log_t
 FUN(isvalid) (const T *t)
 {
-  assert(t); DBGFUN(->);
-  log_t ret = FUN(check)(t,0);
-  DBGFUN(<-); return ret;
+  assert(t);
+  return FUN(check)(t,0);
 }
+
+num_t
+FUN(density) (const T *t, num_t eps)
+{
+  assert(t);
+  return FUN(ratio)(t,eps);
+}
+
 
 // --- init (unsafe) ----------------------------------------------------------o
 
@@ -458,9 +481,11 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
 #endif
     if (ri >= 0) {
       r->coef[ri] = SIGN1(sgn%2)*t->coef[i];
-      ord_t o = ords[ri];
-      if (o < r->lo) r->lo = o;
-      if (o > r->hi) r->hi = o;
+      if (ri) {
+        ord_t o = ords[ri];
+        if (o < r->lo) r->lo = o;
+        if (o > r->hi) r->hi = o;
+      }
     }
   skip: ;
   }
