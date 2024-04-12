@@ -56,6 +56,7 @@ str_t    mad_ctpsa_nam     (      ctpsa_t *t, str_t   nam_); // set nam if != nu
 ord_t    mad_ctpsa_ord     (const ctpsa_t *t, log_t   hi_ ); // mo or hi
 log_t    mad_ctpsa_isnul   (const ctpsa_t *t);
 log_t    mad_ctpsa_isvalid (const ctpsa_t *t);
+num_t    mad_ctpsa_density (const ctpsa_t *t, num_t eps); // ratio nz/nc in [lo,hi]
 
 // initialization / manipulation
 void     mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *r);
@@ -284,7 +285,7 @@ void     mad_ctpsa_scan_coef(      ctpsa_t *t,                                  
 ctpsa_t* mad_ctpsa_init     (      ctpsa_t *t, const desc_t *d, ord_t mo);
 
 // debug
-void     mad_ctpsa_debug    (const ctpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
+int      mad_ctpsa_debug    (const ctpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
 
 // ---------------------------------------------------------------------------o
 

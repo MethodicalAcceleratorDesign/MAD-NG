@@ -65,6 +65,7 @@ str_t   mad_tpsa_nam     (      tpsa_t *t, str_t   nam_); // set nam if != null
 ord_t   mad_tpsa_ord     (const tpsa_t *t, log_t   hi_ ); // mo or hi
 log_t   mad_tpsa_isnul   (const tpsa_t *t);
 log_t   mad_tpsa_isvalid (const tpsa_t *t);
+num_t   mad_tpsa_density (const tpsa_t *t, num_t eps); // ratio nz/nc in [lo,hi]
 
 // initialization / manipulation
 void    mad_tpsa_copy    (const tpsa_t *t, tpsa_t *r);
@@ -217,7 +218,7 @@ void    mad_tpsa_scan_coef(      tpsa_t *t,                                     
 tpsa_t* mad_tpsa_init     (      tpsa_t *t, const desc_t *d, ord_t mo);
 
 // debug
-void    mad_tpsa_debug    (const tpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
+int     mad_tpsa_debug    (const tpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
 
 // --- end --------------------------------------------------------------------o
 

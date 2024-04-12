@@ -41,8 +41,8 @@ typedef struct desc_ desc_t;
 
 extern const  ord_t  mad_tpsa_dflt;
 extern const  ord_t  mad_tpsa_same;
-extern        log_t  mad_tpsa_dbgf; // effective only with DEBUG > 1
-extern        log_t  mad_tpsa_dbga; // effective only with DEBUG > 2
+extern        int    mad_tpsa_dbgf; // effective only with TPSA_DEBUG > 0
+extern        int    mad_tpsa_dbga; // effective only with TPSA_DEBUG > 0
 extern const desc_t *mad_desc_curr;
 
 // --- interface --------------------------------------------------------------o
