@@ -35,7 +35,7 @@ enum { DESC_WARN_MONO  = 1000000, // warn if tpsa can have 1e6 coefs or more
        DESC_MAX_TMP    = 8,       // max number of temp. per thread in each desc
 };
 
-#define TPSA_DEBUG   1 // 0-1: print fname in/out, print TPSA content, more I/O
+#define TPSA_DEBUG   0 // 0-1: print fname in/out, print TPSA content, more I/O
 #define DESC_DEBUG   0 // 0-3: print debug info during build
 #define DESC_USE_TMP 0 // 0: use new, 1: use TMP
 
