@@ -40,7 +40,7 @@
 // --- debugging --------------------------------------------------------------o
 
 static inline num_t
-FUN(ratio) (const T *t, num_t eps)
+ratio (const T *t, num_t eps)
 {
   long nz = 0;
   TPSA_SCAN(t) if (fabs(t->coef[i]) > eps) ++nz;
@@ -48,7 +48,7 @@ FUN(ratio) (const T *t, num_t eps)
 }
 
 static inline log_t
-FUN(check) (const T *t, ord_t *o_)
+check (const T *t, ord_t *o_)
 {
   ord_t _o = 0;
 
@@ -74,7 +74,7 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
   assert(t); dbg = 1;
 
   ord_t o;
-  log_t ok = FUN(check)(t,&o);
+  log_t ok = check(t,&o);
 
   if (ok && mad_tpsa_dbga == 1) { dbg = 0; return ok; }
 
@@ -86,7 +86,7 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
           t->lo, t->hi, t->mo, t->ao, t->uid, d ? d->id : -1);
 
   if (ok) {
-    num_t d = FUN(ratio)(t, 1e-40);
+    num_t d = ratio(t, 1e-40);
     fprintf(stream_," r=%.2f }\n", d); fflush(stream_);
 
     if (mad_tpsa_dbga > 1) {
@@ -106,7 +106,7 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
     fprintf(stream_,"\n"); fflush(stream_);
   }
   dbg = 0;
-  exit(EXIT_FAILURE);
+  ensure(ok, "corrupted TPSA detected");
   return ok;
 }
 
@@ -161,14 +161,14 @@ log_t
 FUN(isvalid) (const T *t)
 {
   assert(t);
-  return FUN(check)(t,0);
+  return check(t,0);
 }
 
 num_t
 FUN(density) (const T *t, num_t eps)
 {
   assert(t);
-  return FUN(ratio)(t,eps);
+  return ratio(t,eps);
 }
 
 
@@ -657,16 +657,22 @@ FUN(seti) (T *t, idx_t i, NUM a, NUM b)
   NUM v = t->lo <= o && o <= t->hi ? a*t->coef[i]+b : b;
 
   if (v) {
-    if (o < t->lo) { FUN(clear0)(t,o,t->lo-1); t->lo = o; } else
-    if (o > t->hi) { FUN(clear0)(t,t->hi+1,o); t->hi = o; }
+    if (   !t->hi) { FUN(clear0)(t,o,o); t->lo = t->hi = o; } else
+    if (o < t->lo) { FUN(clear0)(t,o,t->lo-1);   t->lo = o; } else
+    if (o > t->hi) { FUN(clear0)(t,t->hi+1,o);   t->hi = o; }
     t->coef[i] = v;
   } else {
     t->coef[i] = 0;
     idx_t j = 0;
     if (o == t->lo && (j=FUN(nzero0 )(t,t->lo,t->hi)) > 0) t->lo = d->ords[j]; else
     if (o == t->hi && (j=FUN(nzero0r)(t,t->lo,t->hi)) > 0) t->hi = d->ords[j]; else
-    if (j < 0) t->lo = 1, t->hi = 0;
+    if (j <= 0) t->lo = 1, t->hi = 0;
   }
+
+#if 0
+  if (!check(t,0))
+    printf(" o=%d, v= %-.16e%+.16ei\n", o, creal(v), cimag(v));
+#endif
 
   DBGTPSA(t); DBGFUN(<-);
 }

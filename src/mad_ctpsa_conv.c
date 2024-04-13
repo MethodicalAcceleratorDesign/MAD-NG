@@ -76,11 +76,12 @@ mad_ctpsa_cplx (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
   switch(!!re_ + 2*!!im_) {
   case 1: { TPSA_SCAN(c) c->coef[i] = re_->coef[i];   break; }
   case 2: { TPSA_SCAN(c) c->coef[i] = im_->coef[i]*I; break; }
-  case 3:   mad_ctpsa_clear0(c, c->lo, c->hi);
-          { TPSA_SCAN(re) c->coef[i]  = re->coef[i];   }
-          { TPSA_SCAN(im) c->coef[i] += im->coef[i]*I; }
-  }
-  if (TPSA_DEBUG > 1) mad_ctpsa_debug(c,"c",__func__,__LINE__,0);
+  case 3: {
+    mad_ctpsa_clear0(c, c->lo, c->hi);
+    { TPSA_SCAN(re) c->coef[i]  = re->coef[i];   }
+    { TPSA_SCAN(im) c->coef[i] += im->coef[i]*I; }
+  }}
+  if (TPSA_DEBUG > 0 && mad_tpsa_dbga) mad_ctpsa_debug(c,"c",__func__,__LINE__,0);
   DBGFUN(<-);
 }
 
