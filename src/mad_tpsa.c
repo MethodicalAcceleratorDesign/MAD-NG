@@ -39,16 +39,28 @@
 
 // --- debugging --------------------------------------------------------------o
 
+static long ratio_nz[11] = {0};
+static long ratio_nn[11] = {0};
+
 static inline num_t
-ratio (const T *t, num_t eps)
+ratio (const T *t, num_t eps_)
 {
+  if (!t->hi) return -1;
+  num_t eps = eps_ ? eps_ : mad_tpsa_eps;
+
   long nz = 0;
-  TPSA_SCAN(t) if (fabs(t->coef[i]) > eps) ++nz;
-  return (num_t)nz / (o2i[t->hi+1] - o2i[t->lo]);
+  TPSA_SCAN(t) if (fabs(t->coef[i]) >= eps) ++nz;
+  num_t r = (num_t)nz / (o2i[t->hi+1] - o2i[t->lo]);
+
+  int i = r*10;
+  assert(0 <= i && i <= 10);
+  ratio_nz[i] += nz;
+  ratio_nn[i] += o2i[t->hi+1] - o2i[t->lo];
+  return r;
 }
 
 static inline log_t
-check (const T *t, ord_t *o_)
+check (const T *t, ord_t *o_, num_t *r_)
 {
   ord_t _o = 0;
 
@@ -59,6 +71,8 @@ check (const T *t, ord_t *o_)
     if (FUN(nzero0)(t,t->lo,t->lo) < 0) {_o = t->lo; goto ret;}
     if (FUN(nzero0)(t,t->hi,t->hi) < 0) {_o = t->hi; goto ret;}
   }
+
+  if (r_) *r_ = ratio(t,0);
   return TRUE;
 
 ret:
@@ -66,17 +80,23 @@ ret:
   return FALSE;
 }
 
+/* Enabled only if TPSA_DEBUG > 0 (compile time)
+   mad_tpsa_dbga  effects (runtime)
+         0        none
+         1        check ;
+         2        check ; density
+         3        check ; density ; print header +tpsa(ok) or +raw(!ok)
+*/
+
 int
 FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
 {
-  static log_t dbg = 0; // prevent reentering (not thread-safe!)
-  if (dbg) return 0;
-  assert(t); dbg = 1;
-
+  assert(t);
   ord_t o;
-  log_t ok = check(t,&o);
+  num_t r = 0;
+  log_t ok = check(t,&o, mad_tpsa_dbga > 1 ? &r : 0);// dbga = 2..3 -> ratio
 
-  if (ok && mad_tpsa_dbga == 1) { dbg = 0; return ok; }
+  if (ok && mad_tpsa_dbga < 3) return ok;            // dbga = 1..2 -> no prn
 
   const D* d = t->d;
   if (!stream_) stream_ = stdout;
@@ -86,15 +106,14 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
           t->lo, t->hi, t->mo, t->ao, t->uid, d ? d->id : -1);
 
   if (ok) {
-    num_t d = ratio(t, 1e-40);
-    fprintf(stream_," r=%.2f }\n", d); fflush(stream_);
+    fprintf(stream_," r=%.2f }\n", r); fflush(stream_);
 
     if (mad_tpsa_dbga > 1) {
       char name[48] = "@#$&";
       strncpy(name+4, name_ ? name_ : t->nam, 44); name[47] = '\0';
       FUN(print)(t, name, 1e-40, 0, stream_);
     }
-    dbg = 0; return ok;
+    return ok;
   }
 
   fprintf(stream_," ** bug @ o=%d }\n", o); fflush(stream_);
@@ -105,7 +124,6 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
     FOR(i,ni) fprintf(stream_," [%d:%d]=" FMT "\n", i,d->ords[i],VAL(t->coef[i]));
     fprintf(stream_,"\n"); fflush(stream_);
   }
-  dbg = 0;
   ensure(ok, "corrupted TPSA detected");
   return ok;
 }
@@ -117,6 +135,20 @@ FUN(desc) (const T *t)
 {
   assert(t);
   return t->d;
+}
+
+ord_t
+FUN(mo) (T *t, ord_t mo_)
+{
+  assert(t);
+  ord_t ret = t->mo;
+  if (mo_ == mad_tpsa_dflt) mo_ = t->ao; // if mo_  = mad_tpsa_dflt, mo = ao
+  if (mo_ <= t->ao) {                    // if mo_ <= ao, mo = mo_
+    t->lo = MIN(t->lo,mo_);
+    t->hi = MIN(t->hi,mo_);
+    t->mo = mo_;
+  }
+  return ret; // return previous mo, e.g. mo_ == mad_tpsa_same
 }
 
 int32_t
@@ -161,7 +193,7 @@ log_t
 FUN(isvalid) (const T *t)
 {
   assert(t);
-  return check(t,0);
+  return check(t,0,0);
 }
 
 num_t
@@ -171,6 +203,32 @@ FUN(density) (const T *t, num_t eps)
   return ratio(t,eps);
 }
 
+#ifndef MAD_CTPSA_IMPL
+void
+mad_tpsa_clrdensity (void)
+{
+  FOR(i,11) ratio_nz[i] = ratio_nn[i] = 0;
+}
+
+void
+mad_tpsa_prtdensity (FILE *stream_)
+{
+  if (!stream_) stream_ = stdout;
+  long sum = 0;
+  FOR(i,11) sum += ratio_nn[i];
+  if (!sum) return fprintf(stream_,"no tpsa density available.\n");
+
+  fprintf(stream_,"tpsa average density:\n");
+  FOR(i,11) {
+    ensure(ratio_nz[i] <= ratio_nn[i], "unexpect ratio > 1");
+    fprintf(stream_,"i=%2d, nz=%15ld, nn=%15ld, r=%6.2f, p=%6.2f%%\n",
+      i,ratio_nz[i],ratio_nn[i],
+      ratio_nn[i] ? 10*(num_t)ratio_nz[i]/ratio_nn[i] : 0,
+      100*(num_t)ratio_nn[i]/sum);
+  }
+  fprintf(stream_,"\n"); fflush(stream_);
+}
+#endif
 
 // --- init (unsafe) ----------------------------------------------------------o
 
@@ -670,7 +728,7 @@ FUN(seti) (T *t, idx_t i, NUM a, NUM b)
   }
 
 #if 0
-  if (!check(t,0))
+  if (!check(t,0,0))
     printf(" o=%d, v= %-.16e%+.16ei\n", o, creal(v), cimag(v));
 #endif
 
