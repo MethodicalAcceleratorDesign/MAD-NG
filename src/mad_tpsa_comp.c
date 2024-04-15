@@ -27,6 +27,7 @@
 #endif
 
 #define DEBUG_COMPOSE 0
+#define TC (const T**)
 
 // --- local ------------------------------------------------------------------o
 
@@ -43,9 +44,9 @@ check_compose (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 {
   assert(ma && mb && mc);
   ensure(sa>0 && sb>0, "invalid map sizes (zero or negative sizes)");
-  check_same_desc(sa,ma);
-  check_same_desc(sb,mb);
-  check_same_desc(sa,(const T**)mc);
+  check_same_desc(sa, ma);
+  check_same_desc(sb, mb);
+  check_same_desc(sa, TC mc);
   ensure(sb >= ma[0]->d->nv  , "incompatibles damap #B < NV(A)");
   ensure(sb <= ma[0]->d->nn  , "incompatibles damap #B > NV(A)+NP(A)");
   ensure(ma[0]->d == mb[0]->d, "incompatibles damap A vs C (descriptors differ)");
@@ -68,6 +69,8 @@ print_damap (ssz_t sa, const T *ma[sa], FILE *fp_)
   (void)print_damap;
 }
 
+
+
 #ifdef _OPENMP
 //#include "mad_tpsa_comp_p.tc" // obsolete
 #endif
@@ -83,14 +86,11 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
   FOR(ib,sb) DBGTPSA(mb[ib]);
   check_compose(sa, ma, sb, mb, mc);
 
-  const D *d = ma[0]->d;
-
   // handle aliasing
   mad_alloc_tmp(T*, mc_, sa);
-  FOR(ia,sa) mc_[ia] = FUN(newd)(d, d->to);
+  FOR(ia,sa) mc_[ia] = FUN(new)(mc[ia], mad_tpsa_same);
 
   ord_t hi_ord = FUN(mord)(sa,ma,TRUE);
-  hi_ord = MIN(hi_ord, d->to);
 
   #ifdef _OPENMP
   if (hi_ord >= 5) {

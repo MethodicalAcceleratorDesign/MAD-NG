@@ -26,9 +26,9 @@
 #include "mad_tpsa_impl.h"
 #endif
 
-// --- local ------------------------------------------------------------------o
-
 #define TC (const T**)
+
+// --- local ------------------------------------------------------------------o
 
 static inline void
 check_same_desc(ssz_t na, const T *ma[na])
@@ -139,20 +139,17 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
   }
 
   if (!isnul) {
-    // was ord_t mo = mad_desc_gtrunc(d, 1);
     ord_t mo[na], to = FUN(mord)(na, TC mc, FALSE);
     FOR(i,na) mo[i] = FUN(mo)(mc[i], mad_tpsa_dflt); // backup mo[i]
 
     for (ord_t o = 2; o <= to; ++o) {
-      // was mad_desc_gtrunc(d, o);
-      FOR(i,na) { FUN(mo)(    mc[i],o); }
+      FOR(i,na) { FUN(mo)(    mc[i],o); } // truncate computation to order o
       FOR(i,nb) { FUN(mo)(nonlin[i],o); FUN(mo)(lininv[i],o); FUN(mo)(tmp[i],o); }
 
       FUN(compose)(nb, TC nonlin, na, TC mc, tmp);
       FOR(v,nb) FUN(seti)(tmp[v], v+1, 1,1); // add identity
       FUN(compose)(nb, TC lininv, na, TC tmp, mc);
     }
-    // was mad_desc_gtrunc(d, mo);
     FOR(i,na) FUN(mo)(mc[i], mo[i]); // restore mo[i]
   }
 
@@ -216,7 +213,5 @@ FUN(pminv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na], idx_t select[na])
   }
   DBGFUN(<-);
 }
-
-#undef TC
 
 // --- end --------------------------------------------------------------------o

@@ -64,15 +64,13 @@ struct tpsa_ {  // warning: must be identical to LuaJIT def (see mad_cmad.mad)
 #define TPSA_SCAN_2(t,hi)  TPSA_SCAN_3(t,(t)->lo,     hi)
 #define TPSA_SCAN_3(t,lo,hi) \
   const idx_t *o2i = (t)->d->ord2idx; \
-  const ord_t hi_c = MIN((hi),(t)->d->to); \
-  FOR(i,o2i[lo],o2i[hi_c+1]) \
+  FOR(i,o2i[lo],o2i[(hi)+1]) \
 
 #define TPSA_SCAN_Z1(t)    TPSA_SCAN_Z3(t,(t)->lo,(t)->hi)
 #define TPSA_SCAN_Z2(t,hi) TPSA_SCAN_Z3(t,(t)->lo,     hi)
 #define TPSA_SCAN_Z3(t,lo,hi) \
   const idx_t *o2i = (t)->d->ord2idx; (void)o2i; \
-  const ord_t hi_c = MIN((hi),(t)->d->to); \
-  for (ord_t o=(lo); o <= hi_c; o++) \
+  for (ord_t o=(lo); o <= (hi); o++) \
 
 #define TPSA_SCAN_I1(t)    TPSA_SCAN_I3(t,(t)->lo,(t)->hi)
 #define TPSA_SCAN_I2(t,hi) TPSA_SCAN_I3(t,(t)->lo,     hi)
@@ -90,7 +88,7 @@ mad_tpsa_copy0 (const tpsa_t *t, tpsa_t *r)
 {
   assert(t && r);
   r->lo = t->lo;
-  r->hi = MIN(t->hi, r->mo, r->d->to);
+  r->hi = MIN(t->hi, r->mo);
   if (r->lo > r->hi) r->lo = 1, r->hi = 0;
 }
 
@@ -100,7 +98,7 @@ mad_tpsa_copy00 (const tpsa_t *a, const tpsa_t *b, tpsa_t *r)
   assert(a && b && r);
   ord_t hi = MAX(a->hi, b->hi);
   r->lo = MIN(a->lo, b->lo);
-  r->hi = MIN(hi, r->mo, r->d->to);
+  r->hi = MIN(hi, r->mo);
   if (r->lo > r->hi) r->lo = 1, r->hi = 0;
 }
 
@@ -108,8 +106,8 @@ static inline void // print TPSA header (for debug)
 mad_tpsa_print0 (const tpsa_t *a, str_t nam_)
 {
   assert(a && a->d);
-  printf("'%s' { lo=%d hi=%d mo=%d ao=%d, to=%d uid=%d did=%d }\n",
-         nam_?nam_:"?", a->lo, a->hi, a->mo, a->ao, a->d->to, a->uid, a->d->id);
+  printf("'%s' { lo=%d hi=%d mo=%d ao=%d uid=%d did=%d }\n",
+         nam_?nam_:"?", a->lo, a->hi, a->mo, a->ao, a->uid, a->d->id);
 }
 
 // --- functions accessing lo, hi, coef[0]

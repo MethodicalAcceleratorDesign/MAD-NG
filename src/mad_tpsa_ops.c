@@ -237,7 +237,7 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
         NUM *cc;
 
   c->lo = a->lo > ord ? a->lo-ord : 1;
-  c->hi = MIN(a->hi-ord, c->mo, d->to);
+  c->hi = MIN(a->hi-ord, c->mo);
   if (c->lo > c->hi) { c->lo = 1, c->hi = 0; return; }
 
   for (ord_t oc = 1; oc <= c->hi; ++oc) {
@@ -293,7 +293,7 @@ axpbypc (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   ord_t chi = MAX(ahi, bhi);
 
   c->lo = MIN(alo, blo);
-  c->hi = MIN(chi, c->mo, c->d->to);
+  c->hi = MIN(chi, c->mo);
   if (c->lo > c->hi) c->lo = 1, c->hi = 0;
 
   c->coef[0] = c1*a->coef[0] + c2*b->coef[0] + c3;
@@ -521,7 +521,7 @@ FUN(mul) (const T *a, const T *b, T *r)
 
   ord_t alo = a->lo, ahi = a->hi;
   ord_t blo = b->lo, bhi = b->hi;
-  c->hi = MIN(ahi+bhi, c->mo, d->to); // see copy00
+  c->hi = MIN(ahi+bhi, c->mo); // see copy00
 
   NUM a0 = a->coef[0], b0 = b->coef[0];
   c->coef[0] = a0*b0;
@@ -767,7 +767,7 @@ FUN(deriv) (const T *a, T *r, int iv)
   FUN(setval)(c, FUN(geti)(a,iv));
 
   c->lo = a->lo > 1 ? a->lo-1 : 1;
-  c->hi = MIN(a->hi-1, c->mo, d->to);
+  c->hi = MIN(a->hi-1, c->mo);
   if (c->lo > c->hi) { c->lo = 1, c->hi = 0; goto ret; }
 
   const idx_t *o2i = d->ord2idx;
@@ -831,7 +831,7 @@ FUN(poisbra) (const T *a, const T *b, T *r, int nv)                 // C = [A,B]
   T *c = a == r || b == r ? GET_TMPX(r) : FUN(reset0)(r);
 
   T *is[3];
-  FOR(i,3) is[i] = FUN(new)(a, d->to);
+  FOR(i,3) is[i] = FUN(new)(a, mad_tpsa_same);
   for (int i = 1; i <= nv; ++i) {
     FUN(deriv)(a, is[0], 2*i - 1); // res = res + da/dq_i * db/dp_i
     FUN(deriv)(b, is[1], 2*i    );

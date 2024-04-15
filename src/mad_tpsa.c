@@ -120,7 +120,7 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
 
   if (d) {
     const idx_t *o2i = d->ord2idx;
-    idx_t ni = o2i[MIN(t->mo,d->to)+1]; // corrupted TPSA cannot use print
+    idx_t ni = o2i[MIN(t->mo,t->ao)+1]; // corrupted TPSA cannot use print
     FOR(i,ni) fprintf(stream_," [%d:%d]=" FMT "\n", i,d->ords[i],VAL(t->coef[i]));
     fprintf(stream_,"\n"); fflush(stream_);
   }
@@ -141,9 +141,12 @@ ord_t
 FUN(mo) (T *t, ord_t mo_)
 {
   assert(t);
+  if (mo_ == mad_tpsa_same) return t->mo;
+  if (mo_ == mad_tpsa_dflt) mo_ = t->ao;
+
+  ensure(mo_ <= t->d->mo, "invalid order %d (exceeds maximum order %d)", mo_, t->d->mo);
   ord_t ret = t->mo;
-  if (mo_ == mad_tpsa_dflt) mo_ = t->ao; // if mo_  = mad_tpsa_dflt, mo = ao
-  if (mo_ <= t->ao) {                    // if mo_ <= ao, mo = mo_
+  if (mo_ <= t->ao) {
     t->lo = MIN(t->lo,mo_);
     t->hi = MIN(t->hi,mo_);
     t->mo = mo_;
@@ -216,7 +219,7 @@ mad_tpsa_prtdensity (FILE *stream_)
   if (!stream_) stream_ = stdout;
   long sum = 0;
   FOR(i,11) sum += ratio_nn[i];
-  if (!sum) return fprintf(stream_,"no tpsa density available.\n");
+  if (!sum) { fprintf(stream_,"no tpsa density available.\n"); return; }
 
   fprintf(stream_,"tpsa average density:\n");
   FOR(i,11) {
@@ -361,10 +364,7 @@ FUN(copy) (const T *t, T *r)
 
     // copy coefs
     TPSA_SCAN(r) r->coef[i] = t->coef[i];
-  } else
-    // truncate hi by to
-    r->hi = MIN(r->hi, d->to);
-
+  }
   DBGTPSA(r); DBGFUN(<-);
 }
 
@@ -408,7 +408,7 @@ FUN(getord) (const T *t, T *r, ord_t o)
   const D *d = t->d;
   ensure(d == r->d, "incompatible GTPSAs descriptors 0x%p vs 0x%p", d, r->d);
 
-  if (o < t->lo || o > MIN(t->hi, r->mo, d->to)) {
+  if (o < t->lo || o > MIN(t->hi, r->mo)) {
     FUN(setval)(r, o ? 0 : t->coef[0]);
     DBGFUN(<-); return;
   }
@@ -431,11 +431,11 @@ FUN(cutord) (const T *t, T *r, int o)
 
   if (o <= 0) { // cut 0..|o|, see copy0 with t->lo = |o|+1
     r->lo = 1-o;                    // min 1 -> keep 1..
-    r->hi = MIN(t->hi, r->mo, d->to);
+    r->hi = MIN(t->hi, r->mo);
     r->coef[0] = 0;
   } else {      // cut |o|..mo, see copy0 with t->hi = |o|-1
     r->lo = t->lo;
-    r->hi = MIN(o-1, r->mo, d->to); // min 0 -> cut 1..
+    r->hi = MIN(o-1, r->mo); // min 0 -> cut 1..
     r->coef[0] = t->coef[0];
   }
 
@@ -454,7 +454,7 @@ FUN(maxord) (const T *t, ssz_t n, idx_t idx_[n])
 
   idx_t mi = 0;                       // idx of mv
   num_t mv = fabs(t->coef[0]);        // max of all values
-  ord_t hi = MIN(n-1,t->hi,t->d->to);
+  ord_t hi = MIN(n-1, t->hi);
   TPSA_SCAN_Z(t,t->lo,hi) {
     num_t mo = 0;                     // max of this order
     TPSA_SCAN_O(t)
@@ -473,7 +473,7 @@ FUN(cycle) (const T *t, idx_t i, ssz_t n, ord_t m_[n], NUM *v_)
   assert(t); DBGFUN(->); DBGTPSA(t);
   const D *d = t->d;
   const idx_t *o2i = d->ord2idx;
-  idx_t ni = o2i[MIN(t->hi, d->to)+1];
+  idx_t ni = o2i[t->hi+1];
   if (++i <= 0 && t->coef[0]) { i = 0; goto ret; }
 
   for (i=MAX(i,o2i[t->lo]); i < ni; i++) if (t->coef[i]) goto ret;
@@ -515,7 +515,7 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
 
   // convert t -> r
   const ord_t *ords = rd->ords;
-  const ord_t t_hi = MIN(t->hi, r->mo, rd->to);     // see copy0
+  const ord_t t_hi = MIN(t->hi, r->mo);             // see copy0
   r->coef[0] = t->coef[0];
   TPSA_SCAN(t,t_hi) {
     if (!t->coef[i]) continue;
@@ -594,7 +594,7 @@ geti (const T *t, idx_t i)
 {
   const D *d = t->d;
   const ord_t o = d->ords[i];
-  return !o || (t->lo <= o && o <= MIN(t->hi, d->to)) ? t->coef[i] : 0;
+  return !o || (t->lo <= o && o <= t->hi) ? t->coef[i] : 0;
 }
 
 NUM
@@ -671,7 +671,7 @@ FUN(getv) (const T *t, idx_t i, ssz_t n, NUM v[n])
   const ord_t *ord = d->ords;
   const idx_t *o2i = d->ord2idx;
   ord_t lo = t->lo;
-  ord_t hi = MIN(ord[nn-1], t->hi, d->to);
+  ord_t hi = MIN(ord[nn-1], t->hi);
 
   ssz_t n0 = MIN(o2i[lo  ], nn);
   ssz_t nj = MAX(o2i[lo  ], i );
@@ -710,7 +710,7 @@ FUN(seti) (T *t, idx_t i, NUM a, NUM b)
 
   // discard value
   const ord_t o = d->ords[i];
-  if (o > MIN(t->mo, d->to)) { DBGFUN(<-); return; }
+  if (o > t->mo) { DBGFUN(<-); return; }
 
   NUM v = t->lo <= o && o <= t->hi ? a*t->coef[i]+b : b;
 
@@ -793,7 +793,7 @@ FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
   const ord_t *ord = d->ords;
   const idx_t *o2i = d->ord2idx;
   ord_t lo = MAX(ord[i],1);
-  ord_t hi = MIN(ord[nn-1], t->mo, d->to);
+  ord_t hi = MIN(ord[nn-1], t->mo);
 
   ssz_t n0 = t->lo > lo ? o2i[lo  ] : i;
   ssz_t ni = MIN(o2i[hi+1], nn);
