@@ -40,6 +40,7 @@
 // must be global variables for access from LuaJIT FFI.
 const  ord_t  mad_tpsa_dflt = -1;
 const  ord_t  mad_tpsa_same = -2;
+       num_t  mad_tpsa_eps  = 1e-40;
        int    mad_tpsa_dbgf =  0; // effective only with TPSA_DEBUG > 0
        int    mad_tpsa_dbga =  0; // effective only with TPSA_DEBUG > 0
 
