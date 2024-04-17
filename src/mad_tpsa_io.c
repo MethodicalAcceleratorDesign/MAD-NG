@@ -278,7 +278,7 @@ FUN(scan_hdr) (int *kind_, char name_[NAMSZ], FILE *stream_)
 void
 FUN(scan_coef) (T *t, FILE *stream_)
 {
-  assert(t); DBGFUN(->); DBGTPSA(t);
+  assert(t); DBGFUN(->);
 
   if (!stream_) stream_ = stdin;
 
@@ -362,7 +362,9 @@ FUN(scan_coef) (T *t, FILE *stream_)
     warn("unable to parse GTPSA coefficients for '%s'",
          t->nam[0] ? t->nam : "-UNNAMED-");
 
-  DBGTPSA(t); DBGFUN(<-);
+  t->mo = t->hi;
+  FUN(update)(t);
+  DBGFUN(<-);
 }
 
 T*
@@ -393,9 +395,6 @@ FUN(print) (const T *t, str_t name_, num_t eps, int nohdr, FILE *stream_)
   if (!name_  ) name_   = t->nam[0] ? t->nam : "-UNNAMED-";
   if (!stream_) stream_ = stdout;
   if (eps < 0) eps = mad_tpsa_eps;
-
-  // avoid to double debug TPSA (string start set by DBGTPSA)
-  if (strncmp(name_,"@#$&",4)) DBGTPSA(t); else name_ += 4;
 
 #ifndef MAD_CTPSA_IMPL
   const char typ = 'R';
