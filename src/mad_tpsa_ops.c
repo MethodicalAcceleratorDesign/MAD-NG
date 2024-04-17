@@ -75,7 +75,6 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, log_t in_parallel)
   bit_t nzb = mad_bit_mask(~0ull, b->lo, b->hi);
   ord_t lo = MAX(c->lo,3);
 
-//  printf("%s(%d,%d->%d)\n", __func__, in_parallel, ocs[0], lo);
   for (ord_t i = 0; ocs[i] >= lo; ++i) {
     ord_t oc = ocs[i];
     idx_t idx0 = 0, idx1 = 2;
@@ -96,15 +95,15 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, log_t in_parallel)
        assert(lc); assert(idx[0] && idx[1]);
 
       if (mad_bit_tst(nza & nzb,oa) && mad_bit_tst(nza & nzb,ob)) {
-//      printf("hpoly__sym_mul (%d) %2d+%2d=%2d\n", ocs[0], oa,ob,oc);
+        //printf("hpoly__sym_mul (%d) %2d+%2d=%2d\n", ocs[0], oa,ob,oc);
         hpoly_sym_mul(ca+o2i[oa],cb+o2i[ob],ca+o2i[ob],cb+o2i[oa],cc,na,nb,lc,idx);
       }
       else if (mad_bit_tst(nza,oa) && mad_bit_tst(nzb,ob)) {
-//      printf("hpoly_asym_mul1(%d) %2d+%2d=%2d\n", ocs[0], oa,ob,oc);
+        //printf("hpoly_asym_mul1(%d) %2d+%2d=%2d\n", ocs[0], oa,ob,oc);
         hpoly_asym_mul(ca+o2i[oa],cb+o2i[ob],cc,na,nb,lc,idx);
       }
       else if (mad_bit_tst(nza,ob) && mad_bit_tst(nzb,oa)) {
-//      printf("hpoly_asym_mul2(%d) %2d+%2d=%2d\n", ocs[0], ob,oa,oc);
+        //printf("hpoly_asym_mul2(%d) %2d+%2d=%2d\n", ocs[0], ob,oa,oc);
         hpoly_asym_mul(cb+o2i[oa],ca+o2i[ob],cc,na,nb,lc,idx);
       }
     }
@@ -116,7 +115,7 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, log_t in_parallel)
       const idx_t *idx[2] = { d->L_idx[hoc*hod + hoc][idx0],
                               d->L_idx[hoc*hod + hoc][idx1] };
       assert(lc); assert(idx[0] && idx[1]);
-//      printf("hpoly_diag_mul (%d) %2d+%2d=%2d\n", ocs[0], hoc,hoc,oc);
+      //printf("hpoly_diag_mul (%d) %2d+%2d=%2d\n", ocs[0], hoc,hoc,oc);
       hpoly_diag_mul(ca+o2i[hoc],cb+o2i[hoc],cc,nb,lc,idx);
     }
   }
@@ -128,32 +127,18 @@ hpoly_mul_par(const T *a, const T *b, T *c) // parallel version
 {
   const D *d = c->d;
 
-//  printf("%s(%d)\n", __func__, c->d->nth);
-//  FUN(debug)(a,"ain",0,0);
-//  FUN(debug)(b,"bin",0,0);
-//  FUN(debug)(c,"cin",0,0);
-
   #pragma omp parallel for schedule(static,1)
   FOR(t,d->nth) {
     ord_t i = 0; while (d->ocs[1+t][i] > c->hi+1) ++i;
     hpoly_mul(a, b, c, &d->ocs[1+t][i], TRUE);
   }
-
-//FUN(debug)(c,"cout",0,0);
 }
 #endif
 
 static inline void
 hpoly_mul_ser(const T *a, const T *b, T *c) // serial version
 {
-//  printf("%s(1)\n", __func__);
-//  FUN(debug)(a,"ain",0,0);
-//  FUN(debug)(b,"bin",0,0);
-//  FUN(debug)(c,"cin",0,0);
-
   hpoly_mul(a, b, c, &c->d->ocs[0][c->d->mo-c->hi], FALSE);
-
-//  FUN(debug)(c,"cout",0,0);
 }
 
 // --- derivative helpers -----------------------------------------------------o
@@ -255,9 +240,8 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
 void
 FUN(scl) (const T *a, NUM v, T *c)
 {
-  assert(a && c); DBGFUN(->); DBGTPSA(a);
-  const D *d = a->d;
-  ensure(d == c->d, "incompatibles GTPSA (descriptors differ)");
+  assert(a && c); DBGFUN(->);
+  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   if (v == 0) { FUN(reset0)(c); DBGFUN(<-); return; }
   if (v == 1) { FUN(copy)(a,c); DBGFUN(<-); return; }
@@ -270,6 +254,7 @@ FUN(scl) (const T *a, NUM v, T *c)
 
   if (v == -1) { TPSA_SCAN(c) c->coef[i] =  -a->coef[i]; }
   else         { TPSA_SCAN(c) c->coef[i] = v*a->coef[i]; }
+
   DBGTPSA(c); DBGFUN(<-);
 }
 
@@ -286,22 +271,26 @@ FUN(scl) (const T *a, NUM v, T *c)
 
 static inline void
 axpbypc (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
-{       //    a           x       b           y      c      r
+{
   assert(a && b && c && a->lo <= b->lo);
-  ord_t alo = a->lo, ahi = a->hi; if (!c1) alo = 1, ahi = 0;
-  ord_t blo = b->lo, bhi = b->hi; if (!c2) blo = 1, bhi = 0;
-  ord_t chi = MAX(ahi, bhi);
-
-  c->lo = MIN(alo, blo);
-  c->hi = MIN(chi, c->mo);
-  if (c->lo > c->hi) c->lo = 1, c->hi = 0;
 
   c->coef[0] = c1*a->coef[0] + c2*b->coef[0] + c3;
 
-  if (!c->hi) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
+  if ((!c1 && !c2) || (!c1 && !b->hi) || (!c2 && !a->hi))
+    { c->lo = 1, c->hi = 0; return; }
 
-  if (ahi > c->hi) ahi = c->hi;
-  if (bhi > c->hi) bhi = c->hi;
+  ord_t alo, ahi, blo, bhi;
+
+  if (!c1) alo = b->lo, ahi = 0;
+  else     alo = a->lo, ahi = MIN(a->hi, c->mo);
+
+  if (!c2) blo = a->lo, bhi = 0;
+  else     blo = b->lo, bhi = MIN(b->hi, c->mo);
+
+  c->lo = MIN(alo, blo);
+  c->hi = MAX(ahi, bhi);
+
+  if (!c->hi || c->lo > c->hi) { c->lo = 1, c->hi = 0; return; }
 
   const idx_t *o2i = c->d->ord2idx;
   TPSA_SCAN_I(c,alo,MIN(ahi,blo-1)) c->coef[i] = c1*a->coef[i];
@@ -310,13 +299,23 @@ axpbypc (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   TPSA_SCAN_I(c,bhi+1,  ahi       ) c->coef[i] = c1*a->coef[i];
   TPSA_SCAN_I(c,ahi+1,      bhi   ) c->coef[i] = c2*b->coef[i];
 
-  FUN(update)(c);
+//  if (!FUN(isvalid)(c)) {
+//    static int cnt = 0;
+//    printf("alo=%d[%d], ahi=%d[%d], blo=%d[%d], bhi=%d[%d], clo=%d, chi=%d\n",
+//            alo, a->lo, ahi, a->hi, blo, b->lo, bhi, b->hi, c->lo, c->hi);
+//    printf("c1=%.4e, c2=%.4e, c3=%.4e\n", c1, c2, c3);
+//    FUN(print)(a,"aaa",0,0,0);
+//    FUN(print)(b,"bbb",0,0,0);
+//    FUN(print)(c,"ccc",0,0,0);
+//    DBGTPSA(a); DBGTPSA(b);
+//    if (++cnt >= 20) exit(EXIT_FAILURE);
+//  }
 }
 
 void
 FUN(acc) (const T *a, NUM v, T *c)
 {
-  assert(a && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(c);
+  assert(a && c); DBGFUN(->);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   if (v == 0) { DBGFUN(<-); return; }
@@ -324,37 +323,40 @@ FUN(acc) (const T *a, NUM v, T *c)
   if (a->lo <= c->lo) axpbypc(v,a,1,c,0,c);
   else                axpbypc(1,c,v,a,0,c);
 
-  DBGTPSA(c); DBGFUN(<-);
+  FUN(update)(c);
+  DBGFUN(<-);
 }
 
 void
 FUN(add) (const T *a, const T *b, T *c)
 {
-  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
+  assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   if (a->lo <= b->lo) axpbypc(1,a,1,b,0,c);
   else                axpbypc(1,b,1,a,0,c);
 
-  DBGTPSA(c); DBGFUN(<-);
+  FUN(update)(c);
+  DBGFUN(<-);
 }
 
 void
 FUN(sub) (const T *a, const T *b, T *c)
 {
-  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
+  assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   if (a->lo <= b->lo) axpbypc( 1,a,-1,b,0,c);
   else                axpbypc(-1,b, 1,a,0,c);
 
-  DBGTPSA(c); DBGFUN(<-);
+  FUN(update)(c);
+  DBGFUN(<-);
 }
 
 void
 FUN(dif) (const T *a, const T *b, T *c)
 {
-  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
+  assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   T *t = a == c ? GET_TMPX(c) : FUN(reset0)(c);
@@ -366,217 +368,63 @@ FUN(dif) (const T *a, const T *b, T *c)
 
   if (t != c) { FUN(copy0)(t,c); REL_TMPX(t); }
 
-  DBGTPSA(c); DBGFUN(<-);
-}
-
-static inline log_t
-neq (NUM a, NUM b, num_t tol) {
-  NUM d = a - b;
-#ifndef MAD_CTPSA_IMPL
-  return fabs(d) > tol; }
-#else
-  return fabs(creal(d)) > tol || fabs(cimag(d)) > tol; }
-#endif
-
-log_t
-FUN(equ) (const T *a, const T *b, num_t tol)
-{
-  assert(a && b); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
-  const D *d = a->d;
-  ensure(d == b->d, "incompatibles GTPSA (descriptors differ)");
-
-  T c_ = {.d=d, .mo=d->mo, .ao=d->mo}, *c = &c_; // fake TPSA
-
-  // a is the left-most one
-  if (a->lo > b->lo) { const T *t; SWAP(a,b,t); }
-
-  ord_t alo = a->lo, ahi = a->hi;
-  ord_t blo = b->lo, bhi = b->hi;
-  FUN(copy00)(a,b,c);
-
-  if (!c->hi) { DBGFUN(<-); return !neq(a->coef[0], b->coef[0], tol); }
-
-  if (ahi > c->hi) ahi = c->hi;
-  if (bhi > c->hi) bhi = c->hi;
-
-  const idx_t *o2i = d->ord2idx;
-  TPSA_SCAN_I(c,alo,MIN(ahi,blo-1)) if (neq(a->coef[i],0         ,tol)) goto ret;
-  TPSA_SCAN_I(c,blo,MIN(ahi,bhi  )) if (neq(a->coef[i],b->coef[i],tol)) goto ret;
-  TPSA_SCAN_I(c,bhi+1,  ahi       ) if (neq(a->coef[i],0         ,tol)) goto ret;
-  TPSA_SCAN_I(c,ahi+1,      bhi   ) if (neq(0         ,b->coef[i],tol)) goto ret;
-
-  DBGFUN(<-); return TRUE;
-ret:
-  DBGFUN(<-); return FALSE;
-}
-
-/*
-void
-FUN(acc) (const T *a, NUM v, T *c)
-{
-  assert(a && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(c);
-  const D *d = c->d;
-  ensure(a->d == d, "incompatibles GTPSA (descriptors differ)");
-
-  if (v ==  0) { DBGFUN(<-); return; }
-  if (v ==  1) { FUN(add)(c,a,c); DBGFUN(<-); return; }
-  if (v == -1) { FUN(sub)(c,a,c); DBGFUN(<-); return; }
-
-  ord_t alo = a->lo, ahi = a->hi;
-  ord_t clo = c->lo, chi = c->hi;
-  FUN(copy00)(a,c,c);
-
-  c->coef[0] += v*a->coef[0];
-
-  if (!c->hi) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
-
-  if (ahi > c->hi) ahi = c->hi;
-  if (chi > c->hi) chi = c->hi;
-
-  const idx_t *o2i = d->ord2idx;
-  TPSA_SCAN_I(c,    alo       ,MIN(ahi,clo-1)) c->coef[i] = v*a->coef[i];
-  TPSA_SCAN_I(c,MIN(ahi,chi)+1,MAX(alo,clo)-1) c->coef[i] = 0; // no overlap
-  TPSA_SCAN_I(c,MAX(alo,clo)  ,MIN(ahi,chi)  ) c->coef[i]+= v*a->coef[i];
-  TPSA_SCAN_I(c,MAX(alo,chi+1),    ahi       ) c->coef[i] = v*a->coef[i];
-
   FUN(update)(c);
-  DBGTPSA(c); DBGFUN(<-);
+  DBGFUN(<-);
 }
 
 void
-FUN(add) (const T *a, const T *b, T *c)
-{
-  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
-  const D *d = a->d;
-  ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
+FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
+{            //    a           x       b           y      c      r
+  assert(a && b && c); DBGFUN(->);
+  ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  // a is the left-most one
-  if (a->lo > b->lo) { const T *t; SWAP(a,b,t); }
-
-  ord_t alo = a->lo, ahi = a->hi;
-  ord_t blo = b->lo, bhi = b->hi;
-  FUN(copy00)(a,b,c);
-
-  c->coef[0] = a->coef[0]+b->coef[0];
-
-  if (!c->hi) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
-
-  if (ahi > c->hi) ahi = c->hi;
-  if (bhi > c->hi) bhi = c->hi;
-
-  const idx_t *o2i = d->ord2idx;
-  TPSA_SCAN_I(c,alo,MIN(ahi,blo-1)) c->coef[i] = a->coef[i];
-  TPSA_SCAN_I(c,ahi+1,      blo-1 ) c->coef[i] = 0; // no overlap
-  TPSA_SCAN_I(c,blo,MIN(ahi,bhi)  ) c->coef[i] = a->coef[i]+b->coef[i];
-  TPSA_SCAN_I(c,bhi+1,  ahi       ) c->coef[i] = a->coef[i];
-  TPSA_SCAN_I(c,ahi+1,      bhi   ) c->coef[i] = b->coef[i];
+  if (a->lo <= b->lo) axpbypc(c1,a,c2,b,c3,c);
+  else                axpbypc(c2,b,c1,a,c3,c);
 
   FUN(update)(c);
-  DBGTPSA(c); DBGFUN(<-);
+  DBGFUN(<-);
 }
-
-void
-FUN(sub) (const T *a, const T *b, T *c)
-{
-  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
-  const D *d = a->d;
-  ensure(d == b->d && d == c->d, "incompatibles GTPSA (descriptors differ)");
-
-  ord_t alo = a->lo, ahi = a->hi;
-  ord_t blo = b->lo, bhi = b->hi;
-  FUN(copy00)(a,b,c);
-
-  c->coef[0] = a->coef[0]-b->coef[0];
-
-  if (!c->hi) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
-
-  if (ahi > c->hi) ahi = c->hi;
-  if (bhi > c->hi) bhi = c->hi;
-
-  const idx_t *o2i = d->ord2idx;
-  TPSA_SCAN_I(c,    alo       ,MIN(ahi,blo-1)) c->coef[i] = a->coef[i];
-  TPSA_SCAN_I(c,        blo   ,MIN(bhi,alo-1)) c->coef[i] =-b->coef[i];
-  TPSA_SCAN_I(c,MIN(ahi,bhi)+1,MAX(alo,blo)-1) c->coef[i] = 0; // no overlap
-  TPSA_SCAN_I(c,MAX(alo,blo)  ,MIN(ahi,bhi)  ) c->coef[i] = a->coef[i]-b->coef[i];
-  TPSA_SCAN_I(c,MAX(alo,bhi+1),    ahi       ) c->coef[i] = a->coef[i];
-  TPSA_SCAN_I(c,MAX(blo,ahi+1),        bhi   ) c->coef[i] =-b->coef[i];
-
-  FUN(update)(c);
-  DBGTPSA(c); DBGFUN(<-);
-}
-*/
 
 void
 FUN(mul) (const T *a, const T *b, T *r)
 {
-  assert(a && b && r); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
-
-  const D *d = a->d;
-  ensure(d == b->d && d == r->d, "incompatibles GTPSA (descriptors differ)");
+  assert(a && b && r); DBGFUN(->);
+  ensure(a->d == b->d && a->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   T *c = (a == r || b == r) ? GET_TMPX(r) : FUN(reset0)(r);
 
-  // a is the left-most one
   if (a->lo > b->lo) { const T *t; SWAP(a,b,t); }
 
-  ord_t alo = a->lo, ahi = a->hi;
-  ord_t blo = b->lo, bhi = b->hi;
-  c->hi = MIN(ahi+bhi, c->mo); // see copy00
-
   NUM a0 = a->coef[0], b0 = b->coef[0];
-  c->coef[0] = a0*b0;
+  ord_t chi = MIN(a->hi+b->hi, c->mo);
+  if (!chi) { FUN(setval)(c, a0*b0); goto ret; }
 
-  if (!c->hi) { FUN(setval)(c, c->coef[0]); goto ret; }
-
-  c->lo = b0 ? alo : a0 ? blo : alo+blo;
-
-  if (ahi > c->hi) ahi = c->hi;
-  if (bhi > c->hi) bhi = c->hi;
-
-  // printf("0: c->lo=%d, c->hi=%d\n", c->lo, c->hi);
-  // printf("1: %d->%d (a  )\n", alo,MIN(ahi,blo-1));
-  // printf("2: %d->%d (0  )\n", ahi+1,      blo-1 );
-  // printf("3: %d->%d (a+b)\n", blo,MIN(ahi,bhi)  );
-  // printf("4: %d->%d (a  )\n", bhi+1,  ahi       );
-  // printf("5: %d->%d (b  )\n", ahi+1,      bhi   );
-
-  // order 1+ (+linear)
-  const idx_t *o2i = d->ord2idx;
-  TPSA_SCAN_I(c,alo,MIN(ahi,blo-1)) c->coef[i] = b0*a->coef[i];
-  TPSA_SCAN_I(c,ahi+1,      blo-1 ) c->coef[i] = 0; // no overlap
-  TPSA_SCAN_I(c,blo,MIN(ahi,bhi)  ) c->coef[i] = b0*a->coef[i]+a0*b->coef[i];
-  TPSA_SCAN_I(c,bhi+1,  ahi       ) c->coef[i] = b0*a->coef[i];
-  TPSA_SCAN_I(c,ahi+1,      bhi   ) c->coef[i] = a0*b->coef[i];
-
-  // FUN(print)(c,"@#$& c.1",1e-16,0,0);
+  // order 1+ and linear
+  axpbypc(b0,a,a0,b,0,c), c->coef[0] *= 0.5;
 
   // order 2+
-  if (c->hi > 1) {
-    TPSA_SCAN_I(c,MAX(ahi,bhi)+1,c->hi) c->coef[i] = 0;
+  if (chi > 1) {
+    TPSA_SCAN(c,c->hi+1,chi) c->coef[i] = 0;
+    c->lo = MIN(c->lo, a->lo+b->lo, c->mo);
+    c->hi = chi;
 
-    // FUN(print)(c,"@#$& c.2",1e-16,0,0);
-
-    if (ahi && bhi && alo == 1 && blo == 1) {
-
+    if (a->hi && b->hi && a->lo == 1 && b->lo == 1) {
+      const D *d = a->d;
       const idx_t hod = d->mo/2;
       const idx_t *lc = d->L[hod+1];
       const idx_t *idx[2] = { d->L_idx[hod+1][0], d->L_idx[hod+1][2] };
       assert(lc);
       hpoly_diag_mul(a->coef+o2i[1], b->coef+o2i[1], c->coef, o2i[2]-o2i[1], lc, idx);
-
-      // FUN(print)(c,"@#$& c.3",1e-16,0,0);
     }
 
     // order 3+
-    if (c->hi > 2) {
+    if (chi > 2) {
 #ifdef _OPENMP
       if (o2i[c->hi+1] - o2i[c->lo] > 10000)
         hpoly_mul_par(a,b,c);
       else
 #endif
         hpoly_mul_ser(a,b,c);
-
-      // FUN(print)(c,"@#$& c.4",1e-16,0,0);
     }
   }
   FUN(update)(c);
@@ -590,7 +438,7 @@ ret:
 void
 FUN(div) (const T *a, const T *b, T *c)
 {
-  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
+  assert(a && b && c); DBGFUN(->);
   ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   NUM b0 = b->coef[0];
@@ -609,13 +457,13 @@ FUN(div) (const T *a, const T *b, T *c)
   FUN(inv)(b,1,t);
   FUN(mul)(a,t,c);
   if (t != c) REL_TMPX(t);
-  DBGTPSA(c); DBGFUN(<-);
+  DBGFUN(<-);
 }
 
 void
 FUN(powi) (const T *a, int n, T *c)
 {
-  assert(a && c); DBGFUN(->); DBGTPSA(a);
+  assert(a && c); DBGFUN(->);
 
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
@@ -626,19 +474,19 @@ FUN(powi) (const T *a, int n, T *c)
   T *t1 = GET_TMPX(c);
 
   switch (n) {
-    case 0: FUN(setval) (c, 1);    break; // ok: no copy
-    case 1: FUN(copy  ) (a, c);    break; // ok: 1 copy
-    case 2: FUN(mul   ) (a,a, c);  break; // ok: 1 copy if a==c
-    case 3: FUN(mul   ) (a,a, t1); FUN(mul)(t1,a,  c); break; // ok: 1 copy if a==c
-    case 4: FUN(mul   ) (a,a, t1); FUN(mul)(t1,t1, c); break; // ok: no copy
+    case 0: FUN(setval)(c,  1);  break; // ok: no copy
+    case 1: FUN(copy  )(a,  c);  break; // ok: 1 copy
+    case 2: FUN(mul   )(a,a,c);  break; // ok: 1 copy if a==c
+    case 3: FUN(mul   )(a,a,t1); FUN(mul)(t1,a, c); break; // ok: 1 copy if a==c
+    case 4: FUN(mul   )(a,a,t1); FUN(mul)(t1,t1,c); break; // ok: no copy
     default: {
       T *t2 = GET_TMPX(c), *t;
       int ns = 0;
       FUN(copy)(a, t1);
       FUN(setval)(c, 1);
       for (;;) {
-        if (n  & 1)   FUN(mul)(c ,t1, c ); // ok: 1 copy
-        if (n /= 2) { FUN(mul)(t1,t1, t2); SWAP(t1,t2,t); ++ns; } // ok: no copy
+        if (n  & 1)   FUN(mul)(c ,t1,c ); // ok: 1 copy
+        if (n /= 2) { FUN(mul)(t1,t1,t2); SWAP(t1,t2,t); ++ns; } // ok: no copy
         else break;
       }
       if (ns & 1) SWAP(t1,t2,t); // ensure even number of swaps
@@ -647,8 +495,48 @@ FUN(powi) (const T *a, int n, T *c)
   }
   REL_TMPX(t1);
 
-  if (inv) FUN(inv)(c,1,c); else DBGTPSA(c);
+  if (inv) FUN(inv)(c,1,c);
   DBGFUN(<-);
+}
+
+static inline log_t
+neq (NUM a, NUM b, num_t tol) {
+  NUM d = a - b;
+#ifndef MAD_CTPSA_IMPL
+  return fabs(d) > tol; }
+#else
+  return fabs(creal(d)) > tol || fabs(cimag(d)) > tol; }
+#endif
+
+log_t
+FUN(equ) (const T *a, const T *b, num_t tol)
+{
+  assert(a && b); DBGFUN(->);
+  ensure(a->d == b->d, "incompatibles GTPSA (descriptors differ)");
+
+  T c_ = {.d=a->d, .mo=a->d->mo, .ao=a->d->mo}, *c = &c_; // fake TPSA
+
+  // a is the left-most one
+  if (a->lo > b->lo) { const T *t; SWAP(a,b,t); }
+
+  ord_t alo = a->lo, ahi = a->hi;
+  ord_t blo = b->lo, bhi = b->hi;
+  FUN(copy00)(a,b,c);
+
+  if (!c->hi) { DBGFUN(<-); return !neq(a->coef[0], b->coef[0], tol); }
+
+  if (ahi > c->hi) ahi = c->hi;
+  if (bhi > c->hi) bhi = c->hi;
+
+  const idx_t *o2i = a->d->ord2idx;
+  TPSA_SCAN_I(c,alo,MIN(ahi,blo-1)) if (neq(a->coef[i],0         ,tol)) goto ret;
+  TPSA_SCAN_I(c,blo,MIN(ahi,bhi  )) if (neq(a->coef[i],b->coef[i],tol)) goto ret;
+  TPSA_SCAN_I(c,bhi+1,  ahi       ) if (neq(a->coef[i],0         ,tol)) goto ret;
+  TPSA_SCAN_I(c,ahi+1,      bhi   ) if (neq(0         ,b->coef[i],tol)) goto ret;
+
+  DBGFUN(<-); return TRUE;
+ret:
+  DBGFUN(<-); return FALSE;
 }
 
 // --- functions --------------------------------------------------------------o
@@ -658,7 +546,7 @@ FUN(powi) (const T *a, int n, T *c)
 void
 FUN(abs) (const T *a, T *c)
 {
-  assert(a && c); DBGFUN(->); DBGTPSA(a);
+  assert(a && c); DBGFUN(->);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   if (a->coef[0] < 0) FUN(scl) (a, -1, c);
@@ -670,7 +558,7 @@ FUN(abs) (const T *a, T *c)
 void
 FUN(atan2) (const T *y, const T *x, T *r)
 {
-  assert(x && y && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y);
+  assert(x && y && r); DBGFUN(->);
   ensure(x->d == y->d && x->d == r->d, "incompatible GTPSA (descriptors differ)");
   NUM x0 = x->coef[0], y0 = y->coef[0];
   NUM a0 = atan2(y0, x0);
@@ -685,7 +573,7 @@ FUN(atan2) (const T *y, const T *x, T *r)
     FUN(acos)(r, r);
     if (y0 < 0) FUN(scl)(r, -1, r);
   }
-  FUN(set0)(r, 0, a0);
+  FUN(seti)(r, 0, 0, a0);
 
   DBGFUN(<-);
 }
@@ -695,15 +583,11 @@ FUN(atan2) (const T *y, const T *x, T *r)
 void
 FUN(conj) (const T *a, T *c) // c = a.re - a.im I
 {
-  assert(a && c); DBGFUN(->); DBGTPSA(a);
+  assert(a && c); DBGFUN(->);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   FUN(copy0)(a,c);
-
   c->coef[0] = conj(a->coef[0]);
-
-  if (!c->hi) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
-
   TPSA_SCAN(c) c->coef[i] = conj(a->coef[i]);
 
   DBGTPSA(c); DBGFUN(<-);
@@ -714,7 +598,7 @@ FUN(conj) (const T *a, T *c) // c = a.re - a.im I
 num_t
 FUN(nrm) (const T *a)
 {
-  assert(a); DBGFUN(->); DBGTPSA(a);
+  assert(a); DBGFUN(->);
   num_t nrm = fabs(a->coef[0]);
   TPSA_SCAN(a) nrm += fabs(a->coef[i]);
   DBGFUN(<-); return nrm;
@@ -723,7 +607,7 @@ FUN(nrm) (const T *a)
 void
 FUN(integ) (const T *a, T *r, int iv)
 {
-  assert(a && r); DBGFUN(->); DBGTPSA(a);
+  assert(a && r); DBGFUN(->);
   const D *d = a->d;
 
   ensure(d == r->d, "incompatibles GTPSA (descriptors differ)");
@@ -731,8 +615,6 @@ FUN(integ) (const T *a, T *r, int iv)
          "index 1<= %d <=%d is not a GTPSA variable", iv, d->nv);
 
   T *c = a == r ? GET_TMPX(r) : FUN(reset0)(r);
-
-  if (!a->hi) goto ret; // empty
 
   T *t = GET_TMPX(r);
   FUN(setvar)(t, 0, iv, 0);
@@ -745,24 +627,23 @@ FUN(integ) (const T *a, T *r, int iv)
 
   FUN(update)(c);
 
-ret:
-  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); } else DBGTPSA(r);
+  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
   DBGFUN(<-);
 }
 
 void
 FUN(deriv) (const T *a, T *r, int iv)
 {
-  assert(a && r); DBGFUN(->); DBGTPSA(a);
+  assert(a && r); DBGFUN(->);
   const D *d = a->d;
 
   ensure(d == r->d, "incompatibles GTPSA (descriptors differ)");
   ensure(0 < iv && iv <= d->nv,
          "index 1<= %d <=%d is not a GTPSA variable", iv, d->nv);
 
-  T *c = a == r ? GET_TMPX(r) : FUN(reset0)(r);
+  if (!a->hi) { FUN(reset0)(r); DBGFUN(<-); return; } // empty
 
-  if (!a->hi) goto ret; // empty
+  T *c = a == r ? GET_TMPX(r) : FUN(reset0)(r);
 
   FUN(setval)(c, FUN(geti)(a,iv));
 
@@ -782,14 +663,14 @@ FUN(deriv) (const T *a, T *r, int iv)
   FUN(update)(c);
 
 ret:
-  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); } else DBGTPSA(r);
+  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
   DBGFUN(<-);
 }
 
 void
 FUN(derivm) (const T *a, T *r, ssz_t n, const ord_t mono[n])
 {
-  assert(a && r); DBGFUN(->); DBGTPSA(a);
+  assert(a && r); DBGFUN(->);
   const D *d = a->d;
   const idx_t *o2i = d->ord2idx;
 
@@ -815,7 +696,7 @@ FUN(derivm) (const T *a, T *r, ssz_t n, const ord_t mono[n])
   FUN(update)(c);
 
 ret:
-  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); } else DBGTPSA(r);
+  if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
   DBGFUN(<-);
 }
 
@@ -823,10 +704,9 @@ void
 FUN(poisbra) (const T *a, const T *b, T *r, int nv)                 // C = [A,B]
 {
   assert(a && b && r); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
-  const D *d = a->d;
-  ensure(d == b->d && d == r->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(a->d == b->d && a->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
-  nv = nv>0 ? nv/2 : d->nv/2;
+  nv = nv>0 ? nv/2 : a->d->nv/2;
 
   T *c = a == r || b == r ? GET_TMPX(r) : FUN(reset0)(r);
 
@@ -865,7 +745,7 @@ FUN(unit) (const T *x, T *r)
 void
 FUN(hypot) (const T *x, const T *y, T *r)
 {
-  assert(x && y && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y);
+  assert(x && y && r); DBGFUN(->);
   ensure(x->d == y->d && y->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   FUN(axypbvwpc)(1,x,x, 1,y,y, 0,r);
@@ -877,7 +757,7 @@ FUN(hypot) (const T *x, const T *y, T *r)
 void
 FUN(hypot3) (const T *x, const T *y, const T *z, T *r)
 {
-  assert(x && y && z && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(z);
+  assert(x && y && z && r); DBGFUN(->);
   ensure(x->d == r->d && y->d == r->d && z->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   FUN(ax2pby2pcz2)(1,x, 1,y, 1,z, r);
@@ -889,31 +769,19 @@ FUN(hypot3) (const T *x, const T *y, const T *z, T *r)
 void
 FUN(axpb) (NUM a, const T *x, NUM b, T *r)
 {
-  assert(x && r); DBGFUN(->); DBGTPSA(x);
+  assert(x && r); DBGFUN(->);
   ensure(x->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   FUN(scl)(x,a,r);
-  if (b) FUN(set0)(r,1,b);
+  if (b) FUN(seti)(r,0,1,b);
 
   DBGFUN(<-);
 }
 
 void
-FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
-{            //    a           x       b           y      c      r
-  assert(a && b && c); DBGFUN(->); DBGTPSA(a); DBGTPSA(b);
-  ensure(a->d == b->d && a->d == c->d, "incompatibles GTPSA (descriptors differ)");
-
-  if (a->lo <= b->lo) axpbypc(c1,a,c2,b,c3,c);
-  else                axpbypc(c2,b,c1,a,c3,c);
-
-  DBGTPSA(c); DBGFUN(<-);
-}
-
-void
 FUN(axypb) (NUM a, const T *x, const T *y, NUM b, T *r)
 {
-  assert(x && y && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y);
+  assert(x && y && r); DBGFUN(->);
   ensure(x->d == y->d && y->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   FUN(mul)(x,y,r);
@@ -925,8 +793,7 @@ FUN(axypb) (NUM a, const T *x, const T *y, NUM b, T *r)
 void
 FUN(axypbzpc) (NUM a, const T *x, const T *y, NUM b, const T *z, NUM c, T *r)
 {
-  assert(x && y && z && r);
-  DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(z);
+  assert(x && y && z && r); DBGFUN(->);
   ensure(x->d == y->d && y->d == z->d && z->d == r->d,
          "incompatibles GTPSA (descriptors differ)");
 
@@ -940,8 +807,7 @@ void
 FUN(axypbvwpc) (NUM a, const T *x, const T *y,
                 NUM b, const T *v, const T *w, NUM c, T *r)
 {
-  assert(x && y && v && w && r);
-  DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(v); DBGTPSA(w);
+  assert(x && y && v && w && r); DBGFUN(->);
   ensure(x->d == y->d && y->d == v->d && v->d == w->d && w->d == r->d,
          "incompatibles GTPSA (descriptors differ)");
 
@@ -955,8 +821,7 @@ FUN(axypbvwpc) (NUM a, const T *x, const T *y,
 void
 FUN(ax2pby2pcz2) (NUM a, const T *x, NUM b, const T *y, NUM c, const T *z, T *r)
 {
-  assert(x && y && z && r);
-  DBGFUN(->); DBGTPSA(x); DBGTPSA(y); DBGTPSA(z);
+  assert(x && y && z && r); DBGFUN(->);
   ensure(x->d == y->d && y->d == z->d && z->d == r->d,
          "incompatibles GTPSA (descriptors differ)");
 
@@ -969,7 +834,7 @@ FUN(ax2pby2pcz2) (NUM a, const T *x, NUM b, const T *y, NUM c, const T *z, T *r)
 void
 FUN(axpsqrtbpcx2) (const T *x, NUM a, NUM b, NUM c, T *r)
 {
-  assert(x && r); DBGFUN(->); DBGTPSA(x);
+  assert(x && r); DBGFUN(->);
   ensure(x->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   T *t = GET_TMPX(r);
@@ -982,7 +847,7 @@ FUN(axpsqrtbpcx2) (const T *x, NUM a, NUM b, NUM c, T *r)
 void
 FUN(logaxpsqrtbpcx2) (const T *x, NUM a, NUM b, NUM c, T *r)
 {
-  assert(x && r); DBGFUN(->); DBGTPSA(x);
+  assert(x && r); DBGFUN(->);
   ensure(x->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
   FUN(axpsqrtbpcx2)(x,a,b,c,r);
@@ -993,10 +858,10 @@ FUN(logaxpsqrtbpcx2) (const T *x, NUM a, NUM b, NUM c, T *r)
 void
 FUN(logxdy) (const T *x, const T *y, T *r)
 {
-  assert(x && y && r); DBGFUN(->); DBGTPSA(x); DBGTPSA(y);
+  assert(x && y && r); DBGFUN(->);
   ensure(x->d == y->d && y->d == r->d, "incompatibles GTPSA (descriptors differ)");
 
-  NUM x0 = FUN(get0)(x), y0 = FUN(get0)(y);
+  NUM x0 = FUN(geti)(x,0), y0 = FUN(geti)(y,0);
   if (fabs(x0) > fabs(y0)) { // TODO: improve stability around 1i
     FUN(div)(x, y, r);
     FUN(log)(r, r);
