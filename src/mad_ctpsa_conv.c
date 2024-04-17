@@ -25,62 +25,49 @@ void
 mad_ctpsa_real (const ctpsa_t *t, tpsa_t *c)
 {
   assert(t && c); DBGFUN(->);
-  if (TPSA_DEBUG > 1) mad_ctpsa_debug(t,"t",__func__,__LINE__,0);
   ensure(t->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   FUN(copy0)((const tpsa_t*)t, c);
-
   c->coef[0] = creal(t->coef[0]);
-
-  if (!c->hi) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
-
   TPSA_SCAN(c) c->coef[i] = creal(t->coef[i]);
-  FUN(update)(c);
 
-  DBGTPSA(c); DBGFUN(<-);
+  FUN(update)(c);
+  DBGFUN(<-);
 }
 
 void
 mad_ctpsa_imag (const ctpsa_t *t, tpsa_t *c)
 {
   assert(t && c); DBGFUN(->);
-  if (TPSA_DEBUG > 1) mad_ctpsa_debug(t,"t",__func__,__LINE__,0);
   ensure(t->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   FUN(copy0)((const tpsa_t*)t, c);
-
   c->coef[0] = cimag(t->coef[0]);
-
-  if (!c->hi) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
-
   TPSA_SCAN(c) c->coef[i] = cimag(t->coef[i]);
-  FUN(update)(c);
 
-  DBGTPSA(c); DBGFUN(<-);
+  FUN(update)(c);
+  DBGFUN(<-);
 }
 
 void
 mad_ctpsa_cplx (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
 {
   assert((re_ || im_) && c); DBGFUN(->);
-  const tpsa_t *re = re_ ? re_ : im_; DBGTPSA(re);
-  const tpsa_t *im = im_ ? im_ : re_; DBGTPSA(im);
+  const tpsa_t *re = re_ ? re_ : im_;
+  const tpsa_t *im = im_ ? im_ : re_;
   ensure(re->d == c->d && im->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
   FUN(copy00)(re, im, (tpsa_t*)c);
-
   c->coef[0] = (re_ ? re_->coef[0] : 0) + (im_ ? im_->coef[0] : 0)*I;
-
-  if (!c->hi) { mad_ctpsa_setval(c, c->coef[0]); DBGFUN(<-); return; }
 
   switch(!!re_ + 2*!!im_) {
   case 1: { TPSA_SCAN(c) c->coef[i] = re_->coef[i];   break; }
   case 2: { TPSA_SCAN(c) c->coef[i] = im_->coef[i]*I; break; }
-  case 3: {
-    mad_ctpsa_clear0(c, c->lo, c->hi);
-    { TPSA_SCAN(re) c->coef[i]  = re->coef[i];   }
-    { TPSA_SCAN(im) c->coef[i] += im->coef[i]*I; }
-  }}
+  case 3: { mad_ctpsa_clear0(c, c->lo, c->hi);
+          { TPSA_SCAN(re) c->coef[i]  = re->coef[i];   }
+          { TPSA_SCAN(im) c->coef[i] += im->coef[i]*I; }}
+  }
+  // see DBGTPSA(c)
   if (TPSA_DEBUG > 0 && mad_tpsa_dbga) mad_ctpsa_debug(c,"c",__func__,__LINE__,0);
   DBGFUN(<-);
 }
