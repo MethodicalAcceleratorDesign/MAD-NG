@@ -362,7 +362,7 @@ FUN(scan_coef) (T *t, FILE *stream_)
     warn("unable to parse GTPSA coefficients for '%s'",
          t->nam[0] ? t->nam : "-UNNAMED-");
 
-  t->mo = t->hi;
+  FUN(mo)(t, t->hi); // shrink mo to hi
   FUN(update)(t);
   DBGFUN(<-);
 }
