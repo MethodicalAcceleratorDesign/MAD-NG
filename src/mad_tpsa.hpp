@@ -89,11 +89,11 @@ struct tpsa_base {
 
   template <class A>
   D& operator+=(const tpsa_base<A> &a) { TRC("baz,baz") mad_tpsa_add (ptr(),a.ptr(),ptr()); return self(); }
-  D& operator+=(      num_t         a) { TRC("baz,num") mad_tpsa_set0(ptr(),      1,    a); return self(); }
+  D& operator+=(      num_t         a) { TRC("baz,num") mad_tpsa_seti(ptr(), 0,   1,    a); return self(); }
 
   template <class A>
   D& operator-=(const tpsa_base<A> &a) { TRC("baz,baz") mad_tpsa_sub (ptr(),a.ptr(),ptr()); return self(); }
-  D& operator-=(      num_t         a) { TRC("baz,num") mad_tpsa_set0(ptr(),      1,   -a); return self(); }
+  D& operator-=(      num_t         a) { TRC("baz,num") mad_tpsa_seti(ptr(), 0,   1,   -a); return self(); }
 
   template <class A>
   D& operator*=(const tpsa_base<A> &a) { TRC("baz,baz") mad_tpsa_mul (ptr(),a.ptr(),ptr()); return self(); }
@@ -109,8 +109,8 @@ struct tpsa_base {
   D& operator^=(      int           a) { TRC("baz,int") mad_tpsa_powi(ptr(),      a,ptr()); return self(); }
 
   // indexing by index, monomial as string (literal), and (sparse) monomial as vector.
-  num_t operator[](idx_t i) const { return i ? mad_tpsa_geti(ptr(),  i) : mad_tpsa_get0(ptr()); }
-  num_t operator[](str_t s) const { return     mad_tpsa_gets(ptr(),0,s);                        }
+  num_t operator[](idx_t i) const { return mad_tpsa_geti(ptr(),  i); }
+  num_t operator[](str_t s) const { return mad_tpsa_gets(ptr(),0,s); }
   num_t operator[](const std::string& s) const {
     return mad_tpsa_gets(ptr(), s.size(), s.c_str());
   }
@@ -301,7 +301,7 @@ template <class A>
 inline T operator+ (num_t a, const tpsa_base<A> &b) {  TRC("num+baz")
   T c(b);
   mad_tpsa_copy(b.ptr(), c.ptr());
-  mad_tpsa_set0(c.ptr(), 1, a);
+  mad_tpsa_seti(c.ptr(), 0, 1, a);
   return c;
 }
 
@@ -327,7 +327,7 @@ inline T operator+ (const T &a, const T &b) {  TRC("tmp+tmp")
 }
 
 inline T operator+ (num_t a, const T &b) {  TRC("num+tmp")
-  T c(b); mad_tpsa_set0(c.ptr(), 1, a); return c;
+  T c(b); mad_tpsa_seti(c.ptr(), 0, 1, a); return c;
 }
 
 inline T operator+ (const T &a, num_t b) {  TRC("tmp+num")
@@ -347,7 +347,7 @@ template <class A>
 inline T operator- (const tpsa_base<A> &a, num_t b) {  TRC("baz-num")
   T c(a);
   mad_tpsa_copy(a.ptr(), c.ptr());
-  mad_tpsa_set0(c.ptr(), 1, -b);
+  mad_tpsa_seti(c.ptr(), 0, 1, -b);
   return c;
 }
 
@@ -355,7 +355,7 @@ template <class A>
 inline T operator- (num_t a, const tpsa_base<A> &b) {  TRC("num-baz")
   T c(b);
   mad_tpsa_scl (b.ptr(),-1, c.ptr());
-  mad_tpsa_set0(c.ptr(), 1, a);
+  mad_tpsa_seti(c.ptr(), 0, 1, a);
   return c;
 }
 
@@ -376,13 +376,13 @@ inline T operator- (const T &a, const T &b) {  TRC("tmp-tmp")
 }
 
 inline T operator- (const T &a, num_t b) {  TRC("tmp-num")
-  T c(a); mad_tpsa_set0(c.ptr(), 1, -b); return c;
+  T c(a); mad_tpsa_seti(c.ptr(), 0, 1, -b); return c;
 }
 
 inline T operator- (num_t a, const T &b) {  TRC("num-tmp")
   T c(b);
   mad_tpsa_scl (c.ptr(),-1, c.ptr());
-  mad_tpsa_set0(c.ptr(), 1, a);
+  mad_tpsa_seti(c.ptr(), 0, 1, a);
   return c;
 }
 
@@ -610,7 +610,7 @@ inline num_t sinhc  (num_t a           ) { TRC("num") return mad_num_sinhc(a); }
 inline num_t asinc  (num_t a           ) { TRC("num") return mad_num_asinc(a); }
 
 inline num_t fval(const tpsa_t *a) { TRC("tspa")
-  return mad_tpsa_get0(a);
+  return mad_tpsa_geti(a,0);
 }
 
 template <class A>
@@ -619,7 +619,7 @@ inline num_t fval (const tpsa_base<A> &a) { TRC("baz")
 }
 
 inline num_t fabs (const tpsa_t *a) { TRC("tspa")
-  return abs(mad_tpsa_get0(a));
+  return abs(mad_tpsa_geti(a,0));
 }
 
 template <class A>

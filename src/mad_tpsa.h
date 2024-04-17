@@ -90,17 +90,14 @@ idx_t   mad_tpsa_idxsm   (const tpsa_t *t,          ssz_t n, const idx_t m []); 
 idx_t   mad_tpsa_cycle   (const tpsa_t *t, idx_t i, ssz_t n,       ord_t m_[], num_t *v_);
 
 // accessors
-num_t   mad_tpsa_get0    (const tpsa_t *t);
 num_t   mad_tpsa_geti    (const tpsa_t *t, idx_t i);
 num_t   mad_tpsa_gets    (const tpsa_t *t, ssz_t n,       str_t s  ); // string mono "[0-9]*"
 num_t   mad_tpsa_getm    (const tpsa_t *t, ssz_t n, const ord_t m[]);
 num_t   mad_tpsa_getsm   (const tpsa_t *t, ssz_t n, const idx_t m[]); // sparse mono [(i,o)]
-void    mad_tpsa_set0    (      tpsa_t *t, /* i = 0 */               num_t a, num_t b);
 void    mad_tpsa_seti    (      tpsa_t *t, idx_t i,                  num_t a, num_t b);
 void    mad_tpsa_sets    (      tpsa_t *t, ssz_t n,       str_t s  , num_t a, num_t b);
 void    mad_tpsa_setm    (      tpsa_t *t, ssz_t n, const ord_t m[], num_t a, num_t b);
 void    mad_tpsa_setsm   (      tpsa_t *t, ssz_t n, const idx_t m[], num_t a, num_t b);
-void    mad_tpsa_cpy0    (const tpsa_t *t, tpsa_t *r);
 void    mad_tpsa_cpyi    (const tpsa_t *t, tpsa_t *r,          idx_t i);
 void    mad_tpsa_cpys    (const tpsa_t *t, tpsa_t *r, ssz_t n, str_t s); // string mono "[0-9]*"
 void    mad_tpsa_cpym    (const tpsa_t *t, tpsa_t *r, ssz_t n, const ord_t m[]);

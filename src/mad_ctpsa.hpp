@@ -80,11 +80,11 @@ struct ctpsa_base {
 
   template <class A>
   D& operator+=(const ctpsa_base<A> &a) { TRC("baz,baz") mad_ctpsa_add (ptr(),a.ptr(),ptr()); return self(); }
-  D& operator+=(      CPX            a) { TRC("baz,num") mad_ctpsa_set0(ptr(),      1, C(a)); return self(); }
+  D& operator+=(      CPX            a) { TRC("baz,num") mad_ctpsa_seti(ptr(), 0,   1, C(a)); return self(); }
 
   template <class A>
   D& operator-=(const ctpsa_base<A> &a) { TRC("baz,baz") mad_ctpsa_sub (ptr(),a.ptr(),ptr()); return self(); }
-  D& operator-=(      CPX            a) { TRC("baz,num") mad_ctpsa_set0(ptr(),1,  C(a=-a,a)); return self(); }
+  D& operator-=(      CPX            a) { TRC("baz,num") mad_ctpsa_seti(ptr(),0,1,C(a=-a,a)); return self(); }
 
   template <class A>
   D& operator*=(const ctpsa_base<A> &a) { TRC("baz,baz") mad_ctpsa_mul (ptr(),a.ptr(),ptr()); return self(); }
@@ -101,7 +101,7 @@ struct ctpsa_base {
 
   // indexing by index, monomial as string (literal), and (sparse) monomial as vector.
   CPX operator[](idx_t i) const {
-    cpx_t r = i ? mad_ctpsa_geti(ptr(),i) : mad_ctpsa_get0(ptr());
+    cpx_t r = mad_ctpsa_geti(ptr(),i);
     return CPX(RE(r), IM(r));
   }
   CPX operator[](str_t s) const {
@@ -321,7 +321,7 @@ template <class A>
 inline T operator+ (CPX a, const ctpsa_base<A> &b) {  TRC("num+baz")
   T c(b);
   mad_ctpsa_copy(b.ptr(), c.ptr());
-  mad_ctpsa_set0(c.ptr(), 1, C(a));
+  mad_ctpsa_seti(c.ptr(), 0, 1, C(a));
   return c;
 }
 
@@ -347,7 +347,7 @@ inline T operator+ (const T &a, const T &b) {  TRC("tmp+tmp")
 }
 
 inline T operator+ (CPX a, const T &b) {  TRC("num+tmp")
-  T c(b); mad_ctpsa_set0(c.ptr(), 1, C(a)); return c;
+  T c(b); mad_ctpsa_seti(c.ptr(), 0, 1, C(a)); return c;
 }
 
 inline T operator+ (const T &a, CPX b) {  TRC("tmp+num")
@@ -367,7 +367,7 @@ template <class A>
 inline T operator- (const ctpsa_base<A> &a, CPX b) {  TRC("baz-num")
   T c(a);
   mad_ctpsa_copy(a.ptr(), c.ptr());
-  mad_ctpsa_set0(c.ptr(), 1, C(b=-b,b));
+  mad_ctpsa_seti(c.ptr(), 0, 1, C(b=-b,b));
   return c;
 }
 
@@ -375,7 +375,7 @@ template <class A>
 inline T operator- (CPX a, const ctpsa_base<A> &b) {  TRC("num-baz")
   T c(b);
   mad_ctpsa_scl (b.ptr(),-1, c.ptr());
-  mad_ctpsa_set0(c.ptr(), 1, C(a));
+  mad_ctpsa_seti(c.ptr(), 0, 1, C(a));
   return c;
 }
 
@@ -396,13 +396,13 @@ inline T operator- (const T &a, const T &b) {  TRC("tmp-tmp")
 }
 
 inline T operator- (const T &a, CPX b) {  TRC("tmp-num")
-  T c(a); mad_ctpsa_set0(c.ptr(), 1, C(b=-b,b)); return c;
+  T c(a); mad_ctpsa_seti(c.ptr(), 0, 1, C(b=-b,b)); return c;
 }
 
 inline T operator- (CPX a, const T &b) {  TRC("num-tmp")
   T c(b);
   mad_ctpsa_scl (c.ptr(),-1, c.ptr());
-  mad_ctpsa_set0(c.ptr(), 1, C(a));
+  mad_ctpsa_seti(c.ptr(), 0, 1, C(a));
   return c;
 }
 
@@ -611,7 +611,7 @@ inline CPX sinhc  (CPX a         ) { TRC("cpx") cpx_t r = mad_cpx_sinhc(C(a)); r
 inline CPX asinc  (CPX a         ) { TRC("cpx") cpx_t r = mad_cpx_asinc(C(a)); return CPX(RE(r),IM(r)); }
 
 inline CPX fval(const ctpsa_t *a) { TRC("tspa")
-  return mad_ctpsa_get0(a);
+  return mad_ctpsa_geti(a,0);
 }
 
 template <class A>
