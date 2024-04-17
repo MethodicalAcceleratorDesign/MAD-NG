@@ -32,7 +32,7 @@ local min, max in math
 
 local _C, option, tostring, complex, vector, cvector, ivector,
       monomial                                                 in MAD
-local log, exp                                                 in MAD.gmath
+local abs, exp, log                                            in MAD.gmath
 local openfile, strtrim, num2str                               in MAD.utility
 
 -- To review
@@ -550,13 +550,13 @@ end
 
 function MR.set0 (x, a, b)
   if is_nil(b) then a, b = 0, a end
-  _C.mad_tpsa_set0(x, a, b) return x
+  _C.mad_tpsa_seti(x, 0, a, b) return x
 end
 
 function MC.set0 (x, a, b)
   if is_nil(b) then a, b = 0, a end
   a, b = complex(a), complex(b)
-  _C.mad_ctpsa_set0_r(x, a.re, a.im, b.re, b.im) return x
+  _C.mad_ctpsa_seti_r(x, 0, a.re, a.im, b.re, b.im) return x
 end
 
 function MR.get (x, m) -- idx or str or mono -> num
@@ -588,10 +588,7 @@ end
 function MR.set (x, m, a, b)
   if is_nil(b) then a, b = 0, a end
   if is_integer(m) then
-    if m == 1
-    then _C.mad_tpsa_set0(x,      a, b)
-    else _C.mad_tpsa_seti(x, m-1, a, b)
-    end
+    _C.mad_tpsa_seti(x, m-1, a, b)
   elseif is_string(m) then
     _C.mad_tpsa_sets(x, #m, m, a, b)
   else
@@ -605,10 +602,7 @@ function MC.set (x, m, a, b)
   if is_nil(b) then a, b = 0, a end
   a, b = complex(a), complex(b)
   if is_integer(m) then
-    if m == 1
-    then _C.mad_ctpsa_set0_r(x,      a.re, a.im, b.re, b.im)
-    else _C.mad_ctpsa_seti_r(x, m-1, a.re, a.im, b.re, b.im)
-    end
+    _C.mad_ctpsa_seti_r(x, m-1, a.re, a.im, b.re, b.im)
   elseif is_string(m) then
     _C.mad_ctpsa_sets_r(x, #m, m, a.re, a.im, b.re, b.im)
   else
@@ -865,6 +859,9 @@ function MC.__eq (x, y, tol_)
   end
 end
 
+MR.__eq_cpx = MR.__eq
+MC.__eq_cpx = MC.__eq
+
 -- lt
 
 function MR.__lt (x, y)
@@ -905,18 +902,18 @@ function MR.__add (x, y, r)
   if is_number(x) then                           -- num + tpsa
     r = chksiz(r,y) or tpsa_alloc(y.d, y.mo)
     _C.mad_tpsa_copy(y, r)
-    _C.mad_tpsa_set0(r, 1, x)
+    _C.mad_tpsa_seti(r, 0, 1, x)
   elseif is_number(y) then                       -- tpsa + num
     r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
     _C.mad_tpsa_copy(x, r)
-    _C.mad_tpsa_set0(r, 1, y)
+    _C.mad_tpsa_seti(r, 0, 1, y)
   elseif is_tpsa(y) and is_tpsa(x) then          -- tpsa + tpsa
     r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_tpsa_add(x, y, r)
   elseif is_complex(y) then                      -- tpsa + cpx
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)    -- promote to ctpsa
     _C.mad_ctpsa_cplx(x, nil, r)
-    _C.mad_ctpsa_set0_r(r, 1, 0, y.re, y.im)
+    _C.mad_ctpsa_seti_r(r, 0, 1, 0, y.re, y.im)
   elseif is_ctpsa(y) then                        -- tpsa + ctpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_addt(y, x, r)
@@ -929,19 +926,19 @@ end
 function MR.__add_cpx (x, y, r)                  -- cpx + tpsa
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)      -- promote to ctpsa
   _C.mad_ctpsa_cplx(y, nil, r)
-  _C.mad_ctpsa_set0_r(r, 1, 0, x.re, x.im) return r
+  _C.mad_ctpsa_seti_r(r, 0, 1, 0, x.re, x.im) return r
 end
 
 function MC.__add (x, y, r)
   if is_number(x) then                           -- num + ctpsa
     r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
     _C.mad_ctpsa_copy(y, r)
-    _C.mad_ctpsa_set0_r(r, 1, 0, x, 0)
+    _C.mad_ctpsa_seti_r(r, 0, 1, 0, x, 0)
   elseif is_scalar(y) then                       -- ctpsa + scl
     y = complex(y)
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
     _C.mad_ctpsa_copy(x, r)
-    _C.mad_ctpsa_set0_r(r, 1, 0, y.re, y.im)
+    _C.mad_ctpsa_seti_r(r, 0, 1, 0, y.re, y.im)
   elseif is_ctpsa(y) and is_ctpsa(x) then        -- ctpsa + ctpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_add(x, y, r)
@@ -957,7 +954,7 @@ end
 function MC.__add_cpx (x, y, r)                  -- cpx + ctpsa
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
   _C.mad_ctpsa_copy(y, r)
-  _C.mad_ctpsa_set0_r(r, 1, 0, x.re, x.im) return r
+  _C.mad_ctpsa_seti_r(r, 0, 1, 0, x.re, x.im) return r
 end
 
 -- sub (see also kadd)
@@ -966,18 +963,18 @@ function MR.__sub (x, y, r)
   if is_number(x) then                           -- num - tpsa
     r = chksiz(r,y) or tpsa_alloc(y.d, y.mo)
     _C.mad_tpsa_scl(y, -1, r)
-    _C.mad_tpsa_set0(r, 1, x)
+    _C.mad_tpsa_seti(r, 0, 1, x)
   elseif is_number(y) then                       -- tpsa - num
     r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
     _C.mad_tpsa_copy(x, r)
-    _C.mad_tpsa_set0(r, 1, -y)
+    _C.mad_tpsa_seti(r, 0, 1, -y)
   elseif is_tpsa(y) and is_tpsa(x) then          -- tpsa - tpsa
     r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_tpsa_sub(x, y, r)
   elseif is_complex(y) then                      -- tpsa - cpx
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)    -- promote to ctpsa
     _C.mad_ctpsa_copy(x, r)
-    _C.mad_ctpsa_set0_r(r, 1, 0, -y.re, -y.im)
+    _C.mad_ctpsa_seti_r(r, 0, 1, 0, -y.re, -y.im)
   elseif is_ctpsa(y) then                        -- tpsa - ctpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_tsub(x, y, r)
@@ -990,19 +987,19 @@ end
 function MR.__sub_cpx (x, y, r)                  -- cpx - tpsa
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)      -- promote to ctpsa
   _C.mad_ctpsa_cplx(y, nil, r)
-  _C.mad_ctpsa_set0_r(r, 1, 0, x.re, x.im) return r
+  _C.mad_ctpsa_seti_r(r, 0, 1, 0, x.re, x.im) return r
 end
 
 function MC.__sub (x, y, r)
   if is_number(x) then                           -- num - ctpsa
     r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
     _C.mad_ctpsa_scl(y, -1, r)
-    _C.mad_ctpsa_set0_r(r, 1, 0, x, 0)
+    _C.mad_ctpsa_seti_r(r, 0, 1, 0, x, 0)
   elseif is_scalar(y) then                       -- ctpsa - scl
     y = complex(-y)
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
     _C.mad_ctpsa_copy(x, r)
-    _C.mad_ctpsa_set0_r(r, 1, 0, y.re, y.im)
+    _C.mad_ctpsa_seti_r(r, 0, 1, 0, y.re, y.im)
   elseif is_ctpsa(y) and is_ctpsa(x) then        -- ctpsa - ctpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_sub(x, y, r)
@@ -1018,7 +1015,7 @@ end
 function MC.__sub_cpx (x, y, r)                  -- cpx - ctpsa
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
   _C.mad_ctpsa_copy(y, r)
-  _C.mad_ctpsa_set0_r(r, 1, 0, x.re, x.im) return r
+  _C.mad_ctpsa_seti_r(r, 0, 1, 0, x.re, x.im) return r
 end
 
 -- mul
