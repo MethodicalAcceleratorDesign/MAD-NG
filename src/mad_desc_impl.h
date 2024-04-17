@@ -118,12 +118,12 @@ hpoly_idx (idx_t ib, idx_t ia, ssz_t ia_size)
 #define REL_TMPC(t) mad_ctpsa_reltmp (t, __func__)
 #define REL_TMPR(t)  mad_tpsa_reltmp (t, __func__)
 #else
-#define GET_TMPX(t)          FUN(new)(t, t->mo)
-#define REL_TMPX(t)          FUN(del)(t)
-#define GET_TMPC(t)     mad_ctpsa_new((ctpsa_t*)t, t->mo)
-#define GET_TMPR(t)      mad_tpsa_new( (tpsa_t*)t, t->mo)
-#define REL_TMPC(t)     mad_ctpsa_del(t)
-#define REL_TMPR(t)      mad_tpsa_del(t)
+#define GET_TMPX(t)          FUN(new)(          t, mad_tpsa_same)
+#define REL_TMPX(t)          FUN(del)(          t)
+#define GET_TMPC(t)     mad_ctpsa_new((ctpsa_t*)t, mad_tpsa_same)
+#define GET_TMPR(t)      mad_tpsa_new( (tpsa_t*)t, mad_tpsa_same)
+#define REL_TMPC(t)     mad_ctpsa_del(          t)
+#define REL_TMPR(t)      mad_tpsa_del(          t)
 #endif // DESC_USE_TMP
 
 // --- end --------------------------------------------------------------------o
