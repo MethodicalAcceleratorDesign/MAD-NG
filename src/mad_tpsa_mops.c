@@ -218,15 +218,11 @@ FUN(exppb) (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na])
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, na);
-  FOR(i,na) {
-    DBGTPSA(ma[i]); DBGTPSA(mb[i]); DBGTPSA(mc[i]);
-    mc_[i] = FUN(new)(mc[i], mad_tpsa_same);
-  }
+  FOR(i,na) mc_[i] = FUN(new)(mc[i], mad_tpsa_same);
 
   // temporaries
   const ord_t mo = FUN(mord)(na, TC mc, FALSE);
-  T *t[4];
-  FOR(i,4) t[i] = FUN(newd)(d, mo);
+  T *t[4]; FOR(i,4) t[i] = FUN(newd)(d, mo);
 
   // main call
   exppb(na, ma, mb, mc_, t);
@@ -238,7 +234,6 @@ FUN(exppb) (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na])
   FOR(i,na) {
     FUN(copy)(mc_[i], mc[i]);
     FUN(del )(mc_[i]);
-    DBGTPSA(mc[i]);
   }
   mad_free_tmp(mc_);
   DBGFUN(<-);
@@ -253,22 +248,15 @@ FUN(logpb) (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na])
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, na);
-  FOR(i,na) {
-    DBGTPSA(ma[i]); DBGTPSA(mc[i]);
-    mc_[i] = FUN(new)(mc[i], mad_tpsa_same);
-  }
+  FOR(i,na) mc_[i] = FUN(new)(mc[i], mad_tpsa_same);
 
   // initial guess provided
-  if (mb) FOR(i,na) {
-    DBGTPSA(mb[i]);
-    FUN(copy)(mb[i], mc_[i]);
-  }
+  if (mb) FOR(i,na) FUN(copy)(mb[i], mc_[i]);
 
   // temporaries: 4 tpsa + 5 damap
   const ord_t mo = FUN(mord)(na, TC mc, FALSE);
   const int nt = 4+5*na;
-  T *t[nt];
-  FOR(i,nt) t[i] = FUN(newd)(d, mo);
+  T *t[nt]; FOR(i,nt) t[i] = FUN(newd)(d, mo);
 
   // main call
   logpb(na, ma, mc_, t, 0);
@@ -280,7 +268,6 @@ FUN(logpb) (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na])
   FOR(i,na) {
     FUN(copy)(mc_[i], mc[i]);
     FUN(del )(mc_[i]);
-    DBGTPSA(mc[i]);
   }
   mad_free_tmp(mc_);
   DBGFUN(<-);
@@ -295,10 +282,7 @@ FUN(liebra) (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na])
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, na);
-  FOR(i,na) {
-    DBGTPSA(ma[i]); DBGTPSA(mb[i]); DBGTPSA(mc[i]);
-    mc_[i] = FUN(new)(mc[i], mad_tpsa_same);
-  }
+  FOR(i,na) mc_[i] = FUN(new)(mc[i], mad_tpsa_same);
 
   // temporaries: 3 tpsa
   const ord_t mo = FUN(mord)(na, TC mc, FALSE);
@@ -315,7 +299,6 @@ FUN(liebra) (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na])
   FOR(i,na) {
     FUN(copy)(mc_[i], mc[i]);
     FUN(del )(mc_[i]);
-    DBGTPSA(mc[i]);
   }
   mad_free_tmp(mc_);
   DBGFUN(<-);
