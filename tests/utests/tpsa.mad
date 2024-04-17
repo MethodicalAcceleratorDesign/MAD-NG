@@ -1,7 +1,7 @@
 --[=[
  o-----------------------------------------------------------------------------o
  |
- | GTPSA module unit tests - real tpsa
+ | GTPSA module regression tests - real tpsa
  |
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -21,12 +21,11 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local vector, tpsa, ctpsa, gtpsad, tpsa_eqn                                in MAD
+local vector, tpsa, gtpsad                                       in MAD
 local eps, abs, pi                                               in MAD.constant
 local abs                                                        in MAD.gmath
 local ident                                                      in MAD.gfunc
-local assertTrue, assertEquals, assertAlmostEquals, assrtIsFalse              in MAD.utest
-local is_tpsa, is_ctpsa, is_gtpsad                               in MAD.typeid
+local assertTrue, assertEquals, assertAlmostEquals               in MAD.utest
 
 -- locals ---------------------------------------------------------------------o
 
@@ -36,209 +35,130 @@ local ord = {1,2,3,4,5,6,7,10,12,15}
 
 -- regression test suites -----------------------------------------------------o
 
-TestTPSAOps = {}
+TestTPSAFun = {}
 
-
-TestIs = {}
-TestConstr = {}
-TestProm = {}
-TestLogicOper = {}
-TestSetGet  = {}
-
-
-function TestConstr:testConstrDefault()
-  local ord  = 15
-  local nv = 2
-  local d = gtpsad(nv, ord)
-  local t = tpsa(d)
-  local ct = ctpsa(d)
-  local max_n_coef = ((ord+nv)*(ord+nv - 1))/2
-  assertEquals(t.mo,ord)
-  assertEquals(ct.mo,ord)
-  
-
-  --check all order equal to zeros
-  for o = 0, max_n_coef-1 do
-    assertEquals(t.coef[o],0)
-    assertEquals(ct.coef[o], 0 + 0i)
+local function checkVal (r, c, neg, alt, trc)
+  local tol = neg and c.n_eps or alt and c.a_eps or c.eps or eps
+  neg = neg or ident
+  trc = trc or 0
+  if not r:isvalid() then r:debug() end
+  for i=1,#r do
+    local v = neg(c[i],i)
+    if trc > 0 then
+      local is, vs, rs, es = string.format("%-2d"  , i),
+                             string.format("%+.17e", v),
+                             string.format("%+.17e", r:get(i))
+      if abs(v) > 2
+      then es = math.ceil( abs(r:get(i)/v-1)/eps/i )
+      else es = math.ceil( abs(r:get(i)-v  )/eps/i )
+      end
+      io.write('i=',is,', v=',vs,', r=',rs,', es=', es, es>99 and ' **\n' or '\n')
+    end
+    if trc < 2 then
+      if abs(v) > 2 --why this, then how works with non poly functions diff algebra, sincos, 
+      then assertAlmostEquals(r:get(i)/v-1, 0, i*tol)
+      else assertAlmostEquals(r:get(i)    , v, i*tol)
+      end
+    end
   end
+end
 
-  --same check for only one variable 
-  local ord  = 15
-  local nv = 1
-  local d = gtpsad(nv, ord)
-  local t = tpsa(d)
-  local ct = ctpsa(d)
-  local max_ord = ord
-  assertEquals(t.mo,ord)
-  assertEquals(ct.mo,ord)
+local function checkFun1 (fnam, trc)
+  local d = gtpsad(1,15)
+  local fun, t, r = dat.fun[fnam]
+  if trc then io.write('\n') end
+  for _,c in ipairs(fun) do
+  for _,o in ipairs(ord) do
+  --for o=1,d.mo do
+    if fun.omin and o < fun.omin then break end -- limit order
+    if fun.omax and o > fun.omax then break end -- limit order
+    if c.omin   and o < c.omin   then break end -- limit order (local)
+    if c.omax   and o > c.omax   then break end -- limit order (local)
+    if trc then io.write('f=',fnam,'(',c.x0,') @ ',o,'\n') end
+    t = tpsa(o):set(1,c.x0):set(2,1)
+    r = t[fnam](t)   ; checkVal(r, c, nil, nil, trc) -- positive (r ~= t)
+    if trc then io.write('f=',fnam,'_ref(',c.x0,') @ ',o,'\n') end
+    r = t[fnam](t,t) ; checkVal(r, c, nil, nil, trc) -- aliased  (r == t)
+    --if fnam == 'tan' then MAD.dbg() end;
+    if fun.alt then
+      if trc then io.write('f=',fnam,'_alt(',c.x0,') @ ',o,'\n') end
+      t = tpsa(o):set(1,c.x0):set(2,1)
+      r = fun.alt(t) ; checkVal(r, c, nil, fun.alt, trc) -- alternate function
+    end
 
-  --check all order equal to zeros
-  for o = 0, max_ord-1 do
-    assertEquals(t.coef[o],0)
-    assertEquals(ct.coef[o], 0 + 0i)
+    if fun.neg and c.x0 ~= 0 then
+      if trc then io.write('f=',fnam,'_neg(',-c.x0,') @ ',o,'\n') end
+      t = tpsa(o):set(1,-c.x0):set(2,1)
+      r = t[fnam](t) ; checkVal(r, c, fun.neg, nil, trc) -- negative
+    end
+  end end
+end
+
+TestTPSAFun.testInv   = \s -> checkFun1('inv')
+TestTPSAFun.testISqrt = \s -> checkFun1('invsqrt')
+TestTPSAFun.testSqrt  = \s -> checkFun1('sqrt')
+TestTPSAFun.testExp   = \s -> checkFun1('exp')
+TestTPSAFun.testLog   = \s -> checkFun1('log')
+TestTPSAFun.testSin   = \s -> checkFun1('sin')
+TestTPSAFun.testCos   = \s -> checkFun1('cos')
+TestTPSAFun.testTan   = \s -> checkFun1('tan')
+TestTPSAFun.testCot   = \s -> checkFun1('cot')
+TestTPSAFun.testSinc  = \s -> checkFun1('sinc')
+TestTPSAFun.testSinh  = \s -> checkFun1('sinh')
+TestTPSAFun.testCosh  = \s -> checkFun1('cosh')
+TestTPSAFun.testTanh  = \s -> checkFun1('tanh')
+TestTPSAFun.testCoth  = \s -> checkFun1('coth')
+!TestTPSAFun.testSinhc = \s -> checkFun1('sinhc')
+TestTPSAFun.testAsin  = \s -> checkFun1('asin')
+TestTPSAFun.testAcos  = \s -> checkFun1('acos')
+TestTPSAFun.testAtan  = \s -> checkFun1('atan')
+TestTPSAFun.testAcot  = \s -> checkFun1('acot')
+TestTPSAFun.testAsinh = \s -> checkFun1('asinh')
+TestTPSAFun.testAcosh = \s -> checkFun1('acosh')
+TestTPSAFun.testAtanh = \s -> checkFun1('atanh')
+TestTPSAFun.testAcoth = \s -> checkFun1('acoth')
+TestTPSAFun.testErf   = \s -> checkFun1('erf')
+
+-- TODO: operators
+
+-- performance tests ----------------------------------------------------------o
+
+Test_TPSAFun = {}
+
+local ord_ = {1,2,3,6,7}
+local div_ = 5 -- shrink the tests by factor 5
+
+local function benchFun1 (fnam, x0, trc)
+  local d = gtpsad(6,15)
+  local fun, t, r = dat.fun[fnam]
+  for _,o in ipairs(ord_) do
+--  for o=1,d.mo do
+    if fun.omin and o < fun.omin then break end -- limit order
+    if fun.omax and o > fun.omax then break end -- limit order
+    t = tpsa(o):setvar(x0):set(2,1):set(3,1):set(4,1):set(5,1):set(6,1):set(7,1)
+    r = tpsa(o)
+    if not trc then io.write(o," ") io.flush() end
+    local t0 = os.clock()
+    for i=1,fun.iter[o]/div_ do t[fnam](t,r) end
+    local dt = os.clock()-t0
+    assertAlmostEquals( dt, 0.5/div_, 1/div_ )
+    if trc then
+      local n = math.floor(0.5*fun.iter[o]/dt)
+      io.write(string.format("\no=%-2d, dt=%.4f, n=%-8d, ", o, dt, n),
+               "len=", t:length(o), "  ")
+    end
   end
- 
 end
 
-function TestConstr:testConstrParams()
-  local mo  = 15
-  local nv = 2
-  local np = 3
-  local po = 2
-  local d = gtpsad(nv, mo, np, po)
-  local t = tpsa(d,1)
-  local ct = ctpsa(d,1)
-  
-  assertEquals(d.mo, 15)
-  assertEquals(d.nv, 2)
-  assertEquals(d.np, 3)
-  assertEquals(d.po, 2)
-  assertEquals(t.mo, 1)
-  assertEquals(ct.mo,1)
+Test_TPSAFun.testInv   = \s -> benchFun1('inv'    , pi/5)
+Test_TPSAFun.testSqrt  = \s -> benchFun1('sqrt'   , pi/5)
+Test_TPSAFun.testExp   = \s -> benchFun1('exp'    , pi/5)
+Test_TPSAFun.testLog   = \s -> benchFun1('log'    , pi/3)
+Test_TPSAFun.testSin   = \s -> benchFun1('sin'    , pi/5)
+Test_TPSAFun.testCos   = \s -> benchFun1('cos'    , pi/5)
+Test_TPSAFun.testTan   = \s -> benchFun1('tan'    , pi/5)
+Test_TPSAFun.testISqrt = \s -> benchFun1('invsqrt', pi/5)
 
-  local t2 = tpsa(d)
-  local ct2 = ctpsa(d)
-
-  assertEquals(t2.mo, 15)
-  assertEquals(ct2.mo, 15)
-
-  -- check with only one variable
-  local mo  = 15
-  local nv = 1
-  local np = 3
-  local po = 2
-  local d = gtpsad(nv, mo, np, po)
-  local t = tpsa(d,1)
-  local ct = ctpsa(d,1)
-
-  assertEquals(d.mo, 15)
-  assertEquals(d.nv, 1)
-  assertEquals(d.np, 3)
-  assertEquals(d.po, 2)
-  assertEquals(t.mo, 1)
-  assertEquals(ct.mo,1)
-
-  local t2 = tpsa(d)
-  local ct2 = ctpsa(d)
-
-  assertEquals(t2.mo, 15)
-  assertEquals(ct2.mo, 15)
+-- end ------------------------------------------------------------------------o
 
 
-
--- other stuff to be tested
-end
-
-
-function TestIs:testTandD()
-  local ord  = 15
-  local nv = 2
-  local d = gtpsad(nv, ord)
-  local t = tpsa(d)
-  local ct = ctpsa(d)
-
-  assertTrue(is_tpsa(t))
-  assertTrue(is_ctpsa(ct))
-  assertTrue(is_gtpsad(d))
-  assertTrue(not is_tpsa(ct))
-  assertTrue(not is_ctpsa(t))
-  assertTrue(not is_tpsa(d))
-  assertTrue(not is_ctpsa(d))
-  assertTrue(not is_gtpsad(t))
-  assertTrue(not is_gtpsad(ct))
-  assertTrue(not is_tpsa(0))
-  assertTrue(not is_ctpsa(0))
-  assertTrue(not is_gtpsad(0))
-
-  local ord  = 15
-  local nv = 1
-  local d = gtpsad(nv, ord)
-  local t = tpsa(d)
-  local ct = ctpsa(d)
-
-  assertTrue(is_tpsa(t))
-  assertTrue(is_ctpsa(ct))
-  assertTrue(is_gtpsad(d))
-  assertTrue(not is_tpsa(ct))
-  assertTrue(not is_ctpsa(t))
-  assertTrue(not is_tpsa(d))
-  assertTrue(not is_ctpsa(d))
-  assertTrue(not is_gtpsad(t))
-  assertTrue(not is_gtpsad(ct))
-  assertTrue(not is_tpsa(0))
-  assertTrue(not is_ctpsa(0))
-  assertTrue(not is_gtpsad(0))
-  end
-
-  
-function TestProm:testPromotion()
-  local number = 1
-  local complex = 1 + 1i
-
-  local mo  = 15
-  local nv = 2
-  local np = 3
-  local po = 2
-  local d = gtpsad(nv, mo, np, po)
-  local t = tpsa(d)
-  local ct = ctpsa(d)
-  local t2 = tpsa(d)
-  local ct2 = ctpsa(d)
-
-  assertTrue(is_tpsa(number + t))
-  assertTrue(is_tpsa(t + number))
-  assertTrue(is_tpsa(t + t2))
-  assertTrue(is_ctpsa(number + ct))
-  assertTrue(is_ctpsa(complex + t))
-  assertTrue(is_ctpsa(complex + ct))
-  assertTrue(is_ctpsa(t + ct))
-  assertTrue(is_ctpsa(ct + number))
-  assertTrue(is_ctpsa(ct + complex))
-  assertTrue(is_ctpsa(ct + t))
-  assertTrue(is_ctpsa(ct + ct2))
-end
-
-
-function TestLogicOper:testEq()
-  local number = 1
-  local complex = 1 + 1i
-
-  local mo  = 15
-  local nv = 2
-  local np = 3
-  local po = 2
-  local d = gtpsad(nv, mo, np, po)
-  local t = tpsa(d)
-  local ct = ctpsa(d)
-  local t2 = tpsa(d)
-  local ct2 = ctpsa(d)
-
-  assertTrue(not (t == number))
-  assertTrue(not (number == t))
-  assertTrue(not (ct == number))
-  assertTrue(not (number == ct))
-  assertTrue(0 == t)
-  assertTrue(t == 0)
-  assertTrue(ct == (0 + 0i))
-  assertTrue((0 + 0i) == ct)
-end
-
-
-function TestLogicOper:testDiff()
-
-end
-
-
-function TestLogicOper:testLarger()
-
-end
-
-
-
-function TestSetGet:testSet()
-
-end
-
-function TestSetGet:testGet()
-end
