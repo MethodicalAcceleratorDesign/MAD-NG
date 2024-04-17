@@ -103,7 +103,6 @@ void
 FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
 {
   assert(ma && mc); DBGFUN(->);
-  FOR(i,na) DBGTPSA(ma[i]);
   ensure(na >= nb, "invalid subtitution ranks, na >= nb expected");
 
   check_minv(na, ma, nb, mc);
@@ -139,8 +138,8 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
   }
 
   if (!isnul) {
-    ord_t mo[na], to = FUN(mord)(na, TC mc, FALSE);
-    FOR(i,na) mo[i] = FUN(mo)(mc[i], mad_tpsa_dflt); // backup mo[i]
+    ord_t mo[na],to = FUN(mord)(na, TC mc, FALSE);
+    FOR(i,na) mo[i] = FUN(mo)(mc[i], mad_tpsa_same); // backup mo[i]
 
     for (ord_t o = 2; o <= to; ++o) {
       FOR(i,na) { FUN(mo)(    mc[i],o); } // truncate computation to order o
@@ -158,7 +157,6 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
     FUN(del)(lininv[i]);
     FUN(del)(nonlin[i]);
     FUN(del)(tmp[i]);
-    DBGTPSA (mc [i]);
   }
   DBGFUN(<-);
 }
@@ -167,7 +165,6 @@ void
 FUN(pminv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na], idx_t select[na])
 {
   assert(ma && mc && select); DBGFUN(->);
-  FOR(i,na) DBGTPSA(ma[i]);
   ensure(na >= nb, "invalid subtitution rank, na >= nb expected");
   check_minv(na, ma, nb, mc);
   FOR(i,na) if (select[i])
@@ -193,8 +190,8 @@ FUN(pminv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na], idx_t select[na])
       FUN(copy)(ma[i],mUnused[i]);
       FUN(seti)(mUsed[i], i+1, 0,1); // set identity
     }
-    FUN(set0)(mUsed  [i], 0,0);
-    FUN(set0)(mUnused[i], 0,0);
+    FUN(seti)(mUsed  [i], 0,0,0);
+    FUN(seti)(mUnused[i], 0,0,0);
   }
   FOR(i,nb,na) { // params
     mUsed  [i] = (T*)ma[i];
@@ -209,7 +206,6 @@ FUN(pminv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na], idx_t select[na])
     FUN(del)(mUsed[i]);
     FUN(del)(mUnused[i]);
     FUN(del)(mInv[i]);
-    DBGTPSA(mc[i]);
   }
   DBGFUN(<-);
 }
