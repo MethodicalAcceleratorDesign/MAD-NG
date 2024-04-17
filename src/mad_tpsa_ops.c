@@ -299,7 +299,7 @@ axpbypc (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   TPSA_SCAN_I(c,bhi+1,  ahi       ) c->coef[i] = c1*a->coef[i];
   TPSA_SCAN_I(c,ahi+1,      bhi   ) c->coef[i] = c2*b->coef[i];
 
-//  if (!FUN(isvalid)(c)) {
+//  if (mad_tpsa_dbga && !FUN(isvalid)(c)) {
 //    static int cnt = 0;
 //    printf("alo=%d[%d], ahi=%d[%d], blo=%d[%d], bhi=%d[%d], clo=%d, chi=%d\n",
 //            alo, a->lo, ahi, a->hi, blo, b->lo, bhi, b->hi, c->lo, c->hi);
@@ -397,6 +397,8 @@ FUN(mul) (const T *a, const T *b, T *r)
 
   NUM a0 = a->coef[0], b0 = b->coef[0];
   ord_t chi = MIN(a->hi+b->hi, c->mo);
+
+  // order 0
   if (!chi) { FUN(setval)(c, a0*b0); goto ret; }
 
   // order 1+ and linear
