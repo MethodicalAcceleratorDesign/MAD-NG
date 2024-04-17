@@ -69,8 +69,6 @@ print_damap (ssz_t sa, const T *ma[sa], FILE *fp_)
   (void)print_damap;
 }
 
-
-
 #ifdef _OPENMP
 //#include "mad_tpsa_comp_p.tc" // obsolete
 #endif
@@ -82,8 +80,6 @@ void
 FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 {
   assert(ma && mb && mc); DBGFUN(->);
-  FOR(ia,sa) DBGTPSA(ma[ia]);
-  FOR(ib,sb) DBGTPSA(mb[ib]);
   check_compose(sa, ma, sb, mb, mc);
 
   // handle aliasing
@@ -99,7 +95,7 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 #if DEBUG_COMPOSE
     printf("compose: thread no %d\n", omp_get_thread_num());
 #endif
-      compose_serial(1,ma+ia,sb,mb,mc_+ia,ma[ia]->hi);
+      compose_serial(1,&ma[ia],sb,mb,&mc_[ia],ma[ia]->hi);
 //    compose_parallel(sa,ma,sb,mb,mc_,hi_ord);
     }
   } else
@@ -112,8 +108,6 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
     FUN(del )(mc_[ia]);
   }
   mad_free_tmp(mc_);
-
-  FOR(ia,sa) DBGTPSA(mc[ia]);
   DBGFUN(<-);
 }
 
