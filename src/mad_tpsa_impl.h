@@ -122,13 +122,12 @@ mad_tpsa_reset0 (tpsa_t *t)
 
 // --- functions accessing coef[o]
 
-static inline tpsa_t* // clear TPSA order but doesn't adjust lo,hi
+static inline void // clear TPSA order but doesn't adjust lo,hi
 mad_tpsa_clear0 (tpsa_t *t, ord_t lo, ord_t hi)
 {
   assert(t);
   const idx_t *o2i = t->d->ord2idx;
   FOR(i,o2i[lo],o2i[hi+1]) t->coef[i] = 0;
-  return t;
 }
 
 static inline idx_t // return index of first non-zero coef in [lo,hi] or -1
@@ -140,7 +139,7 @@ mad_tpsa_nzero0 (const tpsa_t *t, ord_t lo, ord_t hi)
   idx_t i = o2i[lo], ni = o2i[hi+1]-1;
   num_t c = t->coef[ni]; ((tpsa_t*)t)->coef[ni] = 1; // set stopper
   while (!t->coef[i]) ++i;
-  ((tpsa_t*)t)->coef[ni] = c; // restore value
+  ((tpsa_t*)t)->coef[ni] = c;                        // restore value
   return i == ni && !c ? -1 : i;
 }
 
@@ -153,7 +152,7 @@ mad_tpsa_nzero0r (const tpsa_t *t, ord_t lo, ord_t hi)
   idx_t ni = o2i[lo], i = o2i[hi+1]-1;
   num_t c = t->coef[ni]; ((tpsa_t*)t)->coef[ni] = 1; // set stopper
   while (!t->coef[i]) --i;
-  ((tpsa_t*)t)->coef[ni] = c; // restore value
+  ((tpsa_t*)t)->coef[ni] = c;                        // restore value
   return i == ni && !c ? -1 : i;
 }
 
