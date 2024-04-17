@@ -174,14 +174,10 @@ FUN(mo) (T *t, ord_t mo_)
   if (mo_ == mad_tpsa_same) return t->mo;
   if (mo_ == mad_tpsa_dflt) mo_ = t->ao;
 
-  ensure(mo_ <= t->d->mo, "invalid order %d (exceeds maximum order %d)", mo_, t->d->mo);
-  ord_t ret = t->mo;
-  if (mo_ <= t->ao) {
-    t->lo = MIN(t->lo,mo_);
-    t->hi = MIN(t->hi,mo_);
-    t->mo = mo_;
-  }
-  return ret; // return previous mo
+  ensure(mo_ <= t->ao, "invalid order %d (exceeds allocated order %d)",mo_,t->ao);
+  if (mo_ < t->mo) t->lo = MIN(t->lo,mo_), t->hi = MIN(t->hi,mo_);
+  ord_t ret = t->mo; t->mo = mo_;
+  return ret;
 }
 
 int32_t
@@ -261,19 +257,15 @@ FUN(newd) (const D *d, ord_t mo)
 T*
 FUN(new) (const T *t, ord_t mo)
 {
-  assert(t); DBGFUN(->);
-  const D *d = t->d;
-  mo = mo == mad_tpsa_same ? t->mo : MIN(mo, d->mo);
-  T *r = mad_malloc(sizeof(T) + d->ord2idx[mo+1] * sizeof(NUM)); assert(r);
-  r->d = d, r->ao = r->mo = mo, r->uid = 0, r->nam[0] = 0;
-  DBGFUN(<-); return FUN(reset0)(r);
+  assert(t);
+  return FUN(newd)(t->d, mo == mad_tpsa_same ? t->mo : mo);
 }
 
 void
 FUN(del) (const T *t)
 {
   DBGFUN(->);
-  if (t) mad_free((void*)t);
+  mad_free((void*)t);
   DBGFUN(<-);
 }
 
