@@ -172,11 +172,12 @@ FUN(mo) (T *t, ord_t mo_)
 {
   assert(t);
   if (mo_ == mad_tpsa_same) return t->mo;
-  if (mo_ == mad_tpsa_dflt) mo_ = t->ao;
 
-  ensure(mo_ <= t->ao, "invalid order %d (exceeds allocated order %d)",mo_,t->ao);
-  if (mo_ < t->mo) t->lo = MIN(t->lo,mo_), t->hi = MIN(t->hi,mo_);
-  ord_t ret = t->mo; t->mo = mo_;
+  ord_t ret = t->mo;
+  if (mo_ < t->mo)
+    t->lo = MIN(t->lo, mo_), t->hi = MIN(t->hi, mo_), t->mo = mo_;
+  else
+    t->mo = MIN(mo_, t->ao);
   return ret;
 }
 
