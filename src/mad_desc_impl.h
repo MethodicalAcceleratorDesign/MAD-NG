@@ -81,7 +81,7 @@ struct desc_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
 
 // --- TPSA sanity checks -----------------------------------------------------o
 
-#if TPSA_DEBUG > 0
+#if TPSA_DEBUG
 #  define DBGTPSA(t) ((void)(mad_tpsa_dbga && FUN(debug)(t,#t,__func__,__LINE__,0)))
 #else
 #  define DBGTPSA(t)
@@ -89,7 +89,7 @@ struct desc_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
 
 // --- trace functions --------------------------------------------------------o
 
-#if TPSA_DEBUG > 0
+#if TPSA_DEBUG
 #  define DBGFUN(a) ((void)(mad_tpsa_dbgf && printf(#a " %s:%d:\n",__func__,__LINE__)))
 #else
 #  define DBGFUN(a)
