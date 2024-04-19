@@ -23,6 +23,8 @@
 #include "mad_log.h"
 #include "mad_bit.h"
 #include "mad_desc.h"
+#include "mad_tpsa.h"
+#include "mad_ctpsa.h"
 
 // --- constants --------------------------------------------------------------o
 
@@ -104,9 +106,6 @@ hpoly_idx (idx_t ib, idx_t ia, ssz_t ia_size)
 }
 
 // --- macros for temporaries -------------------------------------------------o
-
-#include "mad_tpsa.h"
-#include "mad_ctpsa.h"
 
 #if DESC_USE_TMP
 #define TRC_TMPX(a) (void)func // a
