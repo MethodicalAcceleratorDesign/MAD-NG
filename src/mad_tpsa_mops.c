@@ -351,7 +351,7 @@ FUN(fld2vec) (ssz_t na, const T *ma[na], T *c) // getpb
   check_same_desc(na, ma);
   ensure(ma[0]->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  FUN(reset0)(c);
+  FUN(clear)(c);
 
   T *t1 = FUN(new)(c, mad_tpsa_same);
   T *t2 = FUN(new)(c, mad_tpsa_same);
