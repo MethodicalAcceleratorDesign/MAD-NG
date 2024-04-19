@@ -243,7 +243,7 @@ FUN(scl) (const T *a, NUM v, T *c)
   assert(a && c); DBGFUN(->);
   ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
 
-  if (v == 0) { FUN(reset0)(c); DBGFUN(<-); return; }
+  if (v == 0) { FUN(clear)(c);  DBGFUN(<-); return; }
   if (v == 1) { FUN(copy)(a,c); DBGFUN(<-); return; }
 
   FUN(copy0)(a,c);
@@ -290,7 +290,7 @@ axpbypc (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   c->lo = MIN(alo, blo);
   c->hi = MAX(ahi, bhi);
 
-  if (!c->hi || c->lo > c->hi) { c->lo = 1, c->hi = 0; return; }
+  if (c->lo > c->hi) { c->lo = 1, c->hi = 0; return; }
 
   const idx_t *o2i = c->d->ord2idx;
   TPSA_SCAN_I(c,alo,MIN(ahi,blo-1)) c->coef[i] = c1*a->coef[i];
@@ -298,18 +298,6 @@ axpbypc (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   TPSA_SCAN_I(c,blo,MIN(ahi,bhi)  ) c->coef[i] = c1*a->coef[i]+c2*b->coef[i];
   TPSA_SCAN_I(c,bhi+1,  ahi       ) c->coef[i] = c1*a->coef[i];
   TPSA_SCAN_I(c,ahi+1,      bhi   ) c->coef[i] = c2*b->coef[i];
-
-//  if (mad_tpsa_dbga && !FUN(isvalid)(c)) {
-//    static int cnt = 0;
-//    printf("alo=%d[%d], ahi=%d[%d], blo=%d[%d], bhi=%d[%d], clo=%d, chi=%d\n",
-//            alo, a->lo, ahi, a->hi, blo, b->lo, bhi, b->hi, c->lo, c->hi);
-//    printf("c1=%.4e, c2=%.4e, c3=%.4e\n", c1, c2, c3);
-//    FUN(print)(a,"aaa",0,0,0);
-//    FUN(print)(b,"bbb",0,0,0);
-//    FUN(print)(c,"ccc",0,0,0);
-//    DBGTPSA(a); DBGTPSA(b);
-//    if (++cnt >= 20) exit(EXIT_FAILURE);
-//  }
 }
 
 void
@@ -473,11 +461,11 @@ FUN(powi) (const T *a, int n, T *c)
 
   if (n < 0) { n = -n; inv = 1; }
 
-  T *t1 = GET_TMPX(c);
+  T *t1 = n > 2 ? GET_TMPX(c) : NULL;
 
   switch (n) {
     case 0: FUN(setval)(c,  1);  break; // ok: no copy
-    case 1: FUN(copy  )(a,  c);  break; // ok: 1 copy
+    case 1: FUN(copy  )(a,  c);  break; // ok: 1 copy if a!=c
     case 2: FUN(mul   )(a,a,c);  break; // ok: 1 copy if a==c
     case 3: FUN(mul   )(a,a,t1); FUN(mul)(t1,a, c); break; // ok: 1 copy if a==c
     case 4: FUN(mul   )(a,a,t1); FUN(mul)(t1,t1,c); break; // ok: no copy
@@ -495,7 +483,7 @@ FUN(powi) (const T *a, int n, T *c)
       REL_TMPX(t2);
     }
   }
-  REL_TMPX(t1);
+  if (t1) REL_TMPX(t1);
 
   if (inv) FUN(inv)(c,1,c);
   DBGFUN(<-);
@@ -643,7 +631,7 @@ FUN(deriv) (const T *a, T *r, int iv)
   ensure(0 < iv && iv <= d->nv,
          "index 1<= %d <=%d is not a GTPSA variable", iv, d->nv);
 
-  if (!a->hi) { FUN(reset0)(r); DBGFUN(<-); return; } // empty
+  if (!a->hi) { FUN(clear)(r); DBGFUN(<-); return; } // empty
 
   T *c = a == r ? GET_TMPX(r) : FUN(reset0)(r);
 
