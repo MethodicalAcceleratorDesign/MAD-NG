@@ -95,9 +95,9 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
 {
   assert(t);
   ord_t o; num_t r = 0;
-  log_t ok = check(t,&o, mad_tpsa_dbga > 1 ? &r : 0);// dbga = 2..3 -> ratio
+  log_t ok = check(t,&o, mad_tpsa_dbga >= 2 ? &r : 0);  // dbga = 2..3 -> ratio
 
-  if (ok && mad_tpsa_dbga < 3) return ok;            // dbga = 1..2 -> no prn
+  if (ok && mad_tpsa_dbga <= 2) return ok;              // dbga = 1..2 -> no prn
 
   const D* d = t->d;
   if (!stream_) stream_ = stdout;
@@ -107,17 +107,15 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
           t->lo, t->hi, t->mo, t->ao, t->uid, d ? d->id : -1);
 
   if (ok) {
-    fprintf(stream_," r=%.2f }\n", r); fflush(stream_);
+    fprintf(stream_," r=%.2f } 0x%p\n", r, (void*)t); fflush(stream_);
 
-    if (mad_tpsa_dbga > 1) {
-      char name[48];
-      strncpy(name, name_ ? name_ : t->nam, 48); name[47] = '\0';
-      FUN(print)(t, name, 1e-40, 0, stream_);
-    }
+    char name[48];
+    strncpy(name, name_ ? name_ : t->nam, 48); name[47] = '\0';
+    FUN(print)(t, name, 1e-40, 0, stream_);
     return ok;
   }
 
-  fprintf(stream_," ** bug @ o=%d }\n", o); fflush(stream_);
+  fprintf(stream_," ** bug @ o=%d } 0x%p\n", o, (void*)t); fflush(stream_);
 
   if (d) {
     const idx_t *o2i = d->ord2idx;
@@ -125,8 +123,8 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
     FOR(i,ni) fprintf(stream_," [%d:%d]=" FMT "\n", i,d->ords[i],VAL(t->coef[i]));
     fprintf(stream_,"\n"); fflush(stream_);
   }
-  ensure(ok, "corrupted TPSA detected");
-  return ok;
+
+  ensure(ok, "corrupted TPSA detected"); return ok;
 }
 
 #ifndef MAD_CTPSA_IMPL
@@ -239,8 +237,8 @@ T*
 FUN(init) (T *t, const D *d, ord_t mo)
 {
   assert(t && d && mo <= d->mo); DBGFUN(->);
-  t->d = d, t->ao = t->mo = mo, t->uid = 0, t->nam[0] = 0;
-  DBGFUN(<-); return FUN(reset0)(t);
+  t->d = d, t->ao = t->mo = mo, t->uid = 0, t->nam[0] = 0, FUN(reset0)(t);
+  DBGTPSA(t); DBGFUN(<-); return t;
 }
 
 // --- ctors, dtor ------------------------------------------------------------o
@@ -251,8 +249,8 @@ FUN(newd) (const D *d, ord_t mo)
   assert(d); DBGFUN(->);
   mo = MIN(mo, d->mo);
   T *r = mad_malloc(sizeof(T) + d->ord2idx[mo+1] * sizeof(NUM)); assert(r);
-  r->d = d, r->ao = r->mo = mo, r->uid = 0, r->nam[0] = 0;
-  DBGFUN(<-); return FUN(reset0)(r);
+  r->d = d, r->ao = r->mo = mo, r->uid = 0, r->nam[0] = 0, FUN(reset0)(r);
+  DBGTPSA(r); DBGFUN(<-); return r;
 }
 
 T*
@@ -277,7 +275,7 @@ FUN(clear) (T *t)
 {
   assert(t); DBGFUN(->);
   FUN(reset0)(t);
-  DBGFUN(<-);
+  DBGTPSA(t); DBGFUN(<-);
 }
 
 void
@@ -325,7 +323,7 @@ FUN(setval) (T *t, NUM v)
 {
   assert(t); DBGFUN(->);
   t->lo = 1, t->hi = 0, t->coef[0] = v;
-  DBGFUN(<-);
+  DBGTPSA(t); DBGFUN(<-);
 }
 
 // --- copy, convert, swap ----------------------------------------------------o
