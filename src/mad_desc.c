@@ -40,7 +40,7 @@
 // must be global variables for access from LuaJIT FFI.
 const  ord_t  mad_tpsa_dflt = -1;
 const  ord_t  mad_tpsa_same = -2;
-       num_t  mad_tpsa_eps  = 1e-40;
+       num_t  mad_tpsa_eps  =  1e-40;
        int    mad_tpsa_dbgf =  0; // effective only with TPSA_DEBUG > 0
        int    mad_tpsa_dbga =  0; // effective only with TPSA_DEBUG > 0
 
@@ -304,8 +304,7 @@ tbl_by_ord(D *d)
 
   d->size +=  d->nc    * sizeof *d->To;
   d->size +=  d->nc*2  * sizeof *d->tv2to; // tv2to + to2tv
-  d->size +=  d->nc    * sizeof *d->ords;
-  d->size +=  d->nc    * sizeof *d->prms;
+  d->size +=  d->nc*2  * sizeof *d->ords;  // ords  + prms
   d->size += (d->mo+2) * sizeof *d->ord2idx;
 
   cmp_d = d;
@@ -315,7 +314,8 @@ tbl_by_ord(D *d)
   d->To[0] = d->monos;
   d->tv2to[0] = 0, d->ord2idx[0] = 0, d->ords[0] = d->prms[0] = 0;
 
-  for (idx_t i=1, j=0; i < d->nc; ++i) {
+  idx_t j=0;
+  FOR(i,1,d->nc) {
     d->tv2to[d->to2tv[i]] = i;
     d->To[i] = d->monos + d->to2tv[i]*d->nn;
     d->ords[i] = mad_mono_ord(d->nn, d->To[i]);
@@ -356,10 +356,10 @@ tbl_index_H(const D *d, ssz_t n, const ord_t m[n])
   assert(d && n <= d->nn);
   const idx_t *H = d->H;
   ssz_t ni = d->mo+2;
-  idx_t I = 0;
+  idx_t I = 0, s = 0;
 
   // eq. 10 from IPAC'15 paper
-  for (idx_t j=n-1, s=0; j >= 0; --j) {
+  RFOR(j,n) {
     idx_t i0 = j*ni + s;
     idx_t i1 = i0 + m[j];
 #if DESC_DEBUG > 0
@@ -446,13 +446,12 @@ tbl_bound_H(D *d)
 {
   DBGFUN(->);
   assert(d);
-  idx_t *H = d->H;
   ssz_t nj = d->nn, ni = d->mo+2;
+  idx_t *H = d->H, s = 0;
 
-  for (idx_t j=nj-1, s=0; j >= 0; --j) {
-    s += d->no[j];
-    for (idx_t i=1+MIN(s,d->mo); i < ni; ++i)
-      H[j*ni+i] = -1; // fill unreacheable orders in H with -1
+  RFOR(j,nj) {
+    s += d->no[j];           // fill unreacheable orders in H with -1
+    FOR(i,1+MIN(s,d->mo),ni) H[j*ni+i] = -1;
   }
 
 #if DESC_DEBUG > 1
@@ -476,9 +475,10 @@ tbl_build_H(D *d)
   H[ni-1] = 0;                         // complete row with zero
 
   // congruence for j=1..nn-1 variables (skip 1st)
-  for (idx_t i, j=1, m=2; j < nj; ++j) {
-    H[j*ni]=0, i=1;                    // first column
-
+  idx_t m = 2;
+  FOR(j,1,nj) {
+    H[j*ni] = 0;                       // first column
+    idx_t i = 1;
     for (; m < nc; ++m) {              // scan monomials
       if (Tv[m][j] != Tv[m-1][j]) {    // transition for variable j
         H[j*ni + i++] = m;             // save index in Tv
@@ -761,9 +761,8 @@ tbl_check_H (D *d)
   FOR(i,ni-1) // check for 1..n for first variable
     if (H[i] != i)                           return 6e6 + i;
 
-  FOR(j,1,nj) // check for no more zeros
-    for (idx_t i=1; i < ni; i++)
-      if (!H[j*ni+i])                        return 7e6 + j*ni+i;
+  FOR(j,1,nj) FOR(i,1,ni) // check for no more zeros
+    if (!H[j*ni+i])                          return 7e6 + j*ni+i;
 
   FOR(i,nc)
     if (tv2to[tbl_index_H(d,nn,To[i])] != i) return 8e6 + i;
@@ -823,7 +822,7 @@ get_min_dispatched_idx(int nb_threads, long long int dops[])
   DBGFUN(->);
   long long int min_disp = dops[nb_threads-1];
   int min_disp_idx = nb_threads - 1;
-  for (int t = nb_threads-1; t >= 0; --t)
+  RFOR(t,nb_threads)
     if (dops[t] <= min_disp) {
       min_disp = dops[t];
       min_disp_idx = t;
@@ -935,6 +934,23 @@ del_temps (D *d)
 static int desc_max = 0;
 static D *Ds[DESC_MAX_ARR];
 
+static inline log_t
+desc_equiv (const D *d, int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
+{
+  int same = d->nn == nn && d->mo == mo && d->np == np && (!np || d->po == po);
+
+  if (same) return no_ ? mad_mono_eq (nn   , d->no      , no_) : !d->uno ||
+                       ( mad_mono_eqn(nn-np, d->no      , mo ) &&
+                         mad_mono_eqn(np   , d->no+nn-np, po ) );
+  return 0;
+}
+
+static inline log_t
+desc_compat (const D *dc, const D *d)
+{
+  return dc->nn == d->nn && mad_mono_eq(d->nn, dc->no, d->no);
+}
+
 static inline D*
 desc_init (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
 {
@@ -946,9 +962,7 @@ desc_init (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
   printf("desc in: nn=%d, mo=%d, np=%d, po=%d\n", nn, mo, np, po);
 #endif
 
-  D *d = mad_malloc(sizeof *d);
-  memset(d, 0, sizeof *d);
-  d->size = sizeof *d;
+  D *d = mad_malloc(sizeof *d); memset(d, 0, sizeof *d);
 
   d->nn = nn;
   d->np = np;
@@ -957,15 +971,14 @@ desc_init (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
   d->po = po;
 
   ord_t *no = mad_malloc(nn * sizeof *d->no);
-  d->size += nn * sizeof *d->no;
-
   if (no_) {
-    d->uno = 1;
     mad_mono_copy(nn, no_, no);
+    d->uno = !mad_mono_eqn(nn-np, no      , mo) ||
+             !mad_mono_eqn(np   , no+nn-np, po);
   } else {
-    d->uno = 0;
     mad_mono_fill(nn-np, no, mo);
     mad_mono_fill(np, no+nn-np, po);
+    d->uno = 0;
   }
   d->no = no;
 
@@ -973,8 +986,8 @@ desc_init (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
   printf("desc no: "); mad_mono_print(nn,d->no, 0); printf("\n");
 #endif
 
-  set_monos(d);
-  d->nth = omp_get_max_threads();
+  d->nth  = omp_get_max_threads();
+  d->size = 0;
 
   DBGFUN(<-);
   return d;
@@ -987,11 +1000,38 @@ desc_build (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
   D *d = desc_init(nn, mo, np, po, no_);
   int err = 0, eid=0;
 
-  tbl_by_var(d);
-  tbl_by_ord(d); if ((err = tbl_check_T(d))) { eid=1; goto error; }
-  tbl_set_H (d); if ((err = tbl_check_H(d))) { eid=2; goto error; }
-  tbl_set_L (d); if ((err = tbl_check_L(d))) { eid=3; goto error; }
-  set_thread(d);
+  D *dc = NULL; // search for compatible descriptor (= same nn && no, != nv, np)
+  FOR(i,desc_max)
+    if (Ds[i] && desc_compat(Ds[i], d)) { dc = Ds[i]; break; }
+
+  if (!dc) {
+    d->shared = mad_malloc(sizeof *d->shared); *d->shared = 0;
+    set_monos (d);
+    tbl_by_var(d);
+    tbl_by_ord(d); if ((err = tbl_check_T(d))) { eid=1; goto error; }
+    tbl_set_H (d); if ((err = tbl_check_H(d))) { eid=2; goto error; }
+    tbl_set_L (d); if ((err = tbl_check_L(d))) { eid=3; goto error; }
+    set_thread(d);
+  } else {
+    d->shared  = dc->shared; ++*d->shared;
+    d->monos   = dc->monos;
+    d->ords    = dc->ords;
+    d->To      = dc->To;
+    d->Tv      = dc->Tv;
+    d->ocs     = dc->ocs;
+    d->ord2idx = dc->ord2idx;
+    d->tv2to   = dc->tv2to;
+    d->to2tv   = dc->to2tv;
+    d->H       = dc->H;
+    d->L       = dc->L;
+    d->L_idx   = dc->L_idx;
+    d->prms    = mad_malloc(d->nc * sizeof *d->prms);
+    d->size   += d->nc * sizeof *d->prms;
+
+    if (d->np) FOR(i,0,d->nc) d->prms[i] = mad_mono_ord(d->np, d->To[i]+d->nv);
+    else       memset(d->prms, 0, d->nc * sizeof *d->prms);
+  }
+
 #if DESC_USE_TMP
   set_temp  (d);
 #endif
@@ -1021,16 +1061,6 @@ error:
   printf(eid==1 ? "** >>>>> L BUG <<<<<\n" : "");
   printf("\nL=\n"); tbl_print_L(d);
   assert(0);
-}
-
-static inline int
-desc_equiv (const D *d, int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
-{
-  int same = d->nn == nn && d->mo == mo && d->np == np && (np ? d->po == po : 1);
-
-  if (same) return no_ ? mad_mono_eq(nn, d->no, no_) : !d->uno;
-
-  return 0;
 }
 
 static inline const D*
@@ -1296,32 +1326,37 @@ mad_desc_del (const D *d_)
   D *d = (void*)d_;
 
   mad_free((void*)d->no);
-  mad_free(d->monos);
-  mad_free(d->ords);
   mad_free(d->prms);
-  mad_free(d->To);
-  mad_free(d->Tv);
-  mad_free(d->ord2idx);
-  mad_free(d->tv2to);
-  mad_free(d->to2tv);
-  mad_free(d->H);
 
-  if (d->L) {  // if L exists, then L_idx exists too
-    FOR(i, 1+d->mo*(d->mo/2)) {
-      mad_free(d_->L[i]);
-      if (d->L_idx[i]) {
-        mad_free(*d->L_idx[i]);  // allocated as single block
-        mad_free( d->L_idx[i]);
+  if (*d->shared > 0) --*d->shared;
+  else {
+    mad_free(d->shared);
+    mad_free(d->monos);
+    mad_free(d->ords);
+    mad_free(d->To);
+    mad_free(d->Tv);
+    mad_free(d->ord2idx);
+    mad_free(d->tv2to);
+    mad_free(d->to2tv);
+    mad_free(d->H);
+
+    if (d->L) {  // if L exists, then L_idx exists too
+      FOR(i, 1+d->mo*(d->mo/2)) {
+        mad_free(d_->L[i]);
+        if (d->L_idx[i]) {
+          mad_free(*d->L_idx[i]);  // allocated as single block
+          mad_free( d->L_idx[i]);
+        }
       }
+      mad_free(d->L);
+      mad_free(d->L_idx);
     }
-    mad_free(d->L);
-    mad_free(d->L_idx);
-  }
 
-  if (d->ocs) {
-    int nth = d->nth + (d->nth > 1);
-    FOR(t,nth) mad_free(d->ocs[t]);
-    mad_free(d->ocs);
+    if (d->ocs) {
+      int nth = d->nth + (d->nth > 1);
+      FOR(t,nth) mad_free(d->ocs[t]);
+      mad_free(d->ocs);
+    }
   }
 
   // destroy temporaries

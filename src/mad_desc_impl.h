@@ -53,6 +53,7 @@ struct desc_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
   int   uno, nth;    // user provided no, max #threads or 1
   ssz_t nc;          // number of coefs (max length of TPSA)
 
+  int   *shared;     // counter of shared desc (all tables below except prms)
   ord_t *monos,      // 'matrix' storing the monomials (sorted by var)
         *ords,       // order of each mono of To
         *prms,       // order of parameters in each mono of To (zero = no prms)
@@ -67,9 +68,9 @@ struct desc_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
        **L,          // multiplication indexes: L[oa,ob]->L_ord; L_ord[ia,ib]->ic
       ***L_idx;      // L_idx[oa,ob]->[start] [split] [end] idxs in L
 
-  size_t size;       // bytes used by desc
+  size_t size;       // bytes used by tables
 
-  // permanent temporaries per thread for internal use
+  // permanent temporaries per thread for internal use (not shared)
 #if DESC_USE_TMP
    tpsa_t ** t;      // tmp for  tpsa
   ctpsa_t **ct;      // tmp for ctpsa
