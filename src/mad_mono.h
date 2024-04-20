@@ -52,6 +52,7 @@ int   mad_mono_ord   (ssz_t n, const ord_t a[]); // sum of orders
 num_t mad_mono_ordp  (ssz_t n, const ord_t a[], idx_t stp); // product of orders
 num_t mad_mono_ordpf (ssz_t n, const ord_t a[], idx_t stp); // product of factorials of orders
 
+log_t mad_mono_eqn   (ssz_t n, const ord_t a[],       ord_t b);
 log_t mad_mono_eq    (ssz_t n, const ord_t a[], const ord_t b[]);
 log_t mad_mono_lt    (ssz_t n, const ord_t a[], const ord_t b[]);
 log_t mad_mono_le    (ssz_t n, const ord_t a[], const ord_t b[]);

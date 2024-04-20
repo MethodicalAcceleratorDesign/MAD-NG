@@ -107,6 +107,14 @@ mad_mono_ordpf (ssz_t n, const ord_t a[n], idx_t stp)
 }
 
 log_t
+mad_mono_eqn (ssz_t n, const ord_t a[n], ord_t b)
+{
+  assert(a);
+  FOR(i,n) if (a[i] != b) return FALSE;
+  return TRUE;
+}
+
+log_t
 mad_mono_eq (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
   assert(a && b);
