@@ -21,6 +21,11 @@
 
 // --- conversion (special cases) ---------------------------------------------o
 
+enum {
+  static_assert__check_hdr_compat = 1/(offsetof(struct  tpsa_, coef) ==
+                                       offsetof(struct ctpsa_, coef))
+};
+
 void
 mad_ctpsa_real (const ctpsa_t *t, tpsa_t *c)
 {
@@ -64,8 +69,8 @@ mad_ctpsa_cplx (const tpsa_t *re_, const tpsa_t *im_, ctpsa_t *c)
   case 1: { TPSA_SCAN(c) c->coef[i] = re_->coef[i];   break; }
   case 2: { TPSA_SCAN(c) c->coef[i] = im_->coef[i]*I; break; }
   case 3: { mad_ctpsa_clear0(c, c->lo, c->hi);
-          { TPSA_SCAN(re) c->coef[i]  = re->coef[i];   }
-          { TPSA_SCAN(im) c->coef[i] += im->coef[i]*I; }}
+          { TPSA_SCAN(re_) c->coef[i]  = re_->coef[i];   }
+          { TPSA_SCAN(im_) c->coef[i] += im_->coef[i]*I; }}
   }
   // see DBGTPSA(c)
   if (TPSA_DEBUG > 0 && mad_tpsa_dbga) mad_ctpsa_debug(c,"c",__func__,__LINE__,0);
