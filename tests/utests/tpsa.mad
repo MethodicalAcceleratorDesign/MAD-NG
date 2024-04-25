@@ -1,7 +1,7 @@
 --[=[
  o-----------------------------------------------------------------------------o
  |
- | GTPSA module regression tests - real tpsa
+ | GTPSA module unit tests - real tpsa
  |
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
@@ -21,11 +21,13 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local vector, tpsa, gtpsad                                       in MAD
+local vector, tpsa, ctpsa, gtpsad, tpsa_eqn                                in MAD
 local eps, abs, pi                                               in MAD.constant
 local abs                                                        in MAD.gmath
 local ident                                                      in MAD.gfunc
-local assertTrue, assertEquals, assertAlmostEquals               in MAD.utest
+local assertTrue, assertEquals, assertAlmostEquals, assrtIsFalse,
+      assertErrorMsgContains, assertError, assertIsNil, assertFalse                                     in MAD.utest
+local is_tpsa, is_ctpsa, is_gtpsad, is_number, is_complex                            in MAD.typeid
 
 -- locals ---------------------------------------------------------------------o
 
@@ -35,130 +37,729 @@ local ord = {1,2,3,4,5,6,7,10,12,15}
 
 -- regression test suites -----------------------------------------------------o
 
-TestTPSAFun = {}
 
-local function checkVal (r, c, neg, alt, trc)
-  local tol = neg and c.n_eps or alt and c.a_eps or c.eps or eps
-  neg = neg or ident
-  trc = trc or 0
-  if not r:isvalid() then r:debug() end
-  for i=1,#r do
-    local v = neg(c[i],i)
-    if trc > 0 then
-      local is, vs, rs, es = string.format("%-2d"  , i),
-                             string.format("%+.17e", v),
-                             string.format("%+.17e", r:get(i))
-      if abs(v) > 2
-      then es = math.ceil( abs(r:get(i)/v-1)/eps/i )
-      else es = math.ceil( abs(r:get(i)-v  )/eps/i )
-      end
-      io.write('i=',is,', v=',vs,', r=',rs,', es=', es, es>99 and ' **\n' or '\n')
-    end
-    if trc < 2 then
-      if abs(v) > 2
-      then assertAlmostEquals(r:get(i)/v-1, 0, i*tol)
-      else assertAlmostEquals(r:get(i)    , v, i*tol)
-      end
-    end
+TestIs = {}
+TestConstr = {}
+TestLengOp = {}
+TestProm = {}
+TestLogicOper = {}
+TestCloning = {}
+TestUnaryMinus = {}
+TestArithmetic = {}
+TestSetGet  = {}
+
+local x = 2
+local y = 2 + 2i
+local ord  = 15
+local nv1 = 1
+local nv2 = 2
+local d1v = gtpsad(nv1, ord)
+local d2v = gtpsad(nv2, ord)
+local t1v = tpsa(d1v)
+local ct1v = ctpsa(d1v)
+local t2v = tpsa(d2v)
+local ct2v = ctpsa(d2v)
+
+function TestConstr:testConstrDefault()
+
+  local max_ord2v = ((ord+nv2)*(ord+nv2 - 1))/2
+  local d3 = gtpsad(nil, nil, 2) -- if we have params then po is 1 by default otherwise 0
+  print(max_ord2v)
+  assertEquals(t2v.mo,ord)
+  assertEquals(ct2v.mo,ord)
+
+  assertEquals(d2v.nv,2)
+  assertEquals(d2v.mo,15)
+  assertEquals(d2v.np, 0)
+  assertEquals(d2v.po, 0)
+
+  assertEquals(d3.nv,6)
+  assertEquals(d3.mo,1)
+  assertEquals(d3.np, 2)
+  assertEquals(d3.po, 1)
+  
+  --check all order equal to zeros
+  for o = 1, max_ord2v do
+    assertEquals(t2v:get(o),0)
+    assertEquals(ct2v:get(o), 0 + 0i)
   end
-end
 
-local function checkFun1 (fnam, trc)
-  local d = gtpsad(1,15)
-  local fun, t, r = dat.fun[fnam]
-  if trc then io.write('\n') end
-  for _,c in ipairs(fun) do
-  for _,o in ipairs(ord) do
---  for o=1,d.mo do
-    if fun.omin and o < fun.omin then break end -- limit order
-    if fun.omax and o > fun.omax then break end -- limit order
-    if c.omin   and o < c.omin   then break end -- limit order (local)
-    if c.omax   and o > c.omax   then break end -- limit order (local)
-    if trc then io.write('f=',fnam,'(',c.x0,') @ ',o,'\n') end
-    t = tpsa(o):set(1,c.x0):set(2,1)
-    r = t[fnam](t)   ; checkVal(r, c, nil, nil, trc) -- positive (r ~= t)
-    if trc then io.write('f=',fnam,'_ref(',c.x0,') @ ',o,'\n') end
-    r = t[fnam](t,t) ; checkVal(r, c, nil, nil, trc) -- aliased  (r == t)
+  --same check for only one variable 
+  assertEquals(t1v.mo,ord)
+  assertEquals(ct1v.mo,ord)
 
-    if fun.alt then
-      if trc then io.write('f=',fnam,'_alt(',c.x0,') @ ',o,'\n') end
-      t = tpsa(o):set(1,c.x0):set(2,1)
-      r = fun.alt(t) ; checkVal(r, c, nil, fun.alt, trc) -- alternate function
-    end
-
-    if fun.neg and c.x0 ~= 0 then
-      if trc then io.write('f=',fnam,'_neg(',-c.x0,') @ ',o,'\n') end
-      t = tpsa(o):set(1,-c.x0):set(2,1)
-      r = t[fnam](t) ; checkVal(r, c, fun.neg, nil, trc) -- negative
-    end
-  end end
-end
-
-TestTPSAFun.testInv   = \s -> checkFun1('inv')
-TestTPSAFun.testISqrt = \s -> checkFun1('invsqrt')
-TestTPSAFun.testSqrt  = \s -> checkFun1('sqrt')
-TestTPSAFun.testExp   = \s -> checkFun1('exp')
-TestTPSAFun.testLog   = \s -> checkFun1('log')
-TestTPSAFun.testSin   = \s -> checkFun1('sin')
-TestTPSAFun.testCos   = \s -> checkFun1('cos')
-TestTPSAFun.testTan   = \s -> checkFun1('tan')
-TestTPSAFun.testCot   = \s -> checkFun1('cot')
-TestTPSAFun.testSinc  = \s -> checkFun1('sinc')
-TestTPSAFun.testSinh  = \s -> checkFun1('sinh')
-TestTPSAFun.testCosh  = \s -> checkFun1('cosh')
-TestTPSAFun.testTanh  = \s -> checkFun1('tanh')
-TestTPSAFun.testCoth  = \s -> checkFun1('coth')
-!TestTPSAFun.testSinhc = \s -> checkFun1('sinhc')
-TestTPSAFun.testAsin  = \s -> checkFun1('asin')
-TestTPSAFun.testAcos  = \s -> checkFun1('acos')
-TestTPSAFun.testAtan  = \s -> checkFun1('atan')
-TestTPSAFun.testAcot  = \s -> checkFun1('acot')
-TestTPSAFun.testAsinh = \s -> checkFun1('asinh')
-TestTPSAFun.testAcosh = \s -> checkFun1('acosh')
-TestTPSAFun.testAtanh = \s -> checkFun1('atanh')
-TestTPSAFun.testAcoth = \s -> checkFun1('acoth')
-TestTPSAFun.testErf   = \s -> checkFun1('erf')
-
--- TODO: operators
-
--- performance tests ----------------------------------------------------------o
-
-Test_TPSAFun = {}
-
-local ord_ = {1,2,3,6,7}
-local div_ = 5 -- shrink the tests by factor 5
-
-local function benchFun1 (fnam, x0, trc)
-  local d = gtpsad(6,15)
-  local fun, t, r = dat.fun[fnam]
-  for _,o in ipairs(ord_) do
---  for o=1,d.mo do
-    if fun.omin and o < fun.omin then break end -- limit order
-    if fun.omax and o > fun.omax then break end -- limit order
-    t = tpsa(o):setvar(x0):set(2,1):set(3,1):set(4,1):set(5,1):set(6,1):set(7,1)
-    r = tpsa(o)
-    if not trc then io.write(o," ") io.flush() end
-    local t0 = os.clock()
-    for i=1,fun.iter[o]/div_ do t[fnam](t,r) end
-    local dt = os.clock()-t0
-    assertAlmostEquals( dt, 0.5/div_, 1/div_ )
-    if trc then
-      local n = math.floor(0.5*fun.iter[o]/dt)
-      io.write(string.format("\no=%-2d, dt=%.4f, n=%-8d, ", o, dt, n),
-               "len=", t:length(o), "  ")
-    end
+  --check all order equal to zeros
+  for o = 1, ord do
+    assertEquals(t1v:get(o),0)
+    assertEquals(ct1v:get(o), 0 + 0i)
   end
+ 
 end
 
-Test_TPSAFun.testInv   = \s -> benchFun1('inv'    , pi/5)
-Test_TPSAFun.testSqrt  = \s -> benchFun1('sqrt'   , pi/5)
-Test_TPSAFun.testExp   = \s -> benchFun1('exp'    , pi/5)
-Test_TPSAFun.testLog   = \s -> benchFun1('log'    , pi/3)
-Test_TPSAFun.testSin   = \s -> benchFun1('sin'    , pi/5)
-Test_TPSAFun.testCos   = \s -> benchFun1('cos'    , pi/5)
-Test_TPSAFun.testTan   = \s -> benchFun1('tan'    , pi/5)
-Test_TPSAFun.testISqrt = \s -> benchFun1('invsqrt', pi/5)
 
--- end ------------------------------------------------------------------------o
+function TestLengOp:testLength()
+
+  assertEquals(136, #t2v)
+  assertEquals(136, #ct2v)
+  assertEquals(16, #t1v)
+  assertEquals(16, #ct1v)
+
+end
 
 
+function TestIs:testTandD()
+
+  assertFalse(is_tpsa(t))
+  assertFalse(is_ctpsa(ct))
+  assertFalse(is_gtpsad(d))
+  assertFalse(is_tpsa(ct))
+  assertFalse(is_ctpsa(t))
+  assertFalse(is_tpsa(d))
+  assertFalse(is_ctpsa(d))
+  assertFalse(is_gtpsad(t))
+  assertFalse(is_gtpsad(ct))
+  assertFalse(is_tpsa(0))
+  assertFalse(is_ctpsa(0))
+  assertFalse(is_gtpsad(0))
+  assertFalse(is_tpsa(t))
+  assertFalse(is_ctpsa(ct))
+  assertFalse(is_gtpsad(d))
+  assertFalse(is_tpsa(ct))
+  assertFalse(is_ctpsa(t))
+  assertFalse(is_tpsa(d))
+  assertFalse(is_ctpsa(d))
+  assertFalse(is_gtpsad(t))
+  assertFalse(is_gtpsad(ct))
+  assertFalse(is_tpsa(0))
+  assertFalse(is_ctpsa(0))
+  assertFalse(is_gtpsad(0))
+
+  end
+
+
+function TestSetGet:testSet()
+
+end
+
+function TestSetGet:testGet()
+end
+
+
+
+function TestLogicOper:testEqSingleVar()
+  
+  local t_temp = tpsa(d1v, ord)
+  local ct_temp = ctpsa(d1v, ord)
+  local t_smaller_ord = tpsa(d1v, ord-1)
+  local ct_smaller_ord = ctpsa(d1v, ord-1)
+
+  assertTrue(0 == t1v)
+  assertTrue(t1v == 0)
+  assertTrue(t1v == (0 + 0i))
+  assertTrue((0 + 0i) == t1v)
+  assertTrue(t1v == t1v)
+  assertTrue(0 == ct1v)
+  assertTrue(ct1v == 0)
+  assertTrue(ct1v == (0 + 0i))
+  assertTrue((0 + 0i) == ct1v)
+  assertTrue(ct1v == ct1v)
+  assertTrue(t1v == ct1v)
+  assertTrue(ct1v == t1v)
+  assertTrue(t1v == t_temp)
+  assertTrue(ct1v == ct_temp)
+
+  t1v:set0(x + 1)
+  ct1v:set0(y + 1 +1i)
+
+  assertFalse((t1v == x))
+  assertFalse((x == t1v))
+  assertFalse((t1v == y))
+  assertFalse((y == t1v))
+  assertFalse((t_temp == t1v))
+  assertFalse((t1v == t_temp))
+  assertFalse((ct1v == x))
+  assertFalse((x == ct1v))
+  assertFalse((ct1v == y))
+  assertFalse((y == ct1v))
+  assertFalse((ct_temp == ct1v))
+  assertFalse((ct1v == ct_temp))
+
+  t_temp:set(2,1)
+  ct_temp:set(2,1)
+  t_temp:set0(0)
+  ct_temp:set0(0)
+
+  assertTrue(not(0 == t_temp))
+  assertTrue(not(t_temp == 0))
+  assertTrue(not(t_temp == (0 + 0i)))
+  assertTrue(not((0 + 0i) == t_temp))
+  assertTrue(t_temp == t_temp)
+  assertTrue(not(0 == ct_temp))
+  assertTrue(not(ct_temp == 0))
+  assertTrue(not(ct_temp == (0 + 0i)))
+  assertTrue(not((0 + 0i) == ct_temp))
+  assertTrue(ct_temp == ct_temp)
+  assertTrue(t_temp == ct_temp)
+  assertTrue(ct_temp == t_temp)
+  assertTrue(not(t_temp == t1v))
+  assertTrue(not(ct1v == ct_temp))
+
+  assertError(t_smaller_ord.__eq ,t_smaller_ord, t1v)
+  assertError(t1v.__eq ,t1v, t_smaller_ord)
+  assertError(ct_smaller_ord.__eq ,ct_smaller_ord, ct)
+  assertError(ct1v.__eq ,ct1v, ct_smaller_ord)
+  assertError(ct_smaller_ord.__eq ,ct_smaller_ord, t1v)
+  assertError(t1v.__eq ,t1v, ct_smaller_ord)
+  assertError(t_smaller_ord.__eq ,t_smaller_ord, ct1v)
+  assertError(ct1v.__eq ,ct1v, t_smaller_ord)
+
+  t1v:set(1, 0)
+  ct1v:set(1, 0)
+  t1v:set(2, 0)
+  ct1v:set(2, 0)
+end
+
+
+function TestLogicOper:testEqMultiVar()
+
+  local t_temp = tpsa(d2v, ord)
+  local ct_temp = ctpsa(d2v, ord)
+  local t_smaller_ord = tpsa(d2v, ord-1)
+  local ct_smaller_ord = ctpsa(d2v, ord-1)
+  print(t_smaller_ord.mo)
+  assertTrue(0 == t2v)
+  assertTrue(t2v == 0)
+  assertTrue(t2v == (0 + 0i))
+  assertTrue((0 + 0i) == t2v)
+  assertTrue(t2v == t2v)
+  assertTrue(0 == ct2v)
+  assertTrue(ct2v == 0)
+  assertTrue(ct2v == (0 + 0i))
+  assertTrue((0 + 0i) == ct2v)
+  assertTrue(ct2v == ct2v)
+  assertTrue(t2v == ct2v)
+  assertTrue(ct2v == t2v)
+  assertTrue(t2v == t_temp)
+  assertTrue(ct2v == ct_temp)
+
+  t2v:set(1, x + 2)
+  ct2v:set(1, y + 1 +1i)
+
+  assertFalse((t2v == x))
+  assertFalse((x == t2v))
+  assertFalse((t2v == y))
+  assertFalse((y == t2v))
+  assertFalse((t_temp == t2v))
+  assertFalse((t2v == t_temp))
+  assertFalse((ct2v == x))
+  assertFalse((x == ct2v))
+  assertFalse((ct2v == y))
+  assertFalse((y == ct2v))
+  assertFalse((ct_temp == ct2v))
+  assertFalse((ct2v == ct_temp))
+
+  t_temp:set(2,1)
+  ct_temp:set(2,1)
+  t_temp:set(1,0)
+  ct_temp:set(1,0)
+
+  assertTrue(not(0 == t_temp))
+  assertTrue(not(t_temp == 0))
+  assertTrue(not(t_temp == (0 + 0i)))
+  assertTrue(not((0 + 0i) == t_temp))
+  assertTrue(t_temp == t_temp)
+  assertTrue(not(0 == ct_temp))
+  assertTrue(not(ct_temp == 0))
+  assertTrue(not(ct_temp == (0 + 0i)))
+  assertTrue(not((0 + 0i) == ct_temp))
+  assertTrue(ct_temp == ct_temp)
+  assertTrue(t_temp == ct_temp)
+  assertTrue(ct_temp == t_temp)
+  assertTrue(not(t_temp == t2v))
+  assertTrue(not(ct2v == ct_temp))
+
+
+  assertError(t_smaller_ord.__eq ,t_smaller_ord, t2v)
+  assertError(t2v.__eq ,t2v, t_smaller_ord)
+  assertError(ct_smaller_ord.__eq ,ct_smaller_ord, ct)
+  assertError(ct2v.__eq ,ct2v, ct_smaller_ord)
+  assertError(ct_smaller_ord.__eq ,ct_smaller_ord, t2v)
+  assertError(t2v.__eq ,t2v, ct_smaller_ord)
+  assertError(t_smaller_ord.__eq ,t_smaller_ord, ct2v)
+  assertError(ct2v.__eq ,ct2v, t_smaller_ord)
+
+  t2v:set(1, 0)
+  ct2v:set(1, 0)
+  t2v:set(2, 0)
+  ct2v:set(2, 0)
+end
+
+
+function TestLogicOper:testDiffSingVar()
+
+  
+end
+
+
+function TestLogicOper:testDiffMultiVar()
+
+end
+
+
+
+function TestLogicOper:testLessSingVar()
+
+  local t_temp = tpsa(d1v, ord)
+  local ct_temp = ctpsa(d1v, ord)
+  local t_smaller_ord = tpsa(d1v, ord-1)
+  t1v:print()
+  assertFalse(1<t1v)
+  assertTrue(t1v<1)
+  assertFalse(1<=tv)
+  assertTrue(tv<=1)
+  assertFalse(t<t_temp)
+  assertTrue(t<=t_temp)
+
+  t_temp:set(1,1)
+  assertTrue(not(t_temp<t))
+  assertTrue(t<t_temp)
+  
+  assertError(t3.__lt ,t3, t)
+  assertError(t.__lt ,t, t3)
+  assertError(t3.__le ,t3, t)
+  assertError(t.__le ,t, t3)
+
+end
+
+
+function TestLogicOper:testLessSingVar()
+
+  local t_temp = tpsa(d1v, ord)
+  local ct_temp = ctpsa(d1v, ord)
+  local t_smaller_ord = tpsa(d1v, ord-1)
+  t1v:print()
+  assertFalse(1<t1v)
+  assertTrue(t1v<1)
+  assertFalse(1<=tv)
+  assertTrue(tv<=1)
+  assertFalse(t<t_temp)
+  assertTrue(t<=t_temp)
+
+  t_temp:set(1,1)
+  assertTrue(not(t_temp<t))
+  assertTrue(t<t_temp)
+  
+  assertError(t3.__lt ,t3, t)
+  assertError(t.__lt ,t, t3)
+  assertError(t3.__le ,t3, t)
+  assertError(t.__le ,t, t3)
+
+end
+
+
+function TestCloning:testCopy()
+
+  
+  local t_temp = tpsa(d)
+  
+  local ct2 = ctpsa(d)
+
+  t:set(1,1)
+  t:set(3,1)
+  t:set(5,1)
+
+  ct:set(1,1)
+  ct:set(3,1)
+  ct:set(5,1)
+  
+ 
+  t:copy(t2)
+  ct:copy(ct2)
+
+  assertTrue(t==t2)
+  assertTrue(ct==ct2)
+
+  t:set(1,0)
+  ct:set(1,0)
+  
+  t2 = t:copy()
+  ct2 = ct:copy()
+  assertTrue(t==t2)
+  assertTrue(ct==ct2)
+
+  --same check for 1 variable
+  local mo  = 15
+  local nv = 1
+  local d = gtpsad(nv, mo)
+  
+  local t2 = tpsa(d)
+  
+  local ct2 = ctpsa(d)
+
+  t:set(1,1)
+  t:set(3,1)
+  t:set(5,1)
+
+  ct:set(1,1)
+  ct:set(3,1)
+  ct:set(5,1)
+  
+ 
+  t:copy(t2)
+  ct:copy(ct2)
+  assertTrue(t==t2)
+  assertTrue(ct==ct2)
+
+  t:set(1,0)
+  ct:set(1,0)
+  
+  t2 = t:copy()
+  ct2 = ct:copy()
+  assertTrue(t==t2)
+  assertTrue(ct==ct2)
+
+end
+
+function TestCloning:testSame()
+
+  
+  local t2, ct2, t3, ct3, t4, ct4, t5, ct5
+  
+  
+
+  --print bug test parameter
+
+  t2 = t:same(nil,10)
+  ct2 = ct:same()
+
+  assertTrue(is_tpsa(t2))
+  assertTrue(is_ctpsa(ct2))
+  assertEquals(t2.mo, 10)
+
+  for o=1, #t - 1 do
+  assertTrue(is_number(t2:get(1)))
+  assertTrue(is_complex(ct2:get(1)))
+  end
+
+  t3 = t:same(1)
+  ct3 = ct:same(1)
+  assertTrue(is_tpsa(t3))
+  assertTrue(is_tpsa(ct3))
+  for o=1, #t - 1 do
+  assertTrue(is_number(t3:get(1)))
+  assertTrue(is_number(ct3:get(1)))
+  end
+
+  t4 = t:same(1 + 1i)
+  ct4 = ct:same(1 + 1i)
+  assertTrue(is_ctpsa(t4))
+  assertTrue(is_ctpsa(ct4))
+  for o=1, #t - 1 do
+  assertTrue(is_complex(t4.coef[0]))
+  assertTrue(is_complex(ct4.coef[0]))
+  end
+
+  t5 = t:same(nil, 1)
+  ct5 = ct:same(nil, 1)
+  assertTrue(is_tpsa(t5))
+  assertTrue(is_ctpsa(ct5))
+  assertEquals(t5.mo,1)
+  assertEquals(ct5.mo,1)
+  
+
+  --same check for 1 variable
+  local mo  = 15
+  local nv = 1
+  local d = gtpsad(nv, mo)
+  
+  
+  local t2, ct2, t3, ct3, t4, ct4, t5, ct5
+
+  t2 = t:same()
+  ct2 = ct:same()
+  assertTrue(is_tpsa(t2))
+  assertTrue(is_ctpsa(ct2))
+
+  for o=1, #t - 1 do
+  assertTrue(is_number(t2.coef[0]))
+  assertTrue(is_complex(ct2.coef[0]))
+  end
+
+  t3 = t:same(1)
+  ct3 = ct:same(1)
+  assertTrue(is_tpsa(t3))
+  assertTrue(is_tpsa(ct3))
+  for o=1, #t - 1 do
+  assertTrue(is_number(t3.coef[0]))
+  assertTrue(is_number(ct3.coef[0]))
+  end
+
+  t4 = t:same(1 + 1i)
+  ct4 = ct:same(1 + 1i)
+  assertTrue(is_ctpsa(t4))
+  assertTrue(is_ctpsa(ct4))
+  for o=1, #t - 1 do
+  assertTrue(is_complex(t4.coef[0]))
+  assertTrue(is_complex(ct4.coef[0]))
+  end
+
+  t5 = t:same(nil, 1)
+  ct5 = ct:same(nil, 1)
+  assertTrue(is_tpsa(t5))
+  assertTrue(is_ctpsa(ct5))
+  assertEquals(t5.mo,1)
+  assertEquals(ct5.mo,1)
+  
+
+end
+
+
+function TestUnaryMinus:testminus()
+
+  
+  local t2 = tpsa(d)
+  
+  local ct2 = ctpsa(d)
+
+
+  t:set(1,1)
+  t:set(3,1)
+  t:set(5,1)
+
+  t2:set(1,-1)
+  t2:set(3,-1)
+  t2:set(5,-1)
+
+  
+  ct:set(1,1 + 1i)
+  ct:set(3,1 + 1i)
+  ct:set(5,1 + 1i)
+
+  ct2:set(1,-1 - 1i)
+  ct2:set(3,-1 - 1i)
+  ct2:set(5,-1 - 1i)
+  
+  --cannot do something like this (-t2):print() ('struct tpsa_' is not callable)
+
+  assertTrue(t == -t2)
+  assertTrue(ct2 == -ct)
+
+  --same check for one variable
+  local mo  = 15
+  local nv = 1
+  local d = gtpsad(nv, mo)
+  
+  local t2 = tpsa(d)
+  
+  local ct2 = ctpsa(d)
+
+
+  t:set(1,1)
+  t:set(3,1)
+  t:set(5,1)
+
+  t2:set(1,-1)
+  t2:set(3,-1)
+  t2:set(5,-1)
+
+  
+  ct:set(1,1 + 1i)
+  ct:set(3,1 + 1i)
+  ct:set(5,1 + 1i)
+
+  ct2:set(1,-1 - 1i)
+  ct2:set(3,-1 - 1i)
+  ct2:set(5,-1 - 1i)
+
+
+  assertTrue(t == -t2)
+  assertTrue(ct2 == -ct)
+
+end
+
+
+function TestArithmetic:testaddition()
+
+  local mo  = 15
+  local nv = 1
+  local np = 3
+  local po = 2
+  local d = gtpsad(nv, mo, np, po)
+  
+  
+  local t2 = tpsa(d)
+  local ct2 = ctpsa(d)
+  local temp1, temp2
+
+  t.set(2,2)
+  t2.set(-2,1)
+  ct.set(2 + 2i,1)
+  ct2.set(-2 + 2i,1)
+  
+  assertEquals((t + x).coef[0], 3)
+
+  
+end
+
+function TestArithmetic:testsubtraction()
+
+end
+
+function TestArithmetic:testmultiplication()
+
+end
+
+function TestArithmetic:testdivision()
+
+end
+
+function TestArithmetic:testpow()
+
+end
+
+
+function TestProm:testPromotion()
+
+  local mo  = 15
+  local nv = 1
+  local np = 3
+  local po = 2
+  local d = gtpsad(nv, mo, np, po)
+  
+  local t2 = tpsa(d)
+  local ct2 = ctpsa(d)
+  
+  assertTrue(is_tpsa(x + t))
+  assertTrue(is_tpsa(t + x))
+  assertTrue(is_tpsa(t + t2))
+  assertTrue(is_ctpsa(x + ct))
+  assertTrue(is_ctpsa(y + t))
+  assertTrue(is_ctpsa(y + ct))
+  assertTrue(is_ctpsa(t + ct))
+  assertTrue(is_ctpsa(ct + x))
+  assertTrue(is_ctpsa(ct + y))
+  assertTrue(is_ctpsa(ct + t))
+  assertTrue(is_ctpsa(ct + ct2))
+
+  assertTrue(is_tpsa(x - t))
+  assertTrue(is_tpsa(t - x))
+  assertTrue(is_tpsa(t - t2))
+  assertTrue(is_ctpsa(x - ct))
+  assertTrue(is_ctpsa(y - t))
+  assertTrue(is_ctpsa(x - ct))
+  assertTrue(is_ctpsa(t - ct))
+  assertTrue(is_ctpsa(ct - x))
+  assertTrue(is_ctpsa(ct - y))
+  assertTrue(is_ctpsa(ct - t))
+  assertTrue(is_ctpsa(ct - ct2))
+
+  assertTrue(is_tpsa(x * t))
+  assertTrue(is_tpsa(t * x))
+  assertTrue(is_tpsa(t * t2))
+  assertTrue(is_ctpsa(x * ct))
+  assertTrue(is_ctpsa(y * t))
+  assertTrue(is_ctpsa(x * ct))
+  assertTrue(is_ctpsa(t * ct))
+  assertTrue(is_ctpsa(ct * x))
+  assertTrue(is_ctpsa(ct * y))
+  assertTrue(is_ctpsa(ct * t))
+  assertTrue(is_ctpsa(ct * ct2))
+
+  t:set0(2)
+  ct:set0(2 + 2i)
+  t2:set0(2)
+  ct2:set0(2 + 2i)
+  
+  assertTrue(is_tpsa(x / t))
+  assertTrue(is_tpsa(t / x))
+  assertTrue(is_tpsa(t / t2))
+  assertTrue(is_ctpsa(x / ct))
+  assertTrue(is_ctpsa(y / t))
+  assertTrue(is_ctpsa(x / ct))
+  assertTrue(is_ctpsa(t / ct))
+  assertTrue(is_ctpsa(ct / x))
+  assertTrue(is_ctpsa(ct / y))
+  assertTrue(is_ctpsa(ct / t))
+  assertTrue(is_ctpsa(ct / ct2))
+
+  assertTrue(is_tpsa(x ^ t))
+  assertTrue(is_tpsa(t ^ x))
+  assertTrue(is_tpsa(t ^ t2))
+  assertTrue(is_ctpsa(x ^ ct))
+  assertTrue(is_ctpsa(y ^ t))
+  assertTrue(is_ctpsa(x ^ ct))
+  assertTrue(is_ctpsa(t ^ ct))
+  assertTrue(is_ctpsa(ct ^ x))
+  assertTrue(is_ctpsa(ct ^ y))
+  assertTrue(is_ctpsa(ct ^ t))
+  assertTrue(is_ctpsa(ct ^ ct2))
+  
+  local t2 = tpsa(d)
+  local ct2 = ctpsa(d)
+  
+  assertTrue(is_tpsa(x + t))
+  assertTrue(is_tpsa(t + x))
+  assertTrue(is_tpsa(t + t2))
+  assertTrue(is_ctpsa(x + ct))
+  assertTrue(is_ctpsa(y + t))
+  assertTrue(is_ctpsa(y + ct))
+  assertTrue(is_ctpsa(t + ct))
+  assertTrue(is_ctpsa(ct + x))
+  assertTrue(is_ctpsa(ct + y))
+  assertTrue(is_ctpsa(ct + t))
+  assertTrue(is_ctpsa(ct + ct2))
+
+  assertTrue(is_tpsa(x - t))
+  assertTrue(is_tpsa(t - x))
+  assertTrue(is_tpsa(t - t2))
+  assertTrue(is_ctpsa(x - ct))
+  assertTrue(is_ctpsa(y - t))
+  assertTrue(is_ctpsa(x - ct))
+  assertTrue(is_ctpsa(t - ct))
+  assertTrue(is_ctpsa(ct - x))
+  assertTrue(is_ctpsa(ct - y))
+  assertTrue(is_ctpsa(ct - t))
+  assertTrue(is_ctpsa(ct - ct2))
+
+  assertTrue(is_tpsa(x * t))
+  assertTrue(is_tpsa(t * x))
+  assertTrue(is_tpsa(t * t2))
+  assertTrue(is_ctpsa(x * ct))
+  assertTrue(is_ctpsa(y * t))
+  assertTrue(is_ctpsa(x * ct))
+  assertTrue(is_ctpsa(t * ct))
+  assertTrue(is_ctpsa(ct * x))
+  assertTrue(is_ctpsa(ct * y))
+  assertTrue(is_ctpsa(ct * t))
+  assertTrue(is_ctpsa(ct * ct2))
+
+  t:set0(2)
+  ct:set0(2 + 2i)
+  t2:set0(2)
+  ct2:set0(2 + 2i)
+  
+  assertTrue(is_tpsa(x / t))
+  assertTrue(is_tpsa(t / x))
+  assertTrue(is_tpsa(t / t2))
+  assertTrue(is_ctpsa(x / ct))
+  assertTrue(is_ctpsa(y / t))
+  assertTrue(is_ctpsa(x / ct))
+  assertTrue(is_ctpsa(t / ct))
+  assertTrue(is_ctpsa(ct / x))
+  assertTrue(is_ctpsa(ct / y))
+  assertTrue(is_ctpsa(ct / t))
+  assertTrue(is_ctpsa(ct / ct2))
+
+  assertTrue(is_tpsa(x ^ t))
+  assertTrue(is_tpsa(t ^ x))
+  assertTrue(is_tpsa(t ^ t2))
+  assertTrue(is_ctpsa(x ^ ct))
+  assertTrue(is_ctpsa(y ^ t))
+  assertTrue(is_ctpsa(x ^ ct))
+  assertTrue(is_ctpsa(t ^ ct))
+  assertTrue(is_ctpsa(ct ^ x))
+  assertTrue(is_ctpsa(ct ^ y))
+  assertTrue(is_ctpsa(ct ^ t))
+  assertTrue(is_ctpsa(ct ^ ct2))
+
+end
