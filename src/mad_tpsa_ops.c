@@ -444,8 +444,13 @@ FUN(mul) (const T *a, const T *b, T *r)
         hpoly_mul_ser(a,b,c);
 
     }
+#ifdef TPSA_STRICT
   }
   FUN(update)(c);
+#else
+    FUN(update)(c);
+  }
+#endif
 
 ret:
   assert(a != c && b != c);
@@ -533,7 +538,6 @@ FUN(equ) (const T *a, const T *b, num_t tol)
 
   T c_ = {.d=a->d, .mo=a->d->mo, .ao=a->d->mo}, *c = &c_; // fake TPSA
 
-  // a is the left-most one
   if (a->lo > b->lo) { const T *t; SWAP(a,b,t); }
 
   ord_t alo = a->lo, ahi = a->hi;
