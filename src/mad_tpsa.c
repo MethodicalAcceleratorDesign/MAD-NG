@@ -67,7 +67,7 @@ check (const T *t, ord_t *o_, num_t *r_)
 {
   ord_t _o = 0;
 
-  if (!t->d || t->mo > t->d->mo || t->hi > t->mo ||
+  if (!t->d || t->mo > t->d->mo || t->hi > t->mo || t->mo > mad_tpsa_dbgo ||
       (t->lo > t->hi && t->lo != 1)) goto ret;
 
 #if TPSA_STRICT
@@ -339,7 +339,7 @@ void
 FUN(copy) (const T *t, T *r)
 {
   assert(t && r); DBGFUN(->);
-  ensure(t->d == r->d, "incompatible GTPSAs descriptors 0x%p vs 0x%p", t->d, r->d);
+  ensure(IS_COMPAT(t,r), "incompatibles GTPSA (descriptors differ)");
 
   if (t != r) {
     FUN(copy0)(t, r);
@@ -383,7 +383,7 @@ void
 FUN(getord) (const T *t, T *r, ord_t o)
 {
   assert(t && r); DBGFUN(->);
-  ensure(t->d == r->d, "incompatible GTPSAs descriptors 0x%p vs 0x%p", t->d, r->d);
+  ensure(IS_COMPAT(t,r), "incompatibles GTPSA (descriptors differ)");
 
   if (o < t->lo || o > MIN(t->hi, r->mo)) {
     FUN(setval)(r, o ? 0 : t->coef[0]);
@@ -400,7 +400,7 @@ void
 FUN(cutord) (const T *t, T *r, int o)
 {
   assert(t && r); DBGFUN(->);
-  ensure(t->d == r->d, "incompatible GTPSAs descriptors 0x%p vs 0x%p", t->d, r->d);
+  ensure(IS_COMPAT(t,r), "incompatibles GTPSA (descriptors differ)");
 
   if (o <= 0) {    // cut 0..|o|, see copy0 with t->lo = |o|+1
     r->lo = 1-o;             // min 1 -> keep 1..
@@ -462,11 +462,12 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
   assert(t && r_); DBGFUN(->);
   ensure(pb >= -1 && pb <= 1,
          "invalid Poisson bracket direction %d, {-1, 0, 1} expected", pb);
-  const D *td = t->d, *rd = r_->d;
 
-  if (td == rd && !t2r_) { FUN(copy)(t,r_); DBGFUN(<-); return; }
+  if (IS_COMPAT(t,r_) && !t2r_) { FUN(copy)(t,r_); DBGFUN(<-); return; }
 
   T *r = t == r_ ? GET_TMPX(r_) : FUN(reset0)(r_);
+
+  const D *td = t->d, *rd = r_->d;
   ssz_t rn = rd->nv, tn = td->nv;
   ord_t rm[rn], tm[tn];
   idx_t t2r[tn]; // if t2r[i]>=0 then rm[t2r[i]] = tm[i] for i=0..tn-1
@@ -770,11 +771,9 @@ FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
 void
 FUN(cpyi) (const T *t, T *r, idx_t i)
 {
-  assert(t && r);
-  if (!i) { FUN(setval)(r, t->coef[0]); return; }
-
-  DBGFUN(->);
-  ensure(t->d == r->d, "incompatible GTPSAs descriptors 0x%p vs 0x%p",t->d,r->d);
+  assert(t && r); DBGFUN(->);
+  if (!i) { FUN(setval)(r, t->coef[0]); DBGFUN(<-); return; }
+  ensure(IS_COMPAT(t,r), "incompatibles GTPSA (descriptors differ)");
   ensure(0 <= i && i < t->d->nc, "index %d out of bounds", i);
   NUM v = geti(t,i); FUN(reset0)(r); if (v) FUN(seti)(r,i,0,v);
   DBGFUN(<-);
@@ -784,7 +783,7 @@ void
 FUN(cpys) (const T *t, T *r, ssz_t n, str_t s)
 {
   assert(t && r && s); DBGFUN(->);
-  ensure(t->d == r->d, "incompatible GTPSAs descriptors 0x%p vs 0x%p",t->d,r->d);
+  ensure(IS_COMPAT(t,r), "incompatibles GTPSA (descriptors differ)");
   idx_t i = mad_desc_idxs(t->d,n,s);
   ensure(i >= 0, "invalid monomial");
   NUM v = geti(t,i); FUN(reset0)(r); if (v) FUN(seti)(r,i,0,v);
@@ -795,7 +794,7 @@ void
 FUN(cpym) (const T *t, T *r, ssz_t n, const ord_t m[n])
 {
   assert(t && r && m); DBGFUN(->);
-  ensure(t->d == r->d, "incompatible GTPSAs descriptors 0x%p vs 0x%p",t->d,r->d);
+  ensure(IS_COMPAT(t,r), "incompatibles GTPSA (descriptors differ)");
   idx_t i = mad_desc_idxm(t->d,n,m);
   ensure(i >= 0, "invalid monomial");
   NUM v = geti(t,i); FUN(reset0)(r); if (v) FUN(seti)(r,i,0,v);
@@ -806,7 +805,7 @@ void
 FUN(cpysm) (const T *t, T *r, ssz_t n, const idx_t m[n])
 {
   assert(t && m); DBGFUN(->);
-  ensure(t->d == r->d, "incompatible GTPSAs descriptors 0x%p vs 0x%p",t->d,r->d);
+  ensure(IS_COMPAT(t,r), "incompatibles GTPSA (descriptors differ)");
   idx_t i = mad_desc_idxsm(t->d,n,m);
   ensure(i >= 0, "invalid monomial");
   NUM v = geti(t,i); FUN(reset0)(r); if (v) FUN(seti)(r,i,0,v);

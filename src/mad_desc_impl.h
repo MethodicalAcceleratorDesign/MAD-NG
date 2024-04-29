@@ -107,6 +107,12 @@ hpoly_idx (idx_t ib, idx_t ia, ssz_t ia_size)
   return ib*ia_size + ia;
 }
 
+#define IS_COMPAT(...) MKNAME(IS_COMPAT_,NARG(__VA_ARGS__))(__VA_ARGS__)
+#define IS_COMPAT_2(t1,t2)          ((t1)->d->monos == (t2)->d->monos)
+#define IS_COMPAT_3(t1,t2,t3)       (IS_COMPAT_2(t1,t3)    && IS_COMPAT_2(t2,t3))
+#define IS_COMPAT_4(t1,t2,t3,t4)    (IS_COMPAT_3(t1,t2,t4) && IS_COMPAT_2(t3,t4))
+#define IS_COMPAT_5(t1,t2,t3,t4,t5) (IS_COMPAT_3(t1,t2,t5) && IS_COMPAT_3(t3,t4,t5))
+
 // --- macros for temporaries -------------------------------------------------o
 
 #if DESC_USE_TMP

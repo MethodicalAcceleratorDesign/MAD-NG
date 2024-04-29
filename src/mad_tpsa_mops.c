@@ -46,11 +46,11 @@ check_compat (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na])
   ensure(na>0, "invalid map sizes (zero or negative sizes)");
   check_same_desc(na,ma);
   check_same_desc(na, TC mc);
-  ensure(ma[0]->d == mc[0]->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(*ma,*mc), "incompatibles GTPSA (descriptors differ)");
 
   if (mb) {
     check_same_desc(na,mb);
-    ensure(ma[0]->d == mb[0]->d, "incompatibles GTPSA (descriptors differ)");
+    ensure(IS_COMPAT(*ma,*mb), "incompatibles GTPSA (descriptors differ)");
   }
 }
 
@@ -309,8 +309,7 @@ FUN(fgrad) (ssz_t na, const T *ma[na], const T *b, T *c)
 {
   assert(ma && b && c); DBGFUN(->);
   check_same_desc(na, TC ma);
-  ensure(ma[0]->d == b->d, "incompatibles GTPSA (descriptors differ)");
-  ensure(ma[0]->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(*ma,b,c), "incompatibles GTPSA (descriptors differ)");
 
   // temporaries: 3 tpsa
   T *t[2];
@@ -330,7 +329,7 @@ FUN(vec2fld) (ssz_t nc, const T *a, T *mc[nc]) // pbbra
 {
   assert(a && mc); DBGFUN(->);
   check_same_desc(nc, TC mc);
-  ensure(a->d == mc[0]->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,*mc), "incompatibles GTPSA (descriptors differ)");
   const D *d = a->d;
 
   const ord_t mo = FUN(mord)(nc, TC mc, FALSE);
@@ -349,7 +348,7 @@ FUN(fld2vec) (ssz_t na, const T *ma[na], T *c) // getpb
 {
   assert(ma && c); DBGFUN(->);
   check_same_desc(na, ma);
-  ensure(ma[0]->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(*ma,c), "incompatibles GTPSA (descriptors differ)");
 
   FUN(clear)(c);
 

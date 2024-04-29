@@ -47,10 +47,9 @@ check_compose (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
   check_same_desc(sa, ma);
   check_same_desc(sb, mb);
   check_same_desc(sa, TC mc);
-  ensure(sb >= ma[0]->d->nv  , "incompatibles damap #B < NV(A)");
-  ensure(sb <= ma[0]->d->nn  , "incompatibles damap #B > NV(A)+NP(A)");
-  ensure(ma[0]->d == mb[0]->d, "incompatibles damap A vs C (descriptors differ)");
-  ensure(ma[0]->d == mc[0]->d, "incompatibles damap A vs B (descriptors differ)");
+  ensure(sb >= ma[0]->d->nv    , "incompatibles damap #B < NV(A)");
+  ensure(sb <= ma[0]->d->nn    , "incompatibles damap #B > NV(A)+NP(A)");
+  ensure(IS_COMPAT(*ma,*mb,*mc), "incompatibles GTPSA (descriptors differ)");
 }
 
 static inline void

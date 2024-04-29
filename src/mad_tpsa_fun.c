@@ -138,7 +138,7 @@ void
 FUN(taylor) (const T *a, ssz_t n, const NUM coef[n], T *c)
 {
   assert(a && c && coef); DBGFUN(->);
-  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   ensure(n > 0, "invalid number of coefficients (>0 expected)");
 
   ord_t to = MIN(n-1, c->mo);
@@ -152,7 +152,7 @@ void
 FUN(inv) (const T *a, NUM v, T *c) // c = v/a    // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatibles GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(a0 != 0, "invalid domain inv("FMT")", VAL(a0));
 #ifdef MAD_CTPSA_IMPL
@@ -178,7 +178,7 @@ void
 FUN(invsqrt) (const T *a, NUM v, T *c) // v/sqrt(a),checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(SELECT(a0 > 0, a0 != 0), "invalid domain invsqrt("FMT")", VAL(a0));
 #ifdef MAD_CTPSA_IMPL
@@ -206,7 +206,7 @@ void
 FUN(sqrt) (const T *a, T *c)                     // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(SELECT(a0 > 0, a0 != 0), "invalid domain sqrt("FMT")", VAL(a0));
   NUM f0 = sqrt(a0);
@@ -233,7 +233,7 @@ void
 FUN(exp) (const T *a, T *c)                      // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0], f0 = exp(a0);
 
   ord_t to = c->mo;
@@ -252,7 +252,7 @@ void
 FUN(log) (const T *a, T *c)                      // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(SELECT(a0 > 0, a0 != 0), "invalid domain log("FMT")", VAL(a0));
   NUM f0 = log(a0);
@@ -296,7 +296,7 @@ void
 FUN(sincos) (const T *a, T *s, T *c)             // checked for real and complex
 {
   assert(a && s && c); DBGFUN(->);
-  ensure(a->d == s->d && a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,s,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0], sa = sin(a0), ca = cos(a0);
 
   if (a->hi == 0) {
@@ -333,7 +333,7 @@ void
 FUN(sin) (const T *a, T *c)                      // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0], f0 = sin(a0);
 
   ord_t to = c->mo;
@@ -353,7 +353,7 @@ void
 FUN(cos) (const T *a, T *c)                      // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0], f0 = cos(a0);
 
   ord_t to = c->mo;
@@ -373,7 +373,7 @@ void
 FUN(tan) (const T *a, T *c)                      // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(cos(a0) != 0, "invalid domain tan("FMT")", VAL(a0));
   NUM f0 = tan(a0);
@@ -408,7 +408,7 @@ void
 FUN(cot) (const T *a, T *c)                      // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(sin(a0) != 0, "invalid domain cot("FMT")", VAL(a0));
   NUM f0 = tan(M_PI_2 - a0);
@@ -443,7 +443,7 @@ void
 FUN(sinc) (const T *a, T *c)
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
 
   NUM a0 = a->coef[0];
   ord_t to = c->mo;
@@ -490,7 +490,7 @@ void
 FUN(sincosh) (const T *a, T *sh, T *ch)          // checked for real and complex
 {
   assert(a && sh && ch); DBGFUN(->);
-  ensure(a->d == sh->d && a->d == ch->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,sh,ch), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0], sa = sinh(a0), ca = cosh(a0);
 
   if (a->hi == 0) {
@@ -527,7 +527,7 @@ void
 FUN(sinh) (const T *a, T *c)                     // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0], f0 = sinh(a0);
 
   ord_t to = c->mo;
@@ -547,7 +547,7 @@ void
 FUN(cosh) (const T *a, T *c)                     // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0], f0 = cosh(a0);
 
   ord_t to = c->mo;
@@ -567,7 +567,7 @@ void
 FUN(tanh) (const T *a, T *c)                     // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0], f0 = tanh(a0);
 
   ord_t to = c->mo;
@@ -600,7 +600,7 @@ void
 FUN(coth) (const T *a, T *c)                     // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0], f0 = tanh(a0);
   ensure(f0 != 0, "invalid domain coth("FMT")", VAL(a0));
 #ifdef MAD_CTPSA_IMPL
@@ -639,7 +639,7 @@ void
 FUN(sinhc) (const T *a, T *c)
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
 
   NUM a0 = a->coef[0];
   ord_t to = c->mo;
@@ -675,7 +675,7 @@ void
 FUN(asin) (const T *a, T *c)                     // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(SELECT(fabs(a0) < 1, 1), "invalid domain asin("FMT")", VAL(a0));
   NUM f0 = asin(a0);
@@ -719,7 +719,7 @@ void
 FUN(acos) (const T *a, T *c)                     // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(SELECT(fabs(a0) < 1, 1), "invalid domain acos("FMT")", VAL(a0));
   NUM f0 = acos(a0);
@@ -763,7 +763,7 @@ void
 FUN(atan) (const T *a, T *c)                     // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0], f0 = atan(a0);
 
   ord_t to = c->mo;
@@ -810,7 +810,7 @@ void
 FUN(acot) (const T *a, T *c)                     // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(a0 != 0, "invalid domain acot("FMT")", VAL(a0));
 #ifdef MAD_CTPSA_IMPL
@@ -865,7 +865,7 @@ void
 FUN(asinc) (const T *a, T *c)
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
 
   NUM a0 = a->coef[0];
   ord_t to = c->mo;
@@ -901,7 +901,7 @@ void
 FUN(asinh) (const T *a, T *c)                    // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0], f0 = asinh(a0);
 
   ord_t to = c->mo;
@@ -933,7 +933,7 @@ void
 FUN(acosh) (const T *a, T *c)                    // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(SELECT(a0 > 1, 1), "invalid domain acosh("FMT")", VAL(a0));
   NUM f0 = acosh(a0);
@@ -967,7 +967,7 @@ void
 FUN(atanh) (const T *a, T *c)                    // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(fabs(a0) SELECT(< 1, != 1), "invalid domain atanh("FMT")", VAL(a0));
   NUM f0 = atanh(a0);
@@ -1006,7 +1006,7 @@ void
 FUN(acoth) (const T *a, T *c)                    // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(fabs(a0) SELECT(> 1, != 1 && a0 != 0), "invalid domain acoth("FMT")", VAL(a0));
 #ifdef MAD_CTPSA_IMPL
@@ -1050,7 +1050,7 @@ void
 FUN(asinhc) (const T *a, T *c)
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
 
   NUM a0 = a->coef[0];
   ord_t to = c->mo;
@@ -1086,7 +1086,7 @@ void
 FUN(erf) (const T *a, T *c)
 {
   assert(a && c); DBGFUN(->);
-  ensure(a->d == c->d, "incompatible GTPSA (descriptors differ)");
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
 
   // erf(z) = 2/sqrt(pi) \int_0^z exp(-t^2) dt
   NUM a0 = a->coef[0];

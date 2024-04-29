@@ -45,7 +45,7 @@ check_minv(ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
   ensure(nb <= ma[0]->d->nv, "invalid nb > #vars");
   check_same_desc(na,   ma);
   check_same_desc(na,TC mc);
-  ensure(ma[0]->d == mc[0]->d, "incompatible GTPSAs (descriptors differ)");
+  ensure(IS_COMPAT(*ma,*mc), "incompatibles GTPSA (descriptors differ)");
 }
 
 static void
@@ -145,10 +145,12 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
       FOR(i,na) { FUN(mo)(    mc[i],o); } // truncate computation to order o
       FOR(i,nb) { FUN(mo)(nonlin[i],o); FUN(mo)(lininv[i],o); FUN(mo)(tmp[i],o); }
 
+      mad_tpsa_dbgo = o;
       FUN(compose)(nb, TC nonlin, na, TC mc, tmp);
       FOR(v,nb) FUN(seti)(tmp[v], v+1, 1,1); // add identity
       FUN(compose)(nb, TC lininv, na, TC tmp, mc);
     }
+    mad_tpsa_dbgo = mad_tpsa_dflt;
     FOR(i,na) FUN(mo)(mc[i], mo[i]); // restore mo[i]
   }
 

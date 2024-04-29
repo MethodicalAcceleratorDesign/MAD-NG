@@ -41,6 +41,7 @@
 const  ord_t  mad_tpsa_dflt = -1;
 const  ord_t  mad_tpsa_same = -2;
        num_t  mad_tpsa_eps  =  1e-40;
+       ord_t  mad_tpsa_dbgo = -1; // effective only with TPSA_DEBUG > 0
        int    mad_tpsa_dbgf =  0; // effective only with TPSA_DEBUG > 0
        int    mad_tpsa_dbga =  0; // effective only with TPSA_DEBUG > 0
 
@@ -272,7 +273,7 @@ tbl_by_var(D *d)
   DBGFUN(<-);
 }
 
-static const D *cmp_d; // not thread safe...
+static const D *cmp_d = NULL; // not re-entrant...
 
 static int
 cmp_mono (const void *a, const void *b)
@@ -283,7 +284,6 @@ cmp_mono (const void *a, const void *b)
 
   int o1 = mad_mono_ord(d->nn, d->Tv[i1]);
   int o2 = mad_mono_ord(d->nn, d->Tv[i2]);
-
   if (o1 != o2) return o1 - o2;
 
   return mad_mono_rcmp(d->nn, d->Tv[i1], d->Tv[i2]);
@@ -307,9 +307,11 @@ tbl_by_ord(D *d)
   d->size +=  d->nc*2  * sizeof *d->ords;  // ords  + prms
   d->size += (d->mo+2) * sizeof *d->ord2idx;
 
+  assert(!cmp_d);
   cmp_d = d;
   FOR(i,d->nc) d->to2tv[i] = i;
   qsort(d->to2tv, d->nc, sizeof *d->to2tv, cmp_mono);
+  cmp_d = NULL;
 
   d->To[0] = d->monos;
   d->tv2to[0] = 0, d->ord2idx[0] = 0, d->ords[0] = d->prms[0] = 0;
