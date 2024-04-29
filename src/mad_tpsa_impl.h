@@ -149,11 +149,14 @@ mad_tpsa_nzero0r (const tpsa_t *t, ord_t lo, ord_t hi)
   assert(t);
   if (lo > hi) return -1;
   const idx_t *o2i = t->d->ord2idx;
-  idx_t ni = o2i[lo], i = o2i[hi+1]-1;
-  num_t c = t->coef[ni]; ((tpsa_t*)t)->coef[ni] = 1; // set stopper
-  while (!t->coef[i]) --i;
-  ((tpsa_t*)t)->coef[ni] = c;                        // restore value
-  return i == ni && !c ? -1 : i;
+  for (ord_t o = hi; o >= lo; o--) {
+    idx_t i = o2i[o], ni = o2i[o+1]-1;
+    num_t c = t->coef[ni]; ((tpsa_t*)t)->coef[ni] = 1; // set stopper
+    while (!t->coef[i]) ++i;
+    ((tpsa_t*)t)->coef[ni] = c;                        // restore value
+    if (i != ni || c) return i;
+  }
+  return -1;
 }
 
 // --- temporaries ------------------------------------------------------------o
