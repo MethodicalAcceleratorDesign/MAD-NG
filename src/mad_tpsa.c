@@ -218,12 +218,9 @@ FUN(isnul) (const T *t)
 {
   assert(t);
 #if TPSA_STRICT
-   return !t->hi && !t->coef[0];
+  return  !t->hi && !t->coef[0];
 #else
-  if ((!t->hi && !t->coef[0]) || FUN(nzero0)(t,t->lo,t->hi) < 0) {
-    ((T*)t)->lo = 1, ((T*)t)->hi = 0; return true;
-  }
-  return false;
+  return (!t->hi && !t->coef[0]) || FUN(nzero0)(t,t->lo,t->hi) < 0;
 #endif
 }
 
