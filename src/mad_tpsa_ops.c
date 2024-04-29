@@ -445,9 +445,7 @@ FUN(mul) (const T *a, const T *b, T *r)
 
     }
   }
-#if TPSA_STRICT
   FUN(update)(c);
-#endif
 
 ret:
   assert(a != c && b != c);
@@ -645,10 +643,6 @@ FUN(integ) (const T *a, T *r, int iv)
   TPSA_SCAN(c,MAX(c->lo,2),c->hi)
     if (c->coef[i] && mono[i][iv-1] > 1) c->coef[i] /= mono[i][iv-1];
 
-#if TPSA_STRICT
-  FUN(update)(c);
-#endif
-
   if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
   DBGFUN(<-);
 }
@@ -682,9 +676,7 @@ FUN(deriv) (const T *a, T *r, int iv)
     if (a->lo <= oc+1 && oc+1 <= a->hi)
       hpoly_der_gt(a->coef, c->coef+o2i[oc], iv, oc, der_ord, d);
 
-#if TPSA_STRICT
   FUN(update)(c);
-#endif
 
 ret:
   if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
@@ -717,9 +709,7 @@ FUN(derivm) (const T *a, T *r, ssz_t n, const ord_t mono[n])
   // ords 1..a->hi - 1
   hpoly_der(a, idx, der_ord, c);
 
-#if TPSA_STRICT
   FUN(update)(c);
-#endif
 
 ret:
   if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
