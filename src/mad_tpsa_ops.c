@@ -298,6 +298,23 @@ axpbypc (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   TPSA_SCAN_I(c,blo,MIN(ahi,bhi)  ) c->coef[i] = c1*a->coef[i]+c2*b->coef[i];
   TPSA_SCAN_I(c,bhi+1,  ahi       ) c->coef[i] = c1*a->coef[i];
   TPSA_SCAN_I(c,ahi+1,      bhi   ) c->coef[i] = c2*b->coef[i];
+
+#if 0
+  if (mad_tpsa_dbga && !FUN(isvalid)(c)) {
+    static int cnt = 0;
+    printf("alo=%d[%d], ahi=%d[%d], blo=%d[%d], bhi=%d[%d], clo=%d, chi=%d\n",
+            alo, a->lo, ahi, a->hi, blo, b->lo, bhi, b->hi, c->lo, c->hi);
+    printf("c1=%.4e, c2=%.4e, c3=%.4e\n", c1, c2, c3);
+    printf("aaa=0x%p, bbb=0x%p, ccc=0x%p\n", (void*)a, (void*)b, (void*)c);
+
+    FUN(print)(a,"aaa",0,0,0);
+    FUN(print)(b,"bbb",0,0,0);
+    FUN(print)(c,"ccc",0,0,0);
+    if (a != c) DBGTPSA(a);
+    if (b != c) DBGTPSA(b);
+    if (++cnt >= 20) exit(EXIT_FAILURE);
+  }
+#endif
 }
 
 void
@@ -311,7 +328,9 @@ FUN(acc) (const T *a, NUM v, T *c)
   if (a->lo <= c->lo) axpbypc(v,a,1,c,0,c);
   else                axpbypc(1,c,v,a,0,c);
 
+#if TPSA_STRICT
   FUN(update)(c);
+#endif
   DBGFUN(<-);
 }
 
@@ -324,7 +343,9 @@ FUN(add) (const T *a, const T *b, T *c)
   if (a->lo <= b->lo) axpbypc(1,a,1,b,0,c);
   else                axpbypc(1,b,1,a,0,c);
 
+#if TPSA_STRICT
   FUN(update)(c);
+#endif
   DBGFUN(<-);
 }
 
@@ -337,7 +358,9 @@ FUN(sub) (const T *a, const T *b, T *c)
   if (a->lo <= b->lo) axpbypc( 1,a,-1,b,0,c);
   else                axpbypc(-1,b, 1,a,0,c);
 
+#if TPSA_STRICT
   FUN(update)(c);
+#endif
   DBGFUN(<-);
 }
 
@@ -356,7 +379,9 @@ FUN(dif) (const T *a, const T *b, T *c)
 
   if (t != c) { FUN(copy0)(t,c); REL_TMPX(t); }
 
+#if TPSA_STRICT
   FUN(update)(c);
+#endif
   DBGFUN(<-);
 }
 
@@ -369,7 +394,9 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   if (a->lo <= b->lo) axpbypc(c1,a,c2,b,c3,c);
   else                axpbypc(c2,b,c1,a,c3,c);
 
+#if TPSA_STRICT
   FUN(update)(c);
+#endif
   DBGFUN(<-);
 }
 
@@ -415,9 +442,12 @@ FUN(mul) (const T *a, const T *b, T *r)
       else
 #endif
         hpoly_mul_ser(a,b,c);
+
     }
   }
+#if TPSA_STRICT
   FUN(update)(c);
+#endif
 
 ret:
   assert(a != c && b != c);
@@ -615,7 +645,9 @@ FUN(integ) (const T *a, T *r, int iv)
   TPSA_SCAN(c,MAX(c->lo,2),c->hi)
     if (c->coef[i] && mono[i][iv-1] > 1) c->coef[i] /= mono[i][iv-1];
 
+#if TPSA_STRICT
   FUN(update)(c);
+#endif
 
   if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
   DBGFUN(<-);
@@ -650,7 +682,9 @@ FUN(deriv) (const T *a, T *r, int iv)
     if (a->lo <= oc+1 && oc+1 <= a->hi)
       hpoly_der_gt(a->coef, c->coef+o2i[oc], iv, oc, der_ord, d);
 
+#if TPSA_STRICT
   FUN(update)(c);
+#endif
 
 ret:
   if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
@@ -683,7 +717,9 @@ FUN(derivm) (const T *a, T *r, ssz_t n, const ord_t mono[n])
   // ords 1..a->hi - 1
   hpoly_der(a, idx, der_ord, c);
 
+#if TPSA_STRICT
   FUN(update)(c);
+#endif
 
 ret:
   if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }

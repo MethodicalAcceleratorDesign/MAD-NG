@@ -46,8 +46,9 @@ static long long ratio_nn[11] = {0};
 static inline num_t
 ratio (const T *t, num_t eps_)
 {
-  if (!t->hi) return -1;
   num_t eps = eps_ ? eps_ : mad_tpsa_eps;
+
+  if (!t->hi) return fabs(t->coef[0]) >= eps;
 
   long  nz = 0;
   TPSA_SCAN(t) if (fabs(t->coef[i]) >= eps) ++nz;
@@ -69,10 +70,12 @@ check (const T *t, ord_t *o_, num_t *r_)
   if (!t->d || t->mo > t->d->mo || t->hi > t->mo ||
       (t->lo > t->hi && t->lo != 1)) goto ret;
 
+#if TPSA_STRICT
   if (t->hi) {
     if (FUN(nzero0)(t,t->lo,t->lo) < 0) {_o = t->lo; goto ret;}
     if (FUN(nzero0)(t,t->hi,t->hi) < 0) {_o = t->hi; goto ret;}
   }
+#endif
 
   if (r_) *r_ = ratio(t,0);
   return TRUE;
@@ -214,7 +217,14 @@ log_t
 FUN(isnul) (const T *t)
 {
   assert(t);
-  return !(t->hi || t->coef[0]);
+#if TPSA_STRICT
+   return !t->hi && !t->coef[0];
+#else
+  if ((!t->hi && !t->coef[0]) || FUN(nzero0)(t,t->lo,t->hi) < 0) {
+    ((T*)t)->lo = 1, ((T*)t)->hi = 0; return true;
+  }
+  return false;
+#endif
 }
 
 log_t
@@ -752,7 +762,9 @@ FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
   if (t->lo > lo) t->lo = lo;
   if (t->hi < hi) t->hi = hi;
 
+#if TPSA_STRICT
   FUN(update)(t); // v may contain zeros...
+#endif
   DBGFUN(<-); return;
 }
 
