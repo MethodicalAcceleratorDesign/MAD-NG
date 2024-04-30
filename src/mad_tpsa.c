@@ -47,7 +47,7 @@ static long long ratio_nn[11] = {0};
 static inline num_t
 ratio (const T *t, num_t eps_)
 {
-  if (!t->hi) {
+  if (t->lo > t->hi) {
     ratio_nz[10]++;
     ratio_nn[10]++;
     return 1;
@@ -59,8 +59,7 @@ ratio (const T *t, num_t eps_)
   long  nn = o2i[t->hi+1] - o2i[t->lo];
   num_t rr = (num_t)nz / nn;
 
-  int i = rr*10;
-  assert(0 <= i && i <= 10);
+  int i = rint(rr*10.5); i = MIN(i,10);
   ratio_nz[i] += nz;
   ratio_nn[i] += nn;
   return rr;
@@ -71,8 +70,8 @@ check (const T *t, ord_t *o_, num_t *r_)
 {
   ord_t _o = 0;
 
-  if (!t->d || t->mo > t->d->mo || t->hi > t->mo || t->mo > mad_tpsa_dbgo ||
-      (t->lo > t->hi && t->lo != 1)) goto ret;
+  if (!t->d || t->mo > t->d->mo || t->hi > t->mo || t->mo > t->ao ||
+       t->mo > mad_tpsa_dbgo || (t->lo > t->hi && t->lo != 1)) goto ret;
 
 #if TPSA_STRICT
   if (t->hi) {
@@ -115,9 +114,9 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
   const D* d = t->d;
   if (!stream_) stream_ = stdout;
 
-  fprintf(stream_, "%s:%d: '%s' { lo=%d hi=%d mo=%d ao=%d uid=%d did=%d",
+  fprintf(stream_, "%s:%d: '%s' { lo=%d hi=%d mo=%d(%d) ao=%d uid=%d did=%d",
           fname_ ? fname_ : "??", line_, name_ ? name_ : "?",
-          t->lo, t->hi, t->mo, t->ao, t->uid, d ? d->id : -1);
+          t->lo, t->hi, t->mo, mad_tpsa_dbgo, t->ao, t->uid, d ? d->id : -1);
 
   if (ok) {
     fprintf(stream_," r=%.2f } 0x%p\n", r, (void*)t); fflush(stream_);
