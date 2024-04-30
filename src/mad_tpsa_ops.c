@@ -250,7 +250,7 @@ FUN(scl) (const T *a, NUM v, T *c)
 
   c->coef[0] = v*a->coef[0];
 
-  if (!c->hi) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
+  if (FUN(isval)(a)) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
 
   if (v == -1) { TPSA_SCAN(c) c->coef[i] =  -a->coef[i]; }
   else         { TPSA_SCAN(c) c->coef[i] = v*a->coef[i]; }
@@ -408,6 +408,11 @@ FUN(mul) (const T *a, const T *b, T *r)
 
   T *c = (a == r || b == r) ? GET_TMPX(r) : FUN(reset0)(r);
 
+#if !TPSA_STRICT
+  FUN(nzero0)(a,a->lo,a->hi,1);
+  FUN(nzero0)(b,b->lo,b->hi,1);
+#endif
+
   if (a->lo > b->lo) { const T *t; SWAP(a,b,t); }
 
   NUM a0 = a->coef[0], b0 = b->coef[0];
@@ -444,7 +449,7 @@ FUN(mul) (const T *a, const T *b, T *r)
         hpoly_mul_ser(a,b,c);
 
     }
-#ifdef TPSA_STRICT
+#if TPSA_STRICT
   }
   FUN(update)(c);
 #else
@@ -467,7 +472,7 @@ FUN(div) (const T *a, const T *b, T *c)
   NUM b0 = b->coef[0];
   ensure(b0 != 0, "invalid domain");
 
-  if (!b->hi) {
+  if (FUN(isval)(b)) {
 #ifdef MAD_CTPSA_IMPL
     FUN(scl)(a, mad_cpx_inv(b0), c);
 #else
@@ -659,7 +664,7 @@ FUN(deriv) (const T *a, T *r, int iv)
   ensure(0 < iv && iv <= d->nv,
          "index 1<= %d <=%d is not a GTPSA variable", iv, d->nv);
 
-  if (!a->hi) { FUN(clear)(r); DBGFUN(<-); return; } // empty
+  if (FUN(isval)(a)) { FUN(clear)(r); DBGFUN(<-); return; } // empty
 
   T *c = a == r ? GET_TMPX(r) : FUN(reset0)(r);
 
