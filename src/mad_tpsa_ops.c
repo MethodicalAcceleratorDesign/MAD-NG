@@ -406,23 +406,17 @@ FUN(mul) (const T *a, const T *b, T *r)
   assert(a && b && r); DBGFUN(->);
   ensure(IS_COMPAT(a,b,r), "incompatibles GTPSA (descriptors differ)");
 
-  T *c = (a == r || b == r) ? GET_TMPX(r) : FUN(reset0)(r);
+  ord_t chi = MIN(a->hi+b->hi, r->mo);
 
-#if !TPSA_STRICT
-  FUN(nzero0)(a,a->lo,a->hi,1);
-  FUN(nzero0)(b,b->lo,b->hi,1);
-#endif
+  // order 0
+  if (!chi) { FUN(setval)(r, a->coef[0]*b->coef[0]); DBGFUN(<-); return; }
+
+  T *c = (a == r || b == r) ? GET_TMPX(r) : FUN(reset0)(r);
 
   if (a->lo > b->lo) { const T *t; SWAP(a,b,t); }
 
-  NUM a0 = a->coef[0], b0 = b->coef[0];
-  ord_t chi = MIN(a->hi+b->hi, c->mo);
-
-  // order 0
-  if (!chi) { FUN(setval)(c, a0*b0); goto ret; }
-
   // order 1+ and linear
-  axpbypc(b0,a,a0,b,0,c), c->coef[0] *= 0.5;
+  axpbypc(b->coef[0],a,a->coef[0],b,0,c), c->coef[0] *= 0.5;
 
   // order 2+
   if (chi > 1) {
@@ -441,6 +435,12 @@ FUN(mul) (const T *a, const T *b, T *r)
 
     // order 3+
     if (chi > 2) {
+#if !TPSA_STRICT
+      FUN(nzero0)(a,a->lo,a->hi,1);
+      FUN(nzero0)(b,b->lo,b->hi,1);
+      if (a->lo > b->lo) { const T *t; SWAP(a,b,t); }
+#endif
+
 #ifdef _OPENMP
       if (o2i[c->hi+1] - o2i[c->lo] > 10000)
         hpoly_mul_par(a,b,c);
@@ -457,7 +457,6 @@ FUN(mul) (const T *a, const T *b, T *r)
   }
 #endif
 
-ret:
   assert(a != c && b != c);
   if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
   DBGFUN(<-);
