@@ -56,6 +56,7 @@ int32_t  mad_ctpsa_uid     (      ctpsa_t *t, int32_t uid_); // set uid if != 0
 str_t    mad_ctpsa_nam     (      ctpsa_t *t, str_t   nam_); // set nam if != null
 ord_t    mad_ctpsa_ord     (const ctpsa_t *t, log_t   hi_ ); // mo or hi
 log_t    mad_ctpsa_isnul   (const ctpsa_t *t);
+log_t    mad_ctpsa_isval   (const ctpsa_t *t);
 log_t    mad_ctpsa_isvalid (const ctpsa_t *t);
 num_t    mad_ctpsa_density (const ctpsa_t *t, num_t eps); // ratio nz/nc in [lo,hi]
 

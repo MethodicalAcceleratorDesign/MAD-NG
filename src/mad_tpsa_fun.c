@@ -142,7 +142,7 @@ FUN(taylor) (const T *a, ssz_t n, const NUM coef[n], T *c)
   ensure(n > 0, "invalid number of coefficients (>0 expected)");
 
   ord_t to = MIN(n-1, c->mo);
-  if (!to || !a->hi) { FUN(setval)(c,coef[0]); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,coef[0]); DBGFUN(<-); return; }
 
   fun_taylor(a,c,to,coef);
   DBGFUN(<-);
@@ -162,7 +162,7 @@ FUN(inv) (const T *a, NUM v, T *c) // c = v/a    // checked for real and complex
 #endif
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,v*f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,v*f0); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -190,7 +190,7 @@ FUN(invsqrt) (const T *a, NUM v, T *c) // v/sqrt(a),checked for real and complex
 #endif
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,v*f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,v*f0); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -212,7 +212,7 @@ FUN(sqrt) (const T *a, T *c)                     // checked for real and complex
   NUM f0 = sqrt(a0);
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
 #ifdef MAD_CTPSA_IMPL
   NUM _a0 = mad_cpx_inv(a0);
@@ -237,7 +237,7 @@ FUN(exp) (const T *a, T *c)                      // checked for real and complex
   NUM a0 = a->coef[0], f0 = exp(a0);
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -258,7 +258,7 @@ FUN(log) (const T *a, T *c)                      // checked for real and complex
   NUM f0 = log(a0);
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1], _a0 = 1/a0;
   ord_coef[0] = f0;
@@ -337,7 +337,7 @@ FUN(sin) (const T *a, T *c)                      // checked for real and complex
   NUM a0 = a->coef[0], f0 = sin(a0);
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -357,7 +357,7 @@ FUN(cos) (const T *a, T *c)                      // checked for real and complex
   NUM a0 = a->coef[0], f0 = cos(a0);
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -379,7 +379,7 @@ FUN(tan) (const T *a, T *c)                      // checked for real and complex
   NUM f0 = tan(a0);
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
     T *t = GET_TMPX(c);
@@ -414,7 +414,7 @@ FUN(cot) (const T *a, T *c)                      // checked for real and complex
   NUM f0 = tan(M_PI_2 - a0);
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   T *t = GET_TMPX(c);
   FUN(sincos)(a,t,c);
@@ -448,7 +448,7 @@ FUN(sinc) (const T *a, T *c)
   NUM a0 = a->coef[0];
   ord_t to = c->mo;
 
-  if (!to || !a->hi) {
+  if (!to || FUN(isval)(a)) {
 #ifdef MAD_CTPSA_IMPL
     NUM f0 = mad_cpx_sinc(a0);
 #else
@@ -531,7 +531,7 @@ FUN(sinh) (const T *a, T *c)                     // checked for real and complex
   NUM a0 = a->coef[0], f0 = sinh(a0);
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -551,7 +551,7 @@ FUN(cosh) (const T *a, T *c)                     // checked for real and complex
   NUM a0 = a->coef[0], f0 = cosh(a0);
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
@@ -571,7 +571,7 @@ FUN(tanh) (const T *a, T *c)                     // checked for real and complex
   NUM a0 = a->coef[0], f0 = tanh(a0);
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
     T *t = GET_TMPX(c);
@@ -610,7 +610,7 @@ FUN(coth) (const T *a, T *c)                     // checked for real and complex
 #endif
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {
     T *t = GET_TMPX(c);
@@ -644,7 +644,7 @@ FUN(sinhc) (const T *a, T *c)
   NUM a0 = a->coef[0];
   ord_t to = c->mo;
 
-  if (!to || !a->hi) {
+  if (!to || FUN(isval)(a)) {
 #ifdef MAD_CTPSA_IMPL
     NUM f0 = mad_cpx_sinhc(a0);
 #else
@@ -681,7 +681,7 @@ FUN(asin) (const T *a, T *c)                     // checked for real and complex
   NUM f0 = asin(a0);
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // asin(x) = -i*ln(i*x + sqrt(1-x^2))
@@ -725,7 +725,7 @@ FUN(acos) (const T *a, T *c)                     // checked for real and complex
   NUM f0 = acos(a0);
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {  // use simpler and faster approach?
     // acos(x) = -i*ln(x+i*sqrt(1-x^2)) = -asin(x)+pi/2
@@ -767,7 +767,7 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
   NUM a0 = a->coef[0], f0 = atan(a0);
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // atan(x) = i/2 ln((i+x) / (i-x))
@@ -820,7 +820,7 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
 #endif
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // acot(x) = i/2 ln((x-i) / (x+i))
@@ -870,7 +870,7 @@ FUN(asinc) (const T *a, T *c)
   NUM a0 = a->coef[0];
   ord_t to = c->mo;
 
-  if (!to || !a->hi) {
+  if (!to || FUN(isval)(a)) {
 #ifdef MAD_CTPSA_IMPL
     NUM f0 = mad_cpx_asinc(a0);
 #else
@@ -905,7 +905,7 @@ FUN(asinh) (const T *a, T *c)                    // checked for real and complex
   NUM a0 = a->coef[0], f0 = asinh(a0);
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // asinh(x) = log(x + sqrt(x^2+1))
@@ -939,7 +939,7 @@ FUN(acosh) (const T *a, T *c)                    // checked for real and complex
   NUM f0 = acosh(a0);
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // acosh(x) = ln(x + sqrt(x^2-1))
@@ -973,7 +973,7 @@ FUN(atanh) (const T *a, T *c)                    // checked for real and complex
   NUM f0 = atanh(a0);
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // atanh(x) = 1/2 ln((1+x) / (1-x))
@@ -1016,7 +1016,7 @@ FUN(acoth) (const T *a, T *c)                    // checked for real and complex
 #endif
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // acoth(x) = 1/2 ln((x+1) / (x-1))
@@ -1055,7 +1055,7 @@ FUN(asinhc) (const T *a, T *c)
   NUM a0 = a->coef[0];
   ord_t to = c->mo;
 
-  if (!to || !a->hi) {
+  if (!to || FUN(isval)(a)) {
 #ifdef MAD_CTPSA_IMPL
     NUM f0 = mad_cpx_asinhc(a0);
 #else
@@ -1097,7 +1097,7 @@ FUN(erf) (const T *a, T *c)
 #endif
 
   ord_t to = c->mo;
-  if (!to || !a->hi) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1], a2 = a0*a0, f1 = M_2_SQRTPI*exp(-a2);
   ord_coef[0] = f0;
