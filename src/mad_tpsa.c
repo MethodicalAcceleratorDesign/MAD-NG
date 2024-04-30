@@ -40,17 +40,21 @@
 // --- debugging --------------------------------------------------------------o
 
 // histogram by deciles 0..10
+static long long count_nz     =  0;
 static long long ratio_nz[11] = {0};
 static long long ratio_nn[11] = {0};
 
 static inline num_t
 ratio (const T *t, num_t eps_)
 {
+  if (!t->hi) {
+    ratio_nz[10]++;
+    ratio_nn[10]++;
+    return 1;
+  }
+
+  long  nz  = 0;
   num_t eps = eps_ ? eps_ : mad_tpsa_eps;
-
-  if (!t->hi) return fabs(t->coef[0]) >= eps;
-
-  long  nz = 0;
   TPSA_SCAN(t) if (fabs(t->coef[i]) >= eps) ++nz;
   long  nn = o2i[t->hi+1] - o2i[t->lo];
   num_t rr = (num_t)nz / nn;
@@ -72,8 +76,14 @@ check (const T *t, ord_t *o_, num_t *r_)
 
 #if TPSA_STRICT
   if (t->hi) {
-    if (FUN(nzero0)(t,t->lo,t->lo) < 0) {_o = t->lo; goto ret;}
-    if (FUN(nzero0)(t,t->hi,t->hi) < 0) {_o = t->hi; goto ret;}
+    if (FUN(nzero0)(t,t->lo,t->lo,0) < 0) {_o = t->lo; goto ret;}
+    if (FUN(nzero0)(t,t->hi,t->hi,0) < 0) {_o = t->hi; goto ret;}
+  }
+  (void)count_nz;
+#else
+  if (t->hi) {
+    if (FUN(nzero0)(t,t->lo,t->lo,0) < 0) ++count_nz;
+    if (FUN(nzero0)(t,t->hi,t->hi,0) < 0) ++count_nz;
   }
 #endif
 
@@ -134,6 +144,7 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
 void
 mad_tpsa_clrdensity (void)
 {
+  count_nz = 0;
   FOR(i,11) ratio_nz[i] = ratio_nn[i] = 0;
 }
 
@@ -145,7 +156,7 @@ mad_tpsa_prtdensity (FILE *stream_)
   FOR(i,11) sum_nz += ratio_nz[i], sum_nn += ratio_nn[i];
   if (!sum_nn) { fprintf(stream_,"no tpsa density available.\n"); return; }
 
-  fprintf(stream_,"tpsa average density:\n");
+  fprintf(stream_,"tpsa average density with %lld lazy lo-hi:\n", count_nz);
   FOR(i,11) {
     ensure(ratio_nz[i] <= ratio_nn[i], "unexpect ratio > 1");
     fprintf(stream_,"i=%2d: nz=%15lld, nn=%15lld, r=%6.2f, p=%6.2f%%\n",
@@ -218,9 +229,20 @@ FUN(isnul) (const T *t)
 {
   assert(t);
 #if TPSA_STRICT
-  return  !t->hi && !t->coef[0];
+  return  !t->coef[0] &&  !t->hi;
 #else
-  return (!t->hi && !t->coef[0]) || FUN(nzero0)(t,t->lo,t->hi) < 0;
+  return  !t->coef[0] && (!t->hi || FUN(nzero0)(t,t->lo,t->hi,1) < 0);
+#endif
+}
+
+log_t
+FUN(isval) (const T *t)
+{
+  assert(t);
+#if TPSA_STRICT
+  return !t->hi;
+#else
+  return !t->hi || FUN(nzero0)(t,t->lo,t->hi,1) < 0;
 #endif
 }
 
@@ -289,13 +311,8 @@ void
 FUN(update) (T *t)
 {
   assert(t); DBGFUN(->);
-  if (t->hi) {
-    const ord_t *ords = t->d->ords;
-    idx_t j;
-    if ((j=FUN(nzero0 )(t,t->lo,        t->hi)) > 0 &&
-        (j=FUN(nzero0r)(t,t->lo=ords[j],t->hi)) > 0) t->hi=ords[j];
-    else t->lo=1, t->hi=0;
-  }
+  if (t->hi && FUN(nzero0 )(t,t->lo,t->hi,1) >= 0 &&
+               FUN(nzero0r)(t,t->lo,t->hi,1) >= 0) ;
   DBGTPSA(t); DBGFUN(<-);
 }
 
@@ -370,12 +387,10 @@ void
 FUN(clrord) (T *t, ord_t o)
 {
   assert(t); DBGFUN(->);
-  idx_t j = 0;
-  if (!o) t->coef[0] = 0;                                                         else
-  if (o  > t->lo && o < t->hi) FUN(clear0)(t, o, o);                              else
-  if (o == t->lo && (j=FUN(nzero0 )(t,t->lo+1,t->hi)) > 0) t->lo = t->d->ords[j]; else
-  if (o == t->hi && (j=FUN(nzero0r)(t,t->lo,t->hi-1)) > 0) t->hi = t->d->ords[j]; else
-  if (j < 0) t->lo = 1, t->hi = 0;
+  if (!o) t->coef[0] = 0;                                   else
+  if (o  > t->lo && o < t->hi) FUN(clear0)(t, o, o);        else
+  if (o == t->lo && FUN(nzero0 )(t,t->lo+1,t->hi,1) >= 0) ; else
+  if (o == t->hi && FUN(nzero0r)(t,t->lo,t->hi-1,1) >= 0) ;
   DBGTPSA(t); DBGFUN(<-);
 }
 
@@ -677,10 +692,8 @@ FUN(seti) (T *t, idx_t i, NUM a, NUM b)
     t->coef[i] = v;
   } else {
     t->coef[i] = 0;
-    idx_t j = 0;
-    if (o == t->lo && (j=FUN(nzero0 )(t,t->lo,t->hi)) > 0) t->lo = d->ords[j]; else
-    if (o == t->hi && (j=FUN(nzero0r)(t,t->lo,t->hi)) > 0) t->hi = d->ords[j]; else
-    if (j <= 0) t->lo = 1, t->hi = 0;
+    if (o == t->lo && FUN(nzero0 )(t,t->lo,t->hi,1) >= 0) ; else
+    if (o == t->hi && FUN(nzero0r)(t,t->lo,t->hi,1) >= 0) ;
   }
   DBGTPSA(t); DBGFUN(<-);
 }
