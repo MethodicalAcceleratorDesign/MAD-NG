@@ -29,12 +29,12 @@
 
 // --- types ------------------------------------------------------------------o
 
-struct ctpsa_ { // warning: must be identical to LuaJIT def (see mad_cmad.mad)
-  const desc_t *d;      // ptr to ctpsa descriptor
-  ord_t lo, hi, mo, ao; // lowest/highest used ord, max ord, allocated ord
-  int32_t     uid;      // special user field for external use (and padding)
-  char  nam[NAMSZ];     // tpsa name (max 15 chars)
-  cpx_t coef[]; // warning: must be identical to tpsa up to coef excluded
+struct ctpsa_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
+  const desc_t *d;        // ptr to ctpsa descriptor
+  ord_t   lo, hi, mo, ao; // lowest/highest used ord, max ord, allocated ord
+  int32_t uid;            // special user field for external use (and padding)
+  char    nam[NAMSZ];     // tpsa name (max 15 chars)
+  cpx_t   coef[]; // warning: must be identical to tpsa up to coef excluded
 };
 
 // --- macros -----------------------------------------------------------------o
