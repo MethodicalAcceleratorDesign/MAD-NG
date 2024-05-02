@@ -29,6 +29,8 @@
 #include "mad_vec.h"
 #include "mad_mat.h"
 
+#define MAD_USE_MADX 0
+
 // --- helpers for debug ------------------------------------------------------o
 
 #if 0
@@ -2196,7 +2198,9 @@ void mad_mat_torotq (const num_t x[NN], num_t q[4], log_t inv)
 #undef N
 #undef X
 
-// -- Orbit Correction --------------------------------------------------------o
+// -- Orbit Correction MADX version -------------------------------------------o
+
+#if MAD_USE_MADX
 
 int mad_use_madx_micado = 0;
 int mad_use_madx_svdcnd = 0;
@@ -2216,40 +2220,60 @@ svddec_(num_t svdmat[], num_t umat[], num_t vmat[],
         /* sizes and output */
         int *im, int *ic, int *iflag, int sing[]);
 
-static void
-vec_sort (num_t v[], idx_t c[], ssz_t n)
+static int // madx legacy code wrapper
+madx_micado (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
+             ssz_t N, num_t tol, num_t r_[])
 {
-  num_t tr;
-  idx_t ti;
+  /* copy buffers */
+  mad_alloc_tmp(num_t, X   , n);
+  mad_alloc_tmp(num_t, R   , m);
+  /* working buffers */
+  mad_alloc_tmp(idx_t, nx  , n);
+  mad_alloc_tmp(idx_t, ny  , n);
+  mad_alloc_tmp(num_t, ax  , m*n);
+  mad_alloc_tmp(num_t, cinx, n);
+  mad_alloc_tmp(num_t, xinx, m);
+  mad_alloc_tmp(num_t, resx, m);
+  mad_alloc_tmp(num_t, rho , 3*n);
+  mad_alloc_tmp(num_t, ptop, n);
+  mad_alloc_tmp(num_t, rmss, n);
+  mad_alloc_tmp(num_t, xrms, n);
+  mad_alloc_tmp(num_t, xptp, n);
+  mad_alloc_tmp(num_t, xitr, n);
 
-  // Set indexes.
-  FOR(i,n) c[i] = i;
+  mad_mat_trans(a, ax  , m, n);
+  mad_vec_copy (b, xinx, m);
+  mad_vec_fill (0, x   , n);
 
-  // Sort values by ascending order.
-  FOR(i,1,n) RFOR(j,i+1)
-    if (v[j-1] > v[j]) {
-      SWAP(v[j-1], v[j], tr);
-      SWAP(c[j-1], c[j], ti);
-    }
-}
+  int im=m, ic=n, iter=N, ifail=0;
+  num_t rms=tol;
 
-static ssz_t
-ivec_sort (idx_t v[], ssz_t n, log_t rmdup)
-{
-  idx_t ti;
+  micit_(X, R, nx, &rms, &im, &ic, &iter,
+         /* working buffers */
+         ny, ax, cinx, xinx, resx, rho, ptop, rmss, xrms, xptp, xitr, &ifail);
 
-  // Sort indexes by ascending order.
-  FOR(i,1,n) RFOR(j,i+1)
-    if (v[j-1] > v[j]) SWAP(v[j-1], v[j], ti);
+  // Re-order corrector strengths and save residues. Strengths are not minused!
+  FOR(i,iter) x[i] = -X[nx[i]-1];
+  if (r_) mad_vec_copy(R, r_, m);
 
-  // Remove duplicates.
-  if (rmdup) {
-    idx_t k = 1;
-    FOR(i,1,n) if (v[k-1] < v[i]) v[k++] = v[i];
-    return k;
-  }
+  /* copy buffers */
+  mad_free_tmp(X);
+  mad_free_tmp(R);
+  /* working buffers */
+  mad_free_tmp(nx);
+  mad_free_tmp(ny);
+  mad_free_tmp(ax);
+  mad_free_tmp(cinx);
+  mad_free_tmp(xinx);
+  mad_free_tmp(resx);
+  mad_free_tmp(rho);
+  mad_free_tmp(ptop);
+  mad_free_tmp(rmss);
+  mad_free_tmp(xrms);
+  mad_free_tmp(xptp);
+  mad_free_tmp(xitr);
 
-  return n;
+  return iter;
 }
 
 static int // madx legacy code wrapper
@@ -2288,8 +2312,12 @@ madx_svdcnd (const num_t a[], idx_t c[], ssz_t m, ssz_t n, num_t scut, num_t s_[
   mad_free_tmp(sng);
 
   // Return sorted indexes of columns to remove.
-  return ivec_sort(c, nc, true);
+  return mad_ivec_sort(c, nc, true);
 }
+
+#endif /// MAD_USE_MADX
+
+// -- Orbit Correction --------------------------------------------------------o
 
 int // Matrix preconditionning using SVD, return indexes of columns to remove.
 mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
@@ -2297,10 +2325,12 @@ mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
 {
   assert(a && c);
 
+#if MAD_USE_MADX
   // X-check with MAD-X SVD cond (where N = n-5)
   if (mad_use_madx_svdcnd) {
     return madx_svdcnd(a, c, m, n, rcond, s_, 1/tol);
   }
+#endif
 
   ssz_t mn = MIN(m,n);
 
@@ -2360,7 +2390,7 @@ finalize:
   mad_free_tmp(S);
 
   // Return sorted indexes of columns to remove.
-  return ivec_sort(c, nc, true);
+  return mad_ivec_sort(c, nc, true);
 }
 
 int // Matrix preconditionning using SVD, return indexes of columns to remove.
@@ -2426,7 +2456,7 @@ finalize:
   mad_free_tmp(S);
 
   // Return sorted indexes of columns to remove.
-  return ivec_sort(c, nc, true);
+  return mad_ivec_sort(c, nc, true);
 }
 
 int // Matrix reconditionning using SVD.
@@ -2460,7 +2490,7 @@ mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
   mad_mat_mul(S, V, P, 1, n, N);
 
   // Sort projections by ascending order.
-  vec_sort(P, c, n);
+  mad_vec_sort(P, c, n);
 
   mad_free_tmp(U);
   mad_free_tmp(V);
@@ -2468,7 +2498,7 @@ mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
   mad_free_tmp(P);
 
   // Return sorted indexes of columns to remove.
-  return ivec_sort(c, n-N, false);
+  return mad_ivec_sort(c, n-N, false);
 }
 
 int // Matrix reconditionning using SVD.
@@ -2503,7 +2533,7 @@ mad_cmat_pcacnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
   mad_mat_mul (S, R, P, 1, n, N);
 
   // Sort projections by ascending order.
-  vec_sort(P, c, n);
+  mad_vec_sort(P, c, n);
 
   mad_free_tmp(U);
   mad_free_tmp(V);
@@ -2512,63 +2542,7 @@ mad_cmat_pcacnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
   mad_free_tmp(P);
 
   // Return sorted indexes of columns to remove.
-  return ivec_sort(c, n-N, false);
-}
-
-static int // madx legacy code wrapper
-madx_micado (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
-             ssz_t N, num_t tol, num_t r_[])
-{
-  /* copy buffers */
-  mad_alloc_tmp(num_t, X   , n);
-  mad_alloc_tmp(num_t, R   , m);
-  /* working buffers */
-  mad_alloc_tmp(idx_t, nx  , n);
-  mad_alloc_tmp(idx_t, ny  , n);
-  mad_alloc_tmp(num_t, ax  , m*n);
-  mad_alloc_tmp(num_t, cinx, n);
-  mad_alloc_tmp(num_t, xinx, m);
-  mad_alloc_tmp(num_t, resx, m);
-  mad_alloc_tmp(num_t, rho , 3*n);
-  mad_alloc_tmp(num_t, ptop, n);
-  mad_alloc_tmp(num_t, rmss, n);
-  mad_alloc_tmp(num_t, xrms, n);
-  mad_alloc_tmp(num_t, xptp, n);
-  mad_alloc_tmp(num_t, xitr, n);
-
-  mad_mat_trans(a, ax  , m, n);
-  mad_vec_copy (b, xinx, m);
-  mad_vec_fill (0, x   , n);
-
-  int im=m, ic=n, iter=N, ifail=0;
-  num_t rms=tol;
-
-  micit_(X, R, nx, &rms, &im, &ic, &iter,
-         /* working buffers */
-         ny, ax, cinx, xinx, resx, rho, ptop, rmss, xrms, xptp, xitr, &ifail);
-
-  // Re-order corrector strengths and save residues. Strengths are not minused!
-  FOR(i,iter) x[i] = -X[nx[i]-1];
-  if (r_) mad_vec_copy(R, r_, m);
-
-  /* copy buffers */
-  mad_free_tmp(X);
-  mad_free_tmp(R);
-  /* working buffers */
-  mad_free_tmp(nx);
-  mad_free_tmp(ny);
-  mad_free_tmp(ax);
-  mad_free_tmp(cinx);
-  mad_free_tmp(xinx);
-  mad_free_tmp(resx);
-  mad_free_tmp(rho);
-  mad_free_tmp(ptop);
-  mad_free_tmp(rmss);
-  mad_free_tmp(xrms);
-  mad_free_tmp(xptp);
-  mad_free_tmp(xitr);
-
-  return iter;
+  return mad_ivec_sort(c, n-N, false);
 }
 
 /*
@@ -2606,10 +2580,12 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
   // N == 0 means to use all correctors
   if (N > n || N <= 0) N = n;
 
+#if MAD_USE_MADX
   // X-check with MAD-X Micado
   if (mad_use_madx_micado) {
     return madx_micado(a, b, x, m, n, N, tol, r_);
   }
+#endif
 
   mad_alloc_tmp(num_t, A  , m*n);
   mad_alloc_tmp(num_t, B  , m);

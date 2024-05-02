@@ -39,8 +39,12 @@ typedef struct desc_ desc_t;
 
 // --- globals ----------------------------------------------------------------o
 
-extern const  ord_t  mad_tpsa_default;
+extern const  ord_t  mad_tpsa_dflt;
 extern const  ord_t  mad_tpsa_same;
+extern        num_t  mad_tpsa_eps;  // consider coef < eps as zero for dflt eps
+extern        ord_t  mad_tpsa_dbgo; // effective only with TPSA_DEBUG > 0
+extern        int    mad_tpsa_dbgf; // effective only with TPSA_DEBUG > 0
+extern        int    mad_tpsa_dbga; // effective only with TPSA_DEBUG > 0
 extern const desc_t *mad_desc_curr;
 
 // --- interface --------------------------------------------------------------o
@@ -65,7 +69,6 @@ void  mad_desc_del (const desc_t *d_); // delete all registered desc if d_=null
 int   mad_desc_getnv  (const desc_t *d, ord_t *mo_, int *np_, ord_t *po_); // return nv
 ord_t mad_desc_maxord (const desc_t *d, int nn, ord_t no_[]); // return mo
 ssz_t mad_desc_maxlen (const desc_t *d, ord_t mo);
-ord_t mad_desc_gtrunc (const desc_t *d, ord_t to);
 
 // -- indexes / monomials
 log_t mad_desc_isvalids  (const desc_t *d,          ssz_t n,       str_t s   ); // string

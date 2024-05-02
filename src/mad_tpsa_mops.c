@@ -16,14 +16,10 @@
  o-----------------------------------------------------------------------------o
 */
 
-#include <math.h>
 #include <float.h>
 #include <string.h>
-#include <assert.h>
 
 #include "mad_mem.h"
-#include "mad_desc_impl.h"
-
 #ifdef    MAD_CTPSA_IMPL
 #include "mad_ctpsa_impl.h"
 #else
@@ -31,6 +27,7 @@
 #endif
 
 #define DEBUG_CONVERT 0
+#define TC (const T**)
 
 // --- local ------------------------------------------------------------------o
 
@@ -48,12 +45,12 @@ check_compat (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na])
   assert(ma && mc);
   ensure(na>0, "invalid map sizes (zero or negative sizes)");
   check_same_desc(na,ma);
-  check_same_desc(na,(const T**)mc);
-  ensure(ma[0]->d == mc[0]->d, "incompatibles GTPSA (descriptors differ)");
+  check_same_desc(na, TC mc);
+  ensure(IS_COMPAT(*ma,*mc), "incompatibles GTPSA (descriptors differ)");
 
   if (mb) {
     check_same_desc(na,mb);
-    ensure(ma[0]->d == mb[0]->d, "incompatibles GTPSA (descriptors differ)");
+    ensure(IS_COMPAT(*ma,*mb), "incompatibles GTPSA (descriptors differ)");
   }
 }
 
@@ -139,8 +136,6 @@ exppb (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na], T *t[4])
   }
 }
 
-#define TC (const T**)
-
 static inline void // see 2nd Etienne's book, ch11
 logpb (ssz_t na, const T *ma[na], T *mc[na], T *t[4+5*na], num_t eps)
 {
@@ -212,8 +207,6 @@ logpb (ssz_t na, const T *ma[na], T *mc[na], T *t[4+5*na], num_t eps)
     warn("logpb did not converged after %d iterations", nmax);
 }
 
-#undef TC
-
 // --- public -----------------------------------------------------------------o
 
 void // compute M x = exp(:f(x;0):) x (eq. 32, 33 & 38 and inverse)
@@ -225,14 +218,11 @@ FUN(exppb) (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na])
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, na);
-  FOR(i,na) {
-    DBGTPSA(ma[i]); DBGTPSA(mb[i]); DBGTPSA(mc[i]);
-    mc_[i] = FUN(newd)(d, d->to);
-  }
+  FOR(i,na) mc_[i] = FUN(new)(mc[i], mad_tpsa_same);
 
   // temporaries
-  T *t[4];
-  FOR(i,4) t[i] = FUN(newd)(d, d->to);
+  const ord_t mo = FUN(mord)(na, TC mc, FALSE);
+  T *t[4]; FOR(i,4) t[i] = FUN(newd)(d, mo);
 
   // main call
   exppb(na, ma, mb, mc_, t);
@@ -244,7 +234,6 @@ FUN(exppb) (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na])
   FOR(i,na) {
     FUN(copy)(mc_[i], mc[i]);
     FUN(del )(mc_[i]);
-    DBGTPSA(mc[i]);
   }
   mad_free_tmp(mc_);
   DBGFUN(<-);
@@ -259,21 +248,15 @@ FUN(logpb) (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na])
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, na);
-  FOR(i,na) {
-    DBGTPSA(ma[i]); DBGTPSA(mc[i]);
-    mc_[i] = FUN(newd)(d, d->to);
-  }
+  FOR(i,na) mc_[i] = FUN(new)(mc[i], mad_tpsa_same);
 
   // initial guess provided
-  if (mb) FOR(i,na) {
-    DBGTPSA(mb[i]);
-    FUN(copy)(mb[i], mc_[i]);
-  }
+  if (mb) FOR(i,na) FUN(copy)(mb[i], mc_[i]);
 
   // temporaries: 4 tpsa + 5 damap
+  const ord_t mo = FUN(mord)(na, TC mc, FALSE);
   const int nt = 4+5*na;
-  T *t[nt];
-  FOR(i,nt) t[i] = FUN(newd)(d, d->to);
+  T *t[nt]; FOR(i,nt) t[i] = FUN(newd)(d, mo);
 
   // main call
   logpb(na, ma, mc_, t, 0);
@@ -285,7 +268,6 @@ FUN(logpb) (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na])
   FOR(i,na) {
     FUN(copy)(mc_[i], mc[i]);
     FUN(del )(mc_[i]);
-    DBGTPSA(mc[i]);
   }
   mad_free_tmp(mc_);
   DBGFUN(<-);
@@ -300,14 +282,12 @@ FUN(liebra) (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na])
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, na);
-  FOR(i,na) {
-    DBGTPSA(ma[i]); DBGTPSA(mb[i]); DBGTPSA(mc[i]);
-    mc_[i] = FUN(newd)(d, d->to);
-  }
+  FOR(i,na) mc_[i] = FUN(new)(mc[i], mad_tpsa_same);
 
   // temporaries: 3 tpsa
+  const ord_t mo = FUN(mord)(na, TC mc, FALSE);
   T *t[3];
-  FOR(i,3) t[i] = FUN(newd)(d, d->to);
+  FOR(i,3) t[i] = FUN(newd)(d, mo);
 
   // main call
   liebra(na, ma, mb, mc_, t);
@@ -319,7 +299,6 @@ FUN(liebra) (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na])
   FOR(i,na) {
     FUN(copy)(mc_[i], mc[i]);
     FUN(del )(mc_[i]);
-    DBGTPSA(mc[i]);
   }
   mad_free_tmp(mc_);
   DBGFUN(<-);
@@ -328,16 +307,13 @@ FUN(liebra) (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na])
 void
 FUN(fgrad) (ssz_t na, const T *ma[na], const T *b, T *c)
 {
-  DBGFUN(->);
-  assert(ma && b && c);
-  check_same_desc(na,(const T**)ma);
-  ensure(ma[0]->d == b->d, "incompatibles GTPSA (descriptors differ)");
-  ensure(ma[0]->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  const D *d = ma[0]->d;
+  assert(ma && b && c); DBGFUN(->);
+  check_same_desc(na, TC ma);
+  ensure(IS_COMPAT(*ma,b,c), "incompatibles GTPSA (descriptors differ)");
 
   // temporaries: 3 tpsa
   T *t[2];
-  FOR(i,2) t[i] = FUN(newd)(d, d->to);
+  FOR(i,2) t[i] = FUN(new)(c, mad_tpsa_same);
 
   // main call
   fgrad(na, ma, b, c, t);
@@ -351,36 +327,33 @@ FUN(fgrad) (ssz_t na, const T *ma[na], const T *b, T *c)
 void // compute G(x;0) = -J grad.f(x;0) (eq. 34),
 FUN(vec2fld) (ssz_t nc, const T *a, T *mc[nc]) // pbbra
 {
-  DBGFUN(->);
-  assert(a && mc);
-  check_same_desc(nc,(const T**)mc);
-  ensure(a->d == mc[0]->d, "incompatibles GTPSA (descriptors differ)");
+  assert(a && mc); DBGFUN(->);
+  check_same_desc(nc, TC mc);
+  ensure(IS_COMPAT(a,*mc), "incompatibles GTPSA (descriptors differ)");
   const D *d = a->d;
 
-  T *t = FUN(newd)(d, d->to);
+  const ord_t mo = FUN(mord)(nc, TC mc, FALSE);
+  T *t = FUN(newd)(d, mo);
 
   FOR(i,nc) {
     FUN(setvar)(t, 0, i+1, 0);
     FUN(poisbra)(a, t, mc[i], 0);
   }
 
-  FUN(del)(t);
-  DBGFUN(<-);
+  FUN(del)(t); DBGFUN(<-);
 }
 
 void // compute f(x;0) = \int_0^x J G(x';0) dx' = x^t J phi G(x;0) (eq. 34, 36 & 37)
 FUN(fld2vec) (ssz_t na, const T *ma[na], T *c) // getpb
 {
-  DBGFUN(->);
-  assert(ma && c);
+  assert(ma && c); DBGFUN(->);
   check_same_desc(na, ma);
-  ensure(ma[0]->d == c->d, "incompatibles GTPSA (descriptors differ)");
-  const D *d = ma[0]->d;
+  ensure(IS_COMPAT(*ma,c), "incompatibles GTPSA (descriptors differ)");
 
-  FUN(reset0)(c);
+  FUN(clear)(c);
 
-  T *t1 = FUN(newd)(d, d->to);
-  T *t2 = FUN(newd)(d, d->to);
+  T *t1 = FUN(new)(c, mad_tpsa_same);
+  T *t2 = FUN(new)(c, mad_tpsa_same);
 
   FOR(i,na) {
     idx_t iv = i & 1 ? i : i+2;
@@ -397,27 +370,28 @@ FUN(fld2vec) (ssz_t na, const T *ma[na], T *c) // getpb
   DBGFUN(<-);
 }
 
+ord_t
+FUN(mord) (ssz_t n, const T *t[n], log_t hi)
+{
+  assert(t); DBGFUN(->);
+  ord_t mx = 0;
+  if (hi) { FOR(i,n) if (t[i]->hi > mx) mx = t[i]->hi; }
+  else    { FOR(i,n) if (t[i]->mo > mx) mx = t[i]->mo; }
+  DBGFUN(<-); return mx;
+}
+
 num_t
 FUN(mnrm) (ssz_t na, const T *ma[na])
 {
-  DBGFUN(->);
-  assert(ma);
-
-  num_t nrm = 0;
-  FOR(i,na) {
-    DBGTPSA(ma[i]);
-    nrm += FUN(nrm)(ma[i]);
-  }
-
-  DBGFUN(<-);
-  return nrm;
+  assert(ma); DBGFUN(->);
+  num_t nrm = mnrm(na,ma);
+  DBGFUN(<-); return nrm;
 }
 
 void // convert maps to another maps using tpsa conversion.
 FUN(mconv) (ssz_t na, const T *ma[na], ssz_t nc, T *mc[nc], ssz_t n, idx_t t2r_[n], int pb)
 {
-  DBGFUN(->);
-  assert(ma && mc);
+  assert(ma && mc); DBGFUN(->);
 
   if (!t2r_) {
     ssz_t nn = MIN(na,nc);
@@ -428,7 +402,7 @@ FUN(mconv) (ssz_t na, const T *ma[na], ssz_t nc, T *mc[nc], ssz_t n, idx_t t2r_[
   FOR(i,MIN(n,na)) {
     idx_t ii = t2r_[i];
     if (ii < 0) continue; // discard var
-    ensure(0 <= ii && ii < nc, "translation index out of range 0 <= %d < %d", ii, nc);
+    ensure(0 <= ii && ii < nc, "translation index out of range 0<= %d <%d", ii, nc);
     FUN(convert)(ma[i], mc[ii], n, t2r_, pb);
     int ss = (ii-i)%2 * pb;
     if (ss == -1) FUN(scl)(mc[ii], -1, mc[ii]);
@@ -436,7 +410,6 @@ FUN(mconv) (ssz_t na, const T *ma[na], ssz_t nc, T *mc[nc], ssz_t n, idx_t t2r_[
     printf("cvt: % 2d -> % d x % 2d [pb=% d]\n", i, ss, ii, pb);
 #endif
   }
-
   DBGFUN(<-);
 }
 

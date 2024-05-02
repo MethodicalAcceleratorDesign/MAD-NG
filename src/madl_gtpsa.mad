@@ -32,7 +32,7 @@ local min, max in math
 
 local _C, option, tostring, complex, vector, cvector, ivector,
       monomial                                                 in MAD
-local log, exp                                                 in MAD.gmath
+local abs, exp, log                                            in MAD.gmath
 local openfile, strtrim, num2str                               in MAD.utility
 
 -- To review
@@ -59,30 +59,29 @@ local gmm = get_metamethod
 -- types ----------------------------------------------------------------------o
 
 ffi.cdef [[
+enum { NAMSZ=16 };
 typedef uint64_t bit_t; // mad_bit.h
 
 struct desc_ { // warning: must be kept identical to C definition
   const int   id;          // index in list of registered descriptors
   const int   nn, nv, np;  // #variables, #parameters, nn=nv+np <= 100000
-  const ord_t mo, po, to;  // max order of vars & params, global order of truncation
+  const ord_t mo, po;      // max order of vars & params
   const ord_t *const no;   // orders of each vars & params, no[nn]
 };             // end of compatibility with Lua FFI (rest is not visible)
 
 struct tpsa_ { // warning: must be kept identical to C definition and ctpsa
-  const desc_t *const d;  // ptr to tpsa descriptor
-  int32_t           uid;  // special "user" field for external use (padding)
-  const ord_t mo, lo, hi; // max ord (allocated), lowest/highest used ord
-  const bit_t nz;         // zero/non-zero homogeneous polynomials
-  const char  nam_[16];   // tpsa name (hidden)
+  const desc_t *const d;      // ptr to tpsa descriptor
+  const ord_t lo, hi, mo, ao; // lowest/highest used ord, max ord, allocated ord
+  int32_t     uid;            // special "user" field for external use (padding)
+  const char  nam_[NAMSZ];    // tpsa name (hidden)
   const num_t coef[?];
 };
 
 struct ctpsa_ { // warning: must be kept identical to C definition and tpsa
-  const desc_t *const d;  // ptr to cptsa descriptor
-  int32_t           uid;  // special "user" field for external use (padding)
-  const ord_t mo, lo, hi; // max ord (allocated), lowest/highest used ord
-  const bit_t nz;         // zero/non-zero homogeneous polynomials
-  const char  nam_[16];   // tpsa name (hidden)
+  const desc_t *const d;      // ptr to cptsa descriptor
+  const ord_t lo, hi, mo, ao; // lowest/highest used ord, max ord, allocated ord
+  int32_t     uid;            // special "user" field for external use (padding)
+  const char  nam_[NAMSZ];    // tpsa name (hidden)
   const cpx_t coef[?];
 };
 ]]
@@ -188,7 +187,7 @@ end
 -- tpsa(t)       -> t.d, t.mo
 -- tpsa(t|d, mo) -> t.d|d, mo
 
-local function tpsa (td, mo_)
+local function xtpsa (td, mo_, ct)
   if is_number(td) and is_nil(mo_) then
     mo_, td = td -- right shift
   end
@@ -204,26 +203,15 @@ local function tpsa (td, mo_)
     td = assert(td.d, "unexpected null descriptor")
   end
 
-  return tpsa_alloc(td, max(0, min(mo, td.mo)))
+  return ct(td, max(0, min(mo, td.mo)))
+end
+
+local function tpsa (td, mo_)
+  return xtpsa(td, mo_, tpsa_alloc)
 end
 
 local function ctpsa (td, mo_)
-  if is_number(td) and is_nil(mo_) then
-    mo_, td = td -- right shift
-  end
-
-  if is_nil(td) then
-    td = assert(_C.mad_desc_curr, "unexpected null descriptor")
-  end
-
-  local mo = mo_ or td.mo
-  assert(is_natural(mo), "invalid argument #2 (natural expected)")
-
-  if isa_tpsa(td) then
-    td = assert(td.d, "unexpected null descriptor")
-  end
-
-  return ctpsa_alloc(td, max(0, min(mo, td.mo)))
+  return xtpsa(td, mo_, ctpsa_alloc)
 end
 
 -- checkers -------------------------------------------------------------------o
@@ -235,28 +223,30 @@ local function chksiz (r, x, y) -- add, sub, mul
   return r
 end
 
--- maxlen, ordlen, gtrunc, debug ----------------------------------------------o
-
-MR.__len  = \x     -> _C.mad_tpsa_len (x)
-MC.__len  = \x     -> _C.mad_ctpsa_len(x)
-
-MR.ord    = \x     -> _C.mad_tpsa_ord (x)
-MC.ord    = \x     -> _C.mad_ctpsa_ord(x)
+-- maxord, maxlen, mord, trunc, debug -----------------------------------------o
 
 MR.nv     = \x     -> _C.mad_desc_getnv (x.d,nil,nil,nil)
 MR.np     = \x     => _C.mad_desc_getnv (x.d,nil,int,ord) return int[0],ord[0] end
 MR.maxord = \x     -> _C.mad_desc_maxord(x.d, 0, nil)
 MR.maxlen = \x,mo_ -> _C.mad_desc_maxlen(x.d,mo_ or x.mo)
-MR.gtrunc = \x,to_ -> _C.mad_desc_gtrunc(x.d,to_ or _C.mad_tpsa_same)
 
-MR.nam    = \x     -> ffi.string(_C.mad_tpsa_nam (x))
-MC.nam    = \x     -> ffi.string(_C.mad_ctpsa_nam(x))
+MR.mord    = \x,hi -> _C.mad_tpsa_ord (x,hi)
+MC.mord    = \x,hi -> _C.mad_ctpsa_ord(x,hi)
 
-MR.setnam = \x,s   => _C.mad_tpsa_setnam (x,s) return x end
-MC.setnam = \x,s   => _C.mad_ctpsa_setnam(x,s) return x end
+MR.trunc  = \x,to_ -> _C.mad_tpsa_mo (x, to_ or _C.mad_tpsa_same)
+MC.trunc  = \x,to_ -> _C.mad_ctpsa_mo(x, to_ or _C.mad_tpsa_same)
+
+MR.nam    = \x     -> ffi.string(_C.mad_tpsa_nam (x,nil))
+MC.nam    = \x     -> ffi.string(_C.mad_ctpsa_nam(x,nil))
+
+MR.setnam = \x,s   => _C.mad_tpsa_nam (x,s) return x end
+MC.setnam = \x,s   => _C.mad_ctpsa_nam(x,s) return x end
 
 MR.isvalid = \x    -> _C.mad_tpsa_isvalid (x)
 MC.isvalid = \x    -> _C.mad_ctpsa_isvalid(x)
+
+MR.density = \x,eps -> _C.mad_tpsa_density (x, eps or 0)
+MC.density = \x,eps -> _C.mad_ctpsa_density(x, eps or 0)
 
 MR.debug = \x,nam_,fnam_,lin_,fil_ => _C.mad_tpsa_debug (x,nam_,fnam_,lin_ or 0,fil_) end
 MC.debug = \x,nam_,fnam_,lin_,fil_ => _C.mad_ctpsa_debug(x,nam_,fnam_,lin_ or 0,fil_) end
@@ -323,6 +313,16 @@ function MC.__copy (x, y_)
     _C.mad_ctpsa_real(chksiz(x,y_), y_)
   end
   return y_
+end
+
+function MR.clrord (x, o)
+  _C.mad_tpsa_clrord(x, o)
+  return x
+end
+
+function MC.clrord (x, o)
+  _C.mad_ctpsa_clrord(x, o)
+  return x
 end
 
 function MR.sclord (x, inv_, prm_, y_)
@@ -466,8 +466,11 @@ function MC.clear (x)
   _C.mad_ctpsa_clear(x) return x
 end
 
-MR.isnul = \x -> _C.mad_tpsa_isnul(x)
+MR.isnul = \x -> _C.mad_tpsa_isnul (x)
 MC.isnul = \x -> _C.mad_ctpsa_isnul(x)
+
+MR.isval = \x -> _C.mad_tpsa_isval (x)
+MC.isval = \x -> _C.mad_ctpsa_isval(x)
 
 -- indexing -------------------------------------------------------------------o
 
@@ -539,18 +542,18 @@ end
 
 function MR.set0 (x, a, b)
   if is_nil(b) then a, b = 0, a end
-  _C.mad_tpsa_set0(x, a, b) return x
+  _C.mad_tpsa_seti(x, 0, a, b) return x
 end
 
 function MC.set0 (x, a, b)
   if is_nil(b) then a, b = 0, a end
   a, b = complex(a), complex(b)
-  _C.mad_ctpsa_set0_r(x, a.re, a.im, b.re, b.im) return x
+  _C.mad_ctpsa_seti_r(x, 0, a.re, a.im, b.re, b.im) return x
 end
 
 function MR.get (x, m) -- idx or str or mono -> num
   if is_integer(m) then
-    return m == 1 and x.coef[0] or _C.mad_tpsa_geti(x, m-1)
+    return _C.mad_tpsa_geti(x, m-1)
   elseif is_string(m) then
     return _C.mad_tpsa_gets(x, #m, m)
   else
@@ -561,10 +564,7 @@ end
 
 function MC.get (x, m) -- idx or str or mono -> cpx
   if is_integer(m) then
-    if m == 1
-    then return x.coef[0]
-    else _C.mad_ctpsa_geti_r(x, m-1, cres)
-    end
+    _C.mad_ctpsa_geti_r(x, m-1, cres)
   elseif is_string(m) then
     _C.mad_ctpsa_gets_r(x, #m, m, cres)
   else
@@ -577,10 +577,7 @@ end
 function MR.set (x, m, a, b)
   if is_nil(b) then a, b = 0, a end
   if is_integer(m) then
-    if m == 1
-    then _C.mad_tpsa_set0(x,      a, b)
-    else _C.mad_tpsa_seti(x, m-1, a, b)
-    end
+    _C.mad_tpsa_seti(x, m-1, a, b)
   elseif is_string(m) then
     _C.mad_tpsa_sets(x, #m, m, a, b)
   else
@@ -594,10 +591,7 @@ function MC.set (x, m, a, b)
   if is_nil(b) then a, b = 0, a end
   a, b = complex(a), complex(b)
   if is_integer(m) then
-    if m == 1
-    then _C.mad_ctpsa_set0_r(x,      a.re, a.im, b.re, b.im)
-    else _C.mad_ctpsa_seti_r(x, m-1, a.re, a.im, b.re, b.im)
-    end
+    _C.mad_ctpsa_seti_r(x, m-1, a.re, a.im, b.re, b.im)
   elseif is_string(m) then
     _C.mad_ctpsa_sets_r(x, #m, m, a.re, a.im, b.re, b.im)
   else
@@ -605,6 +599,28 @@ function MC.set (x, m, a, b)
     _C.mad_ctpsa_setm_r(x, m.n, m._dat, a.re, a.im, b.re, b.im)
   end
   return x
+end
+
+function MR.cpy (x, m, r) -- idx or str or mono -> num
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+      if is_integer(m) then _C.mad_tpsa_cpyi(x, r, m-1)
+  elseif is_string (m) then _C.mad_tpsa_cpys(x, r, #m, m)
+  else
+    if not is_monomial(m) then m = monomial(m) end
+    _C.mad_tpsa_cpym(x, r, m.n, m._dat)
+  end
+  return r
+end
+
+function MC.cpy (x, m, r) -- idx or str or mono -> cpx
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+      if is_integer(m) then _C.mad_ctpsa_cpyi(x, r, m-1)
+  elseif is_string (m) then _C.mad_ctpsa_cpys(x, r, #m, m)
+  else
+    if not is_monomial(m) then m = monomial(m) end
+    _C.mad_ctpsa_cpym(x, r, m.n, m._dat)
+  end
+  return r
 end
 
 -- sparse getters and setters -------------------------------------------------o
@@ -638,6 +654,24 @@ function MC.set_sparse (x, tbl, a, b) -- tbl = {idx1, ord1, idx2, ord2, ... }
   local n = #tbl
   local m = int_arr(n) ; for i=1,n do m[i-1] = tbl[i] end
   _C.mad_ctpsa_setsm_r(x, n, m, a.re, a.im, b.re, b.im) return x
+end
+
+function MR.cpy_sparse (x, tbl, r) -- tbl = {idx1, ord1, idx2, ord2, ... }
+  assert(is_table(tbl), "invalid argument #2 (table expected)")
+  local n = #tbl
+  local m = int_arr(n) ; for i=1,n do m[i-1] = tbl[i] end
+  r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
+  _C.mad_tpsa_cpysm(x, r, n, m)
+  return r
+end
+
+function MC.cpy_sparse (x, tbl, r) -- tbl = {idx1, ord1, idx2, ord2, ... }
+  assert(is_table(tbl), "invalid argument #2 (table expected)")
+  local n = #tbl
+  local m = int_arr(n) ; for i=1,n do m[i-1] = tbl[i] end
+  r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
+  _C.mad_ctpsa_cpysm(x, r, n, m)
+  return r
 end
 
 -- table/vector getters and setters -------------------------------------------o
@@ -750,21 +784,21 @@ end
 -- equ
 
 local function tpsa_eqn (x, y, tol)
-  return x.hi == 0 and abs(x.coef[0]-y) <= tol
+  return x:isval() and abs(x.coef[0]-y) <= tol
 end
 
 local function tpsa_eqc (x, y, tol)
-  return x.hi == 0 and abs(          y.im) <= tol
+  return x:isval() and abs(          y.im) <= tol
                    and abs(x.coef[0]-y.re) <= tol
 end
 
 local function ctpsa_eqn (x, y, tol)
-  return x.hi == 0 and abs(x.coef[0].im  ) <= tol
+  return x:isval() and abs(x.coef[0].im  ) <= tol
                    and abs(x.coef[0].re-y) <= tol
 end
 
 local function ctpsa_eqc (x, y, tol)
-  return x.hi == 0 and abs(x.coef[0].re-y.re) <= tol
+  return x:isval() and abs(x.coef[0].re-y.re) <= tol
                    and abs(x.coef[0].im-y.im) <= tol
 end
 
@@ -857,18 +891,18 @@ function MR.__add (x, y, r)
   if is_number(x) then                           -- num + tpsa
     r = chksiz(r,y) or tpsa_alloc(y.d, y.mo)
     _C.mad_tpsa_copy(y, r)
-    _C.mad_tpsa_set0(r, 1, x)
+    _C.mad_tpsa_seti(r, 0, 1, x)
   elseif is_number(y) then                       -- tpsa + num
     r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
     _C.mad_tpsa_copy(x, r)
-    _C.mad_tpsa_set0(r, 1, y)
+    _C.mad_tpsa_seti(r, 0, 1, y)
   elseif is_tpsa(y) and is_tpsa(x) then          -- tpsa + tpsa
     r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_tpsa_add(x, y, r)
   elseif is_complex(y) then                      -- tpsa + cpx
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)    -- promote to ctpsa
     _C.mad_ctpsa_cplx(x, nil, r)
-    _C.mad_ctpsa_set0_r(r, 1, 0, y.re, y.im)
+    _C.mad_ctpsa_seti_r(r, 0, 1, 0, y.re, y.im)
   elseif is_ctpsa(y) then                        -- tpsa + ctpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_addt(y, x, r)
@@ -881,19 +915,19 @@ end
 function MR.__add_cpx (x, y, r)                  -- cpx + tpsa
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)      -- promote to ctpsa
   _C.mad_ctpsa_cplx(y, nil, r)
-  _C.mad_ctpsa_set0_r(r, 1, 0, x.re, x.im) return r
+  _C.mad_ctpsa_seti_r(r, 0, 1, 0, x.re, x.im) return r
 end
 
 function MC.__add (x, y, r)
   if is_number(x) then                           -- num + ctpsa
     r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
     _C.mad_ctpsa_copy(y, r)
-    _C.mad_ctpsa_set0_r(r, 1, 0, x, 0)
+    _C.mad_ctpsa_seti_r(r, 0, 1, 0, x, 0)
   elseif is_scalar(y) then                       -- ctpsa + scl
     y = complex(y)
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
     _C.mad_ctpsa_copy(x, r)
-    _C.mad_ctpsa_set0_r(r, 1, 0, y.re, y.im)
+    _C.mad_ctpsa_seti_r(r, 0, 1, 0, y.re, y.im)
   elseif is_ctpsa(y) and is_ctpsa(x) then        -- ctpsa + ctpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_add(x, y, r)
@@ -909,7 +943,7 @@ end
 function MC.__add_cpx (x, y, r)                  -- cpx + ctpsa
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
   _C.mad_ctpsa_copy(y, r)
-  _C.mad_ctpsa_set0_r(r, 1, 0, x.re, x.im) return r
+  _C.mad_ctpsa_seti_r(r, 0, 1, 0, x.re, x.im) return r
 end
 
 -- sub (see also kadd)
@@ -918,18 +952,18 @@ function MR.__sub (x, y, r)
   if is_number(x) then                           -- num - tpsa
     r = chksiz(r,y) or tpsa_alloc(y.d, y.mo)
     _C.mad_tpsa_scl(y, -1, r)
-    _C.mad_tpsa_set0(r, 1, x)
+    _C.mad_tpsa_seti(r, 0, 1, x)
   elseif is_number(y) then                       -- tpsa - num
     r = chksiz(r,x) or tpsa_alloc(x.d, x.mo)
     _C.mad_tpsa_copy(x, r)
-    _C.mad_tpsa_set0(r, 1, -y)
+    _C.mad_tpsa_seti(r, 0, 1, -y)
   elseif is_tpsa(y) and is_tpsa(x) then          -- tpsa - tpsa
     r = chksiz(r,x,y) or tpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_tpsa_sub(x, y, r)
   elseif is_complex(y) then                      -- tpsa - cpx
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)    -- promote to ctpsa
     _C.mad_ctpsa_copy(x, r)
-    _C.mad_ctpsa_set0_r(r, 1, 0, -y.re, -y.im)
+    _C.mad_ctpsa_seti_r(r, 0, 1, 0, -y.re, -y.im)
   elseif is_ctpsa(y) then                        -- tpsa - ctpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_tsub(x, y, r)
@@ -942,19 +976,19 @@ end
 function MR.__sub_cpx (x, y, r)                  -- cpx - tpsa
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)      -- promote to ctpsa
   _C.mad_ctpsa_cplx(y, nil, r)
-  _C.mad_ctpsa_set0_r(r, 1, 0, x.re, x.im) return r
+  _C.mad_ctpsa_seti_r(r, 0, 1, 0, x.re, x.im) return r
 end
 
 function MC.__sub (x, y, r)
   if is_number(x) then                           -- num - ctpsa
     r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
-    _C.mad_ctpsa_scl(y, -1, r)
-    _C.mad_ctpsa_set0_r(r, 1, 0, x, 0)
+    _C.mad_ctpsa_scl_r(y, -1, 0, r)
+    _C.mad_ctpsa_seti_r(r, 0, 1, 0, x, 0)
   elseif is_scalar(y) then                       -- ctpsa - scl
     y = complex(-y)
     r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
     _C.mad_ctpsa_copy(x, r)
-    _C.mad_ctpsa_set0_r(r, 1, 0, y.re, y.im)
+    _C.mad_ctpsa_seti_r(r, 0, 1, 0, y.re, y.im)
   elseif is_ctpsa(y) and is_ctpsa(x) then        -- ctpsa - ctpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
     _C.mad_ctpsa_sub(x, y, r)
@@ -970,7 +1004,7 @@ end
 function MC.__sub_cpx (x, y, r)                  -- cpx - ctpsa
   r = chksiz(r,y) or ctpsa_alloc(y.d, y.mo)
   _C.mad_ctpsa_copy(y, r)
-  _C.mad_ctpsa_set0_r(r, 1, 0, x.re, x.im) return r
+  _C.mad_ctpsa_seti_r(r, 0, 1, 0, x.re, x.im) return r
 end
 
 -- mul
@@ -991,7 +1025,7 @@ function MR.__mul (x, y, r)
     _C.mad_ctpsa_scl_r(r, y.re, y.im, r)
   elseif is_ctpsa(y) then                        -- tpsa * ctpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
-    _C.mad_ctpsa_tmul(x, y, r)
+    _C.mad_ctpsa_mult(y, x, r)
   else                                           -- tpsa * ?
     return assert(gmm(y,'__mul_tpsa'), "invalid 'tpsa * ?' operation")(x, y, r)
   end
@@ -1077,6 +1111,7 @@ function MC.__div (x, y, r)
     _C.mad_ctpsa_inv_r(y, x, 0, r)
   elseif is_scalar(y) then                       -- ctpsa / scl
     y = complex(1/y)
+    r = chksiz(r,x) or ctpsa_alloc(x.d, x.mo)
     _C.mad_ctpsa_scl_r(x, y.re, y.im, r)
   elseif is_ctpsa(y) and is_ctpsa(x) then        -- ctpsa / ctpsa
     r = chksiz(r,x,y) or ctpsa_alloc(x.d, max(x.mo, y.mo))
@@ -1925,7 +1960,7 @@ function MR.print (x, name_, tol_, nohdr_)
   return x:write(nil, name_, tol_, nohdr_)
 end
 
-local cbuf = chr_arr(16) -- GTPSA name, see NAMSZ in mad_tpsa.h
+local cbuf = chr_arr(_C.NAMSZ) -- GTPSA name, see NAMSZ in mad_tpsa.h
 
 function MR.read (x_, filnam_, kind_)
   local file = assert(openfile(filnam_, 'r', '.dat'),
@@ -1935,8 +1970,8 @@ function MR.read (x_, filnam_, kind_)
   local d, x = _C.mad_tpsa_scan_hdr(int, cbuf, file)
   if d ~= nil then
     if int[0] == 1
-    then x = ctpsa(d) _C.mad_ctpsa_setnam(x,cbuf) _C.mad_ctpsa_scan_coef(x,file)
-    else x = tpsa (d) _C.mad_tpsa_setnam (x,cbuf) _C.mad_tpsa_scan_coef (x,file)
+    then x = ctpsa(d) _C.mad_ctpsa_nam(x,cbuf) _C.mad_ctpsa_scan_coef(x,file)
+    else x = tpsa (d) _C. mad_tpsa_nam(x,cbuf) _C. mad_tpsa_scan_coef(x,file)
     end
   end
 
@@ -1996,11 +2031,11 @@ MR.__emul, MR.__ediv, MR.__emod, MR.__epow
 MC.  emul, MC.  ediv, MC.  emod, MC.  epow =
 MC.__emul, MC.__ediv, MC.__emod, MC.__epow
 
-MR.  eq, MR.  lt, MR.  le, MR.  same, MR.  copy, MR.length =
-MR.__eq, MR.__lt, MR.__le, MR.__same, MR.__copy, MR.__len
+MR.  eq, MR.  lt, MR.  le, MR.  same, MR.  copy =
+MR.__eq, MR.__lt, MR.__le, MR.__same, MR.__copy
 
-MC.  eq, MC.  lt, MC.  le, MC.  same, MC.  copy, MC.length =
-MC.__eq, MC.__lt, MC.__le, MC.__same, MC.__copy, MC.__len
+MC.  eq, MC.  lt, MC.  le, MC.  same, MC.  copy =
+MC.__eq, MC.__lt, MC.__le, MC.__same, MC.__copy
 
 MR.__index = MR
 MC.__index = MC

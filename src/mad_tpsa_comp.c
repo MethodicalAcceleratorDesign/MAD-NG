@@ -17,13 +17,9 @@
  o-----------------------------------------------------------------------------o
 */
 
-#include <math.h>
 #include <string.h>
-#include <assert.h>
 
 #include "mad_mem.h"
-#include "mad_desc_impl.h"
-
 #ifdef    MAD_CTPSA_IMPL
 #include "mad_ctpsa_impl.h"
 #else
@@ -31,6 +27,7 @@
 #endif
 
 #define DEBUG_COMPOSE 0
+#define TC (const T**)
 
 // --- local ------------------------------------------------------------------o
 
@@ -47,13 +44,12 @@ check_compose (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 {
   assert(ma && mb && mc);
   ensure(sa>0 && sb>0, "invalid map sizes (zero or negative sizes)");
-  check_same_desc(sa,ma);
-  check_same_desc(sb,mb);
-  check_same_desc(sa,(const T**)mc);
-  ensure(sb >= ma[0]->d->nv  , "incompatibles damap #B < NV(A)");
-  ensure(sb <= ma[0]->d->nn  , "incompatibles damap #B > NV(A)+NP(A)");
-  ensure(ma[0]->d == mb[0]->d, "incompatibles damap A vs C (descriptors differ)");
-  ensure(ma[0]->d == mc[0]->d, "incompatibles damap A vs B (descriptors differ)");
+  check_same_desc(sa, ma);
+  check_same_desc(sb, mb);
+  check_same_desc(sa, TC mc);
+  ensure(sb >= ma[0]->d->nv    , "incompatibles damap #B < NV(A)");
+  ensure(sb <= ma[0]->d->nn    , "incompatibles damap #B > NV(A)+NP(A)");
+  ensure(IS_COMPAT(*ma,*mb,*mc), "incompatibles GTPSA (descriptors differ)");
 }
 
 static inline void
@@ -82,22 +78,14 @@ print_damap (ssz_t sa, const T *ma[sa], FILE *fp_)
 void
 FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 {
-  DBGFUN(->);
+  assert(ma && mb && mc); DBGFUN(->);
   check_compose(sa, ma, sb, mb, mc);
-
-  const D *d = ma[0]->d;
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, sa);
-  FOR(ib,sb) DBGTPSA(mb[ib]);
-  FOR(ic,sa) {
-    DBGTPSA(ma[ic]); DBGTPSA(mc[ic]);
-    mc_[ic] = FUN(newd)(d, d->to);
-  }
+  FOR(ia,sa) mc_[ia] = FUN(new)(mc[ia], mad_tpsa_same);
 
-  ord_t hi_ord = 0;
-  FOR(i,sa) if (ma[i]->hi > hi_ord) hi_ord = ma[i]->hi;
-  hi_ord = MIN(hi_ord, d->to);
+  ord_t hi_ord = FUN(mord)(sa,ma,TRUE);
 
   #ifdef _OPENMP
   if (hi_ord >= 5) {
@@ -106,7 +94,7 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 #if DEBUG_COMPOSE
     printf("compose: thread no %d\n", omp_get_thread_num());
 #endif
-      compose_serial(1,ma+ia,sb,mb,mc_+ia,ma[ia]->hi);
+      compose_serial(1,&ma[ia],sb,mb,&mc_[ia],ma[ia]->hi);
 //    compose_parallel(sa,ma,sb,mb,mc_,hi_ord);
     }
   } else
@@ -114,10 +102,9 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
     compose_serial(sa,ma,sb,mb,mc_,hi_ord);
 
   // copy back
-  FOR(ic,sa) {
-    FUN(copy)(mc_[ic], mc[ic]);
-    FUN(del )(mc_[ic]);
-    DBGTPSA(mc[ic]);
+  FOR(ia,sa) {
+    FUN(copy)(mc_[ia], mc[ia]);
+    FUN(del )(mc_[ia]);
   }
   mad_free_tmp(mc_);
   DBGFUN(<-);
@@ -157,12 +144,12 @@ FUN(eval) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], NUM tc[sa])
   mad_alloc_tmp(      T*, mc, sa);
   FOR(ib,sb) {
     T *t = FUN(newd)(ma[0]->d, 0);
-    FUN(setvar)(t, tb[ib], 0,0);
+    FUN(setval)(t, tb[ib]);
     mb[ib] = t;
   }
   FOR(ic,sa) {
     T *t = FUN(newd)(ma[0]->d, 0);
-    FUN(setvar)(t, tc[ic], 0,0);
+    FUN(setval)(t, tc[ic]);
     mc[ic] = t;
   }
 

@@ -24,9 +24,10 @@
  o-----------------------------------------------------------------------------o
  */
 
-// comment to disable temporaries and traces
+// comment to disable temporaries, default ctors, and traces
 #define TPSA_USE_TMP 1
-//#define TPSA_USE_TRC 1
+#define TPSA_USE_DFT 0
+#define TPSA_USE_TRC 0
 
 // --- includes ---------------------------------------------------------------o
 
@@ -57,7 +58,7 @@ extern "C" {
 namespace mad {
 
 // constants
-const int dflt = mad_tpsa_default;
+const int dflt = mad_tpsa_dflt;
 const int same = mad_tpsa_same;
 
 // forward decl
@@ -74,26 +75,27 @@ struct tpsa_base {
   tpsa_t&  ref () const { return static_cast<const D*>( this)->ref(); }
   const D& self() const { return static_cast<const D&>(*this);        }
         D& self()       { return static_cast<      D&>(*this);        }
+  ord_t    mo  () const { return mad_tpsa_mo(ptr(), same);            }
 
   // set name
-  D& set(str_t              s)         { mad_tpsa_setnam(ptr(), s);          return self(); }
-  D& set(const std::string &s)         { mad_tpsa_setnam(ptr(), s.c_str());  return self(); }
+  D& set(str_t              s)         { mad_tpsa_nam(ptr(), s);          return self(); }
+  D& set(const std::string &s)         { mad_tpsa_nam(ptr(), s.c_str());  return self(); }
 
   // set value and variables
-  D& set (num_t a)                     { mad_tpsa_setval(ptr(), a      );    return self(); }
-  D& set (num_t a, idx_t v)            { mad_tpsa_setvar(ptr(), a, v, 0);    return self(); }
-  D& setp(num_t a, idx_t v)            { mad_tpsa_setprm(ptr(), a, v   );    return self(); }
+  D& set (num_t a)                     { mad_tpsa_setval(ptr(), a      ); return self(); }
+  D& set (num_t a, idx_t v)            { mad_tpsa_setvar(ptr(), a, v, 0); return self(); }
+  D& setp(num_t a, idx_t v)            { mad_tpsa_setprm(ptr(), a, v   ); return self(); }
 
   // debug
   log_t isvalid() const { return mad_ctpsa_isvalid(ptr()); }
 
   template <class A>
   D& operator+=(const tpsa_base<A> &a) { TRC("baz,baz") mad_tpsa_add (ptr(),a.ptr(),ptr()); return self(); }
-  D& operator+=(      num_t         a) { TRC("baz,num") mad_tpsa_set0(ptr(),      1,    a); return self(); }
+  D& operator+=(      num_t         a) { TRC("baz,num") mad_tpsa_seti(ptr(), 0,   1,    a); return self(); }
 
   template <class A>
   D& operator-=(const tpsa_base<A> &a) { TRC("baz,baz") mad_tpsa_sub (ptr(),a.ptr(),ptr()); return self(); }
-  D& operator-=(      num_t         a) { TRC("baz,num") mad_tpsa_set0(ptr(),      1,   -a); return self(); }
+  D& operator-=(      num_t         a) { TRC("baz,num") mad_tpsa_seti(ptr(), 0,   1,   -a); return self(); }
 
   template <class A>
   D& operator*=(const tpsa_base<A> &a) { TRC("baz,baz") mad_tpsa_mul (ptr(),a.ptr(),ptr()); return self(); }
@@ -109,8 +111,8 @@ struct tpsa_base {
   D& operator^=(      int           a) { TRC("baz,int") mad_tpsa_powi(ptr(),      a,ptr()); return self(); }
 
   // indexing by index, monomial as string (literal), and (sparse) monomial as vector.
-  num_t operator[](idx_t i) const { return i ? mad_tpsa_geti(ptr(),  i) : mad_tpsa_get0(ptr()); }
-  num_t operator[](str_t s) const { return     mad_tpsa_gets(ptr(),0,s);                        }
+  num_t operator[](idx_t i) const { return mad_tpsa_geti(ptr(),  i); }
+  num_t operator[](str_t s) const { return mad_tpsa_gets(ptr(),0,s); }
   num_t operator[](const std::string& s) const {
     return mad_tpsa_gets(ptr(), s.size(), s.c_str());
   }
@@ -180,15 +182,19 @@ private:
 
 // public class handle tpsa_t* _with_ memory management.
 struct tpsa : tpsa_base<tpsa> {
-  explicit tpsa()                : t(mad_tpsa_newd(mad_desc_curr, dflt)) { TRC("dft! %p", (void*)t.get()) }
-  explicit tpsa(int mo)          : t(mad_tpsa_newd(mad_desc_curr, mo  )) { TRC("int! %p", (void*)t.get()) }
-  explicit tpsa(str_t s)         : t(mad_tpsa_newd(mad_desc_curr, dflt)) { TRC("dft,str! %p", (void*)t.get()) this->set(s); }
-  explicit tpsa(str_t s, int mo) : t(mad_tpsa_newd(mad_desc_curr, mo  )) { TRC("int,str! %p", (void*)t.get()) this->set(s); }
+#if TPSA_USE_DFT
+  explicit tpsa()         : t(mad_tpsa_newd(mad_desc_curr,dflt)) { TRC("dft! %p", (void*)t.get()) }
+#endif
+  explicit tpsa(ord_t mo) : t(mad_tpsa_newd(mad_desc_curr,mo  )) { TRC("ord! %p", (void*)t.get()) }
 
+  explicit tpsa(const tpsa &a)                   : t(mad_tpsa_new(a.ptr(),same)) { TRC("&tpa! %p", (void*)t.get()) }
   template <class A>
-  explicit tpsa(const tpsa_base<A> &a)         : t(mad_tpsa_new(a.ptr(), dflt)) { TRC("&baz! %p", (void*)t.get()) }
+  explicit tpsa(const tpsa_base<A> &a)           : t(mad_tpsa_new(a.ptr(),same)) { TRC("&baz! %p", (void*)t.get()) }
   template <class A>
-  explicit tpsa(const tpsa_base<A> &a, int mo) : t(mad_tpsa_new(a.ptr(), mo  )) { TRC("&baz,int! %p", (void*)t.get()) }
+  explicit tpsa(const tpsa_base<A> &a, ord_t mo) : t(mad_tpsa_new(a.ptr(),mo  )) { TRC("&baz,ord! %p", (void*)t.get()) }
+  template <class A, class B>
+  explicit tpsa(const tpsa_base<A> &a,
+                const tpsa_base<B> &b) : t(mad_tpsa_new(a.ptr(),std::max(a.mo(), b.mo()))) { TRC("&baz,&baz! %p", (void*)t.get()) }
 
   tpsa_t* ptr () const  { return t.get(); }
   tpsa_t& ref () const  { return *t;      }
@@ -200,22 +206,24 @@ struct tpsa : tpsa_base<tpsa> {
   tpsa& operator=(      tpsa        &&a) { TRC("tpa<tpa") mad_tpsa_copy(a.ptr(),ptr()); return *this; }
   tpsa& operator=(      num_t         a) { TRC("tpa=num") mad_tpsa_setval(ptr(), a   ); return *this; }
 
-#if TPSA_USE_TMP // specialization for capturing temporaries
-  tpsa(const mad_prv_::tpsa_tmp_&); // forward decl
-#else            // replace specialization but slow...
-  tpsa(const tpsa &a) : t(mad_tpsa_new(a.ptr(), dflt)) { TRC("&tpa!! %p", (void*)t.get())
-    mad_tpsa_copy(a.ptr(),ptr());
-  }
+#if TPSA_USE_TMP // specialization for capturing temporaries (forward decl)
+  tpsa(const mad_prv_::tpsa_tmp_&);
+  tpsa(const mad_prv_::tpsa_tmp_&, const mad_prv_::tpsa_tmp_&);
+  template <class A>
+  tpsa(const mad_prv_::tpsa_tmp_&, const tpsa_base<A> &);
+  template <class A>
+  tpsa(const tpsa_base<A> &      , const mad_prv_::tpsa_tmp_&);
 #endif
 
 protected:
   explicit tpsa(tpsa_t *a) : t(a) { TRC("tpsa_t* %p", (void*)a) }
 
 private:
-//tpsa()                                   = delete;  // dflt    ctor
+#if !TPSA_USE_DFT
+  tpsa()                                   = delete;  // dflt    ctor
+#endif
 #if TPSA_USE_TMP
   tpsa(tpsa&&)                             = delete;  // move    ctor
-  tpsa(const tpsa&)                        = delete;  // copy    ctor
 #endif
   tpsa(std::nullptr_t)                     = delete;  // nullptr ctor
 //tpsa& operator=(tpsa&&)                  = delete;  // move    assign
@@ -238,16 +246,32 @@ private:
 namespace mad_prv_ {
 
 struct tpsa_tmp_ : tpsa {
+#if TPSA_USE_DFT
   explicit tpsa_tmp_() : tpsa()                 { TRC("dft! %p", (void*)ptr()) }
+#endif
+  tpsa_tmp_(tpsa_t *a) : tpsa(a)                { TRC("*tmp") } // capture ptr (see scan)
   tpsa_tmp_(tpsa_tmp_ &&a) : tpsa(std::move(a)) { TRC("<tmp") } // move ctor
   tpsa_tmp_(const tpsa_tmp_ &a) : tpsa(a)       { TRC("&tmp") } // copy ctor
 
   template <class A>
-  explicit tpsa_tmp_(const tpsa_base<A> &a) : tpsa(a) { TRC("&baz") }
-  explicit tpsa_tmp_(tpsa_t *a)             : tpsa(a) { TRC("*tmp") } // capture ptr (see scan)
+  tpsa_tmp_(const tpsa_base<A> &a) : tpsa(a)    { TRC("&baz") }
+
+  tpsa_tmp_(const tpsa_tmp_ &a,
+            const tpsa_tmp_ &b)    : tpsa(a,b)  { TRC("&tmp,&tmp") }
+  template <class A>
+  tpsa_tmp_(const tpsa_base<A> &a,
+            const tpsa_tmp_    &b) : tpsa(a,b)  { TRC("&baz,&tmp") }
+  template <class A>
+  tpsa_tmp_(const tpsa_tmp_    &a,
+            const tpsa_base<A> &b) : tpsa(a,b)  { TRC("&tmp,&baz") }
+  template <class A, class B>
+  tpsa_tmp_(const tpsa_base<A> &a,
+            const tpsa_base<B> &b) : tpsa(a,b)  { TRC("&baz,&baz") }
 
 private:
-//tpsa_tmp_()                              = delete; // dflt    ctor
+#if !TPSA_USE_DFT
+  tpsa_tmp_()                              = delete; // dflt    ctor
+#endif
 //tpsa_tmp_(tpsa_tmp_ &&)                  = delete; // move    ctor
 //tpsa_tmp_(const tpsa_tmp_ &)             = delete; // copy    ctor
   tpsa_tmp_(std::nullptr_t)                = delete; // nullptr ctor
@@ -259,7 +283,26 @@ private:
 } // mad_prv_
 
 #define T mad_prv_::tpsa_tmp_
+
 inline tpsa::tpsa(const T &a) { t.swap(const_cast<T&>(a).t); TRC("&tmp") }
+
+inline tpsa::tpsa(const T &a, const T &b) {
+  if (a.mo() >= b.mo()) { t.swap(const_cast<T&>(a).t); TRC("&tmp,&tmp,1") }
+  else {                  t.swap(const_cast<T&>(b).t); TRC("&tmp,&tmp,2") }
+}
+
+template <class A>
+inline tpsa::tpsa(const T &a, const tpsa_base<A> &b) {
+  if (a.mo() >= b.mo()) { t.swap(const_cast<T&>(a).t); TRC("&tmp,&baz,1") }
+  else { T tb(b);         t.swap(               tb.t); TRC("&tmp,&baz,2") }
+}
+
+template <class A>
+inline tpsa::tpsa(const tpsa_base<A> &a, const T &b) {
+  if (b.mo() >= a.mo()) { t.swap(const_cast<T&>(b).t); TRC("&baz,&tmp,1") }
+  else { T ta(a);         t.swap(               ta.t); TRC("&baz,&tmp,2") }
+}
+
 #else
 #define T tpsa
 #endif // TPSA_USE_TMP
@@ -294,14 +337,14 @@ inline T operator- (const T &a) {  TRC("-tmp")
 
 template <class A, class B>
 inline T operator+ (const tpsa_base<A> &a, const tpsa_base<B> &b) {  TRC("baz+baz")
-  T c(a); mad_tpsa_add(a.ptr(), b.ptr(), c.ptr()); return c;
+  T c(a,b); mad_tpsa_add(a.ptr(), b.ptr(), c.ptr()); return c;
 }
 
 template <class A>
 inline T operator+ (num_t a, const tpsa_base<A> &b) {  TRC("num+baz")
   T c(b);
   mad_tpsa_copy(b.ptr(), c.ptr());
-  mad_tpsa_set0(c.ptr(), 1, a);
+  mad_tpsa_seti(c.ptr(), 0, 1, a);
   return c;
 }
 
@@ -314,20 +357,29 @@ inline T operator+ (const tpsa_base<A> &a, num_t b) {  TRC("baz+num")
 
 template <class A>
 inline T operator+ (const tpsa_base<A> &a, const T &b) {  TRC("baz+tmp")
-  T c(b); mad_tpsa_add(a.ptr(), c.ptr(), c.ptr()); return c;
+  T c(a,b);
+  if (a.ptr()) mad_tpsa_add(a.ptr(), c.ptr(), c.ptr());
+  else         mad_tpsa_add(c.ptr(), b.ptr(), c.ptr());
+  return c;
 }
 
 template <class A>
 inline T operator+ (const T &a, const tpsa_base<A> &b) {  TRC("tmp+baz")
-  T c(a); mad_tpsa_add(c.ptr(), b.ptr(), c.ptr()); return c;
+  T c(a,b);
+  if (a.ptr()) mad_tpsa_add(a.ptr(), c.ptr(), c.ptr());
+  else         mad_tpsa_add(c.ptr(), b.ptr(), c.ptr());
+  return c;
 }
 
 inline T operator+ (const T &a, const T &b) {  TRC("tmp+tmp")
-  T c(a); mad_tpsa_add(c.ptr(), b.ptr(), c.ptr()); return c;
+  T c(a,b);
+  if (a.ptr()) mad_tpsa_add(a.ptr(), c.ptr(), c.ptr());
+  else         mad_tpsa_add(c.ptr(), b.ptr(), c.ptr());
+ return c;
 }
 
 inline T operator+ (num_t a, const T &b) {  TRC("num+tmp")
-  T c(b); mad_tpsa_set0(c.ptr(), 1, a); return c;
+  T c(b); mad_tpsa_seti(c.ptr(), 0, 1, a); return c;
 }
 
 inline T operator+ (const T &a, num_t b) {  TRC("tmp+num")
@@ -340,14 +392,14 @@ inline T operator+ (const T &a, num_t b) {  TRC("tmp+num")
 
 template <class A, class B>
 inline T operator- (const tpsa_base<A> &a, const tpsa_base<B> &b) {  TRC("baz-baz")
-  T c(a); mad_tpsa_sub(a.ptr(), b.ptr(), c.ptr()); return c;
+  T c(a,b); mad_tpsa_sub(a.ptr(), b.ptr(), c.ptr()); return c;
 }
 
 template <class A>
 inline T operator- (const tpsa_base<A> &a, num_t b) {  TRC("baz-num")
   T c(a);
   mad_tpsa_copy(a.ptr(), c.ptr());
-  mad_tpsa_set0(c.ptr(), 1, -b);
+  mad_tpsa_seti(c.ptr(), 0, 1, -b);
   return c;
 }
 
@@ -355,7 +407,7 @@ template <class A>
 inline T operator- (num_t a, const tpsa_base<A> &b) {  TRC("num-baz")
   T c(b);
   mad_tpsa_scl (b.ptr(),-1, c.ptr());
-  mad_tpsa_set0(c.ptr(), 1, a);
+  mad_tpsa_seti(c.ptr(), 0, 1, a);
   return c;
 }
 
@@ -363,26 +415,35 @@ inline T operator- (num_t a, const tpsa_base<A> &b) {  TRC("num-baz")
 
 template <class A>
 inline T operator- (const tpsa_base<A> &a, const T &b) {  TRC("baz-tmp")
-  T c(b); mad_tpsa_sub(a.ptr(), c.ptr(), c.ptr()); return c;
+  T c(a,b);
+  if (a.ptr()) mad_tpsa_sub(a.ptr(), c.ptr(), c.ptr());
+  else         mad_tpsa_sub(c.ptr(), b.ptr(), c.ptr());
+  return c;
 }
 
 template <class A>
 inline T operator- (const T &a, const tpsa_base<A> &b) {  TRC("tmp-baz")
-  T c(a); mad_tpsa_sub(c.ptr(), b.ptr(), c.ptr()); return c;
+  T c(a,b);
+  if (a.ptr()) mad_tpsa_sub(a.ptr(), c.ptr(), c.ptr());
+  else         mad_tpsa_sub(c.ptr(), b.ptr(), c.ptr());
+  return c;
 }
 
 inline T operator- (const T &a, const T &b) {  TRC("tmp-tmp")
-  T c(a); mad_tpsa_sub(c.ptr(), b.ptr(), c.ptr()); return c;
+  T c(a,b);
+  if (a.ptr()) mad_tpsa_sub(a.ptr(), c.ptr(), c.ptr());
+  else         mad_tpsa_sub(c.ptr(), b.ptr(), c.ptr());
+  return c;
 }
 
 inline T operator- (const T &a, num_t b) {  TRC("tmp-num")
-  T c(a); mad_tpsa_set0(c.ptr(), 1, -b); return c;
+  T c(a); mad_tpsa_seti(c.ptr(), 0, 1, -b); return c;
 }
 
 inline T operator- (num_t a, const T &b) {  TRC("num-tmp")
   T c(b);
   mad_tpsa_scl (c.ptr(),-1, c.ptr());
-  mad_tpsa_set0(c.ptr(), 1, a);
+  mad_tpsa_seti(c.ptr(), 0, 1, a);
   return c;
 }
 
@@ -392,7 +453,7 @@ inline T operator- (num_t a, const T &b) {  TRC("num-tmp")
 
 template <class A, class B>
 inline T operator* (const tpsa_base<A> &a, const tpsa_base<B> &b) {  TRC("baz*baz")
-  T c(a); mad_tpsa_mul(a.ptr(), b.ptr(), c.ptr()); return c;
+  T c(a,b); mad_tpsa_mul(a.ptr(), b.ptr(), c.ptr()); return c;
 }
 
 template <class A>
@@ -407,26 +468,11 @@ inline T operator* (const tpsa_base<A> &a, num_t b) {  TRC("baz*num")
 
 #if TPSA_USE_TMP
 
-template <class A>
-inline T operator* (const tpsa_base<A> &a, const T &b) {  TRC("baz*tmp")
-  T c(b); mad_tpsa_mul(a.ptr(), c.ptr(), c.ptr()); return c;
-}
-
-template <class A>
-inline T operator* (const T &a, const tpsa_base<A> &b) {  TRC("tmp*baz")
-  T c(a); mad_tpsa_mul(c.ptr(), b.ptr(), c.ptr()); return c;
-}
-
-inline T operator* (const T &a, const T &b) {  TRC("tmp*tmp")
-  T c(a); mad_tpsa_mul(c.ptr(), b.ptr(), c.ptr()); return c;
-}
-
-inline T operator*(num_t a, const T &b) { TRC("num*tmp")
+inline T operator* (num_t a, const T &b) { TRC("num*tmp")
   T c(b); mad_tpsa_scl(c.ptr(), a, c.ptr()); return c;
 }
 
-inline T
-operator* (const T &a, num_t b) {  TRC("tmp*num")
+inline T operator* (const T &a, num_t b) {  TRC("tmp*num")
   return b*a;
 }
 
@@ -436,7 +482,7 @@ operator* (const T &a, num_t b) {  TRC("tmp*num")
 
 template <class A, class B>
 inline T operator/ (const tpsa_base<A> &a, const tpsa_base<B> &b) {  TRC("baz/baz")
-  T c(a); mad_tpsa_div(a.ptr(), b.ptr(), c.ptr()); return c;
+  T c(a,b); mad_tpsa_div(a.ptr(), b.ptr(), c.ptr()); return c;
 }
 
 template <class A>
@@ -450,20 +496,6 @@ inline T operator/ (num_t a, const tpsa_base<A> &b) {  TRC("num/baz")
 }
 
 #if TPSA_USE_TMP
-
-template <class A>
-inline T operator/ (const tpsa_base<A> &a, const T &b) {  TRC("baz/tmp")
-  T c(b); mad_tpsa_div(a.ptr(), c.ptr(), c.ptr()); return c;
-}
-
-template <class A>
-inline T operator/ (const T &a, const tpsa_base<A> &b) {  TRC("tmp/baz")
-  T c(a); mad_tpsa_div(c.ptr(), b.ptr(), c.ptr()); return c;
-}
-
-inline T operator/ (const T &a, const T &b) {  TRC("tmp/tmp")
-  T c(a); mad_tpsa_div(c.ptr(), b.ptr(), c.ptr()); return c;
-}
 
 inline T operator/ (const T &a, num_t b) {  TRC("tmp/num")
   T c(a); mad_tpsa_scl(c.ptr(), 1/b, c.ptr()); return c;
@@ -479,7 +511,7 @@ inline T operator/ (num_t a, const T &b) {  TRC("num/tmp")
 
 template <class A, class B>
 inline T pow (const tpsa_base<A> &a, const tpsa_base<B> &b) {  TRC("baz^baz")
-  T c(a); mad_tpsa_pow(a.ptr(), b.ptr(), c.ptr()); return c;
+  T c(a,b); mad_tpsa_pow(a.ptr(), b.ptr(), c.ptr()); return c;
 }
 
 template <class A>
@@ -501,20 +533,6 @@ inline T pow (num_t a, const tpsa_base<A> &b) {  TRC("num^baz")
 }
 
 #if TPSA_USE_TMP
-
-template <class A>
-inline T pow (const tpsa_base<A> &a, const T &b) {  TRC("baz^tmp")
-  T c(b); mad_tpsa_pow(a.ptr(), c.ptr(), c.ptr()); return c;
-}
-
-template <class A>
-inline T pow (const T &a, const tpsa_base<A> &b) {  TRC("tmp^baz")
-  T c(a); mad_tpsa_pow(c.ptr(), b.ptr(), c.ptr()); return c;
-}
-
-inline T pow (const T &a, const T &b) {  TRC("tmp^tmp")
-  T c(a); mad_tpsa_pow(c.ptr(), b.ptr(), c.ptr()); return c;
-}
 
 inline T pow (const T &a, int b) {  TRC("tmp^int")
   T c(a); mad_tpsa_powi(c.ptr(), b, c.ptr()); return c;
@@ -544,38 +562,6 @@ template <class A, class B>
 inline T hypot (const tpsa_base<A> &a, const tpsa_base<B> &b) {  TRC("baz,baz")
   T c(a); mad_tpsa_hypot(a.ptr(), b.ptr(), c.ptr()); return c;
 }
-
-#if TPSA_USE_TMP
-
-template <class A>
-inline T atan2 (const tpsa_base<A> &a, const T &b) {  TRC("baz,tmp")
-  T c(b); mad_tpsa_atan2(a.ptr(), c.ptr(), c.ptr()); return c;
-}
-
-template <class A>
-inline T atan2 (const T &a, const tpsa_base<A> &b) {  TRC("tmp,baz")
-  T c(a); mad_tpsa_atan2(c.ptr(), b.ptr(), c.ptr()); return c;
-}
-
-inline T atan2 (const T &a, const T &b) {  TRC("tmp,tmp")
-  T c(a); mad_tpsa_atan2(c.ptr(), b.ptr(), c.ptr()); return c;
-}
-
-template <class A>
-inline T hypot (const tpsa_base<A> &a, const T &b) {  TRC("baz,tmp")
-  T c(b); mad_tpsa_hypot(a.ptr(), c.ptr(), c.ptr()); return c;
-}
-
-template <class A>
-inline T hypot (const T &a, const tpsa_base<A> &b) {  TRC("tmp,baz")
-  T c(a); mad_tpsa_hypot(c.ptr(), b.ptr(), c.ptr()); return c;
-}
-
-inline T hypot (const T &a, const T &b) {  TRC("tmp,tmp")
-  T c(a); mad_tpsa_hypot(c.ptr(), b.ptr(), c.ptr()); return c;
-}
-
-#endif // TPSA_USE_TMP
 
 // --- I/O ---
 
@@ -609,8 +595,8 @@ inline num_t sinc   (num_t a           ) { TRC("num") return mad_num_sinc (a); }
 inline num_t sinhc  (num_t a           ) { TRC("num") return mad_num_sinhc(a); }
 inline num_t asinc  (num_t a           ) { TRC("num") return mad_num_asinc(a); }
 
-inline num_t fval(const tpsa_t *a) { TRC("tspa")
-  return mad_tpsa_get0(a);
+inline num_t fval(const tpsa_t *a) { TRC("tpsa")
+  return mad_tpsa_geti(a,0);
 }
 
 template <class A>
@@ -618,8 +604,8 @@ inline num_t fval (const tpsa_base<A> &a) { TRC("baz")
   return a[0];
 }
 
-inline num_t fabs (const tpsa_t *a) { TRC("tspa")
-  return abs(mad_tpsa_get0(a));
+inline num_t fabs (const tpsa_t *a) { TRC("tpsa")
+  return abs(mad_tpsa_geti(a,0));
 }
 
 template <class A>
@@ -648,10 +634,6 @@ inline T invsqrt (const tpsa_base<A> &a, num_t v=1) { TRC("baz")
 }
 
 #if TPSA_USE_TMP
-
-inline T sqr (const T &a) { TRC("tmp")
-  T c(a); mad_tpsa_mul(c.ptr(), c.ptr(), c.ptr()); return c;
-}
 
 inline T inv (const T &a, num_t v=1) { TRC("tmp")
   T c(a); mad_tpsa_inv(c.ptr(), v, c.ptr()); return c;

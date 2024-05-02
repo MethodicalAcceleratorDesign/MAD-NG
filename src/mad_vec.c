@@ -338,6 +338,26 @@ void mad_vec_kadd (int k, const num_t a[], const num_t *x[], num_t r[], ssz_t n)
   }
 }
 
+void mad_vec_sort (num_t x[], idx_t r[], ssz_t n)
+{
+  CHKX; num_t t;
+
+  if (!r) {
+    FOR(i,1,n) RFOR(j,i+1) if (x[j-1] > x[j]) SWAP(x[j-1], x[j], t);
+    return;
+  }
+
+  // Set permutation indexes.
+  FOR(i,n) r[i] = i;
+
+  // Sort values by ascending order.
+  idx_t tr;
+  FOR(i,1,n) RFOR(j,i+1) if (x[j-1] > x[j]) {
+    SWAP(x[j-1], x[j], t );
+    SWAP(r[j-1], r[j], tr);
+  }
+}
+
 // --- cvec
 
 log_t mad_cvec_isnul (const cpx_t x[], ssz_t n)
@@ -639,4 +659,21 @@ void mad_ivec_roll (idx_t x[], ssz_t n, int nroll)
     mad_ivec_copy(a    , x+n-nsz,   nsz); // a to end of x
   }
   mad_free_tmp(a);
+}
+
+ssz_t mad_ivec_sort (idx_t x[], ssz_t n, log_t rmdup)
+{
+  CHKX; idx_t ti;
+
+  // Sort indexes by ascending order.
+  FOR(i,1,n) RFOR(j,i+1) if (x[j-1] > x[j]) SWAP(x[j-1], x[j], ti);
+
+  // Remove duplicates.
+  if (rmdup) {
+    idx_t k = 1;
+    FOR(i,1,n) if (x[k-1] < x[i]) x[k++] = x[i];
+    return k;
+  }
+
+  return n;
 }

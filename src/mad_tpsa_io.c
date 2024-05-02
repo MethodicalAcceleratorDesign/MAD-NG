@@ -17,21 +17,18 @@
  o-----------------------------------------------------------------------------o
 */
 
-#include <math.h>
 #include <ctype.h>
 #include <string.h>
-#include <assert.h>
 
 #include "mad_mem.h"
 #include "mad_str.h"
-#include "mad_desc_impl.h"
-
 #ifdef    MAD_CTPSA_IMPL
 #include "mad_ctpsa_impl.h"
 #else
 #include "mad_tpsa_impl.h"
 #endif
 
+//local debug level
 //#undef  DEBUG
 //#define DEBUG 3
 
@@ -91,14 +88,11 @@ print_ords(int nv, int np, ord_t po, const ord_t ords[nv+np], FILE *stream)
   assert(ords && stream);
 
   // print variables
-  for (int i=0; i < nv-1; i += 2)
-    fprintf(stream, "  %hhu %hhu", ords[i], ords[i+1]);
-  if (nv % 2)
-    fprintf(stream, "  %hhu"     , ords[nv-1]);
+  FOR(i,0,nv-1,2) fprintf(stream, "  %hhu %hhu", ords[i], ords[i+1]);
+  if (nv % 2)     fprintf(stream, "  %hhu"     , ords[nv-1]);
 
   // print parameters
-  for (int i=nv; i < nv+np; i++)
-    if (ords[i] != po) fprintf(stream, "  %d^%hhu", i+1, ords[i]);
+  FOR(i,nv,nv+np) if (ords[i] != po) fprintf(stream, "  %d^%hhu", i+1, ords[i]);
 }
 
 static inline void
@@ -112,7 +106,7 @@ read_ords(int nv, int np, ord_t po, ord_t ords[nv+np], FILE *stream, int ci, str
   mad_mono_fill(np, ords+nv, po);
 
   // read variables
-  for (int i=0; i < nv-1; i += 2)
+  FOR(i,0,nv-1,2)
     if (fscanf(stream, "%*[ ]%hhu%*[ ]%hhu", &ords[i], &ords[i+1]) != 2)
       error("invalid monomial input at index %d of '%s'", ci, name);
   if (nv % 2)
@@ -122,7 +116,7 @@ read_ords(int nv, int np, ord_t po, ord_t ords[nv+np], FILE *stream, int ci, str
   // read parameters
   idx_t idx;
   ord_t ord;
-  for (int i=nv; i < nv+np; i++) {
+  FOR(i,nv,nv+np) {
     idx = 0, ord = -1;
     int cnt = fscanf(stream, "%*[ ]%d^%hhu", &idx, &ord);
 
@@ -284,7 +278,7 @@ FUN(scan_hdr) (int *kind_, char name_[NAMSZ], FILE *stream_)
 void
 FUN(scan_coef) (T *t, FILE *stream_)
 {
-  assert(t); DBGFUN(->); DBGTPSA(t);
+  assert(t); DBGFUN(->);
 
   if (!stream_) stream_ = stdin;
 
@@ -353,8 +347,8 @@ FUN(scan_coef) (T *t, FILE *stream_)
     ensure(mad_mono_ord(nn,ords) == o,
            "invalid monomial order at index %d of '%s'", i, t->nam);
 
-    // discard too high mononial
-    if (o <= t->mo) FUN(setm)(t,nn,ords,0,v);
+    // discard too high mononial and zeros
+    if (o <= t->mo && v) FUN(setm)(t,nn,ords,0,v);
 
     // finish line (handle no '\n' before EOF)
     skip_line(stream_);
@@ -367,10 +361,10 @@ FUN(scan_coef) (T *t, FILE *stream_)
   if (i == -1) // no coef read
     warn("unable to parse GTPSA coefficients for '%s'",
          t->nam[0] ? t->nam : "-UNNAMED-");
-  else
-    FUN(update0)(t, t->lo, t->hi);
 
-  DBGTPSA(t); DBGFUN(<-);
+  FUN(mo)(t, t->hi); // shrink mo to hi
+  FUN(update)(t);
+  DBGFUN(<-);
 }
 
 T*
@@ -386,32 +380,29 @@ FUN(scan) (FILE *stream_)
   char name[NAMSZ];
   const D *d = FUN(scan_hdr)(&knd, name, stream_);
   if (d) {
-    t = FUN(newd)(d, mad_tpsa_default);
+    t = FUN(newd)(d, mad_tpsa_dflt);
     FUN(scan_coef)(t, stream_);
-    FUN(setnam)   (t, name   );
+    FUN(nam)      (t, name   );
   }
   DBGFUN(<-);
   return t;
 }
 
 void
-FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
+FUN(print) (const T *t, str_t name_, num_t eps, int nohdr, FILE *stream_)
 {
-  assert(t); DBGFUN(->); DBGTPSA(t);
-
+  assert(t); DBGFUN(->);
   if (!name_  ) name_   = t->nam[0] ? t->nam : "-UNNAMED-";
-  if (eps_ < 0) eps_    = 0;
   if (!stream_) stream_ = stdout;
+  if (eps < 0) eps = mad_tpsa_eps;
 
 #ifndef MAD_CTPSA_IMPL
   const char typ = 'R';
 #else
   const char typ = 'C';
 #endif
-
   const D *d = t->d;
-
-  if (nohdr_) goto coeffonly;
+  if (nohdr) goto onlycoef;
 
   // print header
   fprintf(stream_, d->np || d->uno
@@ -428,36 +419,26 @@ FUN(print) (const T *t, str_t name_, num_t eps_, int nohdr_, FILE *stream_)
   fprintf(stream_, "***********************");
 #endif
 
-coeffonly: ;
+onlycoef: ;
   idx_t idx = 0;
-  FUN(update0)((T*)t, t->lo, t->hi);
-  if (t->nz != 0) {
-    // print coefficients
-    const idx_t *o2i = d->ord2idx;
-    for (ord_t o = t->lo; o <= t->hi ; ++o) {
-      if (!mad_bit_tst(t->nz,o)) continue;
-      for (idx_t i = o2i[o]; i < o2i[o+1]; ++i) {
+  ord_t lo = 0, hi = 0;
+hiorders: ;
+  TPSA_SCAN(t,lo,hi) {
 #ifndef MAD_CTPSA_IMPL
-        if (fabs(t->coef[i]) < eps_) continue;
-        if (idx == 0)
-          fprintf(stream_, "\n     I   COEFFICIENT             ORDER   EXPONENTS");
-        fprintf(stream_, "\n%6d  %23.16lE   %2hhu   "           , ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
+    if (fabs(t->coef[i]) < eps) continue;
+    if (!idx) fprintf(stream_, "\n     I   COEFFICIENT             ORDER   EXPONENTS");
+    fprintf(stream_, "\n%6d  %23.16lE   %2hhu   "           , ++idx, VALEPS(t->coef[i],eps), d->ords[i]);
 #else
-        if (fabs(creal(t->coef[i])) < eps_ && fabs(cimag(t->coef[i])) < eps_) continue;
-        if (idx == 0)
-          fprintf(stream_, "\n     I   COEFFICIENT                                      ORDER   EXPONENTS");
-        fprintf(stream_, "\n%6d  %23.16lE %+23.16lEi   %2hhu   ", ++idx, VALEPS(t->coef[i],eps_), d->ords[i]);
+    if (fabs(creal(t->coef[i])) < eps && fabs(cimag(t->coef[i])) < eps) continue;
+    if (!idx) fprintf(stream_, "\n     I   COEFFICIENT                                      ORDER   EXPONENTS");
+    fprintf(stream_, "\n%6d  %23.16lE %+23.16lEi   %2hhu   ", ++idx, VALEPS(t->coef[i],eps), d->ords[i]);
 #endif
-        print_ords(d->nv, d->np, 0, d->To[i], stream_);
-      }
-    }
-    if (!idx)
-         fprintf(stream_, "\n\n         ALL COMPONENTS ZERO (EPS=%.1lE)", eps_);
-  } else fprintf(stream_, "\n\n         ALL COMPONENTS ZERO");
-
+    print_ords(d->nv, d->np, 0, d->To[i], stream_);
+  }
+  if (!lo) { lo = t->lo, hi = t->hi; goto hiorders; }
+  if (!idx) fprintf(stream_, "\n\n         ALL COMPONENTS ZERO (EPS=%.1lE)", eps);
   fprintf(stream_, "\n");
-
-  DBGTPSA(t); DBGFUN(<-);
+  DBGFUN(<-);
 }
 
 // --- end --------------------------------------------------------------------o

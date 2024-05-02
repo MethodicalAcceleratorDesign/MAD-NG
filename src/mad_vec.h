@@ -30,6 +30,7 @@
 
 void  mad_vec_fill   (      num_t x  ,                         num_t r[], ssz_t n); // num -> vec
 void  mad_vec_roll   (      num_t x[],                                    ssz_t n, int nroll);
+void  mad_vec_sort   (      num_t x[],                         idx_t r[], ssz_t n); // shell sort
 log_t mad_vec_isnul  (const num_t x[],                                    ssz_t n); // vec == 0
 log_t mad_vec_isval  (const num_t x[],       num_t v,                     ssz_t n); // vec == v
 void  mad_vec_copy   (const num_t x[],                         num_t r[], ssz_t n); // vec -> vec
@@ -69,7 +70,7 @@ void  mad_vec_dif    (const num_t x[], const num_t y[],        num_t r[], ssz_t 
 void  mad_vec_difv   (const num_t x[], const cpx_t y[],        cpx_t r[], ssz_t n); // dif(vec,cvec)
 void  mad_vec_fft    (const num_t x[],                         cpx_t r[], ssz_t n); // vec ->cvec
 void  mad_vec_rfft   (const num_t x[],                         cpx_t r[], ssz_t n); // vec ->cvec
-void  mad_vec_nfft   (const num_t x[], const  num_t x_node[] , cpx_t r[], ssz_t n, ssz_t nr);
+void  mad_vec_nfft   (const num_t x[], const num_t x_node[],   cpx_t r[], ssz_t n, ssz_t nr);
 void  mad_vec_kadd   (int k,const num_t a[], const num_t *x[], num_t r[], ssz_t n); //  sum_k ax
 
 void  mad_cvec_fill  (      cpx_t x  ,                         cpx_t r[], ssz_t n); // cpx ->cvec
@@ -135,6 +136,7 @@ void  mad_cvec_kadd  (int k,const cpx_t a[], const cpx_t *x[], cpx_t r[], ssz_t 
 
 void  mad_ivec_fill  (      idx_t x  ,                         idx_t r[], ssz_t n); // idx ->ivec
 void  mad_ivec_roll  (      idx_t x[],                                    ssz_t n, int nroll);
+ssz_t mad_ivec_sort  (      idx_t x[],                                    ssz_t n, log_t rmdup); // shell sort
 log_t mad_ivec_isnul (const idx_t x[],                                    ssz_t n); // ivec == 0
 log_t mad_ivec_isval (const idx_t x[],       idx_t v,                     ssz_t n); // ivec == v
 void  mad_ivec_copy  (const idx_t x[],                         idx_t r[], ssz_t n); // ivec ->ivec

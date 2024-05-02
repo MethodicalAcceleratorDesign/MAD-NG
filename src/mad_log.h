@@ -48,10 +48,10 @@
 // --- implementation (private) -----------------------------------------------o
 // ----------------------------------------------------------------------------o
 
-#define mad_error(...)                  (mad_error)(  mad_logloc_,__VA_ARGS__)
-#define mad_warn(...)                   (mad_warn )(  mad_logloc_,__VA_ARGS__)
-#define mad_trace(l,...)  mad_loglvl_(l,(mad_trace)(l,mad_logloc_,__VA_ARGS__))
-#define mad_ensure(c,...) mad_logcnd_(c,(mad_error)(  mad_logloc_,__VA_ARGS__))
+#define mad_error(...)                  mad_error(  mad_logloc_,__VA_ARGS__)
+#define mad_warn(...)                   mad_warn (  mad_logloc_,__VA_ARGS__)
+#define mad_trace(l,...)  mad_loglvl_(l,mad_trace(l,mad_logloc_,__VA_ARGS__))
+#define mad_ensure(c,...) mad_logcnd_(c,mad_error(  mad_logloc_,__VA_ARGS__))
 
 #define mad_loglvl_(l,f) ((void)(mad_trace_level >= (l) && (f,0)))
 #define mad_logcnd_(c,f) ((void)(                   (c) || (f,0)))

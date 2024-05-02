@@ -143,6 +143,9 @@ local function map_alloc (td, vn, mt)
       mv[i] = ct(td, 1) ; ta[i-1] = mv[i]:set(i+1,0,1):setnam(vn[i] or "")
     end
   else
+    for i=1,td.nv do       -- set variables to same mo
+      mv[i]:trunc(xx[i]:trunc())
+    end
     for i=td.nv+1,td.nn do -- share parameters
       mv[i] = xx[i] ; ta[i-1] = mv[i]
     end
@@ -205,14 +208,36 @@ local function cdamap (arg)
   return map_ctor(arg, MC):eye()
 end
 
--- maxord, maxlen, gtrunc -----------------------------------------------------o
+-- maxord, maxlen, mord, trunc ------------------------------------------------o
 
 MR.nv     = \x     -> x[1]:nv()
 MR.np     = \x     -> x[1]:np()
 MR.maxord = \x     -> x[1]:maxord()
 MR.maxlen = \x     -> x[1]:maxlen()
 MR.ordlen = \x,mo_ -> x[1]:ordlen(mo_)
-MR.gtrunc = \x,to_ -> x[1]:gtrunc(to_)
+
+MR.mord   = \x,hi_ -> _C.mad_tpsa_mord (x.__td.nv, x.__ta, hi_ or false)
+MC.mord   = \x,hi_ -> _C.mad_ctpsa_mord(x.__td.nv, x.__ta, hi_ or false)
+
+function MR.trunc (x,to_)
+  local mo = {}
+  if is_table(to_) then
+    for i=1,#x do mo[i] = _C.mad_tpsa_mo(x[i], to_[i] or _C.mad_tpsa_same) end
+  else
+    for i=1,#x do mo[i] = _C.mad_tpsa_mo(x[i], to_    or _C.mad_tpsa_same) end
+  end
+  return mo
+end
+
+function MC.trunc (x,to_)
+  local mo = {}
+  if is_table(to_) then
+    for i=1,#x do mo[i] = _C.mad_ctpsa_mo(x[i], to_[i] or _C.mad_tpsa_same) end
+  else
+    for i=1,#x do mo[i] = _C.mad_ctpsa_mo(x[i], to_    or _C.mad_tpsa_same) end
+  end
+  return mo
+end
 
 -- same, copy, clear ----------------------------------------------------------o
 
@@ -408,11 +433,11 @@ function MR.set0 (x, v, a_)
   local a = a_ or 0
   if is_number(v) then
     for i=1,#x do
-      _C.mad_tpsa_set0(x[i], a, v)
+      _C.mad_tpsa_seti(x[i], 0, a, v)
     end
   else
     for i=1,min(#x,#v) do
-      _C.mad_tpsa_set0(x[i], a, v[i])
+      _C.mad_tpsa_seti(x[i], 0, a, v[i])
     end
   end
   return x
@@ -425,12 +450,12 @@ function MC.set0 (x, v, a_)
   if is_scalar(v) then
     local b = complex(v)
     for i=1,#x do
-      _C.mad_ctpsa_set0_r(x[i], a.re, a.im, b.re, b.im)
+      _C.mad_ctpsa_seti_r(x[i], 0, a.re, a.im, b.re, b.im)
     end
   else
     for i=1,min(#x,#v) do
       local b = complex(v[i])
-      _C.mad_ctpsa_set0_r(x[i], a.re, a.im, b.re, b.im)
+      _C.mad_ctpsa_seti_r(x[i], 0, a.re, a.im, b.re, b.im)
     end
   end
   return x
@@ -513,6 +538,16 @@ end
 
 function MC.clear (x)
   for i=1,#x do _C.mad_ctpsa_clear(x[i]) end
+  return x
+end
+
+function MR.clrord (x, o)
+  for i=1,#x do _C.mad_tpsa_clrord(x[i], o) end
+  return x
+end
+
+function MC.clrord (x, o)
+  for i=1,#x do _C.mad_ctpsa_clrord(x[i], o) end
   return x
 end
 
@@ -1370,11 +1405,11 @@ end
 
 MR.__pairs  =  pairs_iter
 
-MR.  same, MR.  copy, MR.length =
-MR.__same, MR.__copy, MR.__len
+MR.  same, MR.  copy =
+MR.__same, MR.__copy
 
-MC.  same, MC.  copy, MC.length =
-MC.__same, MC.__copy, MC.__len
+MC.  same, MC.  copy =
+MC.__same, MC.__copy
 
 MR.unm = \x,r_ -> MR.__unm(x,nil,r_)
 MC.unm = \x,r_ -> MC.__unm(x,nil,r_)
