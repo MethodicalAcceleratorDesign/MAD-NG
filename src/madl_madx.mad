@@ -168,12 +168,12 @@ end
 -- variable-def ---------------------------------------------------------------o
 -- var  = expr
 -- var := expr
-                    --  [1] var   [2] op  [3] expr
+--                      [1] var   [2] op  [3] expr
 local variable_patt = "^([^:=,(]+)(:?=)%s*(.*)$"
 
 local function convert_variable (env, str, cap)
   if option.debug >= 2 then io.write("conv-var: [", str, "]\n") end
-  assertf(env.cur == 0, "unsupported variable %s assignment in %s, line %d",
+  assertf(env.cur == 0, "unsupported variable %s assignment inside %s, line %d",
                                              cap[1], env[env.cur], env.out.n)
   cap[1] = convert_ename(cap[1])
   cap[3] = convert_ename(cap[3])
@@ -184,6 +184,31 @@ local function convert_variable (env, str, cap)
     end
   end
   return table.concat(cap, ' ')
+end
+
+-- beamline-def ---------------------------------------------------------------o
+-- label: LINE= (elem-list)
+--                      [1] label                           [2] elem-list
+local beamline_patt = "^([^:=]+):%s*[Ll][Ii][Nn][Ee]%s*=%s*(%b())%s*$"
+
+local subline_ = {["("]="line {", [")"]="}"}
+local subline  = \a,b -> a .. subline_[b]
+
+local function convert_beamline (env, str, cap)
+  if option.debug >= 2 then io.write("conv-line: [", str, "]\n") end
+  assertf(env.cur == 0, "unsupported beamline %s assignment inside %s, line %d",
+                                              cap[1], env[env.cur], env.out.n)
+
+  local lbl = capf(cap[1]:find("^" .. name_patt .. "%s*(.*)$"))
+  local nam = convert_ename(lbl[1])
+  local arg = lbl[2] and convert_name(lbl[2]) or ""
+
+  env.cls[nam] = 'line'
+  env.elm[nam] = 0
+
+  cap[2] = convert_ename(cap[2]):sub(2,-2):gsub("([^%w_]%s*)([()])", subline)
+
+  return string.format("%s =\\%s line '%s' { %s }", nam, arg, lbl[1], cap[2])
 end
 
 -- attribute-list -------------------------------------------------------------o
@@ -249,7 +274,7 @@ local function convert_element (env, str, cap)
   cap[1] = convert_xname(cap[1]) -- remove "shared" (undocumented)
 
   if cls == 'sequence' then -- sequence
-    assertf(env.cur == 0, "invalid sequence %s definition in %s, line %d",
+    assertf(env.cur == 0, "invalid sequence %s definition inside %s, line %d",
                                            cap[1], env[env.cur], out.n)
     check_chunk(out, true)
     pfx, clo     = nam .. ' = ', ','
@@ -339,12 +364,19 @@ local function convert_statements (str, env)
   local cap
 
   -- order of matching matters! order constraints from + to -
+  -- print("trying var:", str)
   cap = capf(string.find(str, variable_patt))
   if #cap > 0 then return convert_variable(env, str, cap) end
 
+  -- print("trying line:", str)
+  cap = capf(string.find(str, beamline_patt))
+  if #cap > 0 then return convert_beamline(env, str, cap) end
+
+  -- print("trying elem:", str)
   cap = capf(string.find(str, element_patt))
   if #cap > 0 then return convert_element (env, str, cap) end
 
+  -- print("trying cmd:", str)
   cap = capf(string.find(str, command_patt))
   if #cap > 0 then return convert_command (env, str, cap) end
 
@@ -560,7 +592,7 @@ MADX:set_variables(MAD.constant)
 -- elements
 MADX:set_variables(MAD.element)
 
-local multipole, collimator, translate, elseparator in MAD.element
+local bline, multipole, collimator, translate, elseparator in MAD.element
 
 -- backward compatibility (survey)
 -- note: only Mutipole knl[1] should affect the global frame,
@@ -569,6 +601,7 @@ MADX.multipole = multipole {}                            -- override by a child
 MADX.multipole.angle = \s -> s.knl and s.knl[1] or 0     -- not in MAD multipole
 
 -- aliases (not in MAD)
+MADX.line        = bline      'line'        { }
 MADX.rcollimator = collimator 'rcollimator' { }
 MADX.ecollimator = collimator 'ecollimator' { }
 MADX.translation = translate  'translation' { }
