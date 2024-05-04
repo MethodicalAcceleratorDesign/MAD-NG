@@ -119,7 +119,7 @@ FUN(translate) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], T *mc[sa]
   // transform translation vector into damap of order 1
   mad_alloc_tmp(const T*, mb, sb);
   FOR(ib,sb) {
-    T *t = FUN(newd)(ma[0]->d, 1);
+    T *t = FUN(newd)(ma[0]->d,1);
     FUN(setvar)(t, tb[ib], ib+1, 0);
     mb[ib] = t;
   }
@@ -143,12 +143,12 @@ FUN(eval) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], NUM tc[sa])
   mad_alloc_tmp(const T*, mb, sb);
   mad_alloc_tmp(      T*, mc, sa);
   FOR(ib,sb) {
-    T *t = FUN(newd)(ma[0]->d, 0);
+    T *t = FUN(newd)(ma[0]->d,0);
     FUN(setval)(t, tb[ib]);
     mb[ib] = t;
   }
   FOR(ic,sa) {
-    T *t = FUN(newd)(ma[0]->d, 0);
+    T *t = FUN(newd)(ma[0]->d,0);
     FUN(setval)(t, tc[ic]);
     mc[ic] = t;
   }
@@ -158,7 +158,7 @@ FUN(eval) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], NUM tc[sa])
   // cleanup, save result
   FOR(ib,sb) FUN(del)(mb[ib]);
   FOR(ic,sa) {
-    tc[ic] = mc[ic]->coef[0];
+    tc[ic] = FUN(geti)(mc[ic],0);
     FUN(del)(mc[ic]);
   }
   mad_free_tmp(mb);
