@@ -405,7 +405,7 @@ FUN(getord) (const T *t, T *r, ord_t o)
   }
 
   r->lo = r->hi = o, r->coef[0] = 0;
-  if (t != r) { TPSA_SCAN_O(r, o) r->coef[i] = t->coef[i]; }
+  if (t != r) { TPSA_SCAN_O(r,o) r->coef[i] = t->coef[i]; }
 
   DBGTPSA(r); DBGFUN(<-);
 }
@@ -654,8 +654,9 @@ FUN(getv) (const T *t, idx_t i, ssz_t n, NUM v[n])
   ssz_t nj = MAX(o2i[lo  ], i );
   ssz_t ni = MIN(o2i[hi+1], nn);
 
-//printf("getv: i=%d, n=%d, lo=%d, hi=%d, n0=%d, ni=%d, nj=%d, nn=%d %c\n",
-//              i   , n   , lo   , hi   , n0   , ni   , nj   , nn,
+//ord_t mo = t->mo, go = MIN(t->ao, mad_tpsa_dbgo);
+//printf("getv: i=%2d, n=%2d, lo=%d, hi=%d, mo=%d(%d), n0=%2d, ni=%2d, nj=%2d, nn=%2d %c\n",
+//              i    , n    , lo   , hi   , mo,   go , n0    , ni    , nj    , nn,
 //              ni == i+n ? ' ' : '*');
 
   FOR(j, i,n0) v[j-i] = 0;
@@ -759,8 +760,9 @@ FUN(setv) (T *t, idx_t i, ssz_t n, const NUM v[n])
   ssz_t ni = MIN(o2i[hi+1], nn);
   ssz_t nj = t->hi < hi ? o2i[hi+1] : MAX(o2i[lo], nn);
 
-//printf("setv: i=%d, n=%d, lo=%d, hi=%d, n0=%d, ni=%d, nj=%d, nn=%d %c\n",
-//              i   , n   , lo   , hi   , n0   , ni   , nj   , nn,
+//ord_t mo = t->mo, go = MIN(t->ao, mad_tpsa_dbgo);
+//printf("setv: i=%2d, n=%2d, lo=%d, hi=%d, mo=%d(%d), n0=%2d, ni=%2d, nj=%2d, nn=%2d %c\n",
+//              i    , n    , lo   , hi   , mo,   go , n0    , ni    , nj    , nn,
 //              ni == i+n ? ' ' : '*');
 
   FOR(j,n0, i) t->coef[j] = 0;
