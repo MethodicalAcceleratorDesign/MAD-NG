@@ -18,6 +18,7 @@
 */
 
 #include "mad_log.h"
+#include "mad_cst.h"
 #include "mad_num.h"
 #ifdef    MAD_CTPSA_IMPL
 #include "mad_ctpsa_impl.h"
