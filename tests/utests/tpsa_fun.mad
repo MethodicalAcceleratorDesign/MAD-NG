@@ -1,0 +1,162 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | GTPSA module regression tests - real tpsa
+ |
+ | Methodical Accelerator Design - Copyright CERN 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Provide regression test suites for the tpsa module.
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+local vector, tpsa, gtpsad                                       in MAD
+local eps, abs, pi                                               in MAD.constant
+local abs                                                        in MAD.gmath
+local ident                                                      in MAD.gfunc
+local assertTrue, assertEquals, assertAlmostEquals               in MAD.utest
+
+-- locals ---------------------------------------------------------------------o
+
+local dat = assert(loadfile('data/tpsa.dat'))()
+
+local ord = {1,2,3,4,5,6,7,10,12,15}
+
+-- regression test suites -----------------------------------------------------o
+
+TestTPSAFun = {}
+
+local function checkVal (r, c, neg, alt, trc)
+  local tol = neg and c.n_eps or alt and c.a_eps or c.eps or eps
+  neg = neg or ident
+  trc = trc or 0
+  if not r:isvalid() then r:debug() end
+  for i=1,#r do
+    local v = neg(c[i],i)
+    if trc > 0 then
+      local is, vs, rs, es = string.format("%-2d"  , i),
+                             string.format("%+.17e", v),
+                             string.format("%+.17e", r:get(i))
+      if abs(v) > 2
+      then es = math.ceil( abs(r:get(i)/v-1)/eps/i )
+      else es = math.ceil( abs(r:get(i)-v  )/eps/i )
+      end
+      io.write('i=',is,', v=',vs,', r=',rs,', es=', es, es>99 and ' **\n' or '\n')
+    end
+    if trc < 2 then
+      if abs(v) > 2
+      then assertAlmostEquals(r:get(i)/v-1, 0, i*tol)
+      else assertAlmostEquals(r:get(i)    , v, i*tol)
+      end
+    end
+  end
+end
+
+local function checkFun1 (fnam, trc)
+  local d = gtpsad(1,15)
+  local fun, t, r = dat.fun[fnam]
+  if trc then io.write('\n') end
+  for _,c in ipairs(fun) do
+  for _,o in ipairs(ord) do
+--  for o=1,d.mo do
+    if fun.omin and o < fun.omin then break end -- limit order
+    if fun.omax and o > fun.omax then break end -- limit order
+    if c.omin   and o < c.omin   then break end -- limit order (local)
+    if c.omax   and o > c.omax   then break end -- limit order (local)
+    if trc then io.write('f=',fnam,'(',c.x0,') @ ',o,'\n') end
+    t = tpsa(o):set(1,c.x0):set(2,1)
+    r = t[fnam](t)   ; checkVal(r, c, nil, nil, trc) -- positive (r ~= t)
+    if trc then io.write('f=',fnam,'_ref(',c.x0,') @ ',o,'\n') end
+    r = t[fnam](t,t) ; checkVal(r, c, nil, nil, trc) -- aliased  (r == t)
+
+    if fun.alt then
+      if trc then io.write('f=',fnam,'_alt(',c.x0,') @ ',o,'\n') end
+      t = tpsa(o):set(1,c.x0):set(2,1)
+      r = fun.alt(t) ; checkVal(r, c, nil, fun.alt, trc) -- alternate function
+    end
+
+    if fun.neg and c.x0 ~= 0 then
+      if trc then io.write('f=',fnam,'_neg(',-c.x0,') @ ',o,'\n') end
+      t = tpsa(o):set(1,-c.x0):set(2,1)
+      r = t[fnam](t) ; checkVal(r, c, fun.neg, nil, trc) -- negative
+    end
+  end end
+end
+
+TestTPSAFun.testInv   = \s -> checkFun1('inv')
+TestTPSAFun.testISqrt = \s -> checkFun1('invsqrt')
+TestTPSAFun.testSqrt  = \s -> checkFun1('sqrt')
+TestTPSAFun.testExp   = \s -> checkFun1('exp')
+TestTPSAFun.testLog   = \s -> checkFun1('log')
+TestTPSAFun.testSin   = \s -> checkFun1('sin')
+TestTPSAFun.testCos   = \s -> checkFun1('cos')
+TestTPSAFun.testTan   = \s -> checkFun1('tan')
+TestTPSAFun.testCot   = \s -> checkFun1('cot')
+TestTPSAFun.testSinc  = \s -> checkFun1('sinc')
+TestTPSAFun.testSinh  = \s -> checkFun1('sinh')
+TestTPSAFun.testCosh  = \s -> checkFun1('cosh')
+TestTPSAFun.testTanh  = \s -> checkFun1('tanh')
+TestTPSAFun.testCoth  = \s -> checkFun1('coth')
+!TestTPSAFun.testSinhc = \s -> checkFun1('sinhc')
+TestTPSAFun.testAsin  = \s -> checkFun1('asin')
+TestTPSAFun.testAcos  = \s -> checkFun1('acos')
+TestTPSAFun.testAtan  = \s -> checkFun1('atan')
+TestTPSAFun.testAcot  = \s -> checkFun1('acot')
+TestTPSAFun.testAsinh = \s -> checkFun1('asinh')
+TestTPSAFun.testAcosh = \s -> checkFun1('acosh')
+TestTPSAFun.testAtanh = \s -> checkFun1('atanh')
+TestTPSAFun.testAcoth = \s -> checkFun1('acoth')
+TestTPSAFun.testErf   = \s -> checkFun1('erf')
+
+-- TODO: operators
+
+-- performance tests ----------------------------------------------------------o
+
+Test_TPSAFun = {}
+
+local ord_ = {1,2,3,6,7}
+local div_ = 5 -- shrink the tests by factor 5
+
+local function benchFun1 (fnam, x0, trc)
+  local d = gtpsad(6,15)
+  local fun, t, r = dat.fun[fnam]
+  for _,o in ipairs(ord_) do
+--  for o=1,d.mo do
+    if fun.omin and o < fun.omin then break end -- limit order
+    if fun.omax and o > fun.omax then break end -- limit order
+    t = tpsa(o):setvar(x0):set(2,1):set(3,1):set(4,1):set(5,1):set(6,1):set(7,1)
+    r = tpsa(o)
+    if not trc then io.write(o," ") io.flush() end
+    local t0 = os.clock()
+    for i=1,fun.iter[o]/div_ do t[fnam](t,r) end
+    local dt = os.clock()-t0
+    assertAlmostEquals( dt, 0.5/div_, 1/div_ )
+    if trc then
+      local n = math.floor(0.5*fun.iter[o]/dt)
+      io.write(string.format("\no=%-2d, dt=%.4f, n=%-8d, ", o, dt, n),
+               "len=", t:length(o), "  ")
+    end
+  end
+end
+
+Test_TPSAFun.testInv   = \s -> benchFun1('inv'    , pi/5)
+Test_TPSAFun.testSqrt  = \s -> benchFun1('sqrt'   , pi/5)
+Test_TPSAFun.testExp   = \s -> benchFun1('exp'    , pi/5)
+Test_TPSAFun.testLog   = \s -> benchFun1('log'    , pi/3)
+Test_TPSAFun.testSin   = \s -> benchFun1('sin'    , pi/5)
+Test_TPSAFun.testCos   = \s -> benchFun1('cos'    , pi/5)
+Test_TPSAFun.testTan   = \s -> benchFun1('tan'    , pi/5)
+Test_TPSAFun.testISqrt = \s -> benchFun1('invsqrt', pi/5)
+
+-- end ------------------------------------------------------------------------o
