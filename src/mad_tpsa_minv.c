@@ -51,11 +51,11 @@ check_minv(ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
 static void
 split_and_inv(ssz_t na, const T *ma[na], ssz_t nb, T *lininv[na], T *nonlin[na])
 {
-  ssz_t nv = nb, np = na-nb;           // #vars, #params
+  ssz_t nn = na, nv = nb, np = nn-nv;  // #vars+#params, #vars, #params
   mad_alloc_tmp(NUM, mat_var , nv*nv); // canonical vars
   mad_alloc_tmp(NUM, mat_vari, nv*nv); // inverse of vars
-  mad_alloc_tmp(NUM, mat_par , nv*np); // params
-  mad_alloc_tmp(NUM, mat_pari, nv*np); // 'inverse' of params
+  mad_alloc_tmp(NUM, mat_par , nv*np); // parameters
+  mad_alloc_tmp(NUM, mat_pari, nv*np); // 'inverse' of parameters
 
   // split linear, (-1 * nonlinear)
   FOR(i,nv) {
@@ -99,16 +99,16 @@ split_and_inv(ssz_t na, const T *ma[na], ssz_t nb, T *lininv[na], T *nonlin[na])
 
 // --- public -----------------------------------------------------------------o
 
-void
+void          // nn                         nv
 FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
 {
   assert(ma && mc); DBGFUN(->);
   ensure(na >= nb, "invalid subtitution ranks, na >= nb expected");
-
   check_minv(na, ma, nb, mc);
-  FOR(i,na)
+  FOR(i,na) {
     ensure(ma[i]->hi && ma[i]->lo == 1,
            "invalid rank-deficient map (1st order has row(s) full of zeros)");
+  }
 
   const D *d = ma[0]->d;
   T *lininv[na], *nonlin[na], *tmp[na];
@@ -138,19 +138,18 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
   }
 
   if (!isnul) {
-    ord_t mo[na], dbgo = mad_tpsa_dbgo, to = FUN(mord)(na, TC mc, FALSE);
+    ord_t mo[na], to = FUN(mord)(na, TC mc, FALSE), dbgo = mad_tpsa_dbgo;
     FOR(i,na) mo[i] = FUN(mo)(mc[i], mad_tpsa_same); // backup mo[i]
-
     for (ord_t o = 2; o <= to; ++o) {
-      FOR(i,na) { FUN(mo)(    mc[i],o); } // truncate computation to order o
-      FOR(i,nb) { FUN(mo)(nonlin[i],o); FUN(mo)(lininv[i],o); FUN(mo)(tmp[i],o); }
-      mad_tpsa_dbgo = o;                     // for debug only
+      mad_tpsa_dbgo = o;                     // for debug purpose only
+      FOR(i,na) FUN(mo)( mc[i],o);           // truncate computation to order o
+      FOR(i,nb) FUN(mo)(tmp[i],o), FUN(mo)(nonlin[i],o);
       FUN(compose)(nb, TC nonlin, na, TC mc, tmp);
       FOR(v,nb) FUN(seti)(tmp[v], v+1, 1,1); // add identity
       FUN(compose)(nb, TC lininv, na, TC tmp, mc);
     }
-    mad_tpsa_dbgo = dbgo;
     FOR(i,na) FUN(mo)(mc[i], mo[i]); // restore mo[i]
+    mad_tpsa_dbgo = dbgo;
   }
 
   // cleanup
@@ -162,15 +161,16 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
   DBGFUN(<-);
 }
 
-void
+void           // nn                         nv
 FUN(pminv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na], idx_t select[na])
 {
   assert(ma && mc && select); DBGFUN(->);
   ensure(na >= nb, "invalid subtitution rank, na >= nb expected");
   check_minv(na, ma, nb, mc);
-  FOR(i,na) if (select[i])
+  FOR(i,na) if (select[i]) {
     ensure(ma[i]->hi && ma[i]->lo == 1,
            "invalid rank-deficient map (1st order has row(s) full of zeros)");
+  }
 
   // split input map into rows that are inverted and rows that are not
 
