@@ -281,11 +281,11 @@ axpbypc (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
 
   ord_t alo, ahi, blo, bhi;
 
-  if (!c1) alo = b->lo, ahi = 0;
-  else     alo = a->lo, ahi = MIN(a->hi, c->mo);
+  if (!c1 || !a->hi) alo = b->lo, ahi = 0;
+  else               alo = a->lo, ahi = MIN(a->hi, c->mo);
 
-  if (!c2) blo = a->lo, bhi = 0;
-  else     blo = b->lo, bhi = MIN(b->hi, c->mo);
+  if (!c2 || !b->hi) blo = a->lo, bhi = 0;
+  else               blo = b->lo, bhi = MIN(b->hi, c->mo);
 
   c->lo = MIN(alo, blo);
   c->hi = MAX(ahi, bhi);
@@ -300,11 +300,13 @@ axpbypc (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   TPSA_SCAN_I(c,ahi+1,      bhi   ) c->coef[i] = c2*b->coef[i];
 
 #if 0
-  if (mad_tpsa_dbga && !FUN(isvalid)(c)) {
+  if (mad_tpsa_dbga && a != c && b != c && !FUN(isvalid)(c)) {
     static int cnt = 0;
-    printf("alo=%d[%d], ahi=%d[%d], blo=%d[%d], bhi=%d[%d], clo=%d, chi=%d\n",
-            alo, a->lo, ahi, a->hi, blo, b->lo, bhi, b->hi, c->lo, c->hi);
-    printf("c1=%.4e, c2=%.4e, c3=%.4e\n", c1, c2, c3);
+    str_t av = FUN(isvalid)(a) ? "" : "*";
+    str_t bv = FUN(isvalid)(b) ? "" : "*";
+    printf("alo=%d[%d], ahi=%d[%d]%s, blo=%d[%d], bhi=%d[%d]%s, clo=%d, chi=%d\n",
+            alo, a->lo, ahi,a->hi,av, blo, b->lo, bhi,b->hi,bv, c->lo, c->hi);
+    printf("c1="FMT", c2="FMT", c3="FMT"\n", VAL(c1), VAL(c2), VAL(c3));
     printf("aaa=0x%p, bbb=0x%p, ccc=0x%p\n", (void*)a, (void*)b, (void*)c);
 
     FUN(print)(a,"aaa",0,0,0);

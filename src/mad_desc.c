@@ -967,8 +967,8 @@ desc_init (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
   D *d = mad_malloc(sizeof *d); memset(d, 0, sizeof *d);
 
   d->nn = nn;
-  d->np = np;
   d->nv = nn-np;
+  d->np = np;
   d->mo = mo;
   d->po = po;
 
@@ -1016,6 +1016,7 @@ desc_build (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
     set_thread(d);
   } else {
     d->shared  = dc->shared; ++*d->shared;
+    d->nc      = dc->nc;      // set in set_monos
     d->monos   = dc->monos;
     d->ords    = dc->ords;
     d->To      = dc->To;
@@ -1030,7 +1031,7 @@ desc_build (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
     d->prms    = mad_malloc(d->nc * sizeof *d->prms);
     d->size   += d->nc * sizeof *d->prms;
 
-    if (d->np) FOR(i,0,d->nc) d->prms[i] = mad_mono_ord(d->np, d->To[i]+d->nv);
+    if (d->np) FOR(i,d->nc) d->prms[i] = mad_mono_ord(d->np, d->To[i]+d->nv);
     else       memset(d->prms, 0, d->nc * sizeof *d->prms);
   }
 
@@ -1361,9 +1362,8 @@ mad_desc_del (const D *d_)
     }
   }
 
-  // destroy temporaries
 #if DESC_USE_TMP
-  del_temps(d);
+  del_temps(d); // destroy temporaries
 #endif
 
   // remove descriptor from global array
