@@ -115,7 +115,7 @@ exppb (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na], T *t[4])
 
     idx_t n;
     for (n=1; n <= nmax; ++n) {
-      if (n==nmax/4) warn("exppb: n=%d (slow convergence)", n);
+      if (n==nmax/4) trace(2, "exppb: n=%d (slow convergence)", n);
       FUN(scl)(t[0], 1.0/n, t[1]);
       fgrad(na, ma, t[1], t[0], &t[2]);
       FUN(add)(mc[i], t[0], mc[i]);
@@ -155,7 +155,7 @@ logpb (ssz_t na, const T *ma[na], T *mc[na], T *t[4+5*na], num_t eps)
 
   idx_t n;
   for (n=1; n <= nmax; ++n) {
-    if (n==nmax/4) warn("logpb: n=%d (slow convergence)", n);
+    if (n==nmax/4) trace(2, "logpb: n=%d (slow convergence)", n);
 
     FOR(i,na) FUN(scl) (mc[i], -1, t1[i]);     // t1 = -mc
     exppb(na, TC t1, ma, t0, t);               // t0 = exp(:-mc:) ma
