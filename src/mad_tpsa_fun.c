@@ -21,6 +21,7 @@
 #include <complex.h>
 
 #include "mad_log.h"
+#include "mad_cst.h"
 #include "mad_num.h"
 #include "mad_tpsa_impl.h"
 #include "mad_ctpsa_impl.h"
