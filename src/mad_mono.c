@@ -192,17 +192,15 @@ void
 mad_mono_print (ssz_t n, const ord_t a[n], str_t sep_, FILE *fp_)
 {
   assert(a);
-  char opn[2] = "[";
-  char sep[2] = " ";
-  char clo[2] = "]";
+  char sep[6] = {' ', 0, '[', 0, ']', 0};
 
   if (!fp_) fp_ = stdout;
 
-  if (sep_) opn[0] = sep_[0], sep[0] = sep_[1], clo[0] = sep_[2];
+  if (sep_) FOR(i,3) if (*sep_) sep[i*2] = *sep_++ ;
 
-           fprintf(fp_, opn);
-  FOR(i,n) fprintf(fp_, "%d%s", a[i], sep);
-           fprintf(fp_, clo);
+  n -= 1;  fprintf(fp_,               sep+2);
+  FOR(i,n) fprintf(fp_, "%d%s", a[i], sep+0);
+           fprintf(fp_, "%d%s", a[n], sep+4);
 }
 
 // --- end --------------------------------------------------------------------o
