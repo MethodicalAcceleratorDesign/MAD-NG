@@ -516,7 +516,7 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
     idx_t ri = mad_desc_idxm(rd, rn, rm);           // get index ri of mono rm
 #if TPSA_DEBUG > 2
     printf("cvt %d -> %d %c : ", i+1, ri+1, i==ri?' ' : SIGN1(sgn%2)<0?'-':'+');
-    mad_mono_print(tn, tm, 0); printf(" -> "); mad_mono_print(rn, rm, 0);
+    mad_mono_print(tn, tm, 0,0); printf(" -> "); mad_mono_print(rn, rm, 0,0);
 #ifndef MAD_CTPSA_IMPL
     printf(" : %-.16e\n", t->coef[i]);
 #else
