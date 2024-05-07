@@ -189,14 +189,20 @@ mad_mono_rev (ssz_t n, const ord_t a[n], ord_t r[n])
 // -- printing
 
 void
-mad_mono_print (ssz_t n, const ord_t a[n], FILE *fp_)
+mad_mono_print (ssz_t n, const ord_t a[n], str_t sep_, FILE *fp_)
 {
   assert(a);
+  char opn[2] = "[";
+  char sep[2] = " ";
+  char clo[2] = "]";
+
   if (!fp_) fp_ = stdout;
 
-           fprintf(fp_, "[ ");
-  FOR(i,n) fprintf(fp_, "%d ", a[i]);
-           fprintf(fp_, "]");
+  if (sep_) opn[0] = sep_[0], sep[0] = sep_[1], clo[0] = sep_[2];
+
+           fprintf(fp_, opn);
+  FOR(i,n) fprintf(fp_, "%d%s", a[i], sep);
+           fprintf(fp_, clo);
 }
 
 // --- end --------------------------------------------------------------------o

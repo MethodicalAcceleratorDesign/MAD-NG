@@ -65,7 +65,7 @@ void  mad_mono_sub   (ssz_t n, const ord_t a[], const ord_t b[], ord_t r[]);
 void  mad_mono_cat   (ssz_t n, const ord_t a[], ssz_t m, const ord_t b[], ord_t r[]);
 void  mad_mono_rev   (ssz_t n, const ord_t a[], ord_t r[]);
 
-void  mad_mono_print (ssz_t n, const ord_t a[], FILE *fp_);
+void  mad_mono_print (ssz_t n, const ord_t a[], str_t sep_, FILE *fp_);
 
 // --- end --------------------------------------------------------------------o
 

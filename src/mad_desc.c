@@ -139,7 +139,7 @@ mono_findidx (ord_t **T_, ssz_t n, const ord_t m[n], idx_t from, idx_t to)
     return start;
 
   // error
-  printf("** ERR: "); mad_mono_print(n, m, 0); printf(" <- not found\n");
+  printf("** ERR: "); mad_mono_print(n, m, 0,0); printf(" <- not found\n");
   error("monomial not found in [%d,%d) (unexpected)", from, to);
   return -1; // never reached
 }
@@ -240,17 +240,17 @@ tbl_print (ssz_t n, ssz_t h, ord_t **t) // t[h][n]
   idx_t i=0;
 #if DESC_DEBUG > 2
   for (; i < h; ++i) {
-    printf("(%2d) ",i); mad_mono_print(n,t[i],0); printf(" o=%d\n", mad_mono_ord(n,t[i]));
+    printf("(%2d) ",i); mad_mono_print(n,t[i],0,0); printf(" o=%d\n", mad_mono_ord(n,t[i]));
   }
 #else
   for (; i < MIN(h,50); ++i) {
-    printf("(%2d) ",i); mad_mono_print(n,t[i],0); printf(" o=%d\n", mad_mono_ord(n,t[i]));
+    printf("(%2d) ",i); mad_mono_print(n,t[i],0,0); printf(" o=%d\n", mad_mono_ord(n,t[i]));
   }
   if (h > 100) {
     printf("... [ %d more rows ] ...\n", h - 100);
   }
   for (i=MAX(i,h-50); i < h; ++i) {
-    printf("(%2d) ",i); mad_mono_print(n,t[i],0); printf(" o=%d\n", mad_mono_ord(n,t[i]));
+    printf("(%2d) ",i); mad_mono_print(n,t[i],0,0); printf(" o=%d\n", mad_mono_ord(n,t[i]));
   }
 #endif
 }
@@ -372,7 +372,7 @@ tbl_index_H(const D *d, ssz_t n, const ord_t m[n])
   }
   if (I < 0) {
     printf("%s: I=%d for monomial ", __func__, I);
-    mad_mono_print(n, m, 0); printf("\n");
+    mad_mono_print(n, m, 0,0); printf("\n");
     assert(I > -1);
   }
 //  DBGFUN(<-);
@@ -591,9 +591,9 @@ tbl_build_LC (ord_t oa, ord_t ob, D *d)
         // fill lc
         lc[ilc] = ic;
 #if DESC_DEBUG > 2
-        printf(" ib=%d ", ib); mad_mono_print(nn, To[ib], 0);
-        printf(" ia=%d ", ia); mad_mono_print(nn, To[ia], 0);
-        printf(" ic=%d ", ic); mad_mono_print(nn, m     , 0);
+        printf(" ib=%d ", ib); mad_mono_print(nn, To[ib], 0,0);
+        printf(" ia=%d ", ia); mad_mono_print(nn, To[ia], 0,0);
+        printf(" ic=%d ", ic); mad_mono_print(nn, m     , 0,0);
         printf(" ilc=%d\n", ilc);
 #endif
       }
@@ -985,7 +985,7 @@ desc_init (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
   d->no = no;
 
 #if DESC_DEBUG > 1
-  printf("desc no: "); mad_mono_print(nn,d->no, 0); printf("\n");
+  printf("desc no: "); mad_mono_print(nn,d->no, 0,0); printf("\n");
 #endif
 
   d->nth  = omp_get_max_threads();
@@ -1047,9 +1047,9 @@ desc_build (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
 
 error:
   printf(eid==1 ? "** >>>>> T BUG <<<<<\n" : "");
-  printf("no= ");  mad_mono_print(d->nn, d->no, 0); printf("\n");
-  printf("Tv=\n"); tbl_print(d->nn, d->nc, d->Tv);  printf("\n");
-  printf("To=\n"); tbl_print(d->nn, d->nc, d->To);  printf("\n");
+  printf("no= ");  mad_mono_print(d->nn, d->no, 0,0); printf("\n");
+  printf("Tv=\n"); tbl_print(d->nn, d->nc, d->Tv);    printf("\n");
+  printf("To=\n"); tbl_print(d->nn, d->nc, d->To);    printf("\n");
   idx_print(d->nc  , d->tv2to,   printf("tv2to= "  ));
   idx_print(d->nc  , d->to2tv,   printf("to2tv= "  ));
   ord_print(d->nc  , d->ords ,   printf("ords = "  ));
