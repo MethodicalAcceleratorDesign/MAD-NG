@@ -58,8 +58,8 @@ void*  mad_realloc (void*  ptr_ , size_t size_);
 void   mad_free    (void*  ptr_);
 
 // utils
-size_t mad_mcached  (void);
 size_t mad_mcollect (void);
+size_t mad_mcached  (log_t);
 void   mad_mdump    (FILE*);
 
 // ----------------------------------------------------------------------------o
