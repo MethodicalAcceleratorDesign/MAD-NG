@@ -48,9 +48,9 @@ void*  (mad_realloc) (void*  ptr_, size_t sz_) { return realloc(ptr_, sz_); }
 void   (mad_free   ) (void*  ptr_)             { free(ptr_); }
 
 // utils
-size_t  mad_mcached  (void)                    { return 0; }
 size_t  mad_mcollect (void)                    { return 0; }
-void    mad_mdump    (FILE* fp)                { (void)fp; }
+size_t  mad_mcached  (log_t)                   { return 0; }
+void    mad_mdump    (FILE*)                   {         ; }
 
 // --- generational allocator -------------------------------------------------o
 
@@ -231,17 +231,19 @@ void*
 // -- utils
 
 size_t
-mad_mcached (void)
+mad_mcached (log_t check)
 {
   struct pool *p = &pool;
-  size_t cached = CACHED(p), ccached = 0;
+  size_t cached = CACHED(p);
 
-  for (idx_t i=0; i < max_mblk; i++)
-    if (p->mblk[i].nxt > IDXMAX) // ptr
-      ccached += SIZE(p->mblk[i].mbp->slot);
+  if (check) {
+    size_t ccached = 0;
+    for (idx_t i=0; i < max_mblk; i++)
+      if (p->mblk[i].nxt > IDXMAX) // ptr
+        ccached += SIZE(p->mblk[i].mbp->slot);
 
-  ensure(ccached == cached, "corrupted cache %zu != %zu bytes", ccached, cached);
-
+    ensure(ccached==cached, "corrupted cache %zu != %zu bytes", ccached,cached);
+  }
   return cached;
 }
 
@@ -252,7 +254,7 @@ mad_mcollect (void)
   size_t cached = CACHED(p);
 
   DBGMEM( printf("collect/clear/init cache\n"); )
-  DBGMEM( printf("collecting %zu bytes\n", mad_mcached()); )
+  DBGMEM( printf("collecting %zu bytes\n", mad_mcached(TRUE)); )
 
   p->mkch = 0;
   p->free = 1;
@@ -352,7 +354,7 @@ main(void)
   DBGMEM( mad_mdump(stdout); )
   printf("%9zu mallocs performed\n", mcnt);
   printf("%9zu frees   performed\n", fcnt);
-  printf("%9zu bytes   cached\n", mad_mcached());
+  printf("%9zu bytes   cached\n", mad_mcached(TRUE));
   mad_mcollect();
 }
 
