@@ -210,10 +210,10 @@ FUN(nam) (T *t, str_t nam_)
 }
 
 ssz_t
-FUN(len) (const T *t)
+FUN(len) (const T *t, log_t hi_)
 {
   assert(t);
-  return t->d->ord2idx[t->mo+1];
+  return t->d->ord2idx[hi_ ? t->hi+1 : t->mo+1];
 }
 
 ord_t
