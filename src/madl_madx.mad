@@ -24,7 +24,8 @@
 -- locals ---------------------------------------------------------------------o
 
 local object, option, warn                                        in MAD
-local assertf, openfile, fileisnewer, strsplitall                 in MAD.utility
+local openfile, fileisnewer,
+      assertf, strtrim, strqsplit, strsplitall                    in MAD.utility
 local bind1st                                                     in MAD.gfunc
 local is_nil, is_boolean, is_number, is_string, is_callable       in MAD.typeid
 
@@ -117,11 +118,14 @@ end
 
 -- comments -------------------------------------------------------------------o
 
+local fnd = \s,i,j => if i>0 then return i,j,s else return nil end end
+
 local function remove_comments (lst)
-  local c, l, j = false
+  local c = false
+
   for i=1,#lst do
-    l = lst[i]:gsub("/%*.-%*/", '')
-    j = l:find("!" , 1, true) ; if j then l = l:sub(1,j-1) end
+    local l, j = (lst[i]:gsub("/%*.-%*/", ''))
+    j = fnd(strqsplit(l, "!")); if j then l = l:sub(1,j-1) end
     j = l:find("//", 1, true) ; if j then l = l:sub(1,j-1) end
 
     if c then
@@ -135,6 +139,32 @@ local function remove_comments (lst)
     lst[i] = l
   end
   return lst
+end
+
+local function remove_comments_and_merge (lst) -- mad8
+  local c, n, k, m = false, #lst, 1, false
+  local tbl = table.new(n,0)
+
+  for i=1,n do
+    local l, p, j, e = lst[i], m ; m = false
+    j = fnd(strqsplit(l, "!")); if j then l = l:sub(1,j-1) end
+    j = fnd(strqsplit(l, "&")); if j then l = l:sub(1,j-1) ; m = true end
+
+    if c then
+      j, e = l:find("^%s*ENDCOMMENT")
+      if j then l = l:sub(e+1) ; c = false else l = '' end
+    else
+      j = l:find("^%s*COMMENT")
+      if j then l = l:sub(1,j-1) ; c = true end
+    end
+
+    if p then
+      tbl[k-1] = tbl[k-1]..' '..strtrim(l)
+    else
+      tbl[k], k = strtrim(l), k+1
+    end
+  end
+  return tbl, k-1
 end
 
 -- names, madx names, extended names ------------------------------------------o
@@ -394,10 +424,10 @@ end
   cls[nam] = cls_nam  : element's class name, i.e. (elm[cls[nam]] -> cls_idx)
 --]=]
 
-local function load2madx (madx, src, dst, reload_)
+local function load2madx (madx, src, dst, reload_, mad8_)
   assert(madx == MADX or object.is_instanceOf(madx, MADX), "invalid MADX environment")
-  if is_boolean(dst) and is_nil(reload_) then
-    reload_, dst = dst, nil -- right shift
+  if is_boolean(dst) and is_nil(mad8_) then
+    reload_, mad8_, dst = dst, reload_, nil -- right shift
   end
 
   local out = table.new(65536,2) ; out.n, out.nchk = 1, 1
@@ -423,9 +453,15 @@ local function load2madx (madx, src, dst, reload_)
 
   -- translate source file
   do
-    -- remove comments, concat lines then split by ";", reset out
-    local str = table.concat(remove_comments(out), ' ')
-    local inp, n = strsplitall(str, ";", 1, table.new(out.n,2))
+    local n, inp
+    if mad8_ then
+      -- remove comments, concat lines ended by "&", reset out
+      inp, n = remove_comments_and_merge(out)
+    else
+      -- remove comments, concat lines then split by ";", reset out
+      local str = table.concat(remove_comments(out), ' ')
+      inp, n = strsplitall(str, ";", 1, table.new(out.n,2))
+    end
     for i=n,1,-1 do
       if inp[i] == '' then table.remove(inp, i) ; n = n-1 end
     end
@@ -463,7 +499,7 @@ local function load2madx (madx, src, dst, reload_)
       end
     end
 
-    src, inp, str = dst, nil, nil
+    src, inp = dst, nil
   end
 
 ::compile:: -- compile chunks in memory
