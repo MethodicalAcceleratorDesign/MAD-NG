@@ -22,7 +22,7 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local MR, MC = {}, {}
+local MD, MR, MC = {}, {}, {}
 
 -- locals ---------------------------------------------------------------------o
 
@@ -85,7 +85,7 @@ struct ctpsa_ { // warning: must be kept identical to C definition and tpsa
 };
 ]]
 
-local gtpsad_ctor = ffi.typeof 'struct  desc_'
+local   desc_ctor = ffi.typeof 'struct  desc_'
 local   tpsa_ctor = ffi.typeof 'struct  tpsa_'
 local  ctpsa_ctor = ffi.typeof 'struct ctpsa_'
 
@@ -95,9 +95,9 @@ local ctpsa_cref  = ffi.typeof 'struct ctpsa_&'
 local  tpsa_size  = ffi.offsetof( tpsa_ctor, 'coef')
 local ctpsa_size  = ffi.offsetof(ctpsa_ctor, 'coef')
 
-local is_gtpsad = \x -> istype(gtpsad_ctor, x)
-local is_tpsa   = \x -> istype( tpsa_ctor , x)
-local is_ctpsa  = \x -> istype(ctpsa_ctor , x)
+local is_gtpsad = \x -> istype( desc_ctor, x)
+local is_tpsa   = \x -> istype( tpsa_ctor, x)
+local is_ctpsa  = \x -> istype(ctpsa_ctor, x)
 local isa_tpsa  = \x -> is_tpsa(x) or is_ctpsa(x)
 
 -- locals for arg and ret
@@ -222,12 +222,54 @@ local function chksiz (r, x, y) -- add, sub, mul
   return r
 end
 
+-- desc methods ---------------------------------------------------------------o
+
+local mdat = \m -> (m and #m or 0, m and m._dat or nil)
+
+MD.nv     = \d     -> _C.mad_desc_getnv (d,nil,nil,nil)
+MD.np     = \d     => _C.mad_desc_getnv (d,nil,int,ord) return int[0],ord[0] end
+MD.maxord = \d,m_  -> _C.mad_desc_maxord(d,mdat(m))
+MD.maxlen = \d,mo_ -> _C.mad_desc_maxlen(d,mo or _C.mad_tpsa_dflt)
+
+MD.isvalid        = \d,m   -> d:get_idx(m)          > 0
+MD.isvalid_sparse = \d,tbl -> d:get_idx_sparse(tbl) > 0
+
+function MD.get_idx (d, m) -- mono -> idx (0 means invalid)
+  if is_string(m) then return _C.mad_desc_idxs(d, #m, m)+1 end
+  if not is_monomial(m) then m = monomial(m) end
+  return _C.mad_desc_idxm(x, m.n, m._dat)+1
+end
+
+function MD.get_idx_sparse (d, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... } -> idx
+  assert(is_table(tbl), "invalid argument #2 (table expected)")
+  local n = #tbl
+  local m = int_arr(n) ; for i=1,n do m[i-1] = tbl[i] end
+  return _C.mad_desc_idxsm(d, n, m)+1
+end
+
+function MD.get_mono (d, i, r) -- idx -> mono
+  assert(is_natural(i), "invalid argument #2 (index expected)")
+  local m = r or monomial(d.nn)
+  assert(is_monomial(m), "invalid argument #3 (monomial expected)")
+  return m, _C.mad_desc_mono(d, i-1, m.n, m._dat, nil) -- return order and mono
+end
+
+function MD.nxtbyvar (d, m) -- mono -> idx (-1 means invalid or no more)
+  if not is_monomial(m) then m = monomial(m) end
+  return _C.mad_desc_nxtbyvar(d, m.n, m._dat), m
+end
+
+function MD.nxtbyord (d, m) -- mono -> idx (-1 means invalid or no more)
+  if not is_monomial(m) then m = monomial(m) end
+  return _C.mad_desc_nxtbyord(d, m.n, m._dat), m
+end
+
 -- maxord, maxlen, mlen, mord, trunc, debug -----------------------------------o
 
 MR.nv     = \x     -> _C.mad_desc_getnv (x.d,nil,nil,nil)
 MR.np     = \x     => _C.mad_desc_getnv (x.d,nil,int,ord) return int[0],ord[0] end
-MR.maxord = \x     -> _C.mad_desc_maxord(x.d, 0, nil)
-MR.maxlen = \x,mo_ -> _C.mad_desc_maxlen(x.d, mo_ or x.mo)
+MR.maxord = \x,m_  -> _C.mad_desc_maxord(x.d,mdat(m))
+MR.maxlen = \x,mo_ -> _C.mad_desc_maxlen(x.d,mo_ or x.mo)
 
 MR.mlen   = \x,hi  -> _C.mad_tpsa_len (x, hi or false)
 MC.mlen   = \x,hi  -> _C.mad_ctpsa_len(x, hi or false)
@@ -252,16 +294,6 @@ MC.density = \x,eps -> _C.mad_ctpsa_density(x, eps or 0)
 
 MR.debug = \x,nam_,fnam_,lin_,fil_ => _C.mad_tpsa_debug (x,nam_,fnam_,lin_ or 0,fil_) end
 MC.debug = \x,nam_,fnam_,lin_,fil_ => _C.mad_ctpsa_debug(x,nam_,fnam_,lin_ or 0,fil_) end
-
-function MR.nxtbyvar (x, m) -- mono -> idx (-1 means invalid or no more)
-  if not is_monomial(m) then m = monomial(m) end
-  return _C.mad_desc_nxtbyvar(x.d, m.n, m._dat), m
-end
-
-function MR.nxtbyord (x, m) -- mono -> idx (-1 means invalid or no more)
-  if not is_monomial(m) then m = monomial(m) end
-  return _C.mad_desc_nxtbyord(x.d, m.n, m._dat), m
-end
 
 -- same, copy, getord, cutord, convert, setvar, clear -------------------------o
 
@@ -476,45 +508,9 @@ MC.isval = \x -> _C.mad_ctpsa_isval(x)
 
 -- indexing -------------------------------------------------------------------o
 
-function MR.get_idx (x, m) -- mono -> idx (0 means invalid)
-  if is_string(m) then return _C.mad_tpsa_idxs(x, #m, m)+1 end
-  if not is_monomial(m) then m = monomial(m) end
-  return _C.mad_tpsa_idxm(x, m.n, m._dat)+1
-end
-
-function MC.get_idx (x, m) -- mono -> idx (0 means invalid)
-  if is_string(m) then return _C.mad_ctpsa_idxs(x, #m, m)+1 end
-  if not is_monomial(m) then m = monomial(m) end
-  return _C.mad_ctpsa_idxm(x, m.n, m._dat)+1
-end
-
-function MR.get_idx_sparse (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... } -> idx
-  assert(is_table(tbl), "invalid argument #2 (table expected)")
-  local n = #tbl
-  local m = int_arr(n) ; for i=1,n do m[i-1] = tbl[i] end
-  return _C.mad_tpsa_idxsm(x, n, m)+1
-end
-
-function MC.get_idx_sparse (x, tbl) -- tbl = {idx1, ord1, idx2, ord2, ... } -> idx
-  assert(is_table(tbl), "invalid argument #2 (table expected)")
-  local n = #tbl
-  local m = int_arr(n) ; for i=1,n do m[i-1] = tbl[i] end
-  return _C.mad_ctpsa_idxsm(x, n, m)+1
-end
-
-function MR.get_mono (x, i, r) -- idx -> mono
-  assert(is_natural(i), "invalid argument #2 (index expected)")
-  local m = r or monomial(x.d.nn)
-  assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-  return m, _C.mad_tpsa_mono(x, i-1, m.n, m._dat, nil) -- return order and mono
-end
-
-function MC.get_mono (x, i, r) -- idx -> mono
-  assert(is_natural(i), "invalid argument #2 (index expected)")
-  local m = r or monomial(x.d.nn)
-  assert(is_monomial(m), "invalid argument #2 (table or monomial expected)")
-  return m, _C.mad_ctpsa_mono(x, i-1, m.n, m._dat, nil) -- return order and mono
-end
+MR.get_idx        = \x,m   -> x.d:get_idx(m)          -- mono -> idx (0 means invalid)
+MR.get_idx_sparse = \x,tbl -> x.d:get_idx_sparse(tbl) -- tbl = {idx1, ord1, ... } -> idx
+MR.get_mono       = \x,i,r -> x.d:get_mono(i,r)       -- idx -> mono
 
 function MR.totable (x, p)
   local m = monomial(p == true and x.d.nn or x.d.nv)
@@ -2039,8 +2035,13 @@ MR.__eq, MR.__lt, MR.__le, MR.__same, MR.__copy
 MC.  eq, MC.  lt, MC.  le, MC.  same, MC.  copy =
 MC.__eq, MC.__lt, MC.__le, MC.__same, MC.__copy
 
+MD.__index = MD
 MR.__index = MR
 MC.__index = MC
+
+function MD.__newindex (_, i)
+  error("invalid GTPSAD member '".. tostring(i) .."'")
+end
 
 function MR.__newindex (_, i)
   error("invalid GTPSA member '".. tostring(i) .."'")
@@ -2063,9 +2064,11 @@ MAD.typeid.isa_tpsa  = isa_tpsa
 
 -- metatables -----------------------------------------------------------------o
 
+MD.__metatable = MD
 MR.__metatable = MR
 MC.__metatable = MC
 
+ffi.metatype( desc_ctor, MD)
 ffi.metatype( tpsa_ctor, MR)
 ffi.metatype(ctpsa_ctor, MC)
 
