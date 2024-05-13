@@ -45,7 +45,7 @@ static long long ratio_nz[11] = {0};
 static long long ratio_nn[11] = {0};
 
 static inline num_t
-ratio (const T *t, num_t eps_)
+ratio (const T *t)
 {
   if (t->lo > t->hi) {
     ratio_nz[10]++;
@@ -54,8 +54,7 @@ ratio (const T *t, num_t eps_)
   }
 
   long  nz  = 0;
-  num_t eps = eps_ ? eps_ : mad_tpsa_eps;
-  TPSA_SCAN(t) if (fabs(t->coef[i]) >= eps) ++nz;
+  TPSA_SCAN(t) if (t->coef[i]) ++nz;
   long  nn = o2i[t->hi+1] - o2i[t->lo];
   num_t rr = (num_t)nz / nn;
 
@@ -86,7 +85,7 @@ check (const T *t, ord_t *o_, num_t *r_)
   }
 #endif
 
-  if (r_) *r_ = ratio(t,0);
+  if (r_) *r_ = ratio(t);
   return TRUE;
 
 ret:
@@ -100,6 +99,7 @@ ret:
          1        check ;
          2        check ; density
          3        check ; density ; print header +tpsa(ok) or +raw(!ok)
+         4        check ; density ; print header +tpsa +raw
 */
 
 int
@@ -124,19 +124,19 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
     char name[48];
     strncpy(name, name_ ? name_ : t->nam, 48); name[47] = '\0';
     FUN(print)(t, name, 1e-40, 0, stream_);
-    return ok;
-  }
-
-  fprintf(stream_," ** bug @ o=%d } 0x%p\n", o, (void*)t); fflush(stream_);
+    if (mad_tpsa_dbga <= 3) return ok;
+  } else
+    fprintf(stream_," ** bug @ o=%d } 0x%p\n", o, (void*)t); fflush(stream_);
 
   if (d) {
     const idx_t *o2i = d->ord2idx;
-    idx_t ni = o2i[MIN(t->mo,t->ao)+1]; // corrupted TPSA cannot use print
+    idx_t ni = o2i[t->ao+1]; // corrupted TPSA cannot use print, display full memory
     FOR(i,ni) fprintf(stream_," [%d:%d]=" FMT "\n", i,d->ords[i],VAL(t->coef[i]));
     fprintf(stream_,"\n"); fflush(stream_);
   }
 
-  ensure(ok, "corrupted TPSA detected"); return ok;
+  if (mad_tpsa_dbga <= 3) ensure(ok, "corrupted TPSA detected");
+  return ok;
 }
 
 #ifndef MAD_CTPSA_IMPL
@@ -253,10 +253,10 @@ FUN(isvalid) (const T *t)
 }
 
 num_t
-FUN(density) (const T *t, num_t eps)
+FUN(density) (const T *t)
 {
   assert(t);
-  return ratio(t,eps);
+  return ratio(t);
 }
 
 // --- init (unsafe) ----------------------------------------------------------o
@@ -278,6 +278,9 @@ FUN(newd) (const D *d, ord_t mo)
   mo = MIN(mo, d->mo);
   T *r = mad_malloc(sizeof(T) + d->ord2idx[mo+1] * sizeof(NUM)); assert(r);
   r->d = d, r->ao = r->mo = mo, r->uid = 0, r->nam[0] = 0, FUN(reset0)(r);
+#if TPSA_DEBUG
+  if (mad_tpsa_dbga >= 3) FOR(i,1,d->ord2idx[r->ao+1]) r->coef[i] = M_PI;
+#endif
   DBGTPSA(r); DBGFUN(<-); return r;
 }
 
@@ -373,11 +376,11 @@ FUN(sclord) (const T *t, T *r, log_t inv, log_t prm)
   FUN(copy)(t,r);
 
   const int    np = !prm; // do not consider parameters orders
-  const ord_t *po = r->d->prms, lo = MAX(r->lo,2);
+  const ord_t *co = r->d->ords, *po = r->d->prms, lo = MAX(r->lo,2);
   if (inv) { // scale coefs by 1/order
-    TPSA_SCAN_Z(r,lo,r->hi) TPSA_SCAN_O(r) r->coef[i] /= o - po[i] * np;
+    TPSA_SCAN(r,lo,r->hi) r->coef[i] /= co[i] - po[i] * np;
   } else {   // scale coefs by order
-    TPSA_SCAN_Z(r,lo,r->hi) TPSA_SCAN_O(r) r->coef[i] *= o - po[i] * np;
+    TPSA_SCAN(r,lo,r->hi) r->coef[i] *= co[i] - po[i] * np;
   }
   DBGTPSA(r); DBGFUN(<-);
 }
@@ -405,7 +408,7 @@ FUN(getord) (const T *t, T *r, ord_t o)
   }
 
   r->lo = r->hi = o, r->coef[0] = 0;
-  if (t != r) { TPSA_SCAN_O(r,o) r->coef[i] = t->coef[i]; }
+  if (t != r) { TPSA_SCAN(r,o,o) r->coef[i] = t->coef[i]; }
 
   DBGTPSA(r); DBGFUN(<-);
 }
@@ -442,14 +445,15 @@ FUN(maxord) (const T *t, ssz_t n, idx_t idx_[n])
   idx_t mi = 0;                       // idx of mv
   num_t mv = fabs(t->coef[0]);        // max of all values
   ord_t hi = MIN(n-1, t->hi);
-  TPSA_SCAN_Z(t,t->lo,hi) {
+  TPSA_SCAN_O(t,t->lo,hi) {
     num_t mo = 0;                     // max of this order
-    TPSA_SCAN_O(t)
+    TPSA_SCAN(t,o,o) {
       if (mo < fabs(t->coef[i])) {
         mo = fabs(t->coef[i]);        // save max for this order
         if (idx_) idx_[o] = i;        // save idx for this order
         if (mv < mo) mv = mo, mi = i; // save max and idx for all orders
       }
+    }
   }
   DBGFUN(<-); return mi;
 }
