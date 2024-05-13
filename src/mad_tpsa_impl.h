@@ -56,9 +56,7 @@ struct tpsa_ {  // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
 
 // loop to scan non-zero homogeneous polynomials (doesn't include coef[0]!)
 #define TPSA_SCAN(  ...)   MKNAME(TPSA_SCAN_ ,NARG(__VA_ARGS__))(__VA_ARGS__)
-#define TPSA_SCAN_Z(...)   MKNAME(TPSA_SCAN_Z,NARG(__VA_ARGS__))(__VA_ARGS__)
 #define TPSA_SCAN_O(...)   MKNAME(TPSA_SCAN_O,NARG(__VA_ARGS__))(__VA_ARGS__)
-#define TPSA_SCAN_I(...)   MKNAME(TPSA_SCAN_I,NARG(__VA_ARGS__))(__VA_ARGS__)
 
 #define TPSA_SCAN_1(t)     TPSA_SCAN_3(t,(t)->lo,(t)->hi)
 #define TPSA_SCAN_2(t,hi)  TPSA_SCAN_3(t,(t)->lo,     hi)
@@ -66,20 +64,10 @@ struct tpsa_ {  // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
   const idx_t *o2i = (t)->d->ord2idx; \
   FOR(i,o2i[lo],o2i[(hi)+1]) \
 
-#define TPSA_SCAN_Z1(t)    TPSA_SCAN_Z3(t,(t)->lo,(t)->hi)
-#define TPSA_SCAN_Z2(t,hi) TPSA_SCAN_Z3(t,(t)->lo,     hi)
-#define TPSA_SCAN_Z3(t,lo,hi) \
-  const idx_t *o2i = (t)->d->ord2idx; (void)o2i; \
-  for (ord_t o=(lo); o <= (hi); o++) \
-
-#define TPSA_SCAN_I1(t)    TPSA_SCAN_I3(t,(t)->lo,(t)->hi)
-#define TPSA_SCAN_I2(t,hi) TPSA_SCAN_I3(t,(t)->lo,     hi)
-#define TPSA_SCAN_I3(t,lo,hi) FOR(i,o2i[lo],o2i[(hi)+1])
-
-#define TPSA_SCAN_O1(t)       FOR(i,o2i[o],o2i[o+1])
-#define TPSA_SCAN_O2(t,o) \
-  const idx_t *o2i = (t)->d->ord2idx; \
-  FOR(i,o2i[o],o2i[(o)+1])
+#define TPSA_SCAN_O1(t)    TPSA_SCAN_O3(t,(t)->lo,(t)->hi)
+#define TPSA_SCAN_O2(t,hi) TPSA_SCAN_O3(t,(t)->lo,     hi)
+#define TPSA_SCAN_O3(t,lo,hi) \
+  for (ord_t o=(lo); o <= (hi); o++)
 
 // --- functions accessing lo, hi
 
