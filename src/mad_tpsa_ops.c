@@ -294,19 +294,20 @@ axpbypc (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   if (c->lo > c->hi) { c->lo = 1, c->hi = 0; return; }
 
   const idx_t *o2i = c->d->ord2idx;
-  TPSA_SCAN_I(c,alo,MIN(ahi,blo-1)) c->coef[i] = c1*a->coef[i];
-  TPSA_SCAN_I(c,ahi+1,      blo-1 ) c->coef[i] = 0; // no overlap
-  TPSA_SCAN_I(c,blo,MIN(ahi,bhi)  ) c->coef[i] = c1*a->coef[i]+c2*b->coef[i];
-  TPSA_SCAN_I(c,bhi+1,  ahi       ) c->coef[i] = c1*a->coef[i];
-  TPSA_SCAN_I(c,ahi+1,      bhi   ) c->coef[i] = c2*b->coef[i];
+  idx_t i = o2i[alo];
+  for(; i < o2i[MIN(ahi+1,blo)]; i++) c->coef[i] = c1*a->coef[i];
+  for(; i < o2i[blo]           ; i++) c->coef[i] = 0; // no overlap
+  for(; i < o2i[MIN(ahi,bhi)+1]; i++) c->coef[i] = c1*a->coef[i]+c2*b->coef[i];
+  for(; i < o2i[ahi+1]         ; i++) c->coef[i] = c1*a->coef[i];
+  for(; i < o2i[bhi+1]         ; i++) c->coef[i] = c2*b->coef[i];
 
 #if 0
-  if (mad_tpsa_dbga && a != c && b != c && !FUN(isvalid)(c)) {
+  if (mad_tpsa_dbga >= 3 && a != c && b != c) {
     static int cnt = 0;
     str_t av = FUN(isvalid)(a) ? "" : "*";
     str_t bv = FUN(isvalid)(b) ? "" : "*";
     printf("alo=%d[%d], ahi=%d[%d]%s, blo=%d[%d], bhi=%d[%d]%s, clo=%d, chi=%d\n",
-            alo, a->lo, ahi,a->hi,av, blo, b->lo, bhi,b->hi,bv, c->lo, c->hi);
+            alo,a->lo,  ahi,a->hi,av, blo,b->lo,  bhi,b->hi,bv, c->lo,  c->hi);
     printf("c1="FMT", c2="FMT", c3="FMT"\n", VAL(c1), VAL(c2), VAL(c3));
     printf("aaa=0x%p, bbb=0x%p, ccc=0x%p\n", (void*)a, (void*)b, (void*)c);
 
@@ -543,7 +544,8 @@ FUN(equ) (const T *a, const T *b, num_t tol)
   assert(a && b); DBGFUN(->);
   ensure(IS_COMPAT(a,b), "incompatibles GTPSA (descriptors differ)");
 
-  T c_ = {.d=a->d, .mo=a->d->mo, .ao=a->d->mo}, *c = &c_; // fake TPSA
+  const D *d = a->d;
+  T c_ = {.d=d, .mo=d->mo, .ao=d->mo}, *c = &c_; // fake TPSA
 
   if (a->lo > b->lo) { const T *t; SWAP(a,b,t); }
 
@@ -557,10 +559,11 @@ FUN(equ) (const T *a, const T *b, num_t tol)
   if (bhi > c->hi) bhi = c->hi;
 
   const idx_t *o2i = a->d->ord2idx;
-  TPSA_SCAN_I(c,alo,MIN(ahi,blo-1)) if (neq(a->coef[i],0         ,tol)) goto ret;
-  TPSA_SCAN_I(c,blo,MIN(ahi,bhi  )) if (neq(a->coef[i],b->coef[i],tol)) goto ret;
-  TPSA_SCAN_I(c,bhi+1,  ahi       ) if (neq(a->coef[i],0         ,tol)) goto ret;
-  TPSA_SCAN_I(c,ahi+1,      bhi   ) if (neq(0         ,b->coef[i],tol)) goto ret;
+  idx_t i = o2i[alo];
+  for(; i < o2i[MIN(ahi+1,blo)]; i++) if (neq(a->coef[i],0         ,tol)) goto ret;
+  for(; i < o2i[MIN(ahi,bhi)+1]; i++) if (neq(a->coef[i],b->coef[i],tol)) goto ret;
+  for(; i < o2i[ahi+1]         ; i++) if (neq(a->coef[i],0         ,tol)) goto ret;
+  for(; i < o2i[bhi+1]         ; i++) if (neq(0         ,b->coef[i],tol)) goto ret;
 
   DBGFUN(<-); return TRUE;
 ret:
