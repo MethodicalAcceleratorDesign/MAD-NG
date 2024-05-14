@@ -16,7 +16,7 @@
  o-----------------------------------------------------------------------------o
 
   Purpose:
-  - Provide basic compatibility with MADX sequences and optics files
+  - Provide basic compatibility with MADX and MAD8 sequences and optics files
 
  o-----------------------------------------------------------------------------o
 ]=]
@@ -105,15 +105,39 @@ local BEGOFCHUNK = "do  -- BEGOFCHUNK"
 local ENDOFCHUNK = "end -- ENDOFCHUNK"
 local MINSZCHUNK = 4000
 
-local function check_chunk (out, doit)
+local function check_chunk (env, doit)
+  local out in env
   if out.n ~= out.nchk and (doit or out.n-out.nchk >= MINSZCHUNK) then
     if option.debug >= 2 then io.write("chunk size=", out.n-out.nchk, "\n") end
+    if env.cur ~= 0 then                    -- close previous bline
+      out[out.n], out.n = '}', out.n+1
+    end
     out[out.n], out.n = ENDOFCHUNK, out.n+1 -- close previous chunk
     out[out.n], out.n = ''        , out.n+1 -- empty line
     out[out.n], out.n = BEGOFCHUNK, out.n+1 -- open  new      chunk
+    if env.cur ~= 0 then                    -- open  new      bline
+      local nam = env[env.cur]
+      local nsl = #env.sln[nam]+1
+      local sln = nam..'__chunk_'..nsl
+      out[out.n], out.n = sln.." = bline '"..sln.."'{", out.n+1
+      env.sln[nam][nsl] = sln
+    end
     out.nchk = out.n
     return true -- chunk has been closed/opened
   end
+end
+
+local function close_sequ (env)
+  local cur, out, seq, sln in env
+  assertf(cur ~= 0, "missing %s sequence environment line %d", env[cur], out.n)
+  out[out.n], out.n = '}', out.n+1 -- close last bline
+
+  local nam = env[cur]
+  local str = string.format("%s = sequence '%s' { %s, %s }",
+                            nam, sln[nam].seqnam, sln[nam].seqatt,
+                            table.concat(sln[nam], ", "))
+  env.cur, out[out.n], out.n = 0, str, out.n+1
+  out[out.n], out.n = table.concat(sln[nam], "=nil ; ").."=nil", out.n+1
 end
 
 -- comments -------------------------------------------------------------------o
@@ -306,11 +330,14 @@ local function convert_element (env, str, cap)
   if cls == 'sequence' then -- sequence
     assertf(env.cur == 0, "invalid sequence %s definition inside %s, line %d",
                                            cap[1], env[env.cur], out.n)
-    check_chunk(out, true)
-    pfx, clo     = nam .. ' = ', ','
+    check_chunk(env, true)
+    local sln = nam..'__chunk_1'
+    pfx, cls, clo = sln..' = ', 'bline', ''
     env[#env+1]  = nam
-    env.seq[nam] = #env
     env.cur      = #env
+    env.seq[nam] = #env
+    env.sln[nam] = { seqnam=cap[1], seqatt=convert_attrlist(cap[3]), sln }
+    cap[1], cap[3] = sln, ''
 
   elseif env.cur == 0 then  -- class
     pfx, clo     = nam .. ' = ', ' }'
@@ -350,9 +377,8 @@ local function convert_command (env, str, cap)
   local cmd = convert_name(cap[1])
 
   if cmd == 'endsequence' then
-    local out in env
-    env.cur, out[out.n], out.n = 0, '}', out.n+1
-    check_chunk(out, true)
+    close_sequ (env)
+    check_chunk(env, true)
     return
   elseif cmd == 'return' then
     env.stp = true
@@ -421,6 +447,7 @@ end
   cur      = seq_idx  : current sequence index (0 -> not in seq)
   elm[nam] = seq_idx  : element sequence index (0 -> elm is a class)
   seq[nam] = seq_idx  : sequence index
+  sln[nam] = {lines}  : lines names in sequence split
   cls[nam] = cls_nam  : element's class name, i.e. (elm[cls[nam]] -> cls_idx)
 --]=]
 
@@ -431,7 +458,7 @@ local function load2madx (madx, src, dst, reload_, mad8_)
   end
 
   local out = table.new(65536,2) ; out.n, out.nchk = 1, 1
-  local env = { out=out, seq={}, elm={}, cls={}, cur=0, stp=false,
+  local env = { out=out, seq={}, sln={}, elm={}, cls={}, cur=0, stp=false,
                 wrn=madx.option.warn, opt=madx.option, madx=madx }
 
   -- if dst (MAD-NG) is newer than src (MAD-X), use dst (no translation)
@@ -476,7 +503,7 @@ local function load2madx (madx, src, dst, reload_, mad8_)
     for _,str in ipairs(inp) do
       str = convert_statements(str, env)
       if str then out[out.n], out.n = str, out.n+1 end -- add non-empty lines
-      if env.cur == 0 then check_chunk(out) end        -- outside sequence
+      check_chunk(env)                 -- update: inside and outside sequence
       if env.stp then break end                        -- "return" found
     end
 
