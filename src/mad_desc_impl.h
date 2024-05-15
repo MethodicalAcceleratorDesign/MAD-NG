@@ -47,7 +47,7 @@ enum { DESC_WARN_MONO  = 1000000, // warn if tpsa can have 1e6 coefs or more
 struct desc_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
   int   id;          // index in list of registered descriptors
   int   nn, nv, np;  // #variables, #parameters, nn=nv+np <= 100000
-  ord_t mo, po;      // max order of vars & params
+  ord_t mo, po, sh;  // max order of vars & params, shared with id
   const ord_t *no;   // orders of each vars & params, no[nn]
               // end of compatibility with LuaJIT FFI
 
