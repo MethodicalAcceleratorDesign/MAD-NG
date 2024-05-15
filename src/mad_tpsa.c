@@ -267,7 +267,7 @@ FUN(init) (T *t, const D *d, ord_t mo)
   assert(t && d && mo <= d->mo); DBGFUN(->);
   t->d = d, t->ao = t->mo = mo, t->uid = 0, t->nam[0] = 0, FUN(reset0)(t);
 #if TPSA_DEBUG
-  if (mad_tpsa_dbga >= 3) FOR(i,1,d->ord2idx[mo+1]) r->coef[i] = M_PI;
+  if (mad_tpsa_dbga >= 3) FOR(i,1,d->ord2idx[mo+1]) t->coef[i] = M_PI;
 #endif
   DBGTPSA(t); DBGFUN(<-); return t;
 }
