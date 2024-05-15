@@ -125,8 +125,9 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
     strncpy(name, name_ ? name_ : t->nam, 48); name[47] = '\0';
     FUN(print)(t, name, 1e-40, 0, stream_);
     if (mad_tpsa_dbga <= 3) return ok;
-  } else
+  } else {
     fprintf(stream_," ** bug @ o=%d } 0x%p\n", o, (void*)t); fflush(stream_);
+  }
 
   if (d) {
     const idx_t *o2i = d->ord2idx;
@@ -317,7 +318,7 @@ FUN(update) (T *t)
 {
   assert(t); DBGFUN(->);
   if (t->hi && FUN(nzero0 )(t,t->lo,t->hi,1) >= 0 &&
-               FUN(nzero0r)(t,t->lo,t->hi,1) >= 0) ;
+               FUN(nzero0r)(t,t->lo,t->hi,1) >= 0) {}
   DBGTPSA(t); DBGFUN(<-);
 }
 
@@ -391,10 +392,10 @@ void
 FUN(clrord) (T *t, ord_t o)
 {
   assert(t); DBGFUN(->);
-  if (!o) t->coef[0] = 0;                                   else
-  if (o  > t->lo && o < t->hi) FUN(clear0)(t, o, o);        else
-  if (o == t->lo && FUN(nzero0 )(t,t->lo+1,t->hi,1) >= 0) ; else
-  if (o == t->hi && FUN(nzero0r)(t,t->lo,t->hi-1,1) >= 0) ;
+  if (!o) t->coef[0] = 0;                                    else
+  if (o  > t->lo && o < t->hi) FUN(clear0)(t, o, o);         else
+  if (o == t->lo && FUN(nzero0 )(t,t->lo+1,t->hi,1) >= 0) {} else
+  if (o == t->hi && FUN(nzero0r)(t,t->lo,t->hi-1,1) >= 0) {}
   DBGTPSA(t); DBGFUN(<-);
 }
 
@@ -540,8 +541,9 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
   skip: ;
   }
 
-  if (r != r_) { FUN(copy)(r,r_); REL_TMPX(r); } else
-  DBGTPSA(r_); DBGFUN(<-);
+  if (r != r_) { FUN(copy)(r,r_); REL_TMPX(r); }
+  else         { DBGTPSA(r_); }
+  DBGFUN(<-);
 }
 
 // --- indexing / monomials ---------------------------------------------------o
@@ -697,8 +699,8 @@ FUN(seti) (T *t, idx_t i, NUM a, NUM b)
     t->coef[i] = v;
   } else {
     t->coef[i] = 0;
-    if (o == t->lo && FUN(nzero0 )(t,t->lo,t->hi,1) >= 0) ; else
-    if (o == t->hi && FUN(nzero0r)(t,t->lo,t->hi,1) >= 0) ;
+    if (o == t->lo && FUN(nzero0 )(t,t->lo,t->hi,1) >= 0) {} else
+    if (o == t->hi && FUN(nzero0r)(t,t->lo,t->hi,1) >= 0) {}
   }
   DBGTPSA(t); DBGFUN(<-);
 }
