@@ -87,8 +87,7 @@ static inline void // clear TPSA order but doesn't adjust lo,hi
 mad_ctpsa_clear0 (ctpsa_t *t, ord_t lo, ord_t hi)
 {
   assert(t);
-  const idx_t *o2i = t->d->ord2idx;
-  FOR(i,o2i[lo],o2i[hi+1]) t->coef[i] = 0;
+  TPSA_SCAN(t,lo,hi) t->coef[i] = 0;
 }
 
 static inline idx_t // return index of first non-zero coef in [lo,hi] or -1

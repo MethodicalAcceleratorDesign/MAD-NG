@@ -93,7 +93,7 @@ hpoly_mul(const T *a, const T *b, T *c, const ord_t *ocs, log_t in_parallel)
       const idx_t *lc = d->L[oa*hod + ob];
       const idx_t *idx[2] = { d->L_idx[oa*hod + ob][idx0],
                               d->L_idx[oa*hod + ob][idx1] };
-       assert(lc); assert(idx[0] && idx[1]);
+      assert(lc); assert(idx[0] && idx[1]);
 
       if (mad_bit_tst(nza & nzb,oa) && mad_bit_tst(nza & nzb,ob)) {
         //printf("hpoly__sym_mul (%d) %2d+%2d=%2d\n", ocs[0], oa,ob,oc);
@@ -152,8 +152,7 @@ der_coef(idx_t ia, idx_t idx, ord_t ord, const D* d)
     return d->To[ia][idx-1];
   }
   const ord_t *srcm = d->To[ia], *derm = d->To[idx];
-  if (mad_mono_lt(d->nv,srcm,derm))
-    return 0;
+  if (mad_mono_lt(d->nv,srcm,derm)) return 0;
 
   num_t c = 1;
   FOR(v,d->nv)
