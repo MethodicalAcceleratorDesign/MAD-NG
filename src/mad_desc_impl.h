@@ -33,7 +33,7 @@
 enum { DESC_WARN_MONO  = 1000000, // warn if tpsa can have 1e6 coefs or more
        DESC_MAX_ORD    = 250,     // max ord of a tpsa
        DESC_MAX_VAR    = 100000,  // max number of variables in a tpsa
-       DESC_MAX_ARR    = 100,     // max number of simultaneous descriptors
+       DESC_MAX_ARR    = 250,     // max number of simultaneous descriptors
        DESC_MAX_TMP    = 8,       // max number of temp. per thread in each desc
 };
 
