@@ -31,7 +31,7 @@
 #endif
 
 /* --- definition --------------------------------------------------------------
-  GTPSA are *defined* in [0] U [lo,hi] with 0 < lo <= hi <= mo <= d->mo <= 253
+  GTPSA are *defined* in [0]U[lo,hi] with 0 < lo <= hi <= mo <= ao <= d->mo<=250
     - scalar GTPSA have lo=1, hi=0, the only case where hi=0 and i.e. lo > hi.
     - new/clear/reset GTPSA are scalar GTPSA with coef[0]=0 (see reset0).
     - always true: coef[0] is defined and lo >= 1, even if coef[0] != 0.
@@ -628,7 +628,7 @@ FUN(getsm) (const T *t, ssz_t n, const idx_t m[n])
 
 /* getv cases
    0   1     lo=2      hi=3        mo=4
-  [.|.....|........|..........|............]
+  [.|?????|........|..........|????????????]
     |i000n|        |          |               lo=2, hi=1
     | i0n |        |          |               lo=2, hi=1
     | i00n|        |          |               lo=2, hi=1
@@ -653,19 +653,18 @@ FUN(getv) (const T *t, idx_t i, ssz_t n, NUM v[n])
   const idx_t *o2i = t->d->ord2idx;
   ord_t lo = t->lo;
   ord_t hi = MIN(ord[nn-1], t->hi);
-
   ssz_t n0 = MIN(o2i[lo  ], nn);
-  ssz_t nj = MAX(o2i[lo  ], i );
   ssz_t ni = MIN(o2i[hi+1], nn);
 
 //ord_t mo = t->mo, go = MIN(t->ao, mad_tpsa_dbgo);
-//printf("getv: i=%2d, n=%2d, lo=%d, hi=%d, mo=%d(%d), n0=%2d, ni=%2d, nj=%2d, nn=%2d %c\n",
-//              i    , n    , lo   , hi   , mo,   go , n0    , ni    , nj    , nn,
+//printf("getv: i=%2d, n=%2d, lo=%d, hi=%d, mo=%d(%d), n0=%2d, ni=%2d, nn=%2d %c\n",
+//              i    , n    , lo   , hi   , mo,   go , n0    , ni    , nn,
 //              ni == i+n ? ' ' : '*');
 
-  FOR(j, i,n0) v[j-i] = 0;
-  FOR(j,nj,ni) v[j-i] = t->coef[j];
-  FOR(j,ni,nn) v[j-i] = 0;
+  idx_t j = i;
+  for(; j < n0; j++) v[j-i] = 0;
+  for(; j < ni; j++) v[j-i] = t->coef[j];
+  for(; j < nn; j++) v[j-i] = 0;
 
   if (!i) v[0] = t->coef[0];
 
@@ -734,7 +733,7 @@ FUN(setsm) (T *t, ssz_t n, const idx_t m[n], NUM a, NUM b)
 
 /* setv cases
    0   1     lo=2      hi=3        mo=4
-  [.|.....|........|..........|............]
+  [.|?????|........|..........|????????????]
     |i...n|        |          |               lo=1, hi=1
     |0i.n0|        |          |               lo=1, hi=1
     |0i..n|        |          |               lo=1, hi=1
