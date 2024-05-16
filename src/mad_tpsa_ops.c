@@ -276,8 +276,7 @@ axpbypc (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
 
   c->coef[0] = c1*a->coef[0] + c2*b->coef[0] + c3;
 
-  if ((!c1 && !c2) || (!c1 && !b->hi) || (!c2 && !a->hi))
-    { c->lo = 1, c->hi = 0; return; }
+  if ((!c1 && !b->hi) || (!c2 && !a->hi)) { c->lo = 1, c->hi = 0; return; }
 
   ord_t alo, ahi, blo, bhi;
 
