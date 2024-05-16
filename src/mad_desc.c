@@ -950,7 +950,9 @@ desc_equiv (const D *d, int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
 static inline log_t
 desc_compat (const D *dc, const D *d)
 {
-  return dc->nn == d->nn && mad_mono_eq(d->nn, dc->no, d->no);
+  return dc->nn == d->nn && dc->mo == d->mo && dc->np <= d->np &&
+        (!d->np || (dc->po == d->po && dc->mo >= d->po)) &&
+         mad_mono_eq(d->nn, dc->no, d->no);
 }
 
 static inline D*
@@ -996,18 +998,19 @@ desc_init (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
 }
 
 static D*
-desc_build (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
+desc_build (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn], log_t share)
 {
   DBGFUN(->);
   D *d = desc_init(nn, mo, np, po, no_);
   int err = 0, eid=0;
 
-  D *dc = NULL; // search for compatible descriptor (= same nn && no, != nv, np)
-  FOR(i,desc_max)
-    if (Ds[i] && desc_compat(Ds[i], d)) { dc = Ds[i]; break; }
+  D *dc = NULL; // search for compatible descriptor
+  if (share)    // never true, disable sharing which is suboptimal vs convert
+    FOR(i,desc_max)
+      if (Ds[i] && desc_compat(Ds[i], d)) { dc = Ds[i]; break; }
 
   if (!dc) {
-    d->shared = mad_malloc(sizeof *d->shared); *d->shared = 0;
+    d->shared = mad_malloc(sizeof *d->shared); *d->shared=0, d->sh=mad_tpsa_dflt;
     set_monos (d);
     tbl_by_var(d);
     tbl_by_ord(d); if ((err = tbl_check_T(d))) { eid=1; goto error; }
@@ -1015,7 +1018,7 @@ desc_build (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
     tbl_set_L (d); if ((err = tbl_check_L(d))) { eid=3; goto error; }
     set_thread(d);
   } else {
-    d->shared  = dc->shared; ++*d->shared;
+    d->shared  = dc->shared; ++*d->shared, d->sh = dc->id;
     d->nc      = dc->nc;      // set in set_monos
     d->monos   = dc->monos;
     d->ords    = dc->ords;
@@ -1077,7 +1080,7 @@ get_desc (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn])
 
   FOR(i,DESC_MAX_ARR)
     if (!Ds[i]) {
-      Ds[i] = desc_build(nn, mo, np, po, no_);
+      Ds[i] = desc_build(nn, mo, np, po, no_, FALSE);
       Ds[i]->id = i;
       if (i == desc_max) ++desc_max;
       DBGFUN(<-); return mad_desc_curr=Ds[i];
@@ -1127,7 +1130,11 @@ mad_desc_nxtbyvar (const D *d, ssz_t n, ord_t m[n])
 
   if (!mono_isvalid(d,n,m)) { DBGFUN(<-); return -1; }
 
-  const idx_t idx = tbl_index_H(d,n,m)+1;
+  idx_t idx = tbl_index_H(d,n,m)+1;
+
+  if (d->sh != mad_tpsa_dflt)
+    for (; idx < d->nc; idx++) if (mono_isvalid(d,n,d->Tv[idx])) break;
+
   if (idx == d->nc) { DBGFUN(<-); return -1; }
 
   mad_mono_copy(n, d->Tv[idx], m);
@@ -1142,7 +1149,11 @@ mad_desc_nxtbyord (const D *d, ssz_t n, ord_t m[n])
 
   if (!mono_isvalid(d,n,m)) { DBGFUN(<-); return -1; }
 
-  const idx_t idx = d->tv2to[tbl_index_H(d,n,m)]+1;
+  idx_t idx = d->tv2to[tbl_index_H(d,n,m)]+1;
+
+  if (d->sh != mad_tpsa_dflt)
+    for (; idx < d->nc; idx++) if (mono_isvalid(d,n,d->To[idx])) break;
+
   if (idx == d->nc) { DBGFUN(<-); return -1; }
 
   mad_mono_copy(n, d->To[idx], m);
