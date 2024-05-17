@@ -61,15 +61,30 @@ struct ctpsa_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
 
 static inline void // copy TPSA orders, don't use coef.
 mad_ctpsa_copy0 (const ctpsa_t *t, ctpsa_t *r)
-{ mad_tpsa_copy0((const tpsa_t*)t, (tpsa_t*)r); }
+{
+  assert(t && r);
+  r->lo = t->lo;
+  r->hi = MIN(t->hi, r->mo);
+  if (r->lo > r->hi) r->lo = 1, r->hi = 0;
+}
 
 static inline void // copy TPSA orders, don't use coef.
 mad_ctpsa_copy00 (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *r)
-{ mad_tpsa_copy00((const tpsa_t*)a, (const tpsa_t*)b, (tpsa_t*)r); }
+{
+  assert(a && b && r);
+  ord_t hi = MAX(a->hi, b->hi);
+  r->lo = MIN(a->lo, b->lo);
+  r->hi = MIN(hi, r->mo);
+  if (r->lo > r->hi) r->lo = 1, r->hi = 0;
+}
 
 static inline void // print TPSA header (for debug)
 mad_ctpsa_print0 (const ctpsa_t *t, str_t nam_)
-{ mad_tpsa_print0((const tpsa_t*)t, nam_); }
+{
+  assert(t && t->d);
+  printf("'%s' { lo=%d hi=%d mo=%d ao=%d uid=%d did=%d }\n",
+         nam_?nam_:"?", t->lo, t->hi, t->mo, t->ao, t->uid, t->d->id);
+}
 
 // --- functions accessing lo, hi, coef[0]
 
