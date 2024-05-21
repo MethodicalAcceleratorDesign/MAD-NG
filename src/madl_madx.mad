@@ -171,8 +171,8 @@ local function remove_comments_and_merge (lst) -- mad8
 
   for i=1,n do
     local l, p, j, e = lst[i], m ; m = false
-    j = fnd(strqsplit(l, "!")); if j then l = l:sub(1,j-1) end
-    j = fnd(strqsplit(l, "&")); if j then l = l:sub(1,j-1) ; m = true end
+    j = fnd(strqsplit(l, "\"!")); if j then l = l:sub(1,j-1) end
+    j = fnd(strqsplit(l, "\"&")); if j then l = l:sub(1,j-1) ; m = true end
 
     if c then
       j, e = l:find("^%s*ENDCOMMENT")
@@ -193,16 +193,20 @@ end
 
 -- names, madx names, extended names ------------------------------------------o
 
-local name_patt = "%s*%f[%w_]([%a_][%w.$_]*)"                 -- identifier
+local name_patt = "%s*%f[%w_]([%a_][%w.$_']*)"                -- identifier
 local qnam_patt = "%s*%f[%w_]['\"]?([%a_][%w.$_]*)['\"]?"     -- optional quotes
 local beam_patt = "%s*%f[%w_]([%a_][%w_]*)%s*%%([%a_][%w_]*)" -- attached beam
 
 local kwd = { int='', real='', const='', shared='', }
 
+local prm = { ["'"]="_prime", ["''"]="_2prime", ["'''"]="_3prime",
+              ["''''"]="_4prime", ["'''''"]="_5prime" }
+
 local function convert_name (str)            --; io.write("str-1:[", str, "]\n")
   str = str:lower()                          --; io.write("str-2:[", str, "]\n")
   str = str:gsub(name_patt, kwd)             --; io.write("str-3:[", str, "]\n")
   str = str:gsub('([.$])', '_')              --; io.write("str-4:[", str, "]\n")
+  str = str:gsub("([']+)", prm)              --; io.write("str-4:[", str, "]\n")
   return trim(str)
 end
 
@@ -216,6 +220,8 @@ local function convert_ename (str)
   str = str:gsub(name_patt, convert_name)    --; io.write("str-5:[", str, "]\n")
   str = str:gsub(beam_patt, '%2.%1')         --; io.write("str-6:[", str, "]\n")
   str = str:gsub("(->)", '.')                --; io.write("str-7:[", str, "]\n")
+  str = str:gsub("(%[)", '.')                --; io.write("str-7:[", str, "]\n")
+  str = str:gsub("(%])", ' ')                --; io.write("str-7:[", str, "]\n")
   return trim(str)
 end
 
@@ -274,7 +280,7 @@ local attrlst_patt = "%s*([%a,]?.*)$"
 
 local attr = { slice='nslice', nst='nslice' }
 
-local function convert_attrlist (str_)
+local function convert_attrlist (env, str_)
   local res, str, flg, opn = {}, str_ or ''
   while str ~= '' do
     if option.debug >= 2 then io.write("attr-lst: [", str, "]\n") end
@@ -307,6 +313,7 @@ local function convert_attrlist (str_)
       local scap = capf(cap[4]:find("^([^,]+)" .. attrlst_patt))
       cap[4], str = convert_ename(scap[1]), scap[2]
     end
+    if cap[3] == '=' and env.mad8 then cap[3] = ":=" end
     res[#res+1] = table.concat(cap, ' ', 2, 4)
   end
 
@@ -336,7 +343,7 @@ local function convert_element (env, str, cap)
     env[#env+1]  = nam
     env.cur      = #env
     env.seq[nam] = #env
-    env.sln[nam] = { seqnam=cap[1], seqatt=convert_attrlist(cap[3]), sln }
+    env.sln[nam] = { seqnam=cap[1], seqatt=convert_attrlist(env, cap[3]), sln }
     cap[1], cap[3] = sln, ''
 
   elseif env.cur == 0 then  -- class
@@ -361,7 +368,7 @@ local function convert_element (env, str, cap)
     end
   end
 
-  cap[3] = convert_attrlist(cap[3])
+  cap[3] = convert_attrlist(env, cap[3])
 
   return string.format("%s%s '%s' { %s%s", pfx, cls, cap[1], cap[3], clo)
 end
@@ -409,14 +416,14 @@ local function convert_command (env, str, cap)
     opn, clo = '{ ', ', shared=true },'
   end
 
-  cap[2] = convert_attrlist(cap[2])
+  cap[2] = convert_attrlist(env, cap[2])
 
   return string.format("%s %s%s%s", pfx, opn, cap[2], clo)
 end
 
 -- statement ------------------------------------------------------------------o
 
-local function convert_statements (str, env)
+local function convert_statements (env, str)
   local cap
 
   -- order of matching matters! order constraints from + to -
@@ -459,7 +466,7 @@ local function load2madx (madx, src, dst, reload_, mad8_)
 
   local out = table.new(65536,2) ; out.n, out.nchk = 1, 1
   local env = { out=out, seq={}, sln={}, elm={}, cls={}, cur=0, stp=false,
-                wrn=madx.option.warn, opt=madx.option, madx=madx }
+                wrn=madx.option.warn, opt=madx.option, madx=madx, mad8=mad8_ }
 
   -- if dst (MAD-NG) is newer than src (MAD-X), use dst (no translation)
   if reload_ ~= true                                      -- reload not enforced
@@ -501,7 +508,7 @@ local function load2madx (madx, src, dst, reload_, mad8_)
 
     -- translate
     for _,str in ipairs(inp) do
-      str = convert_statements(str, env)
+      str = convert_statements(env, str)
       if str then out[out.n], out.n = str, out.n+1 end -- add non-empty lines
       check_chunk(env)                 -- update: inside and outside sequence
       if env.stp then break end                        -- "return" found
