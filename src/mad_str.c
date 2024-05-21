@@ -45,12 +45,12 @@ mad_str_trim (str_t str, ssz_t arg[2])
 }
 
 str_t
-mad_str_quote (str_t str, ssz_t arg[5])
+mad_str_quote (str_t str, ssz_t arg[5], log_t sq)
 {
   assert(str && arg);
   mad_str_trim_front(str, arg);
 
-  if (str[arg[0]] != '"' && str[arg[0]] != '\'') { // no quote found
+  if (str[arg[0]] != '"' && (str[arg[0]] != '\'' || !sq)) { // no quote found
     arg[2] = -1, arg[3] = arg[4] = 0;
     return str;
   }
@@ -60,7 +60,7 @@ mad_str_quote (str_t str, ssz_t arg[5])
   if (str[i] == '"')
     while (j < k && str[j] != '"' )
       j += (str[j] == '\\' && str[j+1] == '"' ) ? ++q, 2 : 1;
-  else
+  else if (sq)
     while (j < k && str[j] != '\'')
       j += (str[j] == '\\' && str[j+1] == '\'') ? ++q, 2 : 1;
 
@@ -69,7 +69,7 @@ mad_str_quote (str_t str, ssz_t arg[5])
   arg[0] = i+1;
   arg[1] = j-(i+1);
   arg[2] = j;
-  arg[3] = (str[i] == '\'') + 1;
+  arg[3] = (str[i] == '\'' && sq) + 1;
   arg[4] = q;
 
   return str;

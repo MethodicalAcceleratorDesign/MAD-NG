@@ -710,12 +710,12 @@ local function tostr (str, ptr, sarg, escq_)
 end
 
 local function qsplit (str, seps, sarg)                          -- sarg_in: [0]=ini, [1]=len, [2]=#seps
-  local len, lsep = #str, sarg[2]
+  local len, lsep, sq = #str, sarg[2], seps:find("'",1,true) ~= nil
   local ptr = _C.mad_str_split(str, sarg, seps)                  -- scan for seps
-  local ini, qcnt = sarg[0], 0                                   -- backup ini, esc quotes
-  while sarg[2] >= 0 and sarg[3] < 2 do                          -- sep is a quote
+  local ini, qcnt, nq = sarg[0], 0, sq and 2 or 1                -- backup ini, esc quotes
+  while sarg[2] >= 0 and sarg[3] < nq do                         -- sep is a quote
     sarg[0], sarg[1] = sarg[2], len-sarg[2]                      -- sarg_in: [0]=ini, [1]=len
-    local qptr = _C.mad_str_quote(str, sarg)                     -- scan for quotes
+    local qptr = _C.mad_str_quote(str, sarg, sq)                 -- scan for quotes
     assert(qptr ~= nil, "invalid pair of quotes")
     qcnt = qcnt + sarg[4]                                        -- count esc quotes
     sarg[0], sarg[1], sarg[2] = sarg[2]+1, len-(sarg[2]+1), lsep -- sarg_in: [0]=ini, [1]=len, [2]=#seps
@@ -768,7 +768,7 @@ function utility.strquote (str, ini_) -- remove surrounding quotes (if any)
   assert(is_string(str ), "invalid argument #1 (string expected)")
   assert(is_number(ini_), "invalid argument #2 (number expected)")
   sarg[0], sarg[1] = ini_-1,  #str-(ini_-1)                    -- sarg: [0]=ini, [1]=len
-  local ptr = _C.mad_str_quote(str, sarg)                      -- [0]: index  of str (trimmed)
+  local ptr = _C.mad_str_quote(str, sarg, true)                -- [0]: index  of str (trimmed)
   assert(ptr ~= nil, "invalid pair of quotes")                 -- [1]: length of str
   -- unquoted str, index of closing quote or 0, type of quotes -- [2]: index  of closing quote or -1
   return tostr(str, ptr, sarg, true), sarg[2]+1, sarg[3]       -- [3]: type   of quotes 0: none, 1: "", 2: ''
@@ -790,7 +790,7 @@ function utility.strqsplit (str, seps, ini_) -- split at seps (if any outside qu
   assert(is_string(str ), "invalid argument #1 (string expected)")
   assert(is_string(seps), "invalid argument #2 (string expected)")
   assert(is_number(ini_), "invalid argument #3 (number expected)")
-  seps = '"'.."'"..seps                                        -- add quotes to seps
+  if not seps:find("['\"]") then seps = "'\""..seps end        -- add quotes to seps
   sarg[0], sarg[1], sarg[2] = ini_-1, #str-(ini_-1), #seps     -- sarg_in: [0]=ini, [1]=len, [2]=#seps
   local ptr = qsplit(str, seps, sarg)                          -- [0]: index  of str (trimmed)
   -- trimmed str, index of sep or 0, index of sep in seps or 0 -- [1]: length of str (trimmed if sep)
@@ -803,7 +803,7 @@ function utility.strsplitall (str, seps, ini_, res_)
   assert(is_string  (seps), "invalid argument #2 (string expected)")
   assert(is_number  (ini_), "invalid argument #3 (number expected)")
   assert(is_iterable(res_), "invalid argument #4 (iterable expected)")
-  seps = '"'.."'"..seps                            -- add quotes to seps
+  if not seps:find("['\"]") then seps = "'\""..seps end -- add quotes to seps
   local len, lsep, ns = #str, #seps, 0
   sarg[0], sarg[1] = ini_-1, len-(ini_-1)          -- sarg_in: [0]=ini, [1]=len
   _C.mad_str_trim(str, sarg)

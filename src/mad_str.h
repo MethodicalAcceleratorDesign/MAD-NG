@@ -31,8 +31,8 @@
 str_t mad_str_trim    (str_t str, ssz_t arg[2]);
 str_t mad_str_num     (str_t str, ssz_t arg[5]);
 str_t mad_str_ident   (str_t str, ssz_t arg[4]);
-str_t mad_str_quote   (str_t str, ssz_t arg[5]);
 str_t mad_str_bracket (str_t str, ssz_t arg[6]);
+str_t mad_str_quote   (str_t str, ssz_t arg[5], log_t sq);
 str_t mad_str_split   (str_t str, ssz_t arg[4], str_t sep);
 
 // ----------------------------------------------------------------------------o
