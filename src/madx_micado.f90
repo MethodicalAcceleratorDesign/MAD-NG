@@ -89,7 +89,8 @@ subroutine htls(a, b, m, n, x, ipiv, r, rms, prtlev, iter, rho, ptop, &
      !     N  = NCTOT nr available independent correctors
 
      integer, intent(IN)  :: m, n, prtlev
-     integer, intent(OUT) :: iter, ifail
+     integer, intent(INOUT) :: iter
+     integer, intent(OUT) :: ifail
      double precision :: a(m,n), b(m), x(n), r(m)
      integer :: ipiv(n)
      double precision :: rms
