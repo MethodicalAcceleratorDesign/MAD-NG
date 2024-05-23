@@ -278,6 +278,7 @@ function TestTPSAGet:testGetVecSingVar()
   assertError(ct.getvec, sz_t+1, 1)
 end
 
+
 function TestTPSAGet:testGetVecMultVar()
   local sz_t = d3v:maxlen()
   local t    = tpsa (d3v):setvec(5,1..sz_t-25)   --filling all the orders but the first and last ones
@@ -306,6 +307,53 @@ function TestTPSAGet:testGetVecMultVar()
   assertError(ct.getvec,      0, 1)
   assertError(t .getvec, sz_t+1, 1)
   assertError(ct.getvec, sz_t+1, 1)
+end
+
+
+function TestTPSAGet:testGetVec ()
+  local t,v = tpsa, vector
+  local mo, nc = d5v:maxord(), d5v:maxlen()
+  local idx = {[0]=0} for o=0,mo do idx[o+1] = d5v:maxlen(o)+1 end
+
+  -- helpers to setvec tpsas and vectors within start..end
+  local mkt = \s,e -> (s, v(e-s+1):fill(s..e))
+  local mkv = \s,e -> (s..e, s..e)
+
+  -- ref tpsa, see cases in mad_tpsa.c
+  local r = t(d5v):setvec(idx[2], idx[2]..idx[4]-1)
+
+--   0   1     lo=2      hi=3        mo=4
+--  [.|?????|........|..........|????????????]
+--  [ |i000n|        |          |            ]
+  assertTrue( r:copy():setvec(mkt(idx[1]  , idx[2]-1)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[1]  , idx[4]-1)) )
+--  [ | i0n |        |          |            ]
+  assertTrue( r:copy():setvec(mkt(idx[1]+1, idx[2]-1)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[1]+1, idx[4]-1)) )
+--  [ | i00n|        |          |            ]
+  assertTrue( r:copy():setvec(mkt(idx[1]+1, idx[2]-2)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[1]+1, idx[4]-1)):set(idx[2]-1,1,0) )
+--  [ | i000|....n   |          |            ]
+  assertTrue( r:copy():setvec(mkt(idx[1]+1, idx[3]-4)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[1]+1, idx[4]-1)) )
+--  [ | i000|........|..........|0000000n    ]
+  assertTrue( r:copy():setvec(mkt(idx[1]+1, idx[5]-4)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[1]+1, idx[5]-4)) )
+--  [ |     |  i.....|......n   |            ]
+  assertTrue( r:copy():setvec(mkt(idx[2]+2, idx[3]-3)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[2]  , idx[4]-1)) )
+--  [ |     |        |   i......|.......n0000]
+  assertTrue( r:copy():setvec(mkt(idx[3]+3, idx[5]-5)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[2]  , idx[5]-5)) )
+--  [ |     |        |          |i......n0000]
+  assertTrue( r:copy():setvec(mkt(idx[4]  , idx[5]-5)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[2]  , idx[5]-5)) )
+--  [ |     |        |          |0i.....n0000]
+  assertTrue( r:copy():setvec(mkt(idx[4]+1, idx[5]-5)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[2]  , idx[5]-5)):set(idx[4],1,0) )
+--  [ |     |        |          |i..........n]
+  assertTrue( r:copy():setvec(mkt(idx[4]  , idx[5]-1)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[2]  , idx[5]-1)) )
 end
 
 
@@ -391,17 +439,16 @@ end
 
 
 function TestTPSASet:testSetVec ()
-  local d = gtpsad(5,4)
   local t,v = tpsa, vector
-  local mo, nc = d:maxord(), d:maxlen()
-  local idx = {[0]=0} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+  local mo, nc = d5v:maxord(), d5v:maxlen()
+  local idx = {[0]=0} for o=0,mo do idx[o+1] = d5v:maxlen(o)+1 end
 
   -- helpers to setvec tpsas and vectors within start..end
   local mkt = \s,e -> (s, v(e-s+1):fill(s..e))
   local mkv = \s,e -> (s..e, s..e)
 
   -- ref tpsa, see cases in mad_tpsa.c
-  local r = t(d):setvec(idx[2], idx[2]..idx[4]-1)
+  local r = t(d5v):setvec(idx[2], idx[2]..idx[4]-1)
 
 --   0   1     lo=2      hi=3        mo=4
 --  [.|?????|........|..........|????????????]
@@ -709,7 +756,10 @@ function TestTPSAArithmetic:testAddC()
     assertTrue(mkt(idx[4],idx[5]-1):axpbypc(mkt(idx[3],idx[5]-1),1,1, 0) == mkt(idx[4],idx[5]-1)+mkt(idx[3],idx[5]-1))
     assertTrue(mkt(idx[3],idx[5]-1):axpbypc(mkt(idx[4],idx[5]-1),1,1, 0) == mkt(idx[3],idx[5]-1)+mkt(idx[4],idx[5]-1))
     assertTrue(mkt(idx[4],idx[5]-1):axpbypc(mkt(idx[4],idx[5]-1),1,1, 0) == mkt(idx[4],idx[5]-1)+mkt(idx[4],idx[5]-1))
-    assertTrue(mkt(idx[0],idx[1]-1):axpbypc(mkt(idx[0],idx[1]-1),1,0,1i) == mkt(idx[0],idx[1]-1)+                  1i)
+
+    assertTrue(mkt(idx[3],idx[5]-1):axpbypc(mkt(idx[4],idx[5]-1)*1i,1,1, 0) == mkt(idx[3],idx[5]-1)+mkt(idx[4],idx[5]-1)*1i)
+    assertTrue(mkt(idx[4],idx[5]-1):axpbypc(mkt(idx[4],idx[5]-1)*1i,1,1, 0) == mkt(idx[4],idx[5]-1)+mkt(idx[4],idx[5]-1)*1i)
+    assertTrue(mkt(idx[0],idx[1]-1):axpbypc(mkt(idx[0],idx[1]-1)   ,1,0,1i) == mkt(idx[0],idx[1]-1)+                     1i)
   end
 end
 
@@ -825,7 +875,54 @@ function TestTPSAArithmetic:testSubC()
     assertTrue(mkt(idx[4],idx[5]-1):axpbypc(mkt(idx[3],idx[5]-1),1,-1, 0) == mkt(idx[4],idx[5]-1)-mkt(idx[3],idx[5]-1))
     assertTrue(mkt(idx[3],idx[5]-1):axpbypc(mkt(idx[4],idx[5]-1),1,-1, 0) == mkt(idx[3],idx[5]-1)-mkt(idx[4],idx[5]-1))
     assertTrue(mkt(idx[4],idx[5]-1):axpbypc(mkt(idx[4],idx[5]-1),1,-1, 0) == mkt(idx[4],idx[5]-1)-mkt(idx[4],idx[5]-1))
-    assertTrue(mkt(idx[0],idx[1]-1):axpbypc(mkt(idx[0],idx[1]-1),1,0,-1i) == mkt(idx[0],idx[1]-1)-                  1i)
-    
+
+    assertTrue(mkt(idx[3],idx[5]-1):axpbypc(mkt(idx[4],idx[5]-1)*1i,1,-1, 0) == mkt(idx[3],idx[5]-1)-mkt(idx[4],idx[5]-1)*1i)
+    assertTrue(mkt(idx[4],idx[5]-1):axpbypc(mkt(idx[4],idx[5]-1)*1i,1,-1, 0) == mkt(idx[4],idx[5]-1)-mkt(idx[4],idx[5]-1)*1i)
+    assertTrue(mkt(idx[0],idx[1]-1):axpbypc(mkt(idx[0],idx[1]-1),1,0,-1i)    == mkt(idx[0],idx[1]-1)-                     1i)
   end
+end
+
+local function add_term(poly, exponents, coefficient)
+    -- Check if a term with the same exponents already exists
+    for _, term in ipairs(poly) do
+        local same = true
+        for i = 1, #exponents do
+            if term.exponents[i] ~= exponents[i] then
+                same = false
+                break
+            end
+        end
+        if same then
+            term.coefficient = term.coefficient + coefficient
+            return
+        end
+    end
+    -- If not, add a new term
+    table.insert(poly, { exponents = exponents, coefficient = coefficient })
+end
+
+-- Function to multiply two polynomials
+local function multiply_polynomials(poly1, poly2)
+    local result = {}
+    for _, term1 in ipairs(poly1) do
+        for _, term2 in ipairs(poly2) do
+            local new_exponents = {}
+            for i = 1, math.max(#term1.exponents, #term2.exponents) do
+                new_exponents[i] = (term1.exponents[i] or 0) + (term2.exponents[i] or 0)
+            end
+            local new_coefficient = term1.coefficient * term2.coefficient
+            add_term(result, new_exponents, new_coefficient)
+        end
+    end
+    return result
+end
+
+
+function TestTPSAArithmetic:testMulR()
+
+end
+
+
+function TestTPSAArithmetic:testMulC()
+
 end
