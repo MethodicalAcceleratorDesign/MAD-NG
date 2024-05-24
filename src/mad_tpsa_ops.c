@@ -551,7 +551,9 @@ FUN(equ) (const T *a, const T *b, num_t tol)
   ord_t blo = b->lo, bhi = b->hi;
   FUN(copy00)(a,b,c);
 
-  if (!c->hi) { DBGFUN(<-); return !neq(a->coef[0], b->coef[0], tol); }
+  log_t equ = neq(a->coef[0], b->coef[0], tol);
+
+  if (!c->hi || !equ) { DBGFUN(<-); return equ; }
 
   if (ahi > c->hi) ahi = c->hi;
   if (bhi > c->hi) bhi = c->hi;
