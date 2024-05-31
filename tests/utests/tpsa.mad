@@ -28,7 +28,7 @@ local ident                                                      in MAD.gfunc
 local assertTrue, assertEquals, assertAlmostEquals, 
       assrtIsFalse, assertErrorMsgContains, 
       assertError, assertNil, assertFalse                        in MAD.utest
-local is_tpsa, is_vector, is_ctpsa, is_gtpsad, is_number, is_complex        in MAD.typeid
+local is_tpsa, is_vector, is_ctpsa, is_gtpsad, is_number, is_complex, is_monomial       in MAD.typeid
 
 -- locals ---------------------------------------------------------------------o
 
@@ -1309,7 +1309,7 @@ local ct,cv = ctpsa, cvector
   end
 end
 
-function diff_mono(m1,m2)
+local function diff_mono(m1,m2)
   local diff = {}
   for v,ord in pairs(m1) do
     diff[v] = m1[v]-m2[v]
@@ -1318,7 +1318,7 @@ function diff_mono(m1,m2)
   return diff
 end
 
-function deriv_coef(m1,m2)
+local function deriv_coef(m1,m2)
   local coef = 1
   for v=1,#m1 do
     local tmp = 1
@@ -1330,14 +1330,14 @@ function deriv_coef(m1,m2)
   return coef
 end
 
-function is_valid_mono(m)
+local function is_valid_mono(m)
   for v, ord in pairs(m) do
     if ord<0 then return false end
   end
   return true
 end
 
-function deriv_poly(t,deriv,ctor)
+local function deriv_poly(t,deriv,ctor)
   local r = ctor(t:desc())
   local P = tpsa2Poly(t)  
 
@@ -1346,28 +1346,23 @@ function deriv_poly(t,deriv,ctor)
     local new_exp = diff_mono(exp,deriv)
     
     if is_valid_mono(new_exp) then
-      new_coef = deriv_coef(exp,deriv)*coef
+      local new_coef = deriv_coef(exp,deriv)*t:get(exp_mono)
       r:set(monomial(new_exp),new_coef)
     end
   end
   return r
 end
 
-ts = tpsa(d2v):set("00",1):set("23",1) -- try with only 32
-mt = monomial("23"):totable()
-res=deriv_poly(ts, mt, tpsa)
-res:print()
-
 
 function TestTPSADeriv: testDerivation()
-local ct,cv = ctpsa, cvector
+local t,v = tpsa, vector
 
   for _,d in ipairs({d1v,d2v,d3v,d5v}) do
     local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
     local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
 
     -- helper to set tpsas within start..end
-    local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i):set("0",1i)
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e))*1):set("0",1)
   
     local tab = {
             {t1=mkt(idx[0],idx[1]-1),case="#0 with "..nv.." variable(s)"},
@@ -1381,10 +1376,12 @@ local ct,cv = ctpsa, cvector
 
     for key, val in ipairs(tab) do
       for i=1,val.t1:nv() do
-        assertTrue(val.t1:deriv(i                           ) == deriv_poly(val.t1,val.t1:get_mono(i):totable()),val.case)--tofix getmono more than one output
+        local tmp,_ = val.t1:get_mono(i+1)
+        assertTrue(val.t1:deriv(i                           ) == deriv_poly(val.t1,tmp:totable(),t),val.case)--tofix getmono more than one output
       end
-      for i=1,d:maxlen() do
-        assertTrue(val.t1:deriv(val.t1:get_mono(i):totable()) == deriv_poly(val.t1,val.t1:get_mono(i):totable()),val.case)
+      for i=2,d:maxlen() do
+        local tmp,_ = val.t1:get_mono(i)
+        assertTrue(val.t1:deriv(tmp) == deriv_poly(val.t1,tmp:totable(),tpsa),val.case)
       end
     end
   end
