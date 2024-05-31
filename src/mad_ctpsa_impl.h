@@ -30,11 +30,13 @@
 // --- types ------------------------------------------------------------------o
 
 struct ctpsa_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
-  const desc_t *d;        // ptr to ctpsa descriptor
-  ord_t   lo, hi, mo, ao; // lowest/highest used ord, max ord, allocated ord
-  int32_t uid;            // special user field for external use (and padding)
-  char    nam[NAMSZ];     // tpsa name (max 15 chars)
-  cpx_t   coef[]; // warning: must be identical to tpsa up to coef excluded
+  const desc_t *d;     // ptr to tpsa descriptor
+  ord_t   mo, ao;      // max ord, allocated ord
+  ssz_t   nc, mc;      // #val, max #val = index of mo+1
+  int32_t uid;         // special "user" field for external use (padding)
+  char    nam[NAMSZ];  // tpsa name (hidden)
+  idx_t  *idx;         // = (idx_t*)(val+nn);
+  cpx_t   val[];       // R:nn+(nn+1)/2, C:nn+(nn+2)/4, no = ords[nn]
 };
 
 // --- macros -----------------------------------------------------------------o
@@ -57,89 +59,20 @@ struct ctpsa_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
 
 // --- helpers ----------------------------------------------------------------o
 
-// --- functions accessing lo, hi
-
-static inline void // copy TPSA orders, don't use coef.
-mad_ctpsa_copy0 (const ctpsa_t *t, ctpsa_t *r)
+static inline ctpsa_t* // reset TPSA
+mad_ctpsa_reset0 (ctpsa_t *t)
 {
-  assert(t && r);
-  r->lo = t->lo;
-  r->hi = MIN(t->hi, r->mo);
-  if (r->lo > r->hi) r->lo = 1, r->hi = 0;
-}
-
-static inline void // copy TPSA orders, don't use coef.
-mad_ctpsa_copy00 (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *r)
-{
-  assert(a && b && r);
-  ord_t hi = MAX(a->hi, b->hi);
-  r->lo = MIN(a->lo, b->lo);
-  r->hi = MIN(hi, r->mo);
-  if (r->lo > r->hi) r->lo = 1, r->hi = 0;
+  assert(t);
+  t->nc = 1, t->val[0] = 0;
+  return t;
 }
 
 static inline void // print TPSA header (for debug)
 mad_ctpsa_print0 (const ctpsa_t *t, str_t nam_)
 {
   assert(t && t->d);
-  printf("'%s' { lo=%d hi=%d mo=%d ao=%d uid=%d did=%d }\n",
-         nam_?nam_:"?", t->lo, t->hi, t->mo, t->ao, t->uid, t->d->id);
-}
-
-// --- functions accessing lo, hi, coef[0]
-
-static inline ctpsa_t* // reset TPSA
-mad_ctpsa_reset0 (ctpsa_t *t)
-{
-  assert(t);
-  t->lo = 1, t->hi = 0, t->coef[0] = 0;
-  return t;
-}
-
-// --- functions accessing coef[o]
-
-static inline void // clear TPSA order but doesn't adjust lo,hi
-mad_ctpsa_clear0 (ctpsa_t *t, ord_t lo, ord_t hi)
-{
-  assert(t);
-  TPSA_SCAN(t,lo,hi) t->coef[i] = 0;
-}
-
-static inline idx_t // return index of first non-zero coef in [lo,hi] or -1
-mad_ctpsa_nzero0 (const ctpsa_t *t, ord_t lo, ord_t hi, log_t upt)
-{
-  assert(t);
-  if (lo > hi) return -1;
-  const idx_t *o2i = t->d->ord2idx;
-  idx_t i = o2i[lo], ni = o2i[hi+1]-1;
-  cpx_t c = t->coef[ni]; ((ctpsa_t*)t)->coef[ni] = 1; // set stopper
-  while (!t->coef[i]) ++i;
-  ((ctpsa_t*)t)->coef[ni] = c;                        // restore value
-  if (i != ni || c) {
-    if (upt) ((ctpsa_t*)t)->lo = t->d->ords[i];
-    return i;
-  } else {
-    if (upt) ((ctpsa_t*)t)->lo = 1, ((ctpsa_t*)t)->hi = 0;
-    return -1;
-  }
-}
-
-static inline idx_t // return index of first non-zero coef in [lo,hi] or -1
-mad_ctpsa_nzero0r (const ctpsa_t *t, ord_t lo, ord_t hi, log_t upt)
-{
-  assert(t);
-  const idx_t *o2i = t->d->ord2idx;
-  for (ord_t o = hi; o >= lo; o--) {
-    idx_t i = o2i[o], ni = o2i[o+1]-1;
-    cpx_t c = t->coef[ni]; ((ctpsa_t*)t)->coef[ni] = 1; // set stopper
-    while (!t->coef[i]) ++i;
-    ((ctpsa_t*)t)->coef[ni] = c;                        // restore value
-    if (i != ni || c) {
-      if (upt) ((ctpsa_t*)t)->hi = o;
-      return i;
-    }
-  }
-  return -1;
+  printf("'%s' { nc=%d mc=%d mo=%d ao=%d uid=%d did=%d }\n",
+         nam_?nam_:"?", t->nc, t->mc, t->mo, t->ao, t->uid, t->d->id);
 }
 
 // --- temporaries ------------------------------------------------------------o
@@ -156,7 +89,7 @@ mad_ctpsa_gettmp (const ctpsa_t *t, const str_t func)
   ctpsa_t *tmp = d->ct[ tid*DESC_MAX_TMP + d->cti[tid]++ ];
   TRC_TMPX(printf("GET_TMPX%d[%d]: %p in %s(c)\n",
                   tid, d->cti[tid]-1, (void*)tmp, func));
-  tmp->mo = t->mo;
+  tmp->mo = t->mo, tmp->mc = t->mc;
   return mad_ctpsa_reset0(tmp);
 }
 
