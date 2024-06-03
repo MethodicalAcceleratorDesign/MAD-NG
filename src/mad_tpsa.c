@@ -333,11 +333,11 @@ FUN(cutord) (const T *t, T *r, int o)
   ensure(IS_COMPAT(t,r), "incompatibles GTPSA (descriptors differ)");
 
   if (o <= 0) {
-    idx_t i0 = geti(t,t->d->ord2idx[o+1],0);
+    idx_t i0 = geti(t,t->d->ord2idx[1-o],0);
     FOR(i,i0,t->nc) r->val[i-i0] = t->val[i], r->idx[i-i0] = t->idx[i];
     r->nc = t->nc-i0;
   } else {
-    idx_t i0 = geti(t,t->d->ord2idx[o+0],0);
+    idx_t i0 = geti(t,t->d->ord2idx[0+o],0);
     if (r != t) FOR(i,i0) r->val[i] = t->val[i], r->idx[i] = t->idx[i];
     r->nc = i0;
   }
@@ -371,11 +371,14 @@ FUN(maxord) (const T *t, ssz_t n, idx_t idx_[n])
 }
 
 idx_t
-FUN(cycle) (const T *t, idx_t i, ssz_t n, ord_t m_[n], NUM *v_)
+FUN(cycle) (const T *t, idx_t i, ssz_t n, ord_t m_[n], idx_t *i_, NUM *v_)
 {
   assert(t); DBGFUN(->);
+  ensure(i >= -1 && i < t->d->nc, "index %d out of bounds", i);
   if (++i < t->nc) {
    if (i < 0) i = 0;
+   if (!i && !t->val[0]) ++i;
+   if (i_) *i_ = t->idx[i];
    if (v_) *v_ = t->val[t->idx[i]];
    if (m_) mad_mono_copy(MIN(n,t->d->nn), t->d->To[t->idx[i]], m_);
   } else i = -1;
@@ -504,6 +507,15 @@ getv (const T *t, idx_t idx, idx_t i0)
 {
   idx_t i = geti(t,idx,i0);
   return i < t->nc && t->idx[i] == idx ? t->val[i] : 0;
+}
+
+idx_t
+FUN(getidx) (const T *t, idx_t i)
+{
+  assert(t); DBGFUN(->);
+  ensure(0 <= i && i < t->d->nc, "index %d out of bounds", i);
+  idx_t ret = i < t->nc ? t->idx[i] : -1;
+  DBGFUN(<-); return ret;
 }
 
 NUM

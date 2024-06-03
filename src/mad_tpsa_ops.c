@@ -246,78 +246,68 @@ FUN(scl) (const T *a, NUM v, T *c)
   if (v == 0) { FUN(clear)(c);  DBGFUN(<-); return; }
   if (v == 1) { FUN(copy)(a,c); DBGFUN(<-); return; }
 
-  FUN(copy0)(a,c);
+  if (FUN(isval)(a)) { FUN(setval)(c, v*a->val[0]); DBGFUN(<-); return; }
 
-  c->coef[0] = v*a->coef[0];
-
-  if (FUN(isval)(a)) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
-
-  if (v == -1) { TPSA_SCAN(c) c->coef[i] =  -a->coef[i]; }
-  else         { TPSA_SCAN(c) c->coef[i] = v*a->coef[i]; }
+  c->nc = MIN(a->nc, c->mc);
+  if (v == -1) { FOR(i,c->nc) c->val[i] =  -a->val[i]; }
+  else         { FOR(i,c->nc) c->val[i] = v*a->val[i]; }
 
   DBGTPSA(c); DBGFUN(<-);
 }
 
-/* acc/add/sub/dif cases
-   0   1     lo=2      hi=3        mo=4
-  [.|.....|........|..........|............]
-    |.....|        |          |               lo=1, hi=1
-    |.....|........|          |               lo=1, hi=2
-    |.....|........|..........|............   lo=1, hi=4
-    |     |........|..........|               lo=2, hi=3
-    |     |        |..........|............   lo=3, hi=4
-    |     |        |          |............   lo=4, hi=4
-*/
-
 static inline void
 axpbypc (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
 {
-  assert(a && b && c && a->lo <= b->lo);
+  if (a == b) { FUN(scl)(a,c1+c2,c), c->val[0] += c3; return; }
 
-  c->coef[0] = c1*a->coef[0] + c2*b->coef[0] + c3;
+  assert(a && b && c);
 
-  if ((!c1 && !b->hi) || (!c2 && !a->hi)) { c->lo = 1, c->hi = 0; return; }
+  log_t ac = FALSE, bc = FALSE;
+  if (a == c) a = FUN(copy)(a,GETTMP(a)), ac = TRUE; else
+  if (b == c) b = FUN(copy)(b,GETTMP(b)), bc = TRUE; else
+  FUN(reset0)(c);
 
-  ord_t alo, ahi, blo, bhi;
+  idx_t ai=1, bi=1, ci=1;
 
-  if (!c1 || !a->hi) alo = b->lo, ahi = 0;
-  else               alo = a->lo, ahi = MIN(a->hi, c->mo);
+  c->val[0] = c1*a->val[0] + c2*b->val[0] + c3;
 
-  if (!c2 || !b->hi) blo = a->lo, bhi = 0;
-  else               blo = b->lo, bhi = MIN(b->hi, c->mo);
+  if (a && b)
+    while (xi < x->nc && yi < y->nc && ri < r->mc) {
+      idx_t ii = x->idx[xi] - y->idx[yi];
+      if (ii < 0) {
+        if (x->idx[xi] >= r->no) break;
+        r->idx[ri  ] =   x->idx[xi  ];
+        r->val[ri++] = a*x->val[xi++];
+      } else if (ii > 0) {
+        if (y->idx[yi] >= r->no) break;
+        r->idx[ri  ] =   y->idx[yi  ];
+        r->val[ri++] = b*y->val[yi++];
+      } else {
+        if (x->idx[xi] >= r->no) goto ret;
+        r->idx[ri] = x->idx[xi];
+        NUM v = a*x->val[xi++] + b*y->val[yi++];
+        if (v) r->val[ri++] = v;
+      }
+    }
+  if (a)
+    while (xi < x->nc && ri < r->mc) {
+      if (x->idx[xi] >= r->no) break;
+      r->idx[ri  ] =   x->idx[xi  ];
+      r->val[ri++] = a*x->val[xi++];
+    }
+  if (b)
+    while (yi < y->nc && ri < r->mc) {
+      if (y->idx[yi] >= r->no) break;
+      r->idx[ri  ] =   y->idx[yi  ];
+      r->val[ri++] = b*y->val[yi++];
+    }
+ret:
+  c->nc = ci;
 
-  c->lo = MIN(alo, blo);
-  c->hi = MAX(ahi, bhi);
-
-  if (c->lo > c->hi) { c->lo = 1, c->hi = 0; return; }
-
-  const idx_t *o2i = c->d->ord2idx;
-  idx_t i = o2i[alo];
-  for(; i < o2i[MIN(ahi+1,blo)]; i++) c->coef[i] = c1*a->coef[i];
-  for(; i < o2i[blo]           ; i++) c->coef[i] = 0; // no overlap
-  for(; i < o2i[MIN(ahi,bhi)+1]; i++) c->coef[i] = c1*a->coef[i]+c2*b->coef[i];
-  for(; i < o2i[ahi+1]         ; i++) c->coef[i] = c1*a->coef[i];
-  for(; i < o2i[bhi+1]         ; i++) c->coef[i] = c2*b->coef[i];
-
-#if 0
-  if (mad_tpsa_dbga >= 3 && a != c && b != c) {
-    static int cnt = 0;
-    str_t av = FUN(isvalid)(a) ? "" : "*";
-    str_t bv = FUN(isvalid)(b) ? "" : "*";
-    printf("alo=%d[%d], ahi=%d[%d]%s, blo=%d[%d], bhi=%d[%d]%s, clo=%d, chi=%d\n",
-            alo,a->lo,  ahi,a->hi,av, blo,b->lo,  bhi,b->hi,bv, c->lo,  c->hi);
-    printf("c1="FMT", c2="FMT", c3="FMT"\n", VAL(c1), VAL(c2), VAL(c3));
-    printf("aaa=0x%p, bbb=0x%p, ccc=0x%p\n", (void*)a, (void*)b, (void*)c);
-
-    FUN(print)(a,"aaa",0,0,0);
-    FUN(print)(b,"bbb",0,0,0);
-    FUN(print)(c,"ccc",0,0,0);
-    if (a != c) DBGTPSA(a);
-    if (b != c) DBGTPSA(b);
-    if (++cnt >= 20) exit(EXIT_FAILURE);
-  }
-#endif
+  if (ac) RELTMP(a); else
+  if (bc) RELTMP(b);
 }
+
 
 void
 FUN(acc) (const T *a, NUM v, T *c)
@@ -327,13 +317,9 @@ FUN(acc) (const T *a, NUM v, T *c)
 
   if (v == 0) { DBGFUN(<-); return; }
 
-  if (a->lo <= c->lo) axpbypc(v,a,1,c,0,c);
-  else                axpbypc(1,c,v,a,0,c);
+  axpbypc(v,a,1,c,0,c);
 
-#if TPSA_STRICT
-  FUN(update)(c);
-#endif
-  DBGFUN(<-);
+  DBGTPSA(c); DBGFUN(<-);
 }
 
 void
@@ -342,13 +328,9 @@ FUN(add) (const T *a, const T *b, T *c)
   assert(a && b && c); DBGFUN(->);
   ensure(IS_COMPAT(a,b,c), "incompatibles GTPSA (descriptors differ)");
 
-  if (a->lo <= b->lo) axpbypc(1,a,1,b,0,c);
-  else                axpbypc(1,b,1,a,0,c);
+  axpbypc(1,a,1,b,0,c);
 
-#if TPSA_STRICT
-  FUN(update)(c);
-#endif
-  DBGFUN(<-);
+  DBGTPSA(c); DBGFUN(<-);
 }
 
 void
@@ -357,13 +339,9 @@ FUN(sub) (const T *a, const T *b, T *c)
   assert(a && b && c); DBGFUN(->);
   ensure(IS_COMPAT(a,b,c), "incompatibles GTPSA (descriptors differ)");
 
-  if (a->lo <= b->lo) axpbypc( 1,a,-1,b,0,c);
-  else                axpbypc(-1,b, 1,a,0,c);
+  axpbypc(1,a,-1,b,0,c);
 
-#if TPSA_STRICT
-  FUN(update)(c);
-#endif
-  DBGFUN(<-);
+  DBGTPSA(c); DBGFUN(<-);
 }
 
 void
@@ -374,16 +352,15 @@ FUN(dif) (const T *a, const T *b, T *c)
 
   T *t = a == c ? GET_TMPX(c) : FUN(reset0)(c);
 
-  if (a->lo <= b->lo) axpbypc( 1,a,-1,b,0,t);
-  else                axpbypc(-1,b, 1,a,0,t);
+  axpbypc(1,a,-1,b,0,t);
 
-  TPSA_SCAN(t,a->lo,a->hi) c->coef[i] = t->coef[i] / MAX(fabs(a->coef[i]),1);
+  c->nc = MIN(t->nc, c->mc);
+  idx_t nc = MIN(c->nc, a->nc);
+  FOR(i,nc) c->val[i] = t->val[i] / MAX(fabs(a->val[i]),1);
+  FOR(i,nc,c->nc) c->val[i] = t->val[i];
 
-  if (t != c) { FUN(copy0)(t,c); REL_TMPX(t); }
+  if (t != c) REL_TMPX(t);
 
-#if TPSA_STRICT
-  FUN(update)(c);
-#endif
   DBGFUN(<-);
 }
 
@@ -393,12 +370,8 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   assert(a && b && c); DBGFUN(->);
   ensure(IS_COMPAT(a,b,c), "incompatibles GTPSA (descriptors differ)");
 
-  if (a->lo <= b->lo) axpbypc(c1,a,c2,b,c3,c);
-  else                axpbypc(c2,b,c1,a,c3,c);
+  axpbypc(c1,a,c2,b,c3,c);
 
-#if TPSA_STRICT
-  FUN(update)(c);
-#endif
   DBGFUN(<-);
 }
 
@@ -470,7 +443,7 @@ FUN(div) (const T *a, const T *b, T *c)
   assert(a && b && c); DBGFUN(->);
   ensure(IS_COMPAT(a,b,c), "incompatibles GTPSA (descriptors differ)");
 
-  NUM b0 = b->coef[0];
+  NUM b0 = b->val[0];
   ensure(b0 != 0, "invalid domain");
 
   if (FUN(isval)(b)) {
@@ -541,6 +514,7 @@ FUN(equ) (const T *a, const T *b, num_t tol)
 {
   assert(a && b); DBGFUN(->);
   ensure(IS_COMPAT(a,b), "incompatibles GTPSA (descriptors differ)");
+  ensure(FALSE, "NYI");
 
   const D *d = a->d;
   T c_ = {.d=d, .mo=d->mo, .ao=d->mo}, *c = &c_; // fake TPSA
@@ -580,8 +554,8 @@ FUN(abs) (const T *a, T *c)
   assert(a && c); DBGFUN(->);
   ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
 
-  if (a->coef[0] < 0) FUN(scl) (a, -1, c);
-  else if (a != c)    FUN(copy)(a, c);
+  if (a->val[0] < 0) FUN(scl) (a, -1, c);
+  else if (a != c)   FUN(copy)(a, c);
 
   DBGFUN(<-);
 }
@@ -592,7 +566,7 @@ FUN(atan2) (const T *y, const T *x, T *r)
   assert(x && y && r); DBGFUN(->);
   ensure(IS_COMPAT(y,x,r), "incompatibles GTPSA (descriptors differ)");
 
-  NUM x0 = x->coef[0], y0 = y->coef[0];
+  NUM x0 = x->val[0], y0 = y->val[0];
   NUM a0 = atan2(y0, x0);
 
   if (fabs(a0) < M_PI_2-0.1 || fabs(a0) > M_PI_2+0.1) {
@@ -618,9 +592,8 @@ FUN(conj) (const T *a, T *c) // c = a.re - a.im I
   assert(a && c); DBGFUN(->);
   ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
 
-  FUN(copy0)(a,c);
-  c->coef[0] = conj(a->coef[0]);
-  TPSA_SCAN(c) c->coef[i] = conj(a->coef[i]);
+  c->nc = MIN(a->nc, c->mc);
+  FOR(i,c->nc) c->val[i] = conj(a->val[i]);
 
   DBGTPSA(c); DBGFUN(<-);
 }
@@ -631,8 +604,8 @@ num_t
 FUN(nrm) (const T *a)
 {
   assert(a); DBGFUN(->);
-  num_t nrm = fabs(a->coef[0]);
-  TPSA_SCAN(a) nrm += fabs(a->coef[i]);
+  num_t nrm = 0;
+  FOR(i,a->nc) nrm += fabs(a->val[i]);
   DBGFUN(<-); return nrm;
 }
 
