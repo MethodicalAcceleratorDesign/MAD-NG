@@ -237,6 +237,58 @@ hpoly_der(const T *a, idx_t idx, ord_t ord, T *c)
 
 // --- binary ops -------------------------------------------------------------o
 
+static inline void
+axpbypc (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
+{
+  if (a == b) { FUN(scl)(a,c1+c2,c), c->val[0] += c3; return; }
+
+  assert(a && b && c);
+
+  log_t ac = FALSE, bc = FALSE;
+  if (a == c) a = FUN(copy)(a,GETTMP(a)), ac = TRUE; else
+  if (b == c) b = FUN(copy)(b,GETTMP(b)), bc = TRUE; else
+  FUN(reset0)(c);
+
+  c->val[0] = c1*a->val[0] + c2*b->val[0] + c3;
+
+  idx_t ai=1, bi=1, ci=1;
+  if (c1 && c2)
+    while (ai < a->nc && bi < b->nc) {
+      idx_t ii = a->idx[ai] - b->idx[bi];
+      if (ii < 0) {
+        if (a->idx[ai] >= c->mc) break;
+        c->val[ci  ] = c1*a->val[ai  ];
+        c->idx[ci++] =    a->idx[ai++];
+      } else if (ii > 0) {
+        if (b->idx[bi] >= c->mc) break;
+        c->val[ci  ] = c2*b->val[bi  ];
+        c->idx[ci++] =    b->idx[bi++];
+      } else {
+        if (a->idx[ai] >= c->mc) goto ret;
+        NUM v = c1*a->val[ai] + c2*b->val[bi];
+        if (v) c->val[ci] = v, c->idx[ci] = a->idx[ai], ci++;
+        ai++, bi++;
+      }
+    }
+  if (c1)
+    while (ai < a->nc) {
+      if (a->idx[ai] >= c->mc) break;
+      c->val[ci  ] = c1*a->val[ai  ];
+      c->idx[ci++] =    a->idx[ai++];
+    }
+  if (c2)
+    while (bi < b->nc) {
+      if (b->idx[bi] >= c->mc) break;
+      c->val[ci  ] = c2*b->val[bi  ];
+      c->idx[ci++] =    b->idx[bi++];
+    }
+ret:
+  c->nc = ci;
+
+  if (ac) RELTMP(a); else
+  if (bc) RELTMP(b);
+}
+
 void
 FUN(scl) (const T *a, NUM v, T *c)
 {
@@ -254,60 +306,6 @@ FUN(scl) (const T *a, NUM v, T *c)
 
   DBGTPSA(c); DBGFUN(<-);
 }
-
-static inline void
-axpbypc (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
-{
-  if (a == b) { FUN(scl)(a,c1+c2,c), c->val[0] += c3; return; }
-
-  assert(a && b && c);
-
-  log_t ac = FALSE, bc = FALSE;
-  if (a == c) a = FUN(copy)(a,GETTMP(a)), ac = TRUE; else
-  if (b == c) b = FUN(copy)(b,GETTMP(b)), bc = TRUE; else
-  FUN(reset0)(c);
-
-  idx_t ai=1, bi=1, ci=1;
-
-  c->val[0] = c1*a->val[0] + c2*b->val[0] + c3;
-
-  if (a && b)
-    while (xi < x->nc && yi < y->nc && ri < r->mc) {
-      idx_t ii = x->idx[xi] - y->idx[yi];
-      if (ii < 0) {
-        if (x->idx[xi] >= r->no) break;
-        r->idx[ri  ] =   x->idx[xi  ];
-        r->val[ri++] = a*x->val[xi++];
-      } else if (ii > 0) {
-        if (y->idx[yi] >= r->no) break;
-        r->idx[ri  ] =   y->idx[yi  ];
-        r->val[ri++] = b*y->val[yi++];
-      } else {
-        if (x->idx[xi] >= r->no) goto ret;
-        r->idx[ri] = x->idx[xi];
-        NUM v = a*x->val[xi++] + b*y->val[yi++];
-        if (v) r->val[ri++] = v;
-      }
-    }
-  if (a)
-    while (xi < x->nc && ri < r->mc) {
-      if (x->idx[xi] >= r->no) break;
-      r->idx[ri  ] =   x->idx[xi  ];
-      r->val[ri++] = a*x->val[xi++];
-    }
-  if (b)
-    while (yi < y->nc && ri < r->mc) {
-      if (y->idx[yi] >= r->no) break;
-      r->idx[ri  ] =   y->idx[yi  ];
-      r->val[ri++] = b*y->val[yi++];
-    }
-ret:
-  c->nc = ci;
-
-  if (ac) RELTMP(a); else
-  if (bc) RELTMP(b);
-}
-
 
 void
 FUN(acc) (const T *a, NUM v, T *c)
@@ -361,7 +359,7 @@ FUN(dif) (const T *a, const T *b, T *c)
 
   if (t != c) REL_TMPX(t);
 
-  DBGFUN(<-);
+  DBGTPSA(c); DBGFUN(<-);
 }
 
 void
@@ -372,7 +370,7 @@ FUN(axpbypc) (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
 
   axpbypc(c1,a,c2,b,c3,c);
 
-  DBGFUN(<-);
+  DBGTPSA(c); DBGFUN(<-);
 }
 
 void
