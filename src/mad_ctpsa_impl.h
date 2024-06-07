@@ -139,6 +139,7 @@ mad_ctpsa_nzero0r (const ctpsa_t *t, ord_t lo, ord_t hi, log_t upt)
       return i;
     }
   }
+  if (upt) ((ctpsa_t*)t)->lo = 1, ((ctpsa_t*)t)->hi = 0;
   return -1;
 }
 
