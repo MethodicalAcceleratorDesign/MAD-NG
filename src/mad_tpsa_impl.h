@@ -151,6 +151,7 @@ mad_tpsa_nzero0r (const tpsa_t *t, ord_t lo, ord_t hi, log_t upt)
       return i;
     }
   }
+  if (upt) ((tpsa_t*)t)->lo = 1, ((tpsa_t*)t)->hi = 0;
   return -1;
 }
 
