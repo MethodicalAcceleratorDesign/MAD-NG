@@ -169,18 +169,20 @@ local function fill_obs (elm, mflw, lw, islc)
 end
 
 local header = {
-  'direction', 'observe', 'implicit', 'misalign', 'radiate', 'deltap', 'lost'
+  'direction', 'observe', 'implicit', 'misalign',
+  'radiate', 'energy', 'deltap', 'lost'
 }
 
 local function make_mtable (self, range)
   local title, dir, observe, implicit, misalign, radiate, deltap, savemap in self
   local sequ, nrow = self.sequence, 8
+  local nrj = (self.beam or sequ.beam).energy
 
   -- keep order!
   return mtable(sequ.name, {
     type='track', title=title, header=header,
     direction=dir, observe=observe, implicit=implicit, misalign=misalign,
-    radiate=radiate, deltap=deltap, lost=0, range=range, reserve=nrow,
+    radiate=radiate, energy=nrj, deltap=deltap, lost=0, range=range, reserve=nrow,
     __seq=sequ,
     {'name'}, 'kind', 's', 'l', 'id', 'x', 'px', 'y', 'py', 't', 'pt', 'pc',
     'slc', 'turn', 'tdir',      -- t-direction of the tracking: sdir * seq.dir
@@ -502,16 +504,17 @@ local function make_mflow (self)
 
   -- activate radiation (action put in front of the list)
   if radiate then
-    local radact = srad_save
-    atentry = chain(achain(slcsel.atbegin, radact), achain(noredo, atentry))
+    local radact
+    atentry = chain(achain(slcsel.atbegin, srad_save), atentry)
     if string.find(radiate, "damp", 1, true) then
       radact = srad_damp
     elseif string.find(radiate, "quant", 1, true) or
            string.find(radiate, "phot" , 1, true) then
       radact = srad_quant
     else error("invalid radiate value '"..radiate.."'") end
-    atslice = chain(                      radact , achain(noredo, atslice))
-    atexit  = chain(achain(slcsel.atend,  radact), achain(noredo, atexit ))
+    atslice = chain(atslice, \elm,m,lw,islc -> srad_save(elm,m,lw,islc,true))
+    atslice = chain(radact , achain(noredo, atslice))
+    atexit  = chain(achain(slcsel.atend,  radact), atexit)
 
     if save then mtbl.radiate = radiate end -- update mtbl
     if string.find(radiate, "phot", 1, true) then radiate = "photon" end
