@@ -56,7 +56,7 @@ struct cflw { // must be identical to def of 3 variants in madl_etck.mad!!
 
   // element data
   MP el, eld, elc, lrad;
-  MP eh, ang, mang;
+  MP eh, ehd, ang, mang;
 
   // quad, solenoid, multipole, esptum, rfcav, sine & cosine
   MP k1, ks, volt, freq, lag, sa, ca;
@@ -579,7 +579,7 @@ inline void curex_drift (cflw<M> &m, num_t lw, int is)
   if (fabs(R(m.el)*R(m.eh)) < minang) return strex_drift<M>(m, lw, is);
 
   mdump(0);
-  P ld  = (fval(m.eld) ? R(m.eld) : R(m.el))*lw;
+  P ld  = R(m.el)*lw;
   P ang = R(m.eh)*R(m.el)*lw*m.edir, rho = 1/R(m.eh)*m.edir;
   P ca  = cos(ang), sa = sin(ang), sa2 = sin(ang/2);
 
@@ -633,7 +633,7 @@ inline void sbend_thick (cflw<M> &m, num_t lw, int is)
   if (fabs(m.knl[0]) < minstr || !m.charge) return curex_drift<M>(m, lw, is);
 
   mdump(0);
-  P ld  = (fval(m.eld) ? R(m.eld) : R(m.el))*lw;
+  P ld  = R(m.el)*lw;
   P ang = R(m.eh)*R(m.el)*lw*m.edir, rho=1/R(m.eh)*m.edir;
   P k0q = R(m.knl[0])/R(m.el)*(m.edir*m.charge);
   P ca  = cos(ang), sa = sin(ang);
@@ -662,7 +662,7 @@ inline void sbend_thick_new (cflw<M> &m, num_t lw, int is)
   if (fabs(m.knl[0]) < minstr || !m.charge) return curex_drift<M>(m, lw, is);
 
   mdump(0);
-  P ld  = (fval(m.eld) ? R(m.eld) : R(m.el))*lw;
+  P ld  = R(m.el)*lw;
   P ang = R(m.eh)*R(m.el)*lw*m.edir, rho=1/R(m.eh)*m.edir;
   P k0q = R(m.knl[0])/R(m.el)*(m.edir*m.charge);
   P ca  = cos(ang), sa = sin(ang), s2a = sin(2*ang);
@@ -1232,7 +1232,7 @@ inline void bend_face (cflw<M> &m, num_t lw, const V &h)
     T _pt2   =  1/(dpp - sqr(p.px));
     T xi     =  2*k0hq * sqrt(dpp)*_pt2;
     T dxi_px =  2*p.px*xi         *_pt2;
-    
+
     if (m.sdir == -1) {
       T npx  = p.px - xi*y2;
       _pt2   = 1/(dpp - sqr(npx));
@@ -1433,11 +1433,11 @@ inline void bend_fringe (cflw<M> &m, num_t lw)
       T y2 = sqr(p.y);
       // recalculate kx, ky and kz with a new py (Work out what it probably was)
       T   npy = p.py + (4*c3*y2 + b0*tan(fi0))*y;
-      
+
         pz = sqrt(dpp - sqr(p.px) - sqr(npy));
        _pz = 1/pz;
       _pz2 = sqr(_pz);
-      
+
       xp  = p.px/pz,  yp  = npy/pz;
       xyp = xp*yp  ,  yp2 = 1+sqr(yp);
       xp2 = sqr(xp), _yp2 = 1/yp2;
@@ -1611,7 +1611,8 @@ inline void strex_fringe (cflw<M> &m, num_t lw)
 {
   mdump(0);
   bool p =  m.pdir == lw;
-  P    a = !m.pdir*(0.5*R(m.eh)*(fval(m.eld) ? R(m.eld) : R(m.el)) - R(m.e));
+  P    a = !m.pdir*(0.5*(fval(m.ehd) ? R(m.ehd) : R(m.eh))*
+                        (fval(m.eld) ? R(m.eld) : R(m.el)) - R(m.e));
 
   if (m.sdir*lw == 1) { // 'forward entry' or 'backward exit'
     yrotation<M> (m, m.sdir,-R(m.e)  );
@@ -2169,7 +2170,7 @@ void mad_trk_spdtest (int n, int k)
     .name="spdtest", .dbg=0,
 
     .el=1, .eld=1, .elc=0, .lrad=0,
-    .eh=0, .ang=0, .mang=0,
+    .eh=0, .ehd=0, .ang=0, .mang=0,
 
     .pc=1, .beta=1, .betgam=0, .charge=1,
 

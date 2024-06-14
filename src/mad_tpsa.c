@@ -507,7 +507,6 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
   }
 
   // convert t -> r
-  const ord_t *ords = rd->ords;
   const ord_t t_hi = MIN(t->hi, r->mo);
   r->coef[0] = t->coef[0];
   TPSA_SCAN(t,t_hi) {
@@ -530,14 +529,7 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
     printf(" : %-.16e%+.16ei\n", creal(t->coef[i]), cimag(t->coef[i]));
 #endif
 #endif
-    if (ri >= 0) {
-      r->coef[ri] = SIGN1(sgn%2)*t->coef[i];
-      if (ri) {
-        ord_t o = ords[ri];
-        if (o < r->lo) r->lo = o;
-        if (o > r->hi) r->hi = o;
-      }
-    }
+    if (ri >= 0) FUN(seti)(r, ri, 0, SIGN1(sgn%2)*t->coef[i]);
   skip: ;
   }
 
