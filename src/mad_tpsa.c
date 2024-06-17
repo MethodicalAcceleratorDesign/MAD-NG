@@ -506,6 +506,10 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
     for (; i < tn; i++) t2r[i] = -1;  // discard remaining vars
   }
 
+#if TPSA_DEBUG >= 2
+  FOR(i,tn) printf("t2r[%2d]=% d, pbs[%2d]=% d\n", i, t2r[i], i, pbs[i]);
+#endif
+
   // convert t -> r
   const ord_t t_hi = MIN(t->hi, r->mo);
   r->coef[0] = t->coef[0];
