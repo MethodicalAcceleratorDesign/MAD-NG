@@ -489,7 +489,7 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
   T *r = t == r_ ? GET_TMPX(r_) : FUN(reset0)(r_);
 
   const D *td = t->d, *rd = r_->d;
-  ssz_t rn = rd->nv, tn = td->nv;
+  ssz_t rn = rd->nn, tn = td->nn;
   ord_t rm[rn], tm[tn];
   idx_t t2r[tn]; // if t2r[i]>=0 then rm[t2r[i]] = tm[i] for i=0..tn-1
   int   pbs[tn];
@@ -506,6 +506,10 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
     for (; i < tn; i++) t2r[i] = -1;  // discard remaining vars
   }
 
+#if TPSA_DEBUG >= 2
+  FOR(i,tn) printf("t2r[%2d]=% d, pbs[%2d]=% d\n", i, t2r[i], i, pbs[i]);
+#endif
+
   // convert t -> r
   const ord_t t_hi = MIN(t->hi, r->mo);
   r->coef[0] = t->coef[0];
@@ -520,7 +524,7 @@ FUN(convert) (const T *t, T *r_, ssz_t n, idx_t t2r_[n], int pb)
       sgn = sgn - pbs[j] * (tm[j] & 1);             // poisson bracket
     }
     idx_t ri = mad_desc_idxm(rd, rn, rm);           // get index ri of mono rm
-#if TPSA_DEBUG > 2
+#if TPSA_DEBUG >= 2
     printf("cvt %d -> %d %c : ", i+1, ri+1, i==ri?' ' : SIGN1(sgn%2)<0?'-':'+');
     mad_mono_print(tn, tm, 0,0); printf(" -> "); mad_mono_print(rn, rm, 0,0);
 #ifndef MAD_CTPSA_IMPL
