@@ -45,8 +45,9 @@ check_compose (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa],
 {
   assert(ma && mb && mc);
   ensure(sa>0 && sb>0, "invalid map sizes (zero or negative sizes)");
-  if (chk_sa) ensure(sa <= ma[0]->d->nv, "incompatibles damap #A > NV(A)");
-              ensure(sb <= ma[0]->d->nn, "incompatibles damap #B > NV(A)+NP(A)");
+  if (chk_sa)
+    ensure(sa <= ma[0]->d->nv, "incompatibles damap #A > NV(A)");
+  ensure(  sb <= ma[0]->d->nn, "incompatibles damap #B > NV(A)+NP(A)");
   check_same_desc(sa, ma);
   check_same_desc(sb, mb);
   check_same_desc(sa, TC mc);
