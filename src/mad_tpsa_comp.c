@@ -40,12 +40,13 @@ check_same_desc (ssz_t sa, const T *ma[sa])
 }
 
 static inline void
-check_compose (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
+check_compose (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa],
+               log_t chk_sa)
 {
   assert(ma && mb && mc);
   ensure(sa>0 && sb>0, "invalid map sizes (zero or negative sizes)");
-  ensure(sa <= ma[0]->d->nv, "incompatibles damap #A > NV(A)");
-  ensure(sb <= ma[0]->d->nn, "incompatibles damap #B > NV(A)+NP(A)");
+  if (chk_sa) ensure(sa <= ma[0]->d->nv, "incompatibles damap #A > NV(A)");
+              ensure(sb <= ma[0]->d->nn, "incompatibles damap #B > NV(A)+NP(A)");
   check_same_desc(sa, ma);
   check_same_desc(sb, mb);
   check_same_desc(sa, TC mc);
@@ -79,7 +80,9 @@ void
 FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 {
   assert(ma && mb && mc); DBGFUN(->);
-  check_compose(sa, ma, sb, mb, mc);
+  log_t chk_sa = TRUE;
+  if (sa < 0) chk_sa = FALSE, sa = -sa;
+  check_compose(sa, ma, sb, mb, mc, chk_sa);
 
   // handle aliasing
   mad_alloc_tmp(T*, mc_, sa);
@@ -88,7 +91,7 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
   ord_t hi_ord = FUN(mord)(sa,ma,TRUE);
 
   #ifdef _OPENMP
-  if (hi_ord >= 5) {
+  if (hi_ord >= 4) {
     #pragma omp parallel for schedule(dynamic)
     FOR(ia,sa) {
 #if DEBUG_COMPOSE
