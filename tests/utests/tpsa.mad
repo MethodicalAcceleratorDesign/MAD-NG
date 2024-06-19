@@ -1322,13 +1322,12 @@ local function generatePairwiseExchanges(numbers)
             local newNumbers = {table.unpack(numbers)}
             swap(newNumbers, i, j)
             local isOdd = ((i + j) % 2 == 1)
-            table.insert(exchanges, { permutation = newNumbers, isOdd = isOdd, swapped = {i, j} })
+            table.insert(exchanges, { perm = newNumbers, isOdd = isOdd, swapped = {i, j} })
         end
     end
     return exchanges
 end
 
--- Function to append tables with -1 in each digit position
 local function appendMinusOneTables(n, exchanges)
     local sequence = {}
     for i = 1, n do
@@ -1337,9 +1336,9 @@ local function appendMinusOneTables(n, exchanges)
     for i = 1, n do
         local newNumbers = {table.unpack(sequence)}
         newNumbers[i] = -1
-        table.insert(exchanges, newNumbers)
+        table.insert(exchanges, { perm = newNumbers, isOdd = nil, swapped = nil })
     end
-    return exchanges
+  return exchanges
 end
 
 local function fill_0(m_str,perm_str,len)
@@ -1354,10 +1353,10 @@ local function fill_0(m_str,perm_str,len)
   return new_str
 end
 
-local function swap_m(m,tbl)
+local function swap_m(m,perms)
   local m_str    = m:tostring()
   local perm_str = {}
-  for i,perm in ipairs(tbl) do
+  for i,perm in ipairs(perms) do
     local digit = string.sub(m_str,i,i)
     if (perm ~= 0 and perm ~= -1 and perm ~= nil) then
       perm_str[perm] = digit 
@@ -1365,21 +1364,31 @@ local function swap_m(m,tbl)
       if digit ~= "0" then return monomial("0") end
     end
   end
-  return monomial(table.concat(fill_0(m_str,perm_str,#tbl)))
+  return monomial(table.concat(fill_0(m_str,perm_str,#perms)))
+end
+
+local function sign_pb(m,perm,check_digit,pb)
+  if (is_nil(perm) or pb ==0 or check_digit==0) then return 1 end
+  if (tonumber(sub(m:tostring(),check_digit,check_digit))%2 ==1 ) then return -1 else return 1 end
 end
 
 local function swap_t(t1,tbl_,pb_)
   if is_nil(tbl_) then return t1 end
+  local check_digit = 0
+  if pb_==1 then check_digit = tbl_.swapped[2] or 0 elseif pb_==-1 then check_digit = tbl_.swapped[1] or 0 end
   local m = t1:desc():get_mono(1)
   local t2 = t1:same():set(m,t1:get(m))
   while  t1:desc():nxtbyord(m) ~=-1 do
-    local m_swap = swap_m(m,tbl_)
-    t2:set(m_swap,t1:get(m))
+    local sign = sign_pb(m,tbl_.isOdd,check_digit,pb_)
+    local m_swap = swap_m(m,tbl_.perm)
+    local coef = sign*t1:get(m)
+    t2:set(m_swap,coef)
   end
   t2:set0(t1:get0())
-  if (is_nil(pb_) or pb_ ==0) then return t2 end
-
+  return t2
 end
+local t = tpsa(d3v):fill({1,2,3,4,5,6,7,8,9,10})
+swap_t(t,{perm ={-1,3,2},isOdd = nil, swapped = nil},nil):print()
 
 
 local function copy(d2,t1,ctor,tbl,pb)
@@ -1407,15 +1416,16 @@ function TestTPSAConvert:setUp()
     self.perms[nv+np] = appendMinusOneTables(nv+np,generatePairwiseExchanges(vector(nv+np):fill(1..(nv+np)):totable()))
     end
   end
+  self.pb = {-1,0,1}
 end
 
 function TestTPSAConvert:testConvertR()
   for key1,d1 in pairs(self.descs) do
     for key2,d2 in pairs(self.descs) do
       local nv,_,np = d1:nvnp()
-      for key3,perm in pairs(self.perms[nv+np]) do
+      for key3,tbl in pairs(self.perms[nv+np]) do
         local t1,t2 = tpsa(d1):fill(1..d1:maxlen()), tpsa(d2):fill(1..d2:maxlen())
-        assertTrue(t1:convert(t2,perm) == copy(d2,t1,tpsa,perm), "error in case "..tostring(key1).." vs "..tostring(key2).." with perm "..tostring(perm))
+        assertTrue(t1:convert(t2,tbl.perm) == copy(d2,t1,tpsa,tbl,0), "error in case "..tostring(key1).." vs "..tostring(key2).." with perm "..tostring(perm))
       end
     end
   end
@@ -1426,9 +1436,9 @@ function TestTPSAConvert:testConvertC()
   for key1,d1 in pairs(self.descs) do
     for key2,d2 in pairs(self.descs) do
       local nv,_,np = d1:nvnp()
-      for key3,perm in pairs(self.perms[nv+np]) do
+      for key3,tbl in pairs(self.perms[nv+np]) do
         local t1,t2 = ctpsa(d1):fill(1..d1:maxlen()), ctpsa(d2):fill(1..d2:maxlen())
-        assertTrue(t1:convert(t2,perm) == copy(d2,t1,ctpsa,perm), "error in case "..tostring(key1).." vs "..tostring(key2))
+        assertTrue(t1:convert(t2,tbl.perm) == copy(d2,t1,ctpsa,tbl,0), "error in case "..tostring(key1).." vs "..tostring(key2))
       end
     end
   end
