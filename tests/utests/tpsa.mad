@@ -1262,11 +1262,7 @@ function TestTPSADerivPlusMisc:testEvalC()
       for _, idx in ipairs(self.idxs[i]) do
         local t = mkt(idx.si,idx.ei)
         local hpow = h_powers(h,t)
-        print(t:eval(hv))
-        hv:print()
-        hpow:print()
         local a = t:getvec(1,nc)
-        a:print()
         assertTrue(t:eval(hv) == -t:getvec(1,nc):transpose()*hpow)
       end
     end
@@ -1316,13 +1312,14 @@ local function swap(tbl, i, j)
 end
 
 local function generatePairwiseExchanges(numbers)
-    local exchanges = {}
+  local exchanges = {}
+  table.insert(exchanges, { perm = {table.unpack(numbers)}, isOdd = false, swapped = nil })
     for i = 1, #numbers do
         for j = i + 1, #numbers do
             local newNumbers = {table.unpack(numbers)}
             swap(newNumbers, i, j)
-            local isOdd = ((i + j) % 2 == 1)
-            table.insert(exchanges, { perm = newNumbers, isOdd = isOdd, swapped = {i, j} })
+            local isOddval = ((i + j) % 2 == 1)
+            table.insert(exchanges, { perm = newNumbers, isOdd = isOddval, swapped = {i, j} })
         end
     end
     return exchanges
@@ -1336,7 +1333,7 @@ local function appendMinusOneTables(n, exchanges)
     for i = 1, n do
         local newNumbers = {table.unpack(sequence)}
         newNumbers[i] = -1
-        table.insert(exchanges, { perm = newNumbers, isOdd = nil, swapped = nil })
+        table.insert(exchanges, { perm = newNumbers, isOdd = false, swapped = nil })
     end
   return exchanges
 end
@@ -1368,14 +1365,20 @@ local function swap_m(m,perms)
 end
 
 local function sign_pb(m,perm,check_digit,pb)
-  if (is_nil(perm) or pb ==0 or check_digit==0) then return 1 end
+  if (is_nil(perm) or perm==false or pb ==0 or check_digit==0) then return 1 end
   if (tonumber(sub(m:tostring(),check_digit,check_digit))%2 ==1 ) then return -1 else return 1 end
 end
 
 local function swap_t(t1,tbl_,pb_)
-  if is_nil(tbl_) then return t1 end
   local check_digit = 0
-  if pb_==1 then check_digit = tbl_.swapped[2] or 0 elseif pb_==-1 then check_digit = tbl_.swapped[1] or 0 end
+  if is_nil(tbl_.swapped) then 
+  else 
+    if pb_==1 then 
+      check_digit = tbl_.swapped[2] or 0 
+    elseif pb_==-1 
+      then check_digit = tbl_.swapped[1] or 0 
+    end
+  end
   local m = t1:desc():get_mono(1)
   local t2 = t1:same():set(m,t1:get(m))
   while  t1:desc():nxtbyord(m) ~=-1 do
@@ -1387,9 +1390,6 @@ local function swap_t(t1,tbl_,pb_)
   t2:set0(t1:get0())
   return t2
 end
-local t = tpsa(d3v):fill({1,2,3,4,5,6,7,8,9,10})
-swap_t(t,{perm ={-1,3,2},isOdd = nil, swapped = nil},nil):print()
-
 
 local function copy(d2,t1,ctor,tbl,pb)
   t1 = swap_t(t1,tbl,pb)
@@ -1424,8 +1424,10 @@ function TestTPSAConvert:testConvertR()
     for key2,d2 in pairs(self.descs) do
       local nv,_,np = d1:nvnp()
       for key3,tbl in pairs(self.perms[nv+np]) do
-        local t1,t2 = tpsa(d1):fill(1..d1:maxlen()), tpsa(d2):fill(1..d2:maxlen())
-        assertTrue(t1:convert(t2,tbl.perm) == copy(d2,t1,tpsa,tbl,0), "error in case "..tostring(key1).." vs "..tostring(key2).." with perm "..tostring(tbl.perm))
+        for i,pb in ipairs(self.pb) do
+          local t1,t2 = tpsa(d1):fill(1..d1:maxlen()), tpsa(d2):fill(1..d2:maxlen())
+          assertTrue(copy(d2,t1,tpsa,tbl,pb) == t1:convert(t2,tbl.perm,pb), "error in case "..tostring(key1).." vs "..tostring(key2).." with perm "..tostring(tbl.perm).." with pb="..(i-2))
+        end
       end
     end
   end
@@ -1437,8 +1439,10 @@ function TestTPSAConvert:testConvertC()
     for key2,d2 in pairs(self.descs) do
       local nv,_,np = d1:nvnp()
       for key3,tbl in pairs(self.perms[nv+np]) do
-        local t1,t2 = ctpsa(d1):fill(1..d1:maxlen()), ctpsa(d2):fill(1..d2:maxlen())
-        assertTrue(t1:convert(t2,tbl.perm) == copy(d2,t1,ctpsa,tbl,0), "error in case "..tostring(key1).." vs "..tostring(key2).." with perm "..tostring(tbl.perm))
+        for i,pb in ipairs(self.pb) do
+          local t1,t2 = tpsa(d1):fill(1..d1:maxlen()), tpsa(d2):fill(1..d2:maxlen())
+          assertTrue(copy(d2,t1,tpsa,tbl,pb) == t1:convert(t2,tbl.perm,pb), "error in case "..tostring(key1).." vs "..tostring(key2).." with perm "..tostring(tbl.perm).." with pb="..(i-2))
+        end
       end
     end
   end
