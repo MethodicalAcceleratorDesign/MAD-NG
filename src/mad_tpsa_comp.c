@@ -87,7 +87,7 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
   mad_alloc_tmp(T*, mc_, sa);
   FOR(ia,sa) mc_[ia] = FUN(new)(mc[ia], mad_tpsa_same);
 
-  ord_t hi_ord = FUN(mord)(sa,TC mc,FALSE);
+  ord_t hi_ord = FUN(mord)(sa, TC mc, 0);
 
   #ifdef _OPENMP
   if (hi_ord >= 4) {
