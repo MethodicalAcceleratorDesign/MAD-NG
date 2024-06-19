@@ -26,6 +26,7 @@
 #include "mad_tpsa_impl.h"
 #endif
 
+#define DEBUG_MINV 0
 #define TC (const T**)
 
 // --- local ------------------------------------------------------------------o
@@ -39,16 +40,24 @@ check_same_desc(ssz_t na, const T *ma[na])
 }
 
 static inline void
-check_minv(ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
+check_minv(ssz_t na, const T *ma[na], ssz_t nb, T *mc[na], idx_t select[na])
 {
   ensure(na <= ma[0]->d->nn, "invalid na > #vars+#params");
   ensure(nb <= ma[0]->d->nv, "invalid nb > #vars");
   check_same_desc(na,   ma);
   check_same_desc(na,TC mc);
   ensure(IS_COMPAT(*ma,*mc), "incompatibles GTPSA (descriptors differ)");
+
+  FOR(i,na) if (!select || select[i]) {
+    ensure(ma[i]->lo == 1 && ma[i]->hi != 0,
+           "invalid rank-deficient map (1st order has row(s) full of zeros)"); }
+
+  FOR(i,nb,na) if (!select || select[i]) {
+    ensure(ma[i]->lo == 1 && ma[i]->hi == 1,
+           "invalid parameter orders (order > 1)"); }
 }
 
-static void
+static void      // nn                         nv
 split_and_inv(ssz_t na, const T *ma[na], ssz_t nb, T *lininv[na], T *nonlin[na])
 {
   ssz_t nn = na, nv = nb, np = nn-nv;  // #vars+#params, #vars, #params
@@ -104,11 +113,7 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
 {
   assert(ma && mc); DBGFUN(->);
   ensure(na >= nb, "invalid subtitution ranks, na >= nb expected");
-  check_minv(na, ma, nb, mc);
-  FOR(i,na) {
-    ensure(ma[i]->hi && ma[i]->lo == 1,
-           "invalid rank-deficient map (1st order has row(s) full of zeros)");
-  }
+  check_minv(na, ma, nb, mc, NULL);
 
   const D *d = ma[0]->d;
   T *lininv[na], *nonlin[na], *tmp[na];
@@ -125,6 +130,11 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
 
   split_and_inv(na, ma, nb, lininv, nonlin);
 
+#if DEBUG_MINV
+  printf("\nminv lininv:\n"); FOR(i,nb) FUN(print)(lininv[i],0,-1,0,0);
+  printf("\nminv nonlin:\n"); FOR(i,nb) FUN(print)(nonlin[i],0,-1,0,0);
+#endif
+
   // iteratively compute higher orders of the inverse:
   // al  = mc[ord=1]
   // anl = mc[ord>1]
@@ -138,17 +148,23 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
   }
 
   if (!isnul) {
-    ord_t mo[na], to = FUN(mord)(na, TC mc, FALSE), dbgo = mad_tpsa_dbgo;
-    FOR(i,na) mo[i] = FUN(mo)(mc[i], mad_tpsa_same); // backup mo[i]
+    ord_t mo[nb], to = FUN(mord)(nb, TC mc, 0), dbgo = mad_tpsa_dbgo;
+    FOR(i,nb) mo[i] = FUN(mo)(mc[i], mad_tpsa_same); // backup mo[i]
     for (ord_t o = 2; o <= to; ++o) {
-      mad_tpsa_dbgo = o;                     // for debug purpose only
-      FOR(i,na) FUN(mo)( mc[i],o);           // truncate computation to order o
-      FOR(i,nb) FUN(mo)(tmp[i],o), FUN(mo)(nonlin[i],o);
+      mad_tpsa_dbgo = o;           // for debug purpose only
+      FOR(i,nb) FUN(mo)( mc[i],o); // truncate computation to order o
+      FOR(i,nb) FUN(mo)(tmp[i],o);
       FUN(compose)(nb, TC nonlin, na, TC mc, tmp);
+#if DEBUG_MINV
+      printf("\nminv tmp[%d]:\n",o); FOR(i,nb) FUN(print)(tmp[i],0,-1,0,0);
+#endif
       FOR(v,nb) FUN(seti)(tmp[v], v+1, 1,1); // add identity
       FUN(compose)(nb, TC lininv, na, TC tmp, mc);
+#if DEBUG_MINV
+      printf("\nminv mc[%d]:\n" ,o); FOR(i,nb) FUN(print)(mc [i],0,-1,0,0);
+#endif
     }
-    FOR(i,na) FUN(mo)(mc[i], mo[i]); // restore mo[i]
+    FOR(i,nb) FUN(mo)(mc[i], mo[i]); // restore mo[i]
     mad_tpsa_dbgo = dbgo;
   }
 
@@ -161,30 +177,26 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
   DBGFUN(<-);
 }
 
-void           // nn                         nv
+void           // na                         nv
 FUN(pminv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na], idx_t select[na])
 {
   assert(ma && mc && select); DBGFUN(->);
-  ensure(na >= nb, "invalid subtitution rank, na >= nb expected");
-  check_minv(na, ma, nb, mc);
-  FOR(i,na) if (select[i]) {
-    ensure(ma[i]->hi && ma[i]->lo == 1,
-           "invalid rank-deficient map (1st order has row(s) full of zeros)");
-  }
+  ensure(na >= nb, "invalid subtitution ranks, na >= nb expected");
+  check_minv(na, ma, nb, mc, select);
 
   // split input map into rows that are inverted and rows that are not
 
   const D *d = ma[0]->d;
   T *mUsed[na], *mUnused[na], *mInv[na];
   FOR(i,nb) { // vars
-    if (select[i]) {
+    if (select[i]) { // used
       mUsed  [i] = FUN(new) (ma[i], mad_tpsa_same);
       mInv   [i] = FUN(new) (ma[i], mad_tpsa_same);
       mUnused[i] = FUN(newd)(d,1);
       FUN(copy)(ma[i],mUsed[i]);
       FUN(seti)(mUnused[i], i+1,  0,1); // set identity
     }
-    else {
+    else {           // unused
       mUsed  [i] = FUN(newd)(d,1);
       mInv   [i] = FUN(newd)(d,1);
       mUnused[i] = FUN(new) (ma[i], mad_tpsa_same);
