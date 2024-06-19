@@ -368,6 +368,7 @@ FUN(copy) (const T *t, T *r)
     FUN(copy0)(t, r);
     r->coef[0] = t->coef[0];
     TPSA_SCAN(r) r->coef[i] = t->coef[i];
+    if (!r->nam[0] && t->nam[0]) strcpy(r->nam, t->nam);
   }
   DBGTPSA(r); DBGFUN(<-);
 }
