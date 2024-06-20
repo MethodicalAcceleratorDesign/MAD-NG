@@ -184,8 +184,8 @@ FUN(mo) (T *t, ord_t mo)
 {
   assert(t);
   ord_t ret = t->mo;
-  if (mo < t->mo) t->lo = MIN(t->lo, mo), t->hi = MIN(t->hi, mo), t->mo = mo;
-  else            t->mo = MIN(t->ao, mo);
+  if (mo < t->mo) t->hi = MIN(t->hi,mo), t->lo = MIN(t->lo,MAX(mo,1)), t->mo=mo;
+  else            t->mo = MIN(t->ao,mo);
   return ret;
 }
 
