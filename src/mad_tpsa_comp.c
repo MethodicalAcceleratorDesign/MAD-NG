@@ -29,7 +29,7 @@
 #define DEBUG_COMPOSE 0
 #define TC (const T**)
 
-// --- local ------------------------------------------------------------------o
+// --- helpers ----------------------------------------------------------------o
 
 static inline void
 check_same_desc (ssz_t sa, const T *ma[sa])
@@ -42,14 +42,23 @@ static inline void
 check_compose (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa],
                log_t chk_sa)
 {
-  ensure(sa>0 && sb>0, "invalid map sizes (zero or negative sizes)");
-  if (chk_sa)
+  ensure(sa > 0 && sb > 0, "invalid map sizes (zero or negative sizes)");
+  if (chk_sa) {
+    ensure(sa <= sb          , "incompatibles damap #A > #B");
     ensure(sa <= ma[0]->d->nv, "incompatibles damap #A > NV(A)");
+  }
   ensure(  sb <= ma[0]->d->nn, "incompatibles damap #B > NV(A)+NP(A)");
   check_same_desc(sa, ma);
   check_same_desc(sb, mb);
   check_same_desc(sa, TC mc);
   ensure(IS_COMPAT(*ma,*mb,*mc), "incompatibles GTPSA (descriptors differ)");
+}
+
+static inline log_t
+is_aliased (const T *ma, ssz_t sa, const T *mb[sa])
+{
+  FOR(ia,sa) if (ma == mb[ia]) return TRUE;
+  return FALSE;
 }
 
 static inline void
@@ -59,52 +68,180 @@ print_damap (ssz_t sa, const T *ma[sa], FILE *fp_)
 
   if (!fp_) fp_ = stdout;
 
-  FOR(i,sa) {
-    strcpy(nam, ma[i]->nam);
-    if (!nam[0]) snprintf(nam, sizeof(nam), "#%d", i+1);
-    FUN(print)(ma[i], nam, 1e-15, 0, fp_);
+  FOR(ia,sa) {
+    strcpy(nam, ma[ia]->nam);
+    if (!nam[0]) snprintf(nam, sizeof(nam), "#%d", ia+1);
+    FUN(print)(ma[ia], nam, -1, 0, fp_);
   }
 
   (void)print_damap;
 }
 
-#ifdef _OPENMP
-//#include "mad_tpsa_comp_p.tc" // obsolete
+// --- implementation ---------------------------------------------------------o
+
+typedef struct {
+  ssz_t sa, sb;
+  ord_t hi_ord;
+  log_t *required;
+  const T **ma, **mb;
+        T **mc, **ords;
+  const D *d;
+} cmpctx_t;
+
+static inline void
+compose_ord1 (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
+{
+  FOR(ia,sa) {
+    FUN(seti)(mc[ia], 0, 0, ma[ia]->coef[0]);
+    FOR(ib,sb) {
+      NUM coef = FUN(geti)(ma[ia],ib+1);
+      if (coef) FUN(acc)(mb[ib], coef, mc[ia]);
+    }
+  }
+}
+
+static inline void
+compose_mono (int ib, idx_t idx, ord_t o, ord_t mono[], cmpctx_t *ctx)
+{
+  // ib  : current variable index (in mb)
+  // idx : current monomial index
+  // o   : current monomial order
+  // mono: current monomial
+  if (idx < 0 || !ctx->required[idx]) return;
+
+  const D *d = ctx->d;
+#if DEBUG_COMPOSE
+  printf("compose: ib=%d, o=%d, req[% 3d]->", ib, o, idx);
+  mad_mono_print(d->nn, mono, 0,0);
+  printf("\n");
 #endif
-#include "mad_tpsa_comp_s.tc"
+
+  if (o > 0) FUN(mul)(ctx->ords[o-1], ctx->mb[ib], ctx->ords[o]);
+
+  FOR(ia,ctx->sa) {
+    NUM coef = FUN(geti)(ctx->ma[ia],idx);
+    if (coef) FUN(acc)(ctx->ords[o], coef, ctx->mc[ia]);
+  }
+
+  if (o < ctx->hi_ord)
+    for(; ib < ctx->sb; ++ib) {
+      mono[ib]++;
+      idx = mad_desc_idxm(d, d->nn, mono);
+      compose_mono(ib, idx, o+1, mono, ctx); // recursive call
+      mono[ib]--;
+    }
+}
+
+static inline void
+init_required(ssz_t sa, const T *ma[sa], log_t required[], ord_t hi_ord)
+{
+  assert(ma && required);
+  const D *d = ma[0]->d;
+
+  // root is always required
+  required[0] = 1;
+
+  // primary nodes (non-zero coefs)
+  FOR(ia,sa) {
+    TPSA_SCAN(ma[ia]) if (ma[ia]->coef[i]) required[i] = 1;
+  }
+
+  // fathers of primary nodes
+  ord_t mono[d->nn];
+  idx_t j, father;
+  for (ord_t o=hi_ord; o > 1; --o) {
+    TPSA_SCAN(ma[0],o,o) {
+      if (required[i]) {
+        mad_mono_copy(d->nn, d->To[i], mono);
+        for (j = d->nn-1; j >= 0 && !mono[j]; --j) ;
+        mono[j]--;
+        father = mad_desc_idxm(d, d->nn, mono);
+
+#if DEBUG_COMPOSE
+  printf("compini: ");
+  mad_mono_print(d->nn, d->To[i], 0,0);
+  printf("->");
+  mad_mono_print(d->nn, mono, 0,0);
+  printf(" req[% 3d]%c\n", father, required[father] ? '*' : ' ');
+#endif
+        required[father] = 1;
+      }
+    }
+  }
+}
+
+static inline void
+compose (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa],
+         ord_t hi_ord)
+{
+  const D *d = ma[0]->d;
+
+  ssz_t nc = mad_desc_maxlen(d, hi_ord);
+  mad_alloc_tmp(log_t, required, nc);
+  init_required(sa, ma, memset(required, 0, nc*sizeof *required), hi_ord);
+
+  // initialization
+  T *ords[hi_ord+1]; // one for each order [0,hi_ord]
+  FOR(o,hi_ord+1) ords[o] = FUN(newd)(d, hi_ord);
+  FUN(seti)(ords[0],0,0,1);
+  FOR(ia,sa) FUN(clear)(mc[ia]);
+
+  cmpctx_t ctx = { .d=d, .sa=sa, .sb=sb, .ma=ma, .mb=mb, .mc=mc,
+                   .ords=ords, .required=required, .hi_ord=hi_ord };
+
+  // compose starting at root of tree: ib 0, idx 0, ord 0, mono 0
+  ord_t mono[d->nn]; mad_mono_fill(d->nn, mono, 0);
+  compose_mono(0, 0, 0, mono, &ctx);
+
+  // cleanup
+  FOR(o,hi_ord+1) FUN(del)(ords[o]);
+  mad_free_tmp(required);
+}
 
 // --- public -----------------------------------------------------------------o
 
-void
+void //             sa <= nv                   sb <= nn
 FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 {
   assert(ma && mb && mc); DBGFUN(->);
   log_t chk_sa = TRUE;
-  if (sa < 0) chk_sa = FALSE, sa = -sa;
+  if (sa < 0) chk_sa = FALSE, sa = -sa; // special case sa > nv (not for damap)
   check_compose(sa, ma, sb, mb, mc, chk_sa);
 
   // handle aliasing
+  log_t amc[sa];
   mad_alloc_tmp(T*, mc_, sa);
-  FOR(ia,sa) mc_[ia] = FUN(new)(mc[ia], mad_tpsa_same);
+  FOR(ia,sa) {
+    amc[ia] = mc[ia] == ma[ia] || is_aliased(mc[ia], sa, mb);
+    mc_[ia] = amc[ia] ? FUN(new)(mc[ia], mad_tpsa_same) : FUN(reset0)(mc[ia]);
+  }
 
-  ord_t hi_ord = FUN(mord)(sa, TC mc, 0);
+  ord_t hi_ord = FUN(mord)(sa, TC ma, TRUE);
+
+#if DEBUG_COMPOSE
+  printf("hi: %d\n", hi_ord);
+  printf("ma:\n"); print_damap(sa, ma, 0);
+  printf("mb:\n"); print_damap(sb, mb, 0);
+#endif
+
+  if (hi_ord == 1) compose_ord1(sa,ma, sb,mb, mc);
 
   #ifdef _OPENMP
-  if (hi_ord >= 4) {
+  else if (hi_ord >= 4) {
     #pragma omp parallel for schedule(dynamic)
     FOR(ia,sa) {
 #if DEBUG_COMPOSE
     printf("compose: thread no %d\n", omp_get_thread_num());
 #endif
-      compose_serial(1,&ma[ia],sb,mb,&mc_[ia],ma[ia]->hi);
-//    compose_parallel(sa,ma,sb,mb,mc_,hi_ord);
+      compose(1,&ma[ia], sb,mb, &mc_[ia], ma[ia]->hi);
     }
-  } else
+  }
   #endif // _OPENMP
-    compose_serial(sa,ma,sb,mb,mc_,hi_ord);
+
+  else compose(sa,ma, sb,mb, mc_, hi_ord);
 
   // copy back
-  FOR(ia,sa) {
+  FOR(ia,sa) if (amc[ia]) {
     FUN(copy)(mc_[ia], mc[ia]);
     FUN(del )(mc_[ia]);
   }
@@ -116,7 +253,8 @@ void
 FUN(translate) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], T *mc[sa])
 {
   assert(ma && tb && mc); DBGFUN(->);
-  ensure(sa>0 && sb>0, "invalid map/vector sizes (zero or negative sizes)");
+  ensure(sa > 0 && sb > 0, "invalid map/vector sizes (zero or negative sizes)");
+  ensure(sa <= sb        , "incompatibles map/vector #A > #B");
 
   // transform translation vector into damap of order 1
   mad_alloc_tmp(const T*, mb, sb);
@@ -138,7 +276,8 @@ void
 FUN(eval) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], NUM tc[sa])
 {
   assert(ma && tb && tc); DBGFUN(->);
-  ensure(sa>0 && sb>0, "invalid map/vector sizes (zero or negative sizes)");
+  ensure(sa > 0 && sb > 0, "invalid map/vector sizes (zero or negative sizes)");
+  ensure(sa <= sb        , "incompatibles map/vector #A > #B");
 
   // transform vectors into damap of order 0
   mad_alloc_tmp(const T*, mb, sb);
