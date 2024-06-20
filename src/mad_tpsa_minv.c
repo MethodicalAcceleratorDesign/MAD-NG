@@ -148,7 +148,7 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
   }
 
   if (!isnul) {
-    ord_t mo[nb], to = FUN(mord)(nb, TC mc, 0), dbgo = mad_tpsa_dbgo;
+    ord_t mo[nb], to = FUN(mord)(nb, TC mc, FALSE), dbgo = mad_tpsa_dbgo;
     FOR(i,nb) mo[i] = FUN(mo)(mc[i], mad_tpsa_same); // backup mo[i]
     for (ord_t o = 2; o <= to; ++o) {
       mad_tpsa_dbgo = o;           // for debug purpose only
