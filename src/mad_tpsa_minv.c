@@ -120,7 +120,7 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
   FOR(i,nb) { // vars
     lininv[i] = FUN(newd)(d,1);
     nonlin[i] = FUN(new)(ma[i], mad_tpsa_same);
-    tmp[i]    = FUN(new)(ma[i], mad_tpsa_same);
+    tmp[i]    = FUN(new)(mc[i], mad_tpsa_same);
   }
   FOR(i,nb,na) { // params
     lininv[i] = (T*)ma[i];
@@ -148,20 +148,21 @@ FUN(minv) (ssz_t na, const T *ma[na], ssz_t nb, T *mc[na])
   }
 
   if (!isnul) {
-    ord_t mo[nb], to = FUN(mord)(nb, TC mc, FALSE), dbgo = mad_tpsa_dbgo;
-    FOR(i,nb) mo[i] = FUN(mo)(mc[i], mad_tpsa_same); // backup mo[i]
-    for (ord_t o = 2; o <= to; ++o) {
-      mad_tpsa_dbgo = o;           // for debug purpose only
-      FOR(i,nb) FUN(mo)( mc[i],o); // truncate computation to order o
-      FOR(i,nb) FUN(mo)(tmp[i],o);
+    ord_t mo[nb], hi[nb], to=FUN(mord)(nb, TC mc, FALSE), dbgo=mad_tpsa_dbgo;
+    FOR(i,nb) mo[i] = FUN(ord)(mc    [i], FALSE); // backup mo[i]
+    FOR(i,nb) hi[i] = FUN(ord)(nonlin[i], TRUE ); // backup hi[i]
+    for (ord_t o=2; o <= to; ++o) {
+      mad_tpsa_dbgo = o;                         // for debug purpose only
+      FOR(i,nb) FUN(mo)(    mc[i],MIN(o,mo[i])); // truncate mo to order o
+      FOR(i,nb) FUN(mo)(   tmp[i],MIN(o,mo[i]));
+      FOR(i,nb) FUN(mo)(nonlin[i],MIN(o,hi[i])), nonlin[i]->hi = MIN(o,hi[i]);
       FUN(compose)(nb, TC nonlin, na, TC mc, tmp);
-#if DEBUG_MINV
-      printf("\nminv tmp[%d]:\n",o); FOR(i,nb) FUN(print)(tmp[i],0,-1,0,0);
-#endif
       FOR(v,nb) FUN(seti)(tmp[v], v+1, 1,1); // add identity
       FUN(compose)(nb, TC lininv, na, TC tmp, mc);
+
 #if DEBUG_MINV
-      printf("\nminv mc[%d]:\n" ,o); FOR(i,nb) FUN(print)(mc [i],0,-1,0,0);
+      printf("\nminv tmp[o=%d]:\n",o); FOR(i,nb) FUN(print)(tmp[i],0,-1,0,0);
+      printf("\nminv mc[o=%d]:\n" ,o); FOR(i,nb) FUN(print)(mc [i],0,-1,0,0);
 #endif
     }
     FOR(i,nb) FUN(mo)(mc[i], mo[i]); // restore mo[i]
