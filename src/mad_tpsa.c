@@ -180,16 +180,12 @@ FUN(desc) (const T *t)
 }
 
 ord_t
-FUN(mo) (T *t, ord_t mo_)
+FUN(mo) (T *t, ord_t mo)
 {
   assert(t);
-  if (mo_ == mad_tpsa_same) return t->mo;
-
   ord_t ret = t->mo;
-  if (mo_ < t->mo)
-    t->lo = MIN(t->lo, mo_), t->hi = MIN(t->hi, mo_), t->mo = mo_;
-  else
-    t->mo = MIN(mo_, t->ao);
+  if (mo < t->mo) t->lo = MIN(t->lo, mo), t->hi = MIN(t->hi, mo), t->mo = mo;
+  else            t->mo = MIN(t->ao, mo);
   return ret;
 }
 
