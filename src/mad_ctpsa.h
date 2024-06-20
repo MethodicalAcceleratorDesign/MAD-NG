@@ -50,11 +50,11 @@ void     mad_ctpsa_del     (const ctpsa_t *t);
 // introspection
 const
 desc_t*  mad_ctpsa_desc    (const ctpsa_t *t);
-ord_t    mad_ctpsa_mo      (      ctpsa_t *t, ord_t   mo_ ); // set mo if mo <= ao
+ord_t    mad_ctpsa_mo      (      ctpsa_t *t, ord_t   mo  ); // set mo
 int32_t  mad_ctpsa_uid     (      ctpsa_t *t, int32_t uid_); // set uid if != 0
 str_t    mad_ctpsa_nam     (      ctpsa_t *t, str_t   nam_); // set nam if != null
-ssz_t    mad_ctpsa_len     (const ctpsa_t *t, log_t   hi_ ); // mo or hi
-ord_t    mad_ctpsa_ord     (const ctpsa_t *t, log_t   hi_ ); // mo or hi
+ssz_t    mad_ctpsa_len     (const ctpsa_t *t, log_t   hi_ ); // get mo or hi
+ord_t    mad_ctpsa_ord     (const ctpsa_t *t, log_t   hi_ ); // get mo or hi
 log_t    mad_ctpsa_isnul   (const ctpsa_t *t);
 log_t    mad_ctpsa_isval   (const ctpsa_t *t);
 log_t    mad_ctpsa_isvalid (const ctpsa_t *t);

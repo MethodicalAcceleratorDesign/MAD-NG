@@ -75,7 +75,7 @@ struct tpsa_base {
   tpsa_t&  ref () const { return static_cast<const D*>( this)->ref(); }
   const D& self() const { return static_cast<const D&>(*this);        }
         D& self()       { return static_cast<      D&>(*this);        }
-  ord_t    mo  () const { return mad_tpsa_mo(ptr(), same);            }
+  ord_t    mo  () const { return mad_tpsa_ord(ptr(), false);          }
 
   // set name
   D& set(str_t              s)         { mad_tpsa_nam(ptr(), s);          return self(); }
