@@ -59,11 +59,11 @@ void    mad_tpsa_del     (const tpsa_t *t);
 // introspection
 const
 desc_t* mad_tpsa_desc    (const tpsa_t *t);
-ord_t   mad_tpsa_mo      (      tpsa_t *t, ord_t   mo_ ); // set mo if mo <= ao
+ord_t   mad_tpsa_mo      (      tpsa_t *t, ord_t   mo  ); // set mo
 int32_t mad_tpsa_uid     (      tpsa_t *t, int32_t uid_); // set uid if != 0
 str_t   mad_tpsa_nam     (      tpsa_t *t, str_t   nam_); // set nam if != null
-ssz_t   mad_tpsa_len     (const tpsa_t *t, log_t   hi_ ); // mo or hi
-ord_t   mad_tpsa_ord     (const tpsa_t *t, log_t   hi_ ); // mo or hi
+ssz_t   mad_tpsa_len     (const tpsa_t *t, log_t   hi_ ); // get mo or hi
+ord_t   mad_tpsa_ord     (const tpsa_t *t, log_t   hi_ ); // get mo or hi
 log_t   mad_tpsa_isnul   (const tpsa_t *t);
 log_t   mad_tpsa_isval   (const tpsa_t *t);
 log_t   mad_tpsa_isvalid (const tpsa_t *t);

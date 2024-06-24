@@ -180,16 +180,12 @@ FUN(desc) (const T *t)
 }
 
 ord_t
-FUN(mo) (T *t, ord_t mo_)
+FUN(mo) (T *t, ord_t mo)
 {
   assert(t);
-  if (mo_ == mad_tpsa_same) return t->mo;
-
   ord_t ret = t->mo;
-  if (mo_ < t->mo)
-    t->lo = MIN(t->lo, mo_), t->hi = MIN(t->hi, mo_), t->mo = mo_;
-  else
-    t->mo = MIN(mo_, t->ao);
+  if (mo < t->mo) t->hi = MIN(t->hi,mo), t->lo = MIN(t->lo,MAX(mo,1)), t->mo=mo;
+  else            t->mo = MIN(t->ao,mo);
   return ret;
 }
 
@@ -368,6 +364,7 @@ FUN(copy) (const T *t, T *r)
     FUN(copy0)(t, r);
     r->coef[0] = t->coef[0];
     TPSA_SCAN(r) r->coef[i] = t->coef[i];
+    if (!r->nam[0] && t->nam[0]) strcpy(r->nam, t->nam);
   }
   DBGTPSA(r); DBGFUN(<-);
 }

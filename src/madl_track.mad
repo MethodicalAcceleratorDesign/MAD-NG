@@ -42,7 +42,7 @@ local dp2pt, bet2map, par2vec                                   in MAD.gphys
 local errorf, assertf, printf                                   in MAD.utility
 local band                                                      in MAD.gfunc
 local apercheck                                                 in MAD.aperture
-local srad_save, srad_damp, srad_quant                          in MAD.synrad
+local srad_save, srad_damp, srad_dampp, srad_quant              in MAD.synrad
 local is_implicit                                               in element.drift
 local slcsel, slcbit, noredo, action, actionat, getslcbit       in symint
 local abs, max in math
@@ -505,22 +505,26 @@ local function make_mflow (self)
   -- activate radiation (action put in front of the list)
   if radiate then
     local radact
-    atentry = chain(achain(slcsel.atbegin, srad_save), atentry)
-    if string.find(radiate, "damp", 1, true) then
-      radact = srad_damp
-    elseif string.find(radiate, "quant", 1, true) or
-           string.find(radiate, "phot" , 1, true) then
-      radact = srad_quant
+    if string.find(radiate, "damp[ing]*%+") then
+      radact, radiate = srad_dampp, "damping+"
+    elseif string.find(radiate, "damp", 1, true) then
+      radact, radiate = srad_damp , "damping"
+    elseif string.find(radiate, "quan", 1, true) then
+      radact, radiate = srad_quant, "quantum"
+    elseif string.find(radiate, "phot", 1, true) then
+      radact, radiate = srad_quant, "photon"
     else error("invalid radiate value '"..radiate.."'") end
-    atslice = chain(atslice, \elm,m,lw,islc -> srad_save(elm,m,lw,islc,true))
-    atslice = chain(radact , achain(noredo, atslice))
-    atexit  = chain(achain(slcsel.atend,  radact), atexit)
+
+    if radiate == "damping+" then
+      atentry = chain(achain(slcsel.atbegin, srad_save), atentry)
+      atslice = chain(atslice, \elm,m,lw,islc -> srad_save(elm,m,lw,islc,true))
+      atslice = chain(radact, achain(noredo, atslice))
+      atexit  = chain(achain(slcsel.atend, radact), atexit)
+    else
+      atslice = chain(radact, atslice)
+    end
 
     if save then mtbl.radiate = radiate end -- update mtbl
-    if string.find(radiate, "phot", 1, true) then radiate = "photon" end
-
-    -- ensure min 3 slices if radiation is on
-    -- nslc = max(nslc, 3)
   end
 
   -- totalpath
@@ -835,7 +839,7 @@ local track = command 'track' {
   aperture=false,   -- default aperture                                   (mflw)
   fringe=true,      -- enable fringe fields (see element.flags.fringe)    (mflw)
   frngmax=2,        -- maximum multipole fringe field (default quad)      (mflw)
-  radiate=false,    -- radiate at slices "damp", "quantum", "photon"      (mflw)
+  radiate=false,    -- radiate "damp+", "damp", "quantum", "photon"       (mflw)
   nocavity=false,   -- disable rfcavities (i.e. enforce 5D)               (mflw)
   totalpath=false,  -- variable 't' is the totalpath                      (mflw)
   cmap=true,        -- use C/C++ maps when available                      (mflw)
