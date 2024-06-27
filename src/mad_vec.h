@@ -41,9 +41,9 @@ num_t mad_vec_sum    (const num_t x[],                                    ssz_t 
 num_t mad_vec_ksum   (const num_t x[],                                    ssz_t n); // Sum(vec) (Kahan)
 num_t mad_vec_mean   (const num_t x[],                                    ssz_t n); // Mean(vec)
 num_t mad_vec_var    (const num_t x[],                                    ssz_t n); // Var(vec)
-num_t mad_vec_norm   (const num_t x[]                 ,                   ssz_t n); // |vec|
-num_t mad_vec_dist   (const num_t x[], const num_t y[],                   ssz_t n); // |vec -  vec|
-num_t mad_vec_distv  (const num_t x[], const cpx_t y[],                   ssz_t n); // |vec - cvec|
+num_t mad_vec_nrm    (const num_t x[]                 ,                   ssz_t n); // |vec|
+num_t mad_vec_dst    (const num_t x[], const num_t y[],                   ssz_t n); // |vec -  vec|
+num_t mad_vec_dstv   (const num_t x[], const cpx_t y[],                   ssz_t n); // |vec - cvec|
 num_t mad_vec_dot    (const num_t x[], const num_t y[],                   ssz_t n); // <vec ,  vec>
 num_t mad_vec_kdot   (const num_t x[], const num_t y[],                   ssz_t n); // <vec ,  vec> (Kahan)
 void  mad_vec_cplx   (const num_t x[], const num_t im[],       cpx_t r[], ssz_t n); // vr,vi->cvec
@@ -91,9 +91,9 @@ cpx_t mad_cvec_mean  (const cpx_t x[],                                    ssz_t 
 void  mad_cvec_mean_r(const cpx_t x[],                         cpx_t *r , ssz_t n); // Mean(vec)
 cpx_t mad_cvec_var   (const cpx_t x[],                                    ssz_t n); // Var(vec)
 void  mad_cvec_var_r (const cpx_t x[],                         cpx_t *r , ssz_t n); // Var(vec)
-num_t mad_cvec_norm  (const cpx_t x[],                                    ssz_t n); // |cvec|
-num_t mad_cvec_dist  (const cpx_t x[], const cpx_t y[],                   ssz_t n); // |cvec - cvec|
-num_t mad_cvec_distv (const cpx_t x[], const num_t y[],                   ssz_t n); // |cvec -  vec|
+num_t mad_cvec_nrm   (const cpx_t x[],                                    ssz_t n); // |cvec|
+num_t mad_cvec_dst   (const cpx_t x[], const cpx_t y[],                   ssz_t n); // |cvec - cvec|
+num_t mad_cvec_dstv  (const cpx_t x[], const num_t y[],                   ssz_t n); // |cvec -  vec|
 cpx_t mad_cvec_dot   (const cpx_t x[], const cpx_t y[],                   ssz_t n); // <cvec, cvec>
 void  mad_cvec_dot_r (const cpx_t x[], const cpx_t y[],        cpx_t *r , ssz_t n); // <cvec, cvec>
 cpx_t mad_cvec_dotv  (const cpx_t x[], const num_t y[],                   ssz_t n); // <cvec,  vec>

@@ -83,15 +83,15 @@ num_t mad_vec_var (const num_t x[], ssz_t n)
 num_t mad_vec_dot (const num_t x[], const num_t y[], ssz_t n)
 { CHKXY; num_t r=0; FOR(i,n) r += x[i] * y[i]; return r; }
 
-num_t mad_vec_norm (const num_t x[], ssz_t n)
+num_t mad_vec_nrm (const num_t x[], ssz_t n)
 { return sqrt(mad_vec_dot(x,x,n)); }
 
-num_t mad_vec_dist (const num_t x[], const num_t y[], ssz_t n)
+num_t mad_vec_dst (const num_t x[], const num_t y[], ssz_t n)
 { CHKXY; num_t r=0; FOR(i,n) r += SQR(x[i] - y[i]);
   return sqrt(r);
 }
 
-num_t mad_vec_distv (const num_t x[], const cpx_t y[], ssz_t n)
+num_t mad_vec_dstv (const num_t x[], const cpx_t y[], ssz_t n)
 { CHKXY; num_t r=0;
   FOR(i,n) r += conj(x[i]-y[i])*(x[i]-y[i]);
   return sqrt(r);
@@ -436,15 +436,15 @@ cpx_t mad_cvec_var (const cpx_t x[], ssz_t n)
 void mad_cvec_var_r (const cpx_t x[], cpx_t *r, ssz_t n)
 { CHKXR; *r = mad_cvec_var(x,n); }
 
-num_t mad_cvec_norm (const cpx_t x[], ssz_t n)
+num_t mad_cvec_nrm (const cpx_t x[], ssz_t n)
 { return sqrt(creal(mad_cvec_dot(x,x,n))); }
 
-num_t mad_cvec_dist (const cpx_t x[], const cpx_t y[], ssz_t n)
+num_t mad_cvec_dst (const cpx_t x[], const cpx_t y[], ssz_t n)
 { CHKXY; num_t r=0; FOR(i,n) r += creal(conj(x[i]-y[i])*(x[i]-y[i]));
   return sqrt(r);
 }
 
-num_t mad_cvec_distv (const cpx_t x[], const num_t y[], ssz_t n)
+num_t mad_cvec_dstv (const cpx_t x[], const num_t y[], ssz_t n)
 { CHKXY; num_t r=0; FOR(i,n) r += creal(conj(x[i]-y[i])*(x[i]-y[i]));
   return sqrt(r);
 }
