@@ -857,6 +857,9 @@ void FUN(setsm_r) (T *t, ssz_t n, const idx_t m[n], num_t a_re, num_t a_im, num_
 void FUN(setvar_r) (T *t, num_t v_re, num_t v_im, idx_t iv, num_t scl_re, num_t scl_im)
 { FUN(setvar)(t, CPX(v), iv, CPX(scl)); }
 
+void FUN(setprm_r) (T *t, num_t v_re, num_t v_im, idx_t ip)
+{ FUN(setprm)(t, CPX(v), ip); }
+
 void FUN(setval_r) (T *t, num_t v_re, num_t v_im)
 { FUN(setval)(t, CPX(v)); }
 
