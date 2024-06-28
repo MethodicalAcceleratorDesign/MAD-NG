@@ -22,7 +22,7 @@
 ]=]
 
 local vector, cvector, ivector, tpsa, ctpsa, gtpsad, tpsa_eqn, monomial            in MAD
-local eps, abs, pi                                               in MAD.constant
+local eps, abs, pi, inf                                               in MAD.constant
 local abs                                                        in MAD.gmath
 local ident                                                      in MAD.gfunc
 local assertTrue, assertEquals, assertAlmostEquals, 
@@ -879,10 +879,13 @@ local function deriv_coef(m1,m2)
   return coef
 end
 
-local function is_valid_mono(m)
+local function is_valid_mono(m,ord_,mo_)
+  mo_  =  mo_ or inf
+  ord_ = ord_ or inf
   for v, ord in pairs(m) do
-    if ord<0 then return false end
+    if ord< 0 then return false end
   end
+  if ord_>mo_ then return false end
   return true
 end
 
@@ -900,6 +903,27 @@ local function deriv_poly(t,deriv)
   end
   return r
 end
+
+local function integ_mono(m,iv)
+  m[iv] = m[iv]+1
+  return m
+end
+
+local function integ_poly(t,iv)
+  local r = t:same()
+  local P = tpsa2Poly(t)  
+  for exp_mono, coef in pairs(P) do
+    local      exp = exp_mono:totable()
+    local  new_exp = integ_mono(exp,iv)
+    local new_mono = monomial(new_exp)
+    if is_valid_mono(new_exp,new_mono:ord(),t:maxord()) then
+      local new_coef = t:get(exp_mono)/new_exp[iv]
+      r:set(new_mono,new_coef)
+    end
+  end
+  return r
+end
+
 
 function TestTPSADerivPlusMisc:setUp()
   self.descs = {d1v,d2v,d3v,d5v}
@@ -969,8 +993,8 @@ function TestTPSADerivPlusMisc:testDerivMonoR()
     local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e)))
 
     for _, idx in ipairs(self.idxs[i]) do
-      local tpsa = mkt(idx.si,idx.ei)
-      local    deriv = d:get_mono(1)
+      local  tpsa = mkt(idx.si,idx.ei)
+      local deriv = d:get_mono(1)
       while d:nxtbyord(deriv)~=-1 do  --testing mono input
         assertTrue(tpsa:deriv(deriv) == deriv_poly(tpsa,deriv),idx.case)
       end
@@ -989,14 +1013,52 @@ function TestTPSADerivPlusMisc:testDerivMononC()
     local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i)
 
     for _, idx in ipairs(self.idxs[i]) do
-      local tpsa = mkt(idx.si,idx.ei)
-      local    deriv = d:get_mono(1)
+      local  tpsa = mkt(idx.si,idx.ei)
+      local deriv = d:get_mono(1)
       while d:nxtbyord(deriv)~=-1 do  --testing mono input
         assertTrue(tpsa:deriv(deriv) == deriv_poly(tpsa,deriv),idx.case)
       end
     end
   end
 end
+
+
+function TestTPSADerivPlusMisc:testIntegR()
+  local t,v = tpsa, vector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local tpsa = mkt(idx.si,idx.ei)
+      for iv=1,tpsa:nv() do
+        assertTrue(tpsa:integ(iv) == integ_poly(tpsa,iv),idx.case.." intergrating on "..iv.." variable")
+      end
+    end
+  end
+end  
+
+
+function TestTPSADerivPlusMisc:testIntegC()
+  local ct,cv = ctpsa, cvector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i)
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local tpsa = mkt(idx.si,idx.ei)
+      for iv=1,tpsa:nv() do 
+        assertTrue(tpsa:integ(iv) == integ_poly(tpsa,iv),idx.case.." intergrating on "..iv.." variable")
+      end
+    end
+  end
+end  
 
 
 local cut_ord_t = function(ord,t,idx)
