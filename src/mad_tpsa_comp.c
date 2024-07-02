@@ -82,6 +82,7 @@ print_damap (ssz_t sa, const T *ma[sa], FILE *fp_)
 typedef struct {
   ssz_t sa, sb;
   ord_t hi_ord;
+  ord_t mo_ord;
   log_t *required;
   const T **ma, **mb;
         T **mc, **ords;
@@ -172,7 +173,7 @@ init_required(ssz_t sa, const T *ma[sa], log_t required[], ord_t hi_ord)
 
 static inline void
 compose (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa],
-         ord_t hi_ord)
+         ord_t hi_ord, ord_t mo_ord)
 {
   const D *d = ma[0]->d;
 
@@ -182,12 +183,13 @@ compose (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa],
 
   // initialization
   T *ords[hi_ord+1]; // one for each order [0,hi_ord]
-  FOR(o,hi_ord+1) ords[o] = FUN(newd)(d, hi_ord);
+  FOR(o,hi_ord+1) ords[o] = FUN(newd)(d, mo_ord);
   FUN(seti)(ords[0],0,0,1);
   FOR(ia,sa) FUN(clear)(mc[ia]);
 
   cmpctx_t ctx = { .d=d, .sa=sa, .sb=sb, .ma=ma, .mb=mb, .mc=mc,
-                   .ords=ords, .required=required, .hi_ord=hi_ord };
+                   .ords=ords, .hi_ord=hi_ord, .mo_ord=mo_ord,
+                   .required=required };
 
   // compose starting at root of tree: ib 0, idx 0, ord 0, mono 0
   ord_t mono[d->nn]; mad_mono_fill(d->nn, mono, 0);
@@ -216,10 +218,12 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
     mc_[ia] = amc[ia] ? FUN(new)(mc[ia], mad_tpsa_same) : FUN(reset0)(mc[ia]);
   }
 
-  ord_t hi_ord = FUN(mord)(sa, TC ma, TRUE);
+  ord_t hi_ord = FUN(mord)(sa, TC ma, TRUE );
+  ord_t mo_ord = FUN(mord)(sa, TC mc, FALSE);
 
 #if DEBUG_COMPOSE
   printf("hi: %d\n", hi_ord);
+  printf("mo: %d\n", mo_ord);
   printf("ma:\n"); print_damap(sa, ma, 0);
   printf("mb:\n"); print_damap(sb, mb, 0);
 #endif
@@ -227,18 +231,18 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
   if (hi_ord == 1) compose_ord1(sa,ma, sb,mb, mc);
 
   #ifdef _OPENMP
-  else if (hi_ord >= 4) {
+  else if (sa*hi_ord >= 6*5) { // 6 variables at 5th order
     #pragma omp parallel for schedule(dynamic)
     FOR(ia,sa) {
 #if DEBUG_COMPOSE
     printf("compose: thread no %d\n", omp_get_thread_num());
 #endif
-      compose(1,&ma[ia], sb,mb, &mc_[ia], ma[ia]->hi);
+      compose(1,&ma[ia], sb,mb, &mc_[ia], ma[ia]->hi, mc_[ia]->mo);
     }
   }
   #endif // _OPENMP
 
-  else compose(sa,ma, sb,mb, mc_, hi_ord);
+  else compose(sa,ma, sb,mb, mc_, hi_ord, mo_ord);
 
   // copy back
   FOR(ia,sa) if (amc[ia]) {
