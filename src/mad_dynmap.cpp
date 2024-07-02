@@ -138,7 +138,7 @@ struct prm_t { // parametric damaps
 };
 
 extern "C" {
-union mflw_ {
+union cflw_x {
   struct cflw<par_t> rflw;
   struct cflw<map_t> tflw;
   struct cflw<prm_t> pflw;
@@ -147,7 +147,7 @@ union mflw_ {
 const size_t mad_cflw_rsize = sizeof(struct cflw<par_t>);
 const size_t mad_cflw_tsize = sizeof(struct cflw<map_t>);
 const size_t mad_cflw_psize = sizeof(struct cflw<prm_t>);
-const size_t mad_cflw_size  = sizeof(union  mflw_      );
+const size_t mad_cflw_xsize = sizeof(union  cflw_x     );
 } // extern "C"
 
 // --- implementation ---------------------------------------------------------o
@@ -2166,7 +2166,7 @@ void mad_trk_spdtest (int n, int k)
   tpsa_t*   par[] = { x.ptr(), px.ptr(), y.ptr(), py.ptr(), t.ptr(), pt.ptr() };
   tpsa_t* *pars[] = {par};
 
-  union mflw_ m = { .tflw = {
+  union cflw_x m = { .tflw = {
     .name="spdtest", .dbg=0,
 
     .el=1, .eld=1, .elc=0, .lrad=0,
