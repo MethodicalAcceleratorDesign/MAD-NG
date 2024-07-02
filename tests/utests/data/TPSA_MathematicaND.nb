@@ -1,46 +1,50 @@
-(*Define the series expansion function*)
-series[f_, var : {_Symbol ..}, n_Integer?Positive] := 
- Module[{expr = 
-    Series[f, Sequence @@ ({#, 0, n} & /@ var)] // Normal // Expand}, 
-  Select[expr, Total[Exponent[#, var]] <= n &]]
+generateData[func_, {vars___}, order_, formatFunc_] := 
+ Module[{expandedPoly, coeffs, filteredCoeffs, Eform, series},
+  (*Define the series function inside generateData*)
+  series[f_, var : {_Symbol ..}, n_Integer?Positive] := 
+   Module[{expr = 
+      Series[f, Sequence @@ ({#, 0, n} & /@ var)] // Normal // 
+       Expand}, Select[expr, Total[Exponent[#, var]] <= n &]];
+  (*Expand the function to the specified order*)
+  expandedPoly = series[func, {vars}, order];
+  (*Get the coefficient list*)
+  coeffs = CoefficientList[expandedPoly, {vars}];
+  (*Filter the coefficients based on the total degree while retaining \
+zeros*)filteredCoeffs = 
+   MapIndexed[If[Total[#2 - 1] <= order, #1, Nothing] &, 
+    coeffs, {Length[{vars}]}];
+  (*Flatten the list to get all coefficients and apply the formatting \
+function*)coeffs = formatFunc /@ N[Flatten[filteredCoeffs], 25];
+  (*Return the list of coefficients*)coeffs]
 
-(*Define the Eform function*)
+
+(*Define the Eform function inside generateData*)
 Eform[x_?NumericQ, ndig_Integer : 20] := 
- Module[{u, s, p, base, exp, sign, result}, u = If[x == 0, 0, x];
-  {s, p} = MantissaExponent[u];
-  If[s != 0, {s = s*10; p = p - 1}];
-  base = ToString[PaddedForm[s, {ndig + 2, ndig}]];
-  exp = If[p >= 0, ToString[p], ToString[-p]];
-  If[StringLength[exp] < 2, exp = StringJoin["0", exp], exp = exp];
-  sign = If[p >= 0, "e+", "e-"];
-  result = StringJoin[base, sign, exp];
-  result]
+  Module[{u, s, p, base, exp, sign, result}, u = If[x == 0, 0, x];
+   {s, p} = MantissaExponent[u];
+   If[s != 0, {s = s*10; p = p - 1}];
+   base = ToString[PaddedForm[s, {ndig + 2, ndig}]];
+   exp = If[p >= 0, ToString[p], ToString[-p]];
+   If[StringLength[exp] < 2, exp = StringJoin["0", exp], exp = exp];
+   sign = If[p >= 0, "e+", "e-"];
+   result = StringJoin[base, sign, exp];
+   result];
 
-(*Define the point of the expansion*)
-x0 = 0.000;
-(*Define the function*)
-f1[x_, y_, z_] = Exp[x + y + z + x0];
+data = {};
+order  = 15;
+points = {0, 0.001, 0.1};
 
-(*Expand the function to 15th order*)
-expandedPoly = series[f1[x, y, z], {x, y, z}, 15];
+(*Iterate over x values and accumulate results*)For[i = 1, 
+ i <= Length[points], i++,
+ 
+ x0 = points[[i]];
+ f[x_, y_, z_] = Exp[x + y + z + x0];
+ coeffs = generateData[f[x, y, z], {x, y, z}, order, Eform];
+ AppendTo[data, {x0, coeffs}];
+ 
+ ]
 
-(*Extract and evaluate coefficients with high precision*)
-(*Get the coefficient list*)
-coeffs = CoefficientList[expandedPoly, {x, y, z}];
-
-(*Set the threshold*)
-n = 15;
-
-(*Filter the coefficients based on the total degree while retaining \
-zeros*)
-filteredCoeffs = 
-  MapIndexed[If[Total[#2 - 1] <= n, #1, Nothing] &, coeffs, {3}];
-
-(*Flatten the list to get all coefficients*)
-coeffs = Eform /@ N[Flatten[filteredCoeffs], 25];
-
-(*Export the formatted data to a file*)
-Export["data1.dat", coeffs];
+(*Export the formatted data to a file*)Export["data.dat", data];
 
 (*Display the content of the file*)
-FilePrint["data1.dat"]
+FilePrint["data.dat"]
