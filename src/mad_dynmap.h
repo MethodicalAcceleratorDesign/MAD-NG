@@ -26,7 +26,7 @@
 
 #include "mad_def.h"
 
-typedef union mflw_ mflw_t;
+typedef union cflw_x mflw_t;
 typedef void (trkfun) (mflw_t*, num_t, int);
 
 // --- interface --------------------------------------------------------------o
@@ -169,7 +169,7 @@ void mad_trk_cpptest (void);
 extern const size_t mad_cflw_rsize;
 extern const size_t mad_cflw_tsize;
 extern const size_t mad_cflw_psize;
-extern const size_t mad_cflw_size;
+extern const size_t mad_cflw_xsize;
 
 // --- end --------------------------------------------------------------------o
 
