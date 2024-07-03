@@ -117,14 +117,17 @@ compose_mono (int ib, idx_t idx, ord_t o, ord_t mono[], cmpctx_t *ctx)
   printf("\n");
 #endif
 
+  // compute monomial tpsa from mb
   if (o > 0) FUN(mul)(ctx->ords[o-1], ctx->mb[ib], ctx->ords[o]);
 
+  // compose monomial tpsa with ma
   FOR(ia,ctx->sa) {
     NUM coef = FUN(geti)(ctx->ma[ia],idx);
     if (coef) FUN(acc)(ctx->ords[o], coef, ctx->mc[ia]);
   }
 
   if (o < ctx->hi_ord)
+    // continue for each var & prm in mb
     for(; ib < ctx->sb; ++ib) {
       mono[ib]++;
       idx = mad_desc_idxm(d, d->nn, mono);
@@ -231,7 +234,7 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
   if (hi_ord == 1) compose_ord1(sa,ma, sb,mb, mc);
 
   #ifdef _OPENMP
-  else if (sa*hi_ord >= 6*5) { // 6 variables at 5th order
+  else if (sa*hi_ord >= 4*5) { // 4 variables at 5th order
     #pragma omp parallel for schedule(dynamic)
     FOR(ia,sa) {
 #if DEBUG_COMPOSE
