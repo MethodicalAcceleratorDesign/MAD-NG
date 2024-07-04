@@ -1,83 +1,84 @@
-(*Define the series expansion function*)
+(* Define the series expansion function *)
 series[f_, vars : {_Symbol ..}, n_Integer?Positive] := 
- Module[{expr = 
-    Series[f, Sequence @@ ({#, 0, n} & /@ vars)] // Normal // Expand},
-   Select[expr, Total[Exponent[#, vars]] <= n &]]
+  Module[{expr = 
+     Series[f, Sequence @@ ({#, 0, n} & /@ vars)] // Normal // Expand},
+    Select[expr, Total[Exponent[#, vars]] <= n &]]
 
-(*Define the Eform function*)
+(* Define the Eform function *)
 Eform[x_?NumericQ, ndig_Integer : 20] := 
- Module[{u, s, p, base, exp, sign, result}, u = If[x == 0, 0, x];
-  {s, p} = MantissaExponent[u];
-  If[s != 0, {s = s*10; p = p - 1}];
-  base = ToString[PaddedForm[s, {ndig + 2, ndig}]];
-  exp = If[p >= 0, ToString[p], ToString[-p]];
-  If[StringLength[exp] < 2, exp = StringJoin["0", exp], exp = exp];
-  sign = If[p >= 0, "e+", "e-"];
-  result = StringJoin[base, sign, exp];
-  result]
+  Module[{u, s, p, base, exp, sign, result}, 
+   u = If[x == 0, 0, x]; {s, p} = MantissaExponent[u];
+   If[s != 0, {s = s*10; p = p - 1}];
+   base = ToString[PaddedForm[s, {ndig + 2, ndig}]];
+   exp = If[p >= 0, ToString[p], ToString[-p]];
+   If[StringLength[exp] < 2, exp = StringJoin["0", exp], exp = exp];
+   sign = If[p >= 0, "e+", "e-"];
+   result = StringJoin[base, sign, exp];
+   result
+  ]
 
-(*Define the function to generate data*)
-generateData[func_, vars_, order_, formatFunc_] :=
- 
- Module[{expandedPoly, coeffs, filteredCoeffs},
-  
-  (*Expand the function to the specified order*)
-  expandedPoly = series[func, vars, order];
-  
-  (*Get the coefficient list*)
-  coeffs = CoefficientList[expandedPoly, vars];
-  
-  (*Filter the coefficients based on the total degree while retaining \
-zeros*)
-  
-  filteredCoeffs = 
-   MapIndexed[If[Total[#2 - 1] <= order, #1, Nothing] &, 
-    coeffs, {Length[vars]}];
-  (*Flatten the list to get all coefficients and apply the formatting \
-function*)
-  
-  coeffs = formatFunc /@ N[Flatten[filteredCoeffs], 25];
-  (*Return the list of coefficients*)coeffs]
+(* Define the function to generate data *)
+generateData[func_, vars_, order_, formatFunc_] := 
+  Module[{expandedPoly, coeffs, filteredCoeffs},
+   (* Expand the function to the specified order *)
+   expandedPoly = series[func, vars, order];
+   (* Get the coefficient list *)
+   coeffs = CoefficientList[expandedPoly, vars];
+   (* Filter the coefficients based on the total degree while 
+   retaining zeros *)
+   filteredCoeffs = 
+     MapIndexed[If[Total[#2 - 1] <= order, #1, Nothing] &, 
+      coeffs, {Length[vars]}];
+   (* Flatten the list to get all coefficients and apply the 
+   formatting function *)
+   coeffs = formatFunc /@ N[Flatten[filteredCoeffs], 25];
+   (* Return the list of coefficients *)
+   coeffs
+  ]
 
-(*Define the number of rows for multi-row output*)
+(* Define the number of rows for multi-row output *)
 numRows = 4;
 
-(*Four rows*)(*Define the maximum width for formatting*)maxWidth = 45;
+(* Define the maximum width for formatting *)
+maxWidth = 45;
 
-(*Format the output for alignment and multi-row layout*)
-formatOutput[x0_, coeffs_] := 
- Module[{formattedCoeffs, numCoeffs, rows, rowStrings},
-  
-  (*Calculate the number of coefficients per row*)
-  numCoeffs = Length[coeffs];
-  rows = Ceiling[numCoeffs/numRows];
-  
-  (*Group coefficients into rows*)
-  formattedCoeffs = Partition[coeffs, Ceiling[numCoeffs/rows]];
-  
-  (*Create formatted output with multi-row layout*)
-  rowStrings = 
-   Riffle[StringJoin[
+(* Format the output for alignment and multi-row layout *)
+formatOutput[x0_, coeffs_, numRows_, maxWidth_] := 
+  Module[{formattedCoeffs, numCoeffs, rows, rowStrings},
+   (* Calculate the number of coefficients per row *)
+   numCoeffs = Length[coeffs];
+   rows = Ceiling[numCoeffs/numRows];
+   (* Group coefficients into rows *)
+   formattedCoeffs = Partition[coeffs, Ceiling[numCoeffs/rows], 
+     Ceiling[numCoeffs/rows], {1, 1}, ""];
+   (* Create formatted output with multi-row layout *)
+   rowStrings = 
+     Riffle[StringJoin[
        Riffle[StringPadLeft[#, maxWidth, " "] & /@ #, ", "] <> 
         If[Length[#] < numCoeffs, ",", ""] <> "\n"] & /@ 
-     formattedCoeffs, "\n"];
-  StringJoin[rowStrings]]
+      formattedCoeffs, "\n"];
+   StringJoin[rowStrings]
+  ]
 
-(*Collect all formatted data points*)
+(* Define parameters *)
+order = 3;
+
+(* Collect all formatted data points *)
 formattedData = 
-  StringJoin["M.fun.exp{\n", 
+  StringJoin["M.fun.exp = {\n", 
    StringJoin[
     Riffle[Table[
       StringJoin["{ x0 = ", ToString[x0, InputForm], ",\n", 
        formatOutput[x0, 
-        generateData[Exp[x + y + z + x0], {x, y, z}, order, Eform]], 
+        generateData[Exp[x + y + z + x0], {x, y, z}, order, Eform], 
+        numRows, maxWidth], 
        "\n}" <> 
         If[x0 != Last[{0, 0.001, 0.1, 1, 10, Pi/5, Pi/3}], ",", 
          ""]], {x0, {0, 0.001, 0.1, 1, 10, Pi/5, Pi/3}}], "\n\n"]], 
    "\n}"];
 
-(*Export the formatted data to a file*)
+(* Export the formatted data to a file *)
 Export["data.dat", formattedData, "Text"];
 
-(*Display the content of the file*)
+(* Display the content of the file *)
 FilePrint["data.dat"]
