@@ -242,7 +242,6 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
       printf("parallel comp dispatched over %d threads, nc=%ld [%d]\n", ma[0]->d->nth, nc, ++cnt);
     }
 #endif
-
     #pragma omp parallel for
     FOR(ia,sa) {
 #if DEBUG_COMPOSE

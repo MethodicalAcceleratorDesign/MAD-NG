@@ -136,7 +136,6 @@ hpoly_mul_par(const T *a, const T *b, T *c) // parallel version
     printf("parallel mul dispatched over %d threads, nc=%ld [%d]\n", d->nth, nc, ++cnt);
   }
 #endif
-
   #pragma omp parallel for
   FOR(t,d->nth) {
     ord_t i = 0; while (d->ocs[1+t][i] > c->hi+1) ++i;
