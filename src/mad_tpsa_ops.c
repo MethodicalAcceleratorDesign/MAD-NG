@@ -128,7 +128,15 @@ hpoly_mul_par(const T *a, const T *b, T *c) // parallel version
 {
   const D *d = c->d;
 
-  #pragma omp parallel for schedule(static,1)
+#if 0
+  static int cnt = 0;
+  if (cnt < 20) {
+    const idx_t *o2i = d->ord2idx;
+    long nc = (o2i[a->hi+1]-o2i[a->lo])*(o2i[b->hi+1]-o2i[b->lo]);
+    printf("parallel mul dispatched over %d threads, nc=%ld [%d]\n", d->nth, nc, ++cnt);
+  }
+#endif
+  #pragma omp parallel for
   FOR(t,d->nth) {
     ord_t i = 0; while (d->ocs[1+t][i] > c->hi+1) ++i;
     hpoly_mul(a, b, c, &d->ocs[1+t][i], TRUE);
@@ -444,7 +452,7 @@ FUN(mul) (const T *a, const T *b, T *r)
 #endif
 
 #ifdef _OPENMP
-      if (o2i[c->hi+1] - o2i[c->lo] > 10000)
+      if ((o2i[a->hi+1]-o2i[a->lo])*(o2i[b->hi+1]-o2i[b->lo]) > 100000000)
         hpoly_mul_par(a,b,c);
       else
 #endif

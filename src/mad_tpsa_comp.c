@@ -233,9 +233,16 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 
   if (hi_ord == 1) compose_ord1(sa,ma, sb,mb, mc);
 
-  #ifdef _OPENMP
-  else if (sa*hi_ord >= 4*5) { // 4 variables at 5th order
-    #pragma omp parallel for schedule(dynamic)
+#ifdef _OPENMP
+  else if (ma[0]->d->ord2idx[hi_ord+1] > 10000) {
+#if 0
+    static int cnt = 0;
+    if (cnt < 20) {
+      long nc = ma[0]->d->ord2idx[hi_ord+1];
+      printf("parallel comp dispatched over %d threads, nc=%ld [%d]\n", ma[0]->d->nth, nc, ++cnt);
+    }
+#endif
+    #pragma omp parallel for
     FOR(ia,sa) {
 #if DEBUG_COMPOSE
     printf("compose: thread no %d\n", omp_get_thread_num());
