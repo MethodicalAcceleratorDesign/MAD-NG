@@ -415,7 +415,38 @@ local map = {
 
 local nsnm = \snm -> ((snm+1)*(snm+2)/2) -- see snm_max above
 
-local function cpy_mult (m)
+local function get_mult (elm, m, n) -- copy multipoles from elem to mflw
+  local knl, ksl, dknl, dksl in elm
+
+  m.nmul = max(#knl, #ksl, #dknl, #dksl, n or 0)
+
+  for i=1,m.nmul do
+    m.knl[i] = ((knl[i] or 0) + (dknl[i] or 0)) / fact(i-1)
+    m.ksl[i] = ((ksl[i] or 0) + (dksl[i] or 0)) / fact(i-1)
+  end
+end
+
+local function adj_mult (m) -- adjust multipoles in mflw
+  local knl, ksl, nmul in m
+  m.nmul = 0
+
+  for i=nmul,1,-1 do
+    if abs(knl[i])+abs(ksl[i]) > 0 then m.nmul = i ; break end
+  end
+
+  if m.cmap then
+    if m.dapo > 0 and m.cmap ~= 'p' then
+      for i=1,m.nmul do
+        if not (is_number(knl[i]) and is_number(ksl[i])) then
+          m.cmap = 'p' ; break
+        end
+      end
+    end
+    xflw(m).nmul = m.nmul
+  end
+end
+
+local function cpy_mult (m) -- copy multipoles from mflw to cflw
   local c = xflw(m)
   c.nmul = m.nmul
   c.snm  = m.snm
@@ -434,38 +465,7 @@ local function cpy_mult (m)
     for i=1,nsnm(c.snm) do
       c.bfx[i-1] = xcpy(c.bfx[i-1], m.bfx[i])
       c.bfy[i-1] = xcpy(c.bfy[i-1], m.bfy[i])
-    end  
-  end
-end
-
-local function adj_mult (m)
-  local knl, ksl, nmul in m
-  m.nmul = 0
-
-  for i=nmul,1,-1 do
-    if abs(knl[i])+abs(ksl[i]) > 0 then m.nmul = i ; break end
-  end
-
-  if m.cmap then
-    if m.dapo > 0 then
-      for i=1,m.nmul do
-        if not (is_number(knl[i]) and is_number(ksl[i])) then
-          m.cmap = 'p' ; break
-        end
-      end
     end
-    xflw(m).nmul = m.nmul
-  end
-end
-
-local function get_mult (elm, m, n)
-  local knl, ksl, dknl, dksl in elm
-
-  m.nmul = max(#knl, #ksl, #dknl, #dksl, n or 0)
-
-  for i=1,m.nmul do
-    m.knl[i] = ((knl[i] or 0) + (dknl[i] or 0)) / fact(i-1)
-    m.ksl[i] = ((ksl[i] or 0) + (dksl[i] or 0)) / fact(i-1)
   end
 end
 
@@ -497,6 +497,9 @@ local function get_algn (e, m)
   if not (trn or rot) then return nil end
 
   if m.cmap then
+    if not (is_number(dx  ) and is_number(dy  ) and is_number(ds  ) and
+            is_number(dthe) and is_number(dphi) and is_number(dpsi) and
+            is_number(m.tlt)) then m.cmap = 'p' end
     local c = xflw(m)
     c.trn  = trn
     c.rot  = rot
@@ -563,6 +566,9 @@ local function cfringe (elm, m, dir, frng)
   end
 
   if m.cmap then
+    if not (is_number(e   ) and is_number(h   ) and is_number(a ) and
+            is_number(fint) and is_number(hgap) and is_number(f1) and
+            is_number(f2)) then m.cmap = 'p' end
     local c = xflw(m)
     c.frng = frng
     c.fmax = fmax
@@ -620,7 +626,7 @@ local function trackelm (elm, m, inter, thick, thin, fringe)
   if m.cmap then
     local cmap = map[m.cmap]
     if not (is_function(cmap[thick]) or is_function(cmap[thin])) then
-      thick, thin = cmap[thick], cmap[thin]
+      thick, thin = cmap[thick], cmap[thin] -- ensure consistency
     end
     fng = fng ~= fnil and cfringe or fng
     local c = xflw(m)
