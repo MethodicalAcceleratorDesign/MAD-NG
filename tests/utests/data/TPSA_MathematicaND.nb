@@ -1,3 +1,4 @@
+--GENERATE TAYLOR SERIES DIRECTLY IN 3D (TOO SLOW FOR PERIODIC AND HYPERBOLIC FUNCTIONS EXCEPT SIN/COS AND SINH/COSH)
 (* Define the series expansion function *)
 series[f_, vars : {_Symbol ..}, n_Integer?Positive] := 
   Module[{expr = 
@@ -82,3 +83,80 @@ Export["data.dat", formattedData, "Text"];
 
 (* Display the content of the file *)
 FilePrint["data.dat"]
+
+
+
+--SCRIPT TO GENERATE DATA WITH MULTINOMIAL METHOD 
+(*Compute the series coefficients*)
+data1 = N[
+   Table[SeriesCoefficient[ArcCoth[x], {x, Pi/3, n}], {n, 0, 15}], 25];
+
+(*Format the data to avoid scientific notation*)
+formattedData = 
+  ToString[NumberForm[#, 25, ExponentFunction -> (Null &), 
+      NumberPadding -> {"", ""}]] & /@ data1;
+
+(*Export the formatted data to a file*)
+Export["data1.dat", formattedData, "Lines"]
+
+
+FilePrint["data1.dat"]
+
+
+(*Define the Eform function*)
+Eform[x_?NumericQ, ndig_Integer : 20] := 
+ Module[{u, s, p, base, exp, sign, result}, u = If[x == 0, 0, x];
+  {s, p} = MantissaExponent[u];
+  If[s != 0, {s = s*10; p = p - 1}];
+  base = ToString[PaddedForm[s, {ndig + 2, ndig}]];
+  exp = If[p >= 0, ToString[p], ToString[-p]];
+  If[StringLength[exp] < 2, exp = StringJoin["0", exp], exp = exp];
+  sign = If[p >= 0, "e+", "e-"];
+  result = StringJoin[base, sign, exp];
+  result]
+
+(*Define the file names for the coefficients data file and the input \
+file*)
+dataFileName = "data1.dat";
+inputFileName = "C:\\Users\\anton\\Downloads\\fact_coef.txt";
+
+(*Read the coefficients from the file and initialize the vector*)
+data = ToExpression[StringSplit[Import[dataFileName, "Lines"]]];
+vector = N[
+  data];(*Ensure data is numeric*)(*Read the input file with pairs of \
+numbers*)lines = Import[inputFileName, "Lines"];
+
+(*Initialize a vector to store the results*)
+results = Table["", {Length[lines]}];
+
+(*Process each line*)
+Do[(*Split the line into firstNumber and secondNumber*){firstNumber, 
+    secondNumber} = ToExpression[StringSplit[lines[[i]]]];
+  (*Check if the index is valid*)
+  If[secondNumber <= Length[vector],(*Compute the result*)
+   result = firstNumber*vector[[secondNumber + 1]];
+   (*Store the formatted result in the results vector*)
+   results[[i]] = Eform /@ result,(*Handle invalid indices*)
+   results[[i]] = "Invalid Index"], {i, Length[lines]}];
+
+(*Filter out any invalid indices from the results*)
+results = Select[results, # =!= "Invalid Index" &];
+
+(*Format the results in rows of 4 columns each*)
+formatResults[res_List, cols_Integer] := 
+  StringJoin[
+   Riffle[Table[
+     StringJoin["    ", 
+      StringRiffle[res[[i ;; Min[i + cols - 1, Length[res]]]], 
+       ", "]], {i, 1, Length[res], cols}], ",\n"]];
+
+(*Construct the final output string*)
+outputString = 
+  StringJoin["{\n", "    x0 = 0.1,\n", formatResults[results, 4], 
+   "\n}"];
+
+(*Write the formatted string to a file*)
+outputFileName = "output.txt";
+Export[outputFileName, outputString, "Text"];
+
+Print["Results written to ", outputFileName];
