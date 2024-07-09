@@ -202,6 +202,7 @@ void     mad_ctpsa_deriv   (const ctpsa_t *a, ctpsa_t *c, idx_t iv);
 void     mad_ctpsa_derivm  (const ctpsa_t *a, ctpsa_t *c, ssz_t n, const ord_t m[]);
 void     mad_ctpsa_poisbra (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c, int nv);
 void     mad_ctpsa_taylor  (const ctpsa_t *a, ssz_t n, const cpx_t coef[], ctpsa_t *c);
+void     mad_ctpsa_taylor_h(const ctpsa_t *a, ssz_t n, const cpx_t coef[], ctpsa_t *c); // Horner
 
 // functions for differential algebra with internal real-to-complex conversion
 void     mad_ctpsa_poisbrat(const ctpsa_t *a, const  tpsa_t *b, ctpsa_t *c, int nv);

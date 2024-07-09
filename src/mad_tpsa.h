@@ -166,6 +166,7 @@ void    mad_tpsa_deriv   (const tpsa_t *a, tpsa_t *c, idx_t iv);
 void    mad_tpsa_derivm  (const tpsa_t *a, tpsa_t *c, ssz_t n, const ord_t m[]);
 void    mad_tpsa_poisbra (const tpsa_t *a, const tpsa_t *b, tpsa_t *c, int nv);
 void    mad_tpsa_taylor  (const tpsa_t *a, ssz_t n, const num_t coef[], tpsa_t *c);
+void    mad_tpsa_taylor_h(const tpsa_t *a, ssz_t n, const num_t coef[], tpsa_t *c); // Horner
 
 // high level functions
 void    mad_tpsa_axpb       (num_t a, const tpsa_t *x,

@@ -30,10 +30,8 @@
 
 enum { MANUAL_EXPANSION_ORD = 6 };
 
-#ifdef MAD_TPSA_TAYLOR_HORNER
-
 static inline void
-fun_taylor (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
+fun_taylor_h (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
 {
   assert(a && c && ord_coef);
   assert(n >= 1); // ord 0 treated outside
@@ -43,15 +41,13 @@ fun_taylor (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
   FUN(seti)(acp,0,0,0);           // (a-a_0)
   FUN(setval)(c,ord_coef[n]);     // f(a_n)
 
-  // Honer's method (slower by 50% - 100% because mul is always full order)
+  // Horner's method (slower by 50% - 100% because mul is always full order)
   while (n-- > 0) {
     FUN(mul)(acp,c,c);            //                    f^(n)(a_n)*(a-a_0)
     FUN(seti)(c,0,1,ord_coef[n]); // f^(n-1)(a_{n-1}) + f^(n)(a_n)*(a-a_0)
   }
   REL_TMPX(acp);
 }
-
-#else
 
 static inline void
 fun_taylor (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
@@ -89,7 +85,6 @@ fun_taylor (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
     REL_TMPX(pow), REL_TMPX(acp);
   }
 }
-#endif
 
 static inline void
 sincos_taylor (const T *a, T *s, T *c,
@@ -134,6 +129,20 @@ sincos_taylor (const T *a, T *s, T *c,
 }
 
 // --- public -----------------------------------------------------------------o
+
+void
+FUN(taylor_h) (const T *a, ssz_t n, const NUM coef[n], T *c)
+{
+  assert(a && c && coef); DBGFUN(->);
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
+  ensure(n > 0, "invalid number of coefficients (>0 expected)");
+
+  ord_t to = MIN(n-1, c->mo);
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,coef[0]); DBGFUN(<-); return; }
+
+  fun_taylor_h(a,c,to,coef);
+  DBGFUN(<-);
+}
 
 void
 FUN(taylor) (const T *a, ssz_t n, const NUM coef[n], T *c)
