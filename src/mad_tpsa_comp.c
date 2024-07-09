@@ -234,7 +234,7 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
   if (hi_ord == 1) compose_ord1(sa,ma, sb,mb, mc);
 
 #ifdef _OPENMP
-  else if (ma[0]->d->ord2idx[hi_ord+1] > 10000) {
+  else if (ma[0]->d->ord2idx[hi_ord+1] > 100000) {
 #if 0
     static int cnt = 0;
     if (cnt < 20) {
