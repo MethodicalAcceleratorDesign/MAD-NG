@@ -452,7 +452,8 @@ FUN(mul) (const T *a, const T *b, T *r)
 #endif
 
 #ifdef _OPENMP
-      if ((o2i[a->hi+1]-o2i[a->lo])*(o2i[b->hi+1]-o2i[b->lo]) > 100000000)
+      if ((o2i[a->hi+1]-o2i[a->lo]) > 100000 &&
+          (o2i[b->hi+1]-o2i[b->lo]) > 100000)
         hpoly_mul_par(a,b,c);
       else
 #endif
