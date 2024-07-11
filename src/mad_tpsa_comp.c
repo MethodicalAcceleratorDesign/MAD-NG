@@ -213,7 +213,7 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
   if (sa < 0) chk_sa = FALSE, sa = -sa; // special case sa > nv (not for damap)
   check_compose(sa, ma, sb, mb, mc, chk_sa);
 
-  const D *d = ma[0]->d;
+  const D *d = ma[0]->d; (void)d;
 
   // handle aliasing
   log_t amc[sa];
@@ -237,7 +237,7 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 
 #ifdef _OPENMP
   else if (d->pcomp && hi_ord >= 6 && d->ord2idx[hi_ord+1] >= d->pcomp) {
-    #pragma omp parallel for
+    #pragma omp parallel for schedule(static)
     FOR(ia,sa) {
 #if DEBUG_COMPOSE
     printf("compose: thread no %d\n", omp_get_thread_num());
