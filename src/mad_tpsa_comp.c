@@ -237,7 +237,7 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 
 #ifdef _OPENMP
   else if (d->pcomp && hi_ord >= 6 && d->ord2idx[hi_ord+1] >= d->pcomp) {
-    #pragma omp parallel for schedule(static)
+    #pragma omp parallel for
     FOR(ia,sa) {
 #if DEBUG_COMPOSE
     printf("compose: thread no %d\n", omp_get_thread_num());

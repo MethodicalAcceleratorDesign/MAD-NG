@@ -129,13 +129,13 @@ hpoly_mul_par(const T *a, const T *b, T *c) // parallel version
   const D *d = c->d;
 
   // fprintf(stderr, "pmul: c.lo=%d, c.hi=%d, c.mo=%d\n", c->lo, c->hi, c->mo);
-  #pragma omp parallel for schedule(static)
+  #pragma omp parallel for
   FOR(t,d->nth) {
     ord_t i = 0; while (d->ocs[1+t][i] > c->hi+1) ++i;
     // fprintf(stderr, "[t=%d, i=%d, o=%d] ", t, i, d->ocs[1+t][i]);
     hpoly_mul(a, b, c, &d->ocs[1+t][i], TRUE);
   }
-  fprintf(stderr, "\n");
+  // fprintf(stderr, "\n");
 }
 #endif
 
