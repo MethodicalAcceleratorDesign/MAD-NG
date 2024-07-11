@@ -128,19 +128,14 @@ hpoly_mul_par(const T *a, const T *b, T *c) // parallel version
 {
   const D *d = c->d;
 
-#if 0
-  static int cnt = 0;
-  if (cnt < 20) {
-    const idx_t *o2i = d->ord2idx;
-    long nc = (o2i[a->hi+1]-o2i[a->lo])*(o2i[b->hi+1]-o2i[b->lo]);
-    printf("parallel mul dispatched over %d threads, nc=%ld [%d]\n", d->nth, nc, ++cnt);
-  }
-#endif
-  #pragma omp parallel for
+  // fprintf(stderr, "pmul: c.lo=%d, c.hi=%d, c.mo=%d\n", c->lo, c->hi, c->mo);
+  #pragma omp parallel for schedule(static)
   FOR(t,d->nth) {
     ord_t i = 0; while (d->ocs[1+t][i] > c->hi+1) ++i;
+    // fprintf(stderr, "[t=%d, i=%d, o=%d] ", t, i, d->ocs[1+t][i]);
     hpoly_mul(a, b, c, &d->ocs[1+t][i], TRUE);
   }
+  fprintf(stderr, "\n");
 }
 #endif
 
@@ -415,6 +410,7 @@ FUN(mul) (const T *a, const T *b, T *r)
 {
   assert(a && b && r); DBGFUN(->);
   ensure(IS_COMPAT(a,b,r), "incompatibles GTPSA (descriptors differ)");
+  const D *d = a->d;
 
   ord_t chi = MIN(a->hi+b->hi, r->mo);
 
@@ -435,7 +431,6 @@ FUN(mul) (const T *a, const T *b, T *r)
     c->hi = chi;
 
     if (a->hi && b->hi && a->lo == 1 && b->lo == 1) {
-      const D *d = a->d;
       const idx_t hod = d->mo/2;
       const idx_t *lc = d->L[hod+1];
       const idx_t *idx[2] = { d->L_idx[hod+1][0], d->L_idx[hod+1][2] };
@@ -452,13 +447,13 @@ FUN(mul) (const T *a, const T *b, T *r)
 #endif
 
 #ifdef _OPENMP
-      if ((o2i[a->hi+1]-o2i[a->lo]) > 100000 &&
-          (o2i[b->hi+1]-o2i[b->lo]) > 100000)
+      if (d->pmul && c->hi >= 6 &&
+          (o2i[a->hi+1]-o2i[a->lo]) >= d->pmul &&
+          (o2i[b->hi+1]-o2i[b->lo]) >= d->pmul)
         hpoly_mul_par(a,b,c);
       else
 #endif
         hpoly_mul_ser(a,b,c);
-
     }
 #if TPSA_STRICT
   }

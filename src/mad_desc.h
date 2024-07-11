@@ -41,10 +41,10 @@ typedef struct desc_ desc_t;
 
 extern const  ord_t  mad_tpsa_dflt;
 extern const  ord_t  mad_tpsa_same;
-extern        num_t  mad_tpsa_eps;  // consider coef < eps as zero for dflt eps
-extern        ord_t  mad_tpsa_dbgo; // effective only with TPSA_DEBUG > 0
-extern        int    mad_tpsa_dbgf; // effective only with TPSA_DEBUG > 0
-extern        int    mad_tpsa_dbga; // effective only with TPSA_DEBUG > 0
+extern        num_t  mad_tpsa_eps;   // consider coef < eps as zero for dflt eps
+extern        ord_t  mad_tpsa_dbgo;  // effective only with TPSA_DEBUG > 0
+extern        int    mad_tpsa_dbgf;  // effective only with TPSA_DEBUG > 0
+extern        int    mad_tpsa_dbga;  // effective only with TPSA_DEBUG > 0
 extern const desc_t *mad_desc_curr;
 
 // --- interface --------------------------------------------------------------o
@@ -80,6 +80,9 @@ idx_t mad_desc_idxsm     (const desc_t *d,          ssz_t n, const idx_t m []); 
 idx_t mad_desc_nxtbyvar  (const desc_t *d,          ssz_t n,       ord_t m []);
 idx_t mad_desc_nxtbyord  (const desc_t *d,          ssz_t n,       ord_t m []);
 ord_t mad_desc_mono      (const desc_t *d, idx_t i, ssz_t n,       ord_t m_[], ord_t *p_);
+
+// parallelised operations thresholds, e.g. multiplication and composition (0 = disable)
+void  mad_desc_paropsth  (const desc_t *d, ssz_t *mult_, ssz_t *comp_); // return previous values
 
 // for debugging
 void  mad_desc_info      (const desc_t *d, FILE *fp_);
