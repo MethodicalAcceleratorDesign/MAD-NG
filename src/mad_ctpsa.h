@@ -58,7 +58,7 @@ ord_t    mad_ctpsa_ord     (const ctpsa_t *t, log_t   hi_ ); // get mo or hi
 log_t    mad_ctpsa_isnul   (const ctpsa_t *t);
 log_t    mad_ctpsa_isval   (const ctpsa_t *t);
 log_t    mad_ctpsa_isvalid (const ctpsa_t *t);
-num_t    mad_ctpsa_density (const ctpsa_t *t); // ratio nz/nc in [lo,hi]
+num_t    mad_ctpsa_density (const ctpsa_t *t, num_t *mean_, num_t *var_); // ratio nz/nc in [0] U [lo,hi]
 
 // initialization / manipulation
 void     mad_ctpsa_copy    (const ctpsa_t *t, ctpsa_t *r);
