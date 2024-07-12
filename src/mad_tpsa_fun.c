@@ -30,8 +30,10 @@
 
 enum { MANUAL_EXPANSION_ORD = 6 };
 
+#ifdef MAD_TPSA_TAYLOR_HORNER
+
 static inline void
-fun_taylor_h (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
+fun_taylor (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
 {
   assert(a && c && ord_coef);
   assert(n >= 1); // ord 0 treated outside
@@ -41,13 +43,15 @@ fun_taylor_h (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
   FUN(seti)(acp,0,0,0);           // (a-a_0)
   FUN(setval)(c,ord_coef[n]);     // f(a_n)
 
-  // Horner's method (slower by 50% - 100% because mul is always full order)
+  // Honer's method (slower by 50% - 100% because mul is always full order)
   while (n-- > 0) {
     FUN(mul)(acp,c,c);            //                    f^(n)(a_n)*(a-a_0)
     FUN(seti)(c,0,1,ord_coef[n]); // f^(n-1)(a_{n-1}) + f^(n)(a_n)*(a-a_0)
   }
   REL_TMPX(acp);
 }
+
+#else
 
 static inline void
 fun_taylor (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
@@ -85,6 +89,7 @@ fun_taylor (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
     REL_TMPX(pow), REL_TMPX(acp);
   }
 }
+#endif
 
 static inline void
 sincos_taylor (const T *a, T *s, T *c,
@@ -129,20 +134,6 @@ sincos_taylor (const T *a, T *s, T *c,
 }
 
 // --- public -----------------------------------------------------------------o
-
-void
-FUN(taylor_h) (const T *a, ssz_t n, const NUM coef[n], T *c)
-{
-  assert(a && c && coef); DBGFUN(->);
-  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
-  ensure(n > 0, "invalid number of coefficients (>0 expected)");
-
-  ord_t to = MIN(n-1, c->mo);
-  if (!to || FUN(isval)(a)) { FUN(setval)(c,coef[0]); DBGFUN(<-); return; }
-
-  fun_taylor_h(a,c,to,coef);
-  DBGFUN(<-);
-}
 
 void
 FUN(taylor) (const T *a, ssz_t n, const NUM coef[n], T *c)
@@ -466,27 +457,37 @@ FUN(sinc) (const T *a, T *c)
 #endif
     FUN(setval)(c,f0); DBGFUN(<-); return;
   }
-
-  if (fabs(a0) > 1e-12) { // sin(x)/x
-    T *t = GET_TMPX(c);
-    FUN(sin)(a,t);
-    FUN(div)(t,a,c);
-    REL_TMPX(t); DBGFUN(<-); return;
-  }
-// prefer explicit above? not better in term of stability...
-//    NUM sa = sin(a0), ca = cos(a0), _a0 = 1/a0, f1;
-//    num_t fo = 1;
-//    ord_coef[0] = f0;
-//    ord_coef[1] = (ca - f0)*_a0;
-//    for (int o = 2; o <= to; ++o) {
-//      fo *= o; // formula numerically unstable in (0, 0.5), need some work
-//      f1  = o & 1 ? (ca=-ca,ca) : (sa=-sa,sa);
-//      ord_coef[o] = (f1/fo - ord_coef[o-1])*_a0;
-//      // printf("[%02d]=%+.17e\n", o, 1 - ord_coef[o-1]*fo/f1);
-//    }
-
-  // sinc(x) at x=0
   NUM ord_coef[to+1];
+  if (fabs(a0) > 1e-12) { // sin(x)/x
+  //   T *t = GET_TMPX(c);
+  //   FUN(sin)(a,t);
+  //   FUN(div)(t,a,c);
+  //   REL_TMPX(t); DBGFUN(<-); return;
+  // }
+// prefer explicit above? not better in term of stability...
+   NUM sa = sin(a0), ca = cos(a0), _a0 = 1/a0, f1;
+   num_t f0 = sa*_a0;
+   ord_coef[0] = f0;
+   ord_coef[1] = -(a0 / 3) + (a0 * a0 * a0) / 30 - (a0 * a0 * a0 * a0 * a0) / 840 + (a0 * a0 * a0 * a0 * a0 * a0 * a0) / 45360;
+   ord_coef[2] = (-(1 / 3) + (a0 * a0) / 10 - (a0 * a0 * a0 * a0) / 168 + (a0 * a0 * a0 * a0 * a0 * a0) / 6480 -
+            (a0 * a0 * a0 * a0 * a0 * a0 * a0 * a0) / 443520)/2;
+   ord_coef[3] = (a0 / 5 - (a0 * a0 * a0) / 42 + (a0 * a0 * a0 * a0 * a0) / 1080 - (a0 * a0 * a0 * a0 * a0 * a0 * a0) / 55440)/6;
+   ord_coef[4] = (1/5 -1/14*(a0*a0) + 1/216*(a0*a0*a0*a0) -1/7920*(a0*a0*a0*a0*a0*a0))/24;
+   ord_coef[5] = (1/7 * a0 + 1/54 * a0 * a0 * a0 - 1/1320 * a0 * a0 * a0 * a0 * a0 + 1/65520 * a0 * a0 * a0 * a0 * a0 * a0 * a0)/120;
+   ord_coef[6] = (-1/7 + 1/18*(a0*a0) -1/264*(a0*a0*a0*a0) + 1/9360*(a0*a0*a0*a0*a0*a0))/720;
+   ord_coef[7] = ((a0 / 9.0)- (a0 * a0 * a0) / 66.0 + (a0 * a0 * a0 * a0 * a0) / 1560.0 - (a0 * a0 * a0 * a0 * a0 * a0 * a0) / 75600.0)/5040;
+
+   int s = 1;
+   for (int o = 8; o <= to; ++o) {
+     f0 *= o; // formula numerically unstable in (0, 0.5), need some work
+     f1  = o & 1 ? (ca=-ca,ca) : (sa=-sa,sa);
+     ord_coef[o] = (f1/f0 - ord_coef[o-1])*_a0;
+     printf("[%02d]=%+.17e\n", o, 1 - ord_coef[o-1]*f0/f1);
+   }
+   fun_taylor(a,c,to,ord_coef); return;
+  }
+  // sinc(x) at x=0
+  //NUM ord_coef[to+1];
   ord_coef[0] = 1;
   ord_coef[1] = 0;
   for (int o = 2; o <= to; ++o)
