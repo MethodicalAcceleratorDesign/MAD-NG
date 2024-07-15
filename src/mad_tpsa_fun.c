@@ -19,6 +19,7 @@
 
 #include <string.h>
 #include <complex.h>
+#include <math.h>
 
 #include "mad_log.h"
 #include "mad_cst.h"
@@ -458,32 +459,53 @@ FUN(sinc) (const T *a, T *c)
     FUN(setval)(c,f0); DBGFUN(<-); return;
   }
   NUM ord_coef[to+1];
-  if (fabs(a0) > 1e-12) { // sin(x)/x
-  //   T *t = GET_TMPX(c);
-  //   FUN(sin)(a,t);
-  //   FUN(div)(t,a,c);
-  //   REL_TMPX(t); DBGFUN(<-); return;
-  // }
-// prefer explicit above? not better in term of stability...
+  if (fabs(a0) > 0.5) { // sin(x)/x
+    T *t = GET_TMPX(c);
+    FUN(sin)(a,t);
+    FUN(div)(t,a,c);
+    REL_TMPX(t); DBGFUN(<-); return;
+  }
+
+  if (fabs(a0) > 1e-12) { 
+
+   NUM fact = 1;
    NUM sa = sin(a0), ca = cos(a0), _a0 = 1/a0, f1;
+   NUM odd_coef[6], even_coef[6], scalar = -1;
+   NUM a2 = pow(a0,2), a3 = pow(a0,3), a4 = pow(a0,4), a5 = pow(a0,5), a6 = pow(a0,6), a7 = pow(a0,7), 
+   a8 = pow(a0,8), a9 = pow(a0,9), a10 = pow(a0,10), a11 = pow(a0,11), a12 = pow(a0,12), a13 = pow(a0,13);
+
+
+   odd_coef[0] = 30, odd_coef[1] = -840, odd_coef[2] = 45360,
+   odd_coef[3] = -3991680, odd_coef[4] = 518918400, odd_coef[5] = -93405312000;
+
+   even_coef[0] = 10, even_coef[1] = -168, even_coef[2] = 6480,
+   even_coef[3] = -443520, even_coef[4] = 47174400, even_coef[5] = -7185024000;
+
+   for (int o = 0; o < to; o+=2) {
+     fact *= ((o+1)*(o+2)); 
+     odd_coef[0]  = ((o>0)*mad_num_sign(odd_coef[0])*12          + odd_coef[0]);
+     odd_coef[1]  = ((o>0)*mad_num_sign(odd_coef[1])*240         + odd_coef[1]);
+     odd_coef[2]  = ((o>0)*mad_num_sign(odd_coef[2])*1080        + odd_coef[2]);
+     odd_coef[3]  = ((o>0)*mad_num_sign(odd_coef[3])*725760      + odd_coef[3]);
+     odd_coef[4]  = ((o>0)*mad_num_sign(odd_coef[4])*79833600    + odd_coef[4]);
+     odd_coef[5]  = ((o>0)*mad_num_sign(odd_coef[5])*12454041600 + odd_coef[5]);
+
+     even_coef[0] = ((o>0)*mad_num_sign(even_coef[0])*4          + even_coef[0]);
+     even_coef[1] = ((o>0)*mad_num_sign(even_coef[1])*48         + even_coef[1]);
+     even_coef[2] = ((o>0)*mad_num_sign(even_coef[2])*1440       + even_coef[2]);
+     even_coef[3] = ((o>0)*mad_num_sign(even_coef[3])*80640      + even_coef[3]);
+     even_coef[4] = ((o>0)*mad_num_sign(even_coef[4])*7257600    + even_coef[4]);
+     even_coef[5] = ((o>0)*mad_num_sign(even_coef[5])*958003200  + even_coef[5]);
+
+     scalar  = (mad_num_sign(scalar)*2 + scalar);
+
+     ord_coef[(o+1)       ] = (pow(-1,o/2)*(1./scalar*a0 + 1./ odd_coef[0]*a3 + 1./ odd_coef[1]*a5 + 1./ odd_coef[2]*a7 + 1./ odd_coef[3]*a9 + 1./ odd_coef[4]*a11 + 1./ odd_coef[5]*a13))*((o+2)/fact);
+     ord_coef[(o+2)%(to+2)] = (pow(-1,o/2)*(1./scalar    + 1./even_coef[0]*a2 + 1./even_coef[1]*a4 + 1./even_coef[2]*a6 + 1./even_coef[3]*a8 + 1./even_coef[4]*a10 + 1./even_coef[5]*a12))/(      fact);
+   }
+
    num_t f0 = sa*_a0;
    ord_coef[0] = f0;
-   ord_coef[1] = -(a0 / 3) + (a0 * a0 * a0) / 30 - (a0 * a0 * a0 * a0 * a0) / 840 + (a0 * a0 * a0 * a0 * a0 * a0 * a0) / 45360;
-   ord_coef[2] = (-(1 / 3) + (a0 * a0) / 10 - (a0 * a0 * a0 * a0) / 168 + (a0 * a0 * a0 * a0 * a0 * a0) / 6480 -
-            (a0 * a0 * a0 * a0 * a0 * a0 * a0 * a0) / 443520)/2;
-   ord_coef[3] = (a0 / 5 - (a0 * a0 * a0) / 42 + (a0 * a0 * a0 * a0 * a0) / 1080 - (a0 * a0 * a0 * a0 * a0 * a0 * a0) / 55440)/6;
-   ord_coef[4] = (1/5 -1/14*(a0*a0) + 1/216*(a0*a0*a0*a0) -1/7920*(a0*a0*a0*a0*a0*a0))/24;
-   ord_coef[5] = (1/7 * a0 + 1/54 * a0 * a0 * a0 - 1/1320 * a0 * a0 * a0 * a0 * a0 + 1/65520 * a0 * a0 * a0 * a0 * a0 * a0 * a0)/120;
-   ord_coef[6] = (-1/7 + 1/18*(a0*a0) -1/264*(a0*a0*a0*a0) + 1/9360*(a0*a0*a0*a0*a0*a0))/720;
-   ord_coef[7] = ((a0 / 9.0)- (a0 * a0 * a0) / 66.0 + (a0 * a0 * a0 * a0 * a0) / 1560.0 - (a0 * a0 * a0 * a0 * a0 * a0 * a0) / 75600.0)/5040;
-
-   int s = 1;
-   for (int o = 8; o <= to; ++o) {
-     f0 *= o; // formula numerically unstable in (0, 0.5), need some work
-     f1  = o & 1 ? (ca=-ca,ca) : (sa=-sa,sa);
-     ord_coef[o] = (f1/f0 - ord_coef[o-1])*_a0;
-     printf("[%02d]=%+.17e\n", o, 1 - ord_coef[o-1]*f0/f1);
-   }
+   //ord_coef[15] = (1./scalar    + 1./even_coef[0]*a2 + 1./even_coef[1]*a4 + 1./even_coef[2]*a6 + 1./even_coef[3]*a8 + 1./even_coef[4]*a10 + 1./even_coef[5]*a12)/(      fact);
    fun_taylor(a,c,to,ord_coef); return;
   }
   // sinc(x) at x=0
