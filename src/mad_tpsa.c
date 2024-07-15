@@ -39,33 +39,32 @@
 
 // --- debugging --------------------------------------------------------------o
 
-// histogram by deciles 0..10
-static long long count_nz     =  0;
-static long long ratio_nz[11] = {0};
-static long long ratio_nn[11] = {0};
+static num_t dst_cnt  = 0;
+static num_t dst_sum  = 0;
+static num_t dst_sum2 = 0;
 
 static inline num_t
-ratio (const T *t)
+density (const T *t, num_t *rr_mo_)
 {
-  if (t->lo > t->hi) {
-    ratio_nz[10]++;
-    ratio_nn[10]++;
-    return 1;
+  long nz = t->coef[0] != 0;
+  long nn = 1;
+
+  if (t->lo <= t->hi) {
+    TPSA_SCAN(t) if (t->coef[i]) ++nz;
+    nn += o2i[t->hi+1] - o2i[t->lo];
   }
 
-  long  nz  = 0;
-  TPSA_SCAN(t) if (t->coef[i]) ++nz;
-  long  nn = o2i[t->hi+1] - o2i[t->lo];
   num_t rr = (num_t)nz / nn;
+  dst_cnt  += 1;
+  dst_sum  += rr;
+  dst_sum2 += rr*rr;
 
-  int i = rint(rr*10.5); i = MIN(i,10);
-  ratio_nz[i] += nz;
-  ratio_nn[i] += nn;
+  if (rr_mo_) *rr_mo_ = rr*nn / t->d->ord2idx[t->mo+1];
   return rr;
 }
 
 static inline log_t
-check (const T *t, ord_t *o_, num_t *r_)
+check (const T *t, ord_t *o_, num_t *d_)
 {
   ord_t _o = 0;
 
@@ -77,15 +76,9 @@ check (const T *t, ord_t *o_, num_t *r_)
     if (FUN(nzero0)(t,t->lo,t->lo,0) < 0) {_o = t->lo; goto ret;}
     if (FUN(nzero0)(t,t->hi,t->hi,0) < 0) {_o = t->hi; goto ret;}
   }
-  (void)count_nz;
-#else
-  if (t->hi) {
-    if (FUN(nzero0)(t,t->lo,t->lo,0) < 0) ++count_nz;
-    if (FUN(nzero0)(t,t->hi,t->hi,0) < 0) ++count_nz;
-  }
 #endif
 
-  if (r_) *r_ = ratio(t);
+  if (d_) *d_ = density(t, 0);
   return TRUE;
 
 ret:
@@ -139,36 +132,6 @@ FUN(debug) (const T *t, str_t name_, str_t fname_, int line_, FILE *stream_)
   if (mad_tpsa_dbga <= 3) ensure(ok, "corrupted TPSA detected");
   return ok;
 }
-
-#ifndef MAD_CTPSA_IMPL
-void
-mad_tpsa_clrdensity (void)
-{
-  count_nz = 0;
-  FOR(i,11) ratio_nz[i] = ratio_nn[i] = 0;
-}
-
-void
-mad_tpsa_prtdensity (FILE *stream_)
-{
-  if (!stream_) stream_ = stdout;
-  long long sum_nn = 0, sum_nz = 0;
-  FOR(i,11) sum_nz += ratio_nz[i], sum_nn += ratio_nn[i];
-  if (!sum_nn) { fprintf(stream_,"no tpsa density available.\n"); return; }
-
-  fprintf(stream_,"tpsa average density with %lld lazy lo-hi:\n", count_nz);
-  FOR(i,11) {
-    ensure(ratio_nz[i] <= ratio_nn[i], "unexpect ratio > 1");
-    fprintf(stream_,"i=%2d: nz=%15lld, nn=%15lld, r=%6.2f, p=%6.2f%%\n",
-      i, ratio_nz[i], ratio_nn[i],
-      ratio_nn[i] ? 10*(num_t)ratio_nz[i]/ratio_nn[i] : 0,
-      100*(num_t)ratio_nn[i]/sum_nn);
-  }
-  fprintf(stream_,"total nz=%15lld, nn=%15lld, r=%6.2f\n",
-          sum_nz, sum_nn, 10*(num_t)sum_nz/sum_nn);
-  fflush(stream_);
-}
-#endif
 
 // --- introspection ----------------------------------------------------------o
 
@@ -250,10 +213,18 @@ FUN(isvalid) (const T *t)
 }
 
 num_t
-FUN(density) (const T *t)
+FUN(density) (const T *t, num_t *mean_, num_t *var_)
 {
   assert(t);
-  return ratio(t);
+  num_t dst = density(t, 0);
+
+  if (mean_ || var_) {
+    num_t mu = dst_sum/dst_cnt;
+    if (mean_) *mean_ = mu;
+    if (var_ ) *var_  = dst_sum2/dst_cnt - mu*mu;
+  }
+
+  return dst;
 }
 
 // --- init (unsafe) ----------------------------------------------------------o

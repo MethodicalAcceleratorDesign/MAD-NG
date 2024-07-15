@@ -38,12 +38,12 @@
 // --- globals ----------------------------------------------------------------o
 
 // must be global variables for access from LuaJIT FFI.
-const  ord_t  mad_tpsa_dflt = -1;
-const  ord_t  mad_tpsa_same = -2;
-       num_t  mad_tpsa_eps  =  1e-40;
-       ord_t  mad_tpsa_dbgo = -1; // effective only with TPSA_DEBUG > 0
-       int    mad_tpsa_dbgf =  0; // effective only with TPSA_DEBUG > 0
-       int    mad_tpsa_dbga =  0; // effective only with TPSA_DEBUG > 0
+const  ord_t  mad_tpsa_dflt  = -1;
+const  ord_t  mad_tpsa_same  = -2;
+       num_t  mad_tpsa_eps   =  1e-40;
+       ord_t  mad_tpsa_dbgo  = -1; // effective only with TPSA_DEBUG > 0
+       int    mad_tpsa_dbgf  =  0; // effective only with TPSA_DEBUG > 0
+       int    mad_tpsa_dbga  =  0; // effective only with TPSA_DEBUG > 0
 
 // last descriptor created or searched (used to create GTPSA when d is NULL)
 const desc_t *mad_desc_curr = NULL;
@@ -165,8 +165,9 @@ set_monos (D *d) // builds the monomials matrix in Tv order
   DBGFUN(->);
   assert(d && d->no);
 
-  int n = d->nn;
+  int n = d->nn; // TODO: avoid overflow for large np and/or po...
   u64_t nc = max_nc(n, d->mo); // upper bound
+  // u64_t nc = max_nc(nv, mo) + max_nc(nv, mo-po) * max_nc(np, po);
 
   // check for overflow, then start with (6,8)=3003
   d->nc = nc <= 0 || nc > DESC_WARN_MONO ? (ssz_t)max_nc(6,8) : (ssz_t)nc;
@@ -1013,9 +1014,9 @@ desc_build (int nn, ord_t mo, int np, ord_t po, const ord_t no_[nn], log_t share
     d->shared = mad_malloc(sizeof *d->shared); *d->shared=0, d->sh=mad_tpsa_dflt;
     set_monos (d);
     tbl_by_var(d);
-    tbl_by_ord(d); if ((err = tbl_check_T(d))) { eid=1; goto error; }
-    tbl_set_H (d); if ((err = tbl_check_H(d))) { eid=2; goto error; }
-    tbl_set_L (d); if ((err = tbl_check_L(d))) { eid=3; goto error; }
+    tbl_by_ord(d); if (DESC_DEBUG && (err = tbl_check_T(d))) { eid=1; goto error; }
+    tbl_set_H (d); if (DESC_DEBUG && (err = tbl_check_H(d))) { eid=2; goto error; }
+    tbl_set_L (d); if (DESC_DEBUG && (err = tbl_check_L(d))) { eid=3; goto error; }
     set_thread(d);
   } else {
     d->shared  = dc->shared; ++*d->shared, d->sh = dc->id;
@@ -1229,6 +1230,17 @@ mad_desc_maxlen (const D *d, ord_t mo)
   if (mo == mad_tpsa_dflt) mo = d->mo; else
   ensure(mo <= d->mo, "invalid order %d (exceeds maximum order %d)", mo,d->mo);
   DBGFUN(<-); return d->ord2idx[mo+1];
+}
+
+void
+mad_desc_paropsth (const D *d, ssz_t *mult_, ssz_t *comp_)
+{
+  assert(d); DBGFUN(->);
+  D *dd = (D*)d;
+  ssz_t t;
+  if (mult_) SWAP(dd->pmul , *mult_, t);
+  if (comp_) SWAP(dd->pcomp, *comp_, t);
+  DBGFUN(<-);
 }
 
 void

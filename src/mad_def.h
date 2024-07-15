@@ -108,6 +108,19 @@ typedef const void*      ptr_t;
     19,18,17,16,15,14,13,12,11,10, \
      9, 8, 7, 6, 5, 4, 3, 2, 1, 0
 
+// --- timers -----------------------------------------------------------------o
+
+#define TIMEIT(rt,ct,...) \
+  { \
+    clock_t c0, c1;         /* CPU  time */ \
+    struct timespec t0, t1; /* real time */ \
+    clock_gettime(CLOCK_REALTIME, &t0); c0 = clock(); \
+    { __VA_ARGS__; } \
+    clock_gettime(CLOCK_REALTIME, &t1); c1 = clock(); \
+    rt = (num_t)t1.tv_sec-t0.tv_sec + (num_t)(t1.tv_nsec-t0.tv_nsec)*1e-9; \
+    ct = (num_t)(c1-c0)/CLOCKS_PER_SEC; \
+  }
+
 // --- GNU C -----------------------------------------------------------------o
 
 #ifndef __GNUC__

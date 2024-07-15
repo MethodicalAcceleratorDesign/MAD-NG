@@ -53,6 +53,7 @@ struct desc_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
 
   int   uno, nth;    // user provided no, max #threads or 1
   ssz_t nc;          // number of coefs (max length of TPSA)
+  ssz_t pmul, pcomp; // thresholds for parallel mult and compose (0 = disable)
 
   int   *shared;     // counter of shared desc (all tables below except prms)
   ord_t *monos,      // 'matrix' storing the monomials (sorted by var)
