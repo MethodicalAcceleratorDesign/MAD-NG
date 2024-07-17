@@ -912,11 +912,27 @@ FUN(asinc) (const T *a, T *c)
     FUN(setval)(c,f0); DBGFUN(<-); return;
   }
 
-  if (fabs(a0) > 1e-12) { // asin(x)/x
+  if (fabs(a0) > 0.32) { // asin(x)/x
     T *t = GET_TMPX(c);
     FUN(asin)(a,t);
     FUN(div)(t,a,c);
     REL_TMPX(t); DBGFUN(<-); return;
+  }
+
+  if (fabs(a0) > 1e-12) { // asin(x)/x
+    NUM ord_coef[to+1];
+    NUM temp_coef[21];//one can specify according to the accuracy requests
+    ord_coef[0] = mad_num_asinc(a0);
+    temp_coef[0] = 1./3;
+    for int (i = 1; i <= 20; ++i)
+    temp_coef[i] = temp_coef[i-1]*SQR(2*i + 1)./(mad_num_powi(2,i)*(2*i + 3));
+    
+
+    for (int o = 2; o <= to; ++o)
+    ord_coef[o] = (ord_coef[o-2] * SQR(o-1)) / (o * (o+1));
+
+  fun_taylor(a,c,to,ord_coef);
+   return;
   }
 
   // asinc(x) at x=0
