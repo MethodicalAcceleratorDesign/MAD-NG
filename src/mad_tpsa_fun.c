@@ -925,7 +925,7 @@ FUN(asinc) (const T *a, T *c)
     ord_coef[0] = mad_num_asinc(a0);
     temp_coef[0] = 1./3;
     for int (i = 1; i <= 20; ++i)
-    temp_coef[i] = temp_coef[i-1]*SQR(2*i + 1)./(mad_num_powi(2,i)*(2*i + 3));
+    temp_coef[i] = temp_coef[i-1]*SQR(2*i + 1)./(i*(4*i + 6));
     
 
     for (int o = 2; o <= to; ++o)
