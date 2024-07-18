@@ -709,26 +709,26 @@ if (fabs(a0) > 1e-12) {
    even_coef[0] = 10, even_coef[1] = 168, even_coef[2] = 6480,
    even_coef[3] = 443520, even_coef[4] = 47174400, even_coef[5] = 7185024000;
 
-   for (int o = 0; o < to; o+=2) {
-     fact *= ((o+1)*(o+2)); 
-     odd_coef[0]  = ((o>0)*12          + odd_coef[0]);
-     odd_coef[1]  = ((o>0)*240         + odd_coef[1]);
-     odd_coef[2]  = ((o>0)*1080        + odd_coef[2]);
-     odd_coef[3]  = ((o>0)*725760      + odd_coef[3]);
-     odd_coef[4]  = ((o>0)*79833600    + odd_coef[4]);
-     odd_coef[5]  = ((o>0)*12454041600 + odd_coef[5]);
+   for (int o = 1; o <= to; o+=2) {
+     fact *= ((o)*(o+1)); 
+     odd_coef[0]  = ((o>1)*12          + odd_coef[0]);
+     odd_coef[1]  = ((o>1)*240         + odd_coef[1]);
+     odd_coef[2]  = ((o>1)*1080        + odd_coef[2]);
+     odd_coef[3]  = ((o>1)*725760      + odd_coef[3]);
+     odd_coef[4]  = ((o>1)*79833600    + odd_coef[4]);
+     odd_coef[5]  = ((o>1)*12454041600 + odd_coef[5]);
 
-     even_coef[0] = ((o>0)*4          + even_coef[0]);
-     even_coef[1] = ((o>0)*48         + even_coef[1]);
-     even_coef[2] = ((o>0)*1440       + even_coef[2]);
-     even_coef[3] = ((o>0)*80640      + even_coef[3]);
-     even_coef[4] = ((o>0)*7257600    + even_coef[4]);
-     even_coef[5] = ((o>0)*958003200  + even_coef[5]);
+     even_coef[0] = ((o>1)*4          + even_coef[0]);
+     even_coef[1] = ((o>1)*48         + even_coef[1]);
+     even_coef[2] = ((o>1)*1440       + even_coef[2]);
+     even_coef[3] = ((o>1)*80640      + even_coef[3]);
+     even_coef[4] = ((o>1)*7257600    + even_coef[4]);
+     even_coef[5] = ((o>1)*958003200  + even_coef[5]);
 
      scalar  = (mad_num_sign(scalar)*2 + scalar);
 
-     ord_coef[(o+1)       ] = ((1./scalar*a0 + 1./ odd_coef[0]*a3 + 1./ odd_coef[1]*a5 + 1./ odd_coef[2]*a7 + 1./ odd_coef[3]*a9 + 1./ odd_coef[4]*a11 + 1./ odd_coef[5]*a13))*((o+2)/fact);
-     ord_coef[(o+2)%(to+2)] = ((1./scalar    + 1./even_coef[0]*a2 + 1./even_coef[1]*a4 + 1./even_coef[2]*a6 + 1./even_coef[3]*a8 + 1./even_coef[4]*a10 + 1./even_coef[5]*a12))/(      fact);
+     ord_coef[(o)       ] = ((1./scalar*a0 + 1./ odd_coef[0]*a3 + 1./ odd_coef[1]*a5 + 1./ odd_coef[2]*a7 + 1./ odd_coef[3]*a9 + 1./ odd_coef[4]*a11 + 1./ odd_coef[5]*a13))*((o+1)/fact);
+     ord_coef[(o+1)%(to+1)] = ((1./scalar    + 1./even_coef[0]*a2 + 1./even_coef[1]*a4 + 1./even_coef[2]*a6 + 1./even_coef[3]*a8 + 1./even_coef[4]*a10 + 1./even_coef[5]*a12))/(      fact);
    }
 
    num_t f0 = sa*_a0;
