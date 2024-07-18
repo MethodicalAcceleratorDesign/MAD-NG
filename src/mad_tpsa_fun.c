@@ -912,7 +912,7 @@ FUN(asinc) (const T *a, T *c)
     FUN(setval)(c,f0); DBGFUN(<-); return;
   }
 
-  if (fabs(a0) > 0.32) { // asin(x)/x
+  if (fabs(a0) > 0.42) { // asin(x)/x
     T *t = GET_TMPX(c);
     FUN(asin)(a,t);
     FUN(div)(t,a,c);
@@ -920,17 +920,30 @@ FUN(asinc) (const T *a, T *c)
   }
 
   if (fabs(a0) > 1e-12) { // asin(x)/x
-    NUM ord_coef[to+1];
-    NUM temp_coef[21];//one can specify according to the accuracy requests
-    ord_coef[0] = mad_num_asinc(a0);
+    int ord = 30;
+    NUM ord_coef[to+1], mult, fact;
+    NUM temp_coef[ord+1];//one can specify according to the accuracy requests
     temp_coef[0] = 1./3;
-    for int (i = 1; i <= 20; ++i)
-    temp_coef[i] = temp_coef[i-1]*SQR(2*i + 1)./(i*(4*i + 6));
+    for (int i = 1; i <= ord; ++i)
+    temp_coef[i] = temp_coef[i-1]*SQR(2*i + 1)/(i*(4*i + 6));
+    mult = 1; fact = 1;
+
+    for (int o = 1; o <= to; o+=2){
+      fact *= (o*(o+1));
+      for (int i = 0; i <= ord; ++i){
+
+          mult = (o!=1) ? mad_num_powi(2*i + o, 3)/(2*i + o + 2) : 1 ;
+
+          temp_coef[i           ] *= mult;  //overflow possible but using ord=230 was still working
+          ord_coef [o           ] += temp_coef[i]*mad_num_powi(a0,2*i+1)        ;
+          ord_coef [(o+1)%(to+1)] += temp_coef[i]*mad_num_powi(a0,2*i  )*(2*i+1);
+
+      }
+      ord_coef[o           ] /= fact/(o+1);
+      ord_coef[(o+1)%(to+1)] /= fact      ;
+    }
     
-
-    for (int o = 2; o <= to; ++o)
-    ord_coef[o] = (ord_coef[o-2] * SQR(o-1)) / (o * (o+1));
-
+  ord_coef[0] = mad_num_asinc(a0);
   fun_taylor(a,c,to,ord_coef);
    return;
   }
