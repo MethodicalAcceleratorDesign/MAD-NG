@@ -483,19 +483,19 @@ FUN(sinc) (const T *a, T *c)
 
    for (int o = 1; o <= to; o+=2) {
      fact *= ((o)*(o+1)); 
-     odd_coef[0]  = ((o>0)*mad_num_sign(odd_coef[0])*12          + odd_coef[0]);
-     odd_coef[1]  = ((o>0)*mad_num_sign(odd_coef[1])*240         + odd_coef[1]);
-     odd_coef[2]  = ((o>0)*mad_num_sign(odd_coef[2])*1080        + odd_coef[2]);
-     odd_coef[3]  = ((o>0)*mad_num_sign(odd_coef[3])*725760      + odd_coef[3]);
-     odd_coef[4]  = ((o>0)*mad_num_sign(odd_coef[4])*79833600    + odd_coef[4]);
-     odd_coef[5]  = ((o>0)*mad_num_sign(odd_coef[5])*12454041600 + odd_coef[5]);
+     odd_coef[0]  = ((o>1)*mad_num_sign(odd_coef[0])*12          + odd_coef[0]);
+     odd_coef[1]  = ((o>1)*mad_num_sign(odd_coef[1])*240         + odd_coef[1]);
+     odd_coef[2]  = ((o>1)*mad_num_sign(odd_coef[2])*1080        + odd_coef[2]);
+     odd_coef[3]  = ((o>1)*mad_num_sign(odd_coef[3])*725760      + odd_coef[3]);
+     odd_coef[4]  = ((o>1)*mad_num_sign(odd_coef[4])*79833600    + odd_coef[4]);
+     odd_coef[5]  = ((o>1)*mad_num_sign(odd_coef[5])*12454041600 + odd_coef[5]);
 
-     even_coef[0] = ((o>0)*mad_num_sign(even_coef[0])*4          + even_coef[0]);
-     even_coef[1] = ((o>0)*mad_num_sign(even_coef[1])*48         + even_coef[1]);
-     even_coef[2] = ((o>0)*mad_num_sign(even_coef[2])*1440       + even_coef[2]);
-     even_coef[3] = ((o>0)*mad_num_sign(even_coef[3])*80640      + even_coef[3]);
-     even_coef[4] = ((o>0)*mad_num_sign(even_coef[4])*7257600    + even_coef[4]);
-     even_coef[5] = ((o>0)*mad_num_sign(even_coef[5])*958003200  + even_coef[5]);
+     even_coef[0] = ((o>1)*mad_num_sign(even_coef[0])*4          + even_coef[0]);
+     even_coef[1] = ((o>1)*mad_num_sign(even_coef[1])*48         + even_coef[1]);
+     even_coef[2] = ((o>1)*mad_num_sign(even_coef[2])*1440       + even_coef[2]);
+     even_coef[3] = ((o>1)*mad_num_sign(even_coef[3])*80640      + even_coef[3]);
+     even_coef[4] = ((o>1)*mad_num_sign(even_coef[4])*7257600    + even_coef[4]);
+     even_coef[5] = ((o>1)*mad_num_sign(even_coef[5])*958003200  + even_coef[5]);
 
      scalar  = (mad_num_sign(scalar)*2 + scalar);
 
@@ -963,6 +963,8 @@ FUN(asinc) (const T *a, T *c)
   }
 
   NUM ord_coef[to+1];
+   for (int i = 0; i <= to; ++i)
+        ord_coef[i] = 0;
   if (fabs(a0) > 1e-12) { // asin(x)/x
     int ord = 30;
     NUM mult, fact;
@@ -971,7 +973,6 @@ FUN(asinc) (const T *a, T *c)
     for (int i = 1; i <= ord; ++i)
     temp_coef[i] = temp_coef[i-1]*SQR(2*i + 1)/(i*(4*i + 6));
     mult = 1; fact = 1;
-printf("\n");
     for (int o = 1; o <= to; o+=2){
       fact *= (o*(o+1));
       for (int i = 0; i <= ord; ++i){
@@ -984,7 +985,6 @@ printf("\n");
 
       }
     }
-    for (int o = 0; o<=to; ++o) printf("%f \n", ord_coef[0]);
   ord_coef[0] = mad_num_asinc(a0);
   fun_taylor(a,c,to,ord_coef);
   return;
