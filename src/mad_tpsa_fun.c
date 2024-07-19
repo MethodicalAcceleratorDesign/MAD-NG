@@ -963,9 +963,10 @@ FUN(asinc) (const T *a, T *c)
   }
 
   NUM ord_coef[to+1];
-   for (int i = 0; i <= to; ++i)
-        ord_coef[i] = 0;
+
   if (fabs(a0) > 1e-12) { // asin(x)/x
+    for (int i = 0; i <= to; ++i)
+      ord_coef[i] = 0;
     int ord = 30;
     NUM mult, fact;
     NUM temp_coef[ord+1];//one can specify according to the accuracy requests
@@ -1166,16 +1167,17 @@ FUN(asinhc) (const T *a, T *c)
 #endif
     FUN(setval)(c,f0); DBGFUN(<-); return;
   }
-
-  if (fabs(a0) > 1e-12) { // asinh(x)/x
+  if (fabs(a0) > 0.42) { // asin(x)/x
     T *t = GET_TMPX(c);
     FUN(asinh)(a,t);
     FUN(div)(t,a,c);
     REL_TMPX(t); DBGFUN(<-); return;
   }
 
-  // asinhc(x) at x=0
   NUM ord_coef[to+1];
+
+
+  // asinhc(x) at x=0
   ord_coef[0] = 1;
   ord_coef[1] = 0;
   for (int o = 2; o <= to; ++o)
