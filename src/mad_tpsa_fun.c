@@ -1176,6 +1176,32 @@ FUN(asinhc) (const T *a, T *c)
 
   NUM ord_coef[to+1];
 
+  if (fabs(a0) > 1e-12) { // asin(x)/x
+    for (int i = 0; i <= to; ++i)
+      ord_coef[i] = 0;
+    int ord = 30;
+    NUM mult, fact;
+    NUM temp_coef[ord+1];//one can specify according to the accuracy requests
+    temp_coef[0] = -1./3;
+    for (int i = 1; i <= ord; ++i)
+    temp_coef[i] = (1 - 2*(i%2))*temp_coef[i-1]*SQR(2*i + 1)/(i*(4*i + 6));
+    mult = 1; fact = 1;
+    for (int o = 1; o <= to; o+=2){
+      fact *= (o*(o+1));
+      for (int i = 0; i <= ord; ++i){
+
+          mult = (o!=1) ? -pow(2*i + o, 3)/(2*i + o + 2) : 1 ;
+          temp_coef[i           ] *= mult; 
+
+          ord_coef [o           ] += (pow(a0,i)*temp_coef[i])*pow(a0,i+1)*(o+1  )/fact        ;
+          ord_coef [(o+1)%(to+1)] += (pow(a0,i)*temp_coef[i])*pow(a0,i  )*(2*i+1)/fact;
+
+      }
+    }
+  ord_coef[0] = mad_num_asinhc(a0);
+  fun_taylor(a,c,to,ord_coef);
+  return;
+  }
 
   // asinhc(x) at x=0
   ord_coef[0] = 1;
