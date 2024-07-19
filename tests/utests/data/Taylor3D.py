@@ -2,12 +2,12 @@ import sympy as sp
 import numpy as np
 
 def sinc_function(x):
-    return sp.sinh(x) / x
+    return sp.exp(x)
 
 def taylor_series_sinc(x0, n):
     # Define the variable and the sinc function
     x = sp.symbols('x')
-    sinc = sp.sinh(x) / x
+    sinc = sp.exp(x)
     
     # Calculate the Taylor series expansion around x0 up to order n
     taylor_expansion = sp.series(sinc, x, x0, n + 1)
@@ -81,7 +81,7 @@ for x0 in x0_points:
     coefficients_list.append(coefficients)
 
 # Read multinomial coefficients from file
-multinomial_filename = 'C:\\Users\\anton\\Downloads\\coefficients.txt'
+multinomial_filename = 'path\\to\\multunomial_coefs.txt'
 multinomial_coeffs = read_coefficients(multinomial_filename)
 
 # Apply multinomial coefficients to each set of Taylor series coefficients and evaluate using SymPy
@@ -93,7 +93,7 @@ for coeffs in coefficients_list:
     adjusted_coefficients_list.append(evaluated_coeffs)
 
 # Output filename
-output_filename = 'C:\\Users\\anton\\Downloads\\formatted_coefficients.txt'
+output_filename = 'your\\path\\formatted_coefficients.txt'
 
 # Write all adjusted coefficients to the same file
 write_coefficients_to_file(adjusted_coefficients_list, x0_points, output_filename, columns=4)
