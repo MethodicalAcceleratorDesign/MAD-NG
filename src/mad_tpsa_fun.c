@@ -1167,7 +1167,8 @@ FUN(asinhc) (const T *a, T *c)
 #endif
     FUN(setval)(c,f0); DBGFUN(<-); return;
   }
-  if (fabs(a0) > 0.42) { // asin(x)/x
+
+  if (fabs(a0) > 0.1) { // asin(x)/x
     T *t = GET_TMPX(c);
     FUN(asinh)(a,t);
     FUN(div)(t,a,c);
@@ -1176,15 +1177,16 @@ FUN(asinhc) (const T *a, T *c)
 
   NUM ord_coef[to+1];
 
-  if (fabs(a0) > 1e-12) { // asin(x)/x
+  if (fabs(a0) > 1e-12) { 
     for (int i = 0; i <= to; ++i)
       ord_coef[i] = 0;
-    int ord = 30;
+    int ord = 60;
     NUM mult, fact;
-    NUM temp_coef[ord+1];//one can specify according to the accuracy requests
+    NUM temp_coef[ord+1];
+
     temp_coef[0] = -1./3;
     for (int i = 1; i <= ord; ++i)
-    temp_coef[i] = (1 - 2*(i%2))*temp_coef[i-1]*SQR(2*i + 1)/(i*(4*i + 6));
+    temp_coef[i] = -temp_coef[i-1]*SQR(2*i + 1)/(i*(4*i + 6));
     mult = 1; fact = 1;
     for (int o = 1; o <= to; o+=2){
       fact *= (o*(o+1));
