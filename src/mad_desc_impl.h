@@ -47,7 +47,7 @@ enum { DESC_WARN_MONO  = 1000000, // warn if tpsa can have 1e6 coefs or more
 struct desc_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
   int   id;          // index in list of registered descriptors
   int   nn, nv, np;  // #variables, #parameters, nn=nv+np <= 100000
-  ord_t mo, po, sh;  // max order of vars & params, shared with id
+  ord_t mo, po, sh;  // max order of vars & params, shared with id or -1
   const ord_t *no;   // orders of each vars & params, no[nn]
               // end of compatibility with LuaJIT FFI
 
@@ -71,6 +71,10 @@ struct desc_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
       ***L_idx;      // L_idx[oa,ob]->[start] [split] [end] idxs in L
 
   size_t size;       // bytes used by tables
+
+  num_t dst_n,       // density count
+        dst_mu,      // density mean
+        dst_var;     // density variance
 
   // permanent temporaries per thread for internal use (not shared)
 #if DESC_USE_TMP

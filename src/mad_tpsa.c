@@ -39,13 +39,10 @@
 
 // --- debugging --------------------------------------------------------------o
 
-static num_t dst_cnt  = 0;
-static num_t dst_sum  = 0;
-static num_t dst_sum2 = 0;
-
 static inline num_t
 density (const T *t, num_t *rr_mo_)
 {
+  D *d = (D*)t->d;
   long nz = t->coef[0] != 0;
   long nn = 1;
 
@@ -55,9 +52,9 @@ density (const T *t, num_t *rr_mo_)
   }
 
   num_t rr = (num_t)nz / nn;
-  dst_cnt  += 1;
-  dst_sum  += rr;
-  dst_sum2 += rr*rr;
+  d->dst_n   += 1;
+  d->dst_var += SQR(rr - d->dst_mu)/d->dst_n*(d->dst_n-1);
+  d->dst_mu  +=    (rr - d->dst_mu)/d->dst_n;
 
   if (rr_mo_) *rr_mo_ = rr*nn / t->d->ord2idx[t->mo+1];
   return rr;
@@ -213,18 +210,22 @@ FUN(isvalid) (const T *t)
 }
 
 num_t
-FUN(density) (const T *t, num_t *mean_, num_t *var_)
+FUN(density) (const T *t, num_t stat_[2], log_t reset)
 {
   assert(t);
-  num_t dst = density(t, 0);
+  D *d = (D*)t->d;
 
-  if (mean_ || var_) {
-    num_t mu = dst_sum/dst_cnt;
-    if (mean_) *mean_ = mu;
-    if (var_ ) *var_  = dst_sum2/dst_cnt - mu*mu;
+  if (reset)
+    return d->dst_var = d->dst_mu = d->dst_n = 0;
+
+  if (stat_) {
+    num_t nn = MAX(1,d->dst_n);
+    stat_[0] = d->dst_mu;
+    stat_[1] = sqrt(d->dst_var/nn);
+    return d->dst_n;
   }
 
-  return dst;
+  return density(t, 0);
 }
 
 // --- init (unsafe) ----------------------------------------------------------o
