@@ -446,7 +446,7 @@ FUN(mul) (const T *a, const T *b, T *r)
       if (a->lo > b->lo) { const T *t; SWAP(a,b,t); }
 #endif
 
-#ifdef _OPENMP
+#ifdef _OPENMP // TODO: find pmul heuristic at desc init...
       if (d->pmul && c->hi >= 8 &&
           (o2i[a->hi+1]-o2i[a->lo]) >= d->pmul &&
           (o2i[b->hi+1]-o2i[b->lo]) >= d->pmul)
