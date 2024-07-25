@@ -1143,7 +1143,7 @@ inline void rfcav_kickn (cflw<M> &m, num_t lw, int is)
 
 // --- fringe maps ------------------------------------------------------------o
 
-// must be identical to M.fringe in madl_dynamp.mad
+// must be identical to M.fringe in madl_dynmap.mad
 enum {
  fringe_none  = 0,
  fringe_bend  = 1, fringe_mult  = 2 , fringe_qsad = 2+4,
