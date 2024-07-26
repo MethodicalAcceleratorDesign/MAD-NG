@@ -27,6 +27,7 @@
 #include "mad_tpsa_impl.h"
 #include "mad_ctpsa_impl.h"
 
+#define OLD_SERIES 0 //1
 // --- local ------------------------------------------------------------------o
 
 enum { MANUAL_EXPANSION_ORD = 6 };
@@ -964,16 +965,18 @@ FUN(asinc) (const T *a, T *c)
 
   NUM ord_coef[to+1];
 
-  if (fabs(a0) > 1e-12) { // asin(x)/x
+  if (fabs(a0) > 1e-12) { 
     for (int i = 0; i <= to; ++i)
       ord_coef[i] = 0;
-    int ord = 30;
-    NUM mult, fact;
-    NUM temp_coef[ord+1];//one can specify according to the accuracy requests
+
+    int ord = 30;//one can specify according to the accuracy requests
+    NUM mult=1, fact=1;
+    NUM temp_coef[ord+1];
+
     temp_coef[0] = 1./3;
     for (int i = 1; i <= ord; ++i)
     temp_coef[i] = temp_coef[i-1]*SQR(2*i + 1)/(i*(4*i + 6));
-    mult = 1; fact = 1;
+
     for (int o = 1; o <= to; o+=2){
       fact *= (o*(o+1));
       for (int i = 0; i <= ord; ++i){
@@ -981,11 +984,12 @@ FUN(asinc) (const T *a, T *c)
           mult = (o!=1) ? pow(2*i + o, 3)/(2*i + o + 2) : 1 ;
           temp_coef[i           ] *= mult; 
 
-          ord_coef [o           ] += (pow(a0,i)*temp_coef[i])*pow(a0,i+1)*(o+1  )/fact        ;
+          ord_coef [o           ] += (pow(a0,i)*temp_coef[i])*pow(a0,i+1)*(o+1  )/fact;
           ord_coef [(o+1)%(to+1)] += (pow(a0,i)*temp_coef[i])*pow(a0,i  )*(2*i+1)/fact;
 
       }
     }
+
   ord_coef[0] = mad_num_asinc(a0);
   fun_taylor(a,c,to,ord_coef);
   return;
@@ -1033,6 +1037,7 @@ FUN(asinh) (const T *a, T *c)                    // checked for real and complex
   DBGFUN(<-);
 }
 
+
 void
 FUN(acosh) (const T *a, T *c)                    // checked for real and complex
 {
@@ -1045,23 +1050,52 @@ FUN(acosh) (const T *a, T *c)                    // checked for real and complex
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
-  if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
-    // acosh(x) = ln(x + sqrt(x^2-1))
-    FUN(logaxpsqrtbpcx2)(a, 1, -1, 1, c);
-    DBGFUN(<-); return;
-  }
+  #if OLD_SERIES
+    if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
+      // acosh(x) = ln(x + sqrt(x^2-1))
+      FUN(logaxpsqrtbpcx2)(a, 1, -1, 1, c);
+      DBGFUN(<-); return;
+    }
 
-  NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/sqrt(a2-1), f2 = f1*f1, f4 = f2*f2;
-  switch(to) {
-  case 6: ord_coef[6] = -a0*(5./16 + a2*(5./6 + 1./6*a2)) *f4*f4*f2*f1; /* FALLTHRU */
-  case 5: ord_coef[5] = (3./40 + a2*(3./5 + 1./5*a2)) *f4*f4*f1;        /* FALLTHRU */
-  case 4: ord_coef[4] = -a0*(3./8 + 1./4*a2) *f4*f2*f1;                 /* FALLTHRU */
-  case 3: ord_coef[3] = (1./6 + 1./3*a2) *f4*f1;                        /* FALLTHRU */
-  case 2: ord_coef[2] = -a0*(1./2) *f2*f1;                              /* FALLTHRU */
-  case 1: ord_coef[1] = f1;                                             /* FALLTHRU */
-  case 0: ord_coef[0] = f0;                                             break;
-  assert(!"unexpected missing coefficients");
-  }
+    NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/sqrt(a2-1), f2 = f1*f1, f4 = f2*f2;
+    switch(to) {
+    case 6: ord_coef[6] = -a0*(5./16 + a2*(5./6 + 1./6*a2)) *f4*f4*f2*f1; /* FALLTHRU */
+    case 5: ord_coef[5] = (3./40 + a2*(3./5 + 1./5*a2)) *f4*f4*f1;        /* FALLTHRU */
+    case 4: ord_coef[4] = -a0*(3./8 + 1./4*a2) *f4*f2*f1;                 /* FALLTHRU */
+    case 3: ord_coef[3] = (1./6 + 1./3*a2) *f4*f1;                        /* FALLTHRU */
+    case 2: ord_coef[2] = -a0*(1./2) *f2*f1;                              /* FALLTHRU */
+    case 1: ord_coef[1] = f1;                                             /* FALLTHRU */
+    case 0: ord_coef[0] = f0;                                             break;
+    assert(!"unexpected missing coefficients");
+    }
+    
+  #else
+    NUM ord_coef[to+1]           ;
+    num_t asqrt = sqrt(a0*a0 - 1);
+    num_t aplus =  1./(a0    + 1);
+    num_t  amin =  1./(a0    - 1);
+    num_t denom =         (asqrt);
+    num_t numer =               0;
+    num_t  fact = 1              ;
+    int   delta, trsh            ;
+    ord_coef[0] =    f0;
+    ord_coef[1] = 1./denom;
+    for (int ord = 2; ord <= to; ord++ ){
+      fact  *= ord;
+      denom *= -2;
+     
+      trsh = floor((ord-1)/2);
+      numer = 0;
+      for (int i= 0; i <= trsh; i++){
+        delta = (ord-1-2*i ==0) ? 2 : 1;
+        numer += mad_num_dfact(2*ord - 3 -2*i)*mad_num_HypTri(i,ord-i)*mad_num_dfact(2*i-1)*(pow(aplus,ord-i-1)*pow(amin,i) + pow(amin,ord-i-1)*pow(aplus,i))/delta;
+        printf("%f  \n",denom);
+      }  
+      printf("\n");
+      //printf("\n %f \n", numer/denom);
+      ord_coef[ord] = numer/denom/fact;
+    }
+  #endif
 
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
@@ -1168,7 +1202,7 @@ FUN(asinhc) (const T *a, T *c)
     FUN(setval)(c,f0); DBGFUN(<-); return;
   }
 
-  if (fabs(a0) > 0.1) { // asin(x)/x
+  if (fabs(a0) > 0.42) { // asin(x)/x
     T *t = GET_TMPX(c);
     FUN(asinh)(a,t);
     FUN(div)(t,a,c);
@@ -1180,14 +1214,14 @@ FUN(asinhc) (const T *a, T *c)
   if (fabs(a0) > 1e-12) { 
     for (int i = 0; i <= to; ++i)
       ord_coef[i] = 0;
-    int ord = 60;
-    NUM mult, fact;
+    int ord = 30;
+    NUM mult=1, fact=1;
     NUM temp_coef[ord+1];
 
     temp_coef[0] = -1./3;
     for (int i = 1; i <= ord; ++i)
     temp_coef[i] = -temp_coef[i-1]*SQR(2*i + 1)/(i*(4*i + 6));
-    mult = 1; fact = 1;
+
     for (int o = 1; o <= to; o+=2){
       fact *= (o*(o+1));
       for (int i = 0; i <= ord; ++i){
@@ -1200,6 +1234,7 @@ FUN(asinhc) (const T *a, T *c)
 
       }
     }
+
   ord_coef[0] = mad_num_asinhc(a0);
   fun_taylor(a,c,to,ord_coef);
   return;
