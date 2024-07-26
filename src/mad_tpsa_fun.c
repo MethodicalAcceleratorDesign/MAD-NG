@@ -1089,10 +1089,8 @@ FUN(acosh) (const T *a, T *c)                    // checked for real and complex
       for (int i= 0; i <= trsh; i++){
         delta = (ord-1-2*i ==0) ? 2 : 1;
         numer += mad_num_dfact(2*ord - 3 -2*i)*mad_num_HypTri(i,ord-i)*mad_num_dfact(2*i-1)*(pow(aplus,ord-i-1)*pow(amin,i) + pow(amin,ord-i-1)*pow(aplus,i))/delta;
-        printf("%f  \n",denom);
       }  
-      printf("\n");
-      //printf("\n %f \n", numer/denom);
+      
       ord_coef[ord] = numer/denom/fact;
     }
   #endif
@@ -1112,32 +1110,53 @@ FUN(atanh) (const T *a, T *c)                    // checked for real and complex
 
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  #if OLD_SERIES
+    if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
+      // atanh(x) = 1/2 ln((1+x) / (1-x))
+      T *tn = GET_TMPX(c), *td = GET_TMPX(c);
+      FUN(copy)(a, tn);
+      FUN(seti)(tn, 0, 1, 1);
+      FUN(axpb)(-1, a, 1, td);
+      FUN(logxdy)(tn, td, c);
+      FUN(scl)(c, 0.5, c);
+      REL_TMPX(td), REL_TMPX(tn); DBGFUN(<-); return;
+    }
 
-  if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
-    // atanh(x) = 1/2 ln((1+x) / (1-x))
-    T *tn = GET_TMPX(c), *td = GET_TMPX(c);
-    FUN(copy)(a, tn);
-    FUN(seti)(tn, 0, 1, 1);
-    FUN(axpb)(-1, a, 1, td);
-    FUN(logxdy)(tn, td, c);
-    FUN(scl)(c, 0.5, c);
-    REL_TMPX(td), REL_TMPX(tn); DBGFUN(<-); return;
-  }
+    NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/(1-a2), f2 = f1*f1, f4 = f2*f2;
+    switch(to) {
+    case 6: ord_coef[6] = a0*(1 + a2*(10./3 + a2)) *f4*f2; /* FALLTHRU */
+    case 5: ord_coef[5] = (1./5 + a2*(2 + a2)) *f4*f1;     /* FALLTHRU */
+    case 4: ord_coef[4] = a0*(1 + a2) *f4;                 /* FALLTHRU */
+    case 3: ord_coef[3] = (1./3 + a2) *f2*f1;              /* FALLTHRU */
+    case 2: ord_coef[2] = a0 *f2;                          /* FALLTHRU */
+    case 1: ord_coef[1] = f1;                              /* FALLTHRU */
+    case 0: ord_coef[0] = f0;                              break;
+    assert(!"unexpected missing coefficients");
+    }
 
-  NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/(1-a2), f2 = f1*f1, f4 = f2*f2;
-  switch(to) {
-  case 6: ord_coef[6] = a0*(1 + a2*(10./3 + a2)) *f4*f2; /* FALLTHRU */
-  case 5: ord_coef[5] = (1./5 + a2*(2 + a2)) *f4*f1;     /* FALLTHRU */
-  case 4: ord_coef[4] = a0*(1 + a2) *f4;                 /* FALLTHRU */
-  case 3: ord_coef[3] = (1./3 + a2) *f2*f1;              /* FALLTHRU */
-  case 2: ord_coef[2] = a0 *f2;                          /* FALLTHRU */
-  case 1: ord_coef[1] = f1;                              /* FALLTHRU */
-  case 0: ord_coef[0] = f0;                              break;
-  assert(!"unexpected missing coefficients");
-  }
+  #else
+    NUM ord_coef[to+1]           ;
+    num_t asqr =        a0*a0 - 1;
+    num_t numer =               0;
+    int    trsh,fn               ;
 
+    ord_coef[0] =    f0;
+    ord_coef[1] = -1./asqr;
+    for (int ord = 2; ord <= to; ord++ ){
+      fn = (ord-1)*((ord-1)%2) +1;
+      trsh = floor((ord-3)/2);
+      numer = 0;
+      for (int i= 0; i <= trsh; i++){
+        numer += pow(-1,ord+i)*pow(2,ord-2*i-1)*mad_num_HypTri(i,ord-2*i)*pow(a0,ord-2*i-1)/pow(asqr,floor((ord-2*i-1)/2.0));
+      }  
+
+      numer += pow(a0,(ord+1)%2)*pow(-1,ord+trsh+1)*fn*(ord>2);
+      ord_coef[ord] = numer/ord/pow(asqr,ceil((ord+1)/2.0));
+    }
+  #endif
+  
   fun_taylor(a,c,to,ord_coef);
-  DBGFUN(<-);
+    DBGFUN(<-);
 }
 
 void
