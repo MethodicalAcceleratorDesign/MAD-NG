@@ -235,7 +235,7 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
 
   if (hi_ord == 1) compose_ord1(sa,ma, sb,mb, mc);
 
-#ifdef _OPENMP
+#ifdef _OPENMP // TODO: find pcomp heuristic at desc init...
   else if (d->pcomp && hi_ord >= 6 && d->ord2idx[hi_ord+1] >= d->pcomp) {
     #pragma omp parallel for
     FOR(ia,sa) {

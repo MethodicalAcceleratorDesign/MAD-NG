@@ -67,7 +67,7 @@ ord_t   mad_tpsa_ord     (const tpsa_t *t, log_t   hi_ ); // get mo or hi
 log_t   mad_tpsa_isnul   (const tpsa_t *t);
 log_t   mad_tpsa_isval   (const tpsa_t *t);
 log_t   mad_tpsa_isvalid (const tpsa_t *t);
-num_t   mad_tpsa_density (const tpsa_t *t, num_t *mean_, num_t *var_); // ratio nz/nc in [0] U [lo,hi]
+num_t   mad_tpsa_density (const tpsa_t *t, num_t stat_[2], log_t reset); // ratio nz/nc in [0] U [lo,hi] or stat
 
 // initialization / manipulation
 void    mad_tpsa_copy    (const tpsa_t *t, tpsa_t *r);
@@ -219,8 +219,6 @@ tpsa_t* mad_tpsa_init     (      tpsa_t *t, const desc_t *d, ord_t mo);
 
 // debug
 int     mad_tpsa_debug    (const tpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
-void    mad_tpsa_prtdensity(FILE *stream_);
-void    mad_tpsa_clrdensity(void);
 
 // --- end --------------------------------------------------------------------o
 
