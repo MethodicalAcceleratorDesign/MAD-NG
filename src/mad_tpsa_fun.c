@@ -887,7 +887,7 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
     int    trsh,fn               ;
 
     ord_coef[0] =    f0;
-    ord_coef[1] = -1./asqr;
+    ord_coef[1] = 1./asqr;
     for (int ord = 2; ord <= to; ord++ ){
       fn = (ord-1)*((ord-1)%2) +1;
       trsh = floor((ord-3)/2);
@@ -895,7 +895,7 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
       for (int i= 0; i <= trsh; i++){
         numer += pow(-1,ord+i+1)*pow(2,ord-2*i-1)*mad_num_HypTri(i,ord-2*i)*pow(a0,ord-2*i-1)/pow(asqr,floor((ord-2*i-1)/2.0));
       }  
-
+      
       numer += pow(a0,(ord+1)%2)*pow(-1,ord+trsh)*fn*(ord>2);
       ord_coef[ord] = numer/ord/pow(asqr,ceil((ord+1)/2.0));
     }
