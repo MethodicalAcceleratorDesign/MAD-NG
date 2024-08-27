@@ -21,248 +21,88 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local vector, tpsa, gtpsad, monomial                             in MAD
+local vector, tpsa, gtpsad, monomial                    in MAD
 local eps, abs, pi                                               in MAD.constant
-local abs, fact                                                       in MAD.gmath
+local abs, fact                                                  in MAD.gmath
 local ident                                                      in MAD.gfunc
 local assertTrue, assertEquals, assertAlmostEquals               in MAD.utest
 
 -- locals ---------------------------------------------------------------------o
+local DEBUG = 0 -- 1 for max err and order of the err, 2 for all the errors
 
 local dat1D = assert(loadfile('data/tpsa1D.dat'))()
 local dat3D = assert(loadfile('data/tpsa3D.dat'))()
-print(dat3D)
+
 local ord = {1,2,3,4,5,6,7,10,12,15}
 
 -- regression test suites -----------------------------------------------------o
 
 TestTPSAFun = {}
 
-local function checkVal (r, c, neg, alt, trc,bool)
-  local tol = neg and c.n_eps or alt and c.a_eps or c.eps or 3*eps
-  neg = neg or ident
-  trc = trc or 0
-  if not r:isvalid() then r:debug() end
-  local limit = r:maxlen()
-  for i=1,limit do
-    local v = neg(c[i],i)
-    
-    if trc > 0 then
-      local is, vs, rs, es = string.format("%-2d"  , i),
-                             string.format("%+.17e", v),
-                             string.format("%+.17e", r:get(i))
-      if abs(v) > 2
-      then es = math.ceil( abs(r:get(i)/v-1)/eps/i )
-      else es = math.ceil( abs(r:get(i)-v  )/eps/i )
-      end
-      io.write('i=',is,', v=',vs,', r=',rs,', es=', es, es>99 and ' **\n' or '\n')
-    end
-    if trc < 2 then
-      if abs(v) > 2
-      then 
-        assertAlmostEquals(r:get(i)/v-1, 0, i*tol)
-      else 
-        assertAlmostEquals(r:get(i)    , v, i*tol)
-      end
-    end
-  end
-end
-
-local function checkFun1 (fnam, trc)
-  local d = gtpsad(1,15)
-  local fun, t, r = dat1D.fun[fnam]
-  if trc then io.write('\n') end
-  for _,c in ipairs(fun) do
-  for _,o in ipairs(ord) do
-
-    if fun.omin and o < fun.omin then break end -- limit order
-    if fun.omax and o > fun.omax then break end -- limit order
-    if c.omin   and o < c.omin   then break end -- limit order (local)
-    if c.omax   and o > c.omax   then break end -- limit order (local)
-
-    if trc then io.write('f=',fnam,'(',c.x0,') @ ',o,'\n') end
-    t = tpsa(o):set(1,c.x0):set(2,1)
-    r = t[fnam](t); checkVal(r, c, nil, nil, trc);-- positive (r ~= t) 
-    if trc then io.write('f=',fnam,'_ref(',c.x0,') @ ',o,'\n') end
-    
-
-    if fun.alt then
-      if trc then io.write('f=',fnam,'_alt(',c.x0,') @ ',o,'\n') end
-      t = tpsa(o):set(1,c.x0):set(2,1)
-      r = fun.alt(t) ; checkVal(r, c, nil, fun.alt, trc) -- alternate function
-    end
-
-    if fun.neg and c.x0 ~= 0 then
-      if trc then io.write('f=',fnam,'_neg(',-c.x0,') @ ',o,'\n') end
-      t = tpsa(o):set(1,-c.x0):set(2,1)
-      r = t[fnam](t) ; checkVal(r, c, fun.neg, nil, trc) -- negative
-    end
-  end end
-end
+local d1D = gtpsad(1,15)
 
 
-local function checkVal3 (r, c, neg, alt, trc,bool,mo)
-  local tol = neg and c.n_eps or alt and c.a_eps or c.eps or eps
-  neg = neg or ident
-  trc = trc or 0
-  if not r:isvalid() then r:debug() end
+local function tpsa1Dinit(tbl,o)
+  local t = tpsa(d1D,o)
   local i = 1
-  local m = monomial("000")
-  local count = 0
-  repeat
-    local ord  = m:ord()  
-    if ord <= mo then
-    if (bool) then print(c[i],r:get(m),ord,c.x0) count=count+1 end
-      local v = c[i] 
-      
-      if trc > 0 then
-        local is, vs, rs, es = string.format("%-2d"  , i),
-                              string.format("%+.17e", v),
-                              string.format("%+.17e", r:get(i))
-        if abs(v) > 2 then
-          es = math.ceil( abs(r:get(m)/v-1)/eps/i )
-        else 
-          es = math.ceil( abs(r:get(m)-v  )/eps/i )
-        end
-        io.write('i=',is,', v=',vs,', r=',rs,', es=', es, es>99 and ' **\n' or '\n')
-      end
-      if trc < 2 then
-        if abs(v) > 2
-        then 
-        assertAlmostEquals(r:get(m)/v-1, 0, i*tol)
-        else 
-          assertAlmostEquals(r:get(m)    , v, i*tol)
-        end
-      end
-    end
+  while i <= o+1 do
+    t:set(i,tbl[i])
     i = i+1
-
-  until r:desc():nxtbyvar(m) == -1
-end
-
-local function checkFun3 (fnam, trc,bool)
-  local d = gtpsad(3,15)
-  local fun, t, r = dat3D.fun[fnam]
-  if trc then io.write('\n') end
-  for _,c in ipairs(fun) do
-  for _,o in ipairs(ord) do
-
---  for o=1,15 do
-    if fun.omin and o < fun.omin then break end -- limit order
-    if fun.omax and o > fun.omax then break end -- limit order
-    if c.omin   and o < c.omin   then break end -- limit order (local)
-    if c.omax   and o > c.omax   then break end -- limit order (local)
-    if trc then io.write('f=',fnam,'(',c.x0,') @ ',o,'\n') end
-    t = tpsa(o):fill({c.x0,1,1,1})
-    r = t[fnam](t); checkVal3(r, c, nil, nil, trc,bool,o);-- positive (r ~= t) 
-    if trc then io.write('f=',fnam,'_ref(',c.x0,') @ ',o,'\n') end
-    --r = t[fnam](t,t) ;  checkVal3(r, c, nil, nil, trc,bool,o) -- aliased  (r == t)
-
-    if fun.alt then
-      if trc then io.write('f=',fnam,'_alt(',c.x0,') @ ',o,'\n') end
-      t = tpsa(o):fill({c.x0,1,1,1})
-      r = fun.alt(t) ; checkVal3(r, c, nil, fun.alt, trc,bool,o) -- alternate function
-    end
-
-    if fun.neg and c.x0 ~= 0 then
-      if trc then io.write('f=',fnam,'_neg(',-c.x0,') @ ',o,'\n') end
-      t = tpsa(o):fill({-c.x0,1,1,1})
-      r = t[fnam](t) ; checkVal3(r, c, fun.neg, nil, trc, bool,o) -- negative
-    end
-  end end
-end
-
-TestTPSAFun.testInv   = \s -> checkFun1('inv')
-TestTPSAFun.testISqrt = \s -> checkFun1('invsqrt')
-TestTPSAFun.testSqrt  = \s -> checkFun1('sqrt')
-TestTPSAFun.testExp   = \s -> checkFun1('exp')
-TestTPSAFun.testLog   = \s -> checkFun1('log')
-TestTPSAFun.testSin   = \s -> checkFun1('sin')
-TestTPSAFun.testCos   = \s -> checkFun1('cos')
-TestTPSAFun.testTan   = \s -> checkFun1('tan')
-TestTPSAFun.testCot   = \s -> checkFun1('cot')
-TestTPSAFun.testSinc  = \s -> checkFun1('sinc')
-TestTPSAFun.testSinh  = \s -> checkFun1('sinh')
-TestTPSAFun.testCosh  = \s -> checkFun1('cosh')
-TestTPSAFun.testTanh  = \s -> checkFun1('tanh')
-TestTPSAFun.testCoth  = \s -> checkFun1('coth')
-TestTPSAFun.testAsin  = \s -> checkFun1('asin')
-TestTPSAFun.testAcos  = \s -> checkFun1('acos')
-TestTPSAFun.testAtan  = \s -> checkFun1('atan')
-TestTPSAFun.testAcot  = \s -> checkFun1('acot')
-TestTPSAFun.testAsinh = \s -> checkFun1('asinh')
-TestTPSAFun.testAcosh = \s -> checkFun1('acosh')
-TestTPSAFun.testAtanh = \s -> checkFun1('atanh')
-TestTPSAFun.testAcoth = \s -> checkFun1('acoth')
-TestTPSAFun.testErf   = \s -> checkFun1('erf')
-TestTPSAFun.testSinhc = \s -> checkFun1('sinhc')
-TestTPSAFun.testAsinc   = \s -> checkFun1('asinc')
-TestTPSAFun.testAsinhc   = \s -> checkFun1('asinhc')
-
-TestTPSAFun.testExp3D   = \s -> checkFun3('exp')
-TestTPSAFun.testInv3D   = \s -> checkFun3('inv')
-TestTPSAFun.testSqrt3D   = \s -> checkFun3('sqrt')
-TestTPSAFun.testInvSqrt3D   = \s -> checkFun3('invsqrt')
-TestTPSAFun.testLog3D   = \s -> checkFun3('log')
-TestTPSAFun.testSin3D   = \s -> checkFun3('sin')
-TestTPSAFun.testCos3D   = \s -> checkFun3('cos')
-TestTPSAFun.testTan3D   = \s -> checkFun3('tan')
-TestTPSAFun.testCot3D   = \s -> checkFun3('cot')
-TestTPSAFun.testSinh3D   = \s -> checkFun3('sinh')
-TestTPSAFun.testCosh3D   = \s -> checkFun3('cosh')
-TestTPSAFun.testTanh3D   = \s -> checkFun3('tanh')
-TestTPSAFun.testCoth3D   = \s -> checkFun3('coth')
-TestTPSAFun.testAsin3D = \s -> checkFun3('asin')
-TestTPSAFun.testAcos3D  = \s -> checkFun3('acos')
-TestTPSAFun.testAtan3D  = \s -> checkFun3('atan')
-TestTPSAFun.testAcot3D = \s -> checkFun3('acot')
-TestTPSAFun.testAsinh3D = \s -> checkFun3('asinh')
-TestTPSAFun.testAcosh3D = \s -> checkFun3('acosh')
-TestTPSAFun.testAtanh3D = \s -> checkFun3('atanh')
-TestTPSAFun.testAcoth3D = \s -> checkFun3('acoth')
-TestTPSAFun.testErf3D   = \s -> checkFun3('erf')
-TestTPSAFun.testSinc3D   = \s -> checkFun3('sinc')
-TestTPSAFun.testsinhc3D   = \s -> checkFun3('sinhc')
-TestTPSAFun.testAsinc3D   = \s -> checkFun3('asinc')
-TestTPSAFun.testAsinhc3D   = \s -> checkFun3('asinhc')
--- TODO: operators
-
--- performance tests ----------------------------------------------------------o
-
-Test_TPSAFun = {}
-
-local ord_ = {1,2,3,6,7}
-local div_ = 5 -- shrink the tests by factor 5
-
-local function benchFun1 (fnam, x0, trc)
-  local d = gtpsad(6,15)
-  local fun, t, r = dat1D.fun[fnam]
-  for _,o in ipairs(ord_) do
---  for o=1,d.mo do
-    if fun.omin and o < fun.omin then break end -- limit order
-    if fun.omax and o > fun.omax then break end -- limit order
-    t = tpsa(o):setvar(x0):set(2,1):set(3,1):set(4,1):set(5,1):set(6,1):set(7,1)
-    r = tpsa(o)
-    if not trc then io.write(o," ") io.flush() end
-    local t0 = os.clock()
-    for i=1,fun.iter[o]/div_ do t[fnam](t,r) end
-    local dt = os.clock()-t0
-    assertAlmostEquals( dt, 0.5/div_, 1/div_ )
-    if trc then
-      local n = math.floor(0.5*fun.iter[o]/dt)
-      io.write(string.format("\no=%-2d, dt=%.4f, n=%-8d, ", o, dt, n),
-               "len=", t:length(o), "  ")
-    end
   end
+  return t
 end
 
-Test_TPSAFun.testInv   = \s -> benchFun1('inv'    , pi/5)
-Test_TPSAFun.testSqrt  = \s -> benchFun1('sqrt'   , pi/5)
-Test_TPSAFun.testExp   = \s -> benchFun1('exp'    , pi/5)
-Test_TPSAFun.testLog   = \s -> benchFun1('log'    , pi/3)
-Test_TPSAFun.testSin   = \s -> benchFun1('sin'    , pi/5)
-Test_TPSAFun.testCos   = \s -> benchFun1('cos'    , pi/5)
-Test_TPSAFun.testTan   = \s -> benchFun1('tan'    , pi/5)
-Test_TPSAFun.testISqrt = \s -> benchFun1('invsqrt', pi/5)
+
+local function checkFun1D(fnam, dbg)
+  local fun, t, r = dat1D.fun[fnam]
+    
+  for _,c in ipairs(fun) do
+    local tol =  c.eps or eps
+    for _,o in ipairs(ord) do
+
+      local t     = tpsa(o):set(1,c.x0):set(2,1)
+      local t_ref = tpsa1Dinit(c,o)
+      t = t[fnam](t) 
+      local err,s = t:dif(t_ref,nil,true)
+
+      if dbg == 1 then 
+        print("maximum error = "..tostring(err:get(s.mi)).." observed at index "..tostring(s.mi).." at x0 = "..tostring(c.x0).." and maximum order of the tpsa = "..tostring(o)) 
+      elseif dbg == 2 then
+        s.print(s) 
+      end
+
+      assertAlmostEquals(err:get(s.mi),0,tol, "Test Failed with tolerance = "..tostring(tol))
+
+    end 
+   end
+end
+
+TestTPSAFun.testInv   = \ -> checkFun1D('inv',DEBUG)
+TestTPSAFun.testISqrt = \ -> checkFun1D('invsqrt',DEBUG)
+TestTPSAFun.testSqrt  = \ -> checkFun1D('sqrt',DEBUG)
+TestTPSAFun.testExp   = \ -> checkFun1D('exp',DEBUG)
+TestTPSAFun.testLog   = \ -> checkFun1D('log',DEBUG)
+TestTPSAFun.testSin   = \ -> checkFun1D('sin',DEBUG)
+TestTPSAFun.testCos   = \ -> checkFun1D('cos',DEBUG)
+TestTPSAFun.testTan   = \ -> checkFun1D('tan',DEBUG)
+TestTPSAFun.testCot   = \ -> checkFun1D('cot',DEBUG)
+TestTPSAFun.testSinc  = \ -> checkFun1D('sinc',DEBUG)
+TestTPSAFun.testSinh  = \ -> checkFun1D('sinh',DEBUG)
+TestTPSAFun.testCosh  = \ -> checkFun1D('cosh',DEBUG)
+TestTPSAFun.testTanh  = \ -> checkFun1D('tanh',DEBUG)
+TestTPSAFun.testCoth  = \ -> checkFun1D('coth',DEBUG)
+TestTPSAFun.testAsin  = \ -> checkFun1D('asin',DEBUG)
+TestTPSAFun.testAcos  = \ -> checkFun1D('acos',DEBUG)
+TestTPSAFun.testAtan  = \ -> checkFun1D('atan',DEBUG)
+TestTPSAFun.testAcot  = \ -> checkFun1D('acot',DEBUG)
+TestTPSAFun.testAsinh = \ -> checkFun1D('asinh',DEBUG)
+TestTPSAFun.testAcosh = \ -> checkFun1D('acosh',DEBUG)
+TestTPSAFun.testAtanh = \ -> checkFun1D('atanh',DEBUG)
+TestTPSAFun.testAcoth = \ -> checkFun1D('acoth',DEBUG)
+TestTPSAFun.testErf   = \ -> checkFun1D('erf',DEBUG)
+TestTPSAFun.testSinhc = \ -> checkFun1D('sinhc',DEBUG)
+TestTPSAFun.testAsinc   = \ -> checkFun1D('asinc',DEBUG)
+TestTPSAFun.testAsinhc   = \ -> checkFun1D('asinhc',DEBUG)
+
 
 -- end ------------------------------------------------------------------------o
