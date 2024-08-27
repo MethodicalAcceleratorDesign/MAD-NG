@@ -26,7 +26,7 @@
 #include "mad_tpsa_impl.h"
 #include "mad_ctpsa_impl.h"
 
-#define OLD_SERIES 0
+#define OLD_SERIES 1
 // --- local ------------------------------------------------------------------o
 
 enum { MANUAL_EXPANSION_ORD = 6 };
@@ -781,7 +781,7 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
 #if OLD_SERIES
     if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
-    if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
+    if (to > 0) { // use simpler and faster approach?
       // atan(x) = i/2 ln((i+x) / (i-x))
   #ifdef MAD_CTPSA_IMPL
       ctpsa_t *tn = GET_TMPX(c), *td = GET_TMPX(c);
@@ -816,8 +816,8 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
 
 #else
     NUM ord_coef[to+1]           ;
-    num_t asqr =        a0*a0 + 1;
-    num_t numer =               0;
+    NUM asqr =        a0*a0 + 1;
+    NUM numer =               0;
     int trsh,fn                  ;
 
     ord_coef[0] =      f0;
@@ -828,7 +828,7 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
       numer = 0;
       for (int i= 0; i <= trsh +1; i++){
   
-        numer += pow(-1,ord+i+1)*pow(2,ord-2*i-1)*mad_num_binom(ord-i-1,i)*pow(a0,ord-2*i-1)/pow(asqr,ord-i);
+        numer += pow(-1,ord+i+1)*pow(2,ord-2*i-1)*mad_num_binom(ord-i-1,i)*NUMF(powi)(a0,ord-2*i-1)/NUMF(powi)(asqr,ord-i);
         
       }  
 
