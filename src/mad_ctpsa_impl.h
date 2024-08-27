@@ -43,6 +43,7 @@ struct ctpsa_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
 
 #define T                ctpsa_t
 #define NUM              cpx_t
+#define NUMF(name)       MKNAME(mad_cpx_,name)
 #define FUN(name)        MKNAME(mad_ctpsa_,name)
 #define PFX(name)        MKNAME(c,name)
 #define VAL(num)         creal(num), cimag(num)
