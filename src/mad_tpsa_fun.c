@@ -778,7 +778,7 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
   NUM a0 = a->coef[0], f0 = atan(a0);
 
   ord_t to = c->mo;
-  #if OLD_SERIES
+#if OLD_SERIES
     if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
     if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
@@ -814,7 +814,7 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
     assert(!"unexpected missing coefficients");
     }
 
- #else
+#else
     NUM ord_coef[to+1]           ;
     num_t asqr =        a0*a0 + 1;
     num_t numer =               0;
@@ -827,7 +827,9 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
       trsh = floor((ord-3)/2);
       numer = 0;
       for (int i= 0; i <= trsh +1; i++){
-        numer += pow(-1,ord+i+1)*pow(2,ord-2*i-1)*mad_num_HypTri(i,ord-2*i)*pow(a0,ord-2*i-1)/pow(asqr,floor(ord-i));
+  
+        numer += pow(-1,ord+i+1)*pow(2,ord-2*i-1)*mad_num_binom(ord-i-1,i)*pow(a0,ord-2*i-1)/pow(asqr,ord-i);
+        
       }  
 
       ord_coef[ord] = numer/ord;
