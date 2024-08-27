@@ -77,9 +77,8 @@ num_t mad_num_fact2 (int n)
 
 num_t mad_num_binom (int n, int k)
 {
-  assert(k >= 0 && n >= k);
-
-  return (mad_num_fact(n)/mad_num_fact(k)) / mad_num_fact(n-k);
+  assert(k >= 0);
+  return n >= k ? (mad_num_fact(n)/mad_num_fact(k)) / mad_num_fact(n-k) : 1;
 }
 
 num_t mad_num_sinc (num_t x)

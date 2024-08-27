@@ -33,7 +33,7 @@ int   mad_num_sign     (num_t x); // -1, 0, 1
 int   mad_num_sign1    (num_t x); // -1, 1
 
 num_t mad_num_fact     (int n);   // n in Z -> n!
-num_t mad_num_fact2    (int n);   // n in Z -> n!! (.. wiki/Double_factorial)
+num_t mad_num_fact2    (int n);   // n in Z -> n!! (wiki/Double_factorial)
 num_t mad_num_binom    (int n, int k); // (n,k) in Z^2 -> n!/(k!(n-k)!)
 
 num_t mad_num_sinc     (num_t x);
