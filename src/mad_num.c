@@ -191,7 +191,6 @@ cpx_t mad_cpx_div (cpx_t x, cpx_t y)
 #undef RMINSCAL
 }
 
-
 cpx_t mad_cpx_inv (cpx_t x)
 {
   return mad_cpx_div(1, x);
