@@ -28,12 +28,12 @@
 // --- helpers ----------------------------------------------------------------o
 
 static inline num_t
-fact(int n)
+fact2(int n) // n!!
 {
-  static num_t f[171] = {1, 0};
+  static num_t f[171] = {1, 1, 0};
 
-  if (!f[1])
-    for (int i=1; i < 171; ++i) f[i] = i*f[i-1];
+  if (!f[2])
+    for (int i=2; i < 171; ++i) f[i] = i*f[i-2];
 
   return n < 171 ? f[n] : INFINITY;
 }
@@ -63,7 +63,23 @@ num_t mad_num_fact (int n)
 
   if (n < 0) n = -n, s = n & 1 ? -s : s;
 
-  return s*fact(n);
+  return n > 1 ? s*fact2(n)*fact2(n-1) : s;
+}
+
+num_t mad_num_fact2 (int n)
+{
+  int s = 1;
+
+  if (n < 0) n = -n, s = n & 1 ? -s : s;
+
+  return n > 1 ? s*fact2(n) : s;
+}
+
+num_t mad_num_binom (int n, int k)
+{
+  assert(k >= 0 && n >= k);
+
+  return (mad_num_fact(n)/mad_num_fact(k)) / mad_num_fact(n-k);
 }
 
 num_t mad_num_sinc (num_t x)
