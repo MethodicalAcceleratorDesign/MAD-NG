@@ -1143,7 +1143,7 @@ inline void rfcav_kickn (cflw<M> &m, num_t lw, int is)
 
 // --- fringe maps ------------------------------------------------------------o
 
-// must be identical to M.fringe in madl_dynamp.mad
+// must be identical to M.fringe in madl_dynmap.mad
 enum {
  fringe_none  = 0,
  fringe_bend  = 1, fringe_mult  = 2 , fringe_qsad = 2+4,
@@ -1151,8 +1151,8 @@ enum {
 };
 
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
-inline void adjust_time (cflw<M> &m, num_t lw)
-{                                    (void)lw;
+inline void adjust_time (cflw<M> &m)
+{
   if (fabs(m.el) < minlen) return;
 
   P Tl = (m.T-m.Tbak)/m.beta*R(m.el)*m.sdir;
@@ -1648,11 +1648,11 @@ inline void rfcav_fringe (cflw<M> &m, num_t lw)
       m.Tbak = m.T, m.T = 1, R(m.lag) -= R(m.freq)*abs(R(m.el))*(pi_clight/m.beta);
     else
       m.Tbak = m.T, m.T = 0;
-    if (lw == -1 && m.T != m.Tbak) adjust_time<M>(m, 1);
+    if (lw == -1 && m.T != m.Tbak) adjust_time<M>(m);
     if (m.frng & fringe_rfcav)      cav_fringe<M>(m, 1);
   } else {
     if (m.frng & fringe_rfcav)      cav_fringe<M>(m,-1);
-    if (lw == -1 && m.T != m.Tbak) adjust_time<M>(m,-1);
+    if (lw == -1 && m.T != m.Tbak) adjust_time<M>(m);
     m.T = m.Tbak, m.Tbak = -1;
   }
   mdump(1);

@@ -41,10 +41,10 @@ typedef struct desc_ desc_t;
 
 extern const  ord_t  mad_tpsa_dflt;
 extern const  ord_t  mad_tpsa_same;
-extern        num_t  mad_tpsa_eps;   // consider coef < eps as zero for dflt eps
-extern        ord_t  mad_tpsa_dbgo;  // effective only with TPSA_DEBUG > 0
-extern        int    mad_tpsa_dbgf;  // effective only with TPSA_DEBUG > 0
-extern        int    mad_tpsa_dbga;  // effective only with TPSA_DEBUG > 0
+extern        num_t  mad_tpsa_eps;  // consider coef < eps as zero for dflt eps
+extern        ord_t  mad_tpsa_dbgo; // effective only with TPSA_DEBUG > 0
+extern        int    mad_tpsa_dbgf; // effective only with TPSA_DEBUG > 0
+extern        int    mad_tpsa_dbga; // effective only with TPSA_DEBUG > 0
 extern const desc_t *mad_desc_curr;
 
 // --- interface --------------------------------------------------------------o

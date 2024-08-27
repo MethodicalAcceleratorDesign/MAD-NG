@@ -51,7 +51,14 @@ local strex_thick, curex_thick, curex_thin                       in MAD.geomap
 local xrotation, yrotation, srotation, translate,
       changeref, changedir, changenrj, misalign                  in MAD.geomap
 
--- misalignments --------------------------------------------------------------o
+-- collect tilt, misalignment -------------------------------------------------o
+
+local function get_tilt (e, m)
+  local tlt = e.tilt
+  if abs(tlt) < minang then tlt = 0 end
+  m.tlt = tlt
+  return m.tlt
+end
 
 local function get_algn (e, m)
   local al = e.misalign or  m.sequ:align (m.eidx)
@@ -76,12 +83,10 @@ local function get_algn (e, m)
   local trn = abs(dx  )+abs(dy  )+abs(ds  ) >= minlen
   local rot = abs(dthe)+abs(dphi)+abs(dpsi) >= minang
 
-  if not (trn or rot) then return nil end
+  if not (trn or rot) then m.algn = nil ; return nil end
 
---local len = m.el + m.ang*dx
---print("***** el=", m.el, "name=", e.name, "e.misalign=", MAD.tostring(al))
-
-  return {trn=trn, rot=rot, dx=dx, dy=dy, ds=ds, dthe=dthe, dphi=dphi, dpsi=dpsi}
+  m.algn = {trn=trn,rot=rot,dx=dx,dy=dy,ds=ds,dthe=dthe,dphi=dphi,dpsi=dpsi}
+  return m.algn
 end
 
 -- element tracking -----------------------------------------------------------o
@@ -104,12 +109,12 @@ end
 
 local function trackelm (elm, m, inter, thick, thin, fringe)
   local sdir, atentry, atexit in m
-  local tlt  = elm.tilt ; m.tlt = tlt
-  local algn = get_algn(elm, m) ; m.algn = algn
-  local mis  = algn and misalign or fnil
-  local rot  = abs(tlt) >= minang and srotation or fnil
-  local fng  = fringe
-  local slc  = slc_fwd
+  local tlt = get_tilt(elm, m)
+  local alg = get_algn(elm, m)
+  local rot = tlt ~= 0 and srotation or fnil
+  local mis = alg      and misalign  or fnil
+  local fng =              fringe
+  local slc = slc_fwd
 
   if sdir < 0 then
     atentry, atexit, slc = atexit, atentry, slc_bwd
@@ -136,12 +141,12 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
   end
 
   local eidx, sdir, atentry, atexit, __sdat in m
-  local tlt  = elm.tilt ; m.tlt = tlt
-  local algn = get_algn(elm, m) ; m.algn = algn
-  local mis  = algn and misalign or fnil
-  local rot  = abs(tlt) >= minang and srotation or fnil
-  local fng  = fringe
-  local slc  = slc_fwd
+  local tlt = get_tilt(elm, m)
+  local alg = get_algn(elm, m)
+  local rot = tlt ~= 0 and srotation or fnil
+  local mis = alg      and misalign  or fnil
+  local fng =              fringe
+  local slc = slc_fwd
   m.eidx = 0
 
   if sdir < 0 then
@@ -272,9 +277,13 @@ end
 
 -- rbend special --------------------------------------------------------------o
 
+local function fng_e (elm, m, s)
+  yrotation(elm, m, -0.5*m.edir)
+end
+
 local function fng_e1 (elm, m, s)
   local e1, e2, elc, sdir in m
-  if s*sdir == 1 then -- translation independant of direction
+  if s == sdir then -- translation independant of direction
     translate(elm, m, -sdir, elc*sin((e2-e1)/2), 0, 0)
     yrotation(elm, m, -sdir, e2)
   elseif e1 ~= 0 then
@@ -284,7 +293,7 @@ end
 
 local function fng_e2 (elm, m, s)
   local e1, e2, elc, sdir, edir in m
-  if s*sdir == 1 then -- translation independant of direction
+  if s == sdir then -- translation independant of direction
     yrotation(elm, m, -sdir, e1)
     translate(elm, m, -sdir, elc*sin((e2-e1)/2), 0, 0)
   elseif e2 ~= 0 then
@@ -292,20 +301,19 @@ local function fng_e2 (elm, m, s)
   end
 end
 
-local fng_e  = \elm, m, s -> yrotation(elm, m, -0.5*m.edir)
-
 local function track_rbend (elm, m)
   if not elm.true_rbend then
     track_thick(elm, m, nil) ; return
   end
 
   local e1, e2, angle in elm
-  local fng
 
   if is_number(e1) and abs(e1) > twopi then e1 = false end
   if is_number(e2) and abs(e2) > twopi then e2 = false end
 
   m.elc = arc2cord(elm.l, angle)
+
+  local fng
 
   if e1 and e2 then                                                           -- Straight
     m.el = m.elc
