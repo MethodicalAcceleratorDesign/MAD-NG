@@ -191,34 +191,6 @@ cpx_t mad_cpx_div (cpx_t x, cpx_t y)
 #undef RMINSCAL
 }
 
-num_t mad_num_dfact(int n) {
-    if (n <= 0) {
-        return 1;
-    }
-
-    num_t result = 1;
-    while (n > 0) {
-        result *= n;
-        n -= 2;
-    }
-
-    return result;
-}
-
-num_t mad_num_HypTri(int d, int n) {
-    if (d <= 0) {
-        return 1;
-    }
-
-    num_t product = 1;
-    for (int k = 0; k < d; k++) {
-        product *= (n + k);
-    }
-
-    num_t dfact = fact(d);
-
-    return product / dfact;
-}
 
 cpx_t mad_cpx_inv (cpx_t x)
 {
