@@ -43,6 +43,7 @@ struct tpsa_ {  // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
 
 #define T                tpsa_t
 #define NUM              num_t
+#define NUMF(name)       MKNAME(mad_num_,name)
 #define FUN(name)        MKNAME(mad_tpsa_,name)
 #define PFX(name)        name
 #define VAL(num)         num
