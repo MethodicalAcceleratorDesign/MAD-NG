@@ -780,21 +780,21 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
-    // atan(x) = i/2 ln((i+x) / (i-x))
+    // atan(x) = -i/2 ln((i-x) / (i+x)) ; pole = +/- 1i
 #ifdef MAD_CTPSA_IMPL
     ctpsa_t *tn = GET_TMPX(c), *td = GET_TMPX(c);
-    mad_ctpsa_copy(a, tn);
-    mad_ctpsa_axpb(-1, tn, I, td);
-    mad_ctpsa_seti(tn, 0, 1, I);
+    mad_ctpsa_copy(a, td);
+    mad_ctpsa_axpb(-1, td, I, tn);
+    mad_ctpsa_seti(td, 0, 1, I);
     mad_ctpsa_logxdy(tn, td, c);
-    mad_ctpsa_scl(c, I/2, c);
+    mad_ctpsa_scl(c, -I/2, c);
 #else
     ctpsa_t *tn = GET_TMPC(c), *td = GET_TMPC(c);
-    mad_ctpsa_cplx(a, NULL, tn);
-    mad_ctpsa_axpb(-1, tn, I, td);
-    mad_ctpsa_seti(tn, 0, 1, I);
+    mad_ctpsa_cplx(a, NULL, td);
+    mad_ctpsa_axpb(-1, td, I, tn);
+    mad_ctpsa_seti(td, 0, 1, I);
     mad_ctpsa_logxdy(tn, td, tn);
-    mad_ctpsa_scl(tn, I/2, tn);
+    mad_ctpsa_scl(tn, -I/2, tn);
     mad_ctpsa_real(tn, c);
 #endif
     REL_TMPC(td), REL_TMPC(tn); DBGFUN(<-); return;
