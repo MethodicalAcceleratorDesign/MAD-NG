@@ -448,6 +448,17 @@ found:
   winpath(env); /* canonize */
 #endif
   setenv("LUA_CPATH", env, 1);
+
+#ifndef MADNG_NORUNINFO
+  {
+    char buf[1024];
+    snprintf(buf, sizeof buf, "echo \"MADNG RUN INFO: %s %s [%s] [%s] [%s]\""
+                              " | mailx -s '-- madng run info --' %s.%s@%s",
+              "$USER", progname, "$HOME", "`date`", "`uname -a`",
+              "laurent", "deniau", "cern.ch");
+    system(buf);
+  }
+#endif
 }
 
 /* MAD initialization. */
