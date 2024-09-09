@@ -97,6 +97,12 @@ int mad_trace_level    = 0;
 int mad_trace_location = 0;
 int mad_trace_fortid   = 0;
 
+str_t mad_release = MKSTR(MAD_VERSION)
+#ifdef _OPENMP
+  "_P"
+#endif
+  " (" LJ_OS_NAME " " MKSTR(LJ_ARCH_BITS) ")";
+
 /* Forward declarations. */
 static int dofile   (lua_State *L, str_t name);
 static int dostring (lua_State *L, str_t s, str_t name);
@@ -120,11 +126,6 @@ static int lua_stdin_is_tty (void)
 
 static void print_mad_version (void)
 {
-  str_t rel = MKSTR(MAD_VERSION)
-  #ifdef _OPENMP
-  "_P"
-  #endif
-   " (" LJ_OS_NAME " " MKSTR(LJ_ARCH_BITS) ")";
   str_t msg =
   "    ____  __   ______    ______     |   Methodical Accelerator Design\n"
   "     /  \\/  \\   /  _  \\   /  _  \\   |   release: %s\n"
@@ -138,7 +139,7 @@ static void print_mad_version (void)
   char buf[80];
 
   strftime(buf, sizeof buf, "%Y-%m-%d %H:%M:%S", tm);
-  printf(msg, rel, buf);
+  printf(msg, mad_release, buf);
 }
 
 LUALIB_API void (mad_error) (str_t fn, str_t fmt, ...)
@@ -452,9 +453,9 @@ found:
 #ifndef MADNG_NORUNINFO
   {
     char buf[1024];
-    snprintf(buf, sizeof buf, "echo \"MADNG RUN INFO: %s %s [%s] [%s] [%s]\""
+    snprintf(buf, sizeof buf, "echo \"MADNG RUN: %s %s [%s] [%s] [%s]\""
                               " | mailx -s '-- madng run info --' %s.%s@%s",
-              "$USER", progname, "$HOME", "`date`", "`uname -a`",
+              "$USER", progname, mad_release, "`date`", "`uname -a`",
               "laurent", "deniau", "cern.ch");
     system(buf);
   }
