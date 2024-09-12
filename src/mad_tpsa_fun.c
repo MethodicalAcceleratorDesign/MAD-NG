@@ -884,28 +884,6 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
     ord_coef[o] = v/o;
   }
 
-#else
-    NUM ord_coef[to+1]           ;
-    NUM asqr =        a0*a0 + 1;
-    NUM numer =               0;
-    int trsh,fn                  ;
-
-    ord_coef[0] =      f0;
-    ord_coef[1] = 1./asqr;
-    
-    for (int ord = 2; ord <= to; ord++ ){
-      trsh = floor((ord-3)/2);
-      numer = 0;
-      for (int i= 0; i <= trsh +1; i++){
-  
-        numer += NUMF(powi)(-1,ord+i+1)*NUMF(powi)(2,ord-2*i-1)*mad_num_binom(ord-i-1,i)*NUMF(powi)(a0,ord-2*i-1)/NUMF(powi)(asqr,ord-i);
-        
-      }  
-
-      ord_coef[ord] = numer/ord;
-    }
-  #endif
-
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
 }
