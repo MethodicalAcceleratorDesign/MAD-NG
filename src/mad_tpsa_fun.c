@@ -28,6 +28,8 @@
 
 // --- local ------------------------------------------------------------------o
 
+#define OLD_SERIES 0
+
 enum { MANUAL_EXPANSION_ORD = 6 };
 
 static inline void
@@ -787,6 +789,7 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
+#if OLD_SERIES
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // atan(x) = -i/2 ln((i-x) / (i+x)) ; pole = +/- 1i
 #ifdef MAD_CTPSA_IMPL
@@ -806,9 +809,11 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
 #endif
     REL_TMPC(td), REL_TMPC(tn); DBGFUN(<-); return;
   }
+#endif // OLD_SERIES
 
   NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/(1+a2), f2 = f1*f1, f4 = f2*f2;
-  switch(to) {
+  // fill orders <= MANUAL_EXPANSION_ORD
+  switch(MIN(to, MANUAL_EXPANSION_ORD)) {
   case 6: ord_coef[6] = -a0*(1 + a2*(-10./3 + a2)) *f4*f2; /* FALLTHRU */
   case 5: ord_coef[5] = (1./5 + a2*(-2 + a2)) *f4*f1;      /* FALLTHRU */
   case 4: ord_coef[4] = -a0*(-1 + a2) *f4;                 /* FALLTHRU */
@@ -817,6 +822,17 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
   case 1: ord_coef[1] = f1;                                /* FALLTHRU */
   case 0: ord_coef[0] = f0;                                break;
   assert(!"unexpected missing coefficients");
+  }
+  // fill orders > MANUAL_EXPANSION_ORD
+  for (ord_t o = 1+MANUAL_EXPANSION_ORD; o <= to; ++o) {
+    ord_t n = (o-3)/2+1;
+    int s = 2*(o & 1)-1; // o: even = -1, odd = 1
+    NUM v = 0;
+    for (ord_t i = 0; i <= n; ++i, s = -s) {
+      num_t c = s * mad_num_powi(2, o-2*i-1) * mad_num_binom(o-i-1,i);
+      v += c * NUMF(powi)(a0, o-2*i-1) / NUMF(powi)(1+a2, o-i);
+    }
+    ord_coef[o] = v/o;
   }
 
   fun_taylor(a,c,to,ord_coef);
