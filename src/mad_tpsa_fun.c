@@ -923,6 +923,8 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
     #endif
         REL_TMPC(td), REL_TMPC(tn); DBGFUN(<-); return;
       }
+    #endif // OLD_SERIES
+
 
       NUM ord_coef[to+1], a2 = a0*a0, f1 = -1/(1+a2), f2 = f1*f1, f4 = f2*f2;
       switch(to) {
