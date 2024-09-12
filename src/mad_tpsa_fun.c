@@ -30,6 +30,10 @@
 #define OLD_SERIES 1
 // --- local ------------------------------------------------------------------o
 
+#define OLD_SERIES 0
+
+#define OLD_SERIES 0
+
 enum { MANUAL_EXPANSION_ORD = 0};
 
 #ifdef MAD_TPSA_TAYLOR_HORNER
@@ -158,12 +162,8 @@ FUN(inv) (const T *a, NUM v, T *c) // c = v/a    // checked for real and complex
   ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(a0 != 0, "invalid domain inv("FMT")", VAL(a0));
-#ifdef MAD_CTPSA_IMPL
-  NUM f0 = mad_cpx_inv(a0);
-#else
-  NUM f0 = 1/a0;
-#endif
 
+  NUM f0 = NUMF(inv)(a0);
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,v*f0); DBGFUN(<-); return; }
 
@@ -184,14 +184,9 @@ FUN(invsqrt) (const T *a, NUM v, T *c) // v/sqrt(a),checked for real and complex
   ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(SELECT(a0 > 0, a0 != 0), "invalid domain invsqrt("FMT")", VAL(a0));
-#ifdef MAD_CTPSA_IMPL
-  NUM _a0 = mad_cpx_inv(a0);
-  NUM  f0 = mad_cpx_inv(sqrt(a0));
-#else
-  NUM _a0 = 1/a0;
-  NUM  f0 = 1/sqrt(a0);
-#endif
 
+  NUM _a0 = NUMF(inv)(a0);
+  NUM  f0 = NUMF(inv)(sqrt(a0));
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,v*f0); DBGFUN(<-); return; }
 
@@ -217,12 +212,7 @@ FUN(sqrt) (const T *a, T *c)                     // checked for real and complex
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
-#ifdef MAD_CTPSA_IMPL
-  NUM _a0 = mad_cpx_inv(a0);
-#else
-  NUM _a0 = 1/a0;
-#endif
-
+  NUM _a0 = NUMF(inv)(a0);
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
   for (ord_t o = 1; o <= to; ++o)
@@ -263,7 +253,8 @@ FUN(log) (const T *a, T *c)                      // checked for real and complex
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
-  NUM ord_coef[to+1], _a0 = 1/a0;
+  NUM _a0 = NUMF(inv)(a0);
+  NUM ord_coef[to+1];
   ord_coef[0] = f0;
   ord_coef[1] = _a0;
   for (int o = 2; o <= to; ++o)
@@ -639,12 +630,8 @@ FUN(coth) (const T *a, T *c)                     // checked for real and complex
   ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0], f0 = tanh(a0);
   ensure(f0 != 0, "invalid domain coth("FMT")", VAL(a0));
-#ifdef MAD_CTPSA_IMPL
-  f0 = mad_cpx_inv(f0);
-#else
-  f0 = 1/f0;
-#endif
 
+  f0 = NUMF(inv)(f0);
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
@@ -851,6 +838,7 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
 #if OLD_SERIES
     if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
+#if OLD_SERIES
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
     // atan(x) = -i/2 ln((i-x) / (i+x)) ; pole = +/- 1i
 #ifdef MAD_CTPSA_IMPL
@@ -870,18 +858,31 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
 #endif
     REL_TMPC(td), REL_TMPC(tn); DBGFUN(<-); return;
   }
+#endif // OLD_SERIES
 
-    NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/(1+a2), f2 = f1*f1, f4 = f2*f2;
-    switch(to) {
-    case 6: ord_coef[6] = -a0*(1 + a2*(-10./3 + a2)) *f4*f2; /* FALLTHRU */
-    case 5: ord_coef[5] = (1./5 + a2*(-2 + a2)) *f4*f1;      /* FALLTHRU */
-    case 4: ord_coef[4] = -a0*(-1 + a2) *f4;                 /* FALLTHRU */
-    case 3: ord_coef[3] = (-1./3 + a2) *f2*f1;               /* FALLTHRU */
-    case 2: ord_coef[2] = -a0 *f2;                           /* FALLTHRU */
-    case 1: ord_coef[1] = f1;                                /* FALLTHRU */
-    case 0: ord_coef[0] = f0;                                break;
-    assert(!"unexpected missing coefficients");
+  NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/(1+a2), f2 = f1*f1, f4 = f2*f2;
+  // fill orders <= MANUAL_EXPANSION_ORD
+  switch(MIN(to, MANUAL_EXPANSION_ORD)) {
+  case 6: ord_coef[6] = -a0*(1 + a2*(-10./3 + a2)) *f4*f2; /* FALLTHRU */
+  case 5: ord_coef[5] = (1./5 + a2*(-2 + a2)) *f4*f1;      /* FALLTHRU */
+  case 4: ord_coef[4] = -a0*(-1 + a2) *f4;                 /* FALLTHRU */
+  case 3: ord_coef[3] = (-1./3 + a2) *f2*f1;               /* FALLTHRU */
+  case 2: ord_coef[2] = -a0 *f2;                           /* FALLTHRU */
+  case 1: ord_coef[1] = f1;                                /* FALLTHRU */
+  case 0: ord_coef[0] = f0;                                break;
+  assert(!"unexpected missing coefficients");
+  }
+  // fill orders > MANUAL_EXPANSION_ORD
+  for (ord_t o = 1+MANUAL_EXPANSION_ORD; o <= to; ++o) {
+    ord_t n = (o-3)/2+1;
+    int s = 2*(o & 1)-1; // o: even = -1, odd = 1
+    NUM v = 0;
+    for (ord_t i = 0; i <= n; ++i, s = -s) {
+      num_t c = s * mad_num_powi(2, o-2*i-1) * mad_num_binom(o-i-1,i);
+      v += c * NUMF(div)(NUMF(powi)(a0, o-2*i-1), NUMF(powi)(1+a2, o-i));
     }
+    ord_coef[o] = v/o;
+  }
 
 #else
     NUM ord_coef[to+1]           ;
@@ -916,12 +917,8 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
   ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(a0 != 0, "invalid domain acot("FMT")", VAL(a0));
-#ifdef MAD_CTPSA_IMPL
-  NUM f0 = atan(mad_cpx_inv(a0));
-#else
-  NUM f0 = atan(1/a0);
-#endif
 
+  NUM f0 = atan(NUMF(inv)(a0));
   ord_t to = c->mo;
   #if OLD_SERIES
       if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
@@ -1217,6 +1214,7 @@ FUN(acoth) (const T *a, T *c)                    // checked for real and complex
   ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(fabs(a0) SELECT(> 1, != 1 && a0 != 0), "invalid domain acoth("FMT")", VAL(a0));
+
 #ifdef MAD_CTPSA_IMPL
   NUM f0 = atanh(mad_cpx_inv(a0));
 #else
