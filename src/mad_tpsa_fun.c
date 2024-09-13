@@ -27,10 +27,7 @@
 #include "mad_tpsa_impl.h"
 #include "mad_ctpsa_impl.h"
 
-#define OLD_SERIES 1
 // --- local ------------------------------------------------------------------o
-
-#define OLD_SERIES 0
 
 #define OLD_SERIES 0
 
@@ -450,64 +447,31 @@ FUN(sinc) (const T *a, T *c)
 #endif
     FUN(setval)(c,f0); DBGFUN(<-); return;
   }
-  NUM ord_coef[to+1];
-  if (fabs(a0) > 0.75) { // sin(x)/x
+
+  if (fabs(a0) > 1e-12) { // sin(x)/x
     T *t = GET_TMPX(c);
     FUN(sin)(a,t);
     FUN(div)(t,a,c);
-    NUM f0 = NUMF(sinc)(a0);
-    FUN(seti)(c, 0, 0, f0); // this line because the tpsa calculation is not very accurate for the scalar part
     REL_TMPX(t); DBGFUN(<-); return;
   }
+// prefer explicit above? not better in term of stability...
+//    NUM sa = sin(a0), ca = cos(a0), _a0 = 1/a0, f1;
+//    num_t fo = 1;
+//    ord_coef[0] = f0;
+//    ord_coef[1] = (ca - f0)*_a0;
+//    for (ord_t o = 2; o <= to; ++o) {
+//      fo *= o; // formula numerically unstable in (0, 0.5), need some work
+//      f1  = o & 1 ? (ca=-ca,ca) : (sa=-sa,sa);
+//      ord_coef[o] = (f1/fo - ord_coef[o-1])*_a0;
+//      // printf("[%02d]=%+.17e\n", o, 1 - ord_coef[o-1]*fo/f1);
+//    }
 
-  if (fabs(a0) > 1e-12) { 
-
-   NUM fact = 1;
-   NUM sa = sin(a0), _a0 = 1/a0, f1;
-   NUM odd_coef[6], even_coef[6], scalar = -1;
-   NUM a2 = pow(a0,2), a3 = pow(a0,3), a4 = pow(a0,4), a5 = pow(a0,5), a6 = pow(a0,6), a7 = pow(a0,7), 
-   a8 = pow(a0,8), a9 = pow(a0,9), a10 = pow(a0,10), a11 = pow(a0,11), a12 = pow(a0,12), a13 = pow(a0,13);
-
-
-   odd_coef[0] = 30, odd_coef[1] = -840, odd_coef[2] = 45360,
-   odd_coef[3] = -3991680, odd_coef[4] = 518918400, odd_coef[5] = -93405312000;
-
-   even_coef[0] = 10, even_coef[1] = -168, even_coef[2] = 6480,
-   even_coef[3] = -443520, even_coef[4] = 47174400, even_coef[5] = -7185024000;
-
-   for (int o = 1; o <= to; o+=2) {
-     fact *= ((o)*(o+1)); 
-     odd_coef[0]  = ((o>1)*mad_num_sign(odd_coef[0])*12          + odd_coef[0]);
-     odd_coef[1]  = ((o>1)*mad_num_sign(odd_coef[1])*240         + odd_coef[1]);
-     odd_coef[2]  = ((o>1)*mad_num_sign(odd_coef[2])*10080        + odd_coef[2]);
-     odd_coef[3]  = ((o>1)*mad_num_sign(odd_coef[3])*725760      + odd_coef[3]);
-     odd_coef[4]  = ((o>1)*mad_num_sign(odd_coef[4])*79833600    + odd_coef[4]);
-     odd_coef[5]  = ((o>1)*mad_num_sign(odd_coef[5])*12454041600 + odd_coef[5]);
-
-     even_coef[0] = ((o>1)*mad_num_sign(even_coef[0])*4          + even_coef[0]);
-     even_coef[1] = ((o>1)*mad_num_sign(even_coef[1])*48         + even_coef[1]);
-     even_coef[2] = ((o>1)*mad_num_sign(even_coef[2])*1440       + even_coef[2]);
-     even_coef[3] = ((o>1)*mad_num_sign(even_coef[3])*80640      + even_coef[3]);
-     even_coef[4] = ((o>1)*mad_num_sign(even_coef[4])*7257600    + even_coef[4]);
-     even_coef[5] = ((o>1)*mad_num_sign(even_coef[5])*958003200  + even_coef[5]);
-
-     scalar  = (mad_num_sign(scalar)*2 + scalar);
-
-     ord_coef[(o)       ] =   (pow(-1,o/2)*(1./scalar*a0 + 1./ odd_coef[0]*a3 + 1./ odd_coef[1]*a5 + 1./ odd_coef[2]*a7 + 1./ odd_coef[3]*a9 + 1./ odd_coef[4]*a11 + 1./ odd_coef[5]*a13))*((o+1)/fact);
-     ord_coef[(o+1)%(to+1)] = (pow(-1,o/2)*(1./scalar    + 1./even_coef[0]*a2 + 1./even_coef[1]*a4 + 1./even_coef[2]*a6 + 1./even_coef[3]*a8 + 1./even_coef[4]*a10 + 1./even_coef[5]*a12))/(      fact);
-   }
-
-   num_t f0 = sa*_a0;
-   ord_coef[0] = f0;
-   //ord_coef[15] = (1./scalar    + 1./even_coef[0]*a2 + 1./even_coef[1]*a4 + 1./even_coef[2]*a6 + 1./even_coef[3]*a8 + 1./even_coef[4]*a10 + 1./even_coef[5]*a12)/(      fact);
-   fun_taylor(a,c,to,ord_coef); return;
-  }
   // sinc(x) at x=0
-  //NUM ord_coef[to+1];
+  NUM ord_coef[to+1];
   ord_coef[0] = 1;
   ord_coef[1] = 0;
-  for (int o = 2; o <= to; ++o)
-    ord_coef[o] = -ord_coef[o-2] / (o * (o+1));
+  for (ord_t o = 2; o <= to; ++o)
+    ord_coef[o] = -ord_coef[o-2] / (o*(o+1.));
 
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
@@ -676,64 +640,19 @@ FUN(sinhc) (const T *a, T *c)
     FUN(setval)(c,f0); DBGFUN(<-); return;
   }
 
-  if (fabs(a0) > 0.76) { // sinh(x)/x
+  if (fabs(a0) > 1e-12) { // sinh(x)/x
     T *t = GET_TMPX(c);
     FUN(sinh)(a,t);
     FUN(div)(t,a,c);
-    NUM f0 = NUMF(sinhc)(a0);
-    FUN(seti)(c,0,0,f0);
     REL_TMPX(t); DBGFUN(<-); return;
   }
 
-NUM ord_coef[to+1];
-if (fabs(a0) > 1e-12) { 
-
-   NUM fact = 1;
-   NUM sa = sinh(a0), _a0 = 1/a0, f1;
-   NUM odd_coef[6], even_coef[6], scalar = 1;
-   NUM a2 = pow(a0,2), a3 = pow(a0,3), a4 = pow(a0,4), a5 = pow(a0,5), a6 = pow(a0,6), a7 = pow(a0,7), 
-   a8 = pow(a0,8), a9 = pow(a0,9), a10 = pow(a0,10), a11 = pow(a0,11), a12 = pow(a0,12), a13 = pow(a0,13);
-
-
-   odd_coef[0] = 30, odd_coef[1] = 840, odd_coef[2] = 45360,
-   odd_coef[3] = 3991680, odd_coef[4] = 518918400, odd_coef[5] = 93405312000;
-
-   even_coef[0] = 10, even_coef[1] = 168, even_coef[2] = 6480,
-   even_coef[3] = 443520, even_coef[4] = 47174400, even_coef[5] = 7185024000;
-
-   for (int o = 1; o <= to; o+=2) {
-     fact *= ((o)*(o+1)); 
-     odd_coef[0]  = ((o>1)*12          + odd_coef[0]);
-     odd_coef[1]  = ((o>1)*240         + odd_coef[1]);
-     odd_coef[2]  = ((o>1)*10080       + odd_coef[2]);
-     odd_coef[3]  = ((o>1)*725760      + odd_coef[3]);
-     odd_coef[4]  = ((o>1)*79833600    + odd_coef[4]);
-     odd_coef[5]  = ((o>1)*12454041600 + odd_coef[5]);
-
-     even_coef[0] = ((o>1)*4          + even_coef[0]);
-     even_coef[1] = ((o>1)*48         + even_coef[1]);
-     even_coef[2] = ((o>1)*1440       + even_coef[2]);
-     even_coef[3] = ((o>1)*80640      + even_coef[3]);
-     even_coef[4] = ((o>1)*7257600    + even_coef[4]);
-     even_coef[5] = ((o>1)*958003200  + even_coef[5]);
-
-     scalar  = (mad_num_sign(scalar)*2 + scalar);
-
-     ord_coef[(o)       ] = ((1./scalar*a0 + 1./ odd_coef[0]*a3 + 1./ odd_coef[1]*a5 + 1./ odd_coef[2]*a7 + 1./ odd_coef[3]*a9 + 1./ odd_coef[4]*a11 + 1./ odd_coef[5]*a13))*((o+1)/fact);
-     ord_coef[(o+1)%(to+1)] = ((1./scalar    + 1./even_coef[0]*a2 + 1./even_coef[1]*a4 + 1./even_coef[2]*a6 + 1./even_coef[3]*a8 + 1./even_coef[4]*a10 + 1./even_coef[5]*a12))/(      fact);
-   }
-
-   num_t f0 = sa*_a0;
-   ord_coef[0] = f0;
-   //ord_coef[15] = (1./scalar    + 1./even_coef[0]*a2 + 1./even_coef[1]*a4 + 1./even_coef[2]*a6 + 1./even_coef[3]*a8 + 1./even_coef[4]*a10 + 1./even_coef[5]*a12)/(      fact);
-   fun_taylor(a,c,to,ord_coef); return;
-  }
-
   // sinhc(x) at x=0
+  NUM ord_coef[to+1];
   ord_coef[0] = 1;
   ord_coef[1] = 0;
-  for (int o = 2; o <= to; ++o)
-    ord_coef[o] = ord_coef[o-2] / (o * (o+1));
+  for (ord_t o = 2; o <= to; ++o)
+    ord_coef[o] = ord_coef[o-2] / (o*(o+1.));
 
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
@@ -835,8 +754,7 @@ FUN(atan) (const T *a, T *c)                     // checked for real and complex
   NUM a0 = a->coef[0], f0 = atan(a0);
 
   ord_t to = c->mo;
-#if OLD_SERIES
-    if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
 #if OLD_SERIES
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
@@ -925,41 +843,30 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
       }
     #endif // OLD_SERIES
 
-
-      NUM ord_coef[to+1], a2 = a0*a0, f1 = -1/(1+a2), f2 = f1*f1, f4 = f2*f2;
-      switch(to) {
-      case 6: ord_coef[6] = a0*(1 + a2*(-10./3 + a2)) *f4*f2; /* FALLTHRU */
-      case 5: ord_coef[5] = (1./5 + a2*(-2 + a2)) *f4*f1;     /* FALLTHRU */
-      case 4: ord_coef[4] = a0*(-1 + a2) *f4;                 /* FALLTHRU */
-      case 3: ord_coef[3] = (-1./3 + a2) *f2*f1;              /* FALLTHRU */
-      case 2: ord_coef[2] = a0 *f2;                           /* FALLTHRU */
-      case 1: ord_coef[1] = f1;                               /* FALLTHRU */
-      case 0: ord_coef[0] = f0;                               break;
-      assert(!"unexpected missing coefficients");
-      }
-  #else
-    NUM ord_coef[to+1]           ;
-    NUM asqr   =        a0*a0 + 1;
-    NUM numer  =                0;
-    int    trsh,fn               ;
-
-    ord_coef[0] =    f0;
-    ord_coef[1] = -1./asqr;
-    for (int ord = 2; ord <= to; ord++ ){
-      fn = (ord-1)*((ord-1)%2) +1;
-      trsh = floor((ord-3)/2);
-      numer = 0;
-      for (int i= 0; i <= trsh; i++){
-        numer += NUMF(powi)(-1,ord+i)*NUMF(powi)(2,ord-2*i-1)*mad_num_binom(ord-i-1,i)*NUMF(powi)(a0,ord-2*i-1)/NUMF(powi)(asqr,floor((ord-2*i-1)/2.0));
-      }  
-
-      numer += NUMF(powi)(a0,(ord+1)%2)*NUMF(powi)(-1,ord+trsh+1)*fn*(ord>2);
-      ord_coef[ord] = numer/ord/NUMF(powi)(asqr,ceil((ord+1)/2.0));
+  NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/(1+a2), f2 = f1*f1, f4 = f2*f2;
+  // fill orders <= MANUAL_EXPANSION_ORD
+  switch(MIN(to, MANUAL_EXPANSION_ORD)) {
+  case 6: ord_coef[6] = -a0*(1 + a2*(-10./3 + a2)) *f4*f2; /* FALLTHRU */
+  case 5: ord_coef[5] = (1./5 + a2*(-2 + a2)) *f4*f1;      /* FALLTHRU */
+  case 4: ord_coef[4] = -a0*(-1 + a2) *f4;                 /* FALLTHRU */
+  case 3: ord_coef[3] = (-1./3 + a2) *f2*f1;               /* FALLTHRU */
+  case 2: ord_coef[2] = -a0 *f2;                           /* FALLTHRU */
+  case 1: ord_coef[1] = f1;                                /* FALLTHRU */
+  case 0: ord_coef[0] = f0;                                break;
+  assert(!"unexpected missing coefficients");
+  }
+  // fill orders > MANUAL_EXPANSION_ORD
+  for (ord_t o = 1+MANUAL_EXPANSION_ORD; o <= to; ++o) {
+    ord_t n = (o-3)/2+1;
+    int s = 2*(o & 1)-1; // o: even = -1, odd = 1
+    NUM v = 0;
+    for (ord_t i = 0; i <= n; ++i, s = -s) {
+      num_t c = s * mad_num_powi(2, o-2*i-1) * mad_num_binom(o-i-1,i);
+      v += c * NUMF(div)(NUMF(powi)(a0, o-2*i-1), NUMF(powi)(1+a2, o-i));
     }
-  #endif
+    ord_coef[o] = -v/o;
+  }
 
-  fun_taylor(a,c,to,ord_coef);
-  DBGFUN(<-);
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
 }
@@ -982,50 +889,19 @@ FUN(asinc) (const T *a, T *c)
     FUN(setval)(c,f0); DBGFUN(<-); return;
   }
 
-  if (fabs(a0) > 0.42) { // asin(x)/x
+  if (fabs(a0) > 1e-12) { // asin(x)/x
     T *t = GET_TMPX(c);
     FUN(asin)(a,t);
     FUN(div)(t,a,c);
     REL_TMPX(t); DBGFUN(<-); return;
   }
 
-  NUM ord_coef[to+1];
-
-  if (fabs(a0) > 1e-12) { 
-    for (int i = 0; i <= to; ++i)
-      ord_coef[i] = 0;
-
-    int ord = 80;//one can specify according to the accuracy requests
-    NUM mult=1, fact=1;
-    NUM temp_coef[ord+1];
-
-    temp_coef[0] = 1./3;
-    for (int i = 1; i <= ord; ++i)
-    temp_coef[i] = temp_coef[i-1]*SQR(2*i + 1)/(i*(4*i + 6));
-
-    for (int o = 1; o <= to; o+=2){
-      fact *= (o*(o+1));
-      for (int i = 0; i <= ord; ++i){
-
-          mult = (o!=1) ? pow(2*i + o, 3)/(2*i + o + 2) : 1 ;
-          temp_coef[i           ] *= mult; 
-
-          ord_coef [o           ] += (pow(a0,i)*temp_coef[i])*pow(a0,i+1)*(o+1  )/fact;
-          ord_coef [(o+1)%(to+1)] += (pow(a0,i)*temp_coef[i])*pow(a0,i  )*(2*i+1)/fact;
-
-      }
-    }
-
-  ord_coef[0] = NUMF(asinc)(a0); // #TOFIX to be adjusted because the specialization of the function is decided based on the type of 10; if a0 is real but it is outside of the real domain then we must switch to the complex version of the function.
-  fun_taylor(a,c,to,ord_coef);
-  return;
-  }
-  
   // asinc(x) at x=0
+  NUM ord_coef[to+1];
   ord_coef[0] = 1;
   ord_coef[1] = 0;
-  for (int o = 2; o <= to; ++o)
-    ord_coef[o] = (ord_coef[o-2] * SQR(o-1)) / (o * (o+1));
+  for (ord_t o = 2; o <= to; ++o)
+    ord_coef[o] = (ord_coef[o-2] * SQR(o-1.)) / (o*(o+1.));
 
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
@@ -1138,6 +1014,7 @@ FUN(atanh) (const T *a, T *c)                    // checked for real and complex
 
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+
   #if OLD_SERIES
     if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
       // atanh(x) = 1/2 ln((1+x) / (1-x))
@@ -1149,42 +1026,34 @@ FUN(atanh) (const T *a, T *c)                    // checked for real and complex
       FUN(scl)(c, 0.5, c);
       REL_TMPX(td), REL_TMPX(tn); DBGFUN(<-); return;
     }
-
-    NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/(1-a2), f2 = f1*f1, f4 = f2*f2;
-    switch(to) {
-    case 6: ord_coef[6] = a0*(1 + a2*(10./3 + a2)) *f4*f2; /* FALLTHRU */
-    case 5: ord_coef[5] = (1./5 + a2*(2 + a2)) *f4*f1;     /* FALLTHRU */
-    case 4: ord_coef[4] = a0*(1 + a2) *f4;                 /* FALLTHRU */
-    case 3: ord_coef[3] = (1./3 + a2) *f2*f1;              /* FALLTHRU */
-    case 2: ord_coef[2] = a0 *f2;                          /* FALLTHRU */
-    case 1: ord_coef[1] = f1;                              /* FALLTHRU */
-    case 0: ord_coef[0] = f0;                              break;
-    assert(!"unexpected missing coefficients");
-    }
-
-  #else
-    NUM ord_coef[to+1]           ;
-    NUM    asqr =   (a0-1)*(a0+1); //this formulation instead of a0^2 -1 because of improved stability around 1
-    NUM  numer =                0;
-    int    trsh,fn               ;
-
-    ord_coef[0] =    f0;
-    ord_coef[1] = -1./asqr;
-    for (int ord = 2; ord <= to; ord++ ){
-      fn = (ord-1)*((ord-1)%2) +1;
-      trsh = floor((ord-3)/2);
-      numer = 0;
-      for (int i= 0; i <= trsh; i++){
-        numer += NUMF(powi)(-1,ord+i)*NUMF(powi)(2,ord-2*i-1)*mad_num_binom(ord-i-1,i)*NUMF(powi)(a0,ord-2*i-1)/NUMF(powi)(asqr,floor((ord-2*i-1)/2.0));
-      }  
-
-      numer += NUMF(powi)(a0,(ord+1)%2)*NUMF(powi)(-1,ord+trsh+1)*fn*(ord>2);
-      ord_coef[ord] = numer/ord/NUMF(powi)(asqr,ceil((ord+1)/2.0));
-    }
   #endif
-  
+
+  NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/(a2-1), f2 = f1*f1, f4 = f2*f2;
+  // fill orders <= MANUAL_EXPANSION_ORD
+  switch(MIN(to, MANUAL_EXPANSION_ORD)) {
+  case 6: ord_coef[6] = -a0*(1 + a2*(-10./3 + a2)) *f4*f2; /* FALLTHRU */
+  case 5: ord_coef[5] = (1./5 + a2*(-2 + a2)) *f4*f1;      /* FALLTHRU */
+  case 4: ord_coef[4] = -a0*(-1 + a2) *f4;                 /* FALLTHRU */
+  case 3: ord_coef[3] = (-1./3 + a2) *f2*f1;               /* FALLTHRU */
+  case 2: ord_coef[2] = -a0 *f2;                           /* FALLTHRU */
+  case 1: ord_coef[1] = f1;                                /* FALLTHRU */
+  case 0: ord_coef[0] = f0;                                break;
+  assert(!"unexpected missing coefficients");
+  }
+  // fill orders > MANUAL_EXPANSION_ORD
+  for (ord_t o = 1+MANUAL_EXPANSION_ORD; o <= to; ++o) {
+    ord_t n = (o-3)/2+1;
+    int s = 2*(o & 1)-1; // o: even = -1, odd = 1
+    NUM v = 0;
+    for (ord_t i = 0; i <= n; ++i, s = -s) {
+      num_t c = s * mad_num_powi(2, o-2*i-1) * mad_num_binom(o-i-1,i);
+      v += c * NUMF(div)(NUMF(powi)(a0, o-2*i-1), NUMF(powi)(a2-1, o-i));
+    }
+    ord_coef[o] = -v/o;
+  }
+
   fun_taylor(a,c,to,ord_coef);
-    DBGFUN(<-);
+  DBGFUN(<-);
 }
 
 void
@@ -1195,16 +1064,11 @@ FUN(acoth) (const T *a, T *c)                    // checked for real and complex
   NUM a0 = a->coef[0];
   ensure(fabs(a0) SELECT(> 1, != 1 && a0 != 0), "invalid domain acoth("FMT")", VAL(a0));
 
-#ifdef MAD_CTPSA_IMPL
-  NUM f0 = atanh(mad_cpx_inv(a0));
-#else
-  NUM f0 = atanh(1/a0);
-#endif
-
+  NUM f0 = atanh(NUMF(inv)(a0));
   ord_t to = c->mo;
-  #if OLD_SERIES
-    if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
+  #if OLD_SERIES
     if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
       // acoth(x) = 1/2 ln((x+1) / (x-1))
       T *tn = GET_TMPX(c), *td = GET_TMPX(c);
@@ -1228,27 +1092,31 @@ FUN(acoth) (const T *a, T *c)                    // checked for real and complex
     case 0: ord_coef[0] = f0;                              break;
     assert(!"unexpected missing coefficients");
     }
-
-  #else
-    NUM ord_coef[to+1]           ;
-    NUM   asqr =        (a0+1)*(a0-1); //improving stability around 1 as for atanh
-    NUM   numer =               0;
-    int    trsh,fn               ;
-
-    ord_coef[0] =    f0;
-    ord_coef[1] = -1./asqr;
-    for (int ord = 2; ord <= to; ord++ ){
-      fn = (ord-1)*((ord-1)%2) +1;
-      trsh = floor((ord-3)/2);
-      numer = 0;
-      for (int i= 0; i <= trsh; i++){
-        numer += NUMF(powi)(-1,ord+i)*NUMF(powi)(2,ord-2*i-1)*mad_num_binom(ord-i-1,i)*NUMF(powi)(a0,ord-2*i-1)/NUMF(powi)(asqr,floor((ord-2*i-1)/2.0));
-      }  
-
-      numer += NUMF(powi)(a0,(ord+1)%2)*NUMF(powi)(-1,ord+trsh+1)*fn*(ord>2);
-      ord_coef[ord] = numer/ord/NUMF(powi)(asqr,ceil((ord+1)/2.0));
-    }
   #endif
+  
+  NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/(a2-1), f2 = f1*f1, f4 = f2*f2;
+  // fill orders <= MANUAL_EXPANSION_ORD
+  switch(MIN(to, MANUAL_EXPANSION_ORD)) {
+  case 6: ord_coef[6] = -a0*(1 + a2*(-10./3 + a2)) *f4*f2; /* FALLTHRU */
+  case 5: ord_coef[5] = (1./5 + a2*(-2 + a2)) *f4*f1;      /* FALLTHRU */
+  case 4: ord_coef[4] = -a0*(-1 + a2) *f4;                 /* FALLTHRU */
+  case 3: ord_coef[3] = (-1./3 + a2) *f2*f1;               /* FALLTHRU */
+  case 2: ord_coef[2] = -a0 *f2;                           /* FALLTHRU */
+  case 1: ord_coef[1] = f1;                                /* FALLTHRU */
+  case 0: ord_coef[0] = f0;                                break;
+  assert(!"unexpected missing coefficients");
+  }
+  // fill orders > MANUAL_EXPANSION_ORD
+  for (ord_t o = 1+MANUAL_EXPANSION_ORD; o <= to; ++o) {
+    ord_t n = (o-3)/2+1;
+    int s = 2*(o & 1)-1; // o: even = -1, odd = 1
+    NUM v = 0;
+    for (ord_t i = 0; i <= n; ++i, s = -s) {
+      num_t c = s * mad_num_powi(2, o-2*i-1) * mad_num_binom(o-i-1,i);
+      v += c * NUMF(div)(NUMF(powi)(a0, o-2*i-1), NUMF(powi)(a2-1, o-i));
+    }
+    ord_coef[o] = -v/o;
+  }
 
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
@@ -1272,49 +1140,19 @@ FUN(asinhc) (const T *a, T *c)
     FUN(setval)(c,f0); DBGFUN(<-); return;
   }
 
-  if (fabs(a0) > 0.62) { // asinh(x)/x
+  if (fabs(a0) > 1e-12) { // asinh(x)/x
     T *t = GET_TMPX(c);
     FUN(asinh)(a,t);
     FUN(div)(t,a,c);
     REL_TMPX(t); DBGFUN(<-); return;
   }
 
-  NUM ord_coef[to+1];
-
-  if (fabs(a0) > 1e-12) { 
-    for (int i = 0; i <= to; ++i)
-      ord_coef[i] = 0;
-    int ord = 80;// adjusted in order to have same accuracy in different intervals
-    NUM mult=1, fact=1;
-    NUM temp_coef[ord+1];
-
-    temp_coef[0] = -1./3;
-    for (int i = 1; i <= ord; ++i)
-    temp_coef[i] = -temp_coef[i-1]*SQR(2*i + 1)/(i*(4*i + 6));
-
-    for (int o = 1; o <= to; o+=2){
-      fact *= (o*(o+1));
-      for (int i = 0; i <= ord; ++i){
-
-          mult = (o!=1) ? -pow(2*i + o, 3)/(2*i + o + 2) : 1 ;
-          temp_coef[i           ] *= mult; 
-
-          ord_coef [o           ] += (pow(a0,i)*temp_coef[i])*pow(a0,i+1)*(o+1  )/fact        ;
-          ord_coef [(o+1)%(to+1)] += (pow(a0,i)*temp_coef[i])*pow(a0,i  )*(2*i+1)/fact;
-
-      }
-    }
-
-  ord_coef[0] = NUMF(asinhc)(a0); // #TOFIX to be adjusted because the specialization of the function is decided based on the type of 10; if a0 is real but it is outside of the real domain then we must switch to the complex version of the function.
-  fun_taylor(a,c,to,ord_coef);
-  return;
-  }
-
   // asinhc(x) at x=0
+  NUM ord_coef[to+1];
   ord_coef[0] = 1;
   ord_coef[1] = 0;
-  for (int o = 2; o <= to; ++o)
-    ord_coef[o] = -(ord_coef[o-2] * SQR(o-1)) / (o * (o+1));
+  for (ord_t o = 2; o <= to; ++o)
+    ord_coef[o] = -(ord_coef[o-2] * SQR(o-1.)) / (o*(o+1.));
 
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
