@@ -824,30 +824,36 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
 
   NUM f0 = atan(NUMF(inv)(a0));
   ord_t to = c->mo;
-  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+  #if OLD_SERIES
+      if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
-  if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
-    // acot(x) = i/2 ln((x-i) / (x+i))
-#ifdef MAD_CTPSA_IMPL
-    ctpsa_t *tn = GET_TMPX(c), *td = GET_TMPX(c);
-    mad_ctpsa_axpb(1, a, -I, tn);
-    mad_ctpsa_axpb(1, a,  I, td);
-    mad_ctpsa_logxdy(tn, td, c);
-    mad_ctpsa_scl(c, I/2, c);
-#else
-    ctpsa_t *tn = GET_TMPC(c), *td = GET_TMPC(c);
-    mad_ctpsa_cplx(a, NULL, td);
-    mad_ctpsa_axpb(1, td, -I, tn);
-    mad_ctpsa_seti(td, 0, 1,  I);
-    mad_ctpsa_logxdy(tn, td, tn);
-    mad_ctpsa_scl(tn, I/2, tn);
-    mad_ctpsa_real(tn, c);
-#endif
-    REL_TMPC(td), REL_TMPC(tn); DBGFUN(<-); return;
-  }
+      if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
+        // acot(x) = i/2 ln((x-i) / (x+i))
+    #ifdef MAD_CTPSA_IMPL
+        ctpsa_t *tn = GET_TMPX(c), *td = GET_TMPX(c);
+        mad_ctpsa_copy( a, tn);
+        mad_ctpsa_copy(tn, td);
+        mad_ctpsa_seti(tn, 0, 1, -I);
+        mad_ctpsa_seti(td, 0, 1,  I);
+        mad_ctpsa_logxdy(tn, td, c);
+        mad_ctpsa_scl(c, I/2, c);
+    #else
+        ctpsa_t *tn = GET_TMPC(c), *td = GET_TMPC(c);
+        mad_ctpsa_cplx(a, NULL, tn);
+        mad_ctpsa_copy(tn, td);
+        mad_ctpsa_seti(tn, 0, 1, -I);
+        mad_ctpsa_seti(td, 0, 1,  I);
+        mad_ctpsa_logxdy(tn, td, tn);
+        mad_ctpsa_scl(tn, I/2, tn);
+        mad_ctpsa_real(tn, c);
+    #endif
+        REL_TMPC(td), REL_TMPC(tn); DBGFUN(<-); return;
+      }
+    #endif // OLD_SERIES
 
   NUM ord_coef[to+1], a2 = a0*a0, f1 = -1/(1+a2), f2 = f1*f1, f4 = f2*f2;
-  switch(to) {
+  // fill orders <= MANUAL_EXPANSION_ORD
+  switch(MIN(to, MANUAL_EXPANSION_ORD)) {
   case 6: ord_coef[6] = a0*(1 + a2*(-10./3 + a2)) *f4*f2; /* FALLTHRU */
   case 5: ord_coef[5] = (1./5 + a2*(-2 + a2)) *f4*f1;     /* FALLTHRU */
   case 4: ord_coef[4] = a0*(-1 + a2) *f4;                 /* FALLTHRU */
@@ -856,6 +862,17 @@ FUN(acot) (const T *a, T *c)                     // checked for real and complex
   case 1: ord_coef[1] = f1;                               /* FALLTHRU */
   case 0: ord_coef[0] = f0;                               break;
   assert(!"unexpected missing coefficients");
+  }
+  // fill orders > MANUAL_EXPANSION_ORD
+  for (ord_t o = 1+MANUAL_EXPANSION_ORD; o <= to; ++o) {
+    ord_t n = (o-3)/2+1;
+    int s = 2*(o & 1)-1; // o: even = -1, odd = 1
+    NUM v = 0;
+    for (ord_t i = 0; i <= n; ++i, s = -s) {
+      num_t c = s * mad_num_powi(2, o-2*i-1) * mad_num_binom(o-i-1,i);
+      v += c * NUMF(div)(NUMF(powi)(a0, o-2*i-1), NUMF(powi)(1+a2, o-i));
+    }
+    ord_coef[o] = -v/o;
   }
 
   fun_taylor(a,c,to,ord_coef);
@@ -976,18 +993,22 @@ FUN(atanh) (const T *a, T *c)                    // checked for real and complex
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
-  if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
-    // atanh(x) = -1/2 ln((1-x) / (1+x))
-    T *tn = GET_TMPX(c), *td = GET_TMPX(c);
-    FUN(axpb)(-1, a, 1, tn);
-    FUN(axpb)( 1, a, 1, td);
-    FUN(logxdy)(tn, td, c);
-    FUN(scl)(c, -0.5, c);
-    REL_TMPX(td), REL_TMPX(tn); DBGFUN(<-); return;
-  }
+  #if OLD_SERIES
+    if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
+      // atanh(x) = 1/2 ln((1+x) / (1-x))
+      T *tn = GET_TMPX(c), *td = GET_TMPX(c);
+      FUN(copy)(a, tn);
+      FUN(seti)(tn, 0, 1, 1);
+      FUN(axpb)(-1, a, 1, td);
+      FUN(logxdy)(tn, td, c);
+      FUN(scl)(c, 0.5, c);
+      REL_TMPX(td), REL_TMPX(tn); DBGFUN(<-); return;
+    }
+  #endif
 
   NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/(1-a2), f2 = f1*f1, f4 = f2*f2;
-  switch(to) {
+  // fill orders <= MANUAL_EXPANSION_ORD
+  switch(MIN(to, MANUAL_EXPANSION_ORD)) {
   case 6: ord_coef[6] = a0*(1 + a2*(10./3 + a2)) *f4*f2; /* FALLTHRU */
   case 5: ord_coef[5] = (1./5 + a2*(2 + a2)) *f4*f1;     /* FALLTHRU */
   case 4: ord_coef[4] = a0*(1 + a2) *f4;                 /* FALLTHRU */
@@ -996,6 +1017,17 @@ FUN(atanh) (const T *a, T *c)                    // checked for real and complex
   case 1: ord_coef[1] = f1;                              /* FALLTHRU */
   case 0: ord_coef[0] = f0;                              break;
   assert(!"unexpected missing coefficients");
+  }
+  // fill orders > MANUAL_EXPANSION_ORD
+  for (ord_t o = 1+MANUAL_EXPANSION_ORD; o <= to; ++o) {
+    ord_t n = (o-3)/2+1;
+    int s = 2*(o & 1)-1; // o: even = -1, odd = 1
+    NUM v = 0;
+    for (ord_t i = 0; i <= n; ++i, s = -s) {
+      num_t c = s * mad_num_powi(2, o-2*i-1) * mad_num_binom(o-i-1,i);
+      v += c * NUMF(div)(NUMF(powi)(a0, o-2*i-1), NUMF(powi)(a2-1, o-i));
+    }
+    ord_coef[o] = -v/o;
   }
 
   fun_taylor(a,c,to,ord_coef);
@@ -1014,18 +1046,23 @@ FUN(acoth) (const T *a, T *c)                    // checked for real and complex
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
-  if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
-    // acoth(x) = -1/2 ln((x-1) / (x+1))
-    T *tn = GET_TMPX(c), *td = GET_TMPX(c);
-    FUN(axpb)(1, a, -1, tn);
-    FUN(axpb)(1, a,  1, td);
-    FUN(logxdy)(tn, td, c);
-    FUN(scl)(c, -0.5, c);
-    REL_TMPX(td), REL_TMPX(tn); DBGFUN(<-); return;
-  }
-
+  #if OLD_SERIES
+    if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
+      // acoth(x) = 1/2 ln((x+1) / (x-1))
+      T *tn = GET_TMPX(c), *td = GET_TMPX(c);
+      FUN(copy)(a, tn);
+      FUN(seti)(tn, 0, 1, 1);
+      FUN(copy)(a, td);
+      FUN(seti)(td, 0, 1, -1);
+      FUN(logxdy)(tn, td, c);
+      FUN(scl)(c, 0.5, c);
+      REL_TMPX(td), REL_TMPX(tn); DBGFUN(<-); return;
+    }
+  #endif
+  
   NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/(1-a2), f2 = f1*f1, f4 = f2*f2;
-  switch(to) {
+  // fill orders <= MANUAL_EXPANSION_ORD
+  switch(MIN(to, MANUAL_EXPANSION_ORD)) {
   case 6: ord_coef[6] = a0*(1 + a2*(10./3 + a2)) *f4*f2; /* FALLTHRU */
   case 5: ord_coef[5] = (1./5 + a2*(2 + a2)) *f4*f1;     /* FALLTHRU */
   case 4: ord_coef[4] = a0*(1 + a2) *f4;                 /* FALLTHRU */
@@ -1034,6 +1071,17 @@ FUN(acoth) (const T *a, T *c)                    // checked for real and complex
   case 1: ord_coef[1] = f1;                              /* FALLTHRU */
   case 0: ord_coef[0] = f0;                              break;
   assert(!"unexpected missing coefficients");
+  }
+  // fill orders > MANUAL_EXPANSION_ORD
+  for (ord_t o = 1+MANUAL_EXPANSION_ORD; o <= to; ++o) {
+    ord_t n = (o-3)/2+1;
+    int s = 2*(o & 1)-1; // o: even = -1, odd = 1
+    NUM v = 0;
+    for (ord_t i = 0; i <= n; ++i, s = -s) {
+      num_t c = s * mad_num_powi(2, o-2*i-1) * mad_num_binom(o-i-1,i);
+      v += c * NUMF(div)(NUMF(powi)(a0, o-2*i-1), NUMF(powi)(a2-1, o-i));
+    }
+    ord_coef[o] = -v/o;
   }
 
   fun_taylor(a,c,to,ord_coef);

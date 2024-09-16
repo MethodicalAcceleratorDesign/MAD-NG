@@ -1,12 +1,12 @@
 --[=[
  o-----------------------------------------------------------------------------o
  |
- | GTPSA module regression tests - real tpsa
+ | GTPSA module unit tests - real tpsa
  |
  | Methodical Accelerator Design - Copyright CERN 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
- | Contrib: -
+ | Contrib: 
  |
  o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
@@ -21,144 +21,2151 @@
  o-----------------------------------------------------------------------------o
 ]=]
 
-local vector, tpsa, gtpsad                                       in MAD
-local eps, abs, pi                                               in MAD.constant
+local vector, cvector, ivector, tpsa, ctpsa, gtpsad, tpsa_eqn, monomial            in MAD
+local eps, abs, pi, inf                                               in MAD.constant
 local abs                                                        in MAD.gmath
 local ident                                                      in MAD.gfunc
-local assertTrue, assertEquals, assertAlmostEquals               in MAD.utest
-
+local assertTrue, assertEquals, assertAlmostEquals, 
+      assrtIsFalse, assertErrorMsgContains, 
+      assertError, assertNil, assertFalse                        in MAD.utest
+local is_tpsa, is_vector, is_ctpsa, is_gtpsad, is_number, is_complex, is_monomial, is_nil      in MAD.typeid
+local sub in string
 -- locals ---------------------------------------------------------------------o
-
-local dat = assert(loadfile('data/tpsa.dat'))()
 
 local ord = {1,2,3,4,5,6,7,10,12,15}
 
 -- regression test suites -----------------------------------------------------o
 
-TestTPSAFun = {}
+local d1v = gtpsad(1,4)
+local d2v = gtpsad(2,4)
+local d3v = gtpsad(3,4)
+local d5v = gtpsad(5,4)
 
-local function checkVal (r, c, neg, alt, trc)
-  local tol = neg and c.n_eps or alt and c.a_eps or c.eps or eps
-  neg = neg or ident
-  trc = trc or 0
-  if not r:isvalid() then r:debug() end
-  for i=1,#r do
-    local v = neg(c[i],i)
-    if trc > 0 then
-      local is, vs, rs, es = string.format("%-2d"  , i),
-                             string.format("%+.17e", v),
-                             string.format("%+.17e", r:get(i))
-      if abs(v) > 2
-      then es = math.ceil( abs(r:get(i)/v-1)/eps/i )
-      else es = math.ceil( abs(r:get(i)-v  )/eps/i )
-      end
-      io.write('i=',is,', v=',vs,', r=',rs,', es=', es, es>99 and ' **\n' or '\n')
-    end
-    if trc < 2 then
-      if abs(v) > 2
-      then assertAlmostEquals(r:get(i)/v-1, 0, i*tol)
-      else assertAlmostEquals(r:get(i)    , v, i*tol)
+TestTPSA             = {}
+TestTPSAArithmetic   = {}
+TestTPSADerivPlusMisc= {}
+TestTPSAConvert      = {}
+
+
+
+function TestTPSA:testCtor()
+  for nv = 1, 2 do
+    local d   = gtpsad(nv, 15)
+    local t1  = tpsa  (      )
+    local t2  = tpsa  (     d)
+    local t3  = tpsa  (    t1)
+    local ct1 = ctpsa (      )
+    local ct2 = ctpsa (     d)
+    local ct3 = ctpsa (   ct1)
+
+    assertEquals(t1 :nv()  , nv)
+    assertEquals(t1 :mord(), 15)
+    assertEquals(t2 :nv()  , nv)
+    assertEquals(t2 :mord(), 15)
+    assertEquals(t3 :nv()  , nv)
+    assertEquals(t3 :mord(), 15)
+    assertEquals(ct1:nv()  , nv)
+    assertEquals(ct1:mord(), 15)
+    assertEquals(ct2:nv()  , nv)
+    assertEquals(ct2:mord(), 15)
+    assertEquals(ct3:nv()  , nv)
+    assertEquals(ct3:mord(), 15)
+  end
+end
+
+
+function TestTPSA:testCtorMo()
+  for nv = 1, 2 do
+    local d   = gtpsad(nv, 15)
+    for o=0, d:maxord() + 1 do
+      local t1  = tpsa (     o)
+      local t2  = tpsa (d,   o)
+      local t3  = tpsa (t1,  o)
+      local ct1 = ctpsa(     o)
+      local ct2 = ctpsa(d  , o)
+      local ct3 = ctpsa(ct1, o)
+      if o < 15 then
+        assertEquals(t1 :nv(),   nv)
+        assertEquals(t2 :nv(),   nv)
+        assertEquals(t3 :nv(),   nv)
+        assertEquals(ct1:nv(),   nv)
+        assertEquals(ct2:nv(),   nv)
+        assertEquals(ct3:nv(),   nv)
+        assertEquals(t1 :mord(),  o)
+        assertEquals(t2 :mord(),  o)
+        assertEquals(t3 :mord(),  o)
+        assertEquals(ct1:mord(),  o)
+        assertEquals(ct2:mord(),  o)
+        assertEquals(ct3:mord(),  o)
+      else                                    --check that if we create a tpsa with ord > d.maxord() is not allowed
+        assertEquals(t1 :mord(),  d:maxord())
+        assertEquals(t2 :mord(),  d:maxord())
+        assertEquals(t3 :mord(),  d:maxord())
+        assertEquals(ct1:mord(),  d:maxord())
+        assertEquals(ct2:mord(),  d:maxord())
+        assertEquals(ct3:mord(),  d:maxord())
       end
     end
   end
 end
 
-local function checkFun1 (fnam, trc)
-  local d = gtpsad(1,15)
-  local fun, t, r = dat.fun[fnam]
-  if trc then io.write('\n') end
-  for _,c in ipairs(fun) do
-  for _,o in ipairs(ord) do
---  for o=1,d.mo do
-    if fun.omin and o < fun.omin then break end -- limit order
-    if fun.omax and o > fun.omax then break end -- limit order
-    if c.omin   and o < c.omin   then break end -- limit order (local)
-    if c.omax   and o > c.omax   then break end -- limit order (local)
-    if trc then io.write('f=',fnam,'(',c.x0,') @ ',o,'\n') end
-    t = tpsa(o):set(1,c.x0):set(2,1)
-    r = t[fnam](t)   ; checkVal(r, c, nil, nil, trc) -- positive (r ~= t)
-    if trc then io.write('f=',fnam,'_ref(',c.x0,') @ ',o,'\n') end
-    r = t[fnam](t,t) ; checkVal(r, c, nil, nil, trc) -- aliased  (r == t)
 
-    if fun.alt then
-      if trc then io.write('f=',fnam,'_alt(',c.x0,') @ ',o,'\n') end
-      t = tpsa(o):set(1,c.x0):set(2,1)
-      r = fun.alt(t) ; checkVal(r, c, nil, fun.alt, trc) -- alternate function
-    end
+function TestTPSA:testTPSAGet_Idx1V()
+  local t = tpsa(d1v)
+  local ct = ctpsa(d1v)
+  local mo = d1v:maxord()
 
-    if fun.neg and c.x0 ~= 0 then
-      if trc then io.write('f=',fnam,'_neg(',-c.x0,') @ ',o,'\n') end
-      t = tpsa(o):set(1,-c.x0):set(2,1)
-      r = t[fnam](t) ; checkVal(r, c, fun.neg, nil, trc) -- negative
-    end
-  end end
+  --check that non valid orders return Idx 0
+  assertEquals( t:get_idx(monomial(1,mo+1)), 0)
+  assertEquals(ct:get_idx(monomial(1,  -1)), 0)
+  assertEquals( t:get_idx(tostring(monomial(1,mo+1))), 0)
+  for ord = 0, mo do
+    assertEquals(t :get_idx(monomial(1,ord)), ord + 1)
+    assertEquals(ct:get_idx(monomial(1,ord)), ord + 1)
+    assertEquals( t:get_idx(monomial(1,ord)), t:get_idx(tostring(monomial(1,ord))))
+    assertEquals(ct:get_idx(monomial(1,ord)),ct:get_idx(tostring(monomial(1,ord))))
+  end
 end
 
-TestTPSAFun.testInv   = \s -> checkFun1('inv')
-TestTPSAFun.testISqrt = \s -> checkFun1('invsqrt')
-TestTPSAFun.testSqrt  = \s -> checkFun1('sqrt')
-TestTPSAFun.testExp   = \s -> checkFun1('exp')
-TestTPSAFun.testLog   = \s -> checkFun1('log')
-TestTPSAFun.testSin   = \s -> checkFun1('sin')
-TestTPSAFun.testCos   = \s -> checkFun1('cos')
-TestTPSAFun.testTan   = \s -> checkFun1('tan')
-TestTPSAFun.testCot   = \s -> checkFun1('cot')
-TestTPSAFun.testSinc  = \s -> checkFun1('sinc')
-TestTPSAFun.testSinh  = \s -> checkFun1('sinh')
-TestTPSAFun.testCosh  = \s -> checkFun1('cosh')
-TestTPSAFun.testTanh  = \s -> checkFun1('tanh')
-TestTPSAFun.testCoth  = \s -> checkFun1('coth')
-!TestTPSAFun.testSinhc = \s -> checkFun1('sinhc')
-TestTPSAFun.testAsin  = \s -> checkFun1('asin')
-TestTPSAFun.testAcos  = \s -> checkFun1('acos')
-TestTPSAFun.testAtan  = \s -> checkFun1('atan')
-TestTPSAFun.testAcot  = \s -> checkFun1('acot')
-TestTPSAFun.testAsinh = \s -> checkFun1('asinh')
-TestTPSAFun.testAcosh = \s -> checkFun1('acosh')
-TestTPSAFun.testAtanh = \s -> checkFun1('atanh')
-TestTPSAFun.testAcoth = \s -> checkFun1('acoth')
-TestTPSAFun.testErf   = \s -> checkFun1('erf')
 
--- TODO: operators
-
--- performance tests ----------------------------------------------------------o
-
-Test_TPSAFun = {}
-
-local ord_ = {1,2,3,6,7}
-local div_ = 5 -- shrink the tests by factor 5
-
-local function benchFun1 (fnam, x0, trc)
-  local d = gtpsad(6,15)
-  local fun, t, r = dat.fun[fnam]
-  for _,o in ipairs(ord_) do
---  for o=1,d.mo do
-    if fun.omin and o < fun.omin then break end -- limit order
-    if fun.omax and o > fun.omax then break end -- limit order
-    t = tpsa(o):setvar(x0):set(2,1):set(3,1):set(4,1):set(5,1):set(6,1):set(7,1)
-    r = tpsa(o)
-    if not trc then io.write(o," ") io.flush() end
-    local t0 = os.clock()
-    for i=1,fun.iter[o]/div_ do t[fnam](t,r) end
-    local dt = os.clock()-t0
-    assertAlmostEquals( dt, 0.5/div_, 1/div_ )
-    if trc then
-      local n = math.floor(0.5*fun.iter[o]/dt)
-      io.write(string.format("\no=%-2d, dt=%.4f, n=%-8d, ", o, dt, n),
-               "len=", t:length(o), "  ")
+function TestTPSA:testTPSAGet_Idx2V()
+  local t = tpsa(d2v)
+  local ct = ctpsa(d2v)
+  local count = 0
+  local mo = d2v:maxord()
+  
+  --check that non valid orders return Idx 0
+  assertEquals( t:get_idx(monomial({ 1,mo})), 0)
+  assertEquals(ct:get_idx(monomial({-1, 0})), 0)
+  assertEquals( t:get_idx(tostring(monomial({ 1,mo}))), 0)
+  for ord = 0, mo do
+    for idx = 0, ord  do  --scanning all the coeff of a given order
+      assertEquals( t:get_idx(monomial({ord-idx,idx})),count+1)
+      assertEquals(ct:get_idx(monomial({ord-idx,idx})),count+1)
+      assertEquals( t:get_idx(monomial({ord-idx,idx})), t:get_idx(tostring(monomial({ord-idx,idx}))))
+      assertEquals(ct:get_idx(monomial({ord-idx,idx})),ct:get_idx(tostring(monomial({ord-idx,idx}))))
+      count = count + 1
     end
   end
 end
 
-Test_TPSAFun.testInv   = \s -> benchFun1('inv'    , pi/5)
-Test_TPSAFun.testSqrt  = \s -> benchFun1('sqrt'   , pi/5)
-Test_TPSAFun.testExp   = \s -> benchFun1('exp'    , pi/5)
-Test_TPSAFun.testLog   = \s -> benchFun1('log'    , pi/3)
-Test_TPSAFun.testSin   = \s -> benchFun1('sin'    , pi/5)
-Test_TPSAFun.testCos   = \s -> benchFun1('cos'    , pi/5)
-Test_TPSAFun.testTan   = \s -> benchFun1('tan'    , pi/5)
-Test_TPSAFun.testISqrt = \s -> benchFun1('invsqrt', pi/5)
 
--- end ------------------------------------------------------------------------o
+function TestTPSA:testGet0()
+  for _,d in ipairs{d1v,d2v,d3v,d5v} do
+    local t  =  tpsa(d,1):set0( 1)
+    local ct = ctpsa(d,1):set0(1i)
+
+    assertEquals(t :get0(),  1)
+    assertEquals(ct:get0(), 1i)
+  end
+end
 
 
+function TestTPSA:testGetIdx()
+  for _,d in ipairs{d1v,d2v,d3v,d5v} do
+    local n  = d:maxlen()
+    local t  = tpsa (d):fill(1..n)
+    local ct = ctpsa(d):fill(1..n)*1i
+  
+    for i=1,n do
+      assertEquals(t :get(i),  i   )
+      assertEquals(ct:get(i),  i*1i)
+    end
+
+    assertError(t .get,  t,  -1)
+    assertError(ct.get, ct,  -1)
+    assertError(t .get,  t, n+1)
+    assertError(ct.get, ct, n+1)
+  end
+end
+
+
+function TestTPSA:testGetIdxMo()
+  for _,d in ipairs{d1v,d2v,d3v,d5v} do
+    for o=0, d:maxord() + 1 do
+      local n  =  tpsa(d,o):mlen()
+      local t  =  tpsa (d,o):fill(1..n)
+      local ct =  ctpsa(d,o):fill(1..n)*1i
+
+      for i=1, n do
+        assertEquals(t :get(i), i   )
+        assertEquals(ct:get(i), i*1i)
+      end
+
+      if o < 4 then
+        assertError (t .get,  t, -1)
+        assertError (ct.get, ct, -1)
+        assertEquals(t :get(    n+1),       0)
+        assertEquals(ct:get(    n+1),  0 + 0i)
+      else
+        assertError (t .get,  t,   0)
+        assertError (ct.get, ct,   0)
+        assertError (t .get,  t, n+1)
+        assertError (ct.get, ct, n+1)
+      end
+    end
+  end
+end
+
+
+function TestTPSA:testGetVec ()
+  local t,v = tpsa, vector
+  for _,d in ipairs({d1v,d2v,d3v,d5v}) do
+    local mo, nc = d5v:maxord(), d5v:maxlen()
+    local idx = {[0]=0} for o=0,mo do idx[o+1] = d5v:maxlen(o)+1 end
+
+    -- helpers to setvec tpsas and vectors within start..end
+    local mkt = \s,e -> (s, v(e-s+1):fill(s..e))
+    local mkv = \s,e -> (s..e, s..e)
+
+    -- ref tpsa, see cases in mad_tpsa.c
+    local r = t(d5v):setvec(idx[2], idx[2]..idx[4]-1)
+
+  --   0   1     lo=2      hi=3        mo=4
+  --  [.|?????|........|..........|????????????]
+  --  [ |i000n|        |          |            ]
+    assertTrue( r:copy():setvec(mkt(idx[1]  , idx[2]-1)):getvec(1,nc)
+                == v(nc):setvec(mkv(idx[1]  , idx[4]-1)) )
+  --  [ | i0n |        |          |            ]
+    assertTrue( r:copy():setvec(mkt(idx[1]+1, idx[2]-1)):getvec(1,nc)
+                == v(nc):setvec(mkv(idx[1]+1, idx[4]-1)) )
+  --  [ | i00n|        |          |            ]
+    assertTrue( r:copy():setvec(mkt(idx[1]+1, idx[2]-2)):getvec(1,nc)
+                == v(nc):setvec(mkv(idx[1]+1, idx[4]-1)):set(idx[2]-1,1,0) )
+  --  [ | i000|....n   |          |            ]
+    assertTrue( r:copy():setvec(mkt(idx[1]+1, idx[3]-4)):getvec(1,nc)
+                == v(nc):setvec(mkv(idx[1]+1, idx[4]-1)) )
+  --  [ | i000|........|..........|0000000n    ]
+    assertTrue( r:copy():setvec(mkt(idx[1]+1, idx[5]-4)):getvec(1,nc)
+                == v(nc):setvec(mkv(idx[1]+1, idx[5]-4)) )
+  --  [ |     |  i.....|......n   |            ]
+    assertTrue( r:copy():setvec(mkt(idx[2]+2, idx[3]-3)):getvec(1,nc)
+                == v(nc):setvec(mkv(idx[2]  , idx[4]-1)) )
+  --  [ |     |        |   i......|.......n0000]
+    assertTrue( r:copy():setvec(mkt(idx[3]+3, idx[5]-5)):getvec(1,nc)
+                == v(nc):setvec(mkv(idx[2]  , idx[5]-5)) )
+  --  [ |     |        |          |i......n0000]
+    assertTrue( r:copy():setvec(mkt(idx[4]  , idx[5]-5)):getvec(1,nc)
+                == v(nc):setvec(mkv(idx[2]  , idx[5]-5)) )
+  --  [ |     |        |          |0i.....n0000]
+    assertTrue( r:copy():setvec(mkt(idx[4]+1, idx[5]-5)):getvec(1,nc)
+                == v(nc):setvec(mkv(idx[2]  , idx[5]-5)):set(idx[4],1,0) )
+  --  [ |     |        |          |i..........n]
+    assertTrue( r:copy():setvec(mkt(idx[4]  , idx[5]-1)):getvec(1,nc)
+                == v(nc):setvec(mkv(idx[2]  , idx[5]-1)) )
+  end
+end
+
+
+function TestTPSA:testSet0()
+  for _,d in ipairs{d1v,d2v,d3v,d5v} do
+    local t1  =  tpsa(d,1):set0( 1)
+    local ct1 = ctpsa(d,1):set0(1i)
+    local t2  =  tpsa(d,1):set0( 1):set0( 2, 3)
+    local ct2 = ctpsa(d,1):set0( 1):set0(1i,1i)
+
+    assertEquals(t1 :get0(),  1)
+    assertEquals(ct1:get0(), 1i)
+    assertEquals(t2 :get0(),  5)
+    assertEquals(ct2:get0(), 2i)
+  end
+end
+
+
+function TestTPSA:testSet()
+  for _,d in ipairs({d1v,d2v,d3v,d5v}) do
+    local nc = d:maxlen()
+    local t_m,t_s,t_i,ct_m,ct_s,ct_i   = tpsa(d),tpsa(d),tpsa(d),ctpsa(d),ctpsa(d),ctpsa(d)
+    local m  = d:get_mono(1)
+
+    repeat
+      assertEquals( t_m:set(m, 2, 3):mord(true), m:ord())
+      assertEquals(ct_m:set(m,2i,3i):mord(true), m:ord())
+      assertEquals( t_m:get(m), 3)
+      assertEquals(ct_m:get(m),3i)
+      --check that set with idx and string works in the same way
+      assertTrue( t_m:getvec(1,nc) ==  t_s:set(tostring(m) , 2, 3):getvec(1,nc))
+      assertTrue(ct_m:getvec(1,nc) == ct_s:set(tostring(m) ,2i,3i):getvec(1,nc))
+      assertTrue( t_m:getvec(1,nc) ==  t_i:set(d:get_idx(m), 2, 3):getvec(1,nc))
+      assertTrue(ct_m:getvec(1,nc) == ct_i:set(d:get_idx(m),2i,3i):getvec(1,nc))
+    until d:nxtbyord(m)==-1
+
+    assertTrue( t_m:getvec(1,nc) ==  vector(nc):ones()*3   )
+    assertTrue(ct_m:getvec(1,nc) == cvector(nc):ones()*3i)
+    assertError (t_m .set,   t_s, "-1", 1)
+    assertError (ct_m.set,  ct_s, "-1", 1)
+    assertError (t_m .set,   t_s,  "m", 1)
+    assertError (ct_m.set,  ct_s,  "m", 1)
+  end
+end
+
+
+function TestTPSA:testSetVec ()
+  local t,v = tpsa, vector
+  local mo, nc = d5v:maxord(), d5v:maxlen()
+  local idx = {[0]=0} for o=0,mo do idx[o+1] = d5v:maxlen(o)+1 end
+
+  -- helpers to setvec tpsas and vectors within start..end
+  local mkt = \s,e -> (s, v(e-s+1):fill(s..e))
+  local mkv = \s,e -> (s..e, s..e)
+
+  -- ref tpsa, see cases in mad_tpsa.c
+  local r = t(d5v):setvec(idx[2], idx[2]..idx[4]-1)
+
+--   0   1     lo=2      hi=3        mo=4
+--  [.|?????|........|..........|????????????]
+--  [ |i...n|        |          |            ]
+  assertTrue( r:copy():setvec(mkt(idx[1]  , idx[2]-1)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[1]  , idx[4]-1)) )
+--  [ |0i..n|        |          |            ]
+  assertTrue( r:copy():setvec(mkt(idx[1]+1, idx[2]-1)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[1]+1, idx[4]-1)) )
+--  [ |0i.n0|        |          |            ]
+  assertTrue( r:copy():setvec(mkt(idx[1]+1, idx[2]-2)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[1]+1, idx[4]-1)):set(idx[2]-1,1,0) )
+--  [ |0i...|....n   |          |            ]
+  assertTrue( r:copy():setvec(mkt(idx[1]+1, idx[3]-4)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[1]+1, idx[4]-1)) )
+--  [ |0i...|........|..........|.......n0000]
+  assertTrue( r:copy():setvec(mkt(idx[1]+1, idx[5]-4)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[1]+1, idx[5]-4)) )
+--  [ |     |  i.....|......n   |            ]
+  assertTrue( r:copy():setvec(mkt(idx[2]+2, idx[3]-3)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[2]  , idx[4]-1)) )
+--  [ |     |        |   i......|.......n0000]
+  assertTrue( r:copy():setvec(mkt(idx[3]+3, idx[5]-5)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[2]  , idx[5]-5)) )
+--  [ |     |        |          |i......n0000]
+  assertTrue( r:copy():setvec(mkt(idx[4]  , idx[5]-5)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[2]  , idx[5]-5)) )
+--  [ |     |        |          |0i.....n0000]
+  assertTrue( r:copy():setvec(mkt(idx[4]+1, idx[5]-5)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[2]  , idx[5]-5)):set(idx[4],1,0) )
+--  [ |     |        |          |i..........n]
+  assertTrue( r:copy():setvec(mkt(idx[4]  , idx[5]-1)):getvec(1,nc)
+              == v(nc):setvec(mkv(idx[2]  , idx[5]-1)) )
+end
+
+
+function TestTPSA:testEqu()
+  for _,d in ipairs{d1v,d2v,d3v,d5v} do
+    local mo,nv = d:maxord(),d:nvnp()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+    local d_err = gtpsad(nv,mo+1)
+    for o = 0, mo do
+      assertTrue ( tpsa(d,o)== tpsa(d,o))
+      assertTrue (ctpsa(d,o)==ctpsa(d,o))
+      assertTrue ( tpsa(d,o)==ctpsa(d,o))
+      assertTrue (ctpsa(d,o)== tpsa(d,o))
+      assertFalse(nil       == tpsa(d,o))
+      assertFalse( tpsa(d,o)==       nil)
+      assertFalse(nil       ==ctpsa(d,o))
+      assertFalse(ctpsa(d,o)==       nil)
+      assertTrue (0         == tpsa(d,o))
+      assertTrue ( tpsa(d,o)==         0)
+      assertTrue (0i        ==ctpsa(d,o))
+      assertTrue (ctpsa(d,o)==        0i)
+      assertFalse(1         == tpsa(d,o))
+      assertFalse( tpsa(d,o)==         1)
+      assertFalse(1i        ==ctpsa(d,o))
+      assertFalse(ctpsa(d,o)==        1i)
+
+      assertTrue ( tpsa(d):set(idx[o], 1) ==  tpsa(d):set(idx[o], 1))
+      assertTrue (ctpsa(d):set(idx[o],1i) == ctpsa(d):set(idx[o],1i))
+      assertFalse( tpsa(d):set(idx[o], 1) ==  tpsa(d):set(idx[o], 2))
+      assertFalse(ctpsa(d):set(idx[o],1i) == ctpsa(d):set(idx[o],2i))
+      assertFalse( tpsa(d):set(idx[o], 2) ==  tpsa(d):set(idx[o], 1))
+      assertFalse(ctpsa(d):set(idx[o],2i) == ctpsa(d):set(idx[o],1i))
+      assertTrue ( tpsa(d):set(idx[o], 1) == ctpsa(d):set(idx[o], 1))
+      assertTrue (ctpsa(d):set(idx[o], 1) == ctpsa(d):set(idx[o], 1))
+      assertError( tpsa(d    ,idx[o]).__eq , tpsa(d), 1, 'err')
+      assertError(ctpsa(d    ,idx[o]).__eq ,ctpsa(d), 1, 'err')
+      assertError( tpsa(d    ,idx[o]).__eq , tpsa(d    ), tpsa(d_err))
+      assertError( tpsa(d    ,idx[o]).__eq , tpsa(d    ),ctpsa(d_err))
+      assertError(ctpsa(d    ,idx[o]).__eq ,ctpsa(d    ), tpsa(d_err))
+      assertError(ctpsa(d    ,idx[o]).__eq ,ctpsa(d    ),ctpsa(d_err))
+      assertError( tpsa(d_err,idx[o]).__eq , tpsa(d_err), tpsa(d))
+      assertError( tpsa(d_err,idx[o]).__eq , tpsa(d_err),ctpsa(d))
+      assertError(ctpsa(d_err,idx[o]).__eq ,ctpsa(d_err), tpsa(d))
+      assertError(ctpsa(d_err,idx[o]).__eq ,ctpsa(d_err),ctpsa(d))
+    end
+
+    for o = 0, mo-1 do
+      assertFalse( tpsa(d  ):set(idx[o]  , 1) ==  tpsa(d  ):set(idx[o+1], 1))
+      assertFalse( tpsa(d  ):set(idx[o+1], 1) ==  tpsa(d  ):set(idx[o]  , 1))
+      assertFalse(ctpsa(d  ):set(idx[o]  ,1i) == ctpsa(d  ):set(idx[o+1],1i))
+      assertFalse(ctpsa(d  ):set(idx[o+1],1i) == ctpsa(d  ):set(idx[o]  ,1i))
+      assertFalse(ctpsa(d  ):set(idx[o]  ,1i) ==  tpsa(d  ):set(idx[o+1],1i))
+      assertFalse(ctpsa(d  ):set(idx[o+1],1i) == ctpsa(d  ):set(idx[o]  ,1i))
+      assertTrue ( tpsa(d,o):set(idx[o]  , 1) ==  tpsa(d,o):set(idx[o]  , 1))
+      assertTrue (ctpsa(d,o):set(idx[o]  ,1i) == ctpsa(d,o):set(idx[o]  ,1i))
+    end
+  end
+end
+
+
+--[=[ cases for LinComb and Arithmetic
+   0   1     lo=2      hi=3        mo=4
+  [.|.....|........|..........|............]
+   .|     |        |          |               lo=1, hi=0 #0
+    |.....|        |          |               lo=1, hi=1 #1
+    |.....|........|          |               lo=1, hi=2 #2
+    |.....|........|..........|............   lo=1, hi=4 #3
+    |     |........|..........|               lo=2, hi=3 #4
+    |     |        |..........|............   lo=3, hi=4 #5
+    |     |        |          |............   lo=4, hi=4 #6
+]=]
+
+function TestTPSAArithmetic:setUp()
+  self.descs = {d1v,d2v,d3v,d5v}
+  self.idx = {}
+  for i,d in ipairs(self.descs) do
+    local mo  = d:maxord()
+    self.idx[i] = {[0]=1} for o=0,mo do self.idx[i][o+1] = d:maxlen(o)+1 end
+  end
+
+  self.data = {
+              {so1=0,eo1=1,so2=0,eo2=1,case="#0 vs #0 with "},
+              {so1=1,eo1=2,so2=0,eo2=1,case="#1 vs #0 with "},
+              {so1=0,eo1=1,so2=1,eo2=2,case="#0 vs #1 with "},
+              {so1=1,eo1=3,so2=0,eo2=1,case="#2 vs #0 with "},
+              {so1=0,eo1=1,so2=1,eo2=3,case="#0 vs #2 with "},
+              {so1=1,eo1=5,so2=0,eo2=1,case="#3 vs #0 with "},
+              {so1=0,eo1=1,so2=1,eo2=5,case="#0 vs #3 with "},
+              {so1=2,eo1=4,so2=0,eo2=1,case="#4 vs #0 with "},
+              {so1=0,eo1=1,so2=2,eo2=4,case="#0 vs #4 with "},
+              {so1=3,eo1=5,so2=0,eo2=1,case="#5 vs #0 with "},
+              {so1=0,eo1=1,so2=3,eo2=5,case="#0 vs #5 with "},
+              {so1=4,eo1=5,so2=0,eo2=1,case="#6 vs #0 with "},
+              {so1=0,eo1=1,so2=4,eo2=5,case="#0 vs #6 with "},
+              {so1=1,eo1=2,so2=1,eo2=2,case="#1 vs #1 with "},
+              {so1=1,eo1=3,so2=1,eo2=2,case="#2 vs #1 with "},
+              {so1=1,eo1=2,so2=1,eo2=3,case="#1 vs #2 with "},
+              {so1=1,eo1=5,so2=1,eo2=2,case="#3 vs #1 with "},
+              {so1=1,eo1=2,so2=1,eo2=5,case="#1 vs #3 with "},
+              {so1=2,eo1=4,so2=1,eo2=2,case="#4 vs #1 with "},
+              {so1=1,eo1=2,so2=2,eo2=4,case="#1 vs #4 with "},
+              {so1=3,eo1=5,so2=1,eo2=2,case="#5 vs #1 with "},
+              {so1=1,eo1=2,so2=3,eo2=5,case="#1 vs #5 with "},
+              {so1=4,eo1=5,so2=1,eo2=2,case="#6 vs #1 with "},
+              {so1=1,eo1=2,so2=4,eo2=5,case="#1 vs #6 with "},
+              {so1=1,eo1=3,so2=1,eo2=3,case="#2 vs #2 with "},
+              {so1=1,eo1=5,so2=1,eo2=3,case="#3 vs #2 with "},
+              {so1=1,eo1=3,so2=1,eo2=5,case="#2 vs #3 with "},
+              {so1=2,eo1=4,so2=1,eo2=3,case="#4 vs #2 with "},
+              {so1=1,eo1=3,so2=2,eo2=4,case="#2 vs #4 with "},
+              {so1=3,eo1=5,so2=1,eo2=3,case="#5 vs #2 with "},
+              {so1=1,eo1=3,so2=3,eo2=5,case="#2 vs #5 with "},
+              {so1=4,eo1=5,so2=1,eo2=3,case="#6 vs #2 with "},
+              {so1=1,eo1=3,so2=4,eo2=5,case="#2 vs #6 with "},
+              {so1=1,eo1=5,so2=1,eo2=5,case="#3 vs #3 with "},
+              {so1=2,eo1=4,so2=1,eo2=5,case="#4 vs #3 with "},
+              {so1=1,eo1=5,so2=2,eo2=4,case="#3 vs #4 with "},
+              {so1=3,eo1=5,so2=1,eo2=5,case="#5 vs #3 with "},
+              {so1=1,eo1=5,so2=3,eo2=5,case="#3 vs #5 with "},
+              {so1=4,eo1=5,so2=1,eo2=5,case="#6 vs #3 with "},
+              {so1=1,eo1=5,so2=4,eo2=5,case="#3 vs #6 with "},
+              {so1=2,eo1=4,so2=2,eo2=4,case="#4 vs #4 with "},
+              {so1=3,eo1=5,so2=2,eo2=4,case="#5 vs #4 with "},
+              {so1=2,eo1=4,so2=3,eo2=5,case="#4 vs #5 with "},
+              {so1=4,eo1=5,so2=2,eo2=4,case="#6 vs #4 with "},
+              {so1=2,eo1=4,so2=4,eo2=5,case="#4 vs #6 with "},
+              {so1=3,eo1=5,so2=3,eo2=5,case="#5 vs #5 with "},
+              {so1=4,eo1=5,so2=3,eo2=5,case="#6 vs #5 with "},
+              {so1=3,eo1=5,so2=4,eo2=5,case="#5 vs #6 with "},
+              {so1=4,eo1=5,so2=4,eo2=5,case="#6 vs #6 with "}
+              }
+end
+
+
+function TestTPSAArithmetic:testAxpbypcR()
+  local t,v = tpsa, vector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helpers to setvec tpsas and vectors within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill(s..e))
+    local mkv = \a,b,c,s1,e1,s2,e2 -> a*v(nc):setvec(s1..e1,s1..e1) + b*v(nc):setvec(s2..e2,s2..e2) + v(nc):set(1,1,c)
+
+    for _,ords  in ipairs(self.data) do
+      local v=mkv(2,3,4,self.idx[i][ords.so1],self.idx[i][ords.eo1]-1,self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1)
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+      assertTrue(t1:axpbypc(t2,2,3,4):getvec(1,nc) == v ,ords.case..nv.." variable(s)")
+    end
+  end
+end
+
+
+function TestTPSAArithmetic:testAxpbypC()
+  local ct,cv = ctpsa, cvector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helpers to setvec tpsas and vectors within start..end
+    local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i)
+    local mkv = \a,b,c,s1,e1,s2,e2 -> a*cv(nc):setvec(s1..e1,(s1..e1))*1i + b*cv(nc):setvec(s2..e2,(s2..e2))*1i + cv(nc):set(1,1,c)
+
+    for _,ords  in ipairs(self.data) do
+      local v=mkv(2i,3i,4i,self.idx[i][ords.so1],self.idx[i][ords.eo1]-1,self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1)
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+      assertTrue(t1:axpbypc(t2,2i,3i,4i):getvec(1,nc) == v ,ords.case..nv.." variable(s)")
+    end
+  end
+end
+
+
+function TestTPSAArithmetic:testAddR()  
+  local t,v =tpsa, vector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+  
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e)))
+  
+    for _,ords  in ipairs(self.data) do
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1)
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+      assertTrue(t1:axpbypc(t2,1,1,0) == t1+t2,ords.case..nv.." variable(s)")
+    end
+    assertTrue(mkt(self.idx[i][0],self.idx[i][1]-1):axpbypc(mkt(self.idx[i][0],self.idx[i][1]-1),1,0,1) == mkt(self.idx[i][0],self.idx[i][1]-1)+1) 
+    assertTrue(mkt(self.idx[i][0],self.idx[i][1]-1):axpbypc(mkt(self.idx[i][0],self.idx[i][1]-1),1,0,1) == 1+mkt(self.idx[i][0],self.idx[i][1]-1))
+  end
+end
+
+
+function TestTPSAArithmetic:testAddC()
+  local ct,cv = ctpsa, cvector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helpers to setvec tpsas and vectors within start..end
+    local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i)
+
+    for _,ords  in ipairs(self.data) do
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1)
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+      assertTrue(t1:axpbypc(t2,1,1,0) == t1+t2,ords.case..nv.." variable(s)")
+    end
+    assertTrue(mkt(self.idx[i][3],self.idx[i][5]-1):axpbypc(ctpsa(d):set(1,1),1,1, 0) == mkt(self.idx[i][3],self.idx[i][5]-1)+tpsa(d):set("0",1)        )
+    assertTrue(mkt(self.idx[i][4],self.idx[i][5]-1):axpbypc(ctpsa(d):set(1,1),1,1, 0) == mkt(self.idx[i][4],self.idx[i][5]-1)+tpsa(d):set("0",1)        )
+    assertTrue(mkt(self.idx[i][0],self.idx[i][1]-1):axpbypc(ctpsa(d):set(1,1),1,0,1i) == mkt(self.idx[i][0],self.idx[i][1]-1)+                        1i)
+    assertTrue(mkt(self.idx[i][0],self.idx[i][1]-1):axpbypc(ctpsa(d):set(1,1),1,0,1i) == 1i                        +mkt(self.idx[i][0],self.idx[i][1]-1))
+  end
+end
+
+
+function TestTPSAArithmetic:testSubR()
+  local t,v =tpsa, vector
+  
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helpers to setvec tpsas and vectors within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e)))
+
+    for _,ords  in ipairs(self.data) do
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1)
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+      assertTrue(t1:axpbypc(t2,1,-1,0) == t1-t2,ords.case..nv.." variable(s)")
+    end
+    assertTrue(mkt(self.idx[i][0],self.idx[i][1]-1):axpbypc(mkt(self.idx[i][0],self.idx[i][1]-1),1,0,-1) == mkt(self.idx[i][0],self.idx[i][1]-1)-                   1)
+    assertTrue(mkt(self.idx[i][0],self.idx[i][1]-1):axpbypc(mkt(self.idx[i][0],self.idx[i][1]-1),1,0,-1) == 1                   -mkt(self.idx[i][0],self.idx[i][1]-1))
+  end
+end
+
+
+function TestTPSAArithmetic:testSubC()
+  local ct,cv = ctpsa, cvector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i)
+
+    for _,ords  in ipairs(self.data) do
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1)
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+      assertTrue(t1:axpbypc(t2,1,-1,0) == t1-t2,ords.case..nv.." variable(s)")
+    end
+    assertTrue(mkt(self.idx[i][3],self.idx[i][5]-1):axpbypc(ctpsa(d):set(1,1)                   , 1,-1,  0) == mkt(self.idx[i][3],self.idx[i][5]-1)-  tpsa(d):set("0",1))
+    assertTrue(mkt(self.idx[i][4],self.idx[i][5]-1):axpbypc(ctpsa(d):set(1,1)                   , 1,-1,  0) == mkt(self.idx[i][4],self.idx[i][5]-1)-  tpsa(d):set("0",1))
+    assertTrue(mkt(self.idx[i][0],self.idx[i][1]-1):axpbypc(mkt(self.idx[i][0],self.idx[i][1]-1), 1,0 , -1) == mkt(self.idx[i][0],self.idx[i][1]-1)-                   1)
+    assertTrue(mkt(self.idx[i][0],self.idx[i][1]-1):axpbypc(ctpsa(d):set(1,1)                   , 1,0 ,-1i) == mkt(self.idx[i][0],self.idx[i][1]-1)-                  1i)
+    assertTrue(mkt(self.idx[i][0],self.idx[i][1]-1):axpbypc(mkt(self.idx[i][0],self.idx[i][1]-1),-1,0 ,  1) == 1                   -mkt(self.idx[i][0],self.idx[i][1]-1))
+    assertTrue(mkt(self.idx[i][0],self.idx[i][1]-1):axpbypc(ctpsa(d):set(1,1)                   ,-1,0 , 1i) == 1i                  -mkt(self.idx[i][0],self.idx[i][1]-1))
+  end
+end
+
+
+local function mul_polys(P, Q)
+    local result = {}
+    for exp1_mono, coeff1 in pairs(P) do        
+        for exp2_mono, coeff2 in pairs(Q) do                
+            local new_exp = exp1_mono + exp2_mono
+            local new_coeff = coeff1 * coeff2
+            if result[tostring(new_exp)] then
+                result[tostring(new_exp)] = result[tostring(new_exp)] + new_coeff --think squared
+            else
+                result[tostring(new_exp)] = new_coeff
+            end
+        end
+    end
+  return result
+end
+
+
+local function tpsa2Poly(t)
+  local poly = {}
+  local size = t:maxlen()
+  for i=1,size do
+    local mono,_ = t:get_mono(i)
+    poly[mono] = t:get(i)
+  end
+  return poly
+end
+
+local function poly2Vec(poly,d,t)
+  local size = d:maxlen()
+  for exp, coeff in pairs(poly) do
+    if d:get_idx(exp)~=0 then t:set(exp,coeff) end
+  end
+  return t:getvec(1,size)
+end
+
+local function polymul(t1,t2)
+  local P,Q = tpsa2Poly(t1),tpsa2Poly(t2)
+  local r =  mul_polys(P, Q)
+  return poly2Vec(r,t1:desc(),t1:same()) 
+end
+
+
+function TestTPSAArithmetic:testMulR()
+  local t,v = tpsa, vector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e)))
+    
+    for _,ords  in ipairs(self.data) do
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1)
+      if nv == 1 then t1:print() end
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+      assertTrue((t1*t2):getvec(1,nc) == polymul(t1,t2),ords.case..nv.." variable(s)")
+    end
+    
+    assertTrue((mkt(self.idx[i][4],self.idx[i][5]-1)*                   1):getvec(1,nc) == polymul(mkt(self.idx[i][4],self.idx[i][5]-1),mkt(self.idx[i][0],self.idx[i][1]-1)))
+    assertTrue((1*                   mkt(self.idx[i][4],self.idx[i][5]-1)):getvec(1,nc) == polymul(mkt(self.idx[i][0],self.idx[i][1]-1),mkt(self.idx[i][4],self.idx[i][5]-1)))
+  end
+end
+
+
+function TestTPSAArithmetic:testMulC()
+  local ct,cv = ctpsa, cvector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helpers to setvec tpsas and vectors within start..end
+    local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i)
+
+    for _,ords  in ipairs(self.data) do
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1)
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+      assertTrue((t1*t2):getvec(1,nc) == polymul(t1,t2),ords.case..nv.." variable(s)")
+    end
+
+    assertTrue((mkt(self.idx[i][4],self.idx[i][5]-1)*  tpsa(d):set("0",1)):getvec(1,nc) == polymul(mkt(self.idx[i][4],self.idx[i][5]-1),tpsa(d):set("0",1)))
+    assertTrue((tpsa(d)  :set("0",1)*mkt(self.idx[i][4],self.idx[i][5]-1)):getvec(1,nc) == polymul(mkt(self.idx[i][4],self.idx[i][5]-1),tpsa(d):set("0",1)))
+    assertTrue((mkt(self.idx[i][4],self.idx[i][5]-1)*                  1i):getvec(1,nc) == polymul(mkt(self.idx[i][4],self.idx[i][5]-1),mkt(self.idx[i][0],self.idx[i][1]-1)))
+    assertTrue((1i*                  mkt(self.idx[i][4],self.idx[i][5]-1)):getvec(1,nc) == polymul(mkt(self.idx[i][0],self.idx[i][1]-1),mkt(self.idx[i][4],self.idx[i][5]-1)))
+  end
+end
+
+
+function TestTPSAArithmetic:testPowR()
+  local t,v = tpsa, vector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e)))
+    
+    for _,ords  in ipairs(self.data) do
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1):set0(1)
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1):set0(1)
+      local pow1 = (t1:pow(t2)):getvec(1,nc)
+      local pow2 = (t1:log()*t2):exp():getvec(1,nc)
+      -- real tests is not passing with the machine precision, complex one is fine
+      assertTrue(pow1.__eq(pow1,pow2,300*eps),ords.case..nv.." variable(s)")
+    end
+    
+    assertTrue((mkt(self.idx[i][4],self.idx[i][5]-1)*                   1):getvec(1,nc) == polymul(mkt(self.idx[i][4],self.idx[i][5]-1),mkt(self.idx[i][0],self.idx[i][1]-1)))
+    assertTrue((1*                   mkt(self.idx[i][4],self.idx[i][5]-1)):getvec(1,nc) == polymul(mkt(self.idx[i][0],self.idx[i][1]-1),mkt(self.idx[i][4],self.idx[i][5]-1)))
+  end
+end
+
+
+function TestTPSAArithmetic:testPowC()
+  local ct,cv = ctpsa, cvector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helpers to setvec tpsas and vectors within start..end
+    local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i)
+
+    for _,ords  in ipairs(self.data) do
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1):set0(1)
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1):set0(1)
+      assertTrue((t1:pow(t2)):getvec(1,nc) == (t1:log()*t2):exp():getvec(1,nc),ords.case..nv.." variable(s)")
+    end
+
+    assertTrue((mkt(self.idx[i][4],self.idx[i][5]-1)*  tpsa(d):set("0",1)):getvec(1,nc) == polymul(mkt(self.idx[i][4],self.idx[i][5]-1),tpsa(d):set("0",1)))
+    assertTrue((tpsa(d)  :set("0",1)*mkt(self.idx[i][4],self.idx[i][5]-1)):getvec(1,nc) == polymul(mkt(self.idx[i][4],self.idx[i][5]-1),tpsa(d):set("0",1)))
+    assertTrue((mkt(self.idx[i][4],self.idx[i][5]-1)*                  1i):getvec(1,nc) == polymul(mkt(self.idx[i][4],self.idx[i][5]-1),mkt(self.idx[i][0],self.idx[i][1]-1)))
+    assertTrue((1i*                  mkt(self.idx[i][4],self.idx[i][5]-1)):getvec(1,nc) == polymul(mkt(self.idx[i][0],self.idx[i][1]-1),mkt(self.idx[i][4],self.idx[i][5]-1)))
+  end
+end
+
+
+function TestTPSAArithmetic:testDifR()
+  local t,v = tpsa, vector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e)))
+    
+    for _,ords  in ipairs(self.data) do
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1)
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+      assertTrue(t1:dif(t2):getvec(1,nc) == t1:getvec(1,nc):dif(t2:getvec(1,nc)),ords.case..nv.." variable(s)")
+    end
+  end
+end
+
+
+function TestTPSAArithmetic:testDifC()
+  local ct,cv = ctpsa, cvector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helpers to setvec tpsas and vectors within start..end
+    local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i)
+
+    for _,ords  in ipairs(self.data) do
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1)
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+     assertTrue((t1:dif(t2)):getvec(1,nc) == t1:getvec(1,nc):dif(t2:getvec(1,nc)),ords.case..nv.." variable(s)")
+    end
+  end
+end
+
+
+function TestTPSAArithmetic:testLtR()
+  local t,v = tpsa, vector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e)))
+    
+    for _,ords  in ipairs(self.data) do
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1)
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+      local result = t1:get0() < t2:get0()
+      assertTrue(t1 < t2 == result,ords.case..nv.." variable(s)")
+    end
+    assertTrue(mkt(self.idx[i][4],self.idx[i][5]-1) < 1 ==  true)
+    assertTrue(1 < mkt(self.idx[i][4],self.idx[i][5]-1) == false)
+  end
+  assertError(tpsa(d2v).__lt,tpsa(d2v), tpsa(d1v))
+  assertError(tpsa(d2v).__lt,tpsa(d2v),ctpsa(d2v))
+  assertError(tpsa(d2v).__lt,tpsa(d2v),      1+1i)
+end
+
+
+function TestTPSAArithmetic:testLtC()
+  local ct1,ct2 = ctpsa(d2v), ctpsa(d2v)
+  assertError(ct1.__lt,ct1,ct2)
+end
+
+
+function TestTPSAArithmetic:testLeR()
+  local t,v = tpsa, vector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e)))
+    
+    for _,ords  in ipairs(self.data) do
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1)
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+      local result = t1:get0() <= t2:get0()
+      assertTrue(t1 <= t2 == result,ords.case..nv.." variable(s)")
+    end
+    assertTrue(mkt(self.idx[i][4],self.idx[i][5]-1) <= 1 ==  true)
+    assertTrue(1 <= mkt(self.idx[i][4],self.idx[i][5]-1) == false)
+  end
+  assertError(tpsa(d2v).__le,tpsa(d2v), tpsa(d1v))
+  assertError(tpsa(d2v).__le,tpsa(d2v),ctpsa(d2v))
+  assertError(tpsa(d2v).__le,tpsa(d2v),      1+1i)
+end
+
+
+function TestTPSAArithmetic:testLeC()
+  local ct1,ct2 = ctpsa(d2v), ctpsa(d2v)
+  assertError(ct1.__le,ct1,ct2)
+end
+
+
+function TestTPSA:testInversionR()
+  local t,v = tpsa, vector
+
+  for _,d in ipairs({d1v,d2v,d3v,d5v}) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helpers to setvec tpsas and vectors within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e))):set("0",1)
+
+    assertTrue((mkt(idx[0],idx[1]-1)*mkt(idx[0],idx[1]-1):inv()) == 1)
+    assertTrue((mkt(idx[1],idx[2]-1)*mkt(idx[1],idx[2]-1):inv()) == 1)
+    assertTrue((mkt(idx[1],idx[3]-1)*mkt(idx[1],idx[3]-1):inv()) == 1)
+    assertTrue((mkt(idx[1],idx[5]-1)*mkt(idx[1],idx[5]-1):inv()) == 1)
+    assertTrue((mkt(idx[4],idx[5]-1)*mkt(idx[4],idx[5]-1):inv()) == 1)
+    assertTrue((mkt(idx[2],idx[4]-1)*mkt(idx[2],idx[4]-1):inv()) == 1)
+    assertTrue((mkt(idx[3],idx[5]-1)*mkt(idx[3],idx[5]-1):inv()) == 1)
+  end
+end
+
+
+function TestTPSA:testInversionC()
+  local ct,cv = ctpsa, cvector
+
+  for _,d in ipairs({d1v,d2v,d3v,d5v}) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helpers to setvec tpsas and vectors within start..end
+    local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i):set("0",1i)
+
+    assertTrue((mkt(idx[0],idx[1]-1)*mkt(idx[0],idx[1]-1):inv()) == 1)
+    assertTrue((mkt(idx[1],idx[2]-1)*mkt(idx[1],idx[2]-1):inv()) == 1)
+    assertTrue((mkt(idx[1],idx[3]-1)*mkt(idx[1],idx[3]-1):inv()) == 1)
+    assertTrue((mkt(idx[1],idx[5]-1)*mkt(idx[1],idx[5]-1):inv()) == 1)
+    assertTrue((mkt(idx[4],idx[5]-1)*mkt(idx[4],idx[5]-1):inv()) == 1)
+    assertTrue((mkt(idx[2],idx[4]-1)*mkt(idx[2],idx[4]-1):inv()) == 1)
+    assertTrue((mkt(idx[3],idx[5]-1)*mkt(idx[3],idx[5]-1):inv()) == 1)
+  end
+end
+
+
+function TestTPSAArithmetic:testDivR()
+  local t,v = tpsa, vector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e))):set("0",1)
+
+    for _,ords  in ipairs(self.data) do
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1)
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+      assertTrue(t1/t2 == t1*t2:inv(),ords.case..nv.." variable(s)")
+    end
+
+    assertTrue((mkt(self.idx[i][4],self.idx[i][5]-1)/                   2) == mkt(self.idx[i][4],self.idx[i][5]-1)*tpsa(d)  :set("0",2):inv())
+    assertTrue((2/                   mkt(self.idx[i][4],self.idx[i][5]-1)) == tpsa(d)  :set("0",2)*mkt(self.idx[i][4],self.idx[i][5]-1):inv())
+  end
+end
+
+
+function TestTPSAArithmetic:testDivC()
+  local ct,cv = ctpsa, cvector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i):set("0",1i)
+  
+    for _,ords  in ipairs(self.data) do
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1)
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+      assertTrue(t1/t2 == t1*t2:inv(),ords.case..nv.." variable(s)")
+    end
+    
+    assertTrue((mkt(self.idx[i][4],self.idx[i][5]-1)/                  2i) == mkt(self.idx[i][4],self.idx[i][5]-1)*ctpsa(d):set("0",2i):inv())
+    assertTrue((2i/                  mkt(self.idx[i][4],self.idx[i][5]-1)) == ctpsa(d):set("0",2i)*mkt(self.idx[i][4],self.idx[i][5]-1):inv())
+  end
+end
+
+local function poisson(t1,t2)
+  local nv = t1:desc():nvnp()
+  local  r = t1:same()
+  for i=1,nv/2 do
+    r = r + t1:deriv(2*i-1)*t2:deriv(2*i) - t1:deriv(2*i)*t2:deriv(2*i-1)
+  end
+  return r
+end
+
+function TestTPSAArithmetic:testPoissbraR()
+  local t,v = tpsa, vector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e))):set("0",1)
+
+    for _,ords  in ipairs(self.data) do
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1)
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+      assertTrue(t1:poisbra(t2) == poisson(t1,t2),ords.case..nv.." variable(s)")
+    end
+  end
+end
+
+
+function TestTPSAArithmetic:testPoissbraC()
+  local ct,cv = ctpsa, cvector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i):set("0",1i)
+  
+    for _,ords  in ipairs(self.data) do
+      local t1=mkt(self.idx[i][ords.so1],self.idx[i][ords.eo1]-1)
+      local t2=mkt(self.idx[i][ords.so2],self.idx[i][ords.eo2]-1)
+      assertTrue(t1:poisbra(t2) == poisson(t1,t2),ords.case..nv.." variable(s)")
+    end
+  end
+end
+
+
+local function diff_mono(m1,m2)
+  local diff = {}
+  for v,ord in pairs(m1) do
+    diff[v] = m1[v]-m2[v]
+  end
+  return diff
+end
+
+local function deriv_coef(m1,m2)
+  local coef = 1
+  for v=1,#m1 do
+    for j=1,m2[v] do
+      coef = coef*(m1[v]-j+1)
+    end
+  end
+  return coef
+end
+
+local function is_valid_mono(m,ord_,mo_)
+  mo_  =  mo_ or inf
+  ord_ = ord_ or inf
+  for v, ord in pairs(m) do
+    if ord< 0 then return false end
+  end
+  if ord_>mo_ then return false end
+  return true
+end
+
+local function deriv_poly(t,deriv)
+  local r = t:same()
+  local P = tpsa2Poly(t)  
+  deriv = deriv:totable()
+  for exp_mono, coef in pairs(P) do
+    local exp = exp_mono:totable()
+    local new_exp = diff_mono(exp,deriv)
+    if is_valid_mono(new_exp) then
+      local new_coef = deriv_coef(exp,deriv)*t:get(exp_mono)
+      r:set(monomial(new_exp),new_coef)
+    end
+  end
+  return r
+end
+
+local function integ_mono(m,iv)
+  m[iv] = m[iv]+1
+  return m
+end
+
+local function integ_poly(t,iv)
+  local r = t:same()
+  local P = tpsa2Poly(t)  
+  for exp_mono, coef in pairs(P) do
+    local      exp = exp_mono:totable()
+    local  new_exp = integ_mono(exp,iv)
+    local new_mono = monomial(new_exp)
+    if is_valid_mono(new_exp,new_mono:ord(),t:maxord()) then
+      local new_coef = t:get(exp_mono)/new_exp[iv]
+      r:set(new_mono,new_coef)
+    end
+  end
+  return r
+end
+
+
+function TestTPSADerivPlusMisc:setUp()
+  self.descs = {d1v,d2v,d3v,d5v}
+  self.idxs = {}
+  for i,d in ipairs(self.descs) do
+    local mo,nv  = d:maxord(), d:nvnp()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+    self.idxs[i] = {--see table above for the cases
+                    {si=idx[0],ei=idx[1]-1,case="#0 with "..nv.." variable(s)"},
+                    {si=idx[1],ei=idx[2]-1,case="#1 with "..nv.." variable(s)"},
+                    {si=idx[1],ei=idx[3]-1,case="#2 with "..nv.." variable(s)"},
+                    {si=idx[1],ei=idx[5]-1,case="#3 with "..nv.." variable(s)"},
+                    {si=idx[2],ei=idx[4]-1,case="#4 with "..nv.." variable(s)"},
+                    {si=idx[3],ei=idx[5]-1,case="#5 with "..nv.." variable(s)"},
+                    {si=idx[4],ei=idx[5]-1,case="#6 with "..nv.." variable(s)"},
+                    }
+  end
+end
+
+function TestTPSADerivPlusMisc:testDerivIdxR()
+  local t,v = tpsa, vector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local tpsa = mkt(idx.si,idx.ei)
+      for i=1,tpsa:nv() do --testing index input
+        local deriv,_ = tpsa:get_mono(i+1)
+        assertTrue(tpsa:deriv(i) == deriv_poly(tpsa,deriv),idx.case)
+      end
+    end
+  end
+end  
+
+
+function TestTPSADerivPlusMisc:testDerivIdxnC()
+  local ct,cv = ctpsa, cvector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+  
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i)
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local tpsa = mkt(idx.si,idx.ei)
+      for i=1,tpsa:nv() do --testing index input
+        local deriv,_ = tpsa:get_mono(i+1)
+        assertTrue(tpsa:deriv(i) == deriv_poly(tpsa,deriv),idx.case)
+      end
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testDerivMonoR()
+  local t,v = tpsa, vector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local  tpsa = mkt(idx.si,idx.ei)
+      local deriv = d:get_mono(1)
+      while d:nxtbyord(deriv)~=-1 do  --testing mono input
+        assertTrue(tpsa:deriv(deriv) == deriv_poly(tpsa,deriv),idx.case)
+      end
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testDerivMononC()
+  local ct,cv = ctpsa, cvector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+  
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i)
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local  tpsa = mkt(idx.si,idx.ei)
+      local deriv = d:get_mono(1)
+      while d:nxtbyord(deriv)~=-1 do  --testing mono input
+        assertTrue(tpsa:deriv(deriv) == deriv_poly(tpsa,deriv),idx.case)
+      end
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testIntegR()
+  local t,v = tpsa, vector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local tpsa = mkt(idx.si,idx.ei)
+      for iv=1,tpsa:nv() do
+        assertTrue(tpsa:integ(iv) == integ_poly(tpsa,iv),idx.case.." intergrating on "..iv.." variable")
+      end
+    end
+  end
+end  
+
+
+function TestTPSADerivPlusMisc:testIntegC()
+  local ct,cv = ctpsa, cvector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i)
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local tpsa = mkt(idx.si,idx.ei)
+      for iv=1,tpsa:nv() do 
+        assertTrue(tpsa:integ(iv) == integ_poly(tpsa,iv),idx.case.." intergrating on "..iv.." variable")
+      end
+    end
+  end
+end  
+
+
+local cut_ord_t = function(ord,t,idx)
+    if     ord >  t:maxord() then return t :copy()
+    elseif ord <=-t:maxord() then return t :same()
+    elseif ord >  0          then return t :same():setvec(1, t:getvec(1, t:maxlen(ord - 1)))
+    elseif ord <= 0          then return t :same():setvec(idx[-ord + 1], t:getvec(idx[-ord + 1], t:maxlen() - t:maxlen(-ord)))
+    end
+end
+
+function TestTPSADerivPlusMisc:testcutOrd()
+  for _,d in ipairs({d1v,d2v,d3v,d5v}) do
+    local mo,nc = d:maxord(),d:maxlen()
+    local t     =  tpsa(d):setvec(1,1..nc)
+    local ct    = ctpsa(d):setvec(1,1..nc)*1i
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    for ord = 0,mo+1 do
+      assertTrue(ct:cutord( ord) == cut_ord_t( ord,ct,idx))
+      assertTrue(ct:cutord(-ord) == cut_ord_t(-ord,ct,idx))
+      assertTrue( t:cutord( ord) == cut_ord_t( ord, t,idx))
+      assertTrue( t:cutord(-ord) == cut_ord_t(-ord, t,idx))
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testSameR()
+  local t,v = tpsa, vector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+    
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e))):set("0",1)
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local tpsa = mkt(idx.si,idx.ei)
+      assertTrue(tpsa:same() == t(d),idx.case)  
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testSameC()
+  local ct,cv = ctpsa, cvector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+    
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i)
+  
+    for _, idx in ipairs(self.idxs[i]) do
+      local tpsa = mkt(idx.si,idx.ei)
+      assertTrue(tpsa:same() == ct(d),idx.case)  
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testCopyR()
+  local t,v = tpsa, vector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+    
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local tpsa = mkt(idx.si,idx.ei)
+      assertTrue(tpsa:copy() == tpsa,idx.case)  
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testCopyC()
+  local ct,cv = ctpsa, cvector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i)
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local tpsa = mkt(idx.si,idx.ei)
+      assertTrue(tpsa:copy() == tpsa,idx.case)  
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testClearR()
+  local t,v = tpsa, vector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> t(d):setvec(s, v(e-s+1):fill((s..e)))
+  
+    for _, idx in ipairs(self.idxs[i]) do
+      local tpsa = mkt(idx.si,idx.ei)
+      tpsa:clear()
+      assertTrue(tpsa == t(d),idx.case)  
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testClearC()
+  local ct,cv = ctpsa, cvector
+
+  for i,d in ipairs(self.descs) do
+    local mo, nc, nv = d:maxord(), d:maxlen(), d:nvnp()
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ct(d):setvec(s, cv(e-s+1):fill((s..e))*1i)
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local tpsa = mkt(idx.si,idx.ei)
+      tpsa:clear()
+      assertTrue(tpsa == ct(d),idx.case)  
+    end
+  end
+end
+
+
+function TestTPSA:testClrOrd()
+  for _,d in ipairs({d1v,d2v,d3v,d5v}) do
+    local mo,nc,nv = d:maxord(), d:maxlen() d:nvnp()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+    local  t = tpsa(d):setvec(1,1..nc)
+    local ct =ctpsa(d):setvec(1,1..nc)*1i
+    
+    for ord = 0, mo do
+       t:clrord(ord)
+      ct:clrord(ord)
+      local m = d:get_mono(idx[ord])
+      repeat 
+        assertTrue( t:get(m) == 0)
+        assertTrue(ct:get(m) == 0)
+        local i=d:nxtbyord(m)
+      until m:ord() == ord+1 or i == -1
+    end
+  end
+end
+
+
+function TestTPSA:testGetOrdR()
+  for _,d in ipairs({d1v,d2v,d3v,d5v}) do
+    local mo,nc,nv = d:maxord(), d:maxlen() d:nvnp()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+    local  t = tpsa(d):setvec(1,1..nc)
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> tpsa(d):setvec(s, vector(e-s+1):fill((s..e)))
+
+    for ord = 0, mo do
+      assertTrue(t:getord(ord) == mkt(idx[ord],idx[ord+1]-1))
+    end
+  end
+end
+
+
+function TestTPSA:testGetOrdC()
+  for _,d in ipairs({d1v,d2v,d3v,d5v}) do
+    local mo,nc,nv = d:maxord(), d:maxlen() d:nvnp()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+    local  ct = ctpsa(d):setvec(1,1..nc)*1i
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ctpsa(d):setvec(s, cvector(e-s+1):fill((s..e))*1i)
+
+    for ord = 0, mo do
+      assertTrue(ct:getord(ord) == mkt(idx[ord],idx[ord+1]-1))
+    end
+  end
+end
+
+local function scale_ord(t,flag)
+  local m = t:get_mono(1)
+  while t:desc():nxtbyord(m) ~= -1 do
+    if flag then 
+      t:set(m,t:get(m)/m:ord())
+    else 
+      t:set(m,t:get(m)*m:ord())
+    end
+  end
+  return t
+end
+
+function TestTPSADerivPlusMisc:testSclOrdR()
+  for i,d in ipairs(self.descs) do
+    local mo = d:maxord()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> tpsa(d):setvec(s, vector(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      assertTrue(t:sclord( ) == scale_ord(t   ),idx.case)
+      assertTrue(t:sclord(1) == scale_ord(t,1),idx.case)  
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testSclOrdC()
+  for i,d in ipairs(self.descs) do
+    local mo = d:maxord()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ctpsa(d):setvec(s, cvector(e-s+1):fill((s..e))*1i)
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      assertTrue(t:sclord( ) == scale_ord(t   ),idx.case)
+      assertTrue(t:sclord(1) == scale_ord(t,1),idx.case)  
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testAccR()
+  for i,d in ipairs(self.descs) do
+    local mo = d:maxord()
+    local v = 2
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> tpsa(d):setvec(s, vector(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      local t_acc = t + v*t
+      assertTrue(t:acc(v,t) == t_acc,idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testAccC()
+  for i,d in ipairs(self.descs) do
+    local mo = d:maxord()
+    local v = 2i
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ctpsa(d):setvec(s, cvector(e-s+1):fill((s..e))*1i)
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      local t_acc = t + v*t
+      assertTrue(t:acc(v,t) == t_acc,idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testConjC()
+  for i,d in ipairs(self.descs) do
+    local mo = d:maxord()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ctpsa(d):setvec(s, cvector(e-s+1):fill((s..e))*1i)
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      assertTrue(t:conj() == -t,idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testAbsR()
+  for i,d in ipairs(self.descs) do
+    local mo, nc = d:maxord(), d:maxlen()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> tpsa(d):setvec(s, -vector(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      local v = 0
+      if (t:get0() >= 0) then v = t:getvec(1,nc) else v = -t:getvec(1,nc) end
+      assertTrue(t:abs():getvec(1,nc) == v,idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testAbsC()
+  for i,d in ipairs(self.descs) do
+    local mo, nc = d:maxord(), d:maxlen()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ctpsa(d):setvec(s, cvector(e-s+1):fill((s..e))*1i + cvector(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      assertTrue(t:abs():getvec(1,nc) == t:getvec(1,nc):abs(),idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testNormR()
+  for i,d in ipairs(self.descs) do
+    local mo, nc = d:maxord(), d:maxlen()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> tpsa(d):setvec(s, -vector(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      assertTrue(t:norm() == t:getvec(1,nc):abs():sum(),idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testNormC()
+  for i,d in ipairs(self.descs) do
+    local mo, nc = d:maxord(), d:maxlen()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ctpsa(d):setvec(s, cvector(e-s+1):fill((s..e))*1i + cvector(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      assertTrue(t:norm() == t:getvec(1,nc):abs():sum(),idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testPolarC()
+  for i,d in ipairs(self.descs) do
+    local mo, nc = d:maxord(), d:maxlen()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ctpsa(d):setvec(s, cvector(e-s+1):fill((s..e))*1i + cvector(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t   = mkt(idx.si,idx.ei) + 1
+      local re  = t:real()
+      local im  = t:imag()
+      local plr = (im:hypot(re)):cplx(im:atan2(re))
+      assertTrue(t:polar() == plr,idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testUnitR()
+  for i,d in ipairs(self.descs) do
+    local mo, nc = d:maxord(), d:maxlen()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> tpsa(d):setvec(s, 2*vector(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      assertTrue(t:unit() == t/abs(t:get0()),idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testUnitC()
+  for i,d in ipairs(self.descs) do
+    local mo, nc = d:maxord(), d:maxlen()
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ctpsa(d):setvec(s, 2*cvector(e-s+1):fill((s..e))*1i)
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      assertTrue(t:unit() == t/abs(t:get0()),idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testSclR()
+  for i,d in ipairs(self.descs) do
+    local mo, nc = d:maxord(), d:maxlen()
+    local v = 2
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> tpsa(d):setvec(s, 2*vector(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      assertTrue(t:scl(v) == v*t,idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testSclC()
+  for i,d in ipairs(self.descs) do
+    local mo, nc = d:maxord(), d:maxlen()
+    local v = 2i
+    local idx = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ctpsa(d):setvec(s, 2*cvector(e-s+1):fill((s..e))*1i)
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      assertTrue(t:scl(v) == v*t,idx.case)
+    end
+  end
+end
+
+
+
+function TestTPSA:testmaxByOrdR()
+  for i,d in ipairs({d1v,d2v,d3v,d5v}) do
+    local mo,nc = d:maxord(), d:maxlen()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+    local t1, t2, t3 = tpsa(d):setvec(1,1..nc), tpsa(d):setvec(1,vector(nc):ones()), tpsa(d):setvec(1,-nc..-1)
+    local v  = ivector(d:maxord()+1):seti(1,1)
+
+    for _,t in ipairs({t1,t2,t3}) do
+      local _,i_max = t:getvec(1,nc):iminmax(true)
+      for ord = 1, mo do
+        local len = d:maxlen(ord) - d:maxlen(ord-1)
+        local _,argmax = t:getvec(idx[ord], len):iminmax(true)
+        v:seti(ord+1, argmax + d:maxlen(ord-1))
+      end
+      local i,vmax = t:maxbyord()
+
+      assertTrue(vmax == v,idx.case)
+      assertEquals(i,i_max,idx.case)
+    end
+  end
+end
+
+
+function TestTPSA:testmaxByOrdC()
+  for i,d in ipairs({d1v,d2v,d3v,d5v}) do
+    local mo,nc = d:maxord(), d:maxlen()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+    local ct1, ct2, ct3 = ctpsa(d):setvec(1,1..nc)*1i, ctpsa(d):setvec(1,vector(nc):ones())*1i, ctpsa(d):setvec(1,-nc..-1)*1i
+    local v  = ivector(d:maxord()+1):seti(1,1)
+  
+    for _,ct in ipairs({ct1,ct2,ct3}) do
+    local _,i_max = ct:getvec(1,nc):iminmax(true)
+      for ord = 1, mo do
+        local len = d:maxlen(ord) - d:maxlen(ord-1)
+        local _,argmax = ct:getvec(idx[ord], len):iminmax(true) 
+        v:seti(ord+1, argmax + d:maxlen(ord-1))
+      end
+      local i,vmax = ct:maxbyord()
+      assertTrue(vmax == v,idx.case)
+      assertEquals(i,i_max,idx.case)
+    end
+  end
+end
+
+
+function TestTPSA:testFillR()
+  for i,d in ipairs({d1v,d2v,d3v,d5v}) do
+    local mo,nc = d:maxord(), d:maxlen()
+    local t     = tpsa
+    for i = 1,nc do
+      local v = vector(i):fill(1..i)
+      assertTrue(t(d):setvec(1,1..i) == t(d):fill(1..i),idx.case)
+      assertTrue(t(d):setvec(1,1..i) == t(d):fill(   v),idx.case)
+    end
+  end
+end
+
+
+function TestTPSA:testFillC()
+  for i,d in ipairs({d1v,d2v,d3v,d5v}) do
+    local mo,nc = d:maxord(), d:maxlen()
+    local ct    = ctpsa
+    for i = 1,nc do
+      local v = cvector(i):fill(1..i)*1i
+      assertTrue(ct(d):setvec(1,1..i)*1i == ct(d):fill(1..i)*1i,idx.case)
+      assertTrue(ct(d):setvec(1,1..i)*1i == ct(d):fill(   v)   ,idx.case)
+    end
+  end
+end
+
+local function h_powers(h,t)
+  local nc= t:desc():maxlen()
+  local v = vector(nc):seti(1,1)
+  local m = t:get_mono(1)
+  local i,m = t:desc():nxtbyord(m)
+  while  i ~= -1 do
+    v:seti(i+1,h^m:ord())
+    i,m = t:desc():nxtbyord(m)
+  end
+  return v
+end
+
+function TestTPSADerivPlusMisc:testEvalR()
+  for i,d in ipairs(self.descs) do
+    local mo,nc = d:maxord(), d:maxlen()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+    local  hs   = {-2,-1,0,1,2}
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> tpsa(d):setvec(s, vector(e-s+1):fill((s..e)))
+
+    for _,h in ipairs(hs) do
+      local nv = d:nvnp()
+      local hv = vector(nv):fill(h)
+      for _, idx in ipairs(self.idxs[i]) do
+        local t = mkt(idx.si,idx.ei)
+        local hpow = h_powers(h,t)
+        assertTrue(t:eval(hv) == t:getvec(1,nc):transpose()*hpow,idx.case)
+      end
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testEvalC()
+  for i,d in ipairs(self.descs) do
+    local mo,nc = d:maxord(), d:maxlen()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+    local hs    = {-2,-1,0,1,2}
+
+    -- helper to set tpsas within start..end
+    local mkt = \s,e -> ctpsa(d):setvec(s, cvector(e-s+1):fill((s..e)))*1i
+
+    for _,h in ipairs(hs) do
+      local nv = d:nvnp()
+      local hv = cvector(nv):fill(h)
+      for _, idx in ipairs(self.idxs[i]) do
+        local t = mkt(idx.si,idx.ei)
+        local hpow = h_powers(h,t)
+        local a = t:getvec(1,nc)
+        assertTrue(t:eval(hv) == -t:getvec(1,nc):transpose()*hpow,idx.case)
+      end
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testUnmR()
+  for i,d in ipairs(self.descs) do
+    local mo,nc = d:maxord(), d:maxlen()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end and applying minus
+    local mkt    = \s,e -> tpsa(d):setvec(s, vector(e-s+1):fill((s..e)))
+    local minust = \t   -> tpsa(d):setvec(1,-t:getvec(1,nc))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      assertTrue(-t == minust(t),idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testUnmC()
+  for i,d in ipairs(self.descs) do
+    local mo,nc = d:maxord(), d:maxlen()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+  
+    -- helper to set tpsas within start..end and applying minus
+    local mkt    = \s,e -> ctpsa(d):setvec(s, cvector(e-s+1):fill((s..e)))*1i
+    local minust = \t   -> ctpsa(d):setvec(1,-t:getvec(1,nc))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      assertTrue(-t == minust(t),idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testRealR()
+  for i,d in ipairs(self.descs) do
+    local mo,nc = d:maxord(), d:maxlen()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end and applying minus
+    local mkt    = \s,e -> tpsa(d):setvec(s, vector(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      assertTrue(t:real():getvec(1,nc) == t:getvec(1,nc):real(),idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testRealC()
+  for i,d in ipairs(self.descs) do
+    local mo,nc = d:maxord(), d:maxlen()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+  
+    -- helper to set tpsas within start..end and applying minus
+    local mkt    = \s,e -> ctpsa(d):setvec(s, cvector(e-s+1):fill((s..e)))*1i
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      assertTrue(t:real():getvec(1,nc) == t:getvec(1,nc):real(),idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testImagR()
+  for i,d in ipairs(self.descs) do
+    local mo,nc = d:maxord(), d:maxlen()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end and applying minus
+    local mkt    = \s,e -> tpsa(d):setvec(s, vector(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      assertTrue(t:imag():getvec(1,nc) == t:getvec(1,nc):imag(),idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testImagC()
+  for i,d in ipairs(self.descs) do
+    local mo,nc = d:maxord(), d:maxlen()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+  
+    -- helper to set tpsas within start..end and applying minus
+    local mkt    = \s,e -> ctpsa(d):setvec(s, cvector(e-s+1):fill((s..e)))*1i
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      assertTrue(t:imag():getvec(1,nc) == t:getvec(1,nc):imag(),idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testCplx()
+  for i,d in ipairs(self.descs) do
+    local mo,nc = d:maxord(), d:maxlen()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end and applying minus
+    local mkt = \s,e -> tpsa(d):setvec(s, vector(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local  t = mkt(idx.si,idx.ei)
+      assertTrue(t:cplx(t) == t + (1i*t),idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testReim()
+  for i,d in ipairs(self.descs) do
+    local mo,nc = d:maxord(), d:maxlen()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end and applying minus
+    local mkt_r    = \s,e ->  tpsa(d):setvec(s,  vector(e-s+1):fill((s..e)))
+    local mkt_c    = \s,e -> ctpsa(d):setvec(s, cvector(e-s+1):fill((s..e)))*1i
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local  t = mkt_r(idx.si,idx.ei)
+      local ct = mkt_c(idx.si,idx.ei)
+      local re,im = (t+ct):reim()
+      assertTrue( t ==    re,idx.case)
+      assertTrue(ct == 1i*im,idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testSetvalR()
+  for i,d in ipairs(self.descs) do
+    local mo,nc = d:maxord(), d:maxlen()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end and applying minus
+    local mkt = \s,e -> tpsa(d):setvec(s, vector(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local  t = mkt(idx.si,idx.ei)
+      assertTrue(t:setval(1) == tpsa(d):set0(1),idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testSetvalC()
+  for i,d in ipairs(self.descs) do
+    local mo,nc = d:maxord(), d:maxlen()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+  
+    -- helper to set tpsas within start..end and applying minus
+    local mkt    = \s,e -> ctpsa(d):setvec(s, cvector(e-s+1):fill((s..e)))*1i
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      assertTrue(t:setval(1) == tpsa(d):set0(1),idx.case)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testSetvarR()
+  for i,d in ipairs(self.descs) do
+    local mo,nc,nv = d:maxord(), d:maxlen(), d:nvnp()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end and applying minus
+    local mkt = \s,e -> tpsa(d):setvec(s, vector(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local  t = mkt(idx.si,idx.ei)
+      for iv = 1,nv do
+        assertTrue(t:setvar(1,iv,2) == tpsa(d):set0(1):set(iv+1,2),idx.case)
+        assertTrue(t:setvar(1,iv  ) == tpsa(d):set0(1):set(iv+1,1),idx.case)
+      end
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testSetvarC()
+  for i,d in ipairs(self.descs) do
+    local mo,nc,nv = d:maxord(), d:maxlen(), d:nvnp()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+  
+    -- helper to set tpsas within start..end and applying minus
+    local mkt    = \s,e -> ctpsa(d):setvec(s, cvector(e-s+1):fill((s..e)))*1i
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      for iv = 1,nv do
+        assertTrue(t:setvar(1,iv,2) == tpsa(d):set0(1):set(iv+1,2),idx.case)
+        assertTrue(t:setvar(1,iv  ) == tpsa(d):set0(1):set(iv+1,1),idx.case)
+      end
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testSetprmR()
+  for nv = 1,4 do
+    local d = gtpsad(nv,4,2)
+    local nc,nv,_np = d:maxlen(), d:nvnp()
+    local t = tpsa(1):fill(1..nc)
+    local nc,nv,_,np = d:maxlen(), d:nvnp()
+    for ip = 1,np do
+      assertTrue(t:setprm(1  ,ip) == tpsa(d):set0(1):set(nv+ip+1,1),"Error in case with "..nv.." variable(s)")
+      assertTrue(t:setprm(nil,ip) == tpsa(d):set0(0):set(nv+ip+1,1),"Error in case with "..nv.." variable(s)")
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testSetprmC()
+  for nv = 1,4 do
+    local d = gtpsad(nv,4,2)
+    local nc,nv,_np = d:maxlen(), d:nvnp()
+    local t = ctpsa(1):fill(1..nc)*1i
+    local nc,nv,_,np = d:maxlen(), d:nvnp()
+    for ip = 1,np do
+      assertTrue(t:setprm(1  ,ip) == tpsa(d):set0(1):set(nv+ip+1,1),"Error in case with "..nv.." variable(s)")
+      assertTrue(t:setprm(nil,ip) == tpsa(d):set0(0):set(nv+ip+1,1),"Error in case with "..nv.." variable(s)")
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testCpyR()
+  for i,d in ipairs(self.descs) do
+    local mo,nc,nv = d:maxord(), d:maxlen(), d:nvnp()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+
+    -- helper to set tpsas within start..end and applying minus
+    local mkt = \s,e -> tpsa(d):setvec(s, vector(e-s+1):fill((s..e)))
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local  t = mkt(idx.si,idx.ei)
+      local m = d:get_mono(1)
+      repeat
+        local m_idx = d:get_idx(m)
+        assertTrue(t:cpy(m_idx) == tpsa(d):set(m_idx,t:get(m)),idx.case)
+        assertTrue(t:cpy(m    ) == tpsa(d):set(m    ,t:get(m)),idx.case)
+      until d:nxtbyord(m) == -1
+      assertError(t.cpy,t,m + monomial("100"))
+      assertError(t.cpy,t,                 -1)
+    end
+  end
+end
+
+
+function TestTPSADerivPlusMisc:testCpyC()
+  for i,d in ipairs(self.descs) do
+    local mo,nc,nv = d:maxord(), d:maxlen(), d:nvnp()
+    local idx   = {[0]=1} for o=0,mo do idx[o+1] = d:maxlen(o)+1 end
+  
+    -- helper to set tpsas within start..end and applying minus
+    local mkt    = \s,e -> ctpsa(d):setvec(s, cvector(e-s+1):fill((s..e)))*1i
+
+    for _, idx in ipairs(self.idxs[i]) do
+      local t = mkt(idx.si,idx.ei)
+      local m = d:get_mono(1)
+      repeat
+        local m_idx = d:get_idx(m)
+        assertTrue(t:cpy(m_idx) == ctpsa(d):set(m_idx,t:get(m)),idx.case)
+        assertTrue(t:cpy(m    ) == ctpsa(d):set(m    ,t:get(m)),idx.case)
+      until d:nxtbyord(m) == -1
+      assertError(t.cpy,t,m + monomial("100"))
+      assertError(t.cpy,t,                 -1)
+    end
+  end
+end
+
+
+-- Function to swap two elements in a table
+local function swap(tbl, i, j)
+    local temp = tbl[i]
+    tbl[i] = tbl[j]
+    tbl[j] = temp
+end
+
+local function generatePairwiseExchanges(numbers)
+  local exchanges = {}
+  table.insert(exchanges, { perm = {table.unpack(numbers)}, isOdd = false, swapped = nil })
+    for i = 1, #numbers do
+        for j = i + 1, #numbers do
+            local newNumbers = {table.unpack(numbers)}
+            swap(newNumbers, i, j)
+            local isOdd = ((i + j) % 2 == 1)
+            table.insert(exchanges, { perm = newNumbers, isOdd = isOdd, swapped = {i, j} })
+        end
+    end
+    return exchanges
+end
+
+local function appendMinusOneTables(n, exchanges)
+    local sequence = {}
+    for i = 1, n do
+        table.insert(sequence, i)
+    end
+    for i = 1, n do
+        local newNumbers = {table.unpack(sequence)}
+        newNumbers[i] = -1
+        table.insert(exchanges, { perm = newNumbers, isOdd = false, swapped = nil })
+    end
+  return exchanges
+end
+
+local function fill_0(m_str,perm_str,len)
+  local new_str = {}
+  for i=1,len do
+    if not is_nil(perm_str[i]) then
+      new_str[i] = perm_str[i]
+    else
+      new_str[i] = 0
+    end
+  end
+  return new_str
+end
+
+local function swap_m(m,perms)
+  local m_str    = m:tostring()
+  local perm_str = {}
+  for i,perm in ipairs(perms) do
+    local digit = string.sub(m_str,i,i)
+    if (perm ~= 0 and perm ~= -1 and perm ~= nil) then
+      perm_str[perm] = digit 
+    else 
+      if digit ~= "0" then return monomial("0") end
+    end
+  end
+  return monomial(table.concat(fill_0(m_str,perm_str,#perms)))
+end
+
+local function sign_pb(m,perm,check_digit,pb)
+  if (is_nil(perm) or perm==false or pb ==0 or check_digit==0) then return 1 end
+  if (tonumber(sub(m:tostring(),check_digit,check_digit))%2 ==1 ) then return -1 else return 1 end
+end
+
+local function swap_t(t1,tbl_,pb_)
+  local check_digit = 0
+  if is_nil(tbl_.swapped) then 
+  else 
+    if pb_==1 then 
+      check_digit = tbl_.swapped[2] or 0 
+    elseif pb_==-1 then 
+      check_digit = tbl_.swapped[1] or 0 
+    end
+  end
+  local m = t1:desc():get_mono(1)
+  local t2 = t1:same():set(m,t1:get(m))
+  while  t1:desc():nxtbyord(m) ~=-1 do
+    local sign = sign_pb(m,tbl_.isOdd,check_digit,pb_)
+    local m_swap = swap_m(m,tbl_.perm)
+    local coef = sign*t1:get(m)
+    t2:set(m_swap,coef)
+  end
+  t2:set0(t1:get0())
+  return t2
+end
+
+local function copy(d2,t1,ctor,tbl,pb)
+  t1 = swap_t(t1,tbl,pb)
+  local nv,_,np = d2:nvnp()
+  local m  = t1:desc():get_mono(1)
+  local t2 = ctor(d2)
+  repeat
+    local m2  = monomial(sub(m:tostring(),1,nv+np))
+    if d2:isvalid(m2) then
+      t2:set(m2,t1:get(m2))
+    end
+  until t1:desc():nxtbyord(m) == -1
+  return t2
+end
+
+function TestTPSAConvert:setUp()
+  self.descs = {}
+  self.perms = {}
+  for nv = 1, 6 do
+    for np = 0,2 do
+      for ord = 1,4 do
+        self.descs[{nv,ord,np,ord}] = gtpsad(nv,ord,np,ord)
+      end
+    self.perms[nv+np] = appendMinusOneTables(nv+np,generatePairwiseExchanges(vector(nv+np):fill(1..(nv+np)):totable()))
+    end
+  end
+  self.pb = {-1,0,1}
+end
+
+function TestTPSAConvert:testConvertRLong()
+  for key1,d1 in pairs(self.descs) do
+    for key2,d2 in pairs(self.descs) do
+      local nv,_,np = d1:nvnp()
+      for key3,tbl in pairs(self.perms[nv+np]) do
+        for i,pb in ipairs(self.pb) do
+          local t1,t2 = tpsa(d1):fill(1..d1:maxlen()), tpsa(d2):fill(1..d2:maxlen())
+          assertTrue(copy(d2,t1,tpsa,tbl,pb) == t1:convert(t2,tbl.perm,pb),
+          "error in case "..tostring(key1).." vs "..tostring(key2).." with perm "..tostring(tbl.perm).." with pb="..(i-2))
+        end
+      end
+    end
+  end
+end
+
+
+function TestTPSAConvert:testConvertCLong()
+  for key1,d1 in pairs(self.descs) do
+    for key2,d2 in pairs(self.descs) do
+      local nv,_,np = d1:nvnp()
+      for key3,tbl in pairs(self.perms[nv+np]) do
+        for i,pb in ipairs(self.pb) do
+          local t1,t2 = ctpsa(d1):fill(1..d1:maxlen())*1i, ctpsa(d2):fill(1..d2:maxlen())*1i
+          assertTrue(copy(d2,t1,ctpsa,tbl,pb) == t1:convert(t2,tbl.perm,pb),
+          "error in case "..tostring(key1).." vs "..tostring(key2).." with perm "..tostring(tbl.perm).." with pb="..(i-2))
+        end
+      end
+    end
+  end
+end
+
+
+function TestTPSAConvert:testPropertiesR()
+  for key1,d1 in pairs(self.descs) do
+    local t1 = tpsa(d1):fill(1..d1:maxlen())
+    assertTrue(t1:convert(t1) - t1 ==0, "error in case "..tostring(key1))
+    for key2,d2 in pairs(self.descs) do
+      local t2 = tpsa(d2):fill(1..d2:maxlen())
+        assertTrue(t2:desc() == t1:convert(t2):desc(), "error in case "..tostring(key1).." vs "..tostring(key2))
+    end
+  end
+end
+
+
+function TestTPSAConvert:testPropertiesC()
+  for key1,d1 in pairs(self.descs) do
+    local t1 = ctpsa(d1):fill(1..d1:maxlen())*1i
+    assertTrue(t1:convert(t1) - t2 ==0,"error in case "..tostring(key1))
+    for key2,d2 in pairs(self.descs) do
+      local t2 = ctpsa(d2):fill(1..d2:maxlen())*1i
+        assertTrue(t2:desc() == t1:convert(t2):desc(), "error in case "..tostring(key1).." vs "..tostring(key2))
+    end
+  end
+end
