@@ -946,7 +946,7 @@ FUN(asinc) (const T *a, T *c)
     FUN(setval)(c,f0); DBGFUN(<-); return;
   }
 
-  if (fabs(a0) > 0.7) { // asin(x)/x
+  if (fabs(a0) > 0.58) { // asin(x)/x
     T *t = GET_TMPX(c);
     FUN(asin)(a,t);
     FUN(div)(t,a,c);
@@ -974,8 +974,8 @@ FUN(asinc) (const T *a, T *c)
           mult = (o!=1) ? pow(2*i + o, 3)/(2*i + o + 2) : 1 ;
           temp_coef[i           ] *= mult; 
 
-          ord_coef [o           ] += (pow(a0,i)*temp_coef[i])*pow(a0,i+1)*(o+1  )/fact;
-          ord_coef [(o+1)%(to+1)] += (pow(a0,i)*temp_coef[i])*pow(a0,i  )*(2*i+1)/fact;
+          ord_coef [o           ] += (NUMF(powi)(a0,i)*temp_coef[i])*NUMF(powi)(a0,i+1)*(o+1  )/fact;
+          ord_coef [(o+1)%(to+1)] += (NUMF(powi)(a0,i)*temp_coef[i])*NUMF(powi)(a0,i  )*(2*i+1)/fact;
 
       }
     }
@@ -1243,8 +1243,8 @@ FUN(asinhc) (const T *a, T *c)
           mult = (o!=1) ? -pow(2*i + o, 3)/(2*i + o + 2) : 1 ;
           temp_coef[i           ] *= mult; 
 
-          ord_coef [o           ] += (pow(a0,i)*temp_coef[i])*pow(a0,i+1)*(o+1  )/fact        ;
-          ord_coef [(o+1)%(to+1)] += (pow(a0,i)*temp_coef[i])*pow(a0,i  )*(2*i+1)/fact;
+          ord_coef [o           ] += (NUMF(powi)(a0,i)*temp_coef[i])*NUMF(powi)(a0,i+1)*(o+1  )/fact        ;
+          ord_coef [(o+1)%(to+1)] += (NUMF(powi)(a0,i)*temp_coef[i])*NUMF(powi)(a0,i  )*(2*i+1)/fact;
 
       }
     }
