@@ -1046,9 +1046,10 @@ FUN(acosh) (const T *a, T *c)                    // checked for real and complex
       FUN(logaxpsqrtbpcx2)(a, 1, -1, 1, c);
       DBGFUN(<-); return;
     }
+  #endif
 
     NUM ord_coef[to+1], a2 = a0*a0, f1 = 1/sqrt(a2-1), f2 = f1*f1, f4 = f2*f2;
-    switch(to) {
+    switch(MIN(to, MANUAL_EXPANSION_ORD)) { 
     case 6: ord_coef[6] = -a0*(5./16 + a2*(5./6 + 1./6*a2)) *f4*f4*f2*f1; /* FALLTHRU */
     case 5: ord_coef[5] = (3./40 + a2*(3./5 + 1./5*a2)) *f4*f4*f1;        /* FALLTHRU */
     case 4: ord_coef[4] = -a0*(3./8 + 1./4*a2) *f4*f2*f1;                 /* FALLTHRU */
@@ -1057,35 +1058,29 @@ FUN(acosh) (const T *a, T *c)                    // checked for real and complex
     case 1: ord_coef[1] = f1;                                             /* FALLTHRU */
     case 0: ord_coef[0] = f0;                                             break;
     assert(!"unexpected missing coefficients");
-    }
     
-  #else
-    NUM ord_coef[to+1]             ;   
+    }
+   
+    num_t tmp =                   0;
+    int   delta, trsh              ;
     NUM asqrt = sqrt((a0+1)*(a0-1));
     NUM aplus =      1./(a0    + 1);
     NUM  amin =      1./(a0    - 1);
-    NUM denom =             (asqrt);
-    NUM numer =                   0;
-    num_t tmp =                   0;//to be changed
-    num_t  fact = 1                ;
-    int   delta, trsh              ;
-    ord_coef[0] =                f0;
-    ord_coef[1] =          1./denom;
+    NUM denom = NUMF(powi)(-2,MANUAL_EXPANSION_ORD-1)*(asqrt);
 
-    for (int ord = 2; ord <= to; ord++ ){
-      fact  *= ord;
+    for (ord_t o = 1+MANUAL_EXPANSION_ORD; o <= to; ++o){
+      num_t fact   = mad_num_fact(o);
       denom *= -2;
-      trsh = floor((ord-1)/2);
-      numer = 0;
+      trsh   = (o-1)/2;
+      NUM numer = 0;
       for (int i= 0; i <= trsh; i++){
-        delta = (ord-1-2*i ==0) ? 2 : 1;
-        tmp = (2*i-1) <=0 ? 1 : mad_num_fact2(2*i-1); //to be changed
-        numer += mad_num_fact2(2*ord - 3 -2*i)*mad_num_binom(ord-1,i)*tmp*(NUMF(powi)(aplus,ord-i-1)*NUMF(powi)(amin,i) + NUMF(powi)(amin,ord-i-1)*NUMF(powi)(aplus,i))/delta;
+        delta = (o-1-2*i ==0) ? 2 : 1;
+        tmp = (2*i-1) <=0 ? 1 : mad_num_fact2(2*i-1); 
+        numer += mad_num_fact2(2*o - 3 -2*i)*mad_num_binom(o-1,i)*tmp*(NUMF(powi)(aplus,o-i-1)*NUMF(powi)(amin,i) + NUMF(powi)(amin,o-i-1)*NUMF(powi)(aplus,i))/delta;
       }  
       
-      ord_coef[ord] = numer/denom/fact;
+      ord_coef[o] = numer/denom/fact;
     }
-  #endif
 
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
