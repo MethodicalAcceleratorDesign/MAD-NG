@@ -455,7 +455,7 @@ FUN(sinc) (const T *a, T *c)
 #endif
     FUN(setval)(c,f0); DBGFUN(<-); return;
   }
-  NUM ord_coef[to+1];
+
   if (fabs(a0) > 0.75) { // sin(x)/x
     T *t = GET_TMPX(c);
     FUN(sin)(a,t);
@@ -465,46 +465,57 @@ FUN(sinc) (const T *a, T *c)
     REL_TMPX(t); DBGFUN(<-); return;
   }
 
+  NUM ord_coef[to+1];
   if (fabs(a0) > 1e-12) { 
 
-   NUM fact = 1;
-   num_t odd_coef[7];
+    num_t fact = 1;
+    num_t odd_coef[7];
 
-   odd_coef[0] = -3, odd_coef[1] = 30, odd_coef[2] = -840, odd_coef[3] = 45360,
-   odd_coef[4] = -3991680, odd_coef[5] = 518918400, odd_coef[6] = -93405312000;
+    odd_coef[0] = -3, odd_coef[1] = 30, odd_coef[2] = -840, odd_coef[3] = 45360,
+    odd_coef[4] = -3991680, odd_coef[5] = 518918400, odd_coef[6] = -93405312000;
 
-   for (int o = 1; o <= to; o+=2) {
-     fact *= ((o)*(o+1));
-     NUM v1=0,v2=0;
+    for (int o = 1; o <= to; o+=2) {
+      fact *= ((o)*(o+1));
+      NUM v1=0,v2=0;
       for (int i = 0; i<=6; i++){
         v1 += 1./odd_coef[i]*NUMF(powi)(a0,2*i+1)        ;
         v2 += 1./odd_coef[i]*NUMF(powi)(a0,2*i  )*(2*i+1);
       }
-     ord_coef[(o)         ] = pow(-1,o/2)*v1/fact*(o+1);
-     ord_coef[(o+1)%(to+1)] = pow(-1,o/2)*v2/fact      ;
+      ord_coef[(o)         ] = pow(-1,o/2)*v1/fact*(o+1);
+      ord_coef[(o+1)%(to+1)] = pow(-1,o/2)*v2/fact      ;
 
-     odd_coef[0]  = (-2           + odd_coef[0]);
-     odd_coef[1]  = (+12          + odd_coef[1]);
-     odd_coef[2]  = (-240         + odd_coef[2]);
-     odd_coef[3]  = (+10080       + odd_coef[3]);
-     odd_coef[4]  = (-725760      + odd_coef[4]);
-     odd_coef[5]  = (+79833600    + odd_coef[5]);
-     odd_coef[6]  = (-12454041600 + odd_coef[6]);
-   }
+      odd_coef[0]  = (-2           + odd_coef[0]);
+      odd_coef[1]  = (+12          + odd_coef[1]);
+      odd_coef[2]  = (-240         + odd_coef[2]);
+      odd_coef[3]  = (+10080       + odd_coef[3]);
+      odd_coef[4]  = (-725760      + odd_coef[4]);
+      odd_coef[5]  = (+79833600    + odd_coef[5]);
+      odd_coef[6]  = (-12454041600 + odd_coef[6]);
+    }
 
-   NUM f0 = NUMF(sinc)(a0);
-   ord_coef[0] = f0;
-   fun_taylor(a,c,to,ord_coef); return;
+    NUM f0 = NUMF(sinc)(a0);
+    ord_coef[0] = f0;
+    fun_taylor(a,c,to,ord_coef); return;
   }
   // sinc(x) at x=0
-  //NUM ord_coef[to+1];
   ord_coef[0] = 1;
   ord_coef[1] = 0;
-  for (int o = 2; o <= to; ++o)
-    ord_coef[o] = -ord_coef[o-2] / (o * (o+1));
+  for (ord_t o = 2; o <= to; ++o)
+    ord_coef[o] = -ord_coef[o-2] / (o * (o+1.));
 
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
+
+// prefer explicit above? not better in term of stability...
+//    NUM sa = sin(a0), ca = cos(a0), _a0 = 1/a0, f1;
+//    num_t fo = 1;
+//    ord_coef[0] = f0;
+//    ord_coef[1] = (ca - f0)*_a0;
+//    for (ord_t o = 2; o <= to; ++o) {
+//      fo *= o; // formula numerically unstable in (0, 0.5), need some work
+//      f1  = o & 1 ? (ca=-ca,ca) : (sa=-sa,sa);
+//      ord_coef[o] = (f1/fo - ord_coef[o-1])*_a0;
+//      // printf("[%02d]=%+.17e\n", o, 1 - ord_coef[o-1]*fo/f1);
 }
 
 void
@@ -680,6 +691,7 @@ FUN(sinhc) (const T *a, T *c)
   }
 
 NUM ord_coef[to+1];
+
 if (fabs(a0) > 1e-12) { 
 
   NUM fact = 1;
@@ -716,7 +728,7 @@ if (fabs(a0) > 1e-12) {
   // sinhc(x) at x=0
   ord_coef[0] = 1;
   ord_coef[1] = 0;
-  for (int o = 2; o <= to; ++o)
+  for (ord_t o = 2; o <= to; ++o)
     ord_coef[o] = ord_coef[o-2] / (o * (o+1));
 
   fun_taylor(a,c,to,ord_coef);
@@ -996,7 +1008,7 @@ FUN(asinc) (const T *a, T *c)
   // asinc(x) at x=0
   ord_coef[0] = 1;
   ord_coef[1] = 0;
-  for (int o = 2; o <= to; ++o)
+  for (ord_t o = 2; o <= to; ++o)
     ord_coef[o] = (ord_coef[o-2] * SQR(o-1)) / (o * (o+1));
 
   fun_taylor(a,c,to,ord_coef);
@@ -1259,7 +1271,7 @@ FUN(asinhc) (const T *a, T *c)
   // asinhc(x) at x=0
   ord_coef[0] = 1;
   ord_coef[1] = 0;
-  for (int o = 2; o <= to; ++o)
+  for (ord_t o = 2; o <= to; ++o)
     ord_coef[o] = -(ord_coef[o-2] * SQR(o-1)) / (o * (o+1));
 
   fun_taylor(a,c,to,ord_coef);
