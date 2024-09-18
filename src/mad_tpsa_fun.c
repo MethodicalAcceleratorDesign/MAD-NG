@@ -19,7 +19,6 @@
 
 #include <string.h>
 #include <complex.h>
-#include <math.h>
 
 #include "mad_log.h"
 #include "mad_cst.h"
@@ -31,12 +30,10 @@
 
 #define OLD_SERIES 0
 
-enum { MANUAL_EXPANSION_ORD = 6};
-
-#ifdef MAD_TPSA_TAYLOR_HORNER
+enum { MANUAL_EXPANSION_ORD = 6 };
 
 static inline void
-fun_taylor (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
+fun_taylor_h (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
 {
   assert(a && c && ord_coef);
   assert(n >= 1); // ord 0 treated outside
@@ -46,15 +43,13 @@ fun_taylor (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
   FUN(seti)(acp,0,0,0);           // (a-a_0)
   FUN(setval)(c,ord_coef[n]);     // f(a_n)
 
-  // Honer's method (slower by 50% - 100% because mul is always full order)
+  // Horner's method (slower by 50% - 100% because mul is always full order)
   while (n-- > 0) {
     FUN(mul)(acp,c,c);            //                    f^(n)(a_n)*(a-a_0)
     FUN(seti)(c,0,1,ord_coef[n]); // f^(n-1)(a_{n-1}) + f^(n)(a_n)*(a-a_0)
   }
   REL_TMPX(acp);
 }
-
-#else
 
 static inline void
 fun_taylor (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
@@ -92,7 +87,6 @@ fun_taylor (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
     REL_TMPX(pow), REL_TMPX(acp);
   }
 }
-#endif
 
 static inline void
 sincos_taylor (const T *a, T *s, T *c,
@@ -137,6 +131,20 @@ sincos_taylor (const T *a, T *s, T *c,
 }
 
 // --- public -----------------------------------------------------------------o
+
+void
+FUN(taylor_h) (const T *a, ssz_t n, const NUM coef[n], T *c)
+{
+  assert(a && c && coef); DBGFUN(->);
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
+  ensure(n > 0, "invalid number of coefficients (>0 expected)");
+
+  ord_t to = MIN(n-1, c->mo);
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,coef[0]); DBGFUN(<-); return; }
+
+  fun_taylor_h(a,c,to,coef);
+  DBGFUN(<-);
+}
 
 void
 FUN(taylor) (const T *a, ssz_t n, const NUM coef[n], T *c)
@@ -190,7 +198,7 @@ FUN(invsqrt) (const T *a, NUM v, T *c) // v/sqrt(a),checked for real and complex
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
   for (ord_t o = 1; o <= to; ++o)
-    ord_coef[o] = -ord_coef[o-1] * _a0 / (2.0*o) * (2.0*o-1);
+    ord_coef[o] = -ord_coef[o-1] * _a0 / (2.*o) * (2.*o-1);
 
   fun_taylor(a,c,to,ord_coef);
   if (v != 1) FUN(scl)(c,v,c);
@@ -213,7 +221,7 @@ FUN(sqrt) (const T *a, T *c)                     // checked for real and complex
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
   for (ord_t o = 1; o <= to; ++o)
-    ord_coef[o] = -ord_coef[o-1] * _a0 / (2.0*o) * (2.0*o-3);
+    ord_coef[o] = -ord_coef[o-1] * _a0 / (2.*o) * (2.*o-3);
 
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
@@ -224,14 +232,14 @@ FUN(exp) (const T *a, T *c)                      // checked for real and complex
 {
   assert(a && c); DBGFUN(->);
   ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
-  NUM a0 = a->coef[0], f0 = exp(a0);
+  NUM f0 = exp(a->coef[0]);
 
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
-  for (int o = 1; o <= to; ++o)
+  for (ord_t o = 1; o <= to; ++o)
     ord_coef[o] = ord_coef[o-1] / o;
 
   fun_taylor(a,c,to,ord_coef);
@@ -254,8 +262,8 @@ FUN(log) (const T *a, T *c)                      // checked for real and complex
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
   ord_coef[1] = _a0;
-  for (int o = 2; o <= to; ++o)
-    ord_coef[o] = -ord_coef[o-1] * _a0 / o * (o-1);
+  for (ord_t o = 2; o <= to; ++o)
+    ord_coef[o] = -ord_coef[o-1] * _a0 / o * (o-1.);
 
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
@@ -312,9 +320,9 @@ FUN(sincos) (const T *a, T *s, T *c)             // checked for real and complex
 
   // ords 2..to
   for (ord_t o = 2; o <= sto; ++o )
-    sin_coef[o] = -sin_coef[o-2] / (o*(o-1));
+    sin_coef[o] = -sin_coef[o-2] / (o*(o-1.));
   for (ord_t o = 2; o <= cto; ++o )
-    cos_coef[o] = -cos_coef[o-2] / (o*(o-1));
+    cos_coef[o] = -cos_coef[o-2] / (o*(o-1.));
 
   sincos_taylor(a,s,c, sto,sin_coef, cto,cos_coef);
   DBGFUN(<-);
@@ -333,8 +341,8 @@ FUN(sin) (const T *a, T *c)                      // checked for real and complex
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
   ord_coef[1] = cos(a0);
-  for (int o = 2; o <= to; ++o)
-    ord_coef[o] = -ord_coef[o-2] / (o*(o-1));
+  for (ord_t o = 2; o <= to; ++o)
+    ord_coef[o] = -ord_coef[o-2] / (o*(o-1.));
 
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
@@ -353,8 +361,8 @@ FUN(cos) (const T *a, T *c)                      // checked for real and complex
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
   ord_coef[1] = -sin(a0);
-  for (int o = 2; o <= to; ++o)
-    ord_coef[o] = -ord_coef[o-2] / (o*(o-1));
+  for (ord_t o = 2; o <= to; ++o)
+    ord_coef[o] = -ord_coef[o-2] / (o*(o-1.));
 
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
@@ -527,10 +535,10 @@ FUN(sincosh) (const T *a, T *sh, T *ch)          // checked for real and complex
   sin_coef[1] = ca;  cos_coef[1] = sa;
 
   // ords 2..to
-  for (int o = 2; o <= sto; ++o )
-    sin_coef[o] = sin_coef[o-2] / (o*(o-1));
-  for (int o = 2; o <= cto; ++o )
-    cos_coef[o] = cos_coef[o-2] / (o*(o-1));
+  for (ord_t o = 2; o <= sto; ++o)
+    sin_coef[o] = sin_coef[o-2] / (o*(o-1.));
+  for (ord_t o = 2; o <= cto; ++o)
+    cos_coef[o] = cos_coef[o-2] / (o*(o-1.));
 
   sincos_taylor(a,sh,ch, sto,sin_coef, cto,cos_coef);
   DBGFUN(<-);
@@ -549,8 +557,8 @@ FUN(sinh) (const T *a, T *c)                     // checked for real and complex
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
   ord_coef[1] = cosh(a0);
-  for (int o = 2; o <= to; ++o)
-    ord_coef[o] = ord_coef[o-2] / (o*(o-1));
+  for (ord_t o = 2; o <= to; ++o)
+    ord_coef[o] = ord_coef[o-2] / (o*(o-1.));
 
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
@@ -569,8 +577,8 @@ FUN(cosh) (const T *a, T *c)                     // checked for real and complex
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
   ord_coef[1] = sinh(a0);
-  for (int o = 2; o <= to; ++o)
-    ord_coef[o] = ord_coef[o-2] / (o*(o-1));
+  for (ord_t o = 2; o <= to; ++o)
+    ord_coef[o] = ord_coef[o-2] / (o*(o-1.));
 
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
@@ -772,7 +780,7 @@ FUN(acos) (const T *a, T *c)                     // checked for real and complex
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) {  // use simpler and faster approach?
-    // acos(x) = -i*ln(x+i*sqrt(1-x^2)) = -asin(x)+pi/2
+    // acos(x) = -i*ln(x + i*sqrt(1-x^2)) = -asin(x) + pi/2
 #ifdef MAD_CTPSA_IMPL
     mad_ctpsa_logaxpsqrtbpcx2(a, I, 1, -1, c);
     mad_ctpsa_axpb(I, c, M_PI_2, c);
@@ -1006,7 +1014,7 @@ FUN(asinh) (const T *a, T *c)                    // checked for real and complex
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
   if (to > MANUAL_EXPANSION_ORD) { // use simpler and faster approach?
-    // asinh(x) = log(x + sqrt(x^2+1))
+    // asinh(x) = ln(x + sqrt(x^2+1))
     FUN(logaxpsqrtbpcx2)(a, 1, 1, 1, c);
     DBGFUN(<-); return;
   }
@@ -1026,7 +1034,6 @@ FUN(asinh) (const T *a, T *c)                    // checked for real and complex
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
 }
-
 
 void
 FUN(acosh) (const T *a, T *c)                    // checked for real and complex
@@ -1267,6 +1274,7 @@ FUN(erf) (const T *a, T *c)
 
   // erf(z) = 2/sqrt(pi) \int_0^z exp(-t^2) dt
   NUM a0 = a->coef[0];
+
 #ifdef MAD_CTPSA_IMPL
   NUM f0 = mad_cpx_erf(a0, 0);
 #else
@@ -1279,8 +1287,8 @@ FUN(erf) (const T *a, T *c)
   NUM ord_coef[to+1], a2 = a0*a0, f1 = M_2_SQRTPI*exp(-a2);
   ord_coef[0] = f0;
   ord_coef[1] = f1;
-  for (int o = 2; o <= to; ++o)
-    ord_coef[o] = -2*((o-2)*ord_coef[o-2]/(o-1) + ord_coef[o-1]*a0) / o;
+  for (ord_t o = 2; o <= to; ++o)
+    ord_coef[o] = -2*((o-2)*ord_coef[o-2]/(o-1.) + ord_coef[o-1]*a0) / o;
 
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
@@ -1353,7 +1361,7 @@ Recurrence of Taylor coefficients:
 4*((3*z-2*z^3)*exp(-z^2))' =
     = 4*((3*z-2*z^3)'*exp(-z^2) + (3*z-2*z^3)*(exp(-z^2))')
     = 4*(3*(1-2*z^2)*exp(-z^2) + (3*z-2*z^3)*(-2*z*exp(-z^2)))
-{5} = -2*(3*-2*(1-2*z^2) + 4*(3*z-2*z^3)*z) *exp(-z^2)        = -2*(3*{3}+{4}*z)cd
+{5} = -2*(3*-2*(1-2*z^2) + 4*(3*z-2*z^3)*z) *exp(-z^2)        = -2*(3*{3}+{4}*z)
     = 4*(3-12*z^2+4*z^4) *exp(-z^2)
 4*((3-12*z^2+4*z^4)*exp(-z^2))' =
     = 4*((3-12*z^2+4*z^4)'*exp(-z^2) + (3-12*z^2+4*z^4)*(exp(-z^2))')
