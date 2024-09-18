@@ -729,7 +729,7 @@ if (fabs(a0) > 1e-12) {
   ord_coef[0] = 1;
   ord_coef[1] = 0;
   for (ord_t o = 2; o <= to; ++o)
-    ord_coef[o] = ord_coef[o-2] / (o*(o+1));
+    ord_coef[o] = ord_coef[o-2] / (o*(o+1.));
 
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
