@@ -397,7 +397,7 @@ FUN(cutord) (const T *t, T *r, int o)
     r->coef[0] = 0;
   } else {         // cut |o|..mo, see copy0 with t->hi = |o|-1
     r->lo = t->lo;
-    r->hi = MIN(o-1, r->mo); // min 0 -> cut 1..
+    r->hi = MIN(o-1, r->hi); // min 0 -> cut 1..
     r->coef[0] = t->coef[0];
   }
 
