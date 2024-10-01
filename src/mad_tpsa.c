@@ -392,12 +392,12 @@ FUN(cutord) (const T *t, T *r, int o)
   ensure(IS_COMPAT(t,r), "incompatibles GTPSA (descriptors differ)");
 
   if (o <= 0) {    // cut 0..|o|, see copy0 with t->lo = |o|+1
-    r->lo = 1-o;             // min 1 -> keep 1..
+    r->lo = 1-o;                    // min 1 -> keep 1..
     r->hi = MIN(t->hi, r->mo);
     r->coef[0] = 0;
   } else {         // cut |o|..mo, see copy0 with t->hi = |o|-1
     r->lo = t->lo;
-    r->hi = MIN(o-1, r->hi); // min 0 -> cut 1..
+    r->hi = MIN(o-1, t->hi, r->mo); // min 0 -> cut 1..
     r->coef[0] = t->coef[0];
   }
 
