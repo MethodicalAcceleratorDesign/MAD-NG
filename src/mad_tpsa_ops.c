@@ -252,36 +252,51 @@ axpbypc (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   c->val[0] = c1*a->val[0] + c2*b->val[0] + c3;
 
   idx_t ai=1, bi=1, ci=1;
-  if (c1 && c2)
-    while (ai < a->nc && bi < b->nc) {
-      idx_t ii = a->idx[ai] - b->idx[bi];
-      if (ii < 0) {
-        if (a->idx[ai] >= c->mc) break;
-        c->val[ci  ] = c1*a->val[ai  ];
-        c->idx[ci++] =    a->idx[ai++];
-      } else if (ii > 0) {
-        if (b->idx[bi] >= c->mc) break;
-        c->val[ci  ] = c2*b->val[bi  ];
-        c->idx[ci++] =    b->idx[bi++];
-      } else {
-        if (a->idx[ai] >= c->mc) goto ret;
-        NUM v = c1*a->val[ai] + c2*b->val[bi];
-        if (v) c->val[ci] = v, c->idx[ci] = a->idx[ai], ci++;
-        ai++, bi++;
+  if (c1 && c2) {
+    if (a->idx[a->nc-1] <= b->idx[b->nc-1]) {
+      while (ai < a->nc && ci < c->mc) {
+        idx_t ii = a->idx[ai] - b->idx[bi];
+        if (ii < 0) {
+          c->val[ci  ] = c1*a->val[ai  ];
+          c->idx[ci++] =    a->idx[ai++];
+        } else if (ii > 0) {
+          c->val[ci  ] = c2*b->val[bi  ];
+          c->idx[ci++] =    b->idx[bi++];
+        } else {
+          NUM v = c1*a->val[ai] + c2*b->val[bi];
+          if (v) c->val[ci] = v, c->idx[ci] = a->idx[ai], ci++;
+          ai++, bi++;
+        }
+      }
+    } else {
+      while (bi < b->nc && ci < c->mc) {
+        idx_t ii = a->idx[ai] - b->idx[bi];
+        if (ii > 0) {
+          c->val[ci  ] = c2*b->val[bi  ];
+          c->idx[ci++] =    b->idx[bi++];
+        } else if (ii < 0) {
+          c->val[ci  ] = c1*a->val[ai  ];
+          c->idx[ci++] =    a->idx[ai++];
+        } else {
+          NUM v = c1*a->val[ai] + c2*b->val[bi];
+          if (v) c->val[ci] = v, c->idx[ci] = a->idx[ai], ci++;
+          ai++, bi++;
+        }
       }
     }
-  if (c1)
-    while (ai < a->nc) {
-      if (a->idx[ai] >= c->mc) break;
+  }
+  if (c1) {
+    while (ai < a->nc && ci < c->mc) {
       c->val[ci  ] = c1*a->val[ai  ];
       c->idx[ci++] =    a->idx[ai++];
     }
-  if (c2)
-    while (bi < b->nc) {
-      if (b->idx[bi] >= c->mc) break;
+  }
+  if (c2) {
+    while (bi < b->nc && ci < c->mc) {
       c->val[ci  ] = c2*b->val[bi  ];
       c->idx[ci++] =    b->idx[bi++];
     }
+  }
 ret:
   c->nc = ci;
 
