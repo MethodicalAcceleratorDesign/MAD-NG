@@ -163,46 +163,59 @@ end
 
 function M.srad_damp (elm, m, lw, islc)
   if elm.lrad == 0 then return end
-  printf("srad_damp: %s, lrad=%.2f, lw=%.2f, clw=%.2f, islc=%d\n",
-               elm.name,  elm.lrad,      lw,    m.clw,    islc)
+  printf("srad_damp: %s, lrad=%.2f, lw=%.2f, islc=%d\n",
+               elm.name,  elm.lrad,      lw,    islc)
 
-  local eh, sdir, nmul, knl, ksl, snm, bfx, bfy, info in m
+  local eh, edir, sdir, ks, nmul, knl, ksl, snm, bfx, bfy, info in m
   local el   = elm.lrad
   local aelw = abs(el*lw)
   local facr = atborder(nil,m,nil,islc) and 0.5 or 1
+  local bsol = (ks or 0)*0.5*edir;
 
   for i=1,m.npar do
     local beam in m[i]
     if beam and beam.charge == 0 then goto continue end
     local x, px, y, py, t, pt in m[i]
 
-    local bx, by, bz = 0, 0, 0
+    -- Retrieve transverse forces
+    local bx, by = 0, 0
     if snm > 0
     then bx, by = bxbyh(snm, bfx, bfy, x, y)
     else bx, by = bxby(nmul, knl, ksl, x, y)
     end
     bx, by = bx/el, by/el
 
-    -- PTC-like method to calculate curvature         TODO: get bz (RF) and bsol
+    -- Retrieve longitudinal forces
+    local bz = 2*bsol
+
+    -- PTC-like method to calculate curvature
     local  beam = beam or m.beam
     local _bet0 = 1/beam.beta
     local  dp1  = sqrt(1 + (2*_bet0)*pt + pt^2)
     local _dp1  = 1/dp1
-    local  pz   = sqrt(dp1^2 - px^2 - py^2)
-    local  ex   = px*_dp1
-    local  ey   = py*_dp1
-    local  ez   = pz*_dp1
+    local  npx  = px
+    local  npy  = py
+    if bsol ~= 0 then
+      npx = npx + y*(bsol*beam.charge)
+      npy = npy - x*(bsol*beam.charge)
+    end
+    local  npz  = sqrt(dp1^2 - npx^2 - npy^2)
+    local  ex   = npx*_dp1
+    local  ey   = npy*_dp1
+    local  ez   = npz*_dp1
     local  be   = bx*ex + by*ey + bz*ez
     local  bex  = bx - be*ex
     local  bey  = by - be*ey
     local  bez  = bz - be*ez
     local  h2   = bex^2 + bey^2 + bez^2
 
---  printf("i=%d, x=%.7e, y=%.7e, hx=%.7e, hy=%.7e, hlw=%.7e, eh=%.4e, h2=%.7e, facr=%.1f\n",
---             i,      x,      y,  by/el,  bx/el,        hlw,      eh,      h2,      facr)
+  printf("i=%d, x=%.7e, px=%.7e, y=%.7e, py=%.7e, npx=%.7e, npy=%.7e, bsol=%.7e, chg=%d\n",
+             i,      x,      px,      y,      py,      npx,      npy,      bsol, beam.charge)
+  printf("i=%d, hx=%.7e, hy=%.7e, hz=%.7e, eh=%.4e, h2=%.7e, facr=%.1f\n",
+             i,     bex,     bey,     bez,      eh,      h2,      facr)
 
     if h2 > 0 then
-      local  hlw  = aelw*(1+eh*x)/pz
+      local  hlw  = aelw*(1+eh*x)/npz
       local  rfac = (2/3 * facr * beam.emrad * beam.gamma^3)*(1+pt)^3 * h2*hlw
 
       if sdir < 0 then rfac = -rfac end
@@ -212,22 +225,14 @@ function M.srad_damp (elm, m, lw, islc)
 
       -- momenta update
       local pfac = sqrt(1 + (2*_bet0)*pt + pt^2)*_dp1
-      m[i].px = px*pfac -- solenoid: m[i].px = ((px+1)*pfac-1)* 0.5*bsol*y
-      m[i].py = py*pfac -- solenoid: m[i].px = ((py-1)*pfac+1)* 0.5*bsol*x
+      if bsol ~= 0 then
+        m[i].px = px*pfac + y*(bsol*beam.charge)*(pfac-1)
+        m[i].py = py*pfac - x*(bsol*beam.charge)*(pfac+1)
+      else
+        m[i].px = px*pfac
+        m[i].py = py*pfac
+      end
       m[i].pt = pt
-
---[[  MAD-X like method
-      local _beta = (_bet0+pt)*_dp1
-      local  hlw  = aelw*(1+eh*x)/pz
-      local  rfac = 2/3 * facr * beam.emrad * beam.betgam^3 * dp1 * h2 * hlw
-      local damp = sqrt(1 + rfac*(rfac-2)*_beta^2)
-
-      if sdir < 0 then damp, rfac = 1/damp, -rfac end
-
-      m[i].px = m[i].px*damp
-      m[i].py = m[i].py*damp
-      m[i].pt = m[i].pt*(1-rfac) - rfac*_bet0
---]]
 
       if info >= 2 and rfac ~= 0 then
         if isa_tpsa(rfac) then rfac, h2 = rfac:get0(), h2:get0() end
@@ -238,8 +243,6 @@ function M.srad_damp (elm, m, lw, islc)
 
   ::continue::
   end
-
-  m.pclw = m.clw
 end
 
 -- quantum synchrotron radiation, backup px, py
