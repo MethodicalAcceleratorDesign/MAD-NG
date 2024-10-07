@@ -56,6 +56,8 @@ log_t mad_mono_eqn   (ssz_t n, const ord_t a[],       ord_t b);
 log_t mad_mono_eq    (ssz_t n, const ord_t a[], const ord_t b[]);
 log_t mad_mono_lt    (ssz_t n, const ord_t a[], const ord_t b[]);
 log_t mad_mono_le    (ssz_t n, const ord_t a[], const ord_t b[]);
+log_t mad_mono_ok    (ssz_t n, const ord_t a[], const ord_t b[]); // b is the ref!
+log_t mad_mono_ok_   (ssz_t n, const ord_t a[], const ord_t b[]); // b is the ref! (new version)
 
 int   mad_mono_cmp   (ssz_t n, const ord_t a[], const ord_t b[]);
 int   mad_mono_rcmp  (ssz_t n, const ord_t a[], const ord_t b[]);

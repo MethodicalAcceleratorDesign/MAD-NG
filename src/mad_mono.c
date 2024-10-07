@@ -138,6 +138,30 @@ mad_mono_le (ssz_t n, const ord_t a[n], const ord_t b[n])
   return TRUE;
 }
 
+log_t
+mad_mono_ok (ssz_t n, const ord_t a[n], const ord_t b[n])
+{
+  assert(a && b);       // b is the ref !
+  ord_t sa = 0, mb = 0; // sum(a), max(b)
+  FOR(i,n) {
+    if (a[i] > b[i]) return FALSE;
+    sa += a[i], mb = MAX(mb, b[i]);
+  }
+  return sa <= mb;
+}
+
+log_t
+mad_mono_ok_ (ssz_t n, const ord_t a[n], const ord_t b[n])
+{
+  assert(a && b);       // b is the ref !
+  ord_t sa = 0, mb = 0; // sum(a), max(b) when a[i] != 0 (new version)
+  FOR(i,n) if (a[i]) {
+    if (a[i] > b[i]) return FALSE;
+    sa += a[i], mb = MAX(mb, b[i]);
+  }
+  return sa <= mb;
+}
+
 int
 mad_mono_cmp (ssz_t n, const ord_t a[n], const ord_t b[n])
 {
