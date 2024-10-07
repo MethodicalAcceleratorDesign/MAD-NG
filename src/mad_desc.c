@@ -73,6 +73,7 @@ mono_isvalid (const D *d, ssz_t n, const ord_t m[n])
   return mad_mono_le (n, m, d->no)
       && mad_mono_ord(n, m)             <= d->mo
       && mad_mono_ord(n-d->nv, m+d->nv) <= d->po;
+//return mad_mono_ok (n, m, d->no) && mad_mono_ord(n-d->nv, m+d->nv) <= d->po;
 }
 
 static inline log_t
