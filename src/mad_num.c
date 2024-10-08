@@ -301,30 +301,30 @@ num_t mad_num_erfi  (num_t x) { return Faddeeva_erfi_re  (x); }
 num_t mad_num_erfcx (num_t x) { return Faddeeva_erfcx_re (x); }
 num_t mad_num_dawson(num_t x) { return Faddeeva_Dawson_re(x); }
 
-cpx_t mad_cpx_wf    (cpx_t x, num_t relerr) { return Faddeeva_w     (x, relerr); }
-cpx_t mad_cpx_erf   (cpx_t x, num_t relerr) { return Faddeeva_erf   (x, relerr); }
-cpx_t mad_cpx_erfc  (cpx_t x, num_t relerr) { return Faddeeva_erfc  (x, relerr); }
-cpx_t mad_cpx_erfi  (cpx_t x, num_t relerr) { return Faddeeva_erfi  (x, relerr); }
-cpx_t mad_cpx_erfcx (cpx_t x, num_t relerr) { return Faddeeva_erfcx (x, relerr); }
-cpx_t mad_cpx_dawson(cpx_t x, num_t relerr) { return Faddeeva_Dawson(x, relerr); }
+cpx_t mad_cpx_wf    (cpx_t x) { return Faddeeva_w     (x, 0); }
+cpx_t mad_cpx_erf   (cpx_t x) { return Faddeeva_erf   (x, 0); }
+cpx_t mad_cpx_erfc  (cpx_t x) { return Faddeeva_erfc  (x, 0); }
+cpx_t mad_cpx_erfi  (cpx_t x) { return Faddeeva_erfi  (x, 0); }
+cpx_t mad_cpx_erfcx (cpx_t x) { return Faddeeva_erfcx (x, 0); }
+cpx_t mad_cpx_dawson(cpx_t x) { return Faddeeva_Dawson(x, 0); }
 
-void mad_cpx_wf_r (num_t x_re, num_t x_im, num_t relerr, cpx_t *r)
-{ CHKR; *r = Faddeeva_w (CPX(x), relerr); }
+void mad_cpx_wf_r (num_t x_re, num_t x_im, cpx_t *r)
+{ CHKR; *r = Faddeeva_w (CPX(x), 0); }
 
-void mad_cpx_erf_r (num_t x_re, num_t x_im, num_t relerr, cpx_t *r)
-{ CHKR; *r = Faddeeva_erf (CPX(x), relerr); }
+void mad_cpx_erf_r (num_t x_re, num_t x_im, cpx_t *r)
+{ CHKR; *r = Faddeeva_erf (CPX(x), 0); }
 
-void mad_cpx_erfc_r (num_t x_re, num_t x_im, num_t relerr, cpx_t *r)
-{ CHKR; *r = Faddeeva_erfc (CPX(x), relerr); }
+void mad_cpx_erfc_r (num_t x_re, num_t x_im, cpx_t *r)
+{ CHKR; *r = Faddeeva_erfc (CPX(x), 0); }
 
-void mad_cpx_erfi_r (num_t x_re, num_t x_im, num_t relerr, cpx_t *r)
-{ CHKR; *r = Faddeeva_erfi (CPX(x), relerr); }
+void mad_cpx_erfi_r (num_t x_re, num_t x_im, cpx_t *r)
+{ CHKR; *r = Faddeeva_erfi (CPX(x), 0); }
 
-void mad_cpx_erfcx_r (num_t x_re, num_t x_im, num_t relerr, cpx_t *r)
-{ CHKR; *r = Faddeeva_erfcx (CPX(x), relerr); }
+void mad_cpx_erfcx_r (num_t x_re, num_t x_im, cpx_t *r)
+{ CHKR; *r = Faddeeva_erfcx (CPX(x), 0); }
 
-void mad_cpx_dawson_r (num_t x_re, num_t x_im, num_t relerr, cpx_t *r)
-{ CHKR; *r = Faddeeva_Dawson (CPX(x), relerr); }
+void mad_cpx_dawson_r (num_t x_re, num_t x_im, cpx_t *r)
+{ CHKR; *r = Faddeeva_Dawson (CPX(x), 0); }
 
 // -- RNG XoShiRo256** --------------------------------------------------------o
 
