@@ -22,6 +22,7 @@
 #include <complex.h>
 
 #include "mad_log.h"
+#include "mad_cst.h"
 #include "mad_num.h"
 #include "mad_tpsa_impl.h"
 #include "mad_ctpsa_impl.h"
@@ -29,7 +30,7 @@
 // --- local ------------------------------------------------------------------o
 
 #define OLD_SERIES 0
-#define DBG_SERIES 1
+#define DBG_SERIES 0
 
 enum { MANUAL_EXPANSION_ORD = 6 };
 
