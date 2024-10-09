@@ -934,7 +934,7 @@ FUN(asinc) (const T *a, T *c)
   NUM ord_coef[to+1];
 
   if (fabs(a0) > 1e-12) { // asinc(x), 1e-12 < |x| <= 0.58
-    ord_coef[0] = f0; FOR(i,1,to+1) ord_coef[i] = 0;
+    FOR(i,1,to+1) ord_coef[i] = 0;
 
     enum { ord = 60 }; // specify according to the expected accuracy
     static num_t scl_coef[ord+1] = {0};
@@ -955,6 +955,7 @@ FUN(asinc) (const T *a, T *c)
         a0pi *= a0;
       }
     }
+    ord_coef[0] = f0;
   } else { // asinc(x), |x| <= 1e-12
     ord_coef[0] = 1;
     ord_coef[1] = 0;
@@ -1186,7 +1187,7 @@ FUN(asinhc) (const T *a, T *c)
   NUM ord_coef[to+1];
 
   if (fabs(a0) > 1e-12) { // asinhc(x), 1e-12 < |x| <= 0.62
-    ord_coef[0] = f0; FOR(i,1,to+1) ord_coef[i] = 0;
+    FOR(i,1,to+1) ord_coef[i] = 0;
 
     enum { ord = 80 }; // specify according to the expected accuracy
     static num_t scl_coef[ord+1] = {0};
@@ -1207,6 +1208,7 @@ FUN(asinhc) (const T *a, T *c)
         a0pi *= a0;
       }
     }
+    ord_coef[0] = f0;
   } else { // asinhc(x), |x| <= 1e-12
     ord_coef[0] = 1;
     ord_coef[1] = 0;
