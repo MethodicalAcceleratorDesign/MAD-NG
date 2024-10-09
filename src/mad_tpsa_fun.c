@@ -7,7 +7,7 @@
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
  |          C. Tomoiaga
- | Contrib: -
+ | Contrib: A. E. Scurria (Numerical stability for high orders)
  |
  o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
