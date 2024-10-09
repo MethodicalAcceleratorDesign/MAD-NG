@@ -18,10 +18,10 @@
 */
 
 #include <string.h>
+#include <float.h>
 #include <complex.h>
 
 #include "mad_log.h"
-#include "mad_cst.h"
 #include "mad_num.h"
 #include "mad_tpsa_impl.h"
 #include "mad_ctpsa_impl.h"
@@ -29,6 +29,7 @@
 // --- local ------------------------------------------------------------------o
 
 #define OLD_SERIES 0
+#define DBG_SERIES 1
 
 enum { MANUAL_EXPANSION_ORD = 6 };
 
@@ -415,13 +416,13 @@ FUN(cot) (const T *a, T *c)                      // checked for real and complex
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
-  T *t = GET_TMPX(c);
-  FUN(sincos)(a,t,c);
-  FUN(div)(c,t,c);
-  REL_TMPX(t); DBGFUN(<-); return;
+  if (to > MANUAL_EXPANSION_ORD) {
+    T *t = GET_TMPX(c);
+    FUN(sincos)(a,t,c);
+    FUN(div)(c,t,c);
+    REL_TMPX(t); DBGFUN(<-); return;
+  }
 
-#if 0
-  // Inaccurate expansion for small a0, need some work...
   NUM ord_coef[to+1], f2 = f0*f0;
   switch(to) {
   case 6: ord_coef[6] = f0*(17./45 + f2*(77./45 + f2*(7./3 + f2))); /* FALLTHRU */
@@ -435,7 +436,6 @@ FUN(cot) (const T *a, T *c)                      // checked for real and complex
   }
 
   fun_taylor(a,c,to,ord_coef);
-#endif
 }
 
 void
@@ -468,7 +468,6 @@ FUN(sinc) (const T *a, T *c)
     };
     int s = 1; // o/2: even = 1, odd = -1
     num_t fact = 1;
-    ord_coef[0] = f0;
     for (ord_t o = 1; o <= to; o += 2, s = -s) {
       NUM v1 = 0, v2 = 0;
       FOR(i,7) {
@@ -478,12 +477,14 @@ FUN(sinc) (const T *a, T *c)
       fact *= o*(o+1.);
       ord_coef[ o          ] = s * v1 / fact*(o+1);
       ord_coef[(o+1)%(to+1)] = s * v2 / fact;
-
-      static const num_t stp_coef[7] = {
-        -2, 12, -240, 10080, -725760, 79833600, -12454041600
-      };
-      FOR(i,7) odd_coef[i] += stp_coef[i];
+      if (o+2 <= to) {
+        static const num_t stp_coef[7] = {
+          -2, 12, -240, 10080, -725760, 79833600, -12454041600
+        };
+        FOR(i,7) odd_coef[i] += stp_coef[i];
+      }
     }
+    ord_coef[0] = f0;
   } else { // sinc(x), |x| <= 1e-12
     ord_coef[0] = 1;
     ord_coef[1] = 0;
@@ -668,7 +669,6 @@ FUN(sinhc) (const T *a, T *c)
       3, 30, 840, 45360, 3991680, 518918400, 93405312000
     };
     num_t fact = 1;
-    ord_coef[0] = f0;
     for (ord_t o = 1; o <= to; o += 2) {
       NUM v1 = 0, v2 = 0;
       FOR(i,7) {
@@ -678,12 +678,14 @@ FUN(sinhc) (const T *a, T *c)
       fact *= o*(o+1.);
       ord_coef[ o          ] = v1 / fact*(o+1);
       ord_coef[(o+1)%(to+1)] = v2 / fact;
-
-      static const num_t stp_coef[7] = {
-        2, 12, 240, 10080, 725760, 79833600, 12454041600
-      };
-      FOR(i,7) odd_coef[i] += stp_coef[i];
+      if (o+2 <= to) {
+        static const num_t stp_coef[7] = {
+          2, 12, 240, 10080, 725760, 79833600, 12454041600
+        };
+        FOR(i,7) odd_coef[i] += stp_coef[i];
+      }
     }
+    ord_coef[0] = f0;
   } else { // sinhc(x), |x| <= 1e-12
     ord_coef[0] = 1;
     ord_coef[1] = 0;
@@ -934,9 +936,9 @@ FUN(asinc) (const T *a, T *c)
   NUM ord_coef[to+1];
 
   if (fabs(a0) > 1e-12) { // asinc(x), 1e-12 < |x| <= 0.58
-    ord_coef[0] = f0; FOR(i,1,to+1) ord_coef[i] = 0;
+    FOR(i,to+1) ord_coef[i] = 0;
 
-    enum { ord = 60 }; // specify according to the expected accuracy
+    enum { ord = 200 }; // specify according to the expected accuracy
     static num_t scl_coef[ord+1] = {0};
     if (!scl_coef[0]) {
       scl_coef[0] = 1./3;
@@ -946,15 +948,21 @@ FUN(asinc) (const T *a, T *c)
     num_t fact = 1;
     num_t tmp_coef[ord+1]; FOR(i,ord+1) tmp_coef[i] = scl_coef[i];
     for (ord_t o = 1; o <= to; o += 2) {
-      NUM a0pi = 1;
+      NUM a0pi = 1, dc;
       fact *= o*(o+1.);
       FOR(i,ord+1) {
         tmp_coef[i] *= o > 1 ? CUB(2.*i+o) / (2*i+o+2) : 1;
-        ord_coef [ o          ] += a0*SQR(a0pi)*tmp_coef[i]*(  o+1) / fact;
-        ord_coef [(o+1)%(to+1)] +=    SQR(a0pi)*tmp_coef[i]*(2*i+1) / fact;
+        ord_coef [ o          ] +=  a0*SQR(a0pi)*tmp_coef[i]*(  o+1) / fact;
+        ord_coef [(o+1)%(to+1)] += (dc=SQR(a0pi)*tmp_coef[i]*(2*i+1) / fact);
+        if (fabs(dc) <= DBL_EPSILON) {
+          if (DBG_SERIES)
+            printf("asinc: i=%d, |a0|=%.16e, |dc|=%.16e\n", i, fabs(a0), fabs(dc));
+          break;
+        }
         a0pi *= a0;
       }
     }
+    ord_coef[0] = f0;
   } else { // asinc(x), |x| <= 1e-12
     ord_coef[0] = 1;
     ord_coef[1] = 0;
@@ -1186,9 +1194,9 @@ FUN(asinhc) (const T *a, T *c)
   NUM ord_coef[to+1];
 
   if (fabs(a0) > 1e-12) { // asinhc(x), 1e-12 < |x| <= 0.62
-    ord_coef[0] = f0; FOR(i,1,to+1) ord_coef[i] = 0;
+    FOR(i,to+1) ord_coef[i] = 0;
 
-    enum { ord = 80 }; // specify according to the expected accuracy
+    enum { ord = 200 }; // specify according to the expected accuracy
     static num_t scl_coef[ord+1] = {0};
     if (!scl_coef[0]) {
       scl_coef[0] = -1./3;
@@ -1198,15 +1206,21 @@ FUN(asinhc) (const T *a, T *c)
     num_t fact=1;
     num_t tmp_coef[ord+1]; FOR(i,ord+1) tmp_coef[i] = scl_coef[i];
     for (ord_t o = 1; o <= to; o += 2) {
-      NUM a0pi = 1;
+      NUM a0pi = 1, dc;
       fact *= o*(o+1.);
       FOR(i,ord+1) {
         tmp_coef[i] *= o > 1 ? -CUB(2.*i+o) / (2*i+o+2) : 1;
-        ord_coef [ o          ] += a0*SQR(a0pi)*tmp_coef[i]*(  o+1) / fact;
-        ord_coef [(o+1)%(to+1)] +=    SQR(a0pi)*tmp_coef[i]*(2*i+1) / fact;
+        ord_coef [ o          ] +=  a0*SQR(a0pi)*tmp_coef[i]*(  o+1) / fact;
+        ord_coef [(o+1)%(to+1)] += (dc=SQR(a0pi)*tmp_coef[i]*(2*i+1) / fact);
+        if (fabs(dc) <= DBL_EPSILON) {
+          if (DBG_SERIES)
+            printf("asinhc: i=%d, |a0|=%.16e, |dc|=%.16e\n", i, fabs(a0), fabs(dc));
+          break;
+        }
         a0pi *= a0;
       }
     }
+    ord_coef[0] = f0;
   } else { // asinhc(x), |x| <= 1e-12
     ord_coef[0] = 1;
     ord_coef[1] = 0;
