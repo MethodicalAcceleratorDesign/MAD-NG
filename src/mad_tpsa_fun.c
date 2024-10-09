@@ -468,7 +468,6 @@ FUN(sinc) (const T *a, T *c)
     };
     int s = 1; // o/2: even = 1, odd = -1
     num_t fact = 1;
-    ord_coef[0] = f0;
     for (ord_t o = 1; o <= to; o += 2, s = -s) {
       NUM v1 = 0, v2 = 0;
       FOR(i,7) {
@@ -484,6 +483,7 @@ FUN(sinc) (const T *a, T *c)
       };
       FOR(i,7) odd_coef[i] += stp_coef[i];
     }
+    ord_coef[0] = f0;
   } else { // sinc(x), |x| <= 1e-12
     ord_coef[0] = 1;
     ord_coef[1] = 0;
@@ -668,7 +668,6 @@ FUN(sinhc) (const T *a, T *c)
       3, 30, 840, 45360, 3991680, 518918400, 93405312000
     };
     num_t fact = 1;
-    ord_coef[0] = f0;
     for (ord_t o = 1; o <= to; o += 2) {
       NUM v1 = 0, v2 = 0;
       FOR(i,7) {
@@ -684,6 +683,7 @@ FUN(sinhc) (const T *a, T *c)
       };
       FOR(i,7) odd_coef[i] += stp_coef[i];
     }
+    ord_coef[0] = f0;
   } else { // sinhc(x), |x| <= 1e-12
     ord_coef[0] = 1;
     ord_coef[1] = 0;
