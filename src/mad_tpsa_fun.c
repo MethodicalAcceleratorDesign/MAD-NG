@@ -656,7 +656,7 @@ FUN(sinhc) (const T *a, T *c)
     FUN(setval)(c,f0); DBGFUN(<-); return;
   }
 
-  if (fabs(a0) > 0.76) { // sinhc(x), |x| > 0.76
+  if (fabs(a0) > 0.75) { // sinhc(x), |x| > 0.75
     T *t = GET_TMPX(c);
     FUN(sinh)(a,t);
     FUN(div)(t,a,c);
@@ -665,7 +665,7 @@ FUN(sinhc) (const T *a, T *c)
   }
 
   NUM ord_coef[to+1];
-  if (fabs(a0) > 1e-12) { // sinhc(x), 1e-12 < |x| <= 0.76
+  if (fabs(a0) > 1e-12) { // sinhc(x), 1e-12 < |x| <= 0.75
     num_t odd_coef[7] = {
       3, 30, 840, 45360, 3991680, 518918400, 93405312000
     };
@@ -939,7 +939,7 @@ FUN(asinc) (const T *a, T *c)
   if (fabs(a0) > 1e-12) { // asinc(x), 1e-12 < |x| <= 0.58
     FOR(i,to+1) ord_coef[i] = 0;
 
-    enum { ord = 200 }; // specify according to the expected accuracy
+    enum { ord = DESC_MAX_ORD+1 };
     static num_t scl_coef[ord+1] = {0};
     if (!scl_coef[0]) {
       scl_coef[0] = 1./3;
@@ -949,16 +949,21 @@ FUN(asinc) (const T *a, T *c)
     num_t fact = 1;
     num_t tmp_coef[ord+1]; FOR(i,ord+1) tmp_coef[i] = scl_coef[i];
     for (ord_t o = 1; o <= to; o += 2) {
-      NUM a0pi = 1, dc;
+      NUM a0pi = 1, dc1, dc2;
       fact *= o*(o+1.);
       FOR(i,ord+1) {
         tmp_coef[i] *= o > 1 ? CUB(2.*i+o) / (2*i+o+2) : 1;
-        ord_coef [ o          ] +=  a0*SQR(a0pi)*tmp_coef[i]*(  o+1) / fact;
-        ord_coef [(o+1)%(to+1)] += (dc=SQR(a0pi)*tmp_coef[i]*(2*i+1) / fact);
-        if (fabs(dc) <= DBL_EPSILON) {
+        ord_coef [ o          ] += (dc1=a0*SQR(a0pi)*tmp_coef[i]*(  o+1) / fact);
+        ord_coef [(o+1)%(to+1)] += (dc2=   SQR(a0pi)*tmp_coef[i]*(2*i+1) / fact);
+        if (fabs(dc1)/fabs(ord_coef[o])            < SQR(DBL_EPSILON) &&
+            fabs(dc2)/fabs(ord_coef[(o+1)%(to+1)]) < SQR(DBL_EPSILON)) {
           if (DBG_SERIES)
-            printf("asinc: i=%d, |a0|=%.16e, |dc|=%.16e\n", i, fabs(a0), fabs(dc));
+            printf("asinc: i=%d, o=%d, to=%d, |a0|=%.16e, |dc|=%.16e\n", i, o, to, fabs(a0), MAX(fabs(dc1),fabs(dc2)));
           break;
+        } else if (i == ord) {
+          if (DBG_SERIES)
+            printf("asinc: i=%d, o=%d, to=%d, |a0|=%.16e, |dc|=%.16e\n", i, o, to, fabs(a0), MAX(fabs(dc1),fabs(dc2)));
+          trace(1, "asinc did not converge after %d iterations", i);
         }
         a0pi *= a0;
       }
@@ -1197,7 +1202,7 @@ FUN(asinhc) (const T *a, T *c)
   if (fabs(a0) > 1e-12) { // asinhc(x), 1e-12 < |x| <= 0.62
     FOR(i,to+1) ord_coef[i] = 0;
 
-    enum { ord = 200 }; // specify according to the expected accuracy
+    enum { ord = DESC_MAX_ORD+1 };
     static num_t scl_coef[ord+1] = {0};
     if (!scl_coef[0]) {
       scl_coef[0] = -1./3;
@@ -1207,16 +1212,21 @@ FUN(asinhc) (const T *a, T *c)
     num_t fact=1;
     num_t tmp_coef[ord+1]; FOR(i,ord+1) tmp_coef[i] = scl_coef[i];
     for (ord_t o = 1; o <= to; o += 2) {
-      NUM a0pi = 1, dc;
+      NUM a0pi = 1, dc1, dc2;
       fact *= o*(o+1.);
       FOR(i,ord+1) {
         tmp_coef[i] *= o > 1 ? -CUB(2.*i+o) / (2*i+o+2) : 1;
-        ord_coef [ o          ] +=  a0*SQR(a0pi)*tmp_coef[i]*(  o+1) / fact;
-        ord_coef [(o+1)%(to+1)] += (dc=SQR(a0pi)*tmp_coef[i]*(2*i+1) / fact);
-        if (fabs(dc) <= DBL_EPSILON) {
+        ord_coef [ o          ] += (dc1=a0*SQR(a0pi)*tmp_coef[i]*(  o+1) / fact);
+        ord_coef [(o+1)%(to+1)] += (dc2=   SQR(a0pi)*tmp_coef[i]*(2*i+1) / fact);
+        if (fabs(dc1)/fabs(ord_coef[o])            < SQR(DBL_EPSILON) &&
+            fabs(dc2)/fabs(ord_coef[(o+1)%(to+1)]) < SQR(DBL_EPSILON)) {
           if (DBG_SERIES)
-            printf("asinhc: i=%d, |a0|=%.16e, |dc|=%.16e\n", i, fabs(a0), fabs(dc));
+            printf("asinhc: i=%d, o=%d, to=%d, |a0|=%.16e, |dc|=%.16e\n", i, o, to, fabs(a0), MAX(fabs(dc1),fabs(dc2)));
           break;
+        } else if (i == ord) {
+          if (DBG_SERIES)
+            printf("asinhc: i=%d, o=%d, to=%d, |a0|=%.16e, |dc|=%.16e\n", i, o, to, fabs(a0), MAX(fabs(dc1),fabs(dc2)));
+          trace(1, "asinhc did not converged after %d iterations", i);
         }
         a0pi *= a0;
       }
