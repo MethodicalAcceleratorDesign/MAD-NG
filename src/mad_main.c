@@ -130,7 +130,7 @@ static void print_mad_version (void)
   "    ____  __   ______    ______     |   Methodical Accelerator Design\n"
   "     /  \\/  \\   /  _  \\   /  _  \\   |   release: %s\n"
   "    /  __   /  /  /_/ /  /  /_/ /   |   support: http://cern.ch/mad\n"
-  "   /__/  /_/  /__/ /_/  /_____ /    |   licence: GPL3 (C) CERN 2016+\n"
+  "   /__/  /_/  /__/ /_/  /_____ /    |   licence: GNU GPL v3 (C) 2016+\n"
   "                                    |   started: %s\n"
   "\n";
 
