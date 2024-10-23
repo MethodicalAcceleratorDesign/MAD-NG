@@ -37,6 +37,8 @@ local eps, minang, hbar, clight           in MAD.constant
 local bxby, bxbyh                         in MAD.dynmap
 local atborder                            in MAD.symint.slcsel
 
+local kcrit = 4/3 * hbar * clight
+
 -- tracking photons -----------------------------------------------------------o
 
 local function track_photon (elm, m, i, ph_fac, beam)
@@ -169,12 +171,16 @@ function M.srad_damp (elm, m, lw, islc)
 
   if nmul == 0 and snm == 0 and bsol == 0 then return end
 
-  local el   = elm.lrad
-  local aelw = abs(el*lw)
   local facr = 0.5 --  atborder(nil,m,nil,islc) and 0.5 or 1 -- (see track)
-  local e = not m.ptcmodel and (islc == 0     and (m.e1 or elm.e1)  or
-                                islc == m.nsl and (m.e2 or elm.e2)) or 0
-  if eh ~= 0 then e = tan(e) end
+  local el   = elm.lrad
+  local aelw = abs(el*lw)*facr
+  local e = 0
+
+  if not m.ptcmodel then -- process pole face
+        if islc == 0     then e = m.e1 or elm.e1 or 0
+    elseif islc == m.nsl then e = m.e2 or elm.e2 or 0 end
+    if eh == 0 then e = tan(e) end -- straight element
+  end
 
 --  printf("srad_damp: %s, lrad=%.2f, lw=%.2f, islc=%d, e=%.4f\n",
 --               elm.name,  elm.lrad,      lw,    islc, e)
@@ -200,8 +206,8 @@ function M.srad_damp (elm, m, lw, islc)
 
     -- PTC-like method to calculate curvature
     local  beam = beam or m.beam
-    local _bet0 = 1/beam.beta
-    local  dp1  = sqrt(1 + (2*_bet0)*pt + pt^2)
+    local  bet0 = beam.beta
+    local  dp1  = sqrt(1 + (2/bet0)*pt + pt^2)
     local _dp1  = 1/dp1
     local  npx  = px
     local  npy  = py
@@ -225,8 +231,34 @@ function M.srad_damp (elm, m, lw, islc)
 --             i,       npx,       npy,      bex,      bey,      bez,      eh,       h2,      facr)
 
     if h2 > 0 then
-      local  hlw  = (aelw*(1+eh*x)-e*x)/npz
-      local  rfac = (2/3 * facr * beam.emrad * beam.gamma^3)*(1+pt)^3 * h2*hlw
+      local   hlw = (aelw*(1+eh*x)-e*x)/npz
+      local  rfac = 0
+      local nphot = 0
+
+      if m.radiate == "damping" then
+        rfac = (2/3 * beam.emrad * beam.gamma^3)*(1+pt)^3 * h2*hlw
+
+      else -- radiate == "quantum" or "photon"
+        local  hkck = sqrt(h2)
+        local gamma = (1 + bet0*pt)*beam.gamma
+        local ucrit = kcrit * gamma^2/beam.mass * hkck*hlw
+        local aphot = beam.aphot * dp1 * hkck
+
+--        print(hkck, gamma, ucrit, aphot, (2/3 * beam.emrad * beam.gamma^3)*(1+pt)^3 * h2*hlw)
+--  aphot = five * sqrt(three) / (twelve * hbar * clight) * abs(arad * pc * delta_plus_1 * el * curv)
+
+        nphot = randp(aphot)
+
+        for i=1,nphot do
+          local ph_val = _C.mad_rad_InvSynFracInt(rand())
+          local ph_fac = ph_val*ucrit
+          rfac = rfac + ph_fac
+
+          if m.radiate == "photon" and abs(ph_fac) >= 1e-12 then
+            track_photon(elm, m, i, ph_fac, beam)
+          end
+        end
+      end
 
       if sdir < 0 then rfac = -rfac end
 
@@ -234,20 +266,32 @@ function M.srad_damp (elm, m, lw, islc)
       pt = pt - rfac
 
       -- momenta update
-      local pfac = sqrt(1 + (2*_bet0)*pt + pt^2)*_dp1
+      local pfac = sqrt(1 + (2/bet0)*pt + pt^2)*_dp1
+      px = px*pfac
+      py = py*pfac
+
       if bsol ~= 0 then
-        m[i].px = px*pfac + y*(0.5*bsol*beam.charge)*(pfac-1)
-        m[i].py = py*pfac - x*(0.5*bsol*beam.charge)*(pfac-1)
-      else
-        m[i].px = px*pfac
-        m[i].py = py*pfac
+        px = px + y*(0.5*bsol*beam.charge)*(pfac-1)
+        py = py - x*(0.5*bsol*beam.charge)*(pfac-1)
       end
+
+      m[i].px = px
+      m[i].py = py
       m[i].pt = pt
 
       if info >= 2 and rfac ~= 0 then
-        if isa_tpsa(rfac) then rfac, h2 = rfac:get0(), h2:get0() end
-        printf("synrad: particle #%d lost %.5e GeV in slice %d of %s (rfac=%.16e, h=%.16e)\n",
+        if isa_tpsa(rfac) then
+          rfac, h2, x, y = rfac:get0(), h2:get0(), x:get0(), y:get0()
+        end
+
+        printf("synrad: particle #%d lost %.7e GeV in slice %d of %s (rfac=%.10e, h=%.10e)\n",
                m[i].id, rfac*beam.energy, islc, elm.name, rfac, sqrt(h2))
+
+        if nphot > 5 then
+          warn(">5 photons emitted, synch. radiat. too high at x=%.5e, y=%.5e", x, y)
+        elseif nphot > 2 then
+          warn(">2 photons emitted, thinner slicing strongly recommended")
+        end
       end
     end
 
