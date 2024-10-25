@@ -34,22 +34,70 @@
 static inline
 num_t min (ssz_t n, const num_t x[n])
 {
+  assert(x);
   num_t mx = INF;
-  if (x) for (ssz_t i=0; i<n; i++) if (x[i] < mx) mx = x[i];
+  for (ssz_t i=0; i<n; i++) if (x[i] < mx) mx = x[i];
   return mx;
 }
 
 static inline
 num_t max (ssz_t n, const num_t x[n])
 {
+  assert(x);
   num_t mx = -INF;
-  if (x) for (ssz_t i=0; i<n; i++) if (x[i] > mx) mx = x[i];
+  for (ssz_t i=0; i<n; i++) if (x[i] > mx) mx = x[i];
   return mx;
+}
+
+static void
+dbg_args (nlopt_args_t *a)
+{
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+  printf("** algorithm **\n");
+  printf("algo        = %d\n"   , a->algo);
+  printf("subalgo     = %d\n"   , a->algo);
+
+  printf("** objective function **\n");
+  printf("fun         = %p\n"   , (void*)a->fun);
+  printf("fval        = %.16e\n", a->fval );
+  printf("fmin        = %.16e\n", a->fmin );
+  printf("ftol        = %.16e\n", a->ftol );
+  printf("frtol       = %.16e\n", a->frtol);
+  printf("fdat        = %p\n"   , a->fdat );
+
+  printf("** state variables **\n");
+  printf("n           = %d\n"   , a->n    );
+  if (a->x)    FOR(i,a->n) printf("x   [%d]    = %.16e\n", i, a->x   [i]);
+  if (a->xstp) FOR(i,a->n) printf("xstp[%d]    = %.16e\n", i, a->xstp[i]);
+  if (a->xmin) FOR(i,a->n) printf("xmin[%d]    = %.16e\n", i, a->xmin[i]);
+  if (a->xmax) FOR(i,a->n) printf("xmax[%d]    = %.16e\n", i, a->xmax[i]);
+  if (a->xtol) FOR(i,a->n) printf("xtol[%d]    = %.16e\n", i, a->xtol[i]);
+  printf("xrtol       = %.16e\n", a->xrtol);
+
+  printf("** equality constraints **\n");
+  printf("p           = %d\n"   , a->p    );
+  printf("efun        = %p\n" , (void*)a->efun);
+  if (a->etol) FOR(i,a->p) printf("etol[%d]    = %.16e\n", i, a->etol[i]);
+  printf("edat        = %p\n" , a->edat   );
+
+  printf("** inequality constraints **\n");
+  printf("q           = %d\n"   , a->q    );
+  printf("lfun        = %p\n" , (void*)a->lfun);
+  if (a->ltol) FOR(i,a->q) printf("ltol[%d]    = %.16e\n", i, a->ltol[i]);
+  printf("ldat        = %p\n" , a->ldat   );
+
+  printf("** stop criteria **\n");
+  printf("maxcall     = %d\n"   , a->maxcall);
+  printf("maxtime     = %.16e\n", a->maxtime);
+#pragma GCC diagnostic pop
 }
 
 void mad_nlopt (nlopt_args_t *a)
 {
   assert(a);
+
+  if (a->debug >= 4) dbg_args(a);
 
   // create optimizer, set algorithm and problem dimension
   nlopt_opt opt = nlopt_create(a->algo, a->n); a->opt = opt;
@@ -75,18 +123,18 @@ void mad_nlopt (nlopt_args_t *a)
   if (a->xrtol > 0  ) CHKN(xrtol, nlopt_set_xtol_rel(opt, a->xrtol));
 
   // set variables tolerances
-  if (max(a->n,a->xtol) > 0) CHK(xtol, nlopt_set_xtol_abs(opt, a->xtol));
+  if (a->xtol && max(a->n,a->xtol) > 0) CHK(xtol, nlopt_set_xtol_abs(opt, a->xtol));
 
   // set variables initial step size
-  if (max(a->n,a->xstp) > 0) CHK(xstp, nlopt_set_initial_step(opt, a->xstp));
+  if (a->xstp && max(a->n,a->xstp) > 0) CHK(xstp, nlopt_set_initial_step(opt, a->xstp));
 
   // set variables boundary constraints
-  if (max(a->n,a->xmin) > -INF) CHK(xmin, nlopt_set_lower_bounds(opt, a->xmin));
-  if (min(a->n,a->xmax) <  INF) CHK(xmax, nlopt_set_upper_bounds(opt, a->xmax));
+  if (a->xmin && max(a->n,a->xmin) > -INF) CHK(xmin, nlopt_set_lower_bounds(opt, a->xmin));
+  if (a->xmax && min(a->n,a->xmax) <  INF) CHK(xmax, nlopt_set_upper_bounds(opt, a->xmax));
 
   // check constraints tolerances
-  if (! (max(a->p,a->etol) > 0) ) a->etol = NULL; else CHK(etol,1);
-  if (! (max(a->q,a->ltol) > 0) ) a->ltol = NULL; else CHK(ltol,1);
+  if (a->etol && !(max(a->p,a->etol) > 0) ) a->etol = NULL; else CHK(etol,1);
+  if (a->ltol && !(max(a->q,a->ltol) > 0) ) a->ltol = NULL; else CHK(ltol,1);
 
   // set constraints to satisfy (within tolerances)
   if (a->efun) CHK(efun, nlopt_add_equality_mconstraint  (opt, a->p, a->efun, a->edat, a->etol));
@@ -118,10 +166,10 @@ void mad_nlopt (nlopt_args_t *a)
     if (a->xrtol > 0  ) CHKN(xrtol, nlopt_set_xtol_rel(sopt, a->xrtol));
 
     // set variables tolerances
-    if (max(a->n,a->xtol) > 0) CHK(xtol, nlopt_set_xtol_abs(sopt, a->xtol));
+    if (a->xtol && max(a->n,a->xtol) > 0) CHK(xtol, nlopt_set_xtol_abs(sopt, a->xtol));
 
     // set variables initial step size
-    if (max(a->n,a->xstp) > 0) CHK(xstp, nlopt_set_initial_step(sopt, a->xstp));
+    if (a->xstp && max(a->n,a->xstp) > 0) CHK(xstp, nlopt_set_initial_step(sopt, a->xstp));
 
     // set extra stop criteria
     if (a->maxcall > 0) CHKI(maxcall, nlopt_set_maxeval(sopt, a->maxcall));
