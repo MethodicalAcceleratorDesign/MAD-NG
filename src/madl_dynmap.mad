@@ -1566,21 +1566,84 @@ end
 
 -- DKD, TKT -------------------------------------------------------------------o
 
-local V6 = vector(6)
+function M.linm_thin (elm, m, lw, istp)                                     -- unchecked
+  m.atdebug(elm, m, 'linm_thin:0')
+
+  local update = elm:var_get'update'
+  if update then update(elm, m, lw, istp) end -- update element
+
+  local bet0, bet1 in elm
+  local sdir in m
+
+      if is_nil(bet0) then bet0 = {}
+  elseif is_nil(bet1) then bet1 = {} end
+
+  local bx0 =       bet0.beta11 or bet1.beta11  or 1
+  local by0 =       bet0.beta22 or bet1.beta22  or 1
+  local bx1 =       bet1.beta11 or bet0.beta11  or 1
+  local by1 =       bet1.beta22 or bet0.beta22  or 1
+  local ax0 = sdir*(bet0.alfa11 or bet1.alfa11) or 0
+  local ay0 = sdir*(bet0.alfa22 or bet1.alfa22) or 0
+  local ax1 = sdir*(bet1.alfa11 or bet0.alfa11) or 0
+  local ay1 = sdir*(bet1.alfa22 or bet0.alfa22) or 0
+  local ux0 = sdir*(bet0.mu1    or bet1.mu1)    or 0
+  local uy0 = sdir*(bet0.mu2    or bet1.mu2)    or 0
+  local ux1 = sdir*(bet1.mu1    or bet0.mu1)    or 0
+  local uy1 = sdir*(bet1.mu2    or bet0.mu2)    or 0
+
+  local sx , cx  = sin(twopi*(ux1 - ux0)), cos(twopi*(ux1 - ux0))
+  local sy , cy  = sin(twopi*(uy1 - uy0)), cos(twopi*(uy1 - uy0))
+  local bxr, byr = sqrt(bx1 / bx0),  sqrt(by1 / by0)
+  local bxp, byp = sqrt(bx1 * bx0),  sqrt(by1 * by0)
+
+  -- Wolski, ch4, eq. 4.60
+  local mx00 = bxr * (cx+ax0*sx)
+  local mx01 = bxp *  sx
+  local mx10 = ((ax0-ax1)*cx - (1+ax0*ax1)*sx) / bxp
+  local mx11 = (cx-ax1*sx0) / bxr
+
+  local my00 = byr * (cy+ay0*sy)
+  local my01 = byp *  sy
+  local my10 = ((ay0-ay1)*cy - (1+ay0*ay1)*sy) / byp
+  local my11 = (cy-ay1*sy0) / byr
+
+  -- TODO: dispersion
+
+  for i=1,m.npar do
+    local x, px, y, py in m[i]
+
+    local nx  = mx00*x + mx01*px
+    local npx = mx10*x + mx11*px
+    local ny  = my00*y + my01*py
+    local npy = my10*y + my11*py
+
+    m[i].x  = nx
+    m[i].px = npx
+    m[i].y  = ny
+    m[i].py = npy
+  end
+
+  m.atdebug(elm, m, 'linm_thin:1')
+end
+
+-- DKD, TKT -------------------------------------------------------------------o
 
 function M.genm_thick (elm, m, lw, istp)                                     -- unchecked
   m.atdebug(elm, m, 'genm_thick:0')
 
   local update = elm:var_get'update'
-  if update then update(elm, m, lw) end -- update damap
+  if update then update(elm, m, lw, istp) end -- update damap
 
   local damap in elm
+
+  if m.sdir == -1 then damap = damap^-1 end -- backtracking
+
   for i=1,m.npar do
     local m = m[i]
     if is_damap(m) then
       damap:compose(m, m)
     else
-      local v = V6:fill{m.x, m.px, m.y, m.py, m.t, m.pt}
+      local v = vector(6):fill{m.x, m.px, m.y, m.py, m.t, m.pt}
       damap:eval(v, v)
       m.x, m.px, m.y, m.py, m.t, m.pt = v[1], v[2], v[3], v[4], v[5], v[6]
     end

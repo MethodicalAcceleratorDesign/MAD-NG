@@ -93,8 +93,8 @@ local bbeam_kick, bbeam_kick6D                                     in MAD.dynmap
 -- wire
 local wire_kick                                                    in MAD.dynmap
 
--- generic damap
-local genm_thick                                                   in MAD.dynmap
+-- generic linear map and damap
+local linm_thin, genm_thick                                        in MAD.dynmap
 
 -- patches
 local xrotation, yrotation, srotation, translate,
@@ -978,7 +978,7 @@ local function track_sbend (elm, m, e1_, e2_)
     inter, thick, kick = DKD[method], curex_drift , curex_kick
   elseif m.nmul == 1 and ksl[1] == 0 and not m.ptcmodel then -- curved thick only
     inter, thick, kick = thickonly  , sbend_thick , fnil
-  else -- if abs(knl[2]) < minstr then            -- curved thick
+  else                                            -- curved thick
     inter, thick, kick = TKT[method], sbend_thick , sbend_kick
   end
 
@@ -1022,7 +1022,7 @@ local function track_rbend (elm, m)
 
   get_mult(elm, m, 3)                                                         -- checked
 
-  local nmul, knl, ksl, ptcmodel in m
+  local nmul, knl, ksl in m
   local l, k0, k0s, k1, k1s, k2, k2s in elm
 
   if l < minlen then
@@ -1070,7 +1070,7 @@ local function track_rbend (elm, m)
 
   if model == 'DKD' then
     inter, thick, kick = DKD[method], strex_drift, strex_kick
-  elseif m.nmul == 1 and ksl[1] == 0 and not ptcmodel then
+  elseif m.nmul == 1 and ksl[1] == 0 and not m.ptcmodel then
     inter, thick, kick = thickonly  , rbend_thick , fnil
   else
     inter, thick, kick = TKT[method], rbend_thick, rbend_kick
@@ -1180,7 +1180,7 @@ function track_strexgen (elm, m, ptc_, mth_) -- see fwd decl
 
   if l < minlen then
     inter, thick, kick, fringe = thinonly, strex_kick, fnil, fnil
-  elseif model == 'DKD' or not ptc_ then
+  elseif not ptc_ then
     inter, thick, kick, fringe = DKD[method], strex_drift, strex_kick, strex_fringe
   else
     m.k1 = m.knl[2]/l
@@ -1268,7 +1268,7 @@ local function track_kickgen (elm, m, hk, vk)
   get_mult(elm, m, 2)
 
   local nmul, knl, ksl, ptcmodel in m
-  local method = not ptcmodel and 2 or nil
+  local method = ptcmodel == false and 2 or nil -- false=MADX
 
   knl[1] = knl[1] - hk
   ksl[1] = ksl[1] + vk
@@ -1522,23 +1522,40 @@ local function track_nllens (elm, m)
   trackelm(elm, m, thinonly, nllens_kick, fnil)
 end
 
+-- linmap element
+
+local function track_linmap (elm, m)
+  local sdir, edir, cmap in m
+  local l, lrad, angle in elm
+
+  m.el, m.lrad, m.eh = l*sdir, lrad*sdir, angle/l*edir
+
+  m.cmap = false
+  trackelm(elm, m, thinonly, linm_thin, fnil)
+  m.eh, m.cmap = 0, cmap
+end
+
 -- genmap element
 
 local function track_genmap (elm, m)
   get_mult(elm, m) ; adj_mult(m)
 
-  local sdir, edir in m
+  local sdir, edir, nmul, cmap in m
   local l, lrad, angle in elm
 
   m.el, m.lrad, m.eh = l*sdir, lrad*sdir, angle/l*edir
 
-  local inter  = KMK[elm.method or m.method]
-  local kick   = m.nmul == 0 and fnil or abs(angle) < minang and strex_kick   or curex_kick
-  local fringe = l < minlen  and fnil or abs(angle) < minang and strex_fringe or curex_fringe
+  if nmul > 0 and abs(angle) >= minang then
+    m.snm = elm.secnmul or m.secnmul or -1 ; getanbnr(m)
+  end
 
-  local track  = #elm == 0 and trackelm or tracksub
-  track(elm, m, inter, genm_thick, kick, fringe)
-  m.eh = 0
+  local inter  = nmul == 0  and thickonly or KMK[elm.method or m.method]
+  local kick   = nmul == 0  and fnil or abs(angle) < minang and strex_kick   or curex_kick
+  local fringe = l < minlen and fnil or abs(angle) < minang and strex_fringe or curex_fringe
+
+  m.cmap = false
+  trackelm(elm, m, inter, genm_thick, kick, fringe)
+  m.eh, m.snm, m.cmap = 0, 0, cmap
 end
 
 -- load maps into elements ----------------------------------------------------o
@@ -1584,6 +1601,7 @@ E.vkicker    :set_methods {track = track_vkicker}    -- straight,  kick
 E.multipole  :set_methods {track = track_multipole}  -- thin
 E.beambeam   :set_methods {track = track_bbeam    }  -- thin
 E.nllens     :set_methods {track = track_nllens   }  -- thin
+E.linmap     :set_methods {track = track_linmap   }  -- thick line segment
 E.genmap     :set_methods {track = track_genmap   }  -- straight or curved, damap, update
 
 -- patches

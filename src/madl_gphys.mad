@@ -82,7 +82,8 @@ local gphys = {
     'alfa11', 'beta11', 'gama11', 'alfa12', 'beta12', 'gama12', 'alfa13', 'beta13', 'gama13', 'mu1', 'dx', 'dpx',
     'alfa21', 'beta21', 'gama21', 'alfa22', 'beta22', 'gama22', 'alfa23', 'beta23', 'gama23', 'mu2', 'dy', 'dpy',
     'alfa31', 'beta31', 'gama31', 'alfa32', 'beta32', 'gama32', 'alfa33', 'beta33', 'gama33', 'mu3',
-    'betx'  , 'bety'  , 'alfx'  , 'alfy'  , 'r11'   , 'r12'   , 'r21'   , 'r22' -- Edwards-Teng
+    'betx'  , 'bety'  , 'alfx'  , 'alfy'  , 'kpa'   , 'r11'   , 'r12'   , 'r21'   , 'r22'   , -- Edwards-Teng
+    'f1010' , 'f1001', -- linear RDTs
   },
 
   -- optical functions names with chromatic functions (index -> name)
@@ -97,7 +98,8 @@ local gphys = {
     'alfa11', 'beta11', 'gama11', 'alfa12', 'beta12', 'gama12', 'alfa13', 'beta13', 'gama13', 'mu1', 'dmu1', 'dx', 'dpx', 'Dx', 'Dpx', 'ddx', 'ddpx', 'wx', 'phix',
     'alfa21', 'beta21', 'gama21', 'alfa22', 'beta22', 'gama22', 'alfa23', 'beta23', 'gama23', 'mu2', 'dmu2', 'dy', 'dpy', 'Dy', 'Dpy', 'ddy', 'ddpy', 'wy', 'phiy',
     'alfa31', 'beta31', 'gama31', 'alfa32', 'beta32', 'gama32', 'alfa33', 'beta33', 'gama33', 'mu3', 'dmu3',
-    'betx'  , 'bety'  , 'alfx'  , 'alfy'  , 'r11'   , 'r12'   , 'r21'   , 'r22' -- Edwards-Teng
+    'betx'  , 'bety'  , 'alfx'  , 'alfy'  , 'kpa'   , 'r11'   , 'r12'   , 'r21'   , 'r22'   , -- Edwards-Teng
+    'f1010' , 'f1001' , -- linear RDTs
   },
 
   -- optical functions names converter (e.g. from MAD-X), see also beta0
@@ -1809,6 +1811,7 @@ function gphys.map2bet (map, rnk_, cpl_, bet_, dir_) -- TODO: move to beta0
     bb0.bety = bb0.beta22*dpp1
     bb0.alfx = bb0.alfa11
     bb0.alfy = bb0.alfa22
+    bb0.kpa  = 1
 
     local kx2 = bb0.beta12/bb0.beta11                                 -- eq. 4.7
     local ky2 = bb0.beta21/bb0.beta22
@@ -1822,7 +1825,7 @@ function gphys.map2bet (map, rnk_, cpl_, bet_, dir_) -- TODO: move to beta0
       local u = -kxy/(1-kxy)
       if ku >= stab_tol then
         local su = sqrt(ku)
-        u = u + (kxy <= su and +1 or -1) * su/(1-kxy)                -- eq. 4.8
+        u = u + (kxy <= su and +1 or -1) * su/(1-kxy)                 -- eq. 4.8
       end
       local kpa = 1-u
 
@@ -1830,6 +1833,7 @@ function gphys.map2bet (map, rnk_, cpl_, bet_, dir_) -- TODO: move to beta0
       bb0.bety = bb0.bety/kpa
       bb0.alfx = bb0.alfx/kpa
       bb0.alfy = bb0.alfy/kpa
+      bb0.kpa  = kpa
 
       local bx  = kx*kpa + u/kx                                      -- eq. 4.10
       local by  = ky*kpa + u/ky
@@ -1839,12 +1843,34 @@ function gphys.map2bet (map, rnk_, cpl_, bet_, dir_) -- TODO: move to beta0
       local evm = (ax + 1i*cx) / (ay + 1i*cy)
       local ev1 = sqrt(evp*evm)                                      -- eq. 4.11
       local ev2 = sqrt(evp/evm)
+
+      if sign(bb0.alfa12*ev2.im +   u*ev2.re) ~=                     -- eq. 7.12
+         sign(bb0.alfa11*ev1.im - kpa*ev1.re) then ev1, ev2 = -ev1, -ev2 end
+
                                                                      -- eq. 7.11
       bb0.r11  =  sqrt(bb0.beta22/bb0.beta12) * (u*ev2.re + bb0.alfa12*ev2.im)/kpa
       bb0.r22  = -sqrt(bb0.beta11/bb0.beta21) * (u*ev1.re + bb0.alfa21*ev1.im)/kpa
       bb0.r12  =  sqrt(bb0.beta11*bb0.beta21) * ev1.im/kpa
       bb0.r21  = (ev2.re*(bb0.alfa12*kpa - bb0.alfa22*u) -
                   ev2.im*(bb0.alfa12*bb0.alfa22 + kpa*u)) / (kpa*sqrt(bb0.beta12*bb0.beta22))
+
+      local sbetx, sbety = sqrt(bb0.betx), sqrt(bb0.bety)
+      local   r  = matrix(2):fill{bb0.r22, -bb0.r12, -bb0.r21, bb0.r11} -- MAD-X r11 & r21 signs differ...
+      local   ga = matrix(2):fill{1/sbetx, 0,  bb0.alfx/sbetx,   sbetx}
+      local  _gb = matrix(2):fill{  sbety, 0, -bb0.alfy/sbety, 1/sbety}
+      local    c = r/sqrt(1+r:det())              -- eq. 16
+      local cbar = ga * c * _gb                   -- eq. 5
+      local   cb = 0.25/sqrt(1-cbar:det())*cbar   -- eq. 9 & 10
+
+      bb0.f1010 = -cb:get(1,2)-cb:get(2,1) + 1i*(cb:get(1,1)-cb:get(2,2))
+      bb0.f1001 =  cb:get(1,2)-cb:get(2,1) + 1i*(cb:get(1,1)+cb:get(2,2))
+    else
+      bb0.r11   = 0
+      bb0.r22   = 0
+      bb0.r12   = 0
+      bb0.r21   = 0
+      bb0.f1010 = 0
+      bb0.f1001 = 0
     end
   end
 
@@ -2025,7 +2051,7 @@ end
 
   Eq. 7 assumes centered Gaussians distributions in all dimensions but in z,
   where it needs to be centered rectangular. The twiss parameters at the start
-  must satisfy alfax = alfay = Dx = Dpx = Dy= Dpy = 0. This yields the typical
+  must satisfy zero alfax, alfay, Dx, Dpx, Dy, Dpy. This yields the typical
   mistake to apply Eq. 7 without satisfying this...
 --]]
 

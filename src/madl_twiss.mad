@@ -30,7 +30,7 @@ local sign                                                        in MAD.gmath
 local chain, achain                                               in MAD.gfunc
 local tblcat, tblcpy, tblrep, assertf, errorf, printf             in MAD.utility
 local lbool                                                       in MAD.gfunc
-local is_nil, is_true, is_boolean, is_number, is_iterable,
+local is_nil, is_true, is_boolean, is_number, is_string, is_iterable,
       is_mappable, is_callable, is_table, is_vector, is_damap     in MAD.typeid
 local ofun_tol                                                    in MAD.gphys.tol
 local atfirst, atstd                                              in MAD.symint.slcsel
@@ -162,7 +162,7 @@ end
 local function fill_row (elm, mflw, lw, islc)
   if not mflw.__twdat then return end -- not yet in twiss
 
-  local mtbl, info, saverdt in mflw
+  local mtbl, info, saveanf in mflw
   local nrow, ofun, nf0, rdts, onam in mflw.__twdat
 
 -- printf("tw_fill: islc=%2d, nrow=%4d, elm=%s\n", islc, nrow, elm.name)
@@ -188,7 +188,7 @@ local function fill_row (elm, mflw, lw, islc)
       if rdts then
         local nf0 = nf0[m.id]
         if m:eq(nf0.m_prev) then                  -- duplicate values
-          if saverdt then mtbl.__nf[nrow] = mtbl.__nf[nrow-1] end
+          if saveanf then mtbl.__nf[nrow] = mtbl.__nf[nrow-1] end
           for _,k in ipairs(rdts) do
             nf0.m_dup = (nf0.m_dup or 0)+1
             local col = mtbl[k]
@@ -197,8 +197,8 @@ local function fill_row (elm, mflw, lw, islc)
           end
         else
           nf0.m_prev = m:copy(nf0.m_prev)
-          local nf = nf0:analyse('gnf', m)        -- full gnf analysis
-          if saverdt then mtbl.__nf[nrow] = nf end
+          local nf = nf0:analyse('all', m)        -- full analysis
+          if saveanf then mtbl.__nf[nrow] = nf end
           for _,k in ipairs(rdts) do
             local col = mtbl[k]
             if not is_table(col) then col:_reshapeto(nrow) end
@@ -437,7 +437,7 @@ local twheader = {
 }
 
 local function twiss_init (self, mflw)
-  local save, chrom, coupling, trkrdt, saverdt in self
+  local save, chrom, coupling, trkrdt, saveanf in self
   local npar, beam, mtbl, __twdat in mflw
   local n = npar
 
@@ -447,16 +447,11 @@ local function twiss_init (self, mflw)
     for i=1,n do mflw[i+n].nosave = i end
   end
 
-  -- check for trkrdt
-  if trkrdt == true then
-    trkrdt = {}
-  end
-
   -- add twiss data to mflw
   __twdat.npar = n
   __twdat.nrow = 0
   __twdat.chrm = chrom
-  __twdat.rdts = trkrdt
+  __twdat.rdts = trkrdt or saveanf and {}
   __twdat.omat = matrix(6)
   __twdat.onam = coupling and (chrom and ofchname or ofcname) or
                                chrom and ofhname  or ofname
@@ -485,21 +480,25 @@ local function twiss_init (self, mflw)
 
     mtbl.chrom    = chrom
     mtbl.coupling = coupling
-    mtbl.trkrdt   = self.trkrdt
+    mtbl.trkrdt   = trkrdt
 
     -- add twiss columns and type to mtbl
     for _,k in ipairs(mflw.__twdat.onam) do mtbl:addcol(k,{0}) end
 
     -- add rdts columns
     if trkrdt then
+      assert(is_table(trkrdt), "invalid trkrdt list, list of strings expected")
       for _,k in ipairs(trkrdt) do
-        assert(k:sub(1,1) == 'f', "invalid rdt's name (must start by 'f')")
+        assert(is_string(k) and k:sub(1,1) == 'f',
+               "invalid rdt's name (must start by 'f')")
         mtbl:addcol(k,{0})
       end
-      if saverdt then
-        mflw.saverdt = saverdt
-        mtbl:addcol('__nf',{})
-      end
+    end
+
+    -- add __nf col
+    if saveanf then
+      mflw.saveanf = saveanf
+      mtbl:addcol('__nf',{})
     end
   end
 
@@ -626,7 +625,6 @@ local twiss = command 'twiss' {
   model=nil,         -- model for integration ('DKD' or 'TKT')            (trck)
   mapdef=2,          -- always use damap formalism (true => {xy=1})       (twss)
   secnmul=nil,       -- maximun number of curved multipoles for bends     (trck)
-  ptcmodel=nil,      -- use strict PTC thick model (override option)      (trck)
   implicit=nil,      -- slice implicit elements too                       (trck)
   misalign=nil,      -- consider misalignment errors                      (trck)
   aperture=nil,      -- default aperture                                  (trck)
@@ -636,12 +634,13 @@ local twiss = command 'twiss' {
   nocavity=nil,      -- disable rfcavities                                (trck)
   totalpath=nil,     -- 't' is the totalpath                              (trck)
   cmap=nil,          -- use C/C++ maps when available                     (trck)
+  ptcmodel=nil,      -- use PTC model (nil=MADNG, true=PTC, false=MADX)   (trck)
 
   save=true,         -- create mtable and save results                    (trck)
   aper=nil,          -- check for aperture (default atsave)               (trck)
   observe=0,         -- save after all elements                           (trck)
   savemap=nil,       -- save damap in the mtable, col __map               (trck)
-  saverdt=nil,       -- save analysed normal form in the mtable, col __nf (trck)
+  saveanf=nil,       -- save analysed normal form in the mtable, col __nf (trck)
 
   atentry=nil,       -- action called when entering an element  (ataper)  (trck)
   atslice=nil,       -- action called after each element slices (atsave)  (trck)
@@ -667,7 +666,7 @@ local twiss = command 'twiss' {
 
   __attr = tblcat(   -- list of all setup attributes
     cofind.__attr,
-    {'chrom', 'coupling', 'trkrdt', 'saverdt'},
+    {'chrom', 'coupling', 'trkrdt', 'saveanf'},
     {noeval=cofind.__attr.noeval}
   )
 } :set_readonly() -- reference twiss command is readonly
