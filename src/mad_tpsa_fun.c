@@ -1276,6 +1276,22 @@ FUN(erfc) (const T *a, T *c)
 }
 
 void
+FUN(erfi) (const T *a, T *c)
+{
+  assert(a && c); DBGFUN(->);
+  // TODO
+  DBGFUN(<-);
+}
+
+void
+FUN(wf) (const T *a, T *c)
+{
+  assert(a && c); DBGFUN(->);
+  // TODO
+  DBGFUN(<-);
+}
+
+void
 FUN(erfcx) (const T *a, T *c)
 {
   assert(a && c); DBGFUN(->);

@@ -151,6 +151,8 @@ void    mad_tpsa_asinhc  (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_erf     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_erfc    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_erfcx   (const tpsa_t *a, tpsa_t *c);
+void    mad_tpsa_erfi    (const tpsa_t *a, tpsa_t *c);
+void    mad_tpsa_wf      (const tpsa_t *a, tpsa_t *c);
 
 void    mad_tpsa_acc     (const tpsa_t *a, num_t v, tpsa_t *c); // c += v*a, aliasing OK
 void    mad_tpsa_scl     (const tpsa_t *a, num_t v, tpsa_t *c); // c  = v*a
