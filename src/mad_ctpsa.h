@@ -181,6 +181,7 @@ void     mad_ctpsa_acoth   (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_asinhc  (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_erf     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_erfc    (const ctpsa_t *a, ctpsa_t *c);
+void     mad_ctpsa_erfcx   (const ctpsa_t *a, ctpsa_t *c);
 
 void     mad_ctpsa_acc     (const ctpsa_t *a, cpx_t v, ctpsa_t *c); // c += v*a, aliasing OK
 void     mad_ctpsa_scl     (const ctpsa_t *a, cpx_t v, ctpsa_t *c); // c  = v*a
