@@ -354,13 +354,10 @@ local function cofind_map (self, mflw)
   return mflw.mtbl, msort(mflw)
 end
 
--- cofind command -------------------------------------------------------------o
+-- cofind mflow ---------------------------------------------------------------o
 
--- input  status: Xset, Mset, Aset (from track or twiss)
--- output status: stable, unstable, singular, lost.
-
-local function exec (self)
-  local mapdef, radiate, coitr, cotol, costp in self
+local function make_mflow (self)
+  local radiate, coitr, cotol, costp in self
   assertf(is_positive(coitr), "invalid coitr %d (positive number expected)"   , coitr)
   assertf(is_positive(cotol), "invalid cotol %.15g (positive number expected)", cotol)
   assertf(is_positive(costp), "invalid costp %.15g (positive number expected)", costp)
@@ -368,9 +365,35 @@ local function exec (self)
   -- prepare template for tracking, block quantum radiation and photon tracking
   local _, mflw = track { exec=false } :copy_variables(self)
                         { nstep=0, radiate=lbool(radiate) }
+  mflw.ccmd = "cofind"
+  return mflw
+end
+
+-- cofind command -------------------------------------------------------------o
+
+local _id = {} -- identity (unique)
+
+-- input  status: Xset, Mset, Aset (from track or twiss)
+-- output status: stable, unstable, singular, lost.
+
+local function exec (self)
+  local mflw
+
+  -- retrieve or build mflw (and mtbl)
+  if self.mflow then
+    assert(self.mflow.__cofnd == _id, "invalid mflow (cofind mflow expected)")
+    mflw       = self.mflow
+    mflw.nstep = self.nstep or mflw.nstep  -- update volatile fields
+    mflw.info  = self.info  or mflw.info
+    mflw.debug = self.debug or mflw.debug
+    assert(is_integer(mflw.nstep), "invalid number of steps (integer expected)")
+  else
+    mflw = make_mflow(self)
+    mflw.__cofnd = _id
+  end
 
   -- search closed orbit
-  if mapdef
+  if mflw.mapdef
   then return cofind_map(self, mflw) -- use damap
   else return cofind_jac(self, mflw) -- use finite differences
   end

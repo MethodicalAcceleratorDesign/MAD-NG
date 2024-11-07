@@ -1275,6 +1275,49 @@ FUN(erfc) (const T *a, T *c)
   DBGFUN(<-);
 }
 
+void
+FUN(erfcx) (const T *a, T *c)
+{
+  assert(a && c); DBGFUN(->);
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
+
+  NUM a0 = a->coef[0];
+  NUM f0 = NUMF(erfcx)(a0);
+
+  ord_t to = c->mo;
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+
+  NUM ord_coef[to+1], H[to+2];
+  ord_coef[0] = f0;
+//  ord_coef[1] = -2*f0 + M_2_SQRTPI;
+  H[0] = 1;               // H_0
+  H[1] = f0 / M_2_SQRTPI; // H_{-1}
+  num_t cc = -M_2_SQRTPI;
+
+//#ifdef MAD_CTPSA_IMPL
+//    printf("o=%d, c=%.16e, H=%.16e%+.16ei, C=%.16e%+.16ei\n",
+//            0, cc, creal(H[1]), cimag(H[1]), creal(ord_coef[0]), cimag(ord_coef[0]));
+//#else
+//    printf("o=%d, c=%.16e, H=%.16e, C=%.16e\n", 0, cc, H[1], ord_coef[0]);
+//#endif
+
+  for (ord_t o = 1; o <= to; ++o) {
+    cc *= 2.*o;
+    H[o+1] = 0.5*(H[o-1] - 2*H[o]) / o; // H_{-o-1}
+    ord_coef[o] = cc*H[o+1];
+
+//#ifdef MAD_CTPSA_IMPL
+//    printf("o=%d, c=%.16e, H=%.16e%+.16ei, C=%.16e%+.16ei\n",
+//            o, cc, creal(H[o+1]), cimag(H[o+1]), creal(ord_coef[o]), cimag(ord_coef[o]));
+//#else
+//    printf("o=%d, c=%.16e, H=%.16e, C=%.16e\n", o, cc, H[o+1], ord_coef[o]);
+//#endif
+  }
+
+  fun_taylor(a,c,to,ord_coef);
+  DBGFUN(<-);
+}
+
 // --- without complex-by-value version ---------------------------------------o
 
 #ifdef MAD_CTPSA_IMPL
@@ -1299,23 +1342,25 @@ Recurrence of Taylor coefficients:
 (f(x).g(x))' = f'(x)g(x) + f(x)g'(x)
 
 -- sinc(z) -----
-[0]  sinc(z)      =   sin(z)/z ; cos(z)/z = [c] ; sin(z) = sz ; cos(z) = cz
-[1] (sinc(z))'    =  cz/z -1sz/z^2                                                     =  [c]-1*[0]/z
-[2] (sinc(z))''   = -sz/z -2cz/z^2 +2!sz/z^3                                           = -[0]-2*[1]/z
-[3] (sinc(z))'''  = -cz/z +3sz/z^2 +3!cz/z^3 - 3!sz/z^4                                = -[c]-3*[2]/z
-[4] (sinc(z))^(4) =  sz/z +4cz/z^2 -12sz/z^3 - 4!cz/z^4 + 4!sz/z^5                     =  [0]-4*[3]/z
-[5] (sinc(z))^(5) =  cz/z -5sz/z^2 -20cz/z^3 + 60sz/z^4 + 5!cz/z^5 -5!sz/z^6           =  [c]-5*[4]/z
-[6] (sinc(z))^(6) = -sz/z -6cz/z^2 +30sz/z^3 +120cz/z^4 -360sz/z^5 -6!cz/z^6 +6!sz/z^7 = -[0]-6*[5]/z
+[0] sinc(z)     =   sin(z)/z ; cos(z)/z = [c] ; sin(z) = sz ; cos(z) = cz
+[1] sinc(z)'    =  cz/z -1sz/z^2                                                     =  [c]-1*[0]/z
+[2] sinc(z)''   = -sz/z -2cz/z^2 +2!sz/z^3                                           = -[0]-2*[1]/z
+[3] sinc(z)'''  = -cz/z +3sz/z^2 +3!cz/z^3 - 3!sz/z^4                                = -[c]-3*[2]/z
+[4] sinc(z)^(4) =  sz/z +4cz/z^2 -12sz/z^3 - 4!cz/z^4 + 4!sz/z^5                     =  [0]-4*[3]/z
+[5] sinc(z)^(5) =  cz/z -5sz/z^2 -20cz/z^3 + 60sz/z^4 + 5!cz/z^5 -5!sz/z^6           =  [c]-5*[4]/z
+[6] sinc(z)^(6) = -sz/z -6cz/z^2 +30sz/z^3 +120cz/z^4 -360sz/z^5 -6!cz/z^6 +6!sz/z^7 = -[0]-6*[5]/z
 
 -- erf(z) -----
-[0]  erf(z)
-[1] (erf(z))'    =     1
-[2] (erf(z))''   = -2*      z                                 = -2*(0*[0]+[1]*z)
-[3] (erf(z))'''  = -2*(1 -2*z^2)                              = -2*(1*[1]+[2]*z)
-[4] (erf(z))^(4) = -2*(-4*z -2*(1-2*z^2)*z)                   = -2*(2*[2]+[3]*z)
-[5] (erf(z))^(5) = -2*(-6*(1-2*z^2) +4*(3*z-2*z^3)*z)         = -2*(3*[3]+[4]*z)
-[6] (erf(z))^(6) = -2*(16*(3*z-2*z^3) +4*(3-12*z^2+4*z^4)*z)  = -2*(4*[4]+[5]*z)
+[0] erf(z)
+[1] erf(z)'    =     1
+[2] erf(z)''   = -2*      z                                   = -2*(0*[0]+[1]*z)
+[3] erf(z)'''  = -2*(1 -2*z^2)                                = -2*(1*[1]+[2]*z)
+[4] erf(z)^(4) = -2*(-4*z -2*(1-2*z^2)*z)                     = -2*(2*[2]+[3]*z)
+[5] erf(z)^(5) = -2*(-6*(1-2*z^2) +4*(3*z-2*z^3)*z)           = -2*(3*[3]+[4]*z)
+[6] erf(z)^(6) = -2*(16*(3*z-2*z^3) +4*(3-12*z^2+4*z^4)*z)    = -2*(4*[4]+[5]*z)
                    % *exp(-z^2) *2/sqrt(pi)
+
+demonstration
 {0} = 0
 {1} = 1 *exp(-z^2)
 (exp(-z^2))'
@@ -1342,4 +1387,37 @@ Recurrence of Taylor coefficients:
 {6} = -2*(16*(3*z-2*z^3) +4*(3-12*z^2+4*z^4)*z) *exp(-z^2)    = -2*(4*{4}+{5}*z)
     = 4*(-30*z+40*z^3-8*z^5) *exp(-z^2)
 ...
+
+-- erfcx(z) -----
+erfcx(z)     = exp(z^2) erfc(z)        =              H_{-1}(z) * 2/sqrt(pi) = f0
+erfcx(z)'    = H_{-1}(z)' * 2/sqrt(pi) = -       2    H_{-2}(z) * 2/sqrt(pi) = 2(-f0*sqrt(pi)/2 + 1/2) * 2/sqrt(pi) = -2 f0 + 2/sqrt(pi)
+erfcx(z)''   = H_{-2}(z)' * 2/sqrt(pi) = -     2*4    H_{-3}(z) * 2/sqrt(pi)
+erfcx(z)'''  = H_{-3}(z)' * 2/sqrt(pi) = -   2*4*6    H_{-4}(z) * 2/sqrt(pi)
+erfcx(z)^(4) = H_{-4}(z)' * 2/sqrt(pi) = - 2*4*6*8    H_{-5}(z) * 2/sqrt(pi)
+erfcx(z)^(5) = H_{-5}(z)' * 2/sqrt(pi) = - 2*4*6*8*10 H_{-6}(z) * 2/sqrt(pi)
+erfcx(z)^(6) = H_{-6}(z)' * 2/sqrt(pi) = - 46080      H_{-7}(z) * 2/sqrt(pi)
+erfcx(z)^(7) = H_{-7}(z)' * 2/sqrt(pi) = - 645120     H_{-8}(z) * 2/sqrt(pi)
+erfcx(z)^(8) = H_{-8}(z)' * 2/sqrt(pi) = - 10321920   H_{-9}(z) * 2/sqrt(pi)
+
+H_{ 0}(z) = 1
+H_{-1}(z) = erfcx(z) / (2/sqrt(pi))
+H_{-2}(z) = -1/2 [2 H_{-1}(z) - H_{ 0}(z)] = -H_{-1}(z) + 1/2
+H_{-3}(z) = -1/4 [2 H_{-2}(z) - H_{-1}(z)]
+H_{-4}(z) = -1/6 [2 H_{-3}(z) - H_{-2}(z)]
+H_{-5}(z) = -1/8 [2 H_{-4}(z) - H_{-3}(z)]
+
+H_n(z)  = 1/(2n+2) [2 H_{n+1}(z) - H_{n+2}(z)], n < -1
+
+H_n(z)  = 2z H_{n-1}(z) - 2n H_{n-2}(z), n > 0
+H_n(z)' = 2n H_{n-1}(z)
+
+-- Wf(z) -----
+Wf(z)     = exp(-z^2) erfc(-iz)
+Wf(z)'    =  -2z                             Wf(z) +                    2i/sqrt(pi)
+Wf(z)''   =   2  (2z^2 - 1)                  Wf(z) - 2z                 2i/sqrt(pi)
+Wf(z)'''  =  -4z (2z^2 - 3)                  Wf(z) + 4  ( z^2- 1)       2i/sqrt(pi)
+Wf(z)^(4) =   4  (4z^4 - 12z^2 +  3)         Wf(z) - 4z (2z^2- 5)       2i/sqrt(pi)
+Wf(z)^(5) =  -8z (4z^4 - 20z^2 + 15)         Wf(z) + 8  (2z^4- 9z^2+ 4) 2i/sqrt(pi)
+Wf(z)^(6) =   8  (8z^6 - 60z^4 + 90z^2 - 15) Wf(z) - 8z (4z^4-28z^2+33) 2i/sqrt(pi)
+
 */
