@@ -1287,7 +1287,36 @@ void
 FUN(wf) (const T *a, T *c)
 {
   assert(a && c); DBGFUN(->);
-  // TODO
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
+
+  NUM a0 = a->coef[0];
+  NUM f0 = NUMF(wf)(a0);
+
+  ord_t to = c->mo;
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+
+  NUM ord_coef[to+1], p[to+1], q_o;
+  ord_coef[0] = f0;
+//  ord_coef[1] = -2*f0 + M_2_SQRTPI;
+  p[0] = 1    ;
+  p[1] = -2*a0;
+  
+  ord_coef[1] = -2*a0*f0 + I*M_2_SQRTPI;
+
+  for (ord_t o = 2; o <= to; ++o) {
+    q_o = 0;
+
+    for (ord_t i = 1; i <= o - 1; i++) {
+    q_o += (2*i - o + 1) >= 0 ? mad_num_fact(i) / mad_num_fact(2*i - o + 1) * p[2*i - o + 1] : 0;
+    }
+
+    p[o] = (-2*(o-1)*p[o-2] - 2*a0*p[o-1]); 
+    ord_coef[o] = p[o]*f0 + q_o*I*M_2_SQRTPI/mad_num_fact(o);
+
+
+  }
+
+  fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
 }
 
@@ -1333,6 +1362,7 @@ FUN(erfcx) (const T *a, T *c)
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
 }
+
 
 // --- without complex-by-value version ---------------------------------------o
 
