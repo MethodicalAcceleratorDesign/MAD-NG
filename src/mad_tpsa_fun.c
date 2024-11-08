@@ -1297,7 +1297,7 @@ FUN(wf) (const T *a, T *c)
 
   NUM ord_coef[to+1], p[to+1], q_o;
   ord_coef[0] = f0;
-//  ord_coef[1] = -2*f0 + M_2_SQRTPI;
+
   p[0] = 1    ;
   p[1] = -2*a0;
   
@@ -1309,9 +1309,11 @@ FUN(wf) (const T *a, T *c)
     for (ord_t i = 1; i <= o - 1; i++) {
     q_o += (2*i - o + 1) >= 0 ? mad_num_fact(i) / mad_num_fact(2*i - o + 1) * p[2*i - o + 1] : 0;
     }
-
-    p[o] = (-2*(o-1)*p[o-2] - 2*a0*p[o-1]); 
-    ord_coef[o] = p[o]*f0 + q_o*I*M_2_SQRTPI/mad_num_fact(o);
+  
+    p[o] = (-2*(o-1)*p[o-2] - 2*a0*p[o-1]);
+    printf("ciao"); 
+    printf("%d :%f, %f /n", o, p[o], q_o);
+    ord_coef[o] = (p[o]*f0 + q_o*I*M_2_SQRTPI)/mad_num_fact(o);
 
 
   }
