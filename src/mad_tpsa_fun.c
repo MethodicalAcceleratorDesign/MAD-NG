@@ -1287,7 +1287,42 @@ void
 FUN(wf) (const T *a, T *c)
 {
   assert(a && c); DBGFUN(->);
-  // TODO
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
+
+  NUM a0 = a->coef[0];
+  NUM f0 = NUMF(wf)(a0);
+
+  ord_t to = c->mo;
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+
+  NUM ord_coef[to+1], H[to+2];
+  ord_coef[0] = f0;
+//  ord_coef[1] = -2*f0 + M_2_SQRTPI;
+  H[0] = 1;               // H_0
+  H[1] = f0 / M_2_SQRTPI; // H_{-1}
+  num_t cc = -M_2_SQRTPI;
+
+//#ifdef MAD_CTPSA_IMPL
+//    printf("o=%d, c=%.16e, H=%.16e%+.16ei, C=%.16e%+.16ei\n",
+//            0, cc, creal(H[1]), cimag(H[1]), creal(ord_coef[0]), cimag(ord_coef[0]));
+//#else
+//    printf("o=%d, c=%.16e, H=%.16e, C=%.16e\n", 0, cc, H[1], ord_coef[0]);
+//#endif
+
+  for (ord_t o = 1; o <= to; ++o) {
+    cc *= 2.*o;
+    H[o+1] = 0.5*(H[o-1] - 2*H[o]) / o; // H_{-o-1}
+    ord_coef[o] = cc*H[o+1];
+
+//#ifdef MAD_CTPSA_IMPL
+//    printf("o=%d, c=%.16e, H=%.16e%+.16ei, C=%.16e%+.16ei\n",
+//            o, cc, creal(H[o+1]), cimag(H[o+1]), creal(ord_coef[o]), cimag(ord_coef[o]));
+//#else
+//    printf("o=%d, c=%.16e, H=%.16e, C=%.16e\n", o, cc, H[o+1], ord_coef[o]);
+//#endif
+  }
+
+  fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
 }
 
@@ -1319,7 +1354,7 @@ FUN(erfcx) (const T *a, T *c)
 
   for (ord_t o = 1; o <= to; ++o) {
     cc *= 2.*o;
-    H[o+1] = 0.5*(H[o-1] - 2*H[o]) / o; // H_{-o-1}
+    H[o+1] = 0.5*(H[o-1] - 2*a0*H[o]) / o; // H_{-o-1}
     ord_coef[o] = cc*H[o+1];
 
 //#ifdef MAD_CTPSA_IMPL
@@ -1417,23 +1452,28 @@ erfcx(z)^(8) = H_{-8}(z)' * 2/sqrt(pi) = - 10321920   H_{-9}(z) * 2/sqrt(pi)
 
 H_{ 0}(z) = 1
 H_{-1}(z) = erfcx(z) / (2/sqrt(pi))
-H_{-2}(z) = -1/2 [2 H_{-1}(z) - H_{ 0}(z)] = -H_{-1}(z) + 1/2
-H_{-3}(z) = -1/4 [2 H_{-2}(z) - H_{-1}(z)]
-H_{-4}(z) = -1/6 [2 H_{-3}(z) - H_{-2}(z)]
-H_{-5}(z) = -1/8 [2 H_{-4}(z) - H_{-3}(z)]
+H_{-2}(z) = -1/2 [2z H_{-1}(z) - H_{ 0}(z)] = -H_{-1}(z) + 1/2
+H_{-3}(z) = -1/4 [2z H_{-2}(z) - H_{-1}(z)]
+H_{-4}(z) = -1/6 [2z H_{-3}(z) - H_{-2}(z)]
+H_{-5}(z) = -1/8 [2z H_{-4}(z) - H_{-3}(z)]
 
-H_n(z)  = 1/(2n+2) [2 H_{n+1}(z) - H_{n+2}(z)], n < -1
+H_n(z)  = 1/(2n+2) [2z H_{n+1}(z) - H_{n+2}(z)], n < -1 -- does hold with the missing z!
 
 H_n(z)  = 2z H_{n-1}(z) - 2n H_{n-2}(z), n > 0
 H_n(z)' = 2n H_{n-1}(z)
 
+H_{n-2}(z) = 1/2n [2z H_{n-1}(z) - H_n(z)], n > 0
+H_{-3}(z) = -1/2 [2z H_{-2}(z) - H_{-1}(z)], n > 0
+
+Plot[HermiteH(-4, z) - (-1/6 (2z HermiteH(-3,z) - HermiteH(-2,z))), {z,-10,10}]
+
 -- Wf(z) -----
 Wf(z)     = exp(-z^2) erfc(-iz)
-Wf(z)'    =  -2z                             Wf(z) +                    2i/sqrt(pi)
-Wf(z)''   =   2  (2z^2 - 1)                  Wf(z) - 2z                 2i/sqrt(pi)
-Wf(z)'''  =  -4z (2z^2 - 3)                  Wf(z) + 4  ( z^2- 1)       2i/sqrt(pi)
-Wf(z)^(4) =   4  (4z^4 - 12z^2 +  3)         Wf(z) - 4z (2z^2- 5)       2i/sqrt(pi)
-Wf(z)^(5) =  -8z (4z^4 - 20z^2 + 15)         Wf(z) + 8  (2z^4- 9z^2+ 4) 2i/sqrt(pi)
-Wf(z)^(6) =   8  (8z^6 - 60z^4 + 90z^2 - 15) Wf(z) - 8z (4z^4-28z^2+33) 2i/sqrt(pi)
+Wf(z)'    =  -2    z^1                       Wf(z) +                     2i/sqrt(pi)
+Wf(z)''   =   2  (2z^2 - 1)                  Wf(z) - 2    z^1            2i/sqrt(pi)
+Wf(z)'''  =  -4  (2z^3 - 3z)                 Wf(z) + 4  ( z^2- 1)        2i/sqrt(pi)
+Wf(z)^(4) =   4  (4z^4 - 12z^2 +  3)         Wf(z) - 4  (2z^3- 5z)       2i/sqrt(pi)
+Wf(z)^(5) =  -8  (4z^5 - 20z^3 + 15z)        Wf(z) + 8  (2z^4- 9z^2+ 4)  2i/sqrt(pi)
+Wf(z)^(6) =   8  (8z^6 - 60z^4 + 90z^2 - 15) Wf(z) - 8  (4z^5-28z^3+33z) 2i/sqrt(pi)
 
 */
