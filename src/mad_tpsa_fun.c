@@ -1351,7 +1351,6 @@ FUN(wf) (const T *a, T *c)
 
     for (ord_t i = 1; i <= o - 1; i++) {
       q_o += (2*i - o + 1) >= 0 ? NUMF(powi)(-2,o-i-1)*mad_num_fact(i) / mad_num_fact(2*i - o + 1) * p[2*i - o + 1] : 0;
-      printf("%f\n", q_o);
     }
   
     p[o] = (-2*(o-1)*p[o-2] - 2*a0*p[o-1]);
