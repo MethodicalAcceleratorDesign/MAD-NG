@@ -1285,10 +1285,20 @@ FUN(erfcx) (const T *a, T *c) // normalized erfc
   num_t cc = -M_2_SQRTPI;
 
   for (ord_t o = 1; o <= to; ++o) {
-    cc *= 2.*o;
+    cc *= 2; // *o => o!
     H[o+1] = (0.5*H[o-1] - a0*H[o]) / o; // H_{-o-1}
-    ord_coef[o] = cc*H[o+1];
+    ord_coef[o] = cc*H[o+1]; // / o!
+#if 0
+#ifdef MAD_CTPSA_IMPL
+    printf("o=%d, n=%d, H_n=%+.16e%+.16e, C_o=%+.16e%+.16e\n", o, -(o+1), creal(H[o+1]), cimag(H[o+1]), creal(ord_coef[o]), cimag(ord_coef[o]));
+#else
+    printf("o=%d, n=%d, H_n=%+.16e, C_o=%+.16e\n", o, -(o+1), H[o+1], ord_coef[o]);
+#endif
+#endif
   }
+
+// n=-(o+1)
+// H_{n}(z) = H[o+1] = 1/(-2*o) [2z H[o] - H[o-1]] = [H[o-1]/2 - zH[o]] / o
 
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
@@ -1443,12 +1453,17 @@ H_n(z)' = 2n H_{n-1}(z)
 H_n(z)  = 2z H_{n-1}(z) - 2n H_{n-2}(z)        , n >  0
 H_n(z)  = 1/(2n+2) [2z H_{n+1}(z) - H_{n+2}(z)], n < -1
 
+H_n(z)  = 1/(2n+2) [2z H_{n+1}(z) - H_{n+2}(z)], n < -1
+
 H_{ 0}(z) = 1
 H_{-1}(z) = erfcx(z) / (2/sqrt(pi))
 H_{-2}(z) = -1/2 [2z H_{-1}(z) - H_{ 0}(z)]
 H_{-3}(z) = -1/4 [2z H_{-2}(z) - H_{-1}(z)]
 H_{-4}(z) = -1/6 [2z H_{-3}(z) - H_{-2}(z)]
 H_{-5}(z) = -1/8 [2z H_{-4}(z) - H_{-3}(z)]
+
+n=-(o+1)
+H_{n}(z) = H[o+1] = 1/(-2*o) [2z H[o] - H[o-1]] = [0.5*H[o-1] - z H[o]] / o
 
 Plot[HermiteH(-4, z) - (-1/6 (2z HermiteH(-3,z) - HermiteH(-2,z))), {z,-10,10}]
 
