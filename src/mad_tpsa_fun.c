@@ -1341,30 +1341,39 @@ FUN(wf) (const T *a, T *c)
   
   ord_coef[0] = f0;
   ord_coef[1] = -2*a0*f0 + I*M_2_SQRTPI;
-
-  if(fabs(a0)<15){
-  p[0] = 1    ;
-  p[1] = -2*a0;
-
-  for (ord_t o = 2; o <= to; ++o) {
-    q_o = 0;
-    for (ord_t i = 1; i <= o - 1; i++) {
-      q_o += (2*i - o + 1) >= 0 ? NUMF(powi)(-2,o-i-1)*mad_num_fact(i) / mad_num_fact(2*i - o + 1) * p[2*i - o + 1] : 0;
-    }
-    p[o] = (-2*(o-1)*p[o-2] - 2*a0*p[o-1]);
-    printf("%d: %f, %f, \n", o,p[o]);
-    printf("%d: %f, \n", o, q_o);
-    ord_coef[o] = (p[o]*f0 + q_o*I*M_2_SQRTPI)/mad_num_fact(o);
-  }
-  }
-
-  else if (fabs(creal(a0)) > fabs(cimag(a0)) || cimag(a0)>creal(a0)){
-    for (ord_t o = 2; o <= to; ++o) {
-
-    ord_coef[o] = -ord_coef[o-1]/a0;
-  }
-  }
   
+  if(fabs(a0)<=7 || (cimag(a0)<creal(a0) && cimag(a0)<0)){
+    p[0] = 1    ;
+    p[1] = -2*a0;
+
+    for (ord_t o = 2; o <= to; ++o) {
+      q_o = 0;
+      for (ord_t i = 1; i <= o - 1; i++) {
+        q_o += (2*i - o + 1) >= 0 ? NUMF(powi)(-2,o-i-1)*mad_num_fact(i) / mad_num_fact(2*i - o + 1) * p[2*i - o + 1] : 0;
+      }
+      p[o] = (-2*(o-1)*p[o-2] - 2*a0*p[o-1]);
+      ord_coef[o] = (p[o]*f0 + q_o*I*M_2_SQRTPI)/mad_num_fact(o);
+    }
+  }
+  else if (fabs(a0) > 7 && fabs(a0)<100){ //can add more terms to achieve machine precision
+    NUM fst_o = -I*M_2_SQRTPI/NUMF(powi)(a0,4)/2     ;
+    NUM scn_o = -I*M_2_SQRTPI/NUMF(powi)(a0,6)/2*5   ;
+    NUM thr_o = -I*M_2_SQRTPI/NUMF(powi)(a0,8)/24*315;
+
+    ord_coef[2] = -a0*(-2*a0*f0 + I*M_2_SQRTPI) - f0;
+    for (ord_t o = 3; o <= to; ++o) {
+      ord_coef[o] = fst_o+scn_o+thr_o;
+      fst_o = -fst_o/a0        ;
+      scn_o = -scn_o/a0*(o+3)/(o+1);
+      thr_o = -thr_o/a0*(o+5)/(o+1);
+    }
+  }
+
+  else{
+    for (ord_t o = 2; o <= to; ++o) {
+      ord_coef[o] = -ord_coef[o-1]/a0;
+    }
+  }
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
 }
