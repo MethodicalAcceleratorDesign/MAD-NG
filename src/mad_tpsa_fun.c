@@ -1342,7 +1342,7 @@ FUN(wf) (const T *a, T *c)
   ord_coef[0] = f0;
   ord_coef[1] = -2*a0*f0 + I*M_2_SQRTPI;
   
-  if(fabs(a0)<=7 || (cimag(a0)<creal(a0) && cimag(a0)<0)){
+  if(fabs(a0)<=7 || (cimag(a0)<creal(a0) && cimag(a0)<-creal(a0))){
     p[0] = 1    ;
     p[1] = -2*a0;
 
@@ -1355,7 +1355,8 @@ FUN(wf) (const T *a, T *c)
       ord_coef[o] = (p[o]*f0 + q_o*I*M_2_SQRTPI)/mad_num_fact(o);
     }
   }
-  else if (fabs(a0) > 7 && fabs(a0)<100){ //can add more terms but not needed (also can be analitycally computed)
+
+  else if (fabs(a0) > 7 && fabs(a0)<100){ //can add more terms but not needed (can be analitycally computed)
     NUM fst_o = -I*M_2_SQRTPI/NUMF(powi)(a0,4 )/2          ;
     NUM scn_o = -I*M_2_SQRTPI/NUMF(powi)(a0,6 )/2  *5      ;
     NUM thr_o = -I*M_2_SQRTPI/NUMF(powi)(a0,8 )/24 *315    ;
@@ -1382,6 +1383,7 @@ FUN(wf) (const T *a, T *c)
       ord_coef[o] = -ord_coef[o-1]/a0;
     }
   }
+
   fun_taylor(a,c,to,ord_coef);
   DBGFUN(<-);
 }
