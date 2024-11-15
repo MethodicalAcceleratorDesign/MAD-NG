@@ -1355,23 +1355,25 @@ FUN(wf) (const T *a, T *c)
       ord_coef[o] = (p[o]*f0 + q_o*I*M_2_SQRTPI)/mad_num_fact(o);
     }
   }
-  else if (fabs(a0) > 7 && fabs(a0)<100){ //can add more terms to achieve machine precision
-    NUM fst_o = -I*M_2_SQRTPI/NUMF(powi)(a0,4 )/2        ;
-    NUM scn_o = -I*M_2_SQRTPI/NUMF(powi)(a0,6 )/2*5      ;
-    NUM thr_o = -I*M_2_SQRTPI/NUMF(powi)(a0,8 )/24*315   ;
-    NUM frt_o = -I*M_2_SQRTPI/NUMF(powi)(a0,10)/12*945   ;
-    NUM fif_o = -I*M_2_SQRTPI/NUMF(powi)(a0,12)/32*17325 ;
-    NUM six_o = -I*M_2_SQRTPI/NUMF(powi)(a0,14)/32*135135;
+  else if (fabs(a0) > 7 && fabs(a0)<100){ //can add more terms but not needed (also can be analitycally computed)
+    NUM fst_o = -I*M_2_SQRTPI/NUMF(powi)(a0,4 )/2          ;
+    NUM scn_o = -I*M_2_SQRTPI/NUMF(powi)(a0,6 )/2  *5      ;
+    NUM thr_o = -I*M_2_SQRTPI/NUMF(powi)(a0,8 )/24 *315    ;
+    NUM frt_o = -I*M_2_SQRTPI/NUMF(powi)(a0,10)/12 *945    ;
+    NUM fif_o = -I*M_2_SQRTPI/NUMF(powi)(a0,12)/32 *17325  ;
+    NUM six_o = -I*M_2_SQRTPI/NUMF(powi)(a0,14)/32 *135135 ;
+    NUM svt_o = -I*M_2_SQRTPI/NUMF(powi)(a0,16)/128*4729725;
 
     ord_coef[2] = -a0*(-2*a0*f0 + I*M_2_SQRTPI) - f0;
     for (ord_t o = 3; o <= to; ++o) {
-      ord_coef[o] = fst_o + scn_o + thr_o + qrt_o + fif_o + six_o;
+      ord_coef[o] = fst_o + scn_o + thr_o + frt_o + fif_o + six_o + svt_o;
       fst_o = -fst_o/a0            ;
-      scn_o = -scn_o/a0*(o+3)/(o+1);
-      thr_o = -thr_o/a0*(o+5)/(o+1);
-      frt_o = -frt_o/a0*(o+7)/(o+1)            ;
-      fif_o = -fif_o/a0*(o+9)/(o+1);
+      scn_o = -scn_o/a0*(o+3) /(o+1);
+      thr_o = -thr_o/a0*(o+5) /(o+1);
+      frt_o = -frt_o/a0*(o+7) /(o+1);            ;
+      fif_o = -fif_o/a0*(o+9) /(o+1);
       six_o = -six_o/a0*(o+11)/(o+1);
+      svt_o = -svt_o/a0*(o+13)/(o+1);
     }
   }
 
