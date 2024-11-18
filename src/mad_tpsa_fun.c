@@ -1364,7 +1364,7 @@ FUN(wf) (const T *a, T *c)
     NUM fif_o = -I*M_2_SQRTPI/NUMF(powi)(a0,12)/32 *17325  ;
     NUM six_o = -I*M_2_SQRTPI/NUMF(powi)(a0,14)/32 *135135 ;
     NUM svt_o = -I*M_2_SQRTPI/NUMF(powi)(a0,16)/128*4729725;
-
+    //should start with the expansion from 1 directly otherwise underflow
     ord_coef[2] = -a0*(-2*a0*f0 + I*M_2_SQRTPI) - f0;
     for (ord_t o = 3; o <= to; ++o) {
       ord_coef[o] = fst_o + scn_o + thr_o + frt_o + fif_o + six_o + svt_o;
@@ -1379,7 +1379,7 @@ FUN(wf) (const T *a, T *c)
   }
 
   else{
-    for (ord_t o = 2; o <= to; ++o) {
+    for (ord_t o = 1; o <= to; ++o) {
       ord_coef[o] = -ord_coef[o-1]/a0;
     }
   }
