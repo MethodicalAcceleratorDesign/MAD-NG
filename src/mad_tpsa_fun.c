@@ -1327,47 +1327,43 @@ FUN(wf) (const T *a, T *c)
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
-  NUM ord_coef[to+1], p[to+1], q_o;
+  NUM ord_coef[to+1], p[to+1];
 
   ord_coef[0] = f0;
   ord_coef[1] = -2*a0*f0 + I*M_2_SQRTPI;
 
-  if (fabs(a0) <= 7 || (cimag(a0) < fabs(creal(a0)))) {
+  if (fabs(a0) <= 7 || (cimag(a0) < creal(a0) && cimag(a0) < -creal(a0))) {
     p[0] = 1;
     p[1] = -2*a0;
 
     for (ord_t o = 2; o <= to; ++o) {
-      q_o = 0;
-      for (ord_t i = 1; i <= o - 1; i++) {
-        q_o += (2*i - o + 1) >= 0 ? NUMF(powi)(-2,o-i-1)*mad_num_fact(i) / mad_num_fact(2*i - o + 1) * p[2*i - o + 1] : 0;
+      NUM q_o = 0;
+      for (ord_t i=o/2; i <= o-1; i++) {
+        int ii = 2*i-o+1;
+        q_o += NUMF(powi)(-2,o-i-1) * p[ii] * mad_num_fact(i)/mad_num_fact(ii);
       }
-      p[o] = (-2*(o-1)*p[o-2] - 2*a0*p[o-1]);
+      p[o] = -2*(o-1)*p[o-2] - 2*a0*p[o-1];
       ord_coef[o] = (p[o]*f0 + q_o*I*M_2_SQRTPI)/mad_num_fact(o);
     }
-  } else if (fabs(a0) > 7 && fabs(a0)<100) { // adjusted for double precision
 
-    NUM fst_o = -I*M_2_SQRTPI/NUMF(powi)(a0,4 )/2          ;
-    NUM scn_o = -I*M_2_SQRTPI/NUMF(powi)(a0,6 )/2  *5      ;
-    NUM thr_o = -I*M_2_SQRTPI/NUMF(powi)(a0,8 )/24 *315    ;
-    NUM frt_o = -I*M_2_SQRTPI/NUMF(powi)(a0,10)/12 *945    ;
-    NUM fif_o = -I*M_2_SQRTPI/NUMF(powi)(a0,12)/32 *17325  ;
-    NUM six_o = -I*M_2_SQRTPI/NUMF(powi)(a0,14)/32 *135135 ;
-    NUM svt_o = -I*M_2_SQRTPI/NUMF(powi)(a0,16)/128*4729725;
+  } else if (fabs(a0) > 7 && fabs(a0) < 100) { // adjusted for double precision
+    NUM coef[7] = {
+      -I*M_2_SQRTPI/NUMF(powi)(a0,4 ) /2,
+      -I*M_2_SQRTPI/NUMF(powi)(a0,6 ) /2   *5,
+      -I*M_2_SQRTPI/NUMF(powi)(a0,8 ) /8   *105,
+      -I*M_2_SQRTPI/NUMF(powi)(a0,10) /8   *630,
+      -I*M_2_SQRTPI/NUMF(powi)(a0,12) /32  *17325,
+      -I*M_2_SQRTPI/NUMF(powi)(a0,14) /32  *135135,
+      -I*M_2_SQRTPI/NUMF(powi)(a0,16) /128 *4729725 };
 
     ord_coef[2] = -a0*(-2*a0*f0 + I*M_2_SQRTPI) - f0;
 
     for (ord_t o = 3; o <= to; ++o) {
-      ord_coef[o] = fst_o + scn_o + thr_o + frt_o + fif_o + six_o + svt_o;
-      fst_o = -fst_o/a0            ;
-      scn_o = -scn_o/a0*(o+3) /(o+1);
-      thr_o = -thr_o/a0*(o+5) /(o+1);
-      frt_o = -frt_o/a0*(o+7) /(o+1);            ;
-      fif_o = -fif_o/a0*(o+9) /(o+1);
-      six_o = -six_o/a0*(o+11)/(o+1);
-      svt_o = -svt_o/a0*(o+13)/(o+1);
+      FOR(i,7) ord_coef[o] = coef[i];
+      FOR(i,7) coef[i] *= -1/a0*(2*i+o+1.)/(o+1.);
     }
   } else {
-    for (ord_t o = 2; o <= to; ++o)
+    for (ord_t o = 1; o <= to; ++o)
       ord_coef[o] = -ord_coef[o-1]/a0;
   }
 
