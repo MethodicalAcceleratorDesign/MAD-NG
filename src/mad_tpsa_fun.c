@@ -1267,34 +1267,6 @@ FUN(erf) (const T *a, T *c)
 }
 
 void
-FUN(erfcx) (const T *a, T *c) // normalized erfc
-{
-  assert(a && c); DBGFUN(->);
-  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
-
-  NUM a0 = a->coef[0];
-  NUM f0 = NUMF(erfcx)(a0);
-
-  ord_t to = c->mo;
-  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
-
-  NUM ord_coef[to+1], H[to+2];
-  ord_coef[0] = f0;
-  H[0] = 1;               // H_0
-  H[1] = f0 / M_2_SQRTPI; // H_{-1}
-  num_t cc = -M_2_SQRTPI;
-
-  for (ord_t o = 1; o <= to; ++o) {
-    cc *= 2.*o;
-    H[o+1] = (0.5*H[o-1] - a0*H[o]) / o; // H_{-o-1}
-    ord_coef[o] = cc*H[o+1];
-  }
-
-  fun_taylor(a,c,to,ord_coef);
-  DBGFUN(<-);
-}
-
-void
 FUN(erfc) (const T *a, T *c)
 {
   assert(a && c); DBGFUN(->);
@@ -1305,7 +1277,7 @@ FUN(erfc) (const T *a, T *c)
 }
 
 void
-FUN(erfi) (const T *a, T *c)
+FUN(erfi) (const T *a, T *c) // erfi(z) = -i erf(iz)
 {
   assert(a && c); DBGFUN(->);
   ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
@@ -1326,24 +1298,42 @@ FUN(erfi) (const T *a, T *c)
 }
 
 void
+FUN(erfcx) (const T *a, T *c) // normalized erfc, erfcx(z) = wf(iz)
+{
+  assert(a && c); DBGFUN(->);
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
+#ifdef MAD_CTPSA_IMPL
+  mad_ctpsa_scl(a, I, c);
+  mad_ctpsa_wf (c, c);
+#else
+  ctpsa_t *t = GET_TMPC(c);
+  mad_ctpsa_cplx(a , NULL, t);
+  mad_ctpsa_scl (t, I, t);
+  mad_ctpsa_wf  (t, t);
+  mad_ctpsa_real(t, c);
+  REL_TMPC(t);
+#endif
+  DBGFUN(<-);
+}
+
+void
 FUN(wf) (const T *a, T *c)
 {
   assert(a && c); DBGFUN(->);
   ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
-
   NUM a0 = a->coef[0];
   NUM f0 = NUMF(wf)(a0);
 
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
-  NUM q_o, ord_coef[to+1], p[to+1];
-  
+  NUM ord_coef[to+1], p[to+1], q_o;
+
   ord_coef[0] = f0;
   ord_coef[1] = -2*a0*f0 + I*M_2_SQRTPI;
-  
-  if(fabs(a0)<=7 || (cimag(a0)<creal(a0) && cimag(a0)<-creal(a0))){
-    p[0] = 1    ;
+
+  if (fabs(a0) <= 7 || (cimag(a0) < fabs(creal(a0)))) {
+    p[0] = 1;
     p[1] = -2*a0;
 
     for (ord_t o = 2; o <= to; ++o) {
@@ -1354,9 +1344,8 @@ FUN(wf) (const T *a, T *c)
       p[o] = (-2*(o-1)*p[o-2] - 2*a0*p[o-1]);
       ord_coef[o] = (p[o]*f0 + q_o*I*M_2_SQRTPI)/mad_num_fact(o);
     }
-  }
+  } else if (fabs(a0) > 7 && fabs(a0)<100) { // adjusted for double precision
 
-  else if (fabs(a0) > 7 && fabs(a0)<100){ //can add more terms but not needed (can be analitycally computed)
     NUM fst_o = -I*M_2_SQRTPI/NUMF(powi)(a0,4 )/2          ;
     NUM scn_o = -I*M_2_SQRTPI/NUMF(powi)(a0,6 )/2  *5      ;
     NUM thr_o = -I*M_2_SQRTPI/NUMF(powi)(a0,8 )/24 *315    ;
@@ -1364,8 +1353,9 @@ FUN(wf) (const T *a, T *c)
     NUM fif_o = -I*M_2_SQRTPI/NUMF(powi)(a0,12)/32 *17325  ;
     NUM six_o = -I*M_2_SQRTPI/NUMF(powi)(a0,14)/32 *135135 ;
     NUM svt_o = -I*M_2_SQRTPI/NUMF(powi)(a0,16)/128*4729725;
-    //should start with the expansion from 1 directly otherwise underflow
+
     ord_coef[2] = -a0*(-2*a0*f0 + I*M_2_SQRTPI) - f0;
+
     for (ord_t o = 3; o <= to; ++o) {
       ord_coef[o] = fst_o + scn_o + thr_o + frt_o + fif_o + six_o + svt_o;
       fst_o = -fst_o/a0            ;
@@ -1376,12 +1366,9 @@ FUN(wf) (const T *a, T *c)
       six_o = -six_o/a0*(o+11)/(o+1);
       svt_o = -svt_o/a0*(o+13)/(o+1);
     }
-  }
-
-  else{
-    for (ord_t o = 1; o <= to; ++o) {
+  } else {
+    for (ord_t o = 2; o <= to; ++o)
       ord_coef[o] = -ord_coef[o-1]/a0;
-    }
   }
 
   fun_taylor(a,c,to,ord_coef);
@@ -1488,4 +1475,80 @@ Wf(z)'''  =  -4  (2z^3 - 3z)                 Wf(z) + 4  ( z^2- 1)        2i/sqrt
 Wf(z)^(4) =   4  (4z^4 - 12z^2 +  3)         Wf(z) - 4  (2z^3- 5z)       2i/sqrt(pi)
 Wf(z)^(5) =  -8  (4z^5 - 20z^3 + 15z)        Wf(z) + 8  (2z^4- 9z^2+ 4)  2i/sqrt(pi)
 Wf(z)^(6) =   8  (8z^6 - 60z^4 + 90z^2 - 15) Wf(z) - 8  (4z^5-28z^3+33z) 2i/sqrt(pi)
+*/
+
+
+/* OLD erfcx & wf
+
+void
+FUN(erfcx) (const T *a, T *c) // normalized erfc
+{
+  assert(a && c); DBGFUN(->);
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
+
+  NUM a0 = a->coef[0];
+  NUM f0 = NUMF(erfcx)(a0);
+
+  ord_t to = c->mo;
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+
+  NUM ord_coef[to+1], H[to+2];
+  ord_coef[0] = f0;
+  H[0] = 1;               // H_0
+  H[1] = f0 / M_2_SQRTPI; // H_{-1}
+  num_t cc = M_2_SQRTPI;
+
+  for (ord_t o = 1; o <= to; ++o) {
+    cc *= -2; // *o => o!
+    H[o+1] = (0.5*H[o-1] - a0*H[o]) / o; // H_{-o-1}
+    ord_coef[o] = cc*H[o+1]; // / o!
+#if 0
+#ifdef MAD_CTPSA_IMPL
+    printf("o=%d, n=%d, H_n=%+.16e%+.16e, C_o=%+.16e%+.16e\n", o, -(o+1), creal(H[o+1]), cimag(H[o+1]), creal(ord_coef[o]), cimag(ord_coef[o]));
+#else
+    printf("o=%d, n=%d, H_n=%+.16e, C_o=%+.16e\n", o, -(o+1), H[o+1], ord_coef[o]);
+#endif
+#endif
+  }
+
+// n=-(o+1)
+// H_{n}(z) = H[o+1] = 1/(-2*o) [2z H[o] - H[o-1]] = [H[o-1]/2 - zH[o]] / o
+
+  fun_taylor(a,c,to,ord_coef);
+  DBGFUN(<-);
+}
+
+void
+FUN(wf) (const T *a, T *c)
+{
+  assert(a && c); DBGFUN(->);
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
+  NUM a0 = a->coef[0];
+  NUM f0 = NUMF(wf)(a0);
+
+  ord_t to = c->mo;
+  if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
+
+  NUM ord_coef[to+1];
+
+  printf("a0=" FMT "\n", VAL(a0));
+
+  if (fabs(a0) > 10) {
+    ord_coef[0] = f0/a0;
+    ord_coef[1] = (-2*a0*f0 + I*M_2_SQRTPI)/a0;
+    for (ord_t o = 2; o <= to; ++o)
+      ord_coef[o] = -2*(ord_coef[o-1] + (o-1)*ord_coef[o-2]/a0);
+    for (ord_t o = 2; o <= to; ++o) ord_coef[o] /= mad_num_fact(o);
+    fun_taylor(a,c,to,ord_coef);
+    FUN(scl)(c, a0, c);
+  } else {
+    ord_coef[0] = f0;
+    ord_coef[1] = -2*a0*f0 + I*M_2_SQRTPI;
+    for (ord_t o = 2; o <= to; ++o)
+      ord_coef[o] = -2*(a0*ord_coef[o-1] + (o-1)*ord_coef[o-2]);
+    for (ord_t o = 2; o <= to; ++o) ord_coef[o] /= mad_num_fact(o);
+    fun_taylor(a,c,to,ord_coef);
+  }
+  DBGFUN(<-);
+}
 */
