@@ -1458,46 +1458,48 @@ end
 
 -- DKD, TKT -------------------------------------------------------------------o
 
-local BB = require 'madl_bbeam' -- beambeam physics
+local BB = require 'madl_bbeam' -- beambeam shapes
 
 function M.bbeam_kick (elm, m, lw, istp)                                     -- unchecked
   m.atdebug(elm, m, 'bbeam_kick:0')
 
-  local kckorbit in option
-  local xma, yma, sigx, sigy, sigtol, bdir, bbeam, dpx, dpy in elm
+  local xma, yma, dpx, dpy, sigx, sigy, sigtol, npart, charge, bbdir, bbeam in elm
+  local korb = elm.kckorbit or option.kckorbit
   local edir, sdir, beam in m
-  local           pc =  beam.pc
-  local  beta,   chg =  beam.beta,  beam.charge*edir*sdir
-  local bbeta, bbchg = bbeam.beta, bbeam.charge*bdir
-  local         bchg = chg*bbchg
+  local pc, beta in beam
+  local npart = bbeam and bbeam.npart  or npart
+  local bbeta = bbeam and bbeam.beta   or beta
+  local bbchg = bbeam and bbeam.charge or charge
+  local bbkck = -1e-9*qelect*npart*bbchg*bbdir
 
   for i=1,m.npar do
-    if not (kckorbit or is_damap(m[i])) then goto continue end
+    if not (korb or is_damap(m[i])) then goto continue end
 
     local x, px, y, py, pt, beam in m[i]
-    local bchg = beam and beam.charge*edir*sdir*bbchg or bchg
-    local beta = beam and beam.beta or beta
-    local pc   = beam and beam.pc   or pc
+
+    if beam then pc, beta = beam.pc, beam.beta end
+
+    local bet = pt2beta(pt, beta)
+    local kck = bbkck * (1 + bet*bbeta)/(pc * (bet+bbeta))
 
     x = x - xma
     y = y - yma
 
     -- TODO: handle more shapes
-    local Ex, Ey = BB.ExEy_GxGy_gauss(x, y, sigx, sigy, sigtol, true)
+    local Ex, Ey = BB.ExEy_GxGy_gauss(x, y, sigx, sigy, sigtol)
 
-    local bet = pt2beta(pt, beta)
-    local kck = (qelect*bchg)*(1 + bet*bbeta)/(pc * (bet+bbeta))
     local bpx = kck*Ex
     local bpy = kck*Ey
 
-    if not kckorbit then -- clear orbit kick
-      bpx:clrord(0)
-      bpy:clrord(0)
+    if not korb then -- clear orbit kick
+      bpx:set0(0)
+      bpy:set0(0)
     end
 
     m[i].px = px + bpx - dpx
     m[i].py = py + bpy - dpy
-  ::continue::
+
+    ::continue::
   end
 
   m.atdebug(elm, m, 'bbeam_kick:1')

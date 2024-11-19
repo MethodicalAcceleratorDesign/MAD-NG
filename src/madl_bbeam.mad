@@ -26,12 +26,14 @@ local M = {}
 -- locals ---------------------------------------------------------------------o
 
 local inf, twopi, sqrtpi, epsilon0  in MAD.constant
-local abs, exp, sqrt, cplx          in MAD.gmath
+local abs, exp, sqrt, cplx, min     in MAD.gmath
 
 local  twopi_eps0 = twopi*epsilon0
 local _twopi_eps0 = 1/twopi_eps0
 
 -- implementation -------------------------------------------------------------o
+
+-- see http://inspirehep.net/record/316705/files/slac-pub-5582.pdf
 
 local function ExEy_gauss_round (x, y, sig)
   local r2 = x^2 + y^2
@@ -51,33 +53,25 @@ local function ExEy_gauss_ellip (x, y, sigx, sigy)
   if sigx == sigy then return ExEy_gauss_round(x,y,sigx) end
 
 -- Always go to the first quadrant and then apply the signs a posteriori
--- numerically more stable. Why not use complex numbers & GTPSA?
--- (see http://inspirehep.net/record/316705/files/slac-pub-5582.pdf)
-  local abx, aby = abs(x), abs(y)
-  local S, zetaBE_re, zetaBE_im, etaBE_re, etaBE_im
+-- numerically more stable.
+  local abx, aby, swap = abs(x), abs(y), false
 
-  if sigx > sigy then
-    S         = sqrt(2*(sigx^2 - sigy^2))
-    zetaBE_re = abx/S
-    zetaBE_im = aby/S
-     etaBE_re = sigy/sigx * zetaBE_re
-     etaBE_im = sigx/sigy * zetaBE_im
-  else
-    S         = sqrt(2*(sigy^2 - sigx^2))
-    zetaBE_re = aby/S
-    zetaBE_im = abx/S
-     etaBE_re = sigx/sigy * zetaBE_re
-     etaBE_im = sigy/sigx * zetaBE_im
+  if sigx < sigy then
+    abx, aby, sigx, sigy, swap = aby, abx, sigy, sigx, true
   end
 
-  local factBE = 1/((twopi_eps0*sqrt_pi) * S)
+  local      S = sqrt(2*(sigx^2 - sigy^2))
+  local zetaBE = cplx(abx, aby)/S
+  local  etaBE = cplx(sigy/sigx*abx, sigx/sigy*aby)/S
+
+  local w_zetaBE = zetaBE:wf() --:print("wzeta",0)
+  local  w_etaBE =  etaBE:wf() --:print("weta" ,0)
+
+  local factBE = 1/(2*epsilon0*sqrtpi*S)
   local  expBE = exp(-0.5*((abx/sigx)^2 + (aby/sigy)^2))
+  local Ey, Ex = (factBE*(w_zetaBE - w_etaBE*expBE)):reim()
 
-  local w_zetaBE_re, w_zetaBE_im = cplx(zetaBE_re, zetaBE_im):wf():reim()
-  local  w_etaBE_re,  w_etaBE_im = cplx( etaBE_re,  etaBE_im):wf():reim()
-
-  local Ex = factBE*(w_zetaBE_im - w_etaBE_im*expBE)
-  local Ey = factBE*(w_zetaBE_re - w_etaBE_re*expBE)
+  if swap then Ex, Ey = Ey, Ex end
 
   if x < 0 then Ex = -Ex end
   if y < 0 then Ey = -Ey end
@@ -85,7 +79,8 @@ local function ExEy_gauss_ellip (x, y, sigx, sigy)
   return Ex, Ey
 end
 
-function M.ExEy_GxGy_gauss (x, y, sigx, sigy, mindif, skip_Gs)
+function M.ExEy_GxGy_gauss (x, y, sigx, sigy, sigdif, do_Gs)
+  local mindif = sigdif or 1e-12
   local Ex, Ey, Gx, Gy
 
   if abs(sigx - sigy) < mindif then
@@ -93,7 +88,7 @@ function M.ExEy_GxGy_gauss (x, y, sigx, sigy, mindif, skip_Gs)
 
     Ex, Ey = ExEy_gauss_round(x, y, sig)
 
-    if not skip_Gs then
+    if do_Gs then
       if abs(x) + abs(y) < mindif then
         Gx, Gy = 0, 0
       else
@@ -109,7 +104,7 @@ function M.ExEy_GxGy_gauss (x, y, sigx, sigy, mindif, skip_Gs)
   else
     Ex, Ey = ExEy_gauss_ellip(x, y, sigx, sigy)
 
-    if not skip_Gs then
+    if do_Gs then
       local c1 = 0.5/(sigx^2 - sigy^2)
       local c2 = x*Ex + y*Ey
       local c3 = exp(-0.5*((x/sigx)^2 + (y/sigy)^2))
@@ -117,6 +112,8 @@ function M.ExEy_GxGy_gauss (x, y, sigx, sigy, mindif, skip_Gs)
       Gy =  c1*(c2 + _twopi_eps0 * (sigx/sigy * c3 - 1))
     end
   end
+
+--Ex:print("Ex",0) ; Ey:print("Ey",0)
 
   return Ex, Ey, Gx, Gy
 end
