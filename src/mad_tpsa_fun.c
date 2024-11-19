@@ -1338,10 +1338,12 @@ FUN(wf) (const T *a, T *c)
 
     for (ord_t o = 2; o <= to; ++o) {
       NUM q_o = 0;
+#ifdef MAD_CTPSA_IMPL
       for (ord_t i=o/2; i <= o-1; i++) {
         int ii = 2*i-o+1;
         q_o += NUMF(powi)(-2,o-i-1) * p[ii] * mad_num_fact(i)/mad_num_fact(ii);
       }
+#endif
       p[o] = -2*(o-1)*p[o-2] - 2*a0*p[o-1];
       ord_coef[o] = (p[o]*f0 + q_o*I*M_2_SQRTPI)/mad_num_fact(o);
     }
@@ -1360,7 +1362,7 @@ FUN(wf) (const T *a, T *c)
 
     for (ord_t o = 3; o <= to; ++o) {
       FOR(i,7) ord_coef[o] = coef[i];
-      FOR(i,7) coef[i] *= -1/a0*(2*i+o+1.)/(o+1.);
+      FOR(i,7) coef[i] *= -1/a0*(2.*i+o+1)/(o+1);
     }
   } else {
     for (ord_t o = 1; o <= to; ++o)
