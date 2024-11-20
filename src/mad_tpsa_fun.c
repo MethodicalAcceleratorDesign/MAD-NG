@@ -1327,12 +1327,12 @@ FUN(wf) (const T *a, T *c)
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
-  NUM ord_coef[to+1], p[to+1];
-
+  NUM ord_coef[to+1];
   ord_coef[0] = f0;
   ord_coef[1] = -2*a0*f0 + I*M_2_SQRTPI;
 
   if (fabs(a0) <= 7 || (cimag(a0) < creal(a0) && cimag(a0) < -creal(a0))) {
+    NUM p[to+1];
     p[0] = 1;
     p[1] = -2*a0;
 
@@ -1361,7 +1361,8 @@ FUN(wf) (const T *a, T *c)
     ord_coef[2] = -a0*(-2*a0*f0 + I*M_2_SQRTPI) - f0;
 
     for (ord_t o = 3; o <= to; ++o) {
-      FOR(i,7) ord_coef[o] = coef[i];
+      ord_coef[o] = 0;
+      FOR(i,7) ord_coef[o] += coef[i];
       FOR(i,7) coef[i] *= -1/a0*(2.*i+o+1)/(o+1);
     }
   } else {
