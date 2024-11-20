@@ -1327,21 +1327,23 @@ FUN(wf) (const T *a, T *c)
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
 
-  NUM ord_coef[to+1], p[to+1];
-
+  NUM ord_coef[to+1];
   ord_coef[0] = f0;
   ord_coef[1] = -2*a0*f0 + I*M_2_SQRTPI;
 
-  if (fabs(a0) <= 10 || (cimag(a0) < creal(a0) && cimag(a0) < -creal(a0))) {
+  if (fabs(a0) <= 7 || (cimag(a0) < creal(a0) && cimag(a0) < -creal(a0))) {
+    NUM p[to+1];
     p[0] = 1;
     p[1] = -2*a0;
 
     for (ord_t o = 2; o <= to; ++o) {
       NUM q_o = 0;
+#ifdef MAD_CTPSA_IMPL
       for (ord_t i=o/2; i <= o-1; i++) {
         int ii = 2*i-o+1;
         q_o += NUMF(powi)(-2,o-i-1) * p[ii] * mad_num_fact(i)/mad_num_fact(ii);
       }
+#endif
       p[o] = -2*(o-1)*p[o-2] - 2*a0*p[o-1];
       ord_coef[o] = (p[o]*f0 + q_o*I*M_2_SQRTPI)/mad_num_fact(o);
     }
@@ -1355,12 +1357,19 @@ FUN(wf) (const T *a, T *c)
       -I*M_2_SQRTPI/NUMF(powi)(a0,12) /32  *17325,
       -I*M_2_SQRTPI/NUMF(powi)(a0,14) /32  *135135,
       -I*M_2_SQRTPI/NUMF(powi)(a0,16) /128 *4729725 };
-
+    
+    NUM p[to+1];
+    NUM expz2 = exp(-a0*a0);
+    p[0] = 1;
+    p[1] = -2*a0;
+    p[2] = 4*a0*a0 -2;
     ord_coef[2] = -a0*(-2*a0*f0 + I*M_2_SQRTPI) - f0;
 
     for (ord_t o = 3; o <= to; ++o) {
-      FOR(i,7) ord_coef[o] = coef[i];
-      FOR(i,7) coef[i] *= -1/a0*(2*i+o+1.)/(o+1.);
+      p[o] = -2*(o-1)*p[o-2] - 2*a0*p[o-1];
+      ord_coef[o] = expz2*p[o]/mad_num_fact(o);
+      FOR(i,7) ord_coef[o] += coef[i];
+      FOR(i,7) coef[i] *= -1/a0*(2.*i+o+1)/(o+1);
     }
   } else {
     for (ord_t o = 1; o <= to; ++o)
@@ -1454,12 +1463,17 @@ H_n(z)' = 2n H_{n-1}(z)
 H_n(z)  = 2z H_{n-1}(z) - 2n H_{n-2}(z)        , n >  0
 H_n(z)  = 1/(2n+2) [2z H_{n+1}(z) - H_{n+2}(z)], n < -1
 
+H_n(z)  = 1/(2n+2) [2z H_{n+1}(z) - H_{n+2}(z)], n < -1
+
 H_{ 0}(z) = 1
 H_{-1}(z) = erfcx(z) / (2/sqrt(pi))
 H_{-2}(z) = -1/2 [2z H_{-1}(z) - H_{ 0}(z)]
 H_{-3}(z) = -1/4 [2z H_{-2}(z) - H_{-1}(z)]
 H_{-4}(z) = -1/6 [2z H_{-3}(z) - H_{-2}(z)]
 H_{-5}(z) = -1/8 [2z H_{-4}(z) - H_{-3}(z)]
+
+n=-(o+1)
+H_{n}(z) = H[o+1] = 1/(-2*o) [2z H[o] - H[o-1]] = [0.5*H[o-1] - z H[o]] / o
 
 Plot[HermiteH(-4, z) - (-1/6 (2z HermiteH(-3,z) - HermiteH(-2,z))), {z,-10,10}]
 
