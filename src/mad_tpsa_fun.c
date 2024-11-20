@@ -1332,7 +1332,7 @@ FUN(wf) (const T *a, T *c)
   ord_coef[0] = f0;
   ord_coef[1] = -2*a0*f0 + I*M_2_SQRTPI;
 
-  if (fabs(a0) <= 7 || (cimag(a0) < creal(a0) && cimag(a0) < -creal(a0))) {
+  if (fabs(a0) <= 10 || (cimag(a0) < creal(a0) && cimag(a0) < -creal(a0))) {
     p[0] = 1;
     p[1] = -2*a0;
 
