@@ -1358,10 +1358,17 @@ FUN(wf) (const T *a, T *c)
       -I*M_2_SQRTPI/NUMF(powi)(a0,14) /32  *135135,
       -I*M_2_SQRTPI/NUMF(powi)(a0,16) /128 *4729725 };
 
+    NUM p[to+1];
+    NUM ez2 = exp(-a0*a0);
+    p[0] = 1;
+    p[1] = -2*a0;
+    p[2] = 4*a0*a0 -2;
+
     ord_coef[2] = -a0*(-2*a0*f0 + I*M_2_SQRTPI) - f0;
 
     for (ord_t o = 3; o <= to; ++o) {
-      ord_coef[o] = 0;
+      p[o] = -2*(o-1)*p[o-2] - 2*a0*p[o-1];
+      ord_coef[o] = ez2*p[o]/mad_num_fact(o);
       FOR(i,7) ord_coef[o] += coef[i];
       FOR(i,7) coef[i] *= -1/a0*(2.*i+o+1)/(o+1);
     }
