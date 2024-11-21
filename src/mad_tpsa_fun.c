@@ -1359,8 +1359,6 @@ FUN(wf) (const T *a, T *c)
       -I*M_SQRTPI/(a08*a04)/16*17325,
       -I*M_SQRTPI/(a08*a06)/16*135135,
       -I*M_SQRTPI/(a08*a08)/64*4729725 };
-#else
-    NUM coef[7] = { 0 };
 #endif
 
     NUM p[to+1];
@@ -1375,8 +1373,10 @@ FUN(wf) (const T *a, T *c)
     for (ord_t o = 3; o <= to; ++o) {
       p[o] = -2*(o-1)*p[o-2] - 2*a0r*p[o-1];
       ord_coef[o] = ez2*p[o]/mad_num_fact(o);
+#ifdef MAD_CTPSA_IMPL
       FOR(i,7) ord_coef[o] += coef[i];
       FOR(i,7) coef[i] *= -1/a0*(2.*i+o+1)/(o+1);
+#endif
     }
   } else {
     for (ord_t o = 1; o <= to; ++o)
