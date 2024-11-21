@@ -107,6 +107,9 @@ str_t mad_release = MKSTR(MAD_VERSION)
 static int dofile   (lua_State *L, str_t name);
 static int dostring (lua_State *L, str_t s, str_t name);
 static int report   (lua_State *L, int status);
+static int  dojitcmd(lua_State *L, const char *cmd);
+static void lstop   (lua_State *L, lua_Debug *ar);
+static void laction (int i);
 
 #if defined(__MINGW32__) || defined(__MINGW64__)
 #include <sys/stat.h>
@@ -151,6 +154,7 @@ LUALIB_API void (mad_error) (str_t fn, str_t fmt, ...)
   vfprintf(stderr, fmt, va);
   va_end(va);
   fputc('\n', stderr);
+  dojitcmd(globalL, "flush");
   lua_pushstring(globalL, "");  // NOT SAFE! (but let's try...)
   lua_error(globalL);
   exit(EXIT_FAILURE); /* never reached */
@@ -451,6 +455,7 @@ found:
   setenv("LUA_CPATH", env, 1);
 
 #ifndef MADNG_NORUNINFO
+#if LUAJIT_OS != LUAJIT_OS_WINDOWS
   {
     char buf[1024];
     snprintf(buf, sizeof buf, "echo \"MADNG RUN: %s %s [%s] [%s] [%s]\""
@@ -459,6 +464,7 @@ found:
               "laurent", "deniau", "cern.ch");
     system(buf);
   }
+#endif
 #endif
 }
 
@@ -511,20 +517,10 @@ enum { sig_ni = sizeof sig_i / sizeof *sig_i,
 
 static void mad_signal(int sig)
 {
-
-  int i = 0;
-  while (i < sig_ni && sig_i[i] != sig) ++i;
-
-  // NOT SAFE! (but let's try...)
-  fflush(stdout);
-  fprintf(stderr, "%s: %s\n", sig_s[i], sig_m[i]);
-  lua_pushstring(globalL, "");
-  lua_error(globalL);
-  exit(EXIT_FAILURE); /* never reached */
+  FOR(i,sig_ni)
+    if (sig_i[i] == sig) (mad_error)(sig_s[i], "%s", sig_m[i]);
+  lstop(globalL, NULL);
 }
-
-// SIGINT forward decl
-static void laction(int i);
 
 static void mad_setsignal (void)
 {
