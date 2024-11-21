@@ -517,9 +517,8 @@ enum { sig_ni = sizeof sig_i / sizeof *sig_i,
 
 static void mad_signal(int sig)
 {
-  FOR(i,sig_ni)
-    if (sig_i[i] == sig) (mad_error)(sig_s[i], "%s", sig_m[i]);
-  lstop(globalL, NULL);
+  FOR(i,sig_ni) if (sig_i[i] == sig) (mad_error)(sig_s[i], "%s", sig_m[i]);
+  abort();
 }
 
 static void mad_setsignal (void)
