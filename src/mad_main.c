@@ -515,10 +515,11 @@ enum { sig_ni = sizeof sig_i / sizeof *sig_i,
        static_assert__sig_s_len = 1/(sig_ni == sig_ns),
        static_assert__sig_m_len = 1/(sig_ni == sig_nm) };
 
-static void mad_signal(int sig)
+static void mad_signal(int sig) // process only critical signals
 {
+  signal(sig, SIG_DFL); // restore default to avoid recursive calls...
   FOR(i,sig_ni) if (sig_i[i] == sig) (mad_error)(sig_s[i], "%s", sig_m[i]);
-  abort();
+  exit(EXIT_FAILURE);
 }
 
 static void mad_setsignal (void)
