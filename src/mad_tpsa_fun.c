@@ -1349,14 +1349,20 @@ FUN(wf) (const T *a, T *c)
     }
 
   } else if (fabs(a0) > 7 && fabs(a0) < 100) { // adjusted for double precision
+#ifdef MAD_CTPSA_IMPL
+    NUM a02 = a0*a0, a04=a02*a02, a06=a04*a02, a08=a04*a04;
     NUM coef[7] = {
-      -I*M_2_SQRTPI/NUMF(powi)(a0,4 ) /2,
-      -I*M_2_SQRTPI/NUMF(powi)(a0,6 ) /2   *5,
-      -I*M_2_SQRTPI/NUMF(powi)(a0,8 ) /8   *105,
-      -I*M_2_SQRTPI/NUMF(powi)(a0,10) /8   *630,
-      -I*M_2_SQRTPI/NUMF(powi)(a0,12) /32  *17325,
-      -I*M_2_SQRTPI/NUMF(powi)(a0,14) /32  *135135,
-      -I*M_2_SQRTPI/NUMF(powi)(a0,16) /128 *4729725 };
+      -I*M_SQRTPI/(a04),
+      -I*M_SQRTPI/(a06)       *5,
+      -I*M_SQRTPI/(a06*a02)/4 *105,
+      -I*M_SQRTPI/(a06*a04)/4 *630,
+      -I*M_SQRTPI/(a08*a04)/16*17325,
+      -I*M_SQRTPI/(a08*a06)/16*135135,
+      -I*M_SQRTPI/(a08*a08)/64*4729725 };
+#else
+    NUM coef[7] = { 0 };
+#endif
+
     NUM p[to+1];
     NUM a0r = creal(a0);
     NUM ez2 = exp(-a0r*a0r);
