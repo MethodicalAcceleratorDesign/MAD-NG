@@ -304,7 +304,7 @@ found:
       LJ_OS_NAME, MKSTR(LJ_ARCH_BITS) }
   };
   lua_createtable(L, 0, nitem);
-  for (int i = 0; i < nitem; i++) {
+  FOR(i,nitem) {
     assert(list[0][i]); lua_pushstring(L, list[0][i]);
     assert(list[1][i]); lua_pushstring(L, list[1][i]);
     lua_rawset(L, -3);
@@ -527,7 +527,7 @@ static void mad_setsignal (void)
   ensure(signal(SIGINT, laction) != SIG_ERR,
          "unable to set signal hanlder %s", "SIGINT");
 
-  for (int i=0; i < sig_ni; i++)
+  FOR(i,sig_ni)
     ensure(signal(sig_i[i], mad_signal) != SIG_ERR,
            "unable to set signal hanlder %s", sig_s[i]);
 }
