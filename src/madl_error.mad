@@ -1,0 +1,92 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Error module
+ |
+ | Methodical Accelerator Design - Copyright (c) 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Load field and alignment errors into elements and sequences.
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local command                                                   in MAD
+local assertf, printf                                           in MAD.utility
+local is_number, is_string, is_mtable, is_sequence              in MAD.typeid
+
+local abs in math
+
+local assert, error, table, tostring =
+      assert, error, table, tostring
+
+-- error command --------------------------------------------------------------o
+
+local knl, ksl = {}, {}
+for i=21,1,-1 do knl[i], ksl[i] = "k"..(i-1).."l", "k"..(i-1).."sl" end
+
+local function fcomp_tbl (self, sequ, mtbl)
+  local cn = mtbl:colnames()
+  for i,v in ipairs(cn) do v = v:lower() ; cn[v], cn[i] = i, v end
+
+  mtbl:foreach(\r,ri =>
+    local elm = sequ[r.name]
+    if not elm then return end -- element not in sequence
+    local dknl, dksl, j = elm.dknl or {}, elm.dksl or {}
+
+    for i=#knl,1,-1 do if cn[knl[i]] and cn[cn[knl[i]]] ~= 0 then j=i break end end
+    for i=1,j do dknl[i] = r[cn[knl[i]]] end
+
+    for i=#ksl,1,-1 do if cn[ksl[i]] and cn[cn[ksl[i]]] ~= 0 then j=i break end end
+    for i=1,j do dksl[i] = r[cn[ksl[i]]] end
+    elm.dknl, elm.dksl = dknl, dksl
+    print(elm, "dknk=", MAD.tostring(dknl), "dskl=", MAD.tostring(dksl))
+  end, self.range, self.selector)
+end
+
+local function exec (self)
+  -- check sequence
+  local sequ = assert(self.sequence, "missing sequence")
+  assert(is_sequence(sequ), "invalid sequence")
+
+  -- check table and assign fcomp from table
+  local mtbl = self.table
+  if is_string(mtbl) then mtbl = mtable:read(mtbl) end
+  if mtbl then fcomp_tbl(self, sequ, mtbl) end
+end
+
+local errors = command 'errors' {
+  sequence=nil,      -- sequence(s) (required)                            (errs)
+  table=nil,         -- table of errors                                   (errs)
+  range=nil,         -- table range                                       (errs)
+  select=nil,        -- table selector                                    (errs)
+
+  align=false,       -- alignment components assigned to selected elems.  (errs)
+  fcomp=false,       -- field components assigned to selected elems.      (errs)
+
+  save=false,        -- save all errors of selected elems in a mtable     (errs)
+
+  info=nil,          -- information level (output on terminal)            (errs)
+  debug=nil,         -- debugging information level (output on terminal)  (errs)
+
+  exec=exec,         -- command to execute upon children creation
+
+  __attr = {
+    'sequence', 'table', 'range', 'align', 'fcomp'
+  }
+} :set_readonly()    -- reference errors command is readonly
+
+-- end ------------------------------------------------------------------------o
+return { errors = errors }
