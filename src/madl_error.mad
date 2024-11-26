@@ -83,37 +83,51 @@ local function mtbl_errors (self, sequ, mtbl)
       return
     end
 
-    elm.merr = nm+nx > 0 and merr or nil
-    for i=1,nn do dknl[i] = dknl[i] or 0 end ; elm.dknl = nn > 0 and dknl or nil
-    for i=1,ns do dksl[i] = dksl[i] or 0 end ; elm.dksl = ns > 0 and dksl or nil
+    if elm.is_monitor then
+      elm.merr = nm+nx>0 and merr or nil
+    end
 
-    sequ:misalign(algn, {elm})
+    if elm.is_thick or elm.is_thin then
+      for i=1,nn do dknl[i] = dknl[i] or 0 end ; elm.dknl = nn>0 and dknl or nil
+      for i=1,ns do dksl[i] = dksl[i] or 0 end ; elm.dksl = ns>0 and dksl or nil
+    end
+
+    if not (elm.is_special or elm.is_patch) then
+      sequ:misalign(algn, {elm})
+    end
 
   --printf("%s:\n  dknl=%s\n  dksl=%s\n  algn=%s\n  merr=%s\n", elm.name,
   --tostring(dknl), tostring(dksl), tostring(sequ:ealign(elm)), tostring(merr))
   end, self.range, self.selector)
 end
 
-local function set_errors (self, sequ, align, fcomp)
+local function set_errors (self, sequ, align, fcomp, mrerr)
   if is_table(align) and not is_deferred(align) then align = deferred(align) end
   if is_table(fcomp) and not is_deferred(fcomp) then fcomp = deferred(fcomp) end
+  if is_table(mrerr) and not is_deferred(mrerr) then mrerr = deferred(mrerr) end
 
-  local al, ef = align, fcomp
+  local al, ef, me = align, fcomp, mrerr
   if not is_function(align) then al =\ align end
   if not is_function(fcomp) then ef =\ fcomp end
+  if not is_function(mrerr) then me =\ mrerr end
 
   sequ:foreach(\e,ei =>
     if e.name:sub(1,1) == '$' then return end
 
-    if align then
+    if align and not (e.is_special or e.is_patch) then
       sequ:misalign(al(), {e})
     end
 
-    if fcomp then
+    if mrerr and e.is_monitor then
+      e.merr = me()
+    end
+
+    if fcomp and (e.is_thick or e.is_thin) then
       local f = ef()
       e.dknl = f.dknl
       e.dksl = f.dksl
     end
+
   end, self.range, self.selector)
 end
 
@@ -169,7 +183,10 @@ local function exec (self)
   -- set errors from align and fcomp
   local align = self:var_get"align"
   local fcomp = self:var_get"fcomp"
-  if align or fcomp then set_errors(self, sequ, align, fcomp) end
+  local mrerr = self:var_get"mrerr"
+  if align or fcomp or mrerr then
+    set_errors(self, sequ, align, fcomp, mrerr)
+  end
 
   -- save errors to table, default name is seqnam_errors.tfs
   if self.save then
@@ -188,6 +205,7 @@ local errors = command 'errors' {
   table=false,       -- table of errors to assign                         (errs)
   align=false,       -- alignment components assigned to selected elems.  (errs)
   fcomp=false,       -- field components assigned to selected elems.      (errs)
+  mrerr=false,       -- monitor read errors assigned to selected elems.   (errs)
 
   save=false,        -- save all errors of selected elems in a mtable     (errs)
   compact=false,     -- don't save element without errors in the mtable   (errs)
@@ -198,7 +216,8 @@ local errors = command 'errors' {
   exec=exec,         -- command to execute upon children creation
 
   __attr = {
-    'sequence', 'range', 'select', 'table', 'align', 'fcomp', 'save', 'compact',
+    'sequence', 'range', 'select', 'table', 'align', 'fcomp', 'mrerr',
+    'save', 'compact',
   }
 } :set_readonly()    -- reference errors command is readonly
 
