@@ -132,7 +132,7 @@ local function fill_row (elm, mflw, lw, islc)
     return false
   end
 
-  local name, kind in elm
+  local name, kind, ktap in elm
   local ds, eidx, clw, sdir, tdir, spos, turn, beam, mtbl, savemap, sdir in mflw
 
   local lw  = islc<0 and 1-islc%2 or clw*sdir -- ds, sdir and lw have the same sign
@@ -154,7 +154,8 @@ local function fill_row (elm, mflw, lw, islc)
 
     -- keep order!
     mtbl = mtbl + { name, kind, spos+dsw, dsw, id,
-                    x, px, y, py, t, pt, pc, islc, turn, tdir, eidx, status, M }
+                    x, px, y, py, t, pt, pc, ktap or 0,
+                    islc, turn, tdir, eidx, status, M }
 
     ::continue::
   end
@@ -174,7 +175,7 @@ local header = {
 }
 
 local function make_mtable (self, range)
-  local dir, observe, implicit, misalign, radiate, deltap, savemap in self
+  local dir, observe, implicit, misalign, radiate, taper, deltap, savemap in self
   local sequ, nrow = self.sequence, 8
   local nrj = (self.beam or sequ.beam).energy
 
@@ -182,10 +183,10 @@ local function make_mtable (self, range)
   return mtable(sequ.name, {
     type='track', title=sequ.name, header=header,
     direction=dir, observe=observe, implicit=implicit, misalign=misalign,
-    radiate=radiate, energy=nrj, deltap=deltap, lost=0, range=range, reserve=nrow,
-    __seq=sequ,
+    radiate=radiate, taper=taper, energy=nrj, deltap=deltap, lost=0, range=range,
+    reserve=nrow, __seq=sequ,
     ename =\s -> s:getcol"name", -- add ename for direct access to column 'name'
-    {'name'}, 'kind', 's', 'l', 'id', 'x', 'px', 'y', 'py', 't', 'pt', 'pc',
+    {'name'}, 'kind', 's', 'l', 'id', 'x','px','y','py','t','pt', 'pc', 'ktap',
     'slc', 'turn', 'tdir',      -- t-direction of the tracking: sdir * seq.dir
     'eidx',                     -- index of element in the sequence
     'status',                   -- status: 'Xset', 'Mset', 'Aset', 'stable', ...
@@ -370,13 +371,15 @@ local function make_mflow (self)
   local iter, state, eidx = sequ:siter(range, nturn, dir)
 
   -- check more attributes
-  local implicit, observe, fringe, frngmax, radiate, nocavity in self
+  local implicit, observe, fringe, frngmax, radiate, taper, nocavity in self
   if is_boolean(fringe ) then fringe  = fringe  and -1 or 0 end
   if is_boolean(radiate) then radiate = radiate and "damp" or nil end
+  if is_boolean(taper  ) then taper   = taper   and  3 or 0 end
 
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
   assert(is_natural(observe) , "invalid observe (positive integer expected)")
   assert(is_string(radiate) or radiate == nil, "invalid radiate (string expected)")
+  assert(is_natural(taper+1),  "invalid taper (boolean or integer expected)")
   assert(is_natural(fringe+1), "invalid fringe (boolean or fringe flag expected)")
   assert(is_natural(frngmax), "invalid maximum multipole fringe (positive integer expected)")
 
@@ -658,6 +661,7 @@ local function make_mflow (self)
   mflw.misalign=misalign     -- misalign element
   mflw.aperture=aperture     -- default element aperture.
   mflw.radiate=radiate       -- radiate at slices
+  mflw.taper=taper           -- set ktap on first pass
   mflw.nocav=nocavity        -- disable rfcavities
   mflw.nphot=0               -- number of tracked photons
 
@@ -799,7 +803,10 @@ local function exec (self)
 
     -- dynamic tracking
     for ei,elm,spos,ds in iter, state, eidx do
-      if ei == ti then mflw.turn = mflw.turn+1 end
+      if ei == ti then
+        mflw.turn  = mflw.turn +1
+        mflw.taper = mflw.taper-1
+      end
 
       mflw.name, mflw.eidx, mflw.spos, mflw.ds, mflw.clw =
        elm.name,      ei  ,   s0+spos,      ds,      0
@@ -841,6 +848,7 @@ local track = command 'track' {
   fringe=true,      -- enable fringe fields (see element.flags.fringe)    (mflw)
   frngmax=2,        -- maximum multipole fringe field (default quad)      (mflw)
   radiate=false,    -- radiate "damping[+]", "quantum[+]", "photon"       (mflw)
+  taper=false,      -- set tapering compensation                          (mflw)
   nocavity=false,   -- disable rfcavities (i.e. enforce 5D)               (mflw)
   totalpath=false,  -- variable 't' is the totalpath                      (mflw)
   cmap=true,        -- use C/C++ maps when available                      (mflw)
@@ -876,7 +884,7 @@ local track = command 'track' {
   __attr = {        -- list of all setup attributes
     'sequence', 'beam', 'range', 'dir', 's0', 'X0', 'O0', 'deltap',
     'nturn', 'nstep', 'mapdef', 'method', 'model', 'secnmul', 'implicit',
-    'misalign', 'aperture', 'fringe', 'frngmax', 'radiate', 'nocavity',
+    'misalign', 'aperture', 'fringe', 'frngmax', 'radiate', 'taper', 'nocavity',
     'totalpath', 'ptcmodel', 'cmap', 'save', 'aper', 'observe', 'savemap',
     'coitr', 'cotol', 'costp', 'O1', 'info', 'debug', 'usrdef',
     noeval = {'nslice', 'savesel', 'apersel',
