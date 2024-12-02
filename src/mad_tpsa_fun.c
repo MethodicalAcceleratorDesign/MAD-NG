@@ -1332,7 +1332,7 @@ FUN(wf) (const T *a, T *c)
   ord_coef[1] = -2*a0*f0 + I*M_2_SQRTPI;
   printf("%f\n",creal(ord_coef[1]));
 
-  if (fabs(a0) <= 7 || ((cimag(a0) < creal(a0)+0.5) && (cimag(a0) < -creal(a0)+0.5))) { //TODO: refine domain analysis but already good
+  if (fabs(a0) <= 7 || (cimag(a0) < creal(a0)+0.5 && cimag(a0) < -creal(a0)+0.5)) {
     NUM p[to+1], q[to+1];
     p[0] = 1;
     p[1] = -2*a0;
@@ -1342,36 +1342,40 @@ FUN(wf) (const T *a, T *c)
     for (ord_t o = 2; o <= to; ++o) {
       q[o] = 0;
 #ifdef MAD_CTPSA_IMPL
-      q[o] = -2*(o-1)*q[o-2] - 2*a0*q[o-1];    
+      q[o] = -2*(o-1)*q[o-2] - 2*a0*q[o-1];
 #endif
-      p[o] = -2*(o-1)*p[o-2] - 2*a0*p[o-1];
       ord_coef[o] = (p[o]*f0 + q[o]*I*M_2_SQRTPI)/mad_num_fact(o);
     }
 
-  } else if (fabs(a0) > 7 && fabs(a0) < 100) { // adjusted for double precision  
+  } else if (fabs(a0) > 7 && fabs(a0) < 100) { // adjusted for double precision
+#ifdef MAD_CTPSA_IMPL
+    NUM a02 = a0*a0, a04=a02*a02, a06=a04*a02, a08=a04*a04;
     NUM coef[7] = {
-      -I*M_2_SQRTPI/NUMF(powi)(a0,4 ) /2,
-      -I*M_2_SQRTPI/NUMF(powi)(a0,6 ) /2   *5,
-      -I*M_2_SQRTPI/NUMF(powi)(a0,8 ) /8   *105,
-      -I*M_2_SQRTPI/NUMF(powi)(a0,10) /8   *630,
-      -I*M_2_SQRTPI/NUMF(powi)(a0,12) /32  *17325,
-      -I*M_2_SQRTPI/NUMF(powi)(a0,14) /32  *135135,
-      -I*M_2_SQRTPI/NUMF(powi)(a0,16) /128 *4729725 };
+      -I*M_SQRTPI/(a04),
+      -I*M_SQRTPI/(a06)       *5,
+      -I*M_SQRTPI/(a06*a02)/4 *105,
+      -I*M_SQRTPI/(a06*a04)/4 *630,
+      -I*M_SQRTPI/(a08*a04)/16*17325,
+      -I*M_SQRTPI/(a08*a06)/16*135135,
+      -I*M_SQRTPI/(a08*a08)/64*4729725 };
+#endif
+
     NUM p[to+1];
     NUM a0r = creal(a0);
     NUM ez2 = exp(-a0r*a0r);
     p[0] = 1;
     p[1] = -2*a0r;
-    p[2] = (a0r != 0) ? (4 * a0r * a0r - 2) : 0;
-    
+    p[2] = a0r ? 4*a0r*a0r -2 : 0;
+
     ord_coef[2] = -a0*(-2*a0*f0 + I*M_2_SQRTPI) - f0;
 
     for (ord_t o = 3; o <= to; ++o) {
       p[o] = -2*(o-1)*p[o-2] - 2*a0r*p[o-1];
       ord_coef[o] = ez2*p[o]/mad_num_fact(o);
-      printf("%f\n", ord_coef[o]);
+#ifdef MAD_CTPSA_IMPL
       FOR(i,7) ord_coef[o] += coef[i];
       FOR(i,7) coef[i] *= -1/a0*(2.*i+o+1)/(o+1);
+#endif
     }
   } else {
     for (ord_t o = 1; o <= to; ++o)

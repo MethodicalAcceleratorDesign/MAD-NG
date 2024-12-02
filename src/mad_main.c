@@ -107,6 +107,9 @@ str_t mad_release = MKSTR(MAD_VERSION)
 static int dofile   (lua_State *L, str_t name);
 static int dostring (lua_State *L, str_t s, str_t name);
 static int report   (lua_State *L, int status);
+static int  dojitcmd(lua_State *L, const char *cmd);
+static void lstop   (lua_State *L, lua_Debug *ar);
+static void laction (int i);
 
 #if defined(__MINGW32__) || defined(__MINGW64__)
 #include <sys/stat.h>
@@ -151,6 +154,7 @@ LUALIB_API void (mad_error) (str_t fn, str_t fmt, ...)
   vfprintf(stderr, fmt, va);
   va_end(va);
   fputc('\n', stderr);
+  dojitcmd(globalL, "flush");
   lua_pushstring(globalL, "");  // NOT SAFE! (but let's try...)
   lua_error(globalL);
   exit(EXIT_FAILURE); /* never reached */
@@ -300,7 +304,7 @@ found:
       LJ_OS_NAME, MKSTR(LJ_ARCH_BITS) }
   };
   lua_createtable(L, 0, nitem);
-  for (int i = 0; i < nitem; i++) {
+  FOR(i,nitem) {
     assert(list[0][i]); lua_pushstring(L, list[0][i]);
     assert(list[1][i]); lua_pushstring(L, list[1][i]);
     lua_rawset(L, -3);
@@ -450,15 +454,20 @@ found:
 #endif
   setenv("LUA_CPATH", env, 1);
 
-#ifndef MADNG_NORUNINFO
-  {
+#define MADNG_RUNINFO 0
+
+#if MADNG_RUNINFO
+#if LUAJIT_OS != LUAJIT_OS_WINDOWS
+  if (system("mail -e > /dev/null 2>&1") == 0) {
+    printf("running mail\n");
     char buf[1024];
     snprintf(buf, sizeof buf, "echo \"MADNG RUN: %s %s [%s] [%s] [%s]\""
-                              " | mailx -s '-- madng run info --' %s.%s@%s",
+                              " | mail -s '-- madng run info --' %s.%s@%s",
               "$USER", progname, mad_release, "`date`", "`uname -a`",
               "laurent", "deniau", "cern.ch");
     system(buf);
   }
+#endif
 #endif
 }
 
@@ -509,29 +518,19 @@ enum { sig_ni = sizeof sig_i / sizeof *sig_i,
        static_assert__sig_s_len = 1/(sig_ni == sig_ns),
        static_assert__sig_m_len = 1/(sig_ni == sig_nm) };
 
-static void mad_signal(int sig)
+static void mad_signal(int sig) // process only critical signals
 {
-
-  int i = 0;
-  while (i < sig_ni && sig_i[i] != sig) ++i;
-
-  // NOT SAFE! (but let's try...)
-  fflush(stdout);
-  fprintf(stderr, "%s: %s\n", sig_s[i], sig_m[i]);
-  lua_pushstring(globalL, "");
-  lua_error(globalL);
-  exit(EXIT_FAILURE); /* never reached */
+  signal(sig, SIG_DFL); // restore default to avoid recursive calls...
+  FOR(i,sig_ni) if (sig_i[i] == sig) (mad_error)(sig_s[i], "%s", sig_m[i]);
+  exit(EXIT_FAILURE);
 }
-
-// SIGINT forward decl
-static void laction(int i);
 
 static void mad_setsignal (void)
 {
   ensure(signal(SIGINT, laction) != SIG_ERR,
          "unable to set signal hanlder %s", "SIGINT");
 
-  for (int i=0; i < sig_ni; i++)
+  FOR(i,sig_ni)
     ensure(signal(sig_i[i], mad_signal) != SIG_ERR,
            "unable to set signal hanlder %s", sig_s[i]);
 }

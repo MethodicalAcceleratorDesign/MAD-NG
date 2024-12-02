@@ -5,10 +5,10 @@ Methodical Accelerator Design
 ===
 
      ____  __   ______    ______     |   Methodical Accelerator Design
-      /  \/  \   /  _  \   /  _  \   |   release: 0.9.8_P (Linux 64)
+      /  \/  \   /  _  \   /  _  \   |   release: 1.0.0_P (Linux 64)
      /  __   /  /  /_/ /  /  /_/ /   |   support: http://cern.ch/mad
-    /__/  /_/  /__/ /_/  /_____ /    |   licence: GPL3 (C) CERN 2016+
-                                     |   started: 2023-12-04 18:51:12
+    /__/  /_/  /__/ /_/  /_____ /    |   licence: GNU GPL v3 (C) 2016+
+                                     |   started: 2024-11-29 19:25:32
 
 The successor of MAD-X.
 

@@ -132,10 +132,10 @@ local function fill_row (elm, mflw, lw, islc)
     return false
   end
 
-  local name, kind in elm
+  local name, kind, ktap in elm
   local ds, eidx, clw, sdir, tdir, spos, turn, beam, mtbl, savemap, sdir in mflw
 
-  local lw  = islc<0 and 1-islc%2 or clw*sdir -- ds, sdir and lw have the same sign
+  local lw  = (islc<0 and 0.5*(1+sdir)-islc%2 or clw)*sdir
   local dsw = ds*lw
   local pc  = beam.pc
 
@@ -154,7 +154,8 @@ local function fill_row (elm, mflw, lw, islc)
 
     -- keep order!
     mtbl = mtbl + { name, kind, spos+dsw, dsw, id,
-                    x, px, y, py, t, pt, pc, islc, turn, tdir, eidx, status, M }
+                    x, px, y, py, t, pt, pc, ktap or 0,
+                    islc, turn, tdir, eidx, status, M }
 
     ::continue::
   end
@@ -174,7 +175,7 @@ local header = {
 }
 
 local function make_mtable (self, range)
-  local dir, observe, implicit, misalign, radiate, deltap, savemap in self
+  local dir, observe, implicit, misalign, radiate, taper, deltap, savemap in self
   local sequ, nrow = self.sequence, 8
   local nrj = (self.beam or sequ.beam).energy
 
@@ -182,10 +183,10 @@ local function make_mtable (self, range)
   return mtable(sequ.name, {
     type='track', title=sequ.name, header=header,
     direction=dir, observe=observe, implicit=implicit, misalign=misalign,
-    radiate=radiate, energy=nrj, deltap=deltap, lost=0, range=range, reserve=nrow,
-    __seq=sequ,
+    radiate=radiate, taper=taper, energy=nrj, deltap=deltap, lost=0, range=range,
+    reserve=nrow, __seq=sequ,
     ename =\s -> s:getcol"name", -- add ename for direct access to column 'name'
-    {'name'}, 'kind', 's', 'l', 'id', 'x', 'px', 'y', 'py', 't', 'pt', 'pc',
+    {'name'}, 'kind', 's', 'l', 'id', 'x','px','y','py','t','pt', 'pc', 'ktap',
     'slc', 'turn', 'tdir',      -- t-direction of the tracking: sdir * seq.dir
     'eidx',                     -- index of element in the sequence
     'status',                   -- status: 'Xset', 'Mset', 'Aset', 'stable', ...
@@ -204,7 +205,7 @@ local function reset_si (mflw)
   m.range=range
   m.s0=s0
   m.eidx=eidx
-  m.turn=1
+  m.turn=0
   m.beam=m.beam.__par {} -- reset/clone beam
 
   m.__sitr.iter=iter
@@ -222,7 +223,7 @@ local function change_si (mflw, sequ, range_, nturn_, dir_)
   m.range=range
   m.s0=m.spos
   m.eidx=eidx
-  m.turn=1
+  m.turn=0
   m.beam=m.beam.__par {} -- reset/clone beam
 
   m.__sitr.iter=iter
@@ -370,13 +371,15 @@ local function make_mflow (self)
   local iter, state, eidx = sequ:siter(range, nturn, dir)
 
   -- check more attributes
-  local implicit, observe, fringe, frngmax, radiate, nocavity in self
+  local implicit, observe, fringe, frngmax, radiate, taper, nocavity in self
   if is_boolean(fringe ) then fringe  = fringe  and -1 or 0 end
   if is_boolean(radiate) then radiate = radiate and "damp" or nil end
+  if is_boolean(taper  ) then taper   = taper   and  3 or 0 end
 
   assert(is_boolean(implicit), "invalid implicit (boolean expected)")
   assert(is_natural(observe) , "invalid observe (positive integer expected)")
   assert(is_string(radiate) or radiate == nil, "invalid radiate (string expected)")
+  assert(is_natural(taper),    "invalid taper (boolean or positive integer expected)")
   assert(is_natural(fringe+1), "invalid fringe (boolean or fringe flag expected)")
   assert(is_natural(frngmax), "invalid maximum multipole fringe (positive integer expected)")
 
@@ -506,7 +509,8 @@ local function make_mflow (self)
   -- activate radiation
   if radiate then
     local radplus = string.find(radiate, "+", 1, true)
-        if string.find(radiate, "damp", 1, true) then radiate = "damping"
+    if taper > 0 or
+           string.find(radiate, "damp", 1, true) then radiate = "damping"
     elseif string.find(radiate, "quan", 1, true) then radiate = "quantum"
     elseif string.find(radiate, "phot", 1, true) then radiate = "photon"
     else error("invalid radiate value '"..radiate.."'") end
@@ -640,7 +644,7 @@ local function make_mflow (self)
   mflw.ds=0                  -- current element s-length (signed)
   mflw.spos=0                -- current element s-position (signed)
   mflw.eidx=eidx             -- current element index
-  mflw.turn=1                -- current turn index
+  mflw.turn=0                -- current turn index
   mflw.nstep=nstep           -- current number of remaining steps
 
   mflw.npar=#mflw            -- number of tracked particles or damaps
@@ -658,6 +662,8 @@ local function make_mflow (self)
   mflw.misalign=misalign     -- misalign element
   mflw.aperture=aperture     -- default element aperture.
   mflw.radiate=radiate       -- radiate at slices
+  mflw.taper=taper           -- set ktap on first n passes
+  mflw.ntap=0                -- taper counter
   mflw.nocav=nocavity        -- disable rfcavities
   mflw.nphot=0               -- number of tracked photons
 
@@ -792,13 +798,18 @@ local function exec (self)
   local ie
   repeat
     -- retrieve information
-    local s0, eidx, sequ, __sitr in mflw
+    local s0, eidx, sequ, sdir, __sitr in mflw
     local iter, state in __sitr
-    local ne, ret = #sequ
-    ie = nil
+    local ti = sequ.__cycle and sequ:index_of(sequ.__cycle) or sequ:index(sdir)
+    local ret = nil ; ie = nil
 
     -- dynamic tracking
     for ei,elm,spos,ds in iter, state, eidx do
+      if ei == ti and not is_implicit(elm) then
+        mflw.turn = mflw.turn+1
+        mflw.ntap = mflw.ntap+1
+      end
+
       mflw.name, mflw.eidx, mflw.spos, mflw.ds, mflw.clw =
        elm.name,      ei  ,   s0+spos,      ds,      0
       ret = elm:track(mflw)
@@ -806,8 +817,6 @@ local function exec (self)
 
       -- check remaining number of elements and particles/damaps to track
       if ret or mflw.nstep == 0 or mflw.npar == 0 then ie = ei break end
-      -- check for end of turn
-      if ei == ne then mflw.turn = mflw.turn+1 end
     end
   until ret ~= "restart_si"
 
@@ -841,6 +850,7 @@ local track = command 'track' {
   fringe=true,      -- enable fringe fields (see element.flags.fringe)    (mflw)
   frngmax=2,        -- maximum multipole fringe field (default quad)      (mflw)
   radiate=false,    -- radiate "damping[+]", "quantum[+]", "photon"       (mflw)
+  taper=false,      -- set tapering compensation                          (mflw)
   nocavity=false,   -- disable rfcavities (i.e. enforce 5D)               (mflw)
   totalpath=false,  -- variable 't' is the totalpath                      (mflw)
   cmap=true,        -- use C/C++ maps when available                      (mflw)
@@ -876,7 +886,7 @@ local track = command 'track' {
   __attr = {        -- list of all setup attributes
     'sequence', 'beam', 'range', 'dir', 's0', 'X0', 'O0', 'deltap',
     'nturn', 'nstep', 'mapdef', 'method', 'model', 'secnmul', 'implicit',
-    'misalign', 'aperture', 'fringe', 'frngmax', 'radiate', 'nocavity',
+    'misalign', 'aperture', 'fringe', 'frngmax', 'radiate', 'taper', 'nocavity',
     'totalpath', 'ptcmodel', 'cmap', 'save', 'aper', 'observe', 'savemap',
     'coitr', 'cotol', 'costp', 'O1', 'info', 'debug', 'usrdef',
     noeval = {'nslice', 'savesel', 'apersel',

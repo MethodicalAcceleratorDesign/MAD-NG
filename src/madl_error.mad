@@ -1,0 +1,225 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Error module
+ |
+ | Methodical Accelerator Design - Copyright (c) 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Load field and alignment errors into elements and sequences.
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local command, mtable, warn, tostring                           in MAD
+local assertf, printf, tblncat                                  in MAD.utility
+local is_number, is_string, is_function, is_mtable, is_sequence,
+      is_table, is_deferred, deferred                           in MAD.typeid
+
+local abs in math
+
+local assert, error, table, tostring =
+      assert, error, table, tostring
+
+-- error command --------------------------------------------------------------o
+
+local algn_col  = {"dx", "dy", "ds", "dphi", "dtheta", "dpsi"}
+local merr_col  = {"mredx", "mredy", "mrexs" , "mreys"}
+local merr_colx = {"mrex" , "mrey" , "mscalx", "mscaly"}
+local aper_col  = {"arex", "arey"}
+local knl_col   = {}
+local ksl_col   = {}
+for i=1,21 do knl_col[i], ksl_col[i] = "k"..(i-1).."l", "k"..(i-1).."sl" end
+
+local dict = {mrex="mredx", mrey="mredy", mscalx="mrexs", mscaly="mreys",
+              mredx="mredx", mredy="mredy", mrexs="mrexs", mreys="mreys"}
+
+local function mtbl_errors (self, sequ, mtbl)
+  local cn = mtbl:colnames()
+  for i,v in ipairs(cn) do cn[v:lower()] = i end
+  assert(cn.name, "invalid mtable of errors, missing column 'name'")
+
+  mtbl:foreach(\r,ri =>
+    local dknl, dksl, algn, merr = {}, {}, {}, {}
+    local nn  , ns  , na  , nm,nx = 0, 0, 0, 0, 0
+
+    for i,v in ipairs(knl_col) do
+      if cn[v] and r[cn[v]] ~= 0 then dknl[i], nn = r[cn[v]], i end
+    end
+
+    for i,v in ipairs(ksl_col) do
+      if cn[v] and r[cn[v]] ~= 0 then dksl[i], ns = r[cn[v]], i end
+    end
+
+    for i,v in ipairs(algn_col) do
+      if cn[v] and r[cn[v]] ~= 0 then algn[v], na = r[cn[v]], i end
+    end
+
+    for i,v in ipairs(merr_col) do
+      if cn[v] and r[cn[v]] ~= 0 then merr[v], nm = r[cn[v]], i end
+    end
+
+    for i,v in ipairs(merr_colx) do
+      if cn[v] and r[cn[v]] ~= 0 then merr[dict[v]], nx = r[cn[v]], i end
+    end
+
+    local e = sequ[r[cn.name]]
+    if not e then
+      if nn+ns+na+nm+nx > 0 then
+        warn("%s not found in sequence %s, errors ignored",r[cn.name],sequ.name)
+      end
+      return
+    end
+
+    if e.is_monitor then
+      e.merr = nm+nx>0 and merr or nil
+    end
+
+    if e.is_thick or e.is_thin then
+      for i=1,nn do dknl[i] = dknl[i] or 0 end ; e.dknl = nn>0 and dknl or nil
+      for i=1,ns do dksl[i] = dksl[i] or 0 end ; e.dksl = ns>0 and dksl or nil
+    end
+
+    if not (e.is_special or e.is_patch) then
+      sequ:misalign(algn, e)
+    end
+
+  --printf("%s:\n  dknl=%s\n  dksl=%s\n  algn=%s\n  merr=%s\n", elm.name,
+  --tostring(dknl), tostring(dksl), tostring(sequ:ealign(elm)), tostring(merr))
+  end, self.range, self.selector)
+end
+
+local function set_errors (self, sequ, align, fcomp, mrerr)
+  if is_table(align) and not is_deferred(align) then align = deferred(align) end
+  if is_table(fcomp) and not is_deferred(fcomp) then fcomp = deferred(fcomp) end
+  if is_table(mrerr) and not is_deferred(mrerr) then mrerr = deferred(mrerr) end
+
+  local al, ef, me = align, fcomp, mrerr
+  if not is_function(align) then al =\ align end
+  if not is_function(fcomp) then ef =\ fcomp end
+  if not is_function(mrerr) then me =\ mrerr end
+
+  sequ:foreach(\e,ei =>
+    if e.name:sub(1,1) == '$' then return end
+
+    if align and not (e.is_special or e.is_patch) then
+      sequ:misalign(al(), e)
+    end
+
+    if mrerr and e.is_monitor then
+      e.merr = me()
+    end
+
+    if fcomp and (e.is_thick or e.is_thin) then
+      local f = ef()
+      e.dknl = f.dknl
+      e.dksl = f.dksl
+    end
+
+  end, self.range, self.selector)
+end
+
+local function save_errors (self, sequ)
+  local mtbl = mtable(sequ.name, {
+    type='errors', title=sequ.name, reserve=16,
+    __seq=sequ,
+    ename =\s -> s:getcol"name", -- add ename for direct access to column 'name'
+    {'name'},table.unpack(tblncat(knl_col,ksl_col,algn_col,merr_col))
+  })
+  local save = not self.compact
+
+  sequ:foreach(\e,ei =>
+    if e.name:sub(1,1) == '$' then return end
+
+    local nn  , ns  , na  , nm   = 0, 0, 0, 0
+    local dknl, dksl, algn, merr =
+          e.dknl or {},  e.dksl or {}, sequ:ealign(ei) or {}, e.merr or {}
+    local row, n = {e.name}, 1
+
+    for i,v in ipairs(knl_col) do
+      n = n+1 ; row[n] = dknl[i] or 0 ; if row[n] ~= 0 then nn = i end
+    end
+
+    for i,v in ipairs(ksl_col) do
+      n = n+1 ; row[n] = dksl[i] or 0 ; if row[n] ~= 0 then ns = i end
+    end
+
+    for i,v in ipairs(algn_col) do
+      n = n+1 ; row[n] = algn[v] or 0 ; if row[n] ~= 0 then na = i end
+    end
+
+    for i,v in ipairs(merr_col) do
+      n = n+1 ; row[n] = merr[v] or 0 ; if row[n] ~= 0 then nm = i end
+    end
+
+    if save or nn+ns+na+nm > 0 then mtbl = mtbl + row end
+  end, self.range, self.selector)
+
+  return mtbl
+end
+
+local function exec (self)
+  -- check sequence
+  local sequ = assert(self.sequence, "missing sequence")
+  assert(is_sequence(sequ), "invalid sequence")
+
+  -- process from table
+  local mtbl = self.table
+  if is_string(mtbl) then mtbl = mtable:read(mtbl) end
+  if mtbl then mtbl = mtbl_errors(self, sequ, mtbl) end
+
+  -- set errors from align and fcomp
+  local align = self:var_get"align"
+  local fcomp = self:var_get"fcomp"
+  local mrerr = self:var_get"mrerr"
+  if align or fcomp or mrerr then
+    set_errors(self, sequ, align, fcomp, mrerr)
+  end
+
+  -- save errors to table, default name is seqnam_errors.tfs
+  if self.save then
+    mtbl = save_errors(self, sequ)
+    if is_string(self.save) then mtbl:write(self.save) end
+  end
+
+  return mtbl
+end
+
+local errors = command 'errors' {
+  sequence=nil,      -- sequence(s) (required)                            (errs)
+  range=nil,         -- sequence or table range                           (errs)
+  select=nil,        -- sequence or table selector                        (errs)
+
+  table=false,       -- table of errors to assign                         (errs)
+  align=false,       -- alignment components assigned to selected elems.  (errs)
+  fcomp=false,       -- field components assigned to selected elems.      (errs)
+  mrerr=false,       -- monitor read errors assigned to selected elems.   (errs)
+
+  save=false,        -- save all errors of selected elems in a mtable     (errs)
+  compact=false,     -- don't save element without errors in the mtable   (errs)
+
+  info=nil,          -- information level (output on terminal)            (errs)
+  debug=nil,         -- debugging information level (output on terminal)  (errs)
+
+  exec=exec,         -- command to execute upon children creation
+
+  __attr = {
+    'sequence', 'range', 'select', 'table', 'align', 'fcomp', 'mrerr',
+    'save', 'compact',
+  }
+} :set_readonly()    -- reference errors command is readonly
+
+-- end ------------------------------------------------------------------------o
+return { errors = errors }

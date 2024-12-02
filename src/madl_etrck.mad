@@ -32,7 +32,7 @@ Notes about directions and quantities:
 -- locals ---------------------------------------------------------------------o
 
 local element, damap, symint, option, warn, _C                  in MAD
-local is_number, is_function                                    in MAD.typeid
+local is_nil, is_number, is_function                            in MAD.typeid
 local fnil, fcut, ftst, bind3rd                                 in MAD.gfunc
 local fact, arc2cord, sqrt, sin, cos, atan2                     in MAD.gmath
 local assertf, errorf                                           in MAD.utility
@@ -428,12 +428,20 @@ local function get_mult (elm, m, n) -- copy multipoles from elem to mflw
   end
 end
 
-local function adj_mult (m) -- adjust multipoles in mflw
+local function adj_mult (elm, m) -- adjust multipoles in mflw
   local knl, ksl, nmul in m
+  local ktap in elm
   m.nmul = 0
 
   for i=nmul,1,-1 do
     if abs(knl[i])+abs(ksl[i]) > 0 then m.nmul = i ; break end
+  end
+
+  if ktap ~= 0 then
+    local scl = 1+ktap
+    for i=1,m.nmul do
+      knl[i], ksl[i] = knl[i]*scl, ksl[i]*scl
+    end
   end
 
   if m.cmap == 't' then
@@ -875,7 +883,7 @@ local function track_drift (elm, m)
     trackone(elm, m, inter, strex_drift)
   else
     local inter = m.el >= minlen and thickonly or driftonly
-    local track = #elm == 0 and trackelm or tracksub
+    local track = is_nil(elm[1]) and trackelm or tracksub
     track(elm, m, inter, strex_drift, fnil, fnil)
   end
 end
@@ -892,7 +900,7 @@ local function xflw_mult (m, clr)
 end
 
 local function track_multipole (elm, m)
-  get_mult(elm, m, 1) ; adj_mult(m)
+  get_mult(elm, m, 1) ; adj_mult(elm, m)
 
   if m.nmul == 0 and abs(elm.ksi) < minstr then
     return track_marker(elm, m)
@@ -971,7 +979,7 @@ local function track_sbend (elm, m, e1_, e2_)
   -- enforce small angle numerical stability
   if abs(m.eh) < 1e-6 then model, method = 'DKD', max(method,4) end
 
-  m.snm = snmul ; adj_mult(m) ; getanbnr(m)
+  m.snm = snmul ; adj_mult(elm, m) ; getanbnr(m)
 
   if model == 'DKD' then                          -- curved thin
     inter, thick, kick = DKD[method], curex_drift , curex_kick
@@ -989,7 +997,7 @@ local function track_sbend (elm, m, e1_, e2_)
     m.xflw = xflw_sbend
   end
 
-  local track = #elm == 0 and trackelm or tracksub
+  local track = is_nil(elm[1]) and trackelm or tracksub
   track(elm, m, inter, thick, kick, curex_fringe)
   m.eh, m.e1, m.e2, m.mang, m.snm = 0, nil, nil, nil, 0
 end
@@ -1058,7 +1066,7 @@ local function track_rbend (elm, m)
   knl[2], ksl[2] = knl[2]+k1*l  , ksl[2]+k1s*l
   knl[3], ksl[3] = knl[3]+k2*l/2, ksl[3]+k2s*l/2
 
-  adj_mult(m)
+  adj_mult(elm, m)
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
@@ -1083,7 +1091,7 @@ local function track_rbend (elm, m)
     m.xflw = xflw_rbend
   end
 
-  local track = #elm == 0 and trackelm or tracksub
+  local track = is_nil(elm[1]) and trackelm or tracksub
   track(elm, m, inter, thick, kick, strex_fringe)
   m.e1, m.e2, m.elc, m.eld, m.ehd, m.pdir = nil, nil, nil, nil, nil, nil
 end
@@ -1117,7 +1125,7 @@ local function track_quadrupole (elm, m)
   knl[2], ksl[2] = knl[2]+k1*l, ksl[2]+k1s*l
   m.el = l
 
-  adj_mult(m)
+  adj_mult(elm, m)
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
@@ -1149,7 +1157,7 @@ local function track_quadrupole (elm, m)
     m.xflw = xflw_quad
   end
 
-  local track = #elm == 0 and trackelm or tracksub
+  local track = is_nil(elm[1]) and trackelm or tracksub
   track(elm, m, inter, thick, kick, strex_fringe)
   m.eh, m.k1, m.ca, m.sa = 0, nil, nil, nil
 end
@@ -1171,7 +1179,7 @@ function track_strexgen (elm, m, ptc_, mth_) -- see fwd decl
   local l in elm
   m.el = l
 
-  adj_mult(m)
+  adj_mult(elm, m)
 
   local model  = elm.model  or m.model
   local method = elm.method or mth_ or m.method
@@ -1192,7 +1200,7 @@ function track_strexgen (elm, m, ptc_, mth_) -- see fwd decl
     m.xflw = xflw_strex
   end
 
-  local track = #elm == 0 and trackelm or tracksub
+  local track = is_nil(elm[1]) and trackelm or tracksub
   track(elm, m, inter, thick, kick, fringe)
   m.k1 = nil
 end
@@ -1305,7 +1313,7 @@ local function xflw_sol (m, clr)
 end
 
 local function track_solenoid (elm, m)
-  get_mult(elm, m) ; adj_mult(m)
+  get_mult(elm, m) ; adj_mult(elm, m)
 
   local l, ks, ksi, lrad in elm
   local model = elm.model or m.model
@@ -1342,7 +1350,7 @@ local function track_solenoid (elm, m)
     m.xflw = xflw_sol
   end
 
-  local track = #elm == 0 and trackelm or tracksub
+  local track = is_nil(elm[1]) and trackelm or tracksub
   track(elm, m, DKD[method], thick, kick, fringe)
   m.ks = nil
 end
@@ -1363,7 +1371,7 @@ local function xflw_esep (m, clr)
 end
 
 local function track_eseptum (elm, m)
-  get_mult(elm, m) ; adj_mult(m)
+  get_mult(elm, m) ; adj_mult(elm, m)
 
   local l, ex, ey, exl, eyl in elm
 
@@ -1394,7 +1402,7 @@ local function track_eseptum (elm, m)
   end
 
   local inter = m.nmul == 0 and thickonly or KMK[elm.method or m.method]
-  local track = #elm == 0 and trackelm or tracksub
+  local track = is_nil(elm[1]) and trackelm or tracksub
   track(elm, m, inter, thick, strex_kick, strex_fringe)
   m.volt = nil
 end
@@ -1421,7 +1429,7 @@ local function track_rfcavgen (elm, m, crab)
   local l, volt, freq, lag, harmon, n_bessel in elm
   local nocav in m
 
-  adj_mult(m)
+  adj_mult(elm, m)
 
   m.el   = l
   m.volt = (crab or nocav) and 0 or volt*1e-3
@@ -1450,7 +1458,7 @@ local function track_rfcavgen (elm, m, crab)
     m.xflw = xflw_cav
   end
 
-  local track = #elm == 0 and trackelm or tracksub
+  local track = is_nil(elm[1]) and trackelm or tracksub
   track(elm, m, inter, thick, kick, fringe)
   m.volt, m.freq = nil, nil
 end
@@ -1503,7 +1511,7 @@ local function track_wire (elm, m)
     m.xflw = xflw_dft
   end
 
-  local track = #elm == 0 and trackelm or tracksub
+  local track = is_nil(elm[1]) and trackelm or tracksub
   track(elm, m, inter, thick, kick, fnil)
   m.xma, m.yma, m.dpx, m.dpy = nil, nil, nil, nil
 end
@@ -1536,7 +1544,7 @@ end
 -- genmap element
 
 local function track_genmap (elm, m)
-  get_mult(elm, m) ; adj_mult(m)
+  get_mult(elm, m) ; adj_mult(elm, m)
 
   local sdir, edir, nmul, cmap in m
   local l, lrad, angle in elm
