@@ -1331,21 +1331,19 @@ FUN(wf) (const T *a, T *c)
   ord_coef[0] = f0;
   ord_coef[1] = -2*a0*f0 + I*M_2_SQRTPI;
 
-  if (fabs(a0) <= 7 || (cimag(a0) < creal(a0) && cimag(a0) < -creal(a0))) {
-    NUM p[to+1];
+  if (fabs(a0) <= 7 || (cimag(a0) < creal(a0)+0.5 && cimag(a0) < -creal(a0)+0.5)) {
+    NUM p[to+1], q[to+1];
     p[0] = 1;
     p[1] = -2*a0;
+    q[0] = 0;
+    q[1] = 1;
 
     for (ord_t o = 2; o <= to; ++o) {
-      NUM q_o = 0;
+      q[o] = 0;
 #ifdef MAD_CTPSA_IMPL
-      for (ord_t i=o/2; i <= o-1; i++) {
-        int ii = 2*i-o+1;
-        q_o += NUMF(powi)(-2,o-i-1) * p[ii] * mad_num_fact(i)/mad_num_fact(ii);
-      }
+      q[o] = -2*(o-1)*q[o-2] - 2*a0*q[o-1];
 #endif
-      p[o] = -2*(o-1)*p[o-2] - 2*a0*p[o-1];
-      ord_coef[o] = (p[o]*f0 + q_o*I*M_2_SQRTPI)/mad_num_fact(o);
+      ord_coef[o] = (p[o]*f0 + q[o]*I*M_2_SQRTPI)/mad_num_fact(o);
     }
 
   } else if (fabs(a0) > 7 && fabs(a0) < 100) { // adjusted for double precision
@@ -1366,7 +1364,7 @@ FUN(wf) (const T *a, T *c)
     NUM ez2 = exp(-a0r*a0r);
     p[0] = 1;
     p[1] = -2*a0r;
-    p[2] = 4*a0r*a0r -2;
+    p[2] = a0r ? 4*a0r*a0r -2 : 0;
 
     ord_coef[2] = -a0*(-2*a0*f0 + I*M_2_SQRTPI) - f0;
 
