@@ -1330,25 +1330,25 @@ FUN(wf) (const T *a, T *c)
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
   ord_coef[1] = -2*a0*f0 + I*M_2_SQRTPI;
+  printf("%f\n",creal(ord_coef[1]));
 
-  if (fabs(a0) <= 7 || (cimag(a0) < creal(a0) && cimag(a0) < -creal(a0))) {
-    NUM p[to+1];
+  if (fabs(a0) <= 7 || ((cimag(a0) < creal(a0)+0.5) && (cimag(a0) < -creal(a0)+0.5))) { //TODO: refine domain analysis but already good
+    NUM p[to+1], q[to+1];
     p[0] = 1;
     p[1] = -2*a0;
+    q[0] = 0;
+    q[1] = 1;
 
     for (ord_t o = 2; o <= to; ++o) {
-      NUM q_o = 0;
+      q[o] = 0;
 #ifdef MAD_CTPSA_IMPL
-      for (ord_t i=o/2; i <= o-1; i++) {
-        int ii = 2*i-o+1;
-        q_o += NUMF(powi)(-2,o-i-1) * p[ii] * mad_num_fact(i)/mad_num_fact(ii);
-      }
+      q[o] = -2*(o-1)*q[o-2] - 2*a0*q[o-1];    
 #endif
       p[o] = -2*(o-1)*p[o-2] - 2*a0*p[o-1];
-      ord_coef[o] = (p[o]*f0 + q_o*I*M_2_SQRTPI)/mad_num_fact(o);
+      ord_coef[o] = (p[o]*f0 + q[o]*I*M_2_SQRTPI)/mad_num_fact(o);
     }
 
-  } else if (fabs(a0) > 7 && fabs(a0) < 100) { // adjusted for double precision
+  } else if (fabs(a0) > 7 && fabs(a0) < 100) { // adjusted for double precision  
     NUM coef[7] = {
       -I*M_2_SQRTPI/NUMF(powi)(a0,4 ) /2,
       -I*M_2_SQRTPI/NUMF(powi)(a0,6 ) /2   *5,
@@ -1357,17 +1357,19 @@ FUN(wf) (const T *a, T *c)
       -I*M_2_SQRTPI/NUMF(powi)(a0,12) /32  *17325,
       -I*M_2_SQRTPI/NUMF(powi)(a0,14) /32  *135135,
       -I*M_2_SQRTPI/NUMF(powi)(a0,16) /128 *4729725 };
-    
     NUM p[to+1];
-    NUM expz2 = exp(-a0*a0);
+    NUM a0r = creal(a0);
+    NUM ez2 = exp(-a0r*a0r);
     p[0] = 1;
-    p[1] = -2*a0;
-    p[2] = 4*a0*a0 -2;
+    p[1] = -2*a0r;
+    p[2] = (a0r != 0) ? (4 * a0r * a0r - 2) : 0;
+    
     ord_coef[2] = -a0*(-2*a0*f0 + I*M_2_SQRTPI) - f0;
 
     for (ord_t o = 3; o <= to; ++o) {
-      p[o] = -2*(o-1)*p[o-2] - 2*a0*p[o-1];
-      ord_coef[o] = expz2*p[o]/mad_num_fact(o);
+      p[o] = -2*(o-1)*p[o-2] - 2*a0r*p[o-1];
+      ord_coef[o] = ez2*p[o]/mad_num_fact(o);
+      printf("%f\n", ord_coef[o]);
       FOR(i,7) ord_coef[o] += coef[i];
       FOR(i,7) coef[i] *= -1/a0*(2.*i+o+1)/(o+1);
     }
