@@ -1330,7 +1330,6 @@ FUN(wf) (const T *a, T *c)
   NUM ord_coef[to+1];
   ord_coef[0] = f0;
   ord_coef[1] = -2*a0*f0 + I*M_2_SQRTPI;
-  printf("%f\n",creal(ord_coef[1]));
 
   if (fabs(a0) <= 7 || (cimag(a0) < creal(a0)+0.5 && cimag(a0) < -creal(a0)+0.5)) {
     NUM p[to+1], q[to+1];
