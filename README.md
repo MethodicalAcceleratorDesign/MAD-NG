@@ -1,6 +1,3 @@
-NEW ANALYTICAL SERIES IN THE FILE DRAFT_CERN
-
-
 [![Build Status](https://travis-ci.org/MethodicalAcceleratorDesign/MAD.svg?branch=master)](https://travis-ci.org/MethodicalAcceleratorDesign/MAD)
 [![Coverage Status](https://coveralls.io/repos/github/MethodicalAcceleratorDesign/MAD/badge.svg?branch=master)](https://coveralls.io/github/MethodicalAcceleratorDesign/MAD?branch=master)
 
