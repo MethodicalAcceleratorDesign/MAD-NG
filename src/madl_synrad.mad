@@ -256,13 +256,17 @@ function M.srad_damp (elm, m, lw, islc)
     if eh == 0 then e = tan(e) end -- straight element
   end
 
---  printf("srad_damp: %s, lrad=%.2f, lw=%.2f, islc=%d, e=%.4f\n",
---               elm.name,  elm.lrad,      lw,    islc, e)
+--printf("srad_damp: %s, lrad=%.2f, lw=%.2f, islc=%d, e=%.4f\n",
+--             elm.name,  elm.lrad,      lw,    islc, e)
 
   for i=1,m.npar do
     local beam in m[i]
     if beam and beam.charge == 0 then goto continue end
     local x, px, y, py, t, pt in m[i]
+    local beam = beam or m.beam
+    local bet0 = beam.beta
+    local  dp1 = sqrt(1 + (2/bet0)*pt + pt^2)
+    local ndp1 = dp1
 
 --  printf("i=%d, bsol=%.16e, x=%.16e, px=%.16e, y=%.16e, py=%.16e, t=%.16e, pt=%.16e\n",
 --             i,       bsol,       x,       px,       y,       py,       t,       pt)
@@ -274,102 +278,97 @@ function M.srad_damp (elm, m, lw, islc)
     else bx, by = bxby(nmul, knl, ksl, x, y)
     end
 
-    if abs(bx)+abs(by)+abs(bz) == 0 then goto continue end
+    if abs(bx)+abs(by)+abs(bz) ~= 0 then
+      bx, by = bx/el, by/el
 
-    bx, by = bx/el, by/el
+      -- PTC-like method to calculate curvature
+      local _dp1  = 1/dp1
+      local  npx  = px
+      local  npy  = py
 
-    -- PTC-like method to calculate curvature
-    local  beam = beam or m.beam
-    local  bet0 = beam.beta
-    local  dp1  = sqrt(1 + (2/bet0)*pt + pt^2)
-    local _dp1  = 1/dp1
-    local  npx  = px
-    local  npy  = py
+      if bsol ~= 0 then
+        npx = npx + y*(0.5*bsol*beam.charge)
+        npy = npy - x*(0.5*bsol*beam.charge)
+      end
 
-    if bsol ~= 0 then
-      npx = npx + y*(0.5*bsol*beam.charge)
-      npy = npy - x*(0.5*bsol*beam.charge)
-    end
+      local  npz  = sqrt(dp1^2 - npx^2 - npy^2)
+      local  ex   = npx*_dp1
+      local  ey   = npy*_dp1
+      local  ez   = npz*_dp1
+      local  be   = bx*ex + by*ey + bz*ez
+      local  bex  = bx - be*ex
+      local  bey  = by - be*ey
+      local  bez  = bz - be*ez
+      local  h2   = bex^2 + bey^2 + bez^2
 
-    local  npz  = sqrt(dp1^2 - npx^2 - npy^2)
-    local  ex   = npx*_dp1
-    local  ey   = npy*_dp1
-    local  ez   = npz*_dp1
-    local  be   = bx*ex + by*ey + bz*ez
-    local  bex  = bx - be*ex
-    local  bey  = by - be*ey
-    local  bez  = bz - be*ez
-    local  h2   = bex^2 + bey^2 + bez^2
+--    printf("i=%d, npx=%.16e, npy=%.16e, npy=%.16e, hx=%.16e, hy=%.16e, hz=%.16e, eh=%.4e, h2=%.16e, facr=%.1f\n",
+--               i,       npx,       npy,       npz,      bex,      bey,      bez,      eh,       h2,      facr)
 
---  printf("i=%d, npx=%.16e, npy=%.16e, npy=%.16e, hx=%.16e, hy=%.16e, hz=%.16e, eh=%.4e, h2=%.16e, facr=%.1f\n",
---             i,       npx,       npy,       npz,      bex,      bey,      bez,      eh,       h2,      facr)
+      if h2 > 0 then
+        local   hlw = (aelw*(1+eh*x)-e*x)/npz
+        local  rfac = 0
+        local nphot = 0
+--      printf("hlw=%.12e, aelw=%.12e, e=%.12e\n", hlw, aelw, e)
 
-    local ndp1 = dp1
+        if m.radiate == "damping" then
+          rfac = (2/3 * beam.emrad * beam.gamma^3)*(1+pt)^3 * h2*hlw
 
-    if h2 > 0 then
-      local   hlw = (aelw*(1+eh*x)-e*x)/npz
-      local  rfac = 0
-      local nphot = 0
---    printf("hlw=%.12e, aelw=%.12e, e=%.12e\n", hlw, aelw, e)
+        else -- radiate == "quantum" or "photon"
+          local  hkck = sqrt(h2)
+          local gamma = (1 + bet0*pt)*beam.gamma
+          local ucrit = kcrit * gamma^2/beam.mass * hkck*hlw
+          local aphot = beam.aphot * dp1 * hkck
 
-      if m.radiate == "damping" then
-        rfac = (2/3 * beam.emrad * beam.gamma^3)*(1+pt)^3 * h2*hlw
+          nphot = randp(aphot)
 
-      else -- radiate == "quantum" or "photon"
-        local  hkck = sqrt(h2)
-        local gamma = (1 + bet0*pt)*beam.gamma
-        local ucrit = kcrit * gamma^2/beam.mass * hkck*hlw
-        local aphot = beam.aphot * dp1 * hkck
+          for i=1,nphot do
+            local ph_val = _C.mad_rad_InvSynFracInt(rand())
+            local ph_fac = ph_val*ucrit
+            rfac = rfac + ph_fac
 
-        nphot = randp(aphot)
+            if m.radiate == "photon" and abs(ph_fac) >= 1e-12 then
+              track_photon(elm, m, i, ph_fac, beam)
+            end
+          end
+        end
 
-        for i=1,nphot do
-          local ph_val = _C.mad_rad_InvSynFracInt(rand())
-          local ph_fac = ph_val*ucrit
-          rfac = rfac + ph_fac
+        if sdir < 0 then rfac = -rfac end
 
-          if m.radiate == "photon" and abs(ph_fac) >= 1e-12 then
-            track_photon(elm, m, i, ph_fac, beam)
+        -- energy loss
+        pt = pt - rfac
+
+        -- momenta update
+        ndp1 = sqrt(1 + (2/bet0)*pt + pt^2)
+        local pfac = ndp1*_dp1
+
+        px = px*pfac
+        py = py*pfac
+
+        if bsol ~= 0 then
+          px = px + y*(0.5*bsol*beam.charge)*(pfac-1)
+          py = py - x*(0.5*bsol*beam.charge)*(pfac-1)
+        end
+
+        m[i].px = px
+        m[i].py = py
+        m[i].pt = pt
+
+        if info >= 3 and rfac ~= 0 then
+          if is_damap(m[i]) then
+            rfac, h2, x, y = rfac:get0(), h2:get0(), x:get0(), y:get0()
+          end
+          printf("synrad: particle #%d lost %.7e GeV in slice %d of %s (rfac=%.10e, h=%.10e, ktap=%.10e)\n",
+                 m[i].id, rfac*beam.energy, islc, elm.name, rfac, sqrt(h2), elm.ktap)
+          if nphot > 5 then
+            warn(">5 photons emitted, synch. radiat. too high at x=%.5e, y=%.5e", x, y)
+          elseif nphot > 2 then
+            warn(">2 photons emitted, thinner slicing strongly recommended")
           end
         end
       end
-
-      if sdir < 0 then rfac = -rfac end
-
-      -- energy loss
-      pt = pt - rfac
-
-      -- momenta update
-      ndp1 = sqrt(1 + (2/bet0)*pt + pt^2)
-      local pfac = ndp1*_dp1
-
-      px = px*pfac
-      py = py*pfac
-
-      if bsol ~= 0 then
-        px = px + y*(0.5*bsol*beam.charge)*(pfac-1)
-        py = py - x*(0.5*bsol*beam.charge)*(pfac-1)
-      end
-
-      m[i].px = px
-      m[i].py = py
-      m[i].pt = pt
-
-      if info >= 3 and rfac ~= 0 then
-        if is_damap(m[i]) then
-          rfac, h2, x, y = rfac:get0(), h2:get0(), x:get0(), y:get0()
-        end
-        printf("synrad: particle #%d lost %.7e GeV in slice %d of %s (rfac=%.10e, h=%.10e, ktap=%.10e)\n",
-               m[i].id, rfac*beam.energy, islc, elm.name, rfac, sqrt(h2), elm.ktap)
-        if nphot > 5 then
-          warn(">5 photons emitted, synch. radiat. too high at x=%.5e, y=%.5e", x, y)
-        elseif nphot > 2 then
-          warn(">2 photons emitted, thinner slicing strongly recommended")
-        end
-      end
     end
 
-    -- tapering, TODO apply only on ref particle/damap
+    -- tapering, should be applied only on ref particle/damap, not #1
     if ntap <= taper and i == 1 then
       if is_damap(m[i]) then
         dp1, ndp1 = dp1:get0(), ndp1:get0()
@@ -379,7 +378,6 @@ function M.srad_damp (elm, m, lw, islc)
 
 --  printf("i=%d, bsol=%.16e, x=%.16e, px=%.16e, y=%.16e, py=%.16e, t=%.16e, pt=%.16e\n",
 --             i,       bsol,       x,  m[i].px,       y,  m[i].py,       t,       pt)
-
   ::continue::
   end
 end
