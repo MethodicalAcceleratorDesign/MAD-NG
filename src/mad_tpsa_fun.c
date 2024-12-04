@@ -1343,6 +1343,7 @@ FUN(wf) (const T *a, T *c)
 #ifdef MAD_CTPSA_IMPL
       q[o] = -2*(o-1)*q[o-2] - 2*a0*q[o-1];
 #endif
+      p[o] = -2*(o-1)*p[o-2] - 2*a0*p[o-1];
       ord_coef[o] = (p[o]*f0 + q[o]*I*M_2_SQRTPI)/mad_num_fact(o);
     }
 
