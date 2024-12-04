@@ -64,7 +64,7 @@ fun_taylor (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
 
   // n=1
   FUN(scl)(a, ord_coef[1], c);
-  FUN(seti)(c, 0, 0, ord_coef[0]); // f(a) + f'(a)(a-a0)
+  FUN(seti)(c, 0, 0, ord_coef[0]); // f(a0) + f'(a0)(a-a0)
 
   // n=2
   if (n >= 2) {
