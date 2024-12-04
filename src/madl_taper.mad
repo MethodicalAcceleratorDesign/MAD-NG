@@ -1,0 +1,159 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Taper module
+ |
+ | Methodical Accelerator Design - Copyright (c) 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Compute geometrical tapering and set elements ktap.
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local command, mtable, track, warn, tostring                    in MAD
+local printf                                                    in MAD.utility
+local is_string, is_sequence, is_nonzero                        in MAD.typeid
+
+local assert, error, table =
+      assert, error, table
+
+-- taper command --------------------------------------------------------------o
+
+local function mtbl_taper (self, sequ, mtbl)
+  local cn = mtbl:colnames()
+  for i,v in ipairs(cn) do cn[v:lower()] = i end
+  assert(cn.name, "invalid mtable of errors, missing column 'name'")
+
+  mtbl:foreach(\r,ri =>
+    local e, k = sequ[r[cn.name]], r[cn.ktap]
+    if not e then
+      if k ~= 0 then
+        warn("%s not found in sequence %s, ktap ignored", r[cn.name], sequ.name)
+      end
+      return
+    end
+
+    if not is_nil(e.ktap) then e.ktap = k or 0 end
+
+  end, self.range, self.selector)
+end
+
+local function set_taper (self, sequ, taper)
+  local info in self
+
+  if info >= 2 then
+    printf("computing geometric tapering for sequence %s\n", sequ.name)
+  end
+
+  local _, m = track { exec=false } :copy_variables(self) { O0=0,
+    deltap=0, save=false, mapdef=false, radiate=true, taper=taper, nstep=0 }
+
+  while true do
+    m[1].x, m[1].px = 0, 0
+    m[1].y, m[1].py = 0, 0
+    local _, _, ei, el = MAD.track { mflow=m, nstep=1, info=2 }
+    if not ei then break end
+    if info >= 2 and is_nonzero(el.ktap) then
+      io.write("track: tapering element ", el.name, "[", el.kind, "], ktap=", el.ktap, "\n")
+    end
+  end
+  if m.npar ~= 1 then
+    warn("reference orbit is unstable/singular/lost after tapering 1st pass")
+  end
+end
+
+local function save_taper (self, sequ)
+  local mtbl = mtable(sequ.name, {
+    type='taper', title=sequ.name, reserve=16,
+    __seq=sequ,
+    ename =\s -> s:getcol"name", -- add ename for direct access to column 'name'
+    {'name'}, 'kind', 's', 'l', 'ktap',
+  })
+  local save = not self.compact
+
+  sequ:foreach(\e,ei =>
+    if e.name:sub(1,1) == '$' then return end
+
+    local ktap = e.ktap or 0
+
+    if save or ktap ~= 0 then
+      mtbl = mtbl + {e.name, e.kind, sequ:spos(ei), e.l, ktap}
+    end
+
+  end, self.range, self.selector)
+
+  return mtbl
+end
+
+local function exec (self)
+  -- check sequence
+  local sequ = assert(self.sequence, "missing sequence")
+  assert(is_sequence(sequ), "invalid sequence")
+
+  -- clear ktap
+  local clear in self
+  if clear then
+    local v = clear ~= true and 0 or nil
+    sequ:foreach(\e => e.ktap = v end, self.range, self.selector)
+  end
+
+  -- process from table
+  local mtbl = self.table
+  if is_string(mtbl) then mtbl = mtable:read(mtbl) end
+  if mtbl then mtbl = mtbl_taper(self, sequ, mtbl) end
+
+  -- compute tapering
+  local taper = self.taper
+  if taper then
+    set_taper(self, sequ, taper)
+  end
+
+  -- save ktap to table
+  if self.save then
+    mtbl = save_taper(self, sequ)
+    if is_string(self.save) then mtbl:write(self.save) end
+  end
+
+  return mtbl
+end
+
+local taper = command 'taper' {
+  sequence=nil,      -- sequence(s) (required)                            (tapr)
+  range=nil,         -- sequence or table range                           (tapr)
+  select=nil,        -- sequence or table selector                        (tapr)
+
+  clear=false,       -- clear tapering of selected element                (tapr)
+  table=false,       -- table of errors to assign                         (tapr)
+  taper=true,        -- compute geometical tapering                       (tapr)
+
+  X0=nil,            -- initial orbit in t and pt                         (tapr)
+
+  save=false,        -- save all errors of selected elems in a mtable     (tapr)
+  compact=false,     -- don't save element without ktap in the mtable     (tapr)
+
+  info=nil,          -- information level (output on terminal)            (tapr)
+  debug=nil,         -- debugging information level (output on terminal)  (tapr)
+
+  exec=exec,         -- command to execute upon children creation
+
+  __attr = {
+    'sequence', 'range', 'select', 'clear', 'table', 'taper', 'X0',
+    'save', 'compact',
+  }
+} :set_readonly()    -- reference errors command is readonly
+
+-- end ------------------------------------------------------------------------o
+return { taper = taper }
