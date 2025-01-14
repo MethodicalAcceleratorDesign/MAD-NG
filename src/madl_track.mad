@@ -38,7 +38,7 @@ local is_nil, is_beam, is_sequence, is_boolean, is_number,
       is_beta0, is_matrix, is_tpsa, is_damap, is_logical,
       is_callable, is_iterable, is_mappable                     in MAD.typeid
 local fnil, first, ffalse, chain, achain                        in MAD.gfunc
-local dp2pt, bet2map, par2vec                                   in MAD.gphys
+local dp2pt, bet2map, par2vec, mrnk                             in MAD.gphys
 local errorf, assertf, printf                                   in MAD.utility
 local band                                                      in MAD.gfunc
 local apercheck                                                 in MAD.aperture
@@ -577,7 +577,7 @@ local function make_mflow (self)
   local beta = beam.beta
   local x0   = is_damap(O0) and O0:get0() or par2vec(O0)
   local pt0  = x0[6]
-  local damo, dapo, refid, stat = 0, 0, 0
+  local damo, dapo, refid, ii = 0, 0, 0, 0
 
   -- precedence of initial conditions
   for j,dp in ipairs(deltap) do
@@ -585,21 +585,27 @@ local function make_mflow (self)
     local j1  = j == 1
 
     for i=1,npar do
-      local X0i = X0[i]
-      local dpt = X0i.beam and dp2pt(dp, X0i.beam.beta) or dpt
-      local ii = (j-1)*npar+i
-      local nc = j1 and X0i.nocopy
+      local X0i  = X0[i]
+      local stat = X0i.status
+
+      if stat ~= nil and mrnk[stat] > 1 then goto continue end
+
+      local dpt  = X0i.beam and dp2pt(dp, X0i.beam.beta) or dpt
+      local nc   = j1 and X0i.nocopy
 
       if j1 and X0i.ref then refid = i end
 
+      ii = ii+1
       x0[6] = pt0+dpt
 
       if is_beta0(X0i) then     -- damap created from beta0
         mflw[ii] = bet2map(X0i, damap(mdef[i] or mdef)):set0(x0,1) -- x0 added
-        stat, damo, dapo = 'Aset', max(damo, mflw[ii].__td.mo), max(dapo, mflw[ii].__td.po)
+        damo, dapo = max(damo, mflw[ii].__td.mo), max(dapo, mflw[ii].__td.po)
+        stat = 'Aset'
       elseif is_damap(X0i) then -- damap (copy)
         mflw[ii] = (nc and X0i or X0i:copy()):set0(x0,1)           -- x0 added
-        stat, damo, dapo  = 'Mset', max(damo, mflw[ii].__td.mo), max(dapo, mflw[ii].__td.po)
+        damo, dapo = max(damo, mflw[ii].__td.mo), max(dapo, mflw[ii].__td.po)
+        if stat ~= 'Aset' then stat = 'Mset' end
       elseif is_iterable(X0i) then
         local x = x0 + par2vec(X0i)                                -- x0 added
         if mapdef then          -- damap created from particle
@@ -619,9 +625,10 @@ local function make_mflow (self)
       mflw[ii].id     = ii
 --      mflw[ii].dp0    = dp
 --      mflw[ii].dpt0   = dpt
-      mflw[ii].status = X0i.status or stat -- preserve status (if any)
+      mflw[ii].status = stat
       mflw[ii].beam   = X0i.beam
       mflw[ii].nosave = X0i.nosave
+    ::continue::
     end
   end
 
