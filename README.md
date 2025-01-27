@@ -20,3 +20,5 @@ The successor of MAD-X.
 [Documentation](https://cern.ch/mad/releases/madng/html/)
 
 [Releases](https://cern.ch/mad/releases/madng/) 
+
+[Paper](https://arxiv.org/abs/2412.16006)
