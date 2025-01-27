@@ -1,0 +1,223 @@
+--[=[
+ o-----------------------------------------------------------------------------o
+ |
+ | Taper module
+ |
+ | Methodical Accelerator Design - Copyright (c) 2016+
+ | Support: http://cern.ch/mad  - mad at cern.ch
+ | Authors: L. Deniau, laurent.deniau at cern.ch
+ | Contrib: -
+ |
+ o-----------------------------------------------------------------------------o
+ | You can redistribute this file and/or modify it under the terms of the GNU
+ | General Public License GPLv3 (or later), as published by the Free Software
+ | Foundation. This file is distributed in the hope that it will be useful, but
+ | WITHOUT ANY WARRANTY OF ANY KIND. See http://gnu.org/licenses for details.
+ o-----------------------------------------------------------------------------o
+
+  Purpose:
+  - Compute geometrical tapering and set elements ktap.
+
+ o-----------------------------------------------------------------------------o
+]=]
+
+-- locals ---------------------------------------------------------------------o
+
+local command, mtable, track, warn, tostring                    in MAD
+local printf, tblcat                                            in MAD.utility
+local is_nil, is_string, is_sequence, is_nonzero                in MAD.typeid
+local pt2dp                                                     in MAD.gphys
+
+local assert, error, table =
+      assert, error, table
+
+-- taper command --------------------------------------------------------------o
+
+local function clear_taper (self, sequ, clr)
+  if self.info >= 1 then
+    printf("clearing tapering for sequence %s\n", sequ.name)
+  end
+
+  local v = clr ~= true and 0 or nil
+  sequ:foreach(\e => e.ktap = v end, self.range, self.selector)
+end
+
+local function table_taper (self, sequ, tbl)
+  local cn = tbl:colnames()
+  for i,v in ipairs(cn) do cn[v:lower()] = i end
+  assert(cn.name, "invalid mtable of errors, missing column 'name'")
+
+  tbl:foreach(\r,ri =>
+    local e, k = sequ[r[cn.name]], r[cn.ktap]
+    if not e then
+      if k ~= 0 then
+        warn("%s not found in sequence %s, ktap ignored", r[cn.name], sequ.name)
+      end
+      return
+    end
+
+    if not is_nil(e.ktap) then e.ktap = k or 0 end
+
+  end, self.range, self.selector)
+end
+
+local function set_taper (self, sequ, taper)
+  local X0, info in self
+
+  if info >= 1 then
+    printf("computing geometric tapering for sequence %s\n", sequ.name)
+  end
+
+  if taper == true then taper = 1 end
+
+  for itr=1,taper do
+    local _, m = track { exec=false } :copy_variables(self) { sequence=sequ,
+      X0=X0, O0=0, save=false, radiate=true, taper=false, nstep=0, info=info-1 }
+
+    local beta in m[1].beam or m.beam
+    while true do
+      local pt = m[1].pt
+      m[1].x, m[1].px = 0, 0
+      m[1].y, m[1].py = 0, 0
+      local _, _, ei, el = track { mflow=m, nstep=1 }
+      if not ei then break end
+      if not is_nil(el.ktap) then
+        el.ktap = 0.5*(pt2dp(pt, beta) + pt2dp(m[1].pt, beta))
+      end
+      if info >= 2 and is_nonzero(el.ktap) then
+        io.write("tapering element ", el.name, " [", el.kind, "], ktap=", el.ktap, "\n")
+      end
+    end
+    if m.npar ~= 1 then
+      warn("reference orbit is unstable/singular/lost after tapering 1st pass")
+    end
+  end
+end
+
+local function save_taper (self, sequ)
+  local mtbl = mtable(sequ.name, {
+    type='taper', title=sequ.name, reserve=16,
+    __seq=sequ,
+    ename =\s -> s:getcol"name", -- add ename for direct access to column 'name'
+    {'name'}, 'kind', 's', 'l', 'ktap',
+  })
+  local save = not self.compact
+
+  if self.info >= 1 then
+    printf("save tapering to table %s for sequence %s\n",
+           mtbl.name, sequ.name)
+  end
+
+  sequ:foreach(\e,ei =>
+    if e.name:sub(1,1) == '$' then return end
+
+    local ktap = e.ktap or 0
+
+    if save or ktap ~= 0 then
+      mtbl = mtbl + {e.name, e.kind, sequ:spos(ei), e.l, ktap}
+    end
+
+  end, self.range, self.selector)
+
+  return mtbl
+end
+
+local function exec (self)
+  local info in self
+  local mtbl
+
+  -- check sequence
+  local sequ = assert(self.sequence, "missing sequence")
+  assert(is_sequence(sequ), "invalid sequence")
+
+  -- clear tapering
+  if self.clear then
+    clear_taper(self, sequ, self.clear)
+  end
+
+  -- compute tapering
+  if self.taper then
+    set_taper(self, sequ, self.taper)
+  end
+
+  -- load tapering
+  if self.table then
+    local tbl = self.table
+    if is_string(tbl) then tbl = mtable:read(tbl) end
+    table_taper(self, sequ, tbl)
+  end
+
+  -- save tapering
+  if self.save then
+    mtbl = save_taper(self, sequ)
+    if is_string(self.save) then mtbl:write(self.save) end
+  end
+
+  return mtbl
+end
+
+local taper = command 'taper' {
+  sequence=nil,      -- sequence(s) (required)                            (trck)
+  range=nil,         -- sequence or table range                           (trck)
+  select=nil,        -- sequence or table selector                        (tapr)
+
+  clear=false,       -- clear tapering of selected element                (tapr)
+  table=false,       -- table of errors to assign                         (tapr)
+  taper=false,       -- compute geometical tapering                       (tapr)
+
+  save=false,        -- save all errors of selected elems in a mtable     (tapr)
+  compact=false,     -- don't save element without ktap in the mtable     (tapr)
+
+  info=0,            -- information level (output on terminal)            (tapr)
+  debug=0,           -- debugging information level (output on terminal)  (tapr)
+
+  exec=exec,         -- command to execute upon children creation
+
+  __attr = tblcat(   -- list of all setup attributes
+    track.__attr, { 'select', 'clear', 'table', 'taper', 'compact', },
+    {noeval=track.__attr.noeval}
+  )
+} :set_readonly()    -- reference errors command is readonly
+
+-- end ------------------------------------------------------------------------o
+return { taper = taper }
+
+--[[
+-- Old command set_ktap
+
+local _, m = track { sequence=fcc, radiate=true, taper=true, save=false, info=2, nstep=0, __taper="none" }
+
+local n = 1
+while true do
+--  local eidx in m
+--  io.write("iter=", n, ", eidx=", eidx, "\n") ; n=n+1
+--  local t, pt = m[1].t, m[1].pt
+  m[1].x, m[1].px = 0, 0
+  m[1].y, m[1].py = 0, 0
+  local _, _, ei, el = track { mflow=m, info=2, nstep=1, __taper="none" }
+  if not ei then break end
+  if is_nonzero(el.ktap) then
+    io.write("tapering element ", el.name, " [", ei, "], kind=", el.kind, ", ktap=", el.ktap or 0, "\n")
+  end
+
+--[=[
+  if is_nonzero(el.ktap) then
+--    io.write("tapering element ", el.name, " [", ei, "], kind=", el.kind, ", ktap=", el.ktap or 0, ", pt=", m[1].pt, "\n")
+    m[1].x, m[1].px = 0, 0
+    m[1].y, m[1].py = 0, 0
+    m[1].t, m[1].pt = t, pt
+    m.eidx = ei-1
+    local _, _, ei, el = track { mflow=m, info=2, nstep=1 }
+    if not ei then break end
+    if el:is_implicit() then -- case implicit drift
+      m[1].x, m[1].px = 0, 0
+      m[1].y, m[1].py = 0, 0
+      m[1].t, m[1].pt = t, pt
+      local _, _, ei_, el_ = track { mflow=m, info=2, nstep=1 } ; ei, el = ei_, el_
+      if not ei then break end
+    end
+--    io.write("tapering element ", el.name, " [", ei, "], kind=", el.kind, ", ktap=", el.ktap or 0, ", pt=", m[1].pt, "\n")
+  end
+--]=]
+end
+--]]

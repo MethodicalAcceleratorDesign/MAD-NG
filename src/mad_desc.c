@@ -325,9 +325,12 @@ tbl_by_ord(D *d)
     d->ords[i] = mad_mono_ord(d->nn, d->To[i]);
     d->prms[i] = mad_mono_ord(d->np, d->To[i]+d->nv);
     if (d->ords[i] > d->ords[i-1]) d->ord2idx[++j] = i;
-//  printf("i=%d, o=%d, p=%d\n", i, d->ords[i], d->prms[i]);
+#if DESC_DEBUG > 2
+    printf("o[%d]=%d, p[%d]=%d, o2i[%d]=%d\n",
+           i, d->ords[i], i, d->prms[i], j, d->ord2idx[j]);
+#endif
   }
-  d->ord2idx[d->mo+1] = d->nc;
+  FOR(i,j+1,d->mo+2) d->ord2idx[i] = d->nc;
 
 #if DESC_DEBUG > 1
   printf("To =\n"); tbl_print(d->nn, d->nc, d->To);

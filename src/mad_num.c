@@ -294,12 +294,12 @@ void mad_cpx_pow_r (num_t x_re, num_t x_im, num_t y_re, num_t y_im, cpx_t *r)
 
 #include "mad_erfw.h"
 
-num_t mad_num_wf    (num_t x) { return Faddeeva_w_im     (x); }
-num_t mad_num_erf   (num_t x) { return Faddeeva_erf_re   (x); }
-num_t mad_num_erfc  (num_t x) { return Faddeeva_erfc_re  (x); }
-num_t mad_num_erfi  (num_t x) { return Faddeeva_erfi_re  (x); }
-num_t mad_num_erfcx (num_t x) { return Faddeeva_erfcx_re (x); }
-num_t mad_num_dawson(num_t x) { return Faddeeva_Dawson_re(x); }
+num_t mad_num_wf    (num_t x) { return Faddeeva_w        (x, 0); }
+num_t mad_num_erf   (num_t x) { return Faddeeva_erf_re   (x);    }
+num_t mad_num_erfc  (num_t x) { return Faddeeva_erfc_re  (x);    }
+num_t mad_num_erfi  (num_t x) { return Faddeeva_erfi_re  (x);    }
+num_t mad_num_erfcx (num_t x) { return Faddeeva_erfcx_re (x);    }
+num_t mad_num_dawson(num_t x) { return Faddeeva_Dawson_re(x);    }
 
 cpx_t mad_cpx_wf    (cpx_t x) { return Faddeeva_w     (x, 0); }
 cpx_t mad_cpx_erf   (cpx_t x) { return Faddeeva_erf   (x, 0); }

@@ -454,12 +454,15 @@ found:
 #endif
   setenv("LUA_CPATH", env, 1);
 
-#ifndef MADNG_NORUNINFO
+#define MADNG_RUNINFO 0
+
+#if MADNG_RUNINFO
 #if LUAJIT_OS != LUAJIT_OS_WINDOWS
-  {
+  if (system("mail -e > /dev/null 2>&1") == 0) {
+    printf("running mail\n");
     char buf[1024];
     snprintf(buf, sizeof buf, "echo \"MADNG RUN: %s %s [%s] [%s] [%s]\""
-                              " | mailx -s '-- madng run info --' %s.%s@%s",
+                              " | mail -s '-- madng run info --' %s.%s@%s",
               "$USER", progname, mad_release, "`date`", "`uname -a`",
               "laurent", "deniau", "cern.ch");
     system(buf);
