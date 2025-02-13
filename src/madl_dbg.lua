@@ -655,7 +655,6 @@ if stdin_isatty and not os.getenv("DBG_NOREADLINE") then
 	end)
 end
 
-
 -- Detect Lua version.
 if jit then -- LuaJIT
 	LUA_JIT_SETLOCAL_WORKAROUND = -1
@@ -666,7 +665,6 @@ else
 	dbg_writeln(COLOR_YELLOW.."dbg: "..COLOR_RESET.."Not tested against ".._VERSION)
 	dbg_writeln("Please send me feedback!")
 end
-
 
 -- mad extension (doesn't work with dbg) ---------------------------------------
 
