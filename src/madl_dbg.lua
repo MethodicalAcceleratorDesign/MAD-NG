@@ -629,7 +629,7 @@ if stdin_isatty and not os.getenv("DBG_NOREADLINE") then
 			end
 			return str
 		end
-		dbg_writeln(COLOR_YELLOW.."dbg: "..COLOR_RESET.."Linenoise support enabled.")
+		-- dbg_writeln(COLOR_YELLOW.."dbg: "..COLOR_RESET.."Linenoise support enabled.") -- MAD
 	end)
 
 	-- Conditionally enable LuaJIT readline support.
@@ -650,21 +650,23 @@ if stdin_isatty and not os.getenv("DBG_NOREADLINE") then
 					return nil
 				end
 			end
-			dbg_writeln(COLOR_YELLOW.."dbg: "..COLOR_RESET.."Readline support enabled.")
+			-- dbg_writeln(COLOR_YELLOW.."dbg: "..COLOR_RESET.."Readline support enabled.") -- MAD
 		end
 	end)
 end
 
+
 -- Detect Lua version.
 if jit then -- LuaJIT
 	LUA_JIT_SETLOCAL_WORKAROUND = -1
-	dbg_writeln(COLOR_YELLOW.."dbg: "..COLOR_RESET.."Loaded for "..jit.version)
+	-- dbg_writeln(COLOR_YELLOW.."dbg: "..COLOR_RESET.."Loaded for "..jit.version) -- MAD
 elseif "Lua 5.1" <= _VERSION and _VERSION <= "Lua 5.4" then
-	dbg_writeln(COLOR_YELLOW.."dbg: "..COLOR_RESET.."Loaded for ".._VERSION)
+	-- dbg_writeln(COLOR_YELLOW.."dbg: "..COLOR_RESET.."Loaded for ".._VERSION) -- MAD
 else
 	dbg_writeln(COLOR_YELLOW.."dbg: "..COLOR_RESET.."Not tested against ".._VERSION)
 	dbg_writeln("Please send me feedback!")
 end
+
 
 -- mad extension (doesn't work with dbg) ---------------------------------------
 
