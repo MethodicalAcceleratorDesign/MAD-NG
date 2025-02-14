@@ -384,5 +384,27 @@ function json.decode(str)
   return res
 end
 
+-- MAD extensions --------------------------------------------------------------
+
+local openfile in MAD.utility
+
+function json.write (filnam_, val)
+  local file = assert(openfile(filnam_, 'w'),
+                      "unable to open JSON file in write mode")
+  file:write(json.encode(val))
+  if is_string(filnam_) then file:close() else file:flush() end
+end
+
+function json.print (val)
+  json.write(io.stdout, val)
+end
+
+function json.read (filnam_)
+  local file = assert(openfile(filnam_, 'r'),
+                      "unable to open JSON file in read mode")
+  local val = json.decode(file:read("*a"))
+  if is_string(filnam_) then file:close() end
+  return val
+end
 
 return { json = json } -- MAD
