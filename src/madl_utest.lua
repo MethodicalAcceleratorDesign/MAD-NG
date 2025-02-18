@@ -3244,9 +3244,9 @@ end
                 break
             end
         end
-        if(not M.LuaUnit.asFunction( result ) ) then
-            result = _G[key]
-        end
+--      if(not M.LuaUnit.asFunction( result ) ) then -- MAD, avoid error from strict
+--          result = _G[key]
+--      end
         return result
     end
 
