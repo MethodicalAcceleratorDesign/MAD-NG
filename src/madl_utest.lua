@@ -3245,7 +3245,9 @@ end
             end
         end
 --      if(not M.LuaUnit.asFunction( result ) ) then -- MAD, avoid error from strict
+--          MAD.strict(false) -- allow global access
 --          result = _G[key]
+--          MAD.strict()      -- block global access
 --      end
         return result
     end
