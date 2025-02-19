@@ -1,7 +1,7 @@
 ---
 --- Lua Fun - a high-performance functional programming library for LuaJIT
 ---
---- Copyright (c) 2013-2017 Roman Tsisyk <roman@tsisyk.com>
+--- Copyright (c) 2013-2025 Roman Tsisyk <roman@tsisyk.com>
 ---
 --- Distributed under the MIT/X11 License. See COPYING.md for more details.
 ---
@@ -60,9 +60,6 @@ local function deepcopy(orig) -- used by cycle()
         for orig_key, orig_value in next, orig, nil do
             copy[deepcopy(orig_key)] = deepcopy(orig_value)
         end
-        -- NOTE: this is needed for `chain_from` where `state` can contain
-        -- generators, i.e. callable tables:
-        setmetatable(copy, getmetatable(orig))
     else
         copy = orig
     end
@@ -116,31 +113,32 @@ local ipairs_gen = ipairs({}) -- get the generating function from ipairs
 
 local pairs_gen = pairs({ a = 0 }) -- get the generating function from pairs
 local map_gen = function(tab, key)
+    local value
     local key, value = pairs_gen(tab, key)
     return key, key, value
 end
 
 local rawiter = function(obj, param, state)
     assert(obj ~= nil, "invalid iterator")
-    if type(obj) == "table" or type(obj) == "cdata" then
-        local mt = get_metatable(obj);
+    if type(obj) == "table" or type(obj) == "cdata" then -- MAD
+        local mt = getmetatable(obj);
         if mt ~= nil then
             if mt == iterator_mt then
                 return obj.gen, obj.param, obj.state
-            elseif mt.__ipairs ~= nil and #obj > 0 then
+            elseif mt.__ipairs ~= nil then
                 return mt.__ipairs(obj)
             elseif mt.__pairs ~= nil then
                 return mt.__pairs(obj)
             end
         end
-        if type(obj) == "table" then
-          if #obj > 0 then
-              -- array
-              return ipairs(obj)
-          else
-              -- hash
-              return map_gen, obj, nil
-          end
+        if type(obj) == "table" then -- MAD
+            if #obj > 0 then
+                -- array
+                return ipairs(obj)
+            else
+                -- hash
+                return map_gen, obj, nil
+            end
         end
     elseif type(obj) == "function" then
         return obj, param, state
@@ -325,10 +323,10 @@ local nth = function(n, gen_x, param_x, state_x)
     assert(n > 0, "invalid first argument to nth")
     -- An optimization for arrays and strings
     if gen_x == ipairs_gen or is_iterable(param_x) then -- MAD
-        return param_x[n]
+        return param_x[state_x + n]
     elseif gen_x == string_gen then
-        if n <= #param_x then
-            return string.sub(param_x, n, n)
+        if state_x + n <= #param_x then
+            return string.sub(param_x, state_x + n, state_x + n)
         else
             return nil
         end
@@ -437,24 +435,41 @@ end
 methods.drop_n = method1(drop_n)
 exports.drop_n = export1(drop_n)
 
-local drop_while_x = function(fun, state_x, ...)
-    if state_x == nil or not fun(...) then
-        return state_x, false
+-- Unpack values from param[3] on the first iteration, then return
+-- values from the provided iterator.
+--
+-- A generator function for drop_while().
+local drop_while_gen = function(param, state)
+    local results = param[3]
+    if not results then
+        return param[1](param[2], state)
+    else
+        param[3] = nil
+        return state, unpack(results, 1, table.maxn(results))
     end
-    return state_x, true, ...
+end
+
+-- Checks if drop_while should continue skipping. If iterator is not exhausted
+-- and skipping is over, elements returned by iterator are wrapped into a table
+-- and returned as the second return value. Note that a table is created only
+-- once, on the last iteration, for the sake of performance.
+local drop_while_x = function(fun, state_x, ...)
+    if state_x ~= nil and not fun(...) then
+        return state_x, {...}
+    end
+    return state_x
 end
 
 local drop_while = function(fun, gen_x, param_x, state_x)
     assert(type(fun) == "function", "invalid first argument to drop_while")
-    local cont, state_x_prev
-    repeat
-        state_x_prev = deepcopy(state_x)
-        state_x, cont = drop_while_x(fun, gen_x(param_x, state_x))
-    until not cont
+    local pivot = nil
+    while state_x ~= nil and pivot == nil do
+        state_x, pivot = drop_while_x(fun, gen_x(param_x, state_x))
+    end
     if state_x == nil then
         return wrap(nil_gen, nil, nil)
     end
-    return wrap(gen_x, param_x, state_x_prev)
+    return wrap(drop_while_gen, {gen_x, param_x, pivot}, state_x)
 end
 methods.drop_while = method1(drop_while)
 exports.drop_while = export1(drop_while)
@@ -625,7 +640,7 @@ exports.reduce = exports.foldl
 
 local length = function(gen, param, state)
     if gen == ipairs_gen or gen == string_gen or is_lengthable(param) then -- MAD
-        return #param
+        return #param - state
     end
     local len = 0
     repeat
@@ -969,7 +984,7 @@ local chain_gen_r2 = function(param, state, state_x, ...)
     if state_x == nil then
         local i = state[1]
         i = i + 1
-        if param[3 * i - 1] == nil then
+        if param[3 * i - 2] == nil then
             return nil
         end
         local state_x = param[3 * i]
@@ -1005,42 +1020,6 @@ end
 methods.chain = chain
 exports.chain = chain
 
-local chain_from_gen_r1
-local chain_from_gen_r2 = function(param, state, state_y, ...)
-    if state_y == nil then
-        local          gen_x, param_x, state_x = param[1], param[2], state[1]
-        local state_x, gen_y, param_y, state_y = gen_x(param_x, state_x)
-        if state_x == nil then
-            return nil
-        end
-        return chain_from_gen_r1(param, {state_x, iter(gen_y, param_y, state_y)})
-    end
-    return {state[1], state[2], state[3], state_y}, ...
-end
-
-chain_from_gen_r1 = function(param, state)
-    local gen_y, param_y, state_y = state[2], state[3], state[4]
-    return chain_from_gen_r2(param, state, gen_y(param_y, state_y))
-end
-
-local chain_from = function(gen_x, param_x, state_x)
-    local          gen_x, param_x, state_x = iter(gen_x, param_x, state_x)
-    local state_x, gen_y, param_y, state_y =      gen_x(param_x, state_x)
-    if state_x == nil then
-        return wrap(nil_gen, nil, nil)
-    end
-    local t = {state_x, iter(gen_y, param_y, state_y)}
-    return wrap(chain_from_gen_r1, {gen_x, param_x}, t)
-end
-methods.chain_from = chain_from
-exports.chain_from = chain_from
-
-local bind = function(fun, gen, param, state)
-    return chain_from(map(fun, gen, param, state))
-end
-methods.bind = method1(bind)
-exports.bind = export1(bind)
-
 --------------------------------------------------------------------------------
 -- Operators
 --------------------------------------------------------------------------------
@@ -1068,7 +1047,7 @@ local operator = {
     end,
     mod = function(a, b) return a % b end,
     mul = function(a, b) return a * b end,
-    neg = function(a) return -a end,
+    neg = function(a) return -a end, -- MAD fix
     unm = function(a) return -a end, -- an alias
     pow = function(a, b) return a ^ b end,
     sub = function(a, b) return a - b end,

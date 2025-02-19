@@ -19,6 +19,9 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 --]]
+
+-- Documentation at https://corsix.github.io/ffi-reflect/
+
 local ffi = require "ffi"
 local bit = require "bit"
 local reflect = {}

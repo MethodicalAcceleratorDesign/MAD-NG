@@ -23,7 +23,7 @@
 
 -- locals ---------------------------------------------------------------------o
 
-local command, track, cofind, option, warn, vector, matrix        in MAD
+local command, track, cofind, option, warn, vector, matrix, range in MAD
 local normal, normal1, map2bet, bet2map, chr2bet, syn2bet, dp2pt,
       ofname, ofcname, ofhname, ofchname, cvindex, msort, par2vec in MAD.gphys
 local sign                                                        in MAD.gmath
@@ -41,7 +41,7 @@ local chromdp = 1e-6
 local assert, error, getmetatable, setmetatable, table =
       assert, error, getmetatable, setmetatable, table
 
-local r4 = 1..4
+local r4 = range(1,4)
 local I4 = matrix(4):eye()
 local I6 = matrix(6):eye()
 
@@ -298,7 +298,7 @@ local function twiss_cofind (self, mflw0)
   local j, X0, Xi = 1, table.new(npar,0), table.new(npar,0)
   for i=1,npar do -- use particles or (re)use damaps
     local m = mflw0[i]
-    if m.status ~= 'Aset' then
+    if m.status ~= 'Aset' and m.cofind ~= false then
       X0[j] = costp and m:get0():totable() or m
       Xi[j], X0[j].beam, X0[j].nosave, X0[j].nocopy, j =
        m.id,     m.beam,     m.nosave,            i, j+1
@@ -350,7 +350,7 @@ local function twiss_track (self, mflw0)
   local j, X0, Xi = 1, table.new(npar,0), table.new(npar,0)
   for i=1,npar do
     local m = mflw0[i]
-    if m.status == 'stable' then
+    if m.status == 'stable' or m.status == 'Xset' then
       Xi[j], X0[j], m.nocopy, j = m.id, m:clr0(), i, j+1
     end
   end
@@ -541,14 +541,25 @@ local function make_mflow (self)
   -- clear setup already included
   self.O0, self.deltap = 0, 0
 
+  -- status transition:
+  --         cofind    track   normal  track
+  --           |         |       |       |
+  --           v         v       v       v
+  -- Xset,Mset -> stable -> Mset -> Aset -> NForm
+  --                         ^
+  --                         |
+  --                       cofind=F
+  --
   -- check if cofind is needed
   local cofind
   for i=1,mflw.npar do
-    if mflw[i].status == 'Xset' then cofind = true ; break end
+    if mflw[i].status ~= 'Aset' and mflw[i].cofind ~= false then
+      cofind = true ; break
+    end
   end
 
   if cofind then
-    -- search for closed orbits (update mflw, keep order)
+    -- search for closed orbits (update mflw, set order to 1)
     twiss_cofind(self, mflw)
     if mflw.npar == 0 then return mflw end -- no more particles...
     if mflw.debug >= 3 then twdump(mflw,'co.') end

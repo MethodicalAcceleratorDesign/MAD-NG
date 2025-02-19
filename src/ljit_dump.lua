@@ -1,7 +1,7 @@
 ----------------------------------------------------------------------------
 -- LuaJIT compiler dump module.
 --
--- Copyright (C) 2005-2022 Mike Pall. All rights reserved.
+-- Copyright (C) 2005-2025 Mike Pall. All rights reserved.
 -- Released under the MIT license. See Copyright Notice in luajit.h
 ----------------------------------------------------------------------------
 --
@@ -37,8 +37,6 @@
 --    x  Print each taken trace exit.
 --    X  Print each taken trace exit and the contents of all registers.
 --    a  Print the IR of aborted traces, too.
---    1  Print extra information about trace, require t (MAD extension)
---    2  Print Hotcount table and PC slot on stderr (MAD extension, extend 1)
 --
 -- The output format can be set with the following characters:
 --
@@ -57,7 +55,6 @@
 
 -- Cache some library functions and objects.
 local jit = require("jit")
-assert(jit.version_num == 20100, "LuaJIT core/library version mismatch")
 local jutil = require("jit.util")
 local vmdef = require("ljit_vmdef")
 local funcinfo, funcbc = jutil.funcinfo, jutil.funcbc
@@ -76,28 +73,6 @@ local bcline, disass
 
 -- Active flag, output file handle and dump mode.
 local active, out, dumpmode
-
--- MAD extensions -------------------------------------------------------------
-
--- MAD has always FFI
-local ffi = require("ffi")
-local _C  = ffi.C
-
-ffi.cdef[[
-// variables defined in src/lj_trace.c
-extern int        ljmad_ljtrace_debug;
-extern const char ljmad_ljtrace_message[];
-extern const char ljmad_ljtrace_hottbls[];
-]]
-
-local function dump_trace_info (tr, otr)
-  local msg = ffi.string(_C.ljmad_ljtrace_message)
-  out:write(msg, "\n")
-  if _C.ljmad_ljtrace_debug > 1 and msg:sub(-1) == "]" then
-    out:write(ffi.string(_C.ljmad_ljtrace_hottbls))
-  end
---out:write("XCHECK: tr=", tr, ", otr=", otr, "\n")
-end
 
 ------------------------------------------------------------------------------
 
@@ -131,9 +106,9 @@ local function fillsymtab(tr, nexit)
     for i=0,#ircall do
       local addr = ircalladdr(i)
       if addr ~= 0 then
-  if maskaddr then addr = band(addr, maskaddr) end
-  if addr < 0 then addr = addr + 2^32 end
-  t[addr] = ircall[i]
+	if maskaddr then addr = band(addr, maskaddr) end
+	if addr < 0 then addr = addr + 2^32 end
+	t[addr] = ircall[i]
       end
     end
   end
@@ -143,10 +118,10 @@ local function fillsymtab(tr, nexit)
     for i=nexitsym,nexit-1 do
       local addr = traceexitstub(i)
       if addr == nil then -- Fall back to per-trace exit stubs.
-  fillsymtab_tr(tr, nexit)
-  setmetatable(symtab, symtabmt)
-  nexit = 1000000
-  break
+	fillsymtab_tr(tr, nexit)
+	setmetatable(symtab, symtabmt)
+	nexit = 1000000
+	break
       end
       if addr < 0 then addr = addr + 2^32 end
       t[addr] = tostring(i)
@@ -258,7 +233,7 @@ local html_escape = { ["<"] = "&lt;", [">"] = "&gt;", ["&"] = "&amp;", }
 local function colorize_html(s, t, extra)
   s = gsub(s, "[<>&]", html_escape)
   return format('<span class="irt_%s%s">%s</span>',
-    irtype_text[t], extra and " irt_extra" or "", s)
+		irtype_text[t], extra and " irt_extra" or "", s)
 end
 
 local irtype_html = setmetatable({},
@@ -394,12 +369,12 @@ local function printsnap(tr, snap)
       n = n + 1
       local ref = band(sn, 0xffff) - 0x8000 -- REF_BIAS
       if ref < 0 then
-  out:write(formatk(tr, ref, sn))
+	out:write(formatk(tr, ref, sn))
       elseif band(sn, 0x80000) ~= 0 then -- SNAP_SOFTFPNUM
-  out:write(colorize(format("%04d/%04d", ref, ref+1), 14))
+	out:write(colorize(format("%04d/%04d", ref, ref+1), 14))
       else
-  local m, ot, op1, op2 = traceir(tr, ref)
-  out:write(colorize(format("%04d", ref), band(ot, 31), band(sn, 0x100000) ~= 0))
+	local m, ot, op1, op2 = traceir(tr, ref)
+	out:write(colorize(format("%04d", ref), band(ot, 31), band(sn, 0x100000) ~= 0))
       end
       out:write(band(sn, 0x10000) == 0 and " " or "|") -- SNAP_FRAME
     else
@@ -461,9 +436,9 @@ local function dumpcallargs(tr, ins)
     if op == "CARG  " then
       dumpcallargs(tr, op1)
       if op2 < 0 then
-  out:write(" ", formatk(tr, op2))
+	out:write(" ", formatk(tr, op2))
       else
-  out:write(" ", format("%04d", op2))
+	out:write(" ", format("%04d", op2))
       end
     else
       out:write(format("%04d", ins))
@@ -488,9 +463,9 @@ local function dump_ir(tr, dumpsnap, dumpreg)
   for ins=1,nins do
     if ins >= snapref then
       if dumpreg then
-  out:write(format("....              SNAP   #%-3d [ ", snapno))
+	out:write(format("....              SNAP   #%-3d [ ", snapno))
       else
-  out:write(format("....        SNAP   #%-3d [ ", snapno))
+	out:write(format("....        SNAP   #%-3d [ ", snapno))
       end
       printsnap(tr, snap)
       snapno = snapno + 1
@@ -502,58 +477,58 @@ local function dump_ir(tr, dumpsnap, dumpreg)
     local op = sub(irnames, oidx+1, oidx+6)
     if op == "LOOP  " then
       if dumpreg then
-  out:write(format("%04d ------------ LOOP ------------\n", ins))
+	out:write(format("%04d ------------ LOOP ------------\n", ins))
       else
-  out:write(format("%04d ------ LOOP ------------\n", ins))
+	out:write(format("%04d ------ LOOP ------------\n", ins))
       end
     elseif op ~= "NOP   " and op ~= "CARG  " and
-     (dumpreg or op ~= "RENAME") then
+	   (dumpreg or op ~= "RENAME") then
       local rid = band(ridsp, 255)
       if dumpreg then
-  out:write(format("%04d %-6s", ins, ridsp_name(ridsp, ins)))
+	out:write(format("%04d %-6s", ins, ridsp_name(ridsp, ins)))
       else
-  out:write(format("%04d ", ins))
+	out:write(format("%04d ", ins))
       end
       out:write(format("%s%s %s %s ",
-           (rid == 254 or rid == 253) and "}" or
-           (band(ot, 128) == 0 and " " or ">"),
-           band(ot, 64) == 0 and " " or "+",
-           irtype[t], op))
+		       (rid == 254 or rid == 253) and "}" or
+		       (band(ot, 128) == 0 and " " or ">"),
+		       band(ot, 64) == 0 and " " or "+",
+		       irtype[t], op))
       local m1, m2 = band(m, 3), band(m, 3*4)
       if sub(op, 1, 4) == "CALL" then
-  local ctype
-  if m2 == 1*4 then -- op2 == IRMlit
-    out:write(format("%-10s  (", vmdef.ircall[op2]))
-  else
-    ctype = dumpcallfunc(tr, op2)
-  end
-  if op1 ~= -1 then dumpcallargs(tr, op1) end
-  out:write(")")
-  if ctype then out:write(" ctype ", ctype) end
+	local ctype
+	if m2 == 1*4 then -- op2 == IRMlit
+	  out:write(format("%-10s  (", vmdef.ircall[op2]))
+	else
+	  ctype = dumpcallfunc(tr, op2)
+	end
+	if op1 ~= -1 then dumpcallargs(tr, op1) end
+	out:write(")")
+	if ctype then out:write(" ctype ", ctype) end
       elseif op == "CNEW  " and op2 == -1 then
-  out:write(formatk(tr, op1))
+	out:write(formatk(tr, op1))
       elseif m1 ~= 3 then -- op1 != IRMnone
-  if op1 < 0 then
-    out:write(formatk(tr, op1))
-  else
-    out:write(format(m1 == 0 and "%04d" or "#%-3d", op1))
-  end
-  if m2 ~= 3*4 then -- op2 != IRMnone
-    if m2 == 1*4 then -- op2 == IRMlit
-      local litn = litname[op]
-      if litn and litn[op2] then
-        out:write("  ", litn[op2])
-      elseif op == "UREFO " or op == "UREFC " then
-        out:write(format("  #%-3d", shr(op2, 8)))
-      else
-        out:write(format("  #%-3d", op2))
-      end
-    elseif op2 < 0 then
-      out:write("  ", formatk(tr, op2))
-    else
-      out:write(format("  %04d", op2))
-    end
-  end
+	if op1 < 0 then
+	  out:write(formatk(tr, op1))
+	else
+	  out:write(format(m1 == 0 and "%04d" or "#%-3d", op1))
+	end
+	if m2 ~= 3*4 then -- op2 != IRMnone
+	  if m2 == 1*4 then -- op2 == IRMlit
+	    local litn = litname[op]
+	    if litn and litn[op2] then
+	      out:write("  ", litn[op2])
+	    elseif op == "UREFO " or op == "UREFC " then
+	      out:write(format("  #%-3d", shr(op2, 8)))
+	    else
+	      out:write(format("  #%-3d", op2))
+	    end
+	  elseif op2 < 0 then
+	    out:write("  ", formatk(tr, op2))
+	  else
+	    out:write(format("  %04d", op2))
+	  end
+	end
       end
       out:write("\n")
     end
@@ -577,7 +552,12 @@ local recdepth = 0
 local function fmterr(err, info)
   if type(err) == "number" then
     if type(info) == "function" then info = fmtfunc(info) end
-    err = format(vmdef.traceerr[err], info)
+    local fmt = vmdef.traceerr[err]
+    if fmt == "NYI: bytecode %s" then
+      local oidx = 6 * info
+      info = sub(vmdef.bcnames, oidx+1, oidx+6)
+    end
+    err = format(fmt, info)
   end
   return err
 end
@@ -595,7 +575,6 @@ local function dump_trace(what, tr, func, pc, otr, oex)
     if otr then out:write(" ", otr, "/", oex == -1 and "stitch" or oex) end
     out:write(" ", fmtfunc(func, pc), "\n")
   elseif what == "stop" or what == "abort" then
-    if _C.ljmad_ljtrace_debug > 0 then dump_trace_info(tr, otr) end       -- MAD
     out:write("---- TRACE ", tr, " ", what)
     if what == "abort" then
       out:write(" ", fmtfunc(func, pc), " -- ", fmterr(otr, oex), "\n")
@@ -603,11 +582,11 @@ local function dump_trace(what, tr, func, pc, otr, oex)
       local info = traceinfo(tr)
       local link, ltype = info.link, info.linktype
       if link == tr or link == 0 then
-  out:write(" -> ", ltype, "\n")
+	out:write(" -> ", ltype, "\n")
       elseif ltype == "root" then
-  out:write(" -> ", link, "\n")
+	out:write(" -> ", link, "\n")
       else
-  out:write(" -> ", link, " ", ltype, "\n")
+	out:write(" -> ", link, " ", ltype, "\n")
       end
     end
     if dumpmode.H then out:write("</pre>\n\n") else out:write("\n") end
@@ -653,24 +632,24 @@ local function dump_texit(tr, ex, ngpr, nfpr, ...)
     local regs = {...}
     if gpr64 then
       for i=1,ngpr do
-  out:write(format(" %016x", regs[i]))
-  if i % 4 == 0 then out:write("\n") end
+	out:write(format(" %016x", regs[i]))
+	if i % 4 == 0 then out:write("\n") end
       end
     else
       for i=1,ngpr do
-  out:write(" ", tohex(regs[i]))
-  if i % 8 == 0 then out:write("\n") end
+	out:write(" ", tohex(regs[i]))
+	if i % 8 == 0 then out:write("\n") end
       end
     end
     if fprmips32 then
       for i=1,nfpr,2 do
-  out:write(format(" %+17.14g", regs[ngpr+i]))
-  if i % 8 == 7 then out:write("\n") end
+	out:write(format(" %+17.14g", regs[ngpr+i]))
+	if i % 8 == 7 then out:write("\n") end
       end
     else
       for i=1,nfpr do
-  out:write(format(" %+17.14g", regs[ngpr+i]))
-  if i % 4 == 0 then out:write("\n") end
+	out:write(format(" %+17.14g", regs[ngpr+i]))
+	if i % 4 == 0 then out:write("\n") end
       end
     end
   end
@@ -685,7 +664,6 @@ local function dumpoff()
     jit.attach(dump_texit)
     jit.attach(dump_record)
     jit.attach(dump_trace)
-    _C.ljmad_ljtrace_debug = 0                                            -- MAD
     if out and out ~= stdout and out ~= stderr then out:close() end
     out = nil
   end
@@ -711,7 +689,6 @@ local function dumpon(opt, outfile)
 
   if m.t or m.b or m.i or m.s or m.m then
     jit.attach(dump_trace, "trace")
-    _C.ljmad_ljtrace_debug = m['2'] and 2 or m['1'] and 1 or 0            -- MAD
   end
   if m.b then
     jit.attach(dump_record, "record")

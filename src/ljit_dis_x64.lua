@@ -1,13 +1,14 @@
 ----------------------------------------------------------------------------
 -- LuaJIT x64 disassembler wrapper module.
 --
--- Copyright (C) 2005-2022 Mike Pall. All rights reserved.
+-- Copyright (C) 2005-2025 Mike Pall. All rights reserved.
 -- Released under the MIT license. See Copyright Notice in luajit.h
 ----------------------------------------------------------------------------
 -- This module just exports the 64 bit functions from the combined
 -- x86/x64 disassembler module. All the interesting stuff is there.
 ------------------------------------------------------------------------------
 
+--local dis_x86 = require((string.match(..., ".*%.") or "").."dis_x86")
 local dis_x86 = require("ljit_dis_x86")
 return {
   create = dis_x86.create64,

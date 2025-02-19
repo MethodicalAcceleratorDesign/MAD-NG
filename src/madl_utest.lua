@@ -3244,9 +3244,9 @@ end
                 break
             end
         end
---        if(not  M.LuaUnit.asFunction( result ) ) then
---            result = _G[key]
---        end
+        if(not M.LuaUnit.asFunction( result ) ) then
+            result = _G[key]
+        end
         return result
     end
 
@@ -3483,7 +3483,7 @@ end
         return the number of failures and errors, 0 meaning success
         ]]
         -- parse the command-line arguments
-        testNames = self:initFromArguments( commandLineArguments )
+        local testNames = self:initFromArguments( commandLineArguments )
         self:registerSuite()
         self:internalRunSuiteByInstances( listOfNameAndInst )
         self:unregisterSuite()
