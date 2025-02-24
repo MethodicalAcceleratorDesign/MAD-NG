@@ -1493,7 +1493,7 @@ mad_mat_solve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ss
   mad_free_tmp(wk); mad_free_tmp(ta); mad_free_tmp(tb);
 
   if (info < 0) error("Solve: invalid input argument");
-  if (info > 0) warn ("Solve: unexpected lapack error");
+  if (info > 0) error("Solve: unexpected lapack error");
 
   return rank;
 }
@@ -1524,7 +1524,7 @@ mad_cmat_solve (const cpx_t a[], const cpx_t b[], cpx_t x[], ssz_t m, ssz_t n, s
   mad_free_tmp(wk); mad_free_tmp(ta); mad_free_tmp(tb);
 
   if (info < 0) error("Solve: invalid input argument");
-  if (info > 0) warn ("Solve: unexpected lapack error");
+  if (info > 0) error("Solve: unexpected lapack error");
 
   return rank;
 }
