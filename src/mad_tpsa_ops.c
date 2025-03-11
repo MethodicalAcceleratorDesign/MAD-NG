@@ -641,43 +641,43 @@ FUN(nrm) (const T *a)
 }
 
 void
-FUN(integ) (const T *a, T *r, int iv)
+FUN(integ) (const T *a, T *r, int ivp)
 {
   assert(a && r); DBGFUN(->);
   const D *d = a->d;
   ensure(IS_COMPAT(a,r), "incompatibles GTPSA (descriptors differ)");
-  ensure(0 < iv && iv <= d->nv,
-         "index 1<= %d <=%d is not a GTPSA variable", iv, d->nv);
+  ensure(0 < ivp && ivp <= d->nn,
+         "index 1<= %d <=%d is not a GTPSA variable or parameter", ivp, d->nn);
 
   T *c = a == r ? GET_TMPX(r) : FUN(reset0)(r);
 
   T *t = GET_TMPX(r);
-  FUN(setvar)(t, 0, iv, 0);
+  FUN(setvar)(t, 0, ivp, 0);
   FUN(mul)(a, t, c);    // integrate
   REL_TMPX(t);
 
   ord_t **mono = d->To;
   TPSA_SCAN(c,MAX(c->lo,2),c->hi)
-    if (c->coef[i] && mono[i][iv-1] > 1) c->coef[i] /= mono[i][iv-1];
+    if (c->coef[i] && mono[i][ivp-1] > 1) c->coef[i] /= mono[i][ivp-1];
 
   if (c != r) { FUN(copy)(c,r); REL_TMPX(c); }
   DBGFUN(<-);
 }
 
 void
-FUN(deriv) (const T *a, T *r, int iv)
+FUN(deriv) (const T *a, T *r, int ivp)
 {
   assert(a && r); DBGFUN(->);
   const D *d = a->d;
   ensure(IS_COMPAT(a,r), "incompatibles GTPSA (descriptors differ)");
-  ensure(0 < iv && iv <= d->nv,
-         "index 1<= %d <=%d is not a GTPSA variable", iv, d->nv);
+  ensure(0 < ivp && ivp <= d->nn,
+         "index 1<= %d <=%d is not a GTPSA variable or parameter", ivp, d->nn);
 
   if (FUN(isval)(a)) { FUN(clear)(r); DBGFUN(<-); return; } // empty
 
   T *c = a == r ? GET_TMPX(r) : FUN(reset0)(r);
 
-  FUN(setval)(c, FUN(geti)(a,iv));
+  FUN(setval)(c, FUN(geti)(a,ivp));
 
   c->lo = a->lo > 1 ? a->lo-1 : 1;
   c->hi = MIN(a->hi-1, c->mo);
@@ -686,11 +686,11 @@ FUN(deriv) (const T *a, T *r, int iv)
   const idx_t *o2i = d->ord2idx;
   ord_t der_ord = 1, oc = 1;
   if (a->lo <= oc+1 && oc+1 <= a->hi) // 1
-      hpoly_der_eq(a->coef, c->coef+o2i[oc], iv, oc, der_ord, d);
+      hpoly_der_eq(a->coef, c->coef+o2i[oc], ivp, oc, der_ord, d);
 
   for (oc = 2; oc <= c->hi; ++oc) // 2..hi
     if (a->lo <= oc+1 && oc+1 <= a->hi)
-      hpoly_der_gt(a->coef, c->coef+o2i[oc], iv, oc, der_ord, d);
+      hpoly_der_gt(a->coef, c->coef+o2i[oc], ivp, oc, der_ord, d);
 
   FUN(update)(c);
 
