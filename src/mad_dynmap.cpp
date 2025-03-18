@@ -158,8 +158,10 @@ using namespace mad;
 
 #if TPSA_DBGMDUMP // set to 0 to remove debug code, ~2.5% of code size
 #define mdump(n) if (m.dbg) mdump<M>(m, __func__, n)
+#define tdump(t) if (m.dbg) tdump<M>(m, t, __func__, __LINE__)
 #else
 #define mdump(n)
+#define tdump(t)
 #endif
 
 template <typename M, typename T=M::T>
@@ -180,6 +182,25 @@ inline void (mdump) (cflw<M> &m, str_t s, int n)
   else
     printf("% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e\n",
              p.x[0], p.px[0],  p.y[0], p.py[0],  p.t[0], p.pt[0]);
+
+  fflush(stdout);
+}
+
+template <typename M, typename T=M::T>
+inline void (tdump) (cflw<M> &m, T &t, str_t s, int n)
+{
+  if (!m.dbg) return;
+
+  char fun[30];
+  snprintf(fun, 30, "%s:%d:", s, n);
+  printf("@@ %-15s %-15s ", m.name, fun);
+
+  if constexpr (std::is_floating_point<T>::value)
+    printf("% -.16e\n", t);
+  else
+    printf("% -.16e\n", t[0]);
+
+  fflush(stdout);
 }
 
 // --- constants --------------------------------------------------------------o
@@ -633,6 +654,7 @@ inline void sbend_thick (cflw<M> &m, num_t lw, int is)
   if (fabs(m.knl[0]) < minstr || !m.charge) return curex_drift<M>(m, lw, is);
 
   mdump(0);
+
   P ld  = R(m.el)*lw;
   P ang = R(m.eh)*R(m.el)*lw*m.edir, rho=1/R(m.eh)*m.edir;
   P k0q = R(m.knl[0])/R(m.el)*(m.edir*m.charge);
@@ -646,7 +668,6 @@ inline void sbend_thick (cflw<M> &m, num_t lw, int is)
     T  dpx = ca*pzx - sa*p.px;
     T _ptt = invsqrt(pw2);
     T  dxs = (ang + asin(p.px*_ptt) - asin(npx*_ptt))/k0q;
-
     // eq. 126 in Forest06
     p.x  = (sqrt(pw2 - sqr(npx)) - dpx)/k0q - rho;  // can be numerically unstable
     p.px = npx;
@@ -1185,7 +1206,7 @@ inline void cav_fringe (cflw<M> &m, num_t lw)
 }
 
 
-#if 0  // version from L.D. & PTC (requires correct inversion for backtracking)
+#if 0  // version from LD & PTC (requires correct inversion for backtracking)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R, typename V>
 inline void bend_face (cflw<M> &m, num_t lw, const V &h)
 {                                  (void)lw;
