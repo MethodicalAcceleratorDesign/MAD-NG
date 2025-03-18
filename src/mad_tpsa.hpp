@@ -196,6 +196,10 @@ struct tpsa : tpsa_base<tpsa> {
   explicit tpsa(const tpsa_base<A> &a,
                 const tpsa_base<B> &b) : t(mad_tpsa_new(a.ptr(),std::max(a.mo(), b.mo()))) { TRC("&baz,&baz! %p", (void*)t.get()) }
 
+#if !TPSA_USE_TMP
+  tpsa(tpsa &&a) : t(a.ptr()) { TRC("<tpa") } // move ctor
+#endif
+
   tpsa_t* ptr () const  { return t.get(); }
   tpsa_t& ref () const  { return *t;      }
   void    swp (tpsa &a) { t.swap(a.t);    }
