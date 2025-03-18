@@ -202,6 +202,10 @@ struct ctpsa : ctpsa_base<ctpsa> {
   explicit ctpsa(const tpsa_base<A> &re,
                  const tpsa_base<A> &im) { TRC("&baz,&baz! %p", (void*)t.get()); mad_ctpsa_cplx(re.ptr(), im.ptr(), t.get()); }
 
+#if !TPSA_USE_TMP
+  ctpsa(ctpsa &&a) : t(a.ptr()) { TRC("<tpa") } // move ctor
+#endif
+
   ctpsa_t* ptr () const { return t.get(); }
   ctpsa_t& ref () const { return *t;      }
   void     swp (ctpsa &a) { t.swap(a.t);  }
