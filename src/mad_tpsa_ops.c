@@ -281,13 +281,13 @@ axpbypc (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
 
   if ((!c1 && !b->hi) || (!c2 && !a->hi)) { c->lo = 1, c->hi = 0; return; }
 
-  ord_t alo, ahi, blo, bhi;
+  ord_t alo, ahi, blo, bhi, cmo = c->mo;
 
   if (!c1 || !a->hi) alo = b->lo, ahi = 0;
-  else               alo = a->lo, ahi = MIN(a->hi, c->mo);
+  else               alo = a->lo, ahi = MIN(a->hi, cmo);
 
   if (!c2 || !b->hi) blo = a->lo, bhi = 0;
-  else               blo = b->lo, bhi = MIN(b->hi, c->mo);
+  else               blo = b->lo, bhi = MIN(b->hi, cmo);
 
   c->lo = MIN(alo, blo);
   c->hi = MAX(ahi, bhi);
@@ -297,26 +297,24 @@ axpbypc (NUM c1, const T *a, NUM c2, const T *b, NUM c3, T *c)
   const idx_t *o2i = c->d->ord2idx;
   idx_t i = o2i[alo];
   for(; i < o2i[MIN(ahi+1,blo)]; i++) c->coef[i] = c1*a->coef[i];
-  for(; i < o2i[blo]           ; i++) c->coef[i] = 0; // no overlap
+  for(; i < o2i[MIN(blo,cmo)]  ; i++) c->coef[i] = 0; // no overlap
   for(; i < o2i[MIN(ahi,bhi)+1]; i++) c->coef[i] = c1*a->coef[i]+c2*b->coef[i];
   for(; i < o2i[ahi+1]         ; i++) c->coef[i] = c1*a->coef[i];
   for(; i < o2i[bhi+1]         ; i++) c->coef[i] = c2*b->coef[i];
 
 #if 0
-  if (mad_tpsa_dbga >= 3 && a != c && b != c) {
+  if (mad_tpsa_dbga >= 3) {
     static int cnt = 0;
     str_t av = FUN(isvalid)(a) ? "" : "*";
     str_t bv = FUN(isvalid)(b) ? "" : "*";
-    printf("alo=%d[%d], ahi=%d[%d]%s, blo=%d[%d], bhi=%d[%d]%s, clo=%d, chi=%d\n",
-            alo,a->lo,  ahi,a->hi,av, blo,b->lo,  bhi,b->hi,bv, c->lo,  c->hi);
+    printf("i=%d, alo=%d[%d], ahi=%d[%d]%s, blo=%d[%d], bhi=%d[%d]%s, clo=%d, chi=%d, cmo=%d\n",
+            i,    alo,a->lo,  ahi,a->hi,av, blo,b->lo,  bhi,b->hi,bv, c->lo,  c->hi,  c->mo);
     printf("c1="FMT", c2="FMT", c3="FMT"\n", VAL(c1), VAL(c2), VAL(c3));
     printf("aaa=0x%p, bbb=0x%p, ccc=0x%p\n", (void*)a, (void*)b, (void*)c);
-
+    DBGTPSA(a); DBGTPSA(b); DBGTPSA(c);
     FUN(print)(a,"aaa",0,0,0);
     FUN(print)(b,"bbb",0,0,0);
     FUN(print)(c,"ccc",0,0,0);
-    if (a != c) DBGTPSA(a);
-    if (b != c) DBGTPSA(b);
     if (++cnt >= 20) exit(EXIT_FAILURE);
   }
 #endif
