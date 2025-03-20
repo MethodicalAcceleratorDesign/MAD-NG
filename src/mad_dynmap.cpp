@@ -171,7 +171,7 @@ inline void (mdump) (cflw<M> &m, str_t s, int n)
 
   char fun[50];
   snprintf(fun, 50, "%s:%d", s, n);
-  printf("@@ %-15s %-25s ", m.name, fun);
+  printf("@@ %-15s %-15s ", m.name, fun);
 
   if (!m.npar) { printf("no particle found\n"); return; }
 
@@ -179,9 +179,19 @@ inline void (mdump) (cflw<M> &m, str_t s, int n)
   if constexpr (std::is_floating_point<T>::value)
     printf("% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e\n",
                 p.x,    p.px,     p.y,    p.py,     p.t,    p.pt);
-  else
+  else if (m.dbg < 4)
     printf("% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e\n",
              p.x[0], p.px[0],  p.y[0], p.py[0],  p.t[0], p.pt[0]);
+  else if (n) {
+    printf("\n");
+    stdout << p.x .set("X" )
+           << p.px.set("PX")
+           << p.y .set("Y" )
+           << p.py.set("PY")
+           << p.t .set("T" )
+           << p.pt.set("PT");
+  }
+  printf("\n");
 }
 
 template <typename M, typename T=M::T>
@@ -521,7 +531,7 @@ inline void strex_kick (cflw<M> &m, num_t lw, int is, bool no_k0l=false)
 
   FOR (i,m.npar) {
     M p(m,i);
-    T bx(p.x), by(p.y);
+    T bx(std::max(ord(p.x),ord(p.y))), by(bx);
     bxby(m, p.x, p.y, bx, by);
 
     p.px -= wchg*(by-dby);
@@ -569,7 +579,7 @@ inline void strex_kickhs (cflw<M> &m, num_t lw, int is)
     if (m.sdir == -1) strex_kicks(m, lw, p, pz);
 
     if (m.nmul > 0) {
-      T bx(p.x), by(p.y);
+      T bx(std::max(ord(p.x),ord(p.y))), by(bx);
       bxby(m, p.x, p.y, bx, by);
 
       p.px -= wchg*by;
@@ -629,7 +639,7 @@ inline void curex_kick (cflw<M> &m, num_t lw, int is, bool no_k0l=false)
 
   FOR(i,m.npar) {
     M p(m,i);
-    T bx(p.x), by(p.y);
+    T bx(std::max(ord(p.x),ord(p.y))), by(bx);
     T r = 1+R(m.eh)*p.x*m.edir;
 
     if (m.snm) bxbyh(m, p.x, p.y, bx, by); else bx = 0., by = R(m.knl[0]);
@@ -820,8 +830,6 @@ inline void quad_thick (cflw<M> &m, num_t lw, int is)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void quad_kick (cflw<M> &m, num_t lw, int is)
 {                                          (void)is;
-  if (fabs(m.k1) < minstr) return strex_kick<M>(m, lw, is);
-
   num_t dw = is == 0 ? 1./2 : 1.; // drift weight
   P l   = R(m.el)*lw;
   P ldw = l*dw;
@@ -834,7 +842,7 @@ inline void quad_kick (cflw<M> &m, num_t lw, int is)
 
     FOR (i,m.npar) {
       M p(m,i);
-      T bx(p.x), by(p.y);
+      T bx(std::max(ord(p.x),ord(p.y))), by(bx);
       bxby(m, p.x, p.y, bx, by);
 
       p.px -= wchg*(by - R(m.knl[1])*p.x);
@@ -889,8 +897,6 @@ inline void quad_thicks (cflw<M> &m, num_t lw, int is)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void quad_kicks (cflw<M> &m, num_t lw, int is)
 {                                           (void)is;
-  if (fabs(m.k1) < minstr) return strex_kick<M>(m, lw, is);
-
   num_t dw = is == 0 ? 1./2 : 1.; // drift weight
   P l   = R(m.el)*lw;
   P ldw = l*dw;
@@ -903,7 +909,7 @@ inline void quad_kicks (cflw<M> &m, num_t lw, int is)
 
     FOR (i,m.npar) {
       M p(m,i);
-      T bx(p.x), by(p.y);
+      T bx(std::max(ord(p.x),ord(p.y))), by(bx);
       bxby(m, p.x, p.y, bx, by);
 
       p.px -= wchg*(by - R(m.knl[1])*p.x + R(m.ksl[1])*p.y);
@@ -989,7 +995,7 @@ inline void quad_kickh (cflw<M> &m, num_t lw, int is)
 
     FOR (i,m.npar) {
       M p(m,i);
-      T bx(p.x), by(p.y);
+      T bx(std::max(ord(p.x),ord(p.y))), by(bx);
       T pz = sqrt(1 + 2/m.beta*p.pt + sqr(p.pt));
 
       bxby(m, p.x, p.y, bx, by);
@@ -1137,7 +1143,8 @@ inline void rfcav_kickn (cflw<M> &m, num_t lw, int is)
     }
 
     if (m.nmul > 0) {
-      T bx(p.x), by(p.y), byt(p.y);
+      ord_t mo = std::max(ord(p.x),ord(p.y));
+      T bx(mo), by(mo), byt(mo);
       bxby(m, p.x, p.y, bx, by);
 
       p.px += wchg/m.pc*by*ca;
@@ -1542,21 +1549,22 @@ inline void mult_fringe (cflw<M> &m, num_t lw)
 
   FOR (i,m.npar) {
     M p(m,i);
-    T rx(p.x), ix (p.x);           rx = 1., ix =0.;
-    T fx(p.x), fxx(p.x), fxy(p.x); fx = 0., fxx=0., fxy=0.;
-    T fy(p.y), fyy(p.y), fyx(p.y); fy = 0., fyy=0., fyx=0.;
+    ord_t mo = std::max(ord(p.x),ord(p.y));
+    T rx(mo), ix (mo);          rx = 1., ix =0.;
+    T fx(mo), fxx(mo), fxy(mo); fx = 0., fxx=0., fxy=0.;
+    T fy(mo), fyy(mo), fyx(mo); fy = 0., fyy=0., fyx=0.;
+    T drx(mo), dix(mo), u(mo), v(mo), du(mo), dv(mo);
 
     T _pz = invsqrt(1 + 2/m.beta*p.pt + sqr(p.pt));
 
     FOR (j,1,n+1) {
-      T drx(p.x), dix(p.x); drx = rx, dix = ix;
+      drx = rx, dix = ix;
       rx = drx*p.x - dix*p.y;
       ix = drx*p.y + dix*p.x;
 
       num_t nj = -wchg/(4*(j+1)), nf = (j+2.)/j;
       P kj = R(m.knl[j-1])*_l, ksj = R(m.ksl[j-1])*_l;
 
-      T u(p.x), v(p.x), du(p.x), dv(p.x);
       if (j == 1 && no_k1) {
         u  = nj*(       - ksj*ix );
         v  = nj*(       + ksj*rx );
