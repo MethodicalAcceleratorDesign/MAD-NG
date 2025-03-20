@@ -70,8 +70,8 @@ check (const T *t, ord_t *o_, num_t *d_)
 
 #if TPSA_STRICT
   if (t->hi) {
-    if (FUN(nzero0)(t,t->lo,t->lo,0) < 0) {_o = t->lo; goto ret;}
-    if (FUN(nzero0)(t,t->hi,t->hi,0) < 0) {_o = t->hi; goto ret;}
+    if (FUN(nzero0)((T*)t,t->lo,t->lo,0) < 0) {_o = t->lo; goto ret;}
+    if (FUN(nzero0)((T*)t,t->hi,t->hi,0) < 0) {_o = t->hi; goto ret;}
   }
 #endif
 
