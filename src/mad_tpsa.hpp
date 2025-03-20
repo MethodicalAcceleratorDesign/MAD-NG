@@ -27,7 +27,7 @@
 // comment to disable temporaries, default ctors, and traces
 #define TPSA_USE_TMP 1
 #define TPSA_USE_DFT 0
-#define TPSA_USE_TRC 0
+#define TPSA_USE_TRC 1
 
 // --- includes ---------------------------------------------------------------o
 
@@ -47,8 +47,9 @@ extern "C" {
 
 #if TPSA_USE_TRC
 #define TRC(...) \
-  (printf("%s:%3d:%12s: ", __FILE__, __LINE__, __func__), \
-   printf(__VA_ARGS__), printf("\n"));
+  ((void)(mad_tpsa_dbgf > 1 && ( \
+    printf("%s:%3d:%12s: ", __FILE__, __LINE__, __func__), \
+    printf(__VA_ARGS__), printf("\n"))));
 #else
 #define TRC(...)
 #endif
@@ -700,9 +701,12 @@ FUN(erfc  );
 } // mad
 
 #undef T
-#undef TRC
 #undef FUN
 #undef FUN_TMP
+
+#ifndef MAD_CTPSA_HPP
+#undef TRC
+#endif
 
 //#undef TPSA_USE_TMP
 //#undef TPSA_USE_TRC
