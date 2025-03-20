@@ -107,40 +107,40 @@ mad_ctpsa_clear0 (ctpsa_t *t, ord_t lo, ord_t hi)
 }
 
 static inline idx_t // return index of first non-zero coef in [lo,hi] or -1
-mad_ctpsa_nzero0 (const ctpsa_t *t, ord_t lo, ord_t hi, log_t upt)
+mad_ctpsa_nzero0 (ctpsa_t *t, ord_t lo, ord_t hi, log_t upt)
 {
   assert(t);
   if (lo > hi) return -1;
   const idx_t *o2i = t->d->ord2idx;
   idx_t i = o2i[lo], ni = o2i[hi+1]-1;
-  cpx_t c = t->coef[ni]; ((ctpsa_t*)t)->coef[ni] = 1; // set stopper
+  cpx_t c = t->coef[ni]; t->coef[ni] = 1; // set stopper
   while (!t->coef[i]) ++i;
-  ((ctpsa_t*)t)->coef[ni] = c;                        // restore value
+  t->coef[ni] = c;                        // restore value
   if (i != ni || c) {
-    if (upt) ((ctpsa_t*)t)->lo = t->d->ords[i];
+    if (upt) t->lo = t->d->ords[i];
     return i;
   } else {
-    if (upt) ((ctpsa_t*)t)->lo = 1, ((ctpsa_t*)t)->hi = 0;
+    if (upt) t->lo = 1, t->hi = 0;
     return -1;
   }
 }
 
 static inline idx_t // return index of first non-zero coef in [lo,hi] or -1
-mad_ctpsa_nzero0r (const ctpsa_t *t, ord_t lo, ord_t hi, log_t upt)
+mad_ctpsa_nzero0r (ctpsa_t *t, ord_t lo, ord_t hi, log_t upt)
 {
   assert(t);
   const idx_t *o2i = t->d->ord2idx;
   for (ord_t o = hi; o >= lo; o--) {
     idx_t i = o2i[o], ni = o2i[o+1]-1;
-    cpx_t c = t->coef[ni]; ((ctpsa_t*)t)->coef[ni] = 1; // set stopper
+    cpx_t c = t->coef[ni]; t->coef[ni] = 1; // set stopper
     while (!t->coef[i]) ++i;
-    ((ctpsa_t*)t)->coef[ni] = c;                        // restore value
+    t->coef[ni] = c;                        // restore value
     if (i != ni || c) {
-      if (upt) ((ctpsa_t*)t)->hi = o;
+      if (upt) t->hi = o;
       return i;
     }
   }
-  if (upt) ((ctpsa_t*)t)->lo = 1, ((ctpsa_t*)t)->hi = 0;
+  if (upt) t->lo = 1, t->hi = 0;
   return -1;
 }
 
