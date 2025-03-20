@@ -401,7 +401,7 @@ FUN(print) (const T *t, str_t name_, num_t eps, int nohdr, FILE *stream_)
 #else
   const char typ = 'C';
 #endif
-  const D *d = t->d;
+  const D *d = t->d; assert(d);
   if (nohdr) goto onlycoef;
 
   // print header
