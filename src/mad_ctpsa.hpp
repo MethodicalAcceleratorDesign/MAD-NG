@@ -210,12 +210,15 @@ struct ctpsa : ctpsa_base<ctpsa> {
   ctpsa& operator=(const  tpsa_base<A> &a) { TRC("tpa=baz") mad_ctpsa_cplx(a.ptr(),NULL,ptr()); return *this; }
 
 #if TPSA_USE_TMP // specialization for capturing temporaries (forward decl)
-  ctpsa(const mad_prv_::ctpsa_tmp_&); //
-  ctpsa(const mad_prv_::ctpsa_tmp_&, const mad_prv_::ctpsa_tmp_&);
+  #define R mad_prv_:: tpsa_tmp_
+  #define T mad_prv_::ctpsa_tmp_
+
+  ctpsa(const T&); //
+  ctpsa(const T&, const T&);
   template <class A>
-  ctpsa(const mad_prv_::ctpsa_tmp_&, const ctpsa_base<A> &);
+  ctpsa(const T&, const ctpsa_base<A> &);
   template <class A>
-  ctpsa(const ctpsa_base<A> &      , const mad_prv_::ctpsa_tmp_&);
+  ctpsa(const ctpsa_base<A> &, const T&);
 #endif
 
 protected:
@@ -284,9 +287,6 @@ private:
 };
 
 } // mad_prv_
-
-#define R mad_prv_:: tpsa_tmp_
-#define T mad_prv_::ctpsa_tmp_
 
 inline ctpsa::ctpsa(const T &a) { t.swap(const_cast<T&>(a).t); TRC("&tmp") }
 

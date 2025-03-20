@@ -212,12 +212,14 @@ struct tpsa : tpsa_base<tpsa> {
   tpsa& operator=(      num_t         a) { TRC("tpa=num") mad_tpsa_setval(ptr(), a   ); return *this; }
 
 #if TPSA_USE_TMP // specialization for capturing temporaries (forward decl)
-  tpsa(const mad_prv_::tpsa_tmp_&);
-  tpsa(const mad_prv_::tpsa_tmp_&, const mad_prv_::tpsa_tmp_&);
+  #define T mad_prv_::tpsa_tmp_
+
+  tpsa(const T&);
+  tpsa(const T&, const T&);
   template <class A>
-  tpsa(const mad_prv_::tpsa_tmp_&, const tpsa_base<A> &);
+  tpsa(const T&, const tpsa_base<A> &);
   template <class A>
-  tpsa(const tpsa_base<A> &      , const mad_prv_::tpsa_tmp_&);
+  tpsa(const tpsa_base<A> &, const T&);
 #endif
 
 protected:
@@ -286,8 +288,6 @@ private:
 };
 
 } // mad_prv_
-
-#define T mad_prv_::tpsa_tmp_
 
 inline tpsa::tpsa(const T &a) { t.swap(const_cast<T&>(a).t); TRC("&tmp") }
 
