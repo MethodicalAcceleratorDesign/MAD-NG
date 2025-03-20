@@ -33,16 +33,6 @@ extern "C" {
 #include "mad_ctpsa.h"
 }
 
-// --- trace ------------------------------------------------------------------o
-
-#if TPSA_USE_TRC
-#define TRC(...) \
-  (printf("%s:%3d:%12s: ", __FILE__, __LINE__, __func__), \
-   printf(__VA_ARGS__), printf("\n"));
-#else
-#define TRC(...)
-#endif
-
 // --- types ------------------------------------------------------------------o
 
 #define C(...) (*(cpx_t*)&(__VA_ARGS__))
