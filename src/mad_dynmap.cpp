@@ -42,8 +42,8 @@ enum { nmul_max=22, snm_max=(nmul_max+1)*(nmul_max+2)/2 };
 
 template <typename M, typename MT=M::MT, typename MP=M::MP>
 struct cflw { // must be identical to def of 3 variants in madl_etck.mad!!
+  int knd, dbg;
   str_t name;
-  int dbg;
 
   // beam
   num_t pc, beta, betgam;
@@ -158,20 +158,20 @@ using namespace mad;
 
 #if TPSA_DBGMDUMP // set to 0 to remove debug code, ~2.5% of code size
 #define mdump(n) if (m.dbg) mdump<M>(m, __func__, n)
-#define tdump(t) if (m.dbg) tdump<M>(m, t, __func__, __LINE__)
 #else
 #define mdump(n)
-#define tdump(t)
 #endif
+
+#define tdump(t) if (m.dbg) tdump<M>(m, t, MKSTR(t), __func__, __LINE__)
 
 template <typename M, typename T=M::T>
 inline void (mdump) (cflw<M> &m, str_t s, int n)
 {
   if (!m.dbg) return;
 
-  char fun[30];
-  snprintf(fun, 30, "%s:%d", s, n);
-  printf("@@ %-15s %-15s ", m.name, fun);
+  char fun[50];
+  snprintf(fun, 50, "%s:%d", s, n);
+  printf("@@ %-15s %-25s ", m.name, fun);
 
   if (!m.npar) { printf("no particle found\n"); return; }
 
@@ -182,25 +182,23 @@ inline void (mdump) (cflw<M> &m, str_t s, int n)
   else
     printf("% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e\n",
              p.x[0], p.px[0],  p.y[0], p.py[0],  p.t[0], p.pt[0]);
-
-  fflush(stdout);
 }
 
 template <typename M, typename T=M::T>
-inline void (tdump) (cflw<M> &m, T &t, str_t s, int n)
+inline void (tdump) (cflw<M> &m, T &t, str_t s, str_t f, int n)
 {
   if (!m.dbg) return;
 
-  char fun[30];
-  snprintf(fun, 30, "%s:%d:", s, n);
-  printf("@@ %-15s %-15s ", m.name, fun);
+  char fun[50];
+  snprintf(fun, 50, "%s:%d:%s", f, n, s);
+  printf("@@ %-15s %-25s ", m.name, fun);
 
   if constexpr (std::is_floating_point<T>::value)
     printf("% -.16e\n", t);
-  else
-    printf("% -.16e\n", t[0]);
-
-  fflush(stdout);
+  else {
+    printf(" [%p->%p->%p]\n", (void*)&t, (void*)t.ptr(), *(void**)t.ptr());
+    stdout << t;
+  }
 }
 
 // --- constants --------------------------------------------------------------o
@@ -654,7 +652,6 @@ inline void sbend_thick (cflw<M> &m, num_t lw, int is)
   if (fabs(m.knl[0]) < minstr || !m.charge) return curex_drift<M>(m, lw, is);
 
   mdump(0);
-
   P ld  = R(m.el)*lw;
   P ang = R(m.eh)*R(m.el)*lw*m.edir, rho=1/R(m.eh)*m.edir;
   P k0q = R(m.knl[0])/R(m.el)*(m.edir*m.charge);
@@ -668,6 +665,7 @@ inline void sbend_thick (cflw<M> &m, num_t lw, int is)
     T  dpx = ca*pzx - sa*p.px;
     T _ptt = invsqrt(pw2);
     T  dxs = (ang + asin(p.px*_ptt) - asin(npx*_ptt))/k0q;
+
     // eq. 126 in Forest06
     p.x  = (sqrt(pw2 - sqr(npx)) - dpx)/k0q - rho;  // can be numerically unstable
     p.px = npx;
@@ -1683,338 +1681,434 @@ inline void rfcav_fringe (cflw<M> &m, num_t lw)
 
 // --- tilt & misalignment ---
 void mad_trk_tilt_r (mflw_t *m, num_t lw) {
+  assert(m && tolower(tolower(m->rflw.knd)) == 'r');
   srotation<par_t>(m->rflw, lw*m->rflw.sdir, m->rflw.tlt);
 }
 void mad_trk_tilt_t (mflw_t *m, num_t lw) {
+  assert(m && tolower(tolower(m->tflw.knd)) == 't');
   srotation<map_t>(m->tflw, lw*m->tflw.sdir, m->tflw.tlt);
 }
 void mad_trk_tilt_p (mflw_t *m, num_t lw) {
+  assert(m && tolower(tolower(m->pflw.knd)) == 'p');
   srotation<prm_t>(m->pflw, lw*m->pflw.sdir, tpsa_ref(m->pflw.tlt));
 }
 
 void mad_trk_misalign_r (mflw_t *m, num_t lw) {
+  assert(m && tolower(tolower(m->rflw.knd)) == 'r');
   misalign<par_t>(m->rflw, lw);
 }
 void mad_trk_misalign_t (mflw_t *m, num_t lw) {
+  assert(m && tolower(m->tflw.knd) == 't');
   misalign<map_t>(m->tflw, lw);
 }
 void mad_trk_misalign_p (mflw_t *m, num_t lw) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   misalign<prm_t>(m->pflw, lw);
 }
 
 // -- fringe maps ---
 
 void mad_trk_strex_fringe_r (mflw_t *m, num_t lw) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   strex_fringe<par_t>(m->rflw, lw);
 }
 void mad_trk_curex_fringe_r (mflw_t *m, num_t lw) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   curex_fringe<par_t>(m->rflw, lw);
 }
 void mad_trk_rfcav_fringe_r (mflw_t *m, num_t lw) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   rfcav_fringe<par_t>(m->rflw, lw);
 }
 
 void mad_trk_strex_fringe_t (mflw_t *m, num_t lw) {
+  assert(m && tolower(m->tflw.knd) == 't');
   strex_fringe<map_t>(m->tflw, lw);
 }
 void mad_trk_curex_fringe_t (mflw_t *m, num_t lw) {
+  assert(m && tolower(m->tflw.knd) == 't');
   curex_fringe<map_t>(m->tflw, lw);
 }
 void mad_trk_rfcav_fringe_t (mflw_t *m, num_t lw) {
+  assert(m && tolower(m->tflw.knd) == 't');
   rfcav_fringe<map_t>(m->tflw, lw);
 }
 
 void mad_trk_strex_fringe_p (mflw_t *m, num_t lw) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   strex_fringe<prm_t>(m->pflw, lw);
 }
 void mad_trk_curex_fringe_p (mflw_t *m, num_t lw) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   curex_fringe<prm_t>(m->pflw, lw);
 }
 void mad_trk_rfcav_fringe_p (mflw_t *m, num_t lw) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   rfcav_fringe<prm_t>(m->pflw, lw);
 }
 
 // --- patches ---
 
 void mad_trk_xrotation_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   xrotation<par_t>(m->rflw, lw, zero); (void)is;
 }
 void mad_trk_yrotation_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   yrotation<par_t>(m->rflw, lw, zero); (void)is;
 }
 void mad_trk_srotation_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   srotation<par_t>(m->rflw, lw, zero); (void)is;
 }
 void mad_trk_translate_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   translate<par_t>(m->rflw, lw, zero, zero, zero); (void)is;
 }
 void mad_trk_changeref_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   changeref<par_t>(m->rflw, lw); (void)is;
 }
 
 void mad_trk_xrotation_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   xrotation<map_t>(m->tflw, lw, zero); (void)is;
 }
 void mad_trk_yrotation_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   yrotation<map_t>(m->tflw, lw, zero); (void)is;
 }
 void mad_trk_srotation_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   srotation<map_t>(m->tflw, lw, zero); (void)is;
 }
 void mad_trk_translate_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   translate<map_t>(m->tflw, lw, zero, zero, zero); (void)is;
 }
 void mad_trk_changeref_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   changeref<map_t>(m->tflw, lw); (void)is;
 }
 
 void mad_trk_xrotation_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   xrotation<prm_t>(m->pflw, lw, zero); (void)is;
 }
 void mad_trk_yrotation_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   yrotation<prm_t>(m->pflw, lw, zero); (void)is;
 }
 void mad_trk_srotation_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   srotation<prm_t>(m->pflw, lw, zero); (void)is;
 }
 void mad_trk_translate_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   translate<prm_t>(m->pflw, lw, zero, zero, zero); (void)is;
 }
 void mad_trk_changeref_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   changeref<prm_t>(m->pflw, lw); (void)is;
 }
 
 // --- DKD straight ---
 
 void mad_trk_strex_drift_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   strex_drift<par_t>(m->rflw,lw,is);
 }
 void mad_trk_strex_kick_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   strex_kick<par_t>(m->rflw,lw,is);
 }
 void mad_trk_strex_kickhs_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   strex_kickhs<par_t>(m->rflw,lw,is);
 }
 
 void mad_trk_strex_drift_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   strex_drift<map_t>(m->tflw,lw,is);
 }
 void mad_trk_strex_kick_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   strex_kick<map_t>(m->tflw,lw,is);
 }
 void mad_trk_strex_kickhs_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   strex_kickhs<map_t>(m->tflw,lw,is);
 }
 
 void mad_trk_strex_drift_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   strex_drift<prm_t>(m->pflw,lw,is);
 }
 void mad_trk_strex_kick_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   strex_kick<prm_t>(m->pflw,lw,is);
 }
 void mad_trk_strex_kickhs_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   strex_kickhs<prm_t>(m->pflw,lw,is);
 }
 
 // --- DKD curved ---
 
 void mad_trk_curex_drift_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   curex_drift<par_t>(m->rflw,lw,is);
 }
 void mad_trk_curex_kick_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   curex_kick<par_t>(m->rflw,lw,is);
 }
 
 void mad_trk_curex_drift_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   curex_drift<map_t>(m->tflw,lw,is);
 }
 void mad_trk_curex_kick_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   curex_kick<map_t>(m->tflw,lw,is);
 }
 
 void mad_trk_curex_drift_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   curex_drift<prm_t>(m->pflw,lw,is);
 }
 void mad_trk_curex_kick_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   curex_kick<prm_t>(m->pflw,lw,is);
 }
 
 // --- sbend ---
 
 void mad_trk_sbend_thick_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   sbend_thick<par_t>(m->rflw,lw,is);
 }
 void mad_trk_sbend_kick_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   curex_kick<par_t>(m->rflw,lw,is,true);
 }
 
 void mad_trk_sbend_thick_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   sbend_thick<map_t>(m->tflw,lw,is);
 }
 void mad_trk_sbend_kick_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   curex_kick<map_t>(m->tflw,lw,is,true);
 }
 
 void mad_trk_sbend_thick_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   sbend_thick<prm_t>(m->pflw,lw,is);
 }
 void mad_trk_sbend_kick_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   curex_kick<prm_t>(m->pflw,lw,is,true);
 }
 
 // --- rbend ---
 
 void mad_trk_rbend_thick_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   rbend_thick<par_t>(m->rflw,lw,is);
 }
 void mad_trk_rbend_kick_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   strex_kick<par_t>(m->rflw,lw,is,true);
 }
 
 void mad_trk_rbend_thick_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   rbend_thick<map_t>(m->tflw,lw,is);
 }
 void mad_trk_rbend_kick_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   strex_kick<map_t>(m->tflw,lw,is,true);
 }
 
 void mad_trk_rbend_thick_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   rbend_thick<prm_t>(m->pflw,lw,is);
 }
 void mad_trk_rbend_kick_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   strex_kick<prm_t>(m->pflw,lw,is,true);
 }
 
 // --- quadrupole ---
 
 void mad_trk_quad_thick_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   quad_thick<par_t>(m->rflw,lw,is);
 }
 void mad_trk_quad_thicks_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   quad_thicks<par_t>(m->rflw,lw,is);
 }
 void mad_trk_quad_thickh_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   quad_thickh<par_t>(m->rflw,lw,is);
 }
 void mad_trk_quad_kick_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   quad_kick<par_t>(m->rflw,lw,0); (void)is; // always yoshida
 }
 void mad_trk_quad_kicks_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   quad_kicks<par_t>(m->rflw,lw,0); (void)is; // always yoshida
 }
 void mad_trk_quad_kickh_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   quad_kickh<par_t>(m->rflw,lw,0); (void)is; // always yoshida
 }
 void mad_trk_quad_kick__r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   quad_kick<par_t>(m->rflw,lw,is);
 }
 void mad_trk_quad_kicks__r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   quad_kicks<par_t>(m->rflw,lw,is);
 }
 void mad_trk_quad_kickh__r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   quad_kickh<par_t>(m->rflw,lw,is);
 }
 
 void mad_trk_quad_thick_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   quad_thick<map_t>(m->tflw,lw,is);
 }
 void mad_trk_quad_thicks_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   quad_thicks<map_t>(m->tflw,lw,is);
 }
 void mad_trk_quad_thickh_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   quad_thickh<map_t>(m->tflw,lw,is);
 }
 void mad_trk_quad_kick_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   quad_kick<map_t>(m->tflw,lw,0); (void)is; // always yoshida
 }
 void mad_trk_quad_kicks_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   quad_kicks<map_t>(m->tflw,lw,0); (void)is; // always yoshida
 }
 void mad_trk_quad_kickh_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   quad_kickh<map_t>(m->tflw,lw,0); (void)is; // always yoshida
 }
 void mad_trk_quad_kick__t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   quad_kick<map_t>(m->tflw,lw,is);
 }
 void mad_trk_quad_kicks__t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   quad_kicks<map_t>(m->tflw,lw,is);
 }
 void mad_trk_quad_kickh__t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   quad_kickh<map_t>(m->tflw,lw,is);
 }
 
 void mad_trk_quad_thick_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   quad_thick<prm_t>(m->pflw,lw,is);
 }
 void mad_trk_quad_thicks_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   quad_thicks<prm_t>(m->pflw,lw,is);
 }
 void mad_trk_quad_thickh_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   quad_thickh<prm_t>(m->pflw,lw,is);
 }
 void mad_trk_quad_kick_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   quad_kick<prm_t>(m->pflw,lw,0); (void)is; // always yoshida
 }
 void mad_trk_quad_kicks_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   quad_kicks<prm_t>(m->pflw,lw,0); (void)is; // always yoshida
 }
 void mad_trk_quad_kickh_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   quad_kickh<prm_t>(m->pflw,lw,0); (void)is; // always yoshida
 }
 void mad_trk_quad_kick__p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   quad_kick<prm_t>(m->pflw,lw,is);
 }
 void mad_trk_quad_kicks__p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   quad_kicks<prm_t>(m->pflw,lw,is);
 }
 void mad_trk_quad_kickh__p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   quad_kickh<prm_t>(m->pflw,lw,is);
 }
 
 // --- solenoid ---
 
 void mad_trk_solen_thick_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   solen_thick<par_t>(m->rflw,lw,is);
 }
 void mad_trk_solen_thick_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   solen_thick<map_t>(m->tflw,lw,is);
 }
 void mad_trk_solen_thick_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   solen_thick<prm_t>(m->pflw,lw,is);
 }
 
 // --- eseptum ---
 
 void mad_trk_esept_thick_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   esept_thick<par_t>(m->rflw,lw,is);
 }
 void mad_trk_esept_thick_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   esept_thick<map_t>(m->tflw,lw,is);
 }
 void mad_trk_esept_thick_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   esept_thick<prm_t>(m->pflw,lw,is);
 }
 
 // --- rfcavity ---
 
 void mad_trk_rfcav_kick_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   rfcav_kick<par_t>(m->rflw,lw,is);
 }
 void mad_trk_rfcav_kickn_r (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->rflw.knd) == 'r');
   rfcav_kickn<par_t>(m->rflw,lw,is);
 }
 
 void mad_trk_rfcav_kick_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   rfcav_kick<map_t>(m->tflw,lw,is);
 }
 void mad_trk_rfcav_kickn_t (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->tflw.knd) == 't');
   rfcav_kickn<map_t>(m->tflw,lw,is);
 }
 
 void mad_trk_rfcav_kick_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   rfcav_kick<prm_t>(m->pflw,lw,is);
 }
 void mad_trk_rfcav_kickn_p (mflw_t *m, num_t lw, int is) {
+  assert(m && tolower(m->pflw.knd) == 'p');
   rfcav_kickn<prm_t>(m->pflw,lw,is);
 }
 
