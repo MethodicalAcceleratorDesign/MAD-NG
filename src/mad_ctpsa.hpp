@@ -577,11 +577,11 @@ inline T hypot (const ctpsa_base<A> &a, const ctpsa_base<B> &b) {  TRC("baz,baz"
 
 template <class A>
 inline std::FILE* operator<< (std::FILE *out, const ctpsa_base<A> &a) {
-  mad_ctpsa_print(a.ptr(), 0,0,0, out); return out;
+  mad_ctpsa_print(a.ptr(), 0,1e-14,0, out); return out;
 }
 
 inline std::FILE* operator<< (std::FILE *out, const ctpsa_t &a) {
-  mad_ctpsa_print(&a, 0,0,0, out); return out;
+  mad_ctpsa_print(&a, 0,1e-14,0, out); return out;
 }
 
 inline std::FILE* operator>> (std::FILE *in, ctpsa &a) {
@@ -596,6 +596,7 @@ inline void swap (CPX       &a, CPX       &b) { TRC("cpx") std::swap(a,b); }
 
 // --- functions ---
 
+inline CPX ord    (CPX a         ) { TRC("cpx") return 0; (void)a; }
 inline CPX fval   (CPX a         ) { TRC("cpx") return a; }
 inline CPX nrm    (CPX a         ) { TRC("cpx") return std::abs(a); }
 inline CPX sqr    (CPX a         ) { TRC("cpx") return a*a; }
@@ -604,6 +605,15 @@ inline CPX invsqrt(CPX a, CPX v=1) { TRC("cpx") return v/std::sqrt(a); }
 inline CPX sinc   (CPX a         ) { TRC("cpx") cpx_t r = mad_cpx_sinc (C(a)); return CPX(RE(r),IM(r)); }
 inline CPX sinhc  (CPX a         ) { TRC("cpx") cpx_t r = mad_cpx_sinhc(C(a)); return CPX(RE(r),IM(r)); }
 inline CPX asinc  (CPX a         ) { TRC("cpx") cpx_t r = mad_cpx_asinc(C(a)); return CPX(RE(r),IM(r)); }
+
+inline ord_t ord (const ctpsa_t *a) { TRC("tpsa")
+  return mad_ctpsa_ord(a, false);
+}
+
+template <class A>
+inline ord_t ord (const ctpsa_base<A> &a) { TRC("baz")
+  return a.mo();
+}
 
 inline CPX fval(const ctpsa_t *a) { TRC("tpsa")
   return mad_ctpsa_geti(a,0);

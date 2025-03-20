@@ -308,7 +308,7 @@ inline tpsa::tpsa(const tpsa_base<A> &a, const T &b) {
   else { T ta(a);         t.swap(               ta.t); TRC("&baz,&tmp,2") }
 }
 
-#else
+#else  // !TPSA_USE_TMP
 #define T tpsa
 #endif // TPSA_USE_TMP
 
@@ -572,11 +572,11 @@ inline T hypot (const tpsa_base<A> &a, const tpsa_base<B> &b) {  TRC("baz,baz")
 
 template <class A>
 inline std::FILE* operator<< (std::FILE *out, const tpsa_base<A> &a) {
-  mad_tpsa_print(a.ptr(), 0,0,0, out); return out;
+  mad_tpsa_print(a.ptr(), 0,1e-14,0, out); return out;
 }
 
 inline std::FILE* operator<< (std::FILE *out, const tpsa_t &a) {
-  mad_tpsa_print(&a, 0,0,0, out); return out;
+  mad_tpsa_print(&a, 0,1e-14,0, out); return out;
 }
 
 inline std::FILE* operator>> (std::FILE *in, tpsa &a) {
@@ -591,6 +591,7 @@ inline void swap (num_t    &a, num_t    &b) { TRC("num") std::swap(a,b); }
 
 // --- functions ---
 
+inline num_t ord    (num_t a           ) { TRC("num") return 0; (void)a; }
 inline num_t fval   (num_t a           ) { TRC("num") return a; }
 inline num_t nrm    (num_t a           ) { TRC("num") return abs(a); }
 inline num_t sqr    (num_t a           ) { TRC("num") return a*a; }
@@ -600,7 +601,16 @@ inline num_t sinc   (num_t a           ) { TRC("num") return mad_num_sinc (a); }
 inline num_t sinhc  (num_t a           ) { TRC("num") return mad_num_sinhc(a); }
 inline num_t asinc  (num_t a           ) { TRC("num") return mad_num_asinc(a); }
 
-inline num_t fval(const tpsa_t *a) { TRC("tpsa")
+inline ord_t ord (const tpsa_t *a) { TRC("tpsa")
+  return mad_tpsa_ord(a, false);
+}
+
+template <class A>
+inline ord_t ord (const tpsa_base<A> &a) { TRC("baz")
+  return a.mo();
+}
+
+inline num_t fval (const tpsa_t *a) { TRC("tpsa")
   return mad_tpsa_geti(a,0);
 }
 
