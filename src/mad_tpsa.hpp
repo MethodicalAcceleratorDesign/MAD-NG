@@ -27,7 +27,7 @@
 // comment to disable temporaries, default ctors, and traces
 #define TPSA_USE_TMP 1
 #define TPSA_USE_DFT 0
-#define TPSA_USE_TRC 1
+#define TPSA_USE_TRC 0
 
 // --- includes ---------------------------------------------------------------o
 
