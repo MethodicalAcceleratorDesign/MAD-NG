@@ -548,7 +548,7 @@ static inline idx_t*
 tbl_build_LC (ord_t oa, ord_t ob, D *d)
 {
   DBGFUN(->);
-#if DESC_DEBUG > 2
+#if DESC_DEBUG > 3
   printf("tbl_set_LC oa=%d ob=%d\n", oa, ob);
 #endif
   assert(d && d->To && d->ord2idx && d->tv2to);
@@ -564,7 +564,7 @@ tbl_build_LC (ord_t oa, ord_t ob, D *d)
   // allocation lc[rows,cols]: lc[ib,ia] = lc[(ib-o2i[ob])*cols + ia-o2i[oa]]
   size_t mat_size = (size_t)rows*cols;
 
-#if DESC_DEBUG > 2
+#if DESC_DEBUG > 3
   printf("LC[%d,%d]=%zu index slots\n", rows, cols, mat_size);
 #endif
 
@@ -595,7 +595,7 @@ tbl_build_LC (ord_t oa, ord_t ob, D *d)
         idx_t ilc = hpoly_idx(ib-o2i[ob], ia-o2i[oa], cols);
         // fill lc
         lc[ilc] = ic;
-#if DESC_DEBUG > 2
+#if DESC_DEBUG > 3
         printf(" ib=%d ", ib); mad_mono_print(nn, To[ib], 0,0);
         printf(" ia=%d ", ia); mad_mono_print(nn, To[ia], 0,0);
         printf(" ic=%d ", ic); mad_mono_print(nn, m     , 0,0);
@@ -605,7 +605,7 @@ tbl_build_LC (ord_t oa, ord_t ob, D *d)
     }
   }
 
-#if DESC_DEBUG > 2
+#if DESC_DEBUG > 3
   tbl_print_LC(lc, oa, ob, o2i);
 #endif
   DBGFUN(<-);
@@ -1301,7 +1301,7 @@ mad_desc_newvp(int nv_, ord_t mo_, int np_, ord_t po_)
   ensure(mo <= DESC_MAX_ORD,
          "invalid maximum order, 0< %d <=%d", mo, DESC_MAX_ORD);
 
-  ord_t po = MAX(po_,1);
+  ord_t po = np ? MAX(po_,1) : 0;
   ensure(po <= mo, "invalid parameters maximum order, 0< %d <=%d", po, mo);
 
 #if DESC_DEBUG > 1
@@ -1334,7 +1334,7 @@ mad_desc_newvpo(int nv_, ord_t mo_, int np_, ord_t po_, const ord_t no_[nv_+np_]
   ensure(mo <= DESC_MAX_ORD,
          "invalid maximum order, 0< %d <=%d", mo, DESC_MAX_ORD);
 
-  ord_t po = 1;
+  ord_t po = 0;
   if (np) {
     po = mad_mono_max(np,no_+nv); po = MAX(po,po_,1);
     ensure(po <= mo, "invalid parameters maximum order, 0< %d <=%d", po, mo);
