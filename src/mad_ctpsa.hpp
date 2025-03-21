@@ -62,10 +62,11 @@ struct ctpsa_base {
   D& set(str_t              s)  { mad_ctpsa_nam(ptr(), s);             return self(); }
   D& set(const std::string &s)  { mad_ctpsa_nam(ptr(), s.c_str());     return self(); }
 
-  // set value and variables
+  // set/clr value and variables
   D& set (CPX a)                 { mad_ctpsa_setval(ptr(), C(a)      ); return self(); }
   D& set (CPX a, idx_t v)        { mad_ctpsa_setvar(ptr(), C(a), v, 0); return self(); }
   D& setp(CPX a, idx_t v)        { mad_ctpsa_setprm(ptr(), C(a), v   ); return self(); }
+  D& clr ()                      { mad_tpsa_clear  (ptr()            ); return self(); }
 
   // debug
   log_t isvalid() const { return mad_ctpsa_isvalid(ptr()); }
