@@ -233,7 +233,7 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
   printf("mb:\n"); print_damap(sb, mb, 0);
 #endif
 
-  if (hi_ord == 1) compose_ord1(sa,ma, sb,mb, mc);
+  if (hi_ord == 1) compose_ord1(sa,ma, sb,mb, mc_);
 
 #ifdef _OPENMP // TODO: find pcomp heuristic at desc init...
   else if (d->pcomp && hi_ord >= 6 && d->ord2idx[hi_ord+1] >= d->pcomp) {
@@ -248,6 +248,10 @@ FUN(compose) (ssz_t sa, const T *ma[sa], ssz_t sb, const T *mb[sb], T *mc[sa])
   #endif // _OPENMP
 
   else compose(sa,ma, sb,mb, mc_, hi_ord, mo_ord);
+
+#if DEBUG_COMPOSE
+  printf("mc:\n"); print_damap(sa, TC mc_, 0);
+#endif
 
   // copy back
   FOR(ia,sa) if (amc[ia]) {
