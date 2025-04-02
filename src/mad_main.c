@@ -132,7 +132,7 @@ static void print_mad_version (void)
   str_t msg =
   "    ____  __   ______    ______     |   Methodical Accelerator Design\n"
   "     /  \\/  \\   /  _  \\   /  _  \\   |   release: %s\n"
-  "    /  __   /  /  /_/ /  /  /_/ /   |   support: http://cern.ch/mad\n"
+  "    /  __   /  /  /_/ /  /  /_/ /   |   support: MAD-NG on GitHub\n"
   "   /__/  /_/  /__/ /_/  /_____ /    |   licence: GNU GPL v3 (C) 2016+\n"
   "                                    |   started: %s\n"
   "\n";
@@ -568,22 +568,24 @@ static void laction(int i)
 }
 #endif
 
-static void print_usage(void)
+static void print_usage(int m)
 {
   fputs("usage: ", stderr);
   fputs(progname, stderr);
   fputs(" [options]... [script [args]...].\n"
   "Available options are:\n"
-  "  -e chunk  Execute string " LUA_QL("chunk") ".\n"
-  "  -l name   Require library " LUA_QL("name") ".\n"
+  "  -e chunk  Execute string 'chunk'.\n"
+  "  -i        Enter interactive mode.\n"
+  "  -q        Do not display MAD header.\n"
+  "  -l name   Require library 'name'.\n"
   "  -b ...    Save or list bytecode.\n"
   "  -j cmd    Perform JIT control command.\n"
-  "  -O[opt]   Control JIT optimizations.\n"
-  "  -i        Enter interactive mode after executing " LUA_QL("script") ".\n"
-  "  -q        Do not show version information.\n"
+  "  -O[opt]   Control JIT optimizations.\n", stderr);
+  if (m) fputs(
   "  -M        Do not load MAD environment.\n"
-  "  -Mt[=num] Set initial MAD trace level to " LUA_QL("num") ".\n"
-  "  -MT[=num] Set initial MAD trace level to " LUA_QL("num") " and location.\n"
+  "  -Mt[=num] Set initial MAD trace level to 'num'.\n"
+  "  -MT[=num] Set initial MAD trace level to 'num' and location.\n", stderr);
+  fputs(
   "  -E        Ignore environment variables.\n"
   "  --        Stop handling options.\n"
   "  -         Execute stdin and stop handling options.\n", stderr);
@@ -905,7 +907,7 @@ static int dobytecode(lua_State *L, char **argv)
 }
 
 /* check that argument has no extra characters at the end */
-#define notail(x) {if ((x)[2] != '\0') return -1;}
+#define notail(x,n) {if ((x)[n+1] != '\0') return -1;}
 
 #define FLAGS_INTERACTIVE 1
 #define FLAGS_VERSION     2
@@ -913,6 +915,7 @@ static int dobytecode(lua_State *L, char **argv)
 #define FLAGS_OPTION      8
 #define FLAGS_NOENV       16
 #define FLAGS_MADENV      128
+#define FLAGS_MADHELP     256
 
 static int collectargs(char **argv, int *flags)
 {
@@ -923,16 +926,23 @@ static int collectargs(char **argv, int *flags)
       return i;
     switch (argv[i][1]) {  /* Check option. */
     case '-':
-      notail(argv[i]);
+      notail(argv[i],1);
       return i+1;
     case '\0':
       return i;
     case 'i':
-      notail(argv[i]);
+      notail(argv[i],1);
       *flags |= FLAGS_INTERACTIVE;
       break;
+    case 'h':
+      if (argv[i][2] == 'h') {
+        notail(argv[i],2);
+        *flags |= FLAGS_MADHELP;
+      } else
+        notail(argv[i],1);
+      return -1;
     case 'q':
-      notail(argv[i]);
+      notail(argv[i],1);
       *flags &= ~FLAGS_VERSION;
       break;
     case 'e':
@@ -952,7 +962,7 @@ static int collectargs(char **argv, int *flags)
       *flags |= FLAGS_EXEC;
       return i+1;
     case 'E':
-      notail(argv[i]);
+      notail(argv[i],1);
       *flags |= FLAGS_NOENV;
       break;
     case 'M': /* MAD options */
@@ -960,7 +970,7 @@ static int collectargs(char **argv, int *flags)
         mad_trace_location = argv[i][2] == 'T';
         mad_trace_level    = argv[i][3] == '=' ? strtol(argv[i]+4, NULL, 0) : 1;
       } else { /* don't load MAD environment */
-        notail(argv[i]);
+        notail(argv[i],1);
         *flags &= ~FLAGS_MADENV;
       }
       break;
@@ -1046,7 +1056,7 @@ static int pmain(lua_State *L)
 
   argn = collectargs(argv, &flags);
   if (argn < 0) {  /* Invalid args? */
-    print_usage();
+    print_usage(!!(flags & FLAGS_MADHELP));
     s->status = 1;
     return 0;
   }
