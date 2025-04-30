@@ -31,6 +31,8 @@ Notes about directions and quantities:
 
 -- locals ---------------------------------------------------------------------o
 
+local io, type, assert in _G
+
 local vector, matrix, mtable, command, element, show            in MAD
 
 local is_sequence, is_boolean, is_number, is_integer, is_natural,
@@ -39,11 +41,9 @@ local fnil, ffalse, chain, achain, swapv                        in MAD.gfunc
 local rangle                                                    in MAD.gmath
 local slcsel, slcbit, action, actionat, getslcbit               in MAD.symint
 local printf                                                    in MAD.utility
+local twopi                                                     in MAD.constant
 local tobit, band                                               in MAD.gfunc
 local is_implicit                                               in element.drift
-   -- atins, atins1
-local io, type, assert =
-      io, type, assert
 
 -- load survey methods into elements ------------------------------------------o
 
@@ -124,17 +124,28 @@ local function make_mtable (self, range)
   local sequ, nrow = self.sequence, 8
 
   -- keep order!
-  return mtable(sequ.name, {
-    type='survey', title=sequ.name, header=header,
+  local mtbl = mtable(sequ.name, {
+    type='survey', header=header,
     direction=dir, observe=observe, implicit=implicit, misalign=misalign,
     range=range, reserve=nrow, __seq=sequ,
-    ename =\s -> s:getcol"name", -- add ename for direct access to column 'name'
     {'name'}, 'kind', 's', 'l', 'angle', 'tilt',
     'x', 'y', 'z', 'theta', 'phi', 'psi',
     'slc', 'turn','tdir',       -- t-direction of the tracking: sdir * seq.dir
     'eidx',                     -- index of element in the sequence
     savemap and '__map' or nil, -- optional column to save the orientation matrix
   })
+  -- add ename for direct access to column 'name'
+  mtbl:addcol('ename', \ri -> mtbl:getcol('name')[ri])
+
+  if self.ccs == true then
+    mtbl:addcol('Xccs'    , \ri -> -mtbl.x    [ri])
+        :addcol('Yccs'    , \ri ->  mtbl.z    [ri])
+        :addcol('Zccs'    , \ri ->  mtbl.y    [ri])
+        :addcol('PenteZ'  , \ri -> -mtbl.phi  [ri])
+        :addcol('TiltZ'   , \ri ->  mtbl.psi  [ri])
+        :addcol('Gisement', \ri -> -mtbl.theta[ri]/twopi*400)
+  end
+  return mtbl
 end
 
 -- reset/chnage sequence iterator (e.g. track again) --------------------------o
@@ -440,6 +451,7 @@ local survey = command 'survey' {
   save=true,        -- create mtable and save results                     (mtbl)
   observe=0,        -- save only in observed elements (every n turns)     (mtbl)
   savemap=false,    -- save the orientation matrix W in the column __map  (mflw)
+  ccs=false,        -- add columns for CCS coordinates to the mtable      (mtbl)
 
   atentry=fnil,     -- action called when entering an element             (mflw)
   atslice=fnil,     -- action called after each element slices (atsave)   (mflw)

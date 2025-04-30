@@ -23,22 +23,28 @@
 
 -- locals ---------------------------------------------------------------------o
 
+local assert, error, table in _G
+local max in math
+
 local command, mtable, warn, tostring                           in MAD
 local printf, tblncat                                           in MAD.utility
 local is_string, is_function, is_sequence, is_table,
       is_deferred, deferred                                     in MAD.typeid
-
-local assert, error, table =
-      assert, error, table
 
 -- error command --------------------------------------------------------------o
 
 local algn_col  = {"dx", "dy", "ds", "dphi", "dtheta", "dpsi"}
 local merr_col  = {"mredx", "mredy", "mrexs" , "mreys"}
 local merr_colx = {"mrex" , "mrey" , "mscalx", "mscaly"}
+local fcmp_col  = {}
 local knl_col   = {}
 local ksl_col   = {}
-for i=1,21 do knl_col[i], ksl_col[i] = "k"..(i-1).."l", "k"..(i-1).."sl" end
+
+-- Field error columns from k0l to k20sl
+for i=1,21 do
+  knl_col[i], ksl_col[i] = "k"..(i-1).."l", "k"..(i-1).."sl"
+  fcmp_col[2*i-1], fcmp_col[2*i] = knl_col[i], ksl_col[i]
+end
 
 local dict = {mrex="mredx", mrey="mredy", mscalx="mrexs", mscaly="mreys",
               mredx="mredx", mredy="mredy", mrexs="mrexs", mreys="mreys"}
@@ -51,6 +57,12 @@ local function mtbl_errors (self, sequ, mtbl)
   mtbl:foreach(\r,ri =>
     local dknl, dksl, algn, merr = {}, {}, {}, {}
     local nn  , ns  , na  , nm,nx = 0, 0, 0, 0, 0
+    local e = sequ[r[cn.name]]
+
+  --if e then
+  --printf("%s->%s [in]:\n  dknl=%s\n  dksl=%s\n  algn=%s\n  merr=%s\n", r[cn.name], e.name,
+  --tostring(e.dknl), tostring(e.dksl), tostring(sequ:ealign(e)), tostring(e.merr))
+  --end
 
     for i,v in ipairs(knl_col) do
       if cn[v] and r[cn[v]] ~= 0 then dknl[i], nn = r[cn[v]], i end
@@ -72,7 +84,6 @@ local function mtbl_errors (self, sequ, mtbl)
       if cn[v] and r[cn[v]] ~= 0 then merr[dict[v]], nx = r[cn[v]], i end
     end
 
-    local e = sequ[r[cn.name]]
     if not e then
       if nn+ns+na+nm+nx > 0 then
         warn("%s not found in sequence %s, errors ignored",r[cn.name],sequ.name)
@@ -93,9 +104,9 @@ local function mtbl_errors (self, sequ, mtbl)
       sequ:misalign(algn, e)
     end
 
-  --printf("%s:\n  dknl=%s\n  dksl=%s\n  algn=%s\n  merr=%s\n", elm.name,
-  --tostring(dknl), tostring(dksl), tostring(sequ:ealign(elm)), tostring(merr))
-  end, self.range, self.selector)
+  --printf("%s->%s[out]:\n  dknl=%s\n  dksl=%s\n  algn=%s\n  merr=%s\n", r[cn.name], e.name,
+  --tostring(e.dknl), tostring(e.dksl), tostring(sequ:ealign(e)), tostring(e.merr))
+  end, self.range, self.select)
 end
 
 local function set_errors (self, sequ, align, fcomp, mrerr)
@@ -108,33 +119,44 @@ local function set_errors (self, sequ, align, fcomp, mrerr)
   if not is_function(fcomp) then ef =\ fcomp end
   if not is_function(mrerr) then me =\ mrerr end
 
+  local fadd in self
   sequ:foreach(\e,ei =>
     if e.name:sub(1,1) == '$' then return end
 
     if align and not (e.is_special or e.is_patch) then
-      sequ:misalign(al(), e)
+      sequ:misalign(al(e), e)
     end
 
     if mrerr and e.is_monitor then
-      e.merr = me()
+      e.merr = me(e)
     end
 
     if fcomp and (e.is_thick or e.is_thin) then
-      local f = ef()
+      local f = ef(e)
+      assert(is_table(f), "invalid fcomp, table expected")
+      if fadd and (f.dknl or f.dksl) then
+        f.dknl, f.dksl = f.dknl or {}, f.dksl or {}
+        for i=1,max(#f.dknl,#e.dknl) do
+          f.dknl[i] = (f.dknl[i] or 0) + (e.dknl[i] or 0)
+        end
+        for i=1,max(#f.dksl,#e.dksl) do
+          f.dksl[i] = (f.dksl[i] or 0) + (e.dksl[i] or 0)
+        end
+      end
       e.dknl = f.dknl
       e.dksl = f.dksl
     end
-
-  end, self.range, self.selector)
+  end, self.range, self.select)
 end
 
 local function save_errors (self, sequ)
   local mtbl = mtable(sequ.name, {
-    type='errors', title=sequ.name, reserve=16,
-    __seq=sequ,
-    ename =\s -> s:getcol"name", -- add ename for direct access to column 'name'
-    {'name'},table.unpack(tblncat(knl_col,ksl_col,algn_col,merr_col))
+    type='errors', reserve=16, __seq=sequ,
+    {'name'},table.unpack(tblncat(fcmp_col,algn_col,merr_col))
   })
+  -- add ename for direct access to column 'name'
+  mtbl:addcol("ename", \ri -> mtbl:getcol("name")[ri])
+
   local save = not self.compact
 
   sequ:foreach(\e,ei =>
@@ -142,27 +164,18 @@ local function save_errors (self, sequ)
 
     local nn  , ns  , na  , nm   = 0, 0, 0, 0
     local dknl, dksl, algn, merr =
-          e.dknl or {},  e.dksl or {}, sequ:ealign(ei) or {}, e.merr or {}
-    local row, n = {e.name}, 1
+          e.dknl or {}, e.dksl or {}, sequ:ealign(ei) or {}, e.merr or {}
+    local row, n = {e.name}
 
-    for i,v in ipairs(knl_col) do
-      n = n+1 ; row[n] = dknl[i] or 0 ; if row[n] ~= 0 then nn = i end
-    end
-
-    for i,v in ipairs(ksl_col) do
-      n = n+1 ; row[n] = dksl[i] or 0 ; if row[n] ~= 0 then ns = i end
-    end
-
-    for i,v in ipairs(algn_col) do
-      n = n+1 ; row[n] = algn[v] or 0 ; if row[n] ~= 0 then na = i end
-    end
-
-    for i,v in ipairs(merr_col) do
-      n = n+1 ; row[n] = merr[v] or 0 ; if row[n] ~= 0 then nm = i end
-    end
-
-    if save or nn+ns+na+nm > 0 then mtbl = mtbl + row end
-  end, self.range, self.selector)
+    for i,v in ipairs( knl_col) do row[2*i+0] = dknl[i] or 0 end
+    for i,v in ipairs( ksl_col) do row[2*i+1] = dksl[i] or 0 end n = #row
+    for i,v in ipairs(algn_col) do row[  i+n] = algn[v] or 0 end n = #row
+    for i,v in ipairs(merr_col) do row[  i+n] = merr[v] or 0 end
+    if save          then mtbl = mtbl + row
+    else for i=2,#row do
+      if row[i] ~= 0 then mtbl = mtbl + row break end
+    end end
+  end, self.range, self.select)
 
   return mtbl
 end
@@ -177,7 +190,7 @@ local function exec (self)
     sequ:foreach(\e =>
       e.dknl, e.dksl, e.merr = nil, nil, nil
       sequ:misalign(nil, e)
-    end, self.range, self.selector)
+    end, self.range, self.select)
   end
 
   -- process from table
@@ -212,6 +225,7 @@ local errors = command 'errors' {
   align=false,       -- alignment components assigned to selected elems.  (errs)
   fcomp=false,       -- field components assigned to selected elems.      (errs)
   mrerr=false,       -- monitor read errors assigned to selected elems.   (errs)
+  fadd =false,       -- add field components (false = replace)            (errs)
 
   save=false,        -- save all errors of selected elems in a mtable     (errs)
   compact=false,     -- don't save element without errors in the mtable   (errs)
