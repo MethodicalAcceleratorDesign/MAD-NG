@@ -235,37 +235,37 @@ local send_ctpa = \s,x -> send_gtpsa(s, x, send_cpx)
 local recv_tpsa = \s   -> recv_gtpsa(s,    recv_num)
 local recv_ctpa = \s   -> recv_gtpsa(s,    recv_cpx)
 
--- table
+-- table (list)
 
-local function send_tbl (self, t)
-  local nxt, dat, ini, n = kpairs(t)
-  send_bool(self, not rawequal(nxt(dat,ini),nil)) -- has a dict part
-  send_int (self, n)
+local function send_lst (self, t)
+  local n = #t
+  send_int(self, n)
   for i=1,n do self:send(t[i]) end -- deep copy
   return self
 end
 
-local function recv_tbl (self)
+local function recv_lst (self)
   local n = recv_int(self)
   local t = table.new(n,0)
   for i=1,n do t[i] = self:recv() end -- deep copy
   return t
 end
 
+-- table (dict)
+
 local function send_dct (self, t)
-  send_bool(self, rawequal(t[1],nil)) -- has a list part
-  for k,v in kpairs(t) do
+  for k,v in pairs(t) do
     self:send(k):send(v) -- deep copy
   end
-  self:send(nil) -- keys cannot be nil -> ends scan
+  self:send(nil) -- nil key (end of dict)
   return self
 end
 
 local function recv_dct (self)
-  local t = {}
+  local t = table.new(0,8)
   while true do
     local k = self:recv()
-    if is_nil(k) then break end -- keys cannot be nil -> ends scan
+    if is_nil(k) then break end -- nil key (end of dict)
     t[k] = self:recv() -- deep copy
   end
   return t
@@ -276,11 +276,9 @@ end
 local function tblkind (a)
   if getmetatable(a) then
     return is_object(a) and 'obj_' or is_callable(a) and 'fun_' or 'ref_'
+  else
+    return is_nil(a[1]) and 'dct_' or 'lst_'
   end
-  if is_nil(a[1]) and next(a) then
-    return 'dct_'
-  end
-  return 'tbl_'
 end
 
 local send_ref = \s -> s
@@ -292,7 +290,7 @@ local type_fun = {
   nil_ = { send = send_nil , recv = recv_nil  },
   bool = { send = send_bool, recv = recv_bool },
   str_ = { send = send_str , recv = recv_str  },
-  tbl_ = { send = send_tbl , recv = recv_tbl  },
+  lst_ = { send = send_lst , recv = recv_lst  },
   dct_ = { send = send_dct , recv = recv_dct  },
   ref_ = { send = send_ref , recv = recv_ref  },
   fun_ = { send = send_ref , recv = recv_ref  },
@@ -316,7 +314,7 @@ local type_str = {
   ['boolean' ]                 = \_ -> 'bool',
   ['string'  ]                 = \_ -> 'str_',
   ['function']                 = \_ -> 'fun_',
-  ['table'   ]                 = \a -> tblkind(a),
+  ['table'   ]                 = \a -> tblkind(a), -- obj_, fun_, ref_, dct_, lst_
   ['number'  ]                 = \a -> is_int32 (a) and 'int_' or 'num_',
 --['cdata'   ]                 = must not be in this list!
   [get_metatable(complex (1))] = \_ -> 'cpx_',
