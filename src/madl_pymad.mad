@@ -239,7 +239,7 @@ local recv_ctpa = \s   -> recv_gtpsa(s,    recv_cpx)
 
 local function send_tbl (self, t)
   local nxt, dat, ini, n = kpairs(t)
-  send_bool(self, not rawequal(nxt(dat,ini),nil))
+  send_bool(self, not rawequal(nxt(dat,ini),nil)) -- has a dict part
   send_int (self, n)
   for i=1,n do self:send(t[i]) end -- deep copy
   return self
@@ -252,10 +252,35 @@ local function recv_tbl (self)
   return t
 end
 
+local function send_dct (self, t)
+  send_bool(self, rawequal(t[1],nil)) -- has a list part
+  for k,v in kpairs(t) do
+    self:send(k):send(v) -- deep copy
+  end
+  self:send(nil) -- keys cannot be nil -> ends scan
+  return self
+end
+
+local function recv_dct (self)
+  local t = {}
+  while true do
+    local k = self:recv()
+    if is_nil(k) then break end -- keys cannot be nil -> ends scan
+    t[k] = self:recv() -- deep copy
+  end
+  return t
+end
+
 -- object (table with metatable are treated as pure reference)
 
-local function chktbl (a)
-  return is_object(a) and 'obj_' or is_callable(a) and 'fun_' or 'ref_'
+local function tblkind (a)
+  if getmetatable(a) then
+    return is_object(a) and 'obj_' or is_callable(a) and 'fun_' or 'ref_'
+  end
+  if is_nil(a[1]) and next(a) then
+    return 'dct_'
+  end
+  return 'tbl_'
 end
 
 local send_ref = \s -> s
@@ -268,6 +293,7 @@ local type_fun = {
   bool = { send = send_bool, recv = recv_bool },
   str_ = { send = send_str , recv = recv_str  },
   tbl_ = { send = send_tbl , recv = recv_tbl  },
+  dct_ = { send = send_dct , recv = recv_dct  },
   ref_ = { send = send_ref , recv = recv_ref  },
   fun_ = { send = send_ref , recv = recv_ref  },
   obj_ = { send = send_ref , recv = recv_ref  },
@@ -290,7 +316,7 @@ local type_str = {
   ['boolean' ]                 = \_ -> 'bool',
   ['string'  ]                 = \_ -> 'str_',
   ['function']                 = \_ -> 'fun_',
-  ['table'   ]                 = \a -> getmetatable(a) and chktbl(a) or 'tbl_',
+  ['table'   ]                 = \a -> tblkind(a),
   ['number'  ]                 = \a -> is_int32 (a) and 'int_' or 'num_',
 --['cdata'   ]                 = must not be in this list!
   [get_metatable(complex (1))] = \_ -> 'cpx_',

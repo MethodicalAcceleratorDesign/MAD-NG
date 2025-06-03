@@ -674,6 +674,36 @@ local function trackone (elm, m, inter, thick_or_thin)
   if m.cmap == 'p' then m.cmap = 't' end
 end
 
+local function trackmis (elm, m)
+  local sdir, atentry, atexit in m
+  local alg = get_algn(elm, m)
+  local mis = alg and cmisalign or fnil
+  local slc = slc_fwd
+
+  if sdir < 0 then
+    atentry, atexit, slc = atexit, atentry, slc_bwd
+  end
+
+  if m.cmap then
+    xflw(m).name = elm.name ; kflw(m)
+  end
+
+  m:xflw (false)
+  if elm.entexi == sdir then
+    atentry(elm, m,  sdir, slc[1])
+    mis    (elm, m,  sdir)
+    atexit (elm, m,  sdir, slc[4])
+  else
+    atentry(elm, m, -sdir, slc[1])
+    mis    (elm, m, -sdir)
+    atexit (elm, m, -sdir, slc[4])
+  end
+  m:xflw (true)
+
+  m.algn, m.xflw = nil, fnil
+  if m.cmap == 'p' then m.cmap = 't' end
+end
+
 local function trackelm (elm, m, inter, thick, thin, fringe)
   local sdir, atentry, atexit in m
   local tlt = get_tilt(elm, m)
@@ -880,7 +910,41 @@ local function track_changeref (elm, m)
   trackone(elm, m, thinonly, changeref)
 end
 
-local function xflw_dft (m, clr)
+local xflw_dft -- fwd decl
+
+local function track_assembly (elm, m)
+  local entexi in elm
+  local sdir   in m
+  local sref = elm[m.sequ.name]
+
+  if sref then
+    m.sdir = sdir*entexi
+    track_changeref(sref, m)
+    m.sdir = sdir
+  end
+
+  if entexi == -sdir then
+    local lrad in elm
+    if lrad <= 0 then
+      errorf("invalid assembly '%s' length=%.4e [m] (>0 expected)", elm.name, lrad)
+    end
+    m.el = lrad
+    if m.cmap then
+      if not is_number(m.el) then m.cmap = 'p' end
+      m.xflw = xflw_dft
+    end
+  end
+
+  trackmis(elm, m)
+
+  if sref then
+    m.sdir = -sdir*entexi
+    track_changeref(sref, m)
+    m.sdir = sdir
+  end
+end
+
+function xflw_dft (m, clr)
   if not clr then
     local c = xflw(m)
     c.el = xcpy(c.el, m.el)
@@ -1606,12 +1670,15 @@ local E = element
 
 -- warning: set_methods overides must be consistent with survey and element.
 
--- element kinds
-E.drift_element :set_methods {track = track_drift}
-
 -- special elements
 E.marker     :set_methods {track = track_marker}     -- cloned in sequence
 E.slink      :set_methods {track = track_slink }
+
+-- assembler elements
+E.assembly   :set_methods {track = track_assembly}
+
+-- drift elements
+E.drift_element :set_methods {track = track_drift}
 
 -- thick elements
 E.sbend      :set_methods {track = track_sbend     } -- curved  , k0!, k0s, k1, k1s, k2, k2s
