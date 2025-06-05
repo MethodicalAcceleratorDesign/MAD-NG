@@ -641,6 +641,26 @@ local function flatten_line (line, flat, sref, idx, dir)
   return idx
 end
 
+-- flatter assembly
+local function flatten_asm (elm, flat, sref, idx, dir)
+  idx, flat[idx] = idx+1, elm { entexi= dir, [1]=false }
+
+  local snam = sref.seq.name
+  local cref, elst = elm[snam], elm
+  if cref and cref[1] then elst = cref end
+  if is_nil(elst[1]) then
+    warn("empty assembly '%s' detected in sequence '%s'", elm.name, snam)
+  else
+    idx = flatten_line(elst, flat, sref, idx, dir)
+  end
+  if is_rawtable(cref) then
+    elm[snam] = changeref(elm.name, cref)
+  end
+
+  idx, flat[idx] = idx+1, elm { entexi=-dir, [1]=false }
+  return idx
+end
+
 -- flatten sequence
 local function flatten_sequ (seq, flat, sref)
   local n, idx = seq:raw_len(), 2
@@ -653,13 +673,7 @@ local function flatten_sequ (seq, flat, sref)
     elseif elm.kind == 'bline' or is_rawtable(elm) then
       idx = flatten_line(elm, flat, sref, idx, 1)
     elseif elm.kind == 'assembly' then
-      idx, flat[idx] = idx+1, elm { entexi= 1, [1]=false }
-      idx = flatten_line(elm, flat, sref, idx, 1)
-      idx, flat[idx] = idx+1, elm { entexi=-1, [1]=false }
-      local cref = elm[seq.name]
-      if cref and is_rawtable(cref) then
-        elm[seq.name] = changeref(elm.name, cref)
-      end
+      idx = flatten_asm (elm, flat, sref, idx, 1)
     elseif is_sequence(elm) then
       idx = copy_ssequ  (elm, flat, sref, idx, 1)
     else -- other elements
@@ -741,7 +755,7 @@ local function init_mm (seq)
   -- check if sequence needs __dat
   if n == 0 and is_nil(seq:raw_get'l') then return seq end
 
-  local sref = { dir=seq.dir, sdir={} }
+  local sref = { seq=seq, dir=seq.dir, sdir={} }
   local data = table.new(n+2,8)
 
   -- flatten subsequences
