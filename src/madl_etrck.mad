@@ -674,6 +674,36 @@ local function trackone (elm, m, inter, thick_or_thin)
   if m.cmap == 'p' then m.cmap = 't' end
 end
 
+local function trackmis (elm, m)
+  local sdir, atentry, atexit in m
+  local alg = get_algn(elm, m)
+  local mis = alg and cmisalign or fnil
+  local slc = slc_fwd
+
+  if sdir < 0 then
+    atentry, atexit, slc = atexit, atentry, slc_bwd
+  end
+
+  if m.cmap then
+    xflw(m).name = elm.name ; kflw(m)
+  end
+
+  m:xflw (false)
+  if elm.entexi == sdir then
+    atentry(elm, m,  sdir, slc[1])
+    mis    (elm, m,  sdir)
+    atexit (elm, m,  sdir, slc[4])
+  else
+    atentry(elm, m, -sdir, slc[1])
+    mis    (elm, m, -sdir)
+    atexit (elm, m, -sdir, slc[4])
+  end
+  m:xflw (true)
+
+  m.algn, m.xflw = nil, fnil
+  if m.cmap == 'p' then m.cmap = 't' end
+end
+
 local function trackelm (elm, m, inter, thick, thin, fringe)
   local sdir, atentry, atexit in m
   local tlt = get_tilt(elm, m)
@@ -702,7 +732,9 @@ local function trackelm (elm, m, inter, thick, thin, fringe)
   rot    (elm, m,  sdir)
   atentry(elm, m,  sdir, slc[2])
   fng    (elm, m,  sdir, fringe)
+if not elm.kill_body then
   inter  (elm, m,  sdir, thick, thin)
+end
   fng    (elm, m, -sdir, fringe)
   atexit (elm, m, -sdir, slc[3])
   rot    (elm, m, -sdir)
@@ -747,7 +779,7 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
   rot    (elm, m, sdir)
   atentry(elm, m, sdir, slc[2])
   fng    (elm, m, sdir, fringe)
-
+if not elm.kill_body then
   if sdir > 0 then
     local at, lw = 0
     for i=1,#elm do
@@ -781,7 +813,7 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
       inter(elm, m, -lw, thick, thin)
     end
   end
-
+end
   fng    (elm, m, -sdir, fringe)
   atexit (elm, m, -sdir, slc[3])
   rot    (elm, m, -sdir)
@@ -862,9 +894,11 @@ local function xflw_cref (m, clr)
   end
 end
 
-local function track_changeref (elm, m)
-  m.dx  , m.dy  , m.ds   = elm.dx    , elm.dy  , elm.ds
-  m.dthe, m.dphi, m.dpsi = elm.dtheta, elm.dphi, elm.dpsi
+local function track_changeref (elm, m, skp_)
+  if not skp_ then
+    m.dx  , m.dy  , m.ds   = elm.dx    , elm.dy  , elm.ds
+    m.dthe, m.dphi, m.dpsi = elm.dtheta, elm.dphi, elm.dpsi
+  end
 
   if m.cmap then
     if m.cmap == 't' and not (
@@ -878,7 +912,50 @@ local function track_changeref (elm, m)
   trackone(elm, m, thinonly, changeref)
 end
 
-local function xflw_dft (m, clr)
+local xflw_dft -- fwd decl
+
+local function track_assembly (elm, m)
+  local entexi in elm
+  local sdir   in m
+  local sref = elm[m.sequ.name]
+
+  if sref then
+    m.dx  , m.dy  , m.ds   = sref.dx    , sref.dy  , sref.ds
+    m.dthe, m.dphi, m.dpsi = sref.dtheta, sref.dphi, sref.dpsi
+    local trn = abs(m.dx  )+abs(m.dy  )+abs(m.ds  ) >= minlen
+    local rot = abs(m.dthe)+abs(m.dphi)+abs(m.dpsi) >= minang
+    if not (trn or rot) then sref = nil end
+  end
+
+  if sref then
+    assert(sref.kind == 'changeref')
+    m.sdir = sdir*entexi
+    track_changeref(sref, m, true)
+    m.sdir = sdir
+  end
+
+  if entexi == -sdir then
+    local lrad in elm
+    if lrad <= 0 then
+      errorf("invalid assembly '%s' length=%.4e [m] (>0 expected)", elm.name, lrad)
+    end
+    m.el = lrad
+    if m.cmap then
+      if not is_number(m.el) then m.cmap = 'p' end
+      m.xflw = xflw_dft
+    end
+  end
+
+  trackmis(elm, m)
+
+  if sref then
+    m.sdir = -sdir*entexi
+    track_changeref(sref, m, false)
+    m.sdir = sdir
+  end
+end
+
+function xflw_dft (m, clr)
   if not clr then
     local c = xflw(m)
     c.el = xcpy(c.el, m.el)
@@ -970,6 +1047,8 @@ local function track_sbend (elm, m, e1_, e2_)
   local nmul, knl, ksl, bfx, bfy in m
   local l, angle, k0, k0s, k1, k1s, k2, k2s in elm
 
+  if elm.kill_body then l = elm.lrad end
+
   if l < minlen then
     errorf("invalid sbend '%s' length=%.4e [m] (>0 expected)", elm.name, l)
   end
@@ -994,7 +1073,7 @@ local function track_sbend (elm, m, e1_, e2_)
   -- enforce small angle numerical stability
   if abs(m.eh) < 1e-6 then model, method = 'DKD', max(method,4) end
 
-  m.snm = snmul ; adj_mult(elm, m) ; getanbnr(m)
+  m.snm = snmul ; adj_mult(elm, m) ; getanbnr(elm, m)
 
   if model == 'DKD' then                          -- curved thin
     inter, thick, kick = DKD[method], curex_drift , curex_kick
@@ -1046,6 +1125,8 @@ local function track_rbend (elm, m)
 
   local nmul, knl, ksl in m
   local l, k0, k0s, k1, k1s, k2, k2s in elm
+
+  if elm.kill_body then l = elm.lrad end
 
   if l < minlen then
     errorf("invalid rbend '%s' length=%.4e [m] (>0 expected)", elm.name, l)
@@ -1131,6 +1212,8 @@ local function track_quadrupole (elm, m)
 
   local nmul, knl, ksl, ptcmodel in m
   local l, angle, k0, k0s, k1, k1s in elm
+
+  if elm.kill_body then l = elm.lrad end
 
   if l == 0 and abs(k1)+abs(k1s)+abs(k0)+abs(k0s) > 0 then
     warn("quadrupole '%s' defines strength with zero length", elm.name)
@@ -1226,6 +1309,8 @@ local function track_sextupole (elm, m)
   local nmul, knl, ksl in m
   local l, k2, k2s in elm
 
+  if elm.kill_body then l = elm.lrad end
+
   if l == 0 and abs(k2)+abs(k2s) > 0 then
     warn("sextupole '%s' defines strength with zero length", elm.name)
   end
@@ -1241,6 +1326,8 @@ local function track_octupole (elm, m)
 
   local nmul, knl, ksl in m
   local l, k3, k3s in elm
+
+  if elm.kill_body then l = elm.lrad end
 
   if l == 0 and abs(k3)+abs(k3s) > 0 then
     warn("octupole '%s' defines strength with zero length", elm.name)
@@ -1258,6 +1345,8 @@ local function track_decapole (elm, m)
   local nmul, knl, ksl in m
   local l, k4, k4s in elm
 
+  if elm.kill_body then l = elm.lrad end
+
   if l == 0 and abs(k4)+abs(k4s) > 0 then
     warn("decapole '%s' defines strength with zero length", elm.name)
   end
@@ -1273,6 +1362,8 @@ local function track_dodecapole (elm, m)
 
   local nmul, knl, ksl in m
   local l, k5, k5s in elm
+
+  if elm.kill_body then l = elm.lrad end
 
   if l == 0 and abs(k5)+abs(k5s) > 0 then
     warn("dodecapole '%s' defines strength with zero length", elm.name)
@@ -1332,6 +1423,8 @@ local function track_solenoid (elm, m)
 
   local l, ks, ksi, lrad in elm
   local model = elm.model or m.model
+
+  if elm.kill_body then l = elm.lrad end
 
   if l == 0 and abs(ks) > 0 then
     warn("solenoid '%s' defines strength with zero length", elm.name)
@@ -1444,6 +1537,8 @@ local function track_rfcavgen (elm, m, crab)
   local l, volt, freq, lag, harmon, n_bessel in elm
   local nocav in m
 
+  if elm.kill_body then l = elm.lrad end
+
   adj_mult(elm, m)
 
   m.el   = l
@@ -1483,14 +1578,10 @@ local function track_rfcavity (elm, m)
   track_rfcavgen(elm, m)
 end
 
-local function track_rfmcavity (elm, m)
-  get_mult      (elm, m)
-  track_rfcavgen(elm, m)
-end
-
 local function track_crabcavity (elm, m)
   get_mult      (elm, m, 1)
   local l, volt in elm
+  if elm.kill_body then l = elm.lrad end
   m.knl[1] = m.knl[1] + volt*l*1e-3
   track_rfcavgen(elm, m, true)
 end
@@ -1499,6 +1590,8 @@ end
 
 local function track_wire (elm, m)
   local l, l_phy, l_int, current, xma, yma, dpx, dpy in elm
+
+--if elm.kill_body then l = elm.lrad end -- fringe = fnil so far...
 
   m.el         = l
   m.dpx, m.dpy = dpx, dpy
@@ -1567,7 +1660,7 @@ local function track_genmap (elm, m)
   m.el, m.lrad, m.eh = l*sdir, lrad*sdir, angle/l*edir
 
   if nmul > 0 and abs(angle) >= minang then
-    m.snm = elm.secnmul or m.secnmul or -1 ; getanbnr(m)
+    m.snm = elm.secnmul or m.secnmul or -1 ; getanbnr(elm, m)
   end
 
   local inter  = nmul == 0  and thickonly or KMK[elm.method or m.method]
@@ -1588,12 +1681,15 @@ local E = element
 
 -- warning: set_methods overides must be consistent with survey and element.
 
--- element kinds
-E.drift_element :set_methods {track = track_drift}
-
 -- special elements
 E.marker     :set_methods {track = track_marker}     -- cloned in sequence
 E.slink      :set_methods {track = track_slink }
+
+-- assembler elements
+E.assembly   :set_methods {track = track_assembly}
+
+-- drift elements
+E.drift_element :set_methods {track = track_drift}
 
 -- thick elements
 E.sbend      :set_methods {track = track_sbend     } -- curved  , k0!, k0s, k1, k1s, k2, k2s
@@ -1604,9 +1700,9 @@ E.octupole   :set_methods {track = track_octupole  } -- straight, k3, k3s
 E.decapole   :set_methods {track = track_decapole  } -- straight, k4, k4s
 E.dodecapole :set_methods {track = track_dodecapole} -- straight, k5, k5s
 E.solenoid   :set_methods {track = track_solenoid  } -- straight, ks, ksi
-E.rfcavity   :set_methods {track = track_rfcavity  } -- straight, volt, freq!, lag, harmon
-E.rfmultipole:set_methods {track = track_rfmcavity } -- straight, volt, freq!, lag, harmon, mult, phas
-E.crabcavity :set_methods {track = track_crabcavity} -- straight, volt, freq!, lag, harmon, mult, phas
+E.rfcavity   :set_methods {track = track_rfcavity  } -- straight, volt, freq!, lag, harmon, mult
+E.rfmultipole:set_methods {track = track_rfcavity  } -- straight, volt, freq!, lag, harmon, mult
+E.crabcavity :set_methods {track = track_crabcavity} -- straight, volt, freq!, lag, harmon, mult
 
 E.wire       :set_methods {track = track_wire   }    -- straight
 E.wiggler    :set_methods {track = _nyi         }    -- straight

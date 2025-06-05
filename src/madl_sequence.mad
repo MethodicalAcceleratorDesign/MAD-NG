@@ -34,7 +34,7 @@ local abs, min, max, modf in math
 local option, warn, trace, gfunc                                 in MAD
 local ident, second, bind1st, bind2nd, bind2st, ltrue, lfalse,
       sub, opstr                                                 in MAD.gfunc
-local sequence, marker, drift, changedir, flags                  in MAD.element
+local sequence, marker, drift, changedir, changeref, flags       in MAD.element
 local minlen, eps                                                in MAD.constant
 local strtrim, strsplit, strbracket, bsearch, assertf, errorf,
       openfile, lst2tbl                                          in MAD.utility
@@ -630,12 +630,34 @@ local function flatten_line (line, flat, sref, idx, dir)
     elseif elm.kind == 'bline' or is_rawtable(elm) then
       -- TODO: keep track of l, dir, refpos and refer like for sequence...
       idx = flatten_line(elm, flat, sref, idx, step)
+    elseif elm.kind == 'assembly' then
+      idx = flatten_line(elm, flat, sref, idx, step)
     elseif not is_nil(sref) and is_sequence(elm) then
       idx = copy_ssequ  (elm, flat, sref, idx, step)
     else -- other elements
       idx, flat[idx] = idx+1, elm
     end
   end end
+  return idx
+end
+
+-- flatter assembly
+local function flatten_asm (elm, flat, sref, idx, dir)
+  idx, flat[idx] = idx+1, elm { entexi= dir, [1]=false }
+
+  local snam = sref.seq.name
+  local cref, elst = elm[snam], elm
+  if cref and cref[1] then elst = cref end
+  if is_nil(elst[1]) then
+    warn("empty assembly '%s' detected in sequence '%s'", elm.name, snam)
+  else
+    idx = flatten_line(elst, flat, sref, idx, dir)
+  end
+  if is_rawtable(cref) then
+    elm[snam] = changeref(elm.name, cref)
+  end
+
+  idx, flat[idx] = idx+1, elm { entexi=-dir, [1]=false }
   return idx
 end
 
@@ -650,6 +672,8 @@ local function flatten_sequ (seq, flat, sref)
       seq_error("invalid element detected", seq, i)
     elseif elm.kind == 'bline' or is_rawtable(elm) then
       idx = flatten_line(elm, flat, sref, idx, 1)
+    elseif elm.kind == 'assembly' then
+      idx = flatten_asm (elm, flat, sref, idx, 1)
     elseif is_sequence(elm) then
       idx = copy_ssequ  (elm, flat, sref, idx, 1)
     else -- other elements
@@ -731,7 +755,7 @@ local function init_mm (seq)
   -- check if sequence needs __dat
   if n == 0 and is_nil(seq:raw_get'l') then return seq end
 
-  local sref = { dir=seq.dir, sdir={} }
+  local sref = { seq=seq, dir=seq.dir, sdir={} }
   local data = table.new(n+2,8)
 
   -- flatten subsequences
@@ -1226,6 +1250,8 @@ local function replace (seq, elm, rng_, sel_)
       error("element is a sequence '"..(elm[i].name or '?').."'")
     elseif elm[i].kind == 'bline' then
       error("element is a beam line '"..(elm[i].name or '?').."'")
+    elseif elm[i].kind == 'assembly' then
+      error("element is an assembly '"..(elm[i].name or '?').."'")
     end
   end
 
@@ -1710,12 +1736,14 @@ local function dumpseq (seq, filnam_, info_)
                   string.format('%11.4f%11.4f%11.4f%11.4f%11.4f%11.4f',
                     eal.dx, eal.dy, eal.ds, eal.dtheta, eal.dphi, eal.dpsi)
     end
-    for is=1,#e do
-      local es = e[is]
-      local el = es.sat*e.l
-      local sp = sp+el
-      res[#res+1] = string.format(' >%02d %-14s %-3d   %-18s%9.3f%9s%11.3f%11s%8s',
-                    is, es.kind, es:get_flags(), es.name, es.l, '-', sp, '-', '-')
+    if e[1] then
+      for is=1,#e do
+        local es = e[is]
+        local el = es.sat*e.l
+        local sp = sp+el
+        res[#res+1] = string.format(' >%02d %-14s %-3d   %-18s%9.3f%9s%11.3f%11s%8s',
+                      is, es.kind, es:get_flags(), es.name, es.l, '-', sp, '-', '-')
+      end
     end
   end
 
