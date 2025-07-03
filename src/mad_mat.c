@@ -2552,7 +2552,7 @@ mad_cmat_pcacnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
   CERN ISR-MA/73-17, 1973.
 */
 
-int // Micado (from MAD9 + bug fixes)
+int // Micado
 mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
                ssz_t N, num_t tol, num_t r_[])
 {
