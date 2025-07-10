@@ -41,6 +41,8 @@ num_t mad_vec_sum    (const num_t x[],                                    ssz_t 
 num_t mad_vec_ksum   (const num_t x[],                                    ssz_t n); // Sum(vec) (Kahan)
 num_t mad_vec_mean   (const num_t x[],                                    ssz_t n); // Mean(vec)
 num_t mad_vec_var    (const num_t x[],                                    ssz_t n); // Var(vec)
+num_t mad_vec_sdev   (const num_t x[],                                    ssz_t n); // StdDev(vec)
+num_t mad_vec_rms    (const num_t x[],                                    ssz_t n); // RMS(vec)
 num_t mad_vec_nrm    (const num_t x[]                 ,                   ssz_t n); // |vec|
 num_t mad_vec_dst    (const num_t x[], const num_t y[],                   ssz_t n); // |vec -  vec|
 num_t mad_vec_dstv   (const num_t x[], const cpx_t y[],                   ssz_t n); // |vec - cvec|
@@ -91,6 +93,10 @@ cpx_t mad_cvec_mean  (const cpx_t x[],                                    ssz_t 
 void  mad_cvec_mean_r(const cpx_t x[],                         cpx_t *r , ssz_t n); // Mean(vec)
 cpx_t mad_cvec_var   (const cpx_t x[],                                    ssz_t n); // Var(vec)
 void  mad_cvec_var_r (const cpx_t x[],                         cpx_t *r , ssz_t n); // Var(vec)
+cpx_t mad_cvec_sdev  (const cpx_t x[],                                    ssz_t n); // StdDev(vec)
+void  mad_cvec_sdev_r(const cpx_t x[],                         cpx_t *r , ssz_t n); // StdDev(vec)
+cpx_t mad_cvec_rms   (const cpx_t x[],                                    ssz_t n); // RMS(vec)
+void  mad_cvec_rms_r (const cpx_t x[],                         cpx_t *r , ssz_t n); // RMS(vec)
 num_t mad_cvec_nrm   (const cpx_t x[],                                    ssz_t n); // |cvec|
 num_t mad_cvec_dst   (const cpx_t x[], const cpx_t y[],                   ssz_t n); // |cvec - cvec|
 num_t mad_cvec_dstv  (const cpx_t x[], const num_t y[],                   ssz_t n); // |cvec -  vec|
