@@ -29,18 +29,19 @@ local abs, sin, cos, sqrt, pi in math
 
 local vector, matrix, command, mtable                           in MAD
 local rand                                                      in MAD.gmath
+local twopi                                                     in MAD.constant
 local rep, assertf, printf                                      in MAD.utility
-local ftst                                                      in MAD.gfunc
+local ftst, third                                               in MAD.gfunc
 local is_number, is_positive, is_iterable, is_callable,
       is_mappable, is_mtable, is_sequence                       in MAD.typeid
 
 -- prepare work pack ----------------------------------------------------------o
 
 local plans = {
-  x = { q='x', p='px', bet='beta11', mu='mu1', nu='q1', kq='hkick', ckq='chkick', rq='rx',
+  x = { q='x', p='px', bet='beta11', mu='mu1', nu='q1', kq='hkick', ckq='chkck',
         mon={hmonitor=true, monitor=true}, cor={hkicker=true, kicker=true} },
 
-  y = { q='y', p='py', bet='beta22', mu='mu2', nu='q2', kq='vkick', ckq='cvkick', rq='ry',
+  y = { q='y', p='py', bet='beta22', mu='mu2', nu='q2', kq='vkick', ckq='cvkck',
         mon={vmonitor=true, monitor=true}, cor={vkicker=true, kicker=true} },
 }
 
@@ -93,7 +94,7 @@ local function get_moncor (wrk)
       if reg then -- seq -> mod
         local j = mod:index_of(e.name)
         assert(i == m2s[j], "inconsistency detected between sequence and model")
-        idx[i] = j
+        idx[i] = j -- link from sequence indexes to model indexes
       end
 
       ::continue::
@@ -114,6 +115,26 @@ local function get_moncor (wrk)
 
     wrk.nmon = wrk.nmon + mon.n
     wrk.ncor = wrk.ncor + cor.n - js
+
+    if wrk.info >= 1 then
+      printf("sequence %s for %s-plane\n\z
+              \tget %d active monitors\n\z
+              \tget %d active correctors\n", seq.name, pln.q, mon.n, cor.n)
+    end
+
+    if wrk.debug >= 1 then
+      for i,mi in ipairs(mon) do
+        local e = seq[mi]
+        printf("mon[%d]:seq[%d]:mod[%d]:%s %s x=%.6f y=%.6f\n", i, mi,
+                idx[mi], e.kind, e.name, mod[idx[mi]].x, mod[idx[mi]].y)
+      end
+      for i,ci in ipairs(cor) do
+        local e = seq[ci]
+        printf("cor[%d]:seq[%d]:mod[%d]:%s %s %s chkck=%.6f, cvkck=%.6f\n", i, ci,
+                idx[ci], e.kind, e.name, shr[ci] and " shared" or "",
+                e.chkck, e.cvkck)
+      end
+    end
   end
 end
 
@@ -239,11 +260,11 @@ end
 
 local aij_fct = {
   line = function (beti, mui, betj, muj)
-    return mui > muj and sqrt(beti*betj) * sin(abs(mui-muj)) or 0
+    return mui > muj and sqrt(beti*betj) * sin(abs(mui-muj)*twopi) or 0
   end,
 
   ring = function (beti, mui, betj, muj, nu)
-    return sqrt(beti*betj) * cos(abs(mui-muj) - pi*nu) / (2*sin(pi*nu))
+    return sqrt(beti*betj) * cos(abs(mui-muj)*twopi - pi*nu) / (2*sin(pi*nu))
   end,
 }
 
@@ -313,6 +334,10 @@ local function mak_system (wrk, kind, units)
 
   wrk.A = A
   wrk.B = wrk['B'..q]
+
+  if wrk.debug >= 2 then
+    wrk.A:print"A" ; wrk.B:print"B"
+  end
 end
 
 -- compute correctors strengths -----------------------------------------------o
@@ -320,7 +345,7 @@ end
 local mmth = { micado='nsolve', svd   ='ssolve', lsq  ='solve',
                nsolve='nsolve', ssolve='ssolve', solve='solve' }
 
-local function get_correct (wrk, method, ncor, tol)
+local function get_correct (wrk, method, ncor, tol, units)
   local A, B in wrk
   local mth = mmth[string.lower(tostring(method))]
 
@@ -334,23 +359,39 @@ local function get_correct (wrk, method, ncor, tol)
   end
 
   if wrk.info >= 1 then
-      if mth ==  'solve' then printf("correct: LSQ selected %d correctors\n", rnk)
-  elseif mth == 'nsolve' then printf("correct: MICADO selected %d correctors\n", rnk)
-  elseif mth == 'ssolve' then printf("correct: SVD selected %d singular values\n", rnk)
+      if mth ==  'solve' then printf("correct: LSQ rank = %d\n", rnk)
+  elseif mth == 'nsolve' then printf("correct: MICADO rank = %d\n", rnk)
+  elseif mth == 'ssolve' then printf("correct: SVD #singular values = %d\n", rnk)
   end end
 
-  wrk.X = X       -- predicted correction
-  wrk.O = A*X     -- predicted orbit
-  wrk.E = B-wrk.O -- predicted residues
+  wrk.X = -X      -- predicted correction
+  wrk.E = B-A*X   -- predicted residues (new orbit)
   wrk.R = R       -- only MICADO
   wrk.S = S       -- only SVD
+
+  if wrk.info >= 1 then
+    local B, E in wrk
+    local u = 1e3*units
+    printf("correct summary:\n\z
+            .         average [mm]   stddev [mm]    RMS [mm]       peak-to-peak [mm]\n\z
+            before   % 8.6f      % 8.6f      % 8.6f      % 8.6f\n\z
+            after    % 8.6f      % 8.6f      % 8.6f      % 8.6f\n",
+            B:mean()*1e3, B:stddev()*1e3, B:rms()*1e3, third(B:minmax())*1e3,
+            E:mean()*1e3, E:stddev()*1e3, E:rms()*1e3, third(E:minmax())*1e3 )
+  end
+
+  if wrk.debug >= 2 then
+    wrk.X:print"X" ; wrk.E:print"E" ;
+    if wrk.R then wrk.R:print"R" end
+    if wrk.S then wrk.S:print"S" end
+  end
 end
 
 -- save results to mtables ----------------------------------------------------o
 
 local function sav_mtable (wrk, lst, self)
-  local X, O, E in wrk
-  local q, kq, rq in wrk.pln
+  local X, E  in wrk
+  local q, kq in wrk.pln
 
   for k,w in ipairs(wrk) do
     local seq, rng, mod, mon, cor, shr, idx, im, jc in w
@@ -358,7 +399,7 @@ local function sav_mtable (wrk, lst, self)
 
     local mtbl = lst[k] or mtable(seq.name, {
       type='correct', range=rng, reserve=mon.n+cor.n, __seq=seq,
-      'name', 'kind', 's', 'l', 'x_old', 'y_old', 'x', 'y', 'rx', 'ry',
+      'name', 'kind', 's', 'l', 'x_old', 'y_old', 'x', 'y',
       'hkick_old', 'vkick_old', 'hkick', 'vkick', 'shared', {'eidx'}, '__elm'
     })
     -- add ename for direct access to column 'name'
@@ -370,11 +411,11 @@ local function sav_mtable (wrk, lst, self)
       if n == nil then
         mtbl = mtbl + {
           el.name, el.kind, mod.s[mi], mod.l[mi],
-          mod.x[mi], mod.y[mi], 0,0,0,0, 0,0,0,0, false, ii,el,
+          mod.x[mi],mod.y[mi],0,0, 0,0,0,0, false, ii,el,
         }
         n = #mtbl
       end
-      mtbl[q][n], mtbl[rq][n] = O[im[ii]], E[im[ii]]
+      mtbl[q][n] = E[im[ii]]
     end
 
     for j,jj in ipairs(cor) do
@@ -385,30 +426,37 @@ local function sav_mtable (wrk, lst, self)
         local vk = el.vkick + el.cvkck
         mtbl = mtbl + {
           el.name, el.kind, mod.s[mi], mod.l[mi],
-          mod.x[mi], mod.y[mi], 0,0,0,0, hk,vk,hk,vk, sh, jj,el,
+          mod.x[mi],mod.y[mi],0,0, hk,vk,hk,vk, sh, jj,el,
         }
         n = #mtbl
       end
-      mtbl[kq][n] = -X[jc[jj]]*dir
+      mtbl[kq][n] = X[jc[jj]]*dir
     end
+
+    lst[k] = mtbl
   end
 end
 
 -- adjust correctors strengths ------------------------------------------------o
 
 local function adj_seqcor (wrk)
-  local X, info in wrk
-  local kq, ckq  in wrk.pln
+  local X, pln, info in wrk
+  local q, kq, ckq   in pln
 
   for k,w in ipairs(wrk) do
     local seq, cor, shr, jc in w
     local dir in seq
 
+    if info >= 1 then
+      printf("correct: sequence %s for %s-plane\n\z
+              \tadjusting %d active correctors\n", seq.name, q, cor.n)
+    end
+
     for _,jj in ipairs(cor) do
       if shr[jj] then goto continue end
 
       local el = seq[jj]
-      el[ckq] = -X[jc[jj]]*dir - el[kq]
+      el[ckq] = el[ckq] + X[jc[jj]]*dir
 
       if info >= 2 and el[ckq] ~= 0 then
         printf("correct: '%s' %s = %g\n", el.name, ckq, el[ckq])
@@ -467,7 +515,7 @@ local function exec (self)
     if corcnd then rem_corcnd(wrk, corcnd, corcut, cortol) end
 
     -- compute corrector strengths
-    get_correct(wrk, method, ncor, tol)
+    get_correct(wrk, method, ncor, tol, units)
 
     -- save data to mtable(s) (one per sequence)
     sav_mtable(wrk, lst, self)
@@ -477,7 +525,7 @@ local function exec (self)
   end
 
   -- disable dict and sort data by position
-  for _,t in ipairs(lst) do t:build_index'none':sort's' end
+  for _,t in ipairs(lst) do t:make_dict'none':sort's' end
 
   -- convert list to mtable in case of singleton
   if #lst == 1 then lst = lst[1] end
@@ -498,7 +546,7 @@ local correct = command 'correct' {
   plane='xy',        -- 'x', 'y' or 'xy'                                  (corr)
   method='micado',   -- 'LSQ', 'SVD' or 'MICADO'                          (corr)
   ncor=0,            -- number of correctors to consider by method, 0=all (corr)
-  tol=1e-5,          -- rms tolerance on the orbit                        (corr)
+  tol=1e-8,          -- rms tolerance on the orbit                        (corr)
   units=1,           -- units in [m] of the orbit                         (corr)
 
   corcnd=false,      -- precond of correctors using 'svdcnd' or 'pcacnd'  (corr)
