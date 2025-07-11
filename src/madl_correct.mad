@@ -32,8 +32,8 @@ local rand                                                      in MAD.gmath
 local twopi                                                     in MAD.constant
 local rep, assertf, printf                                      in MAD.utility
 local ftst, third                                               in MAD.gfunc
-local is_number, is_positive, is_iterable, is_callable,
-      is_mappable, is_mtable, is_sequence                       in MAD.typeid
+local is_number, is_positive, is_natural, is_iterable,
+      is_callable, is_mappable, is_mtable, is_sequence          in MAD.typeid
 
 -- prepare work pack ----------------------------------------------------------o
 
@@ -138,6 +138,88 @@ local function get_moncor (wrk)
   end
 end
 
+-- remove monitors disabled by monon ------------------------------------------o
+
+local function rem_monon (wrk, monon)
+  assert(is_positive(monon) and monon <= 1, "invalid monon (positive number <=1 expected)")
+  if monon == 1 then return end
+
+  local info in wrk
+  for _,w in ipairs(wrk) do
+    local seq, mon in w
+    local n = 0
+    for i=mon.n,1,-1 do
+      if rand() > monon then
+        local ii = table.remove(mon, i)
+        n, idx[ii], im[ii] = n+1
+        if info >= 2 then
+          printf("correct: monitor %s is dropped by monon\n", seq[ii].name)
+        end
+      end
+    end
+    wrk.nmon, mon.n = wrk.nmon-n, mon.n-n
+  end
+end
+
+-- remove monitors disabled by moncut -----------------------------------------o
+
+local function rem_moncut (wrk, moncut)
+  assert(is_positive(moncut), "invalid moncut (positive number expected)")
+
+  local info in wrk
+  local q, bet in wrk.pln
+  for _,w in ipairs(wrk) do
+    local seq, mod, mon, idx in w
+    local q, bet = mod[q], mod[bet]
+    local v = vector(mon.n)
+
+    for i,ii in ipairs(mon) do
+      v[i] = q[idx[ii]]/sqrt(bet[idx[ii]])
+    end
+
+    local n, avg, sdev = 0, v:mean(), v:stddev()
+    for i=mon.n,1,-1 do
+      if abs(v[i]-avg) > moncut*sdev then
+        local ii = table.remove(mon, i)
+        n, idx[ii], im[ii] = n+1
+        if info >= 2 then
+          printf("correct: monitor %s is dropped by moncut\n", seq[ii].name)
+        end
+      end
+    end
+    wrk.nmon, mon.n = wrk.nmon-n, mon.n-n
+  end
+end
+
+-- adjust orbit with monitors errors ------------------------------------------o
+
+local function adj_orbmon(wrk, monerr)
+  assert(is_natural(monerr) and monerr <= 3, "invalid monerr (0..3 expected)")
+  if monerr == 0 then return end
+
+  local Bx, By in wrk
+  for _,w in ipairs(wrk) do
+    local seq, mon, im in w
+    for _,ii in ipairs(mon) do
+      local merr, tilt in seq[ii]
+      if is_mappable(merr) then
+        local mi = im[ii]
+        if ftst(monerr, 2) then
+          Bx[mi] = Bx[mi] * (1+(merr.mresx or 0))
+          By[mi] = By[mi] * (1+(merr.mresy or 0))
+        end
+        if ftst(monerr, 1) then
+          local rx, ry, c, s = Bx[mi], By[mi], cos(tilt or 0), sin(tilt or 0)
+          Bx[mi] = rx*c + ry*s + (merr.mredx or 0)
+          By[mi] = ry*c - rx*s + (merr.mredy or 0)
+        end
+      end
+    end
+  end
+
+  wrk.Bx, wrk.By = nil, nil -- keep only B
+end
+
 -- remove correctors disabled by corcnd ---------------------------------------o
 
 local function rem_corcnd (wrk, corcnd, corcut, cortol)
@@ -168,90 +250,6 @@ local function rem_corcnd (wrk, corcnd, corcut, cortol)
     end
     wrk.ncor, cor.n = wrk.ncor-n, cor.n-n
   end
-end
-
--- remove monitors disabled by monon ------------------------------------------o
-
-local function rem_monoff (wrk, monon)
-  assert(is_positive(monon) and monon <= 1, "invalid monon (positive number <=1 expected)")
-  if monon == 1 then return end
-
-  local info in wrk
-  for _,w in ipairs(wrk) do
-    local seq, mon in w
-    local n = 0
-    for i=mon.n,1,-1 do
-      if rand() > monon then
-        local ii = table.remove(mon, i)
-        n, idx[ii], im[ii] = n+1
-        if info >= 2 then
-          printf("correct: monitor %s is dropped by monon\n", seq[ii].name)
-        end
-      end
-    end
-    wrk.nmon, mon.n = wrk.nmon-n, mon.n-n
-  end
-end
-
--- remove monitors disabled by moncut -----------------------------------------o
-
-local function rem_moncut (wrk, moncut)
-  assert(is_positive(moncut), "invalid moncut (positive number expected)")
-
-  local info in wrk
-  local q, bet in wrk.pln
-  for _,w in ipairs(wrk) do
-    local seq, mod, mon, idx in w
-    local v = vector(mon.n)
-    local q, bet = mod[q], mod[bet]
-
-    for i,ii in ipairs(mon) do
-      v[i] = q[idx[ii]]/sqrt(b[idx[ii]])
-    end
-
-    local n, avg, var = 0, v:mean(), v:variance()
-    for i=mon.n,1,-1 do
-      if abs(v[i]-avg) > moncut*var then
-        local ii = table.remove(mon, i)
-        n, idx[ii], im[ii] = n+1
-        if info >= 2 then
-          printf("correct: monitor %s is dropped by moncut\n", seq[ii].name)
-        end
-      end
-    end
-    wrk.nmon, mon.n = wrk.nmon-n, mon.n-n
-  end
-end
-
--- adjust orbit with monitors errors ------------------------------------------o
-
-local merrcode = {[0]=true, true, true, true}
-
-local function adj_orbmon(wrk, monerr)
-  assert(merrcode[monerr], "invalid monerr (0..3 expected)")
-  if monerr == 0 then return end
-
-  local Bx, By in wrk
-  for _,w in ipairs(wrk) do
-    local seq, mon, im in w
-    for _,ii in ipairs(mon) do
-      local merr, tilt in seq[ii]
-      if is_mappable(merr) then
-        local mi = im[ii]
-        if ftst(monerr, 2) then
-          Bx[mi] = Bx[mi] * (1+(merr.mrexs or 0))
-          By[mi] = By[mi] * (1+(merr.mreys or 0))
-        end
-        if ftst(monerr, 1) then
-          local rx, ry, c, s = Bx[mi], By[mi], cos(tilt or 0), sin(tilt or 0)
-          Bx[mi] = rx*c + ry*s + (merr.mredx or 0)
-          By[mi] = ry*c - rx*s + (merr.mredy or 0)
-        end
-      end
-    end
-  end
-
-  wrk.Bx, wrk.By = nil, nil
 end
 
 -- response matrix and orbit vector -------------------------------------------o
@@ -392,6 +390,7 @@ end
 local function sav_mtable (wrk, lst, self)
   local X, E in wrk
   local q, kq, ckq in wrk.pln
+  local oq, okq = q.."_old", kq.."_old"
 
   for k,w in ipairs(wrk) do
     local seq, rng, mod, mon, cor, shr, idx, im, jc in w
@@ -406,41 +405,39 @@ local function sav_mtable (wrk, lst, self)
       })
       -- add ename for direct access to column 'name'
       lst[k] = mtbl:addcol("ename", \ri -> mtbl:getcol("name")[ri])
-
-      -- add monitors
-      for _,ii in ipairs(mon) do
-        local el, mi = seq[ii], idx[ii]
-        mtbl = mtbl + {
-          el.name, el.kind, mod.s[mi], mod.l[mi], mod.x[mi], mod.y[mi], 0,0,
-          0,0,0,0, false, ii,
-        }
-      end
-
-      -- add correctors
-      for _,jj in ipairs(cor) do
-        local el, mi, sh = seq[jj], idx[jj], shr[jj] ~= nil
-        local hk = el.hkick + el.chkck
-        local vk = el.vkick + el.cvkck
-        mtbl = mtbl + {
-          el.name, el.kind, mod.s[mi], mod.l[mi], mod.x[mi], mod.y[mi], 0,0,
-          hk,vk,hk,vk, sh, jj,
-        }
-      end
     end
 
-    -- update monitor orbit
+    -- add/update monitor
     for _,ii in ipairs(mon) do
-      local el = assert(seq[ii])
+      local el = seq[ii]
       local ei = mtbl:index_of(el)
-      mtbl[q][ei] = E[im[ii]]
+      if not ei then
+        local mi = idx[ii]
+        mtbl = mtbl + {
+          el.name, el.kind, mod.s[mi], mod.l[mi], 0,0,0,0, 0,0,0,0, false, ii,
+        }
+        ei = #mtbl
+      end
+      mtbl[ q][ei] = E[im[ii]]
+      mtbl[oq][ei] = mod[q][idx[ii]]
     end
 
-    -- update corrector orbit and strength
+    -- add/update corrector
     for _,jj in ipairs(cor) do
-      local el = assert(seq[jj])
+      local el = seq[jj]
       local ei = mtbl:index_of(el)
-      mtbl[ q][ei] = E[jc[jj]]
-      mtbl[kq][ei] = el[kq]+el[ckq] + X[jc[jj]]*dir
+      local ek = el[kq]+el[ckq]
+      if not ei then
+        local ci, sh = idx[jj], shr[jj] ~= nil
+        mtbl = mtbl + {
+          el.name, el.kind, mod.s[ci], mod.l[ci], 0,0,0,0, 0,0,0,0, sh, jj,
+        }
+        ei = #mtbl
+      end
+--    mtbl[  q][ei] = E[jc[jj]]
+--    mtbl[ oq][ei] = mod[q][idx[jj]]
+      mtbl[ kq][ei] = ek + X[jc[jj]]*dir
+      mtbl[okq][ei] = ek
     end
   end
 end
