@@ -2581,7 +2581,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
   if (N > n || N <= 0) N = n;
 
 #if MAD_USE_MADX
-  // X-check with MAD-X Micado
+  // X-check with MAD-X Micado (pretty bugged)
   if (mad_use_madx_micado) {
     return madx_micado(a, b, x, m, n, N, tol, r_);
   }
@@ -2622,53 +2622,50 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
   // Begin of iteration (l): loop over best-kick selection (i.e. A columns).
   FOR(k,N) {
     // Box 3: Search the columns not yet used for largest scaled change vector.
-    { num_t maxChange = 0;
-      idx_t changeIndex = -1;
+    { num_t max =  0;
+      idx_t idx = -1;
       FOR(j,k,n) {
         if (sqr[j] > sqrmin) {        // criteria rho that minimize the residues
-          num_t change = dot[j]*dot[j] / sqr[j];
-          if (change > maxChange) {
-            changeIndex = j;
-            maxChange = change;
-          }
+          num_t scl = dot[j]*dot[j] / sqr[j];
+          if (scl > max) idx = j, max = scl;
         }
       }
 
       // Stop iterations if no suitable column are found.
-      if (changeIndex < 0) { N=k; break; }
+      if (idx < 0) { N=k; break; }
 
       // Move the column just found to next position.
-      if (changeIndex > k) {
+      if (idx > k) {
         num_t tr; idx_t ti;
-        SWAP(sqr[k], sqr[changeIndex], tr);
-        SWAP(dot[k], dot[changeIndex], tr);
-        SWAP(pvt[k], pvt[changeIndex], ti);
-        FOR(i,m) SWAP(A(i,k), A(i,changeIndex), tr);
+        SWAP(sqr[k], sqr[idx], tr);
+        SWAP(dot[k], dot[idx], tr);
+        SWAP(pvt[k], pvt[idx], ti);
+        FOR(i,m) SWAP(A(i,k), A(i,idx), tr);
       }
     }
 
     // Box 4: Compute beta, sigma, and vector u[k].
-    num_t beta, hh;
+    num_t bet, hh;
     { hh = 0;
       FOR(i,k,m) hh += A(i,k) * A(i,k);
-      num_t sigma = A(k,k) < 0 ? -sqrt(hh) : sqrt(hh);
-      sqr[k] = -sigma; // saved for use in X[1..k] update
-      A(k,k) += sigma;
-      beta = 1 / (A(k,k) * sigma);
+      num_t sig = A(k,k) < 0 ? -sqrt(hh) : sqrt(hh);
+      sqr[k] = -sig; // saved for use in X[1..k] update
+      A(k,k) += sig;
+      bet = 1 / (A(k,k) * sig);
     }
 
     // Box 5: Transform remaining columns of A.
     FOR(j,k+1,n) {
       hh = 0;
       FOR(i,k,m) hh += A(i,k) * A(i,j);
-      hh *= beta;
+      hh *= bet;
       FOR(i,k,m) A(i,j) -= A(i,k) * hh;
     }
 
     // Box 6: Transform vector b.
     hh = 0;
     FOR(i,k,m) hh += A(i,k) * B[i];
-    hh *= beta;
+    hh *= bet;
     FOR(i,k,m) B[i] -= A(i,k) * hh;
 
     // Box 3: Update scalar products sqr[j]=A[j]*A[j] and dot[j]=A[j]*b.
