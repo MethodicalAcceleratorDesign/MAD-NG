@@ -29,7 +29,7 @@
 #include "mad_vec.h"
 #include "mad_mat.h"
 
-#define MAD_USE_MADX 0
+#define MAD_USE_MADX 0 // use MAD-X Micado for comparison (pretty bugged)
 
 // --- helpers for debug ------------------------------------------------------o
 
@@ -2198,7 +2198,7 @@ void mad_mat_torotq (const num_t x[NN], num_t q[4], log_t inv)
 #undef N
 #undef X
 
-// -- Orbit Correction MADX version -------------------------------------------o
+// -- Orbit Correction MAD-X version (pretty bugged, don't use it) ------------o
 
 #if MAD_USE_MADX
 
@@ -2581,7 +2581,7 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
   if (N > n || N <= 0) N = n;
 
 #if MAD_USE_MADX
-  // X-check with MAD-X Micado (pretty bugged)
+  // X-check with MAD-X Micado (pretty bugged, don't use it)
   if (mad_use_madx_micado) {
     return madx_micado(a, b, x, m, n, N, tol, r_);
   }
