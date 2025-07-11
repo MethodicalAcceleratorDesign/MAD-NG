@@ -390,50 +390,58 @@ end
 -- save results to mtables ----------------------------------------------------o
 
 local function sav_mtable (wrk, lst, self)
-  local X, E  in wrk
-  local q, kq in wrk.pln
+  local X, E in wrk
+  local q, kq, ckq in wrk.pln
 
   for k,w in ipairs(wrk) do
     local seq, rng, mod, mon, cor, shr, idx, im, jc in w
     local dir in seq
+    local mtbl = lst[k]
 
-    local mtbl = lst[k] or mtable(seq.name, {
-      type='correct', range=rng, reserve=mon.n+cor.n, __seq=seq,
-      'name', 'kind', 's', 'l', 'x_old', 'y_old', 'x', 'y',
-      'hkick_old', 'vkick_old', 'hkick', 'vkick', 'shared', {'eidx'}, '__elm'
-    })
-    -- add ename for direct access to column 'name'
-    mtbl:addcol("ename", \ri -> mtbl:getcol("name")[ri])
+    if not mtbl then -- first iteration, create mtable and fill with mon and cor
+      mtbl = mtable(seq.name, {
+        type='correct', range=rng, reserve=mon.n+cor.n, __seq=seq,
+        {'name'}, 'kind', 's', 'l', 'x_old', 'y_old', 'x', 'y',
+        'hkick_old', 'vkick_old', 'hkick', 'vkick', 'shared', 'eidx',
+      })
+      -- add ename for direct access to column 'name'
+      lst[k] = mtbl:addcol("ename", \ri -> mtbl:getcol("name")[ri])
 
-    for i,ii in ipairs(mon) do
-      local el, mi = seq[ii], idx[ii]
-      local n = mtbl:index_of(ii)
-      if n == nil then
+      -- add monitors
+      for _,ii in ipairs(mon) do
+        local el, mi = seq[ii], idx[ii]
         mtbl = mtbl + {
-          el.name, el.kind, mod.s[mi], mod.l[mi],
-          mod.x[mi],mod.y[mi],0,0, 0,0,0,0, false, ii,el,
+          el.name, el.kind, mod.s[mi], mod.l[mi], mod.x[mi], mod.y[mi], 0,0,
+          0,0,0,0, false, ii,
         }
-        n = #mtbl
       end
-      mtbl[q][n] = E[im[ii]]
-    end
 
-    for j,jj in ipairs(cor) do
-      local el, mi, sh = seq[jj], idx[jj], shr[jj] ~= nil
-      local n, hk, vk = mtbl:index_of(jj)
-      if n == nil then
+      -- add correctors
+      for _,jj in ipairs(cor) do
+        local el, mi, sh = seq[jj], idx[jj], shr[jj] ~= nil
         local hk = el.hkick + el.chkck
         local vk = el.vkick + el.cvkck
         mtbl = mtbl + {
-          el.name, el.kind, mod.s[mi], mod.l[mi],
-          mod.x[mi],mod.y[mi],0,0, hk,vk,hk,vk, sh, jj,el,
+          el.name, el.kind, mod.s[mi], mod.l[mi], mod.x[mi], mod.y[mi], 0,0,
+          hk,vk,hk,vk, sh, jj,
         }
-        n = #mtbl
       end
-      mtbl[kq][n] = X[jc[jj]]*dir
     end
 
-    lst[k] = mtbl
+    -- update monitor orbit
+    for _,ii in ipairs(mon) do
+      local el = assert(seq[ii])
+      local ei = mtbl:index_of(el)
+      mtbl[q][ei] = E[im[ii]]
+    end
+
+    -- update corrector orbit and strength
+    for _,jj in ipairs(cor) do
+      local el = assert(seq[jj])
+      local ei = mtbl:index_of(el)
+      mtbl[ q][ei] = E[jc[jj]]
+      mtbl[kq][ei] = el[kq]+el[ckq] + X[jc[jj]]*dir
+    end
   end
 end
 
@@ -524,8 +532,8 @@ local function exec (self)
     if corset then adj_seqcor(wrk) end
   end
 
-  -- disable dict and sort data by position
-  for _,t in ipairs(lst) do t:make_dict'none':sort's' end
+  -- sort data by position
+  for _,t in ipairs(lst) do t:sort's' end
 
   -- convert list to mtable in case of singleton
   if #lst == 1 then lst = lst[1] end
