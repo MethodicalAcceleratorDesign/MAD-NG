@@ -126,7 +126,7 @@ local function bxbyh (snm, bfx, bfy, x, y)
     btx = (btx + bfx[k]) * y
     bty = (bty + bfy[k]) * y
   end
-  
+
   bx = bx + (btx + bfx[k+1])
   by = by + (bty + bfy[k+1])
 
@@ -735,7 +735,7 @@ end
 
 local function sbend_thick_old (elm, m, lw, istp) -- [SSEC]                  -- checked
   m.atdebug(elm, m, 'sbend_thick:0')
-  
+
   local el, eh, edir, knl, beam in m
   local ld, ang, rho, k0 = el*lw, eh*el*lw*edir, 1/eh*edir, knl[1]/el*edir
   local beta, k0q = beam.beta, k0*beam.charge
@@ -1116,8 +1116,8 @@ function M.quad_thickh (elm, m, lw, istp) -- [PUSHTKT7]                      -- 
   local kx  = (knl[2]+eh*knl[1])/el   -- No need to include sign of edir here (see below)
   local ky  = -knl[2]/el              --only absolute value used
   local wxs = kx*edir < 0 and -1 or 1 --w(x/y)s determines sign after sqrt
-  local wys = ky*edir < 0 and -1 or 1 
-  local wx, cx, sx, wy, cy, sy 
+  local wys = ky*edir < 0 and -1 or 1
+  local wx, cx, sx, wy, cy, sy
   local mx11, mx12, mx13, mx21, mx22, mx23, mx31, mx32, mx33
   local my11, my12,       my21, my22
 
@@ -1410,6 +1410,81 @@ function M.rfcav_kickn (elm, m, lw, istp) -- [KICKCAV, nmul~=0 or nbsl~=0]   -- 
 
   m.atdebug(elm, m, 'rfcav_kickn:1')
 end
+
+-- Helper function for acdipole_kick functions (horizontal and vertical)
+local function acdipole_kick(elm, m, lw, istp, coord)
+  m.atdebug(elm, m, 'acdipole_kick:0')
+
+  local volt, freq, lag, edir, beam, turn, ramp in m
+  if not volt or volt == 0 then
+    m.atdebug(elm, m, 'acdipole_kick:1')
+    return
+  end
+
+  local ph = twopi*(lag + freq * turn)
+
+  local wchg = lw * edir * beam.charge
+
+  local vscale != 0.3 * volt / beam.pc
+  if turn < ramp[1] then
+    vscale = 0
+  elseif turn < ramp[2] then
+    vscale = (turn - ramp[1]) / (ramp[2] - ramp[1])
+  elseif turn < ramp[3] then
+    vscale = 1
+  elseif turn < ramp[4] then
+    vscale = (ramp[4] - turn) / (ramp[4] - ramp[3])
+  else
+    vscale = 0
+  end
+  local vscale = 0.3 * vscale * volt
+  local vrf = vscale / beam.pc
+  for i=1, m.npar do
+    local beam in m[i]
+    local vrf = beam and vscale / beam.pc or vrf
+    local wchg = beam and lw * edir * beam.charge or wchg
+
+    m[i][coord] = m[i][coord] + wchg * vrf * sin(ph)
+  end
+
+  m.atdebug(elm, m, 'acdipole_kick:1')
+end
+
+function M.hacdipole_kick(elm, m, lw, istp)
+  acdipole_kick(elm, m, lw, istp, "px")
+end
+
+function M.vacdipole_kick(elm, m, lw, istp)
+  acdipole_kick(elm, m, lw, istp, "py")
+end
+
+local function ac_map_kick(elm, m, lw, istp, coord)
+  m.atdebug(elm, m, 'ac_map_kick:0')
+
+  local nat_q, drv_q, bet_at_acd, beam, edir in m
+  if  not nat_q or not bet_at_acd or not drv_q
+      or bet_at_acd == 0 then
+    m.atdebug(elm, m, 'ac_map_kick:1')
+    return
+  end
+
+  local wchg = lw * edir * beam.charge
+  local eff_grad = 2 * (cos(twopi * drv_q) - cos(twopi * nat_q))
+                   / (bet_at_acd * sin(twopi * nat_q))
+  for i=1, m.npar do
+    local wchg = beam and lw * edir * beam.charge or wchg
+    m[i]['p'..coord] = m[i]['p'..coord] + wchg * eff_grad * m[i][coord]
+  end
+end
+
+function M.hacmap_kick(elm, m, lw, istp)
+  ac_map_kick(elm, m, lw, istp, "x")
+end
+
+function M.vacmap_kick(elm, m, lw, istp)
+  ac_map_kick(elm, m, lw, istp, "y")
+end
+
 
 -- DKD, TKT -------------------------------------------------------------------o
 
@@ -1729,7 +1804,7 @@ function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]                     -- 
   end
 
   local e1, e2 = (m.e1 or elm.e1), (m.e2 or elm.e2)
-  local h1, h2 =          elm.h1 ,          elm.h2 
+  local h1, h2 =          elm.h1 ,          elm.h2
 
   if sdir == -1 then e1, e2, h1, h2 = e2, e1, h2, h1 end -- swap
 
@@ -1892,7 +1967,7 @@ function bend_face (elm, m, lw, h) -- [NEWFACE]                              -- 
 
   local edir, sdir, beam in m
   local  k0h = 0.5*h*knl[1]/el*edir*sdir -- Needs confirmation, but I believe h1, h2 are independent of tdir -> see PTC
-  -- PTC eq: X(2)=X(2)+(EL%DIR*EL%CHARGE*BN(1)*H/2.0_dp)*X(1)**2. If h was dependent on tdir, then this equation would not require DIR 
+  -- PTC eq: X(2)=X(2)+(EL%DIR*EL%CHARGE*BN(1)*H/2.0_dp)*X(1)**2. If h was dependent on tdir, then this equation would not require DIR
   local  chg = beam.charge
   local beta = beam.beta
 
@@ -1913,16 +1988,16 @@ function bend_face (elm, m, lw, h) -- [NEWFACE]                              -- 
     local xi     = 2*k0hq*sqrt(dpp)*_pt2
     local dxi_px = 2*px*xi         *_pt2
 
-    if sdir == -1 then 
-      local npx = px - xi*y2 
+    if sdir == -1 then
+      local npx = px - xi*y2
       _pt2   = 1/(dpp - npx^2)
       xi     = 2*k0hq*sqrt(dpp)*_pt2
       dxi_px = 2*npx*xi        *_pt2
     end
-    
+
     local dxi_ddel = -2*xi*(1+pt)*_pt2
 
-    if sdir == 1 then 
+    if sdir == 1 then
       x  = x  / (1-dxi_px*y2)
       px = px - xi*y2
       py = py - 2*xi*x*y
