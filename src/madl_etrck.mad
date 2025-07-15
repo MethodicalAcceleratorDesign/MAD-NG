@@ -1687,34 +1687,53 @@ local function track_genmap (elm, m)
   m.eh, m.snm = 0, 0
 end
 
-local function track_acdipole (elm, m, acdipole_kick)
-  local volt, freq, lag, ramp in elm
-  m.volt, m.freq, m.lag, m.ramp = volt, freq, lag, ramp
-  trackelm(elm, m, thinonly, acdipole_kick, fnil, fnil)
-  m.volt, m.freq, m.lag, m.ramp = nil, nil, nil, nil
-end
+-- AC kicker element
 
-local function track_hacdipole (elm, m)
-  track_acdipole(elm, m, hacdipole_kick)
-end
-local function track_vacdipole (elm, m)
-  track_acdipole(elm, m, vacdipole_kick)
-end
+local plan = {x='x', y='y'}
 
-local function track_ac_map(elm, m, ac_map_kick, nat_q, drv_q, bet_at_acd)
-  m.nat_q, m.drv_q, m.bet_at_acd = nat_q, drv_q, bet_at_acd
-  trackelm(elm, m, thinonly, ac_map_kick, fnil, fnil)
-  m.nat_q, m.drv_q, m.bet_at_acd = nil, nil, nil
-end
+local function track_ackicker (elm, m)
+  local l, ac_bet in elm
+  local ackick
 
-local function track_hacmap (elm, m)
-  local nat_q1, drv_q1, bet11_at_acd in elm
-  track_ac_map(elm, m, hacmap_kick, nat_q1, drv_q1, bet11_at_acd)
-end
+  m.cor = assert(plan[elm.plane], "invalid ackicker, h or v expected")
 
-local function track_vacmap (elm, m)
-  local nat_q2, drv_q2, bet22_at_acd in elm
-  track_ac_map(elm, m, vacmap_kick, nat_q2, drv_q2, bet22_at_acd)
+  if ac_bet then
+    local nat_q, drv_q in elm
+    m.egrad = 2*(cos(twopi*drv_q) - cos(twopi*nat_q))
+                        / (ac_bet * sin(twopi*nat_q))
+    ackick = m.egrad ~= 0 and acquad_kick or nil
+  else
+    local volt, freq, lag, ramp in elm
+    local turn in m
+    local vs = 0
+    if turn >= ramp[1] and turn < ramp[4] then
+          if turn < ramp[2] then vs = (turn-ramp[1]) / (ramp[2]-ramp[1])
+      elseif turn < ramp[3] then vs = 1
+      else                       vs = (ramp[4]-turn) / (ramp[4]-ramp[3])
+      end
+    end
+
+    m.vscl = 0.3*vs*volt
+    m.vpha = twopi*(turn*freq + lag)
+    ackick = m.vscl ~= 0 and acdipole_kick or nil
+  end
+
+  local model  = elm.model  or m.model
+  local method = elm.method or m.method
+  local inter, thick, kick
+
+  if l < minlen then
+    inter, thick, kick = thinonly, ackick, fnil
+  elseif ackick == nil then
+    inter, thick, kick = thickonly, strex_drift, fnil
+  else
+    inter, thick, kick = DKD[method], strex_drift, ackick
+  end
+
+  local track = is_nil(elm[1]) and trackelm or tracksub
+  track(elm, m, inter, thick, kick, fnil)
+
+  m.vscl, m.vpha, m.egrad, m.cor = nil, nil, nil, nil
 end
 
 -- load maps into elements ----------------------------------------------------o
@@ -1759,16 +1778,15 @@ E.kicker     :set_methods {track = track_kicker }    -- straight, hkick, vkick
 E.hkicker    :set_methods {track = track_hkicker}    -- straight,  kick
 E.vkicker    :set_methods {track = track_vkicker}    -- straight,  kick
 
+E.hackicker  :set_methods {track = track_ackicker}   -- thin, volt, freq, lag, ramp, nat_q, drv_q, ac_bet
+E.vackicker  :set_methods {track = track_ackicker}   -- thin, volt, freq, lag, ramp, nat_q, drv_q, ac_bet
+
 -- thin elements
 E.multipole  :set_methods {track = track_multipole}  -- thin
 E.beambeam   :set_methods {track = track_bbeam    }  -- thin
 E.nllens     :set_methods {track = track_nllens   }  -- thin
 E.linmap     :set_methods {track = track_linmap   }  -- thick line segment
 E.genmap     :set_methods {track = track_genmap   }  -- straight or curved, damap, update
-E.hacdipole  :set_methods {track = track_hacdipole}  -- thin, volt, freq!, lag, ramp
-E.vacdipole  :set_methods {track = track_vacdipole}  -- thin, volt, freq!, lag, ramp
-E.hacmap     :set_methods {track = track_hacmap   }  -- nat_q1, drv_q1, bet11_at_acd
-E.vacmap     :set_methods {track = track_vacmap   }  -- nat_q2, drv_q2, bet22_at_acd
 
 -- patches
 E.changeref  :set_methods {track = track_changeref}
