@@ -1,6 +1,6 @@
 -- Import MAD modules
 local beam, twiss, tostring, track in MAD
-local hacmap, vacmap, hacdipole, vacdipole in MAD.element
+local hackicker, vackicker in MAD.element
 local observed in MAD.element.flags
 
 -- Load FODO sequence and set up beam
@@ -23,21 +23,39 @@ local bet22_m1 = tws_before['M1'].beta22
 local qx, qy = tws_before.q1, tws_before.q2
 local qxd, qyd = qx + 0.02, qy - 0.03
 
--- Install ACD (AC Dipole) elements
+local ramp_profile = {1, 3, 5, 7}
+
+-- Install AC Kicker (AC Quad) elements
 seq:install{
-    hacmap "hacmap" {
+    hackicker "hackicker" {
         at = 0,
         from = "M1",
-        nat_q1 = qx,
-        drv_q1 = qxd,
-        bet11_at_acd = bet11_m1,
+
+        -- quad part
+        nat_q = qx,
+        drv_q = qxd,
+        ac_bet = bet11_m1,
+
+        -- dipole part
+        volt = 0.01,
+        freq = qxd,
+        lag = 0.02,
+        ramp = ramp_profile,
     },
-    vacmap "vacmap" {
+    vackicker "vackicker" {
         at = 0,
         from = "M1",
-        nat_q2 = qy,
-        drv_q2 = qyd,
-        bet22_at_acd = bet22_m1,
+
+        -- quad part
+        nat_q = qy,
+        drv_q = qyd,
+        ac_bet = bet22_m1,
+
+        -- dipole part
+        volt = 0.01,
+        freq = qyd,
+        lag = 0.03,
+        ramp = ramp_profile,
     }
 }
 
@@ -46,30 +64,12 @@ local tws_acd = twiss { sequence=seq }
 tws_acd:write("twiss_acd_n.tfs", cols)
 
 -- Remove ACD elements and replace with dipoles
-local acd_elements = seq:remove(\elm -> elm.kind=='hacmap' or elm.kind=='vacmap')
-print("Removed ACD elements: ", tostring(acd_elements))
+-- local acd_elements = seq:remove(\elm -> elm.kind=='hacmap' or elm.kind=='vacmap')
+-- print("Removed ACD elements: ", tostring(acd_elements))
 
--- Install AC dipole elements
-local ramp_profile = {1, 3, 5, 7}
-
-seq:install{
-    hacdipole "hacdipole" {
-        at = 0,
-        from = "M1",
-        volt = 0.01,
-        freq = qxd,
-        lag = 0.02,
-        ramp = ramp_profile,
-    },
-    vacdipole "vacdipole" {
-        at = 0,
-        from = "M1",
-        volt = 0.01,
-        freq = qyd,
-        lag = 0.03,
-        ramp = ramp_profile,
-    }
-}
+-- Switch AC Kickers from AC Quads to AC Dipoles elements
+seq.hackicker.ac_bet = false
+seq.vackicker.ac_bet = false
 
 -- Track particles through the sequence
 seq:deselect(observed)  -- deselect all elements
