@@ -1,0 +1,287 @@
+local beam, sequence, damap, survey, track, twiss, plot     in MAD
+local printf, tblcat, timeit, errorf                        in MAD.utility
+local is_nil, is_callable                                   in MAD.typeid
+
+local dosrv = true
+local dotrk = true
+local dotws = true
+local dordt = true
+local doprm = true
+local doplt = true
+local dopdf = true
+
+-- NOTE: see standard output at the bottom of this file
+
+-- sequence --------------------------------------------------------------------
+
+-- load/convert fccee_z
+local rngnam, rnglbl = "fccee_p_ring", "FCCee-v24.3-z"
+timeit(\ -> MADX:load("fccee_z.seq", "fccee_z.mad"),
+            "load/convert seq from file")
+
+-- switch on/off RF & SEXT
+MADX.cs_frac = 0.8
+MADX.cs_comp = 0.6
+MADX.rf_on = 0
+MADX.sxt_on = 1
+MADX.dogleg_on = 0
+
+-- beam ------------------------------------------------------------------------
+
+local beam_z = beam { particle="positron", energy=45.6 }
+
+-- make a sequence from a bline (if needed) and attach beam_z
+local function getseq (nam)
+  if MADX[nam].kind == 'bline' then
+    MADX[nam] = timeit(\-> sequence(nam, {MADX[nam]}), "build seq "..nam)
+    MADX[nam].beam = beam_z -- attach beam
+    printf("beamline '%s' converted (%d elements, L=%.4f [m])\n",
+           nam, #MADX[nam], MADX[nam].l)
+    MADX[nam]:dumpseq(nam.."_seq.dat") -- dump sequence
+  end
+  return MADX[nam]
+end
+
+-- survey ----------------------------------------------------------------------
+
+if dosrv then
+
+local seq = getseq(rngnam)
+local srv = timeit(\ survey { sequence=seq }, "survey")
+--          :remove \row -> row.kind == "drift"
+            :write(rnglbl.."_ring_sv")
+
+end -- dosrv
+
+-- track -----------------------------------------------------------------------
+
+if dotrk then
+
+local seq = getseq(rngnam)
+local trk, mflw = timeit(\ track { sequence=seq,
+                                   nslice=3, mapdef=2, observe=0, info=2 },
+                           "track"..rngnam)
+trk:write(rnglbl.."_ring_tk")
+-- mflw[1]:print("OTM")
+
+end -- dotrk
+
+-- twiss -----------------------------------------------------------------------
+
+local function mktws (nam, lbl)
+  local seq = getseq(nam)
+  local tbl = timeit(\ twiss { sequence=seq, -- method=6,
+                               nslice=#seq < 250 and 10 or 3,
+                                 save=#seq < 250 and 'atstd' or nil, info=2 },
+                       "twiss "..nam)
+              :write(rnglbl.."_"..lbl.."_tw")
+  return tbl
+end
+
+local function pltws(tbl, lbl, rng)
+  if not doplt then return tbl end
+  local seq = tbl.__seq
+  plot {
+    title=rnglbl.." ("..lbl..")",
+    table=tbl, tablerange=rng,
+    sequence=seq,   range=rng, s0=rng and seq:spos(rng[1]) or 0,
+    xlabel = "s [m]", ylabel = "\u{03b2}_{x,y} [m]",
+    x1y1 = { s={'beta11', 'beta22'} },
+    x1y2 = { s={'mu1', 'mu2'} },
+    styles = 'lines',
+    output = dopdf and rnglbl..'.pdf' or nil,
+    -- scrdump = tbl.name .. "_" .. lbl .. "_tws.gp",
+  }
+  return tbl
+end
+
+--------------
+
+if dotws then
+
+local tr = mktws(rngnam  , 'ring')
+local tc = mktws("cell_u", 'cell')
+
+pltws(tr, 'ring'  )
+pltws(tr, 'sector', {"SCENTER[2]","SCENTER[3]"})
+pltws(tr, 'ip'    , {"IPIMAG4[2]","IPIMAG4[3]"})
+pltws(tc, 'cell'  )
+
+printf("*** ring info ***\n")
+printf("seq='%s', length=%.5f\n", tr.name, tr.length);
+printf("q1=%.5f, dq1=%.2f, betxmax=%.3f, dxmax=%.5f\n",
+        tr.q1,   tr.dq1,  tr.beta11:max(), tr.dx:max())
+printf("q2=%.5f, dq2=%.2f, betymax=%.3f, dymax=%.5f\n",
+        tr.q2,   tr.dq2,  tr.beta22:max(), tr.dy:max())
+printf("alpha=%.5e, gammatr=%.5f\n", tr.alfap, tr.gammatr);
+
+end -- dotws
+
+-- RDTs ------------------------------------------------------------------------
+
+local function mkrdt (nam, lbl, rdt, x0)
+  local seq = getseq(nam)
+
+  -- twiss with RDTs
+  local tbl = timeit(\ twiss { sequence=seq, X0=x0, trkrdt=rdt, nslice=3, info=2 },
+                       "twiss rdt "..nam.." ("..lbl..")")
+              : write(rnglbl.."_"..lbl.."_rdt")
+  return tbl
+end
+
+local function pltrdt (tbl, lbl, rdt, rng)
+  if not doplt then return tbl end
+  local seq = tbl.__seq
+  plot {
+    title=rnglbl.." RDTs ("..lbl..")",
+    table=tbl, tablerange=rng,
+    sequence=seq,   range=rng, s0=rng and seq:spos(rng[1]) or 0,
+    xlabel = "s [m]", ylabel = "|f_{jklm}|",
+    x1y1 = { s=rdt }, -- cols of |F|
+    styles = 'lines',
+    output = dopdf and rnglbl..'.pdf' or nil,
+    -- scrdump = tbl.name .. "_" .. lbl .. "_rdt.gp",
+  }
+  return tbl
+end
+
+--------------
+
+if dordt then
+
+-- list of RDTs
+local rdts = {"f4000","f3100","f2020","f1120","f0040"}
+local X0   = damap {nv=6, mo=4}
+
+local trr = mkrdt(rngnam  , 'ring', rdts, X0)
+local trc = mkrdt("cell_u", 'cell', rdts, X0)
+
+pltrdt(trr, 'ring', rdts)
+pltrdt(trr, 'sect', rdts, {"SCENTER[2]","SCENTER[3]"})
+pltrdt(trr, 'ip'  , rdts, {"IPIMAG4[2]","IPIMAG4[3]"})
+pltrdt(trc, 'cell', rdts)
+
+-- print summary at ring$end
+for _,k in ipairs(rdts) do
+  printf("|%s| = % -.6e\n", k, trr[k][#trr]:abs())
+end
+
+end -- dordt
+
+-- Parametric RDTs -------------------------------------------------------------
+
+if doprm then -- takes ~ 7 minutes
+
+--MAD._C.mad_tpsa_dbga = 2 -- only in debug mode...
+
+-- list of parameters
+local prms = {"ksffam1","ksdfam1","ksffam2","ksdfam2","kcrabl"}
+          -- {'ksf1', 'ksd1', 'ksf2', 'ksd2', 'ksf3', 'ksd3', 'ksf4', 'ksd4'}
+
+-- list of parametric RDTs
+local rdts1 = {"f20200000000","f20200010000","f20200001000","f20200000100","f20200000010","f00400000001"}
+local rdts2 = {"f11200000000","f11200010000","f11200001000","f11200000100","f11200000010","f00400000001"}
+local rdts  = tblcat(rdts1,rdts2) ; table.remove(rdts, #rdts1) -- remove duplicate
+
+-- print knobs
+for _,k in ipairs(prms) do printf("%-7s = % -.7f\n", k, MADX[k]) end
+
+local X0 = damap {nv=6, mo=5, np=#prms, pn=prms}
+
+-- backup knobs expressions
+local ks_bak = MADX:getvar(prms, true)
+
+-- create knobs
+for _,k in ipairs(prms) do MADX[k] = MADX[k] + X0[k] end
+
+local tpr = mkrdt(rngnam  , 'ring-p', rdts, X0)
+local tpc = mkrdt("cell_u", 'cell-p', rdts, X0)
+
+-- restore knobs expressions
+MADX:setvar(ks_bak)
+
+pltrdt(tpr, 'ring-f2020', rdts1)
+pltrdt(tpr, 'ring-f1120', rdts2)
+pltrdt(tpr, 'sect-f2020', rdts1, {"SCENTER[2]","SCENTER[3]"})
+pltrdt(tpr, 'sect-f1120', rdts2, {"SCENTER[2]","SCENTER[3]"})
+pltrdt(tpr, 'ip-f2020'  , rdts1, {"IPIMAG4[2]","IPIMAG4[3]"})
+pltrdt(tpr, 'ip-f1120'  , rdts2, {"IPIMAG4[2]","IPIMAG4[3]"})
+pltrdt(tpc, 'cell-f2020', rdts1)
+pltrdt(tpc, 'cell-f1120', rdts2)
+
+end -- doprm
+
+
+--[[
+../mad ex-fcc_ee-lcc.mad
+    ____  __   ______    ______     |   Methodical Accelerator Design
+     /  \/  \   /  _  \   /  _  \   |   release: 1.1.5_P (OSX 64)
+    /  __   /  /  /_/ /  /  /_/ /   |   support: MAD-NG on GitHub
+   /__/  /_/  /__/ /_/  /_____ /    |   licence: GNU GPL v3 (C) 2016+
+                                    |   started: 2025-07-25 11:34:17
+
+timing load/convert seq from file: 0.02 s
+timing build seq fccee_p_ring: 0.41 s
+beamline 'fccee_p_ring' converted (14514 elements, L=90658.6054 [m])
+timing survey: 0.23 s
+timing trackfccee_p_ring: 0.86 s
+twiss: searching for closed orbit(s)...
+cofind: iteration=1
+twiss: computing one-turn-map(s)...
+twiss: computing normal form(s)...
+symplectic deviation:  3.565311973e-12
+symplectified deviation:  5.551115123e-17
+twiss: computing optics (and rdts)...
+timing twiss fccee_p_ring: 2.03 s
+timing build seq cell_u: 0.01 s
+beamline 'cell_u' converted (59 elements, L=318.1995 [m])
+twiss: searching for closed orbit(s)...
+cofind: iteration=1
+twiss: computing one-turn-map(s)...
+twiss: computing normal form(s)...
+twiss: computing optics (and rdts)...
+timing twiss cell_u: 0.07 s
+*** ring info ***
+seq='fccee_p_ring', length=90658.60537
+q1=198.19999, dq1=0.21, betxmax=2948.199, dxmax=0.77371
+q2=174.29998, dq2=0.17, betymax=9196.075, dymax=0.00000
+alpha=2.89580e-05, gammatr=185.83010
+twiss: searching for closed orbit(s)...
+cofind: iteration=1
+twiss: computing one-turn-map(s)...
+twiss: computing normal form(s)...
+symplectic deviation:  3.565311973e-12
+symplectified deviation:  5.551115123e-17
+twiss: computing optics (and rdts)...
+timing twiss rdt fccee_p_ring (ring): 24.91 s
+twiss: searching for closed orbit(s)...
+cofind: iteration=1
+twiss: computing one-turn-map(s)...
+twiss: computing normal form(s)...
+twiss: computing optics (and rdts)...
+timing twiss rdt cell_u (cell): 0.17 s
+|f4000| =  6.970122e+02
+|f3100| =  7.512835e+03
+|f2020| =  2.179070e+05
+|f1120| =  2.961077e+05
+|f0040| =  2.133402e+04
+ksffam1 =  0.2754240
+ksdfam1 = -0.2714880
+ksffam2 =  0.2464320
+ksdfam2 = -0.1515000
+kcrabl  =  6.1475772
+twiss: searching for closed orbit(s)...
+cofind: iteration=1
+twiss: computing one-turn-map(s)...
+twiss: computing normal form(s)...
+symplectic deviation:  3.565311973e-12
+symplectified deviation:  5.551115123e-17
+twiss: computing optics (and rdts)...
+timing twiss rdt fccee_p_ring (ring-p): 451.41 s
+twiss: searching for closed orbit(s)...
+cofind: iteration=1
+twiss: computing one-turn-map(s)...
+twiss: computing normal form(s)...
+twiss: computing optics (and rdts)...
+timing twiss rdt cell_u (cell-p): 1.19 s
+--]]
