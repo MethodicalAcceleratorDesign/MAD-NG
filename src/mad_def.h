@@ -138,18 +138,6 @@ typedef const void*      ptr_t;
 // #endif
 #endif
 
-// --- Open Multi-Processing -------------------------------------------------o
-
-#ifdef _OPENMP
-#include <omp.h>
-#else
-#define __thread
-#define omp_get_num_procs()   1
-#define omp_get_num_threads() 1
-#define omp_get_max_threads() 1
-#define omp_get_thread_num()  0
-#endif
-
 // --- POSIX & WIN -----------------------------------------------------------o
 
 #if !defined(_WIN32) && !defined(_WIN64) && (defined(__unix__) || \

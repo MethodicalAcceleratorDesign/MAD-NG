@@ -26,6 +26,7 @@
 #include <string.h>
 #include <assert.h>
 
+#include "mad_omp.h"
 #include "mad_mem.h"
 
 #define MAD_MEM_STD   0 // 1 -> use standard C allocator only.

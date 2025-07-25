@@ -84,6 +84,7 @@ static char *empty_argv[2] = { NULL, NULL };
 #include "lj_def.h"
 #include "mad_ver.h"
 #include "mad_log.h"
+#include "mad_omp.h"
 
 // to shut up gcc 8 invalid warnings!
 int snprintf(char *restrict str, size_t size, const char* restrict format, ...);
