@@ -1,2 +1,2 @@
-#define MAD_VERSION      1.1.5
-#define MAD_VERSION_DATE 2025.07.21
+#define MAD_VERSION      1.1.6
+#define MAD_VERSION_DATE 2025.09.29
