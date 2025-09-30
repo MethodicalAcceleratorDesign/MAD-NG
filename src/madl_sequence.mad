@@ -794,11 +794,14 @@ local function init_mm (seq)
   data.ne   = ne
   seq.__dat = data
 
-  -- set minlen to 1e-6 [m] and check rbarc for MAD-X compatibility
+  -- set minlen to 1e-6 [m] and check rbarc and nopub for MAD-X compatibility
   if option.madxenv then
     seq.minlen = 1e-6
     if is_nil(seq.rbarc) then
       seq.rbarc = option.madxenv.option.rbarc == true or nil
+    end
+    if is_nil(seq.nopub) then
+      seq.nopub = option.madxenv.option.nopub == true or nil
     end
   end
 
@@ -1481,12 +1484,28 @@ local function publish (seq, env)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(is_mappable(env), "invalid argument #2 (mappable expected)")
 
-  local data, wrn = seq.__dat
+  if seq.nopub == true then return seq end
+
+  local data, wrn, mdx = seq.__dat
   if env == MADX or is_instanceOf(env, MADX) then
-    wrn, env.option.warn = env.option.warn, false
+    if env.option.nopub == true then return seq end
+    wrn, mdx, env.option.warn = env.option.warn, MADX.parent, false
   end
 
-  for idx,elm in ipairs(data) do env[elm.name] = elm end
+  if mdx then
+    for idx,elm in ipairs(data) do
+      if not is_element(mdx[elm.name]) then
+        env[elm.name] = elm
+      elseif wrn then
+        warn("element '%s' defined in '%s' has a MADX class name, not published",
+                       elm.name,       env.name)
+      end
+    end
+  else
+    for idx,elm in ipairs(data) do
+      env[elm.name] = elm
+    end
+  end
 
   if wrn ~= nil then env.option.warn = wrn end
   return seq
