@@ -33,9 +33,9 @@ local vector, cvector, matrix, monomial, damap, cdamap,
 local assertf, errorf, printf, num2str, tbl2str, setkeys, tblcat,
       mockfile, openfile                                         in MAD.utility
 local lbool                                                      in MAD.gfunc
-local pi, twopi                                                  in MAD.constant
+local pi, twopi, rad2deg                                         in MAD.constant
 local abs, sqrt, exp, log, sin, cos, tan, atan2, tgamma, lgamma,
-      sinh, cosh, real, imag, cplx, fact, rangle, hypot, sign    in MAD.gmath
+      sinh, cosh, real, imag, cplx, fact, rangle, hypot, sign, conj in MAD.gmath
     
 local is_nil, is_boolean, is_number, is_positive, is_nonzero, is_integer,
       is_natural, is_nznatural, is_even, is_odd, is_string, is_table,
@@ -741,6 +741,7 @@ local function nfcpy (nf, a_)
     anhy    = nf.anhy,
     gnfu    = nf.gnfu,
     haml    = nf.haml,
+    opts    = nf.opts,
     getms   = nf.getms,
     getpms  = nf.getpms,
 
@@ -893,6 +894,86 @@ local function nf_anht (nf, ord)
   return nf_anh(nf, ord, 0, 0, 1)
 end
 
+-- optical functions --
+
+local s2p = { 1, 2, 3, ["1"]=1, ["2"]=2, ["3"]=3, x=1, y=2, z=3, t=3 }
+local s2v = { 1, 2, 3, 4, ["1"]=1, ["2"]=2, ["3"]=3, ["4"]=4, x=1, px=2, y=3, py=4 }
+
+local function nf_bet (a, p, k)
+  local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
+  local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
+  local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
+  local a11 = a[v1]:deriv(v2+0)
+  local a12 = a[v1]:deriv(v2+1)
+  local bet = a11^2 + a12^2
+  local mon = monomial("000000"..k)
+  return bet:get(mon) * mon:ordpf(nil,6)
+end
+
+local function nf_alf (a, p, k)
+  local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
+  local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
+  local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
+  local a11 = a[v1  ]:deriv(v2+0)
+  local a12 = a[v1  ]:deriv(v2+1)
+  local a21 = a[v1+1]:deriv(v2+0)
+  local a22 = a[v1+1]:deriv(v2+1)
+  local alf = -(a11*a21+a12*a22)
+  local mon = monomial("000000"..k)
+  return alf:get(mon) * mon:ordpf(nil,6)
+end
+
+local function nf_gam (a, p, k)
+  local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
+  local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
+  local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
+  local a21 = a[v1+1]:deriv(v2+0)
+  local a22 = a[v1+1]:deriv(v2+1)
+  local gam = a21^2+a22^2
+  local mon = monomial("000000"..k)
+  return gam:get(mon) * mon:ordpf(nil,6)
+end
+
+local function nf_mu (a, p, k, a0_)
+  local p = assertf(s2p[p], "invalid plane '%s'", p)
+  local v = 2*(p-1)+1
+  local a11 = a[v]:deriv(v+0)
+  local a12 = a[v]:deriv(v+1)
+  local pha = atan2(a12, a11)/twopi
+  local mon = monomial("000000"..k)
+  return pha:get(mon) * mon:ordpf(nil,6) - (a0_ and nf_mu(a0_, p, k) or 0)
+end
+
+local function nf_dsp (a, v, k)
+  local v = assertf(s2v[v], "invalid variable '%s'", v)
+  local a6 = a[v]:deriv(6)
+  local mon = monomial("000000"..k)
+  return a6:get(mon) * mon:ordpf(nil,6)
+end
+
+local optfct = { alfa=nf_alf, beta=nf_bet, gama=nf_gam, disp=nf_dsp, mu=nf_mu }
+local optlst = { alfa="alfa", beta="beta", gama="gama", disp="disp", mu="mu"  }
+local optlen = { alfa=2, beta=2, gama=2, disp=1, mu=1 }
+local optsep = ("_"):byte()
+
+local function nf_pk (of)
+  local f = assertf(optlst[of:sub(1,4)] or optlst[of:sub(1,2)], "invalid function '%s'", of)
+  local n = optlen[f]
+  local p, k = of:sub(#f+1,#f+n), of:sub(#f+1+n)
+  if k:byte() == optsep then k = k:sub(2) end
+  return f, p, k
+end
+
+local function nf_opts (nf, of, a0_)
+  local map = assert(is_damap(nf) and nf or nf.ar or nf.a:real(),
+                     "invalid argument #1, damap or normal form expected")
+  assert(is_string(of), "invalid argument #2, function as string expected")
+  assert(is_nil(a0_) or is_damap(a0_), "invalid argument #3, damap expected")
+
+  local f, p, k = nf_pk(of)
+  return optfct[f](map, p, k, a0_)
+end
+
 -- generating functions --
 
 local function nf_gnfu (nf, ms, ki_, ko_)
@@ -988,10 +1069,9 @@ local function nfana (nf, k_, a_)
     local gnf, ham = {}, {}
     local g, l = ci*a*c
     t21 = os.clock()
-    g, l = g:factor_map(-1) -- ; l:print("L") ; l:fld2vec():print("V") ; l:logpb():print("log(L)")
+    g, l = g:factor_map(-1)
     t22 = os.clock()
-    g = g:fld2vec()
-    g:cutord(-2, g) -- keep only orders 3..
+    g = g:fld2vec():cutord(-2, g) -- keep only orders 3..
     t2 = os.clock()
 
     if nt ~= 0 then nv = 4 end -- t,pt are parameters
@@ -1048,10 +1128,13 @@ local function nfana (nf, k_, a_)
     nf_q1, nf_q2, nf_q3
   end
 
+  local t5 = os.clock()
+
+  -- BET, ALF, GAM, MU, DISP (optical functions)
+  nf.opts = nf_opts
+
   -- method for ks and ms
   nf.getpms, nf.getms = nf_pms, nf_ms
-
-  local t5 = os.clock()
 
   T1, T2, T3, T4, T5 = T1+t1-t0, T2+t2-t1, T3+t3-t2, T4+t4-t3, T5+t5-t4
   T11, T12, T21, T22 = T11+t11-t0, T12+t12-t11, T21+t21-t1, T22+t22-t21
@@ -1401,9 +1484,6 @@ function gphys.normal (m, urdt_)
 
   nf.a2 = nf.c * lieex * nf.ci
   nf.a = nf.a0 * nf.a1 * nf.a2                                                  ; nf:dump"a"
---nf.a:real():copy(m):set0(nf.x0).status = 'Aset'
-
---  if fid then io.stderr:write("end of normal form\n") end
 
   -- hook the results
   nf.lam, nf.m_n, nf.t_op =
@@ -1674,6 +1754,8 @@ end
 
 local pha_tol in phystol
 
+local cnt = 0
+
 function gphys.map2bet (map, rnk_, cpl_, bet_, dir_) -- TODO: move to beta0
   assert(is_damap(map), "invalid argument #1 (damap expected)")
 
@@ -1824,9 +1906,11 @@ function gphys.map2bet (map, rnk_, cpl_, bet_, dir_) -- TODO: move to beta0
       local ay = (bb0.alfa22*ky - bb0.alfa21/ky);
       local ku = kxy*(1+(ax*ax-ay*ay)/(kx2-ky2)*(1-kxy))              -- eq. 4.8
       local u = -kxy/(1-kxy)
+      local s = 0
       if ku >= stab_tol then
         local su = sqrt(ku)
-        u = u + (kxy <= su and +1 or -1) * su/(1-kxy)                 -- eq. 4.8
+        s = kxy <= su and +1 or -1
+        u = u + s * su/(1-kxy)                                        -- eq. 4.8
       end
       local kpa = 1-u
 
@@ -1845,16 +1929,28 @@ function gphys.map2bet (map, rnk_, cpl_, bet_, dir_) -- TODO: move to beta0
       local ev1 = sqrt(evp*evm)                                      -- eq. 4.11
       local ev2 = sqrt(evp/evm)
 
+      local swp = ""
+      cnt = cnt + 1
+
+--    local a1  = rad2deg*ev1:carg()
+--    local a2  = rad2deg*ev2:carg()
+
       if sign(ev1.im) ~= sign(ev2.im) then                           -- eq. 7.12
-        -- take compatible solution modulo pi, see paragraph after eq. 4.11
-        if ev1.re < 0 then ev1 = -ev1 else ev2 = -ev2 end
+        -- see discussion in paragraph after eq. 4.11
+        if ev1.re < 0 then ev1 = -ev1 ; swp = "[1]" else ev2 = -ev2 ; swp = "[2]" end
       end
-                                                                     -- eq. 7.11
+
       bb0.r11  =  sqrt(bb0.beta22/bb0.beta12) * (u*ev2.re + bb0.alfa12*ev2.im)/kpa
       bb0.r22  = -sqrt(bb0.beta11/bb0.beta21) * (u*ev1.re + bb0.alfa21*ev1.im)/kpa
       bb0.r12  =  sqrt(bb0.beta11*bb0.beta21) * ev1.im/kpa
       bb0.r21  = (ev2.re*(bb0.alfa12*kpa - bb0.alfa22*u) -
                   ev2.im*(bb0.alfa12*bb0.alfa22 + kpa*u)) / (kpa*sqrt(bb0.beta12*bb0.beta22))
+
+--    local b1  = rad2deg*ev1:carg()
+--    local b2  = rad2deg*ev2:carg()
+
+--    printf("%-3d, %d, %- .5e, %- .5f, %- .5f, %- .5f, %- .5f, %- .5f, % 7.2f, % 7.2f %s\n",
+--            cnt, s, u, bb0.r12, ev1.re, ev1.im, ev2.re, ev2.im, a1-a2, b1-b2, swp)
 
       local sbetx, sbety = sqrt(bb0.betx), sqrt(bb0.bety)
       local    r  = matrix(2):fill{bb0.r22, -bb0.r12, -bb0.r21, bb0.r11} -- -S*R*S
