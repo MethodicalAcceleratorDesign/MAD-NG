@@ -162,13 +162,13 @@ end
 local function fill_row (elm, mflw, lw, islc)
   if not mflw.__twdat then return end -- not yet in twiss
 
-  local mtbl, info, saveanf in mflw
-  local nrow, ofun, nf0, rdts, onam in mflw.__twdat
+  local mtbl, info, trkopt, trkrdt, saveanf in mflw
+  local nrow, ofun, nf0, opts, rdts, onam in mflw.__twdat
 
 -- printf("tw_fill: islc=%2d, nrow=%4d, elm=%s\n", islc, nrow, elm.name)
 
-  if info >= 3 and rdts then
-    printf("twiss: computing RDTs at :%4d:%s\n", nrow, elm.name)
+  if info >= 3 and (trkopt or trkrdt) then
+    printf("twiss: computing OPTS and/or RDTs at :%4d:%s\n", nrow, elm.name)
   end
 
   for i=1,mflw.npar do
@@ -184,21 +184,30 @@ local function fill_row (elm, mflw, lw, islc)
         col[nrow] = of[k]
       end
 
-      -- save RDTs (expand done by track!)
-      if rdts then
+      -- save OPTs and RDTs (expand done by track!)
+      if trkopt or trkrdt or saveanf then
         local nf0 = nf0[m.id]
-        if m:eq(nf0.m_prev) then                  -- duplicate values
+        if m:eq(nf0.m_prev) then                           -- duplicate values
           if saveanf then mtbl.__nf[nrow] = mtbl.__nf[nrow-1] end
+          for _,k in ipairs(opts) do
+            local col = mtbl[k]
+            if not is_table(col) then col:_reshapeto(nrow) end
+            col[nrow] = col[nrow-1]
+          end
           for _,k in ipairs(rdts) do
-            nf0.m_dup = (nf0.m_dup or 0)+1
             local col = mtbl[k]
             if not is_table(col) then col:_reshapeto(nrow) end
             col[nrow] = col[nrow-1]
           end
         else
           nf0.m_prev = m:copy(nf0.m_prev)
-          local nf = nf0:analyse('all', m)        -- full analysis
+          local nf = nf0:analyse(trkrdt and 'all' or nil, m) -- full/part analysis
           if saveanf then mtbl.__nf[nrow] = nf end
+          for _,k in ipairs(opts) do
+            local col = mtbl[k]
+            if not is_table(col) then col:_reshapeto(nrow) end
+            col[nrow] = nf.optf(m, k, nf0.ar)
+          end
           for _,k in ipairs(rdts) do
             local col = mtbl[k]
             if not is_table(col) then col:_reshapeto(nrow) end
@@ -392,7 +401,7 @@ end
 
 local function twiss_nform (self, mflw0)
   local npar, sdir, info, debug in mflw0
-  local coupling, trkrdt in self
+  local coupling, trkopt, trkrdt in self
 
   -- compute normal form(s)
   if info >= 2 then
@@ -411,9 +420,11 @@ local function twiss_nform (self, mflw0)
     if m.status ~= 'Aset' then
       local nf = normal(m) ; nf0[m.id] = nf ; nf.id = m.id
       nf.a:copy(m):set0(nf.x0).status = 'Aset'
+      nf.ar = trkopt and nf.a:real() or nil
 
       -- RDTs calculation at nf0
-      if trkrdt then nf:analyse'all' end
+          if trkrdt then nf:analyse'all'
+      elseif trkopt then nf:analyse() end
     end
 
     -- create beta0 from damap
@@ -430,14 +441,16 @@ end
 -- extend track mflw and mtbl -------------------------------------------------o
 
 local twheader = {
-  'chrom', 'coupling', 'trkrdt', 'length',
+  'chrom', 'coupling', 'trkopt', 'trkrdt', 'length',
   -- see also cvtlst above
   'q1', 'q2', 'q3', 'dq1', 'dq2', 'dq3', 'alfap', 'etap', 'gammatr',
   'synch_1', 'synch_2', 'synch_3', 'synch_4', 'synch_5', 'synch_6', 'synch_8',
 }
 
+local optlst = { alfa="alfa", beta="beta", gama="gama", disp="disp", mu="mu" }
+
 local function twiss_init (self, mflw)
-  local save, chrom, coupling, trkrdt, saveanf in self
+  local save, chrom, coupling, trkopt, trkrdt, saveanf in self
   local npar, beam, mtbl, __twdat in mflw
   local n = npar
 
@@ -451,7 +464,8 @@ local function twiss_init (self, mflw)
   __twdat.npar = n
   __twdat.nrow = 0
   __twdat.chrm = chrom
-  __twdat.rdts = trkrdt or saveanf and {}
+  __twdat.opts = trkopt or {}
+  __twdat.rdts = trkrdt or {}
   __twdat.omat = matrix(6)
   __twdat.onam = coupling and (chrom and ofchname or ofcname) or
                                chrom and ofhname  or ofname
@@ -480,14 +494,27 @@ local function twiss_init (self, mflw)
 
     mtbl.chrom    = chrom
     mtbl.coupling = coupling
+    mtbl.trkopt   = trkopt
     mtbl.trkrdt   = trkrdt
 
     -- add twiss columns and type to mtbl
     for _,k in ipairs(mflw.__twdat.onam) do mtbl:addcol(k,{0}) end
 
+    -- add opt columns
+    if trkopt then
+      assert(is_table(trkopt), "invalid trkopt list, list of strings expected")
+      mflw.trkopt = trkopt
+      for _,k in ipairs(trkopt) do
+        assert(is_string(k) and (optlst[k:sub(1,4)] or k:sub(1,2) == "mu"),
+          "invalid optical function name (must start by alfa, beta, gama, disp or mu)")
+        mtbl:addcol(k,{0})
+      end
+    end
+
     -- add rdts columns
     if trkrdt then
       assert(is_table(trkrdt), "invalid trkrdt list, list of strings expected")
+      mflw.trkrdt = trkrdt
       for _,k in ipairs(trkrdt) do
         assert(is_string(k) and k:sub(1,1) == 'f',
                "invalid rdt's name (must start by 'f')")
@@ -630,6 +657,7 @@ local twiss = command 'twiss' {
   deltap=nil,        -- initial deltap(s)                                 (trck)
   chrom=false,       -- compute chromatic functions by finite difference  (twss)
   coupling=false,    -- compute optical functions for coupling modes      (twss)
+  trkopt=false,      -- compute (list of) parametric optical functions    (twss)
   trkrdt=false,      -- compute (list of) RDTs                            (twss)
 
   nturn=nil,         -- number of turns                                   (trck)
@@ -680,7 +708,7 @@ local twiss = command 'twiss' {
 
   __attr = tblcat(   -- list of all setup attributes
     cofind.__attr,
-    {'chrom', 'coupling', 'trkrdt', 'saveanf'},
+    {'chrom', 'coupling', 'trkopt', 'trkrdt', 'saveanf'},
     {noeval=cofind.__attr.noeval}
   )
 } :set_readonly() -- reference twiss command is readonly
