@@ -773,33 +773,56 @@ end
 
 -- getters --
 
-local function nf_pms (nf, ki_, ko_)
+local function nf_pms (nf, ki_, ko_, nn_)
   assert(is_nf(nf), "invalid argument #1 (normal form expected)")
-  local np, ki, ko = nf.nn - nf.nv, ki_ or 0, ko_ or 1
-  assert(is_natural  (ki), "invalid knob index (ki >= 0 expected)")
-  assert(is_nznatural(ko), "invalid knob order (ko >= 1 expected)")
-  if ki > 0
-  then return ("0"):rep(ki-1) .. ko .. ("0"):rep(np-(ki-1)-1)
-  else return ("0"):rep(np)
+  local np, ks = nf.nn - nf.nv, ""
+
+  if is_monomial(ki_) then   -- monomial case
+    ks = ki_:tostring()
+
+  elseif is_number(ki_) then -- number case
+    local ko = ko_ or 0
+    assert(is_natural(ki_), "invalid knob index (ki >= 0 expected)")
+    assert(is_natural(ko ), "invalid knob order (ko >= 0 expected)")
+    ks = ("0"):rep(ki_-1) .. ko
+
+  elseif ki_ then            -- string case
+    ks = ki_
+    assert(is_string(ks), "invalid argument #3 (monomial, string or number expected)")
   end
+
+  if nn_ and #ks < np then ks = ks..("0"):rep(np - #ks) end
+  return ks
 end
 
-local function nf_ms (nf, ms, ki_, ko_)
+local function nf_ms (nf, ms, ki_, ko_, nn_)
   assert(is_nf(nf), "invalid argument #1 (normal form expected)")
-  if is_table(ms) then ms, ki_, ko_ = ms[1], ms[2], ms[3] end
-  if is_monomial(ms) then ms = ms:tostring() end
-  assert(is_string(ms), "invalid argument #2 (monomial or string expected)")
-  if ki_
-  then if #ms < nf.nv then ms = ms..("0"):rep(nf.nv - #ms) end
-           ms = ms..nf_pms(nf, ki_, ko_)
-  else if #ms < nf.nn then ms = ms..("0"):rep(nf.nn - #ms) end
+
+  -- right shift
+  if is_boolean(ki_) then
+    nn_, ki_ = ki_, nil
+  elseif is_boolean(ko_) then
+    nn_, ko_ = ko_, nil
   end
+
+  if is_table(ms) then -- expand table
+    ms, ki_, ko_ = ms[1], ms[2], ms[3]
+  end
+
+  if is_monomial(ms) then -- monomial case
+    ms = ms:tostring()
+  else                    -- string case
+    assert(is_string(ms), "invalid argument #2 (monomial or string expected)")
+  end
+
+  if #ms < nf.nv then ms = ms..("0"):rep(nf.nv - #ms)    end
+  if ki_         then ms = ms..nf_pms(nf, ki_, ko_, nn_) end
   return ms
 end
 
 local function nf_q (nf, ord, x, y, t)
   local ms = table.concat{x, 0, y, 0, t, 0}
-  local ks = nf_pms(nf, ord[2])
+  local ks = nf_pms(nf, ord[2], nil, true)
   local rv = nf.anh[ms..ks] or 0
   --print("nf_q"..(x==1 and '1' or y==1 and '2' or t==1 and '3' or '0'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
   return rv
@@ -807,7 +830,7 @@ end
 
 local function nf_dq (nf, ord, x, y, t)
   local ms = table.concat{x, 0, y, 0, t, ord[1]}
-  local ks = nf_pms(nf, ord[2])
+  local ks = nf_pms(nf, ord[2], nil, true)
   local rv = nf.anh[ms..ks] or 0
   --print("nf_dq"..(x==1 and '1' or y==1 and '2' or t==1 and '3' or '0'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
   return rv
@@ -816,7 +839,7 @@ end
 local function nf_anh (nf, ord, x, y, t)
   local mn = {ord[1]+x, ord[1], ord[2]+y, ord[2], nf.npt==0 and ord[3]+t or 0, ord[3] or 0}
   local ms = table.concat(mn)
-  local ks = nf_pms(nf, ord[4])
+  local ks = nf_pms(nf, ord[4], nil, true)
   local rv = nf.anh[ms..ks] or 0
   --print("nf_anh"..(x==1 and 'x' or y==1 and 'y' or t==1 and 't' or '?'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
   return rv
@@ -894,23 +917,36 @@ local function nf_anht (nf, ord)
   return nf_anh(nf, ord, 0, 0, 1)
 end
 
+-- generating functions --
+
+local function nf_gnfu (nf, ms, ki_, ko_)
+  local ms = nf_ms(nf, ms, ki_, ko_, true)
+  return nf.gnf[ms] or 0i
+end
+
+-- hamiltonian terms --
+
+local function nf_haml (nf, ms, ki_, ko_)
+  local ms = nf_ms(nf, ms, ki_, ko_, true)
+  return nf.ham[ms] or 0i
+end
+
 -- optical functions --
 
 local s2p = { 1, 2, 3, ["1"]=1, ["2"]=2, ["3"]=3, x=1, y=2, z=3, t=3 }
 local s2v = { 1, 2, 3, 4, ["1"]=1, ["2"]=2, ["3"]=3, ["4"]=4, x=1, px=2, y=3, py=4 }
 
-local function nf_bet (a, p, k)
+local function nf_bet (a, p, mon)
   local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
   local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
   local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
   local a11 = a[v1]:deriv(v2+0)
   local a12 = a[v1]:deriv(v2+1)
   local bet = a11^2 + a12^2
-  local mon = monomial("000000"..k)
-  return bet:get(mon) * mon:ordpf(nil,6)
+  return bet:get(mon) * mon:ordpf()
 end
 
-local function nf_alf (a, p, k)
+local function nf_alf (a, p, mon)
   local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
   local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
   local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
@@ -919,73 +955,81 @@ local function nf_alf (a, p, k)
   local a21 = a[v1+1]:deriv(v2+0)
   local a22 = a[v1+1]:deriv(v2+1)
   local alf = -(a11*a21+a12*a22)
-  local mon = monomial("000000"..k)
-  return alf:get(mon) * mon:ordpf(nil,6)
+  return alf:get(mon) * mon:ordpf()
 end
 
-local function nf_gam (a, p, k)
+local function nf_gam (a, p, mon)
   local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
   local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
   local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
   local a21 = a[v1+1]:deriv(v2+0)
   local a22 = a[v1+1]:deriv(v2+1)
   local gam = a21^2+a22^2
-  local mon = monomial("000000"..k)
-  return gam:get(mon) * mon:ordpf(nil,6)
+  return gam:get(mon) * mon:ordpf()
 end
 
-local function nf_mu (a, p, k, a0_)
+local function nf_pha (a, p)
   local p = assertf(s2p[p], "invalid plane '%s'", p)
   local v = 2*(p-1)+1
   local a11 = a[v]:deriv(v+0)
   local a12 = a[v]:deriv(v+1)
-  local pha = atan2(a12, a11)/twopi
-  local mon = monomial("000000"..k)
-  return pha:get(mon) * mon:ordpf(nil,6) - (a0_ and nf_mu(a0_, p, k) or 0)
+  return atan2(a12, a11)/twopi
 end
 
-local function nf_dsp (a, v, k)
+local function nf_mu (a, p, mon, a0_)
+  local pha = nf_pha(a, p)
+  if a0_ then pha = pha - nf_pha(a0_, p) end
+  return pha:get(mon) * mon:ordpf()
+end
+
+local function nf_dmu (a, p, mon, a0_)
+  local pha = nf_pha(a, p)
+  if a0_ then pha = pha - nf_pha(a0_, p) end
+  mon[6] = mon[6]+1
+  return pha:get(mon) * mon:ordpf()
+end
+
+local function nf_dsp (a, v, mon)
   local v = assertf(s2v[v], "invalid variable '%s'", v)
-  local a6 = a[v]:deriv(6)
-  local mon = monomial("000000"..k)
-  return a6:get(mon) * mon:ordpf(nil,6)
+  local dsp = a[v]:deriv(6)
+  return dsp:get(mon) * mon:ordpf()
 end
 
-local optfct = { alfa=nf_alf, beta=nf_bet, gama=nf_gam, disp=nf_dsp, mu=nf_mu }
-local optlst = { alfa="alfa", beta="beta", gama="gama", disp="disp", mu="mu"  }
-local optlen = { alfa=2, beta=2, gama=2, disp=1, mu=1 }
-local optsep = ("_"):byte()
+local optfct = { alfa=nf_alf, beta=nf_bet, gama=nf_gam, disp=nf_dsp, mu=nf_mu, dmu=nf_dmu }
+local optlst = { alfa="alfa", beta="beta", gama="gama", disp="disp", mu="mu", dmu="dmu"  }
+local optlen = { alfa=2, beta=2, gama=2, disp=1, mu=1, dmu=1 }
+local optsep = { [("_"):byte()] = "000000", [("#"):byte()] = "" }
 
 local function nf_pk (of)
-  local f = assertf(optlst[of:sub(1,4)] or optlst[of:sub(1,2)], "invalid function '%s'", of)
+  local f = assertf(optlst[of:match("%l+")], "invalid function '%s'", of)
   local n = optlen[f]
   local p, k = of:sub(#f+1,#f+n), of:sub(#f+1+n)
-  if k:byte() == optsep then k = k:sub(2) end
-  return f, p, k
+  local m = assertf(optsep[k:byte()], "invalid separateur '%s'", of)
+  return f, p, m..k:sub(2)
 end
 
-local function nf_optf (nf, of, a0_)
-  local map = assert(is_damap(nf) and nf or nf.ar or nf.a:real(),
-                     "invalid argument #1, damap or normal form expected")
+local function nf_optf (nf, of, ki_, ko_, a0_)
+  local ar, ks = nf, ""
+
+  if is_damap(ki_) then      -- right shifts
+    a0_, ki_, ko_ = ki_, nil, nil
+  elseif is_damap(ko_) then  -- right shifts
+    a0_, ko_ = ko_, nil
+  end
+
+  -- extract damap
+  if is_nf(nf) then
+    if ki_ then ks = nf_pms(nf, ki_, ko_, true) end
+    ar = nf.ar or nf.a:real()
+  end
+
+  assert(is_damap(ar) , "invalid argument #1 (damap or normal form expected)")
   assert(is_string(of), "invalid argument #2, function as string expected")
   assert(is_nil(a0_) or is_damap(a0_), "invalid argument #3, damap expected")
 
-  local f, p, k = nf_pk(of)
-  return optfct[f](map, p, k, a0_)
-end
-
--- generating functions --
-
-local function nf_gnfu (nf, ms, ki_, ko_)
-  local ms = nf_ms(nf, ms, ki_, ko_)
-  return nf.gnf[ms] or 0i
-end
-
--- hamiltonian terms --
-
-local function nf_haml (nf, ms, ki_, ko_)
-  local ms = nf_ms(nf, ms, ki_, ko_)
-  return nf.ham[ms] or 0i
+  local f, p, ms = nf_pk(of)
+--print("of=", of, "f=", f, "p=", p, "ms=", ms, "ks=", ks)
+  return optfct[f](ar, p, monomial(ms..ks), a0_)
 end
 
 -- analyse anh, gnf, ham --
@@ -1462,7 +1506,7 @@ function gphys.normal (m, urdt_)
           local p = 1
           for j=1,rk do p = p * lam[j]^mt[j] end
           v = v / (1-p)
-          if abs(1-p) < 1e-12 then
+          if abs(1-p) < stab_tol then
             io.stderr:write("Warn: trying to kill ", ms, " with p = ", p:tostring(), "\n")
           end
           f_n[k]:set(mono, 1, v)
