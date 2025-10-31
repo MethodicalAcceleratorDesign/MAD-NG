@@ -995,15 +995,45 @@ local function nf_dsp (a, v, mon)
   return dsp:get(mon) * mon:ordpf()
 end
 
-local optfct = { alfa=nf_alf, beta=nf_bet, gama=nf_gam, disp=nf_dsp, mu=nf_mu, dmu=nf_dmu }
-local optlst = { alfa="alfa", beta="beta", gama="gama", disp="disp", mu="mu", dmu="dmu"  }
-local optlen = { alfa=2, beta=2, gama=2, disp=1, mu=1, dmu=1 }
-local optsep = { [("_"):byte()] = "000000", [("#"):byte()] = "" }
+local function nf_wf (a, p)
+  local p = assertf(s2p[p], "invalid plane '%s'", p)
+  local v = 2*(p-1)+1
+  local a11 = a[v  ]:deriv(v+0)
+  local a12 = a[v  ]:deriv(v+1)
+  local a21 = a[v+1]:deriv(v+0)
+  local a22 = a[v+1]:deriv(v+1)
+  local bet = a11^2 + a12^2
+  local alf = -(a11*a21+a12*a22)
+  local bx  = bet:deriv(6) / bet
+  local ax  = alf:deriv(6) - alf*bx
+  return bx, ax -- (re,im)
+end
+
+local function nf_wrf (a, p, mon)
+  local bx, ax = nf_wf(a, p)
+  return sqrt(bx^2 + ax^2):get(mon) * mon:ordpf()
+end
+
+local function nf_wpf (a, p, mon)
+  local bx, ax = nf_wf(a, p)
+  return atan2(ax, bx):get(mon)/twopi * mon:ordpf()
+end
+
+local optfct = { alfa=nf_alf, beta=nf_bet, gama=nf_gam, disp=nf_dsp, mu=nf_mu, dmu=nf_dmu,
+                 dx=nf_dsp, dy=nf_dsp, dpx=nf_dsp, dpy=nf_dsp,
+                 wx=nf_wrf, wy=nf_wrf, wxp=nf_wpf, wyp=nf_wpf, }
+local optlst = { alfa="alfa", beta="beta", gama="gama", disp="disp", mu="mu", dmu="dmu",
+                 dx="dx", dy="dy", dpx="dpx", dpy="dpy",
+                 wx="wx", wy="wy", wxp="wxp", wyp="wyp" }
+local optvar = { dx="1", dpx="2", dy="3", dpy="4", wx="1", wy="2", wxp="1", wyp="2" }
+local optlen = { alfa=2, beta=2, gama=2, disp=1, mu=1, dmu=1,
+                 dx=0, dy=0, dpx=0, dpy=0, wx=0, wy=0, wxp=0, wyp=0 }
+local optsep = { [("_"):byte()] = "000000", [("-"):byte()] = "", [("v"):byte()] = "" }
 
 local function nf_pk (of)
   local f = assertf(optlst[of:match("%l+")], "invalid function '%s'", of)
   local n = optlen[f]
-  local p, k = of:sub(#f+1,#f+n), of:sub(#f+1+n)
+  local p, k = optvar[f] or of:sub(#f+1,#f+n), of:sub(#f+1+n) or "_"
   local m = assertf(optsep[k:byte()], "invalid separateur '%s'", of)
   return f, p, m..k:sub(2)
 end
