@@ -28,7 +28,7 @@ local assert, error, getmetatable, setmetatable, table in _G
 local abs, min, max, sqrt, floor in math
 
 local command, track, cofind, option, warn, vector, matrix, range in MAD
-local normal, normal1, map2bet, bet2map, chr2bet, syn2bet, dp2pt,
+local normal, normal1, optfun, map2bet, bet2map, chr2bet, syn2bet, dp2pt,
       ofname, ofcname, ofhname, ofchname, cvindex, msort, par2vec in MAD.gphys
 local sign                                                        in MAD.gmath
 local chain, achain                                               in MAD.gfunc
@@ -164,6 +164,7 @@ local function fill_row (elm, mflw, lw, islc)
 
   local mtbl, info, trkopt, trkrdt, saveanf in mflw
   local nrow, ofun, nf0, opts, rdts, onam in mflw.__twdat
+  local mt = table.new(0,64)
 
 -- printf("tw_fill: islc=%2d, nrow=%4d, elm=%s\n", islc, nrow, elm.name)
 
@@ -184,16 +185,21 @@ local function fill_row (elm, mflw, lw, islc)
         col[nrow] = of[k]
       end
 
-      -- save OPTs and RDTs (expand done by track!)
-      if trkopt or trkrdt or saveanf then
+      -- save OPTs
+      if trkopt then
+        table.clear(mt)
+        for _,k in ipairs(opts) do
+          local col = mtbl[k]
+          if not is_table(col) then col:_reshapeto(nrow) end
+          col[nrow] = optfun(m, k, nil, nil, mt, nf0.ar, nf0.mt0)
+        end
+      end
+
+      -- save RDTs (expand done by track!)
+      if trkrdt or saveanf then
         local nf0 = nf0[m.id]
         if m:eq(nf0.m_prev) then                           -- duplicate values
           if saveanf then mtbl.__nf[nrow] = mtbl.__nf[nrow-1] end
-          for _,k in ipairs(opts) do
-            local col = mtbl[k]
-            if not is_table(col) then col:_reshapeto(nrow) end
-            col[nrow] = col[nrow-1]
-          end
           for _,k in ipairs(rdts) do
             local col = mtbl[k]
             if not is_table(col) then col:_reshapeto(nrow) end
@@ -201,13 +207,8 @@ local function fill_row (elm, mflw, lw, islc)
           end
         else
           nf0.m_prev = m:copy(nf0.m_prev)
-          local nf = nf0:analyse(trkrdt and 'all' or nil, m) -- full/part analysis
+          local nf = nf0:analyse('all', m) -- full analysis
           if saveanf then mtbl.__nf[nrow] = nf end
-          for _,k in ipairs(opts) do
-            local col = mtbl[k]
-            if not is_table(col) then col:_reshapeto(nrow) end
-            col[nrow] = nf.optf(m, k, nf0.ar)
-          end
           for _,k in ipairs(rdts) do
             local col = mtbl[k]
             if not is_table(col) then col:_reshapeto(nrow) end
@@ -420,11 +421,11 @@ local function twiss_nform (self, mflw0)
     if m.status ~= 'Aset' then
       local nf = normal(m) ; nf0[m.id] = nf ; nf.id = m.id
       nf.a:copy(m):set0(nf.x0).status = 'Aset'
-      nf.ar = trkopt and nf.a:real() or nil
 
-      -- RDTs calculation at nf0
-          if trkrdt then nf:analyse'all'
-      elseif trkopt then nf:analyse() end
+      if trkrdt then nf:analyse'all' end
+      if trkopt then nf.ar = nf.a:real() ; nf.ar.status = "Aset" end
+    else
+      error("Parametric Twiss with initial condition not yet implemented")
     end
 
     -- create beta0 from damap
