@@ -38,8 +38,8 @@ local abs, max in math
 local command, element, mtable, damap, tpsa, symint, option, _C in MAD
 local is_nil, is_beam, is_sequence, is_boolean, is_number,
       is_natural, is_nznatural, is_integer, is_string, is_true,
-      is_beta0, is_matrix, is_tpsa, is_damap, is_logical,
-      is_callable, is_iterable, is_mappable                     in MAD.typeid
+      is_beta0, is_matrix, is_tpsa, is_damap, is_nform,
+      is_logical, is_callable, is_iterable, is_mappable         in MAD.typeid
 local fnil, first, ffalse, chain, achain                        in MAD.gfunc
 local dp2pt, bet2map, par2vec, mrnk                             in MAD.gphys
 local errorf, assertf, printf                                   in MAD.utility
@@ -552,7 +552,9 @@ local function make_mflow (self)
   assert(is_number  (s0), "invalid s0 (number expected)")
   assert(is_iterable(X0), "invalid X0 (iterable expected)")
   assert(is_iterable(O0), "invalid O0 (iterable expected)")
-  if not is_iterable(X0[1]) or is_beta0(X0) or is_damap(X0) then X0 = {X0} end
+  if not is_iterable(X0[1]) or is_beta0(X0) or is_damap(X0) or is_nform(X0) then
+    X0 = {X0}
+  end
 
   -- damap defs and save
   local mapdef, savemap in self
@@ -566,8 +568,9 @@ local function make_mflow (self)
   -- search for reference closed orbit
   local mdef = mapdef or {}
   if O0.cofind then
-    if is_damap(X0[1]) then O0 = X0[1]:same():set0(O0) end
-    if is_beta0(X0[1]) then O0 = damap(mdef) :set0(O0) end
+        if is_damap(X0[1]) then O0 = X0[1]:same():set0(O0)
+    elseif is_beta0(X0[1]) then O0 = damap(mdef) :set0(O0)
+    elseif is_nform(X0[1]) then O0 = damap(mdef) :set0(O0) end
     local _, m = MAD.cofind { exec=false } :copy_variables(self)
                     { X0=O0, O0=0, deltap=0, save=false, nstep=-1, mapdef=mdef }
     if m.npar ~= 1 then
@@ -602,14 +605,18 @@ local function make_mflow (self)
       ii = ii+1
       x0[6] = pt0+dpt
 
-      if is_beta0(X0i) then     -- damap created from beta0
-        mflw[ii] = bet2map(X0i, damap(mdef[i] or mdef)):set0(x0,1) -- x0 added
-        damo, dapo = max(damo, mflw[ii].__td.mo), max(dapo, mflw[ii].__td.po)
-        stat = 'Aset'
-      elseif is_damap(X0i) then -- damap (copy)
+      if is_damap(X0i) then     -- damap (copy)
         mflw[ii] = (nc and X0i or X0i:copy()):set0(x0,1)           -- x0 added
         damo, dapo = max(damo, mflw[ii].__td.mo), max(dapo, mflw[ii].__td.po)
         if stat ~= 'Aset' then stat = 'Mset' end
+      elseif is_beta0(X0i) then -- damap created from beta0
+        mflw[ii] = bet2map(X0i, damap(mdef[i] or mdef)):set0(x0,1) -- x0 added
+        damo, dapo = max(damo, mflw[ii].__td.mo), max(dapo, mflw[ii].__td.po)
+        stat = 'Aset'
+      elseif is_nform(X0i) then -- damap created from nform
+        mflw[ii] = X0i.a:real():set0(x0,1)                         -- x0 added
+        damo, dapo = max(damo, mflw[ii].__td.mo), max(dapo, mflw[ii].__td.po)
+        stat = 'Aset'
       elseif is_iterable(X0i) then
         local x = x0 + par2vec(X0i)                                -- x0 added
         if mapdef then          -- damap created from particle
