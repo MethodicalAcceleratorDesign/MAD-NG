@@ -35,7 +35,8 @@ local chain, achain                                               in MAD.gfunc
 local tblcat, tblcpy, tblrep, assertf, errorf, printf             in MAD.utility
 local lbool                                                       in MAD.gfunc
 local is_nil, is_true, is_boolean, is_number, is_string, is_iterable,
-      is_mappable, is_callable, is_table, is_vector, is_damap     in MAD.typeid
+      is_mappable, is_callable, is_table, is_vector, is_damap, is_nform
+                                                                  in MAD.typeid
 local ofun_tol                                                    in MAD.gphys.tol
 local atfirst, atstd                                              in MAD.symint.slcsel
 
@@ -123,8 +124,8 @@ local function fill_sum (mflw)
         synch_5[id] = of.synch_5
         synch_6[id] = of.synch_6
         synch_8[id] = of.synch_8
-      elseif m:mord() >= 2 and nf0[id] then
-        local nf = nf0[id]:analyse'anh'
+      elseif m:mord() >= 2 and is_nform(nf0[id].nf) then
+        local nf = nf0[id].nf:analyse'anh'
         dq1[id] = nf:dq1{1} ; if abs(dq1[id]) < ofun_tol then dq1[id] = 0 end
         dq2[id] = nf:dq2{1} ; if abs(dq2[id]) < ofun_tol then dq2[id] = 0 end
         dq3[id] = nf:dq3{1} ; if abs(dq3[id]) < ofun_tol then dq3[id] = 0 end
@@ -164,7 +165,7 @@ local function fill_row (elm, mflw, lw, islc)
 
   local mtbl, info, trkopt, trkrdt, saveanf in mflw
   local nrow, ofun, nf0, opts, rdts, onam in mflw.__twdat
-  local mt = table.new(0,64)
+  local mt = trkopt and table.new(0,64) or nil
 
 -- printf("tw_fill: islc=%2d, nrow=%4d, elm=%s\n", islc, nrow, elm.name)
 
@@ -187,11 +188,11 @@ local function fill_row (elm, mflw, lw, islc)
 
       -- save OPTs
       if trkopt then
-        table.clear(mt)
+        local nf0 = nf0[m.id] ; table.clear(mt)
         for _,k in ipairs(opts) do
           local col = mtbl[k]
           if not is_table(col) then col:_reshapeto(nrow) end
-          col[nrow] = optfun(m, k, nil, nil, mt, nf0.ar, nf0.mt0)
+          col[nrow] = optfun(m, k, nil, nil, mt, nf0.nf.ar, nf0.mt)
         end
       end
 
@@ -207,7 +208,7 @@ local function fill_row (elm, mflw, lw, islc)
           end
         else
           nf0.m_prev = m:copy(nf0.m_prev)
-          local nf = nf0:analyse('all', m) -- full analysis
+          local nf = nf0.nf:analyse('ham', m) -- analysis
           if saveanf then mtbl.__nf[nrow] = nf end
           for _,k in ipairs(rdts) do
             local col = mtbl[k]
@@ -402,7 +403,7 @@ end
 
 local function twiss_nform (self, mflw0)
   local npar, sdir, info, debug in mflw0
-  local coupling, trkopt, trkrdt in self
+  local X0, coupling, trkopt, trkrdt in self
 
   -- compute normal form(s)
   if info >= 2 then
@@ -419,13 +420,24 @@ local function twiss_nform (self, mflw0)
 
     -- convert in place one-turn-map M into normal form A
     if m.status ~= 'Aset' then
-      local nf = normal(m) ; nf0[m.id] = nf ; nf.id = m.id
-      nf.a:copy(m):set0(nf.x0).status = 'Aset'
+      local nf = normal(m) ; nf.a:copy(m):set0(nf.x0).status = 'Aset'
 
+      nf0[m.id] = { nf=nf, id=m.id, mt={} }
       if trkrdt then nf:analyse'all' end
-      if trkopt then nf.ar = nf.a:real() ; nf.ar.status = "Aset" end
-    else
-      error("Parametric Twiss with initial condition not yet implemented")
+      if trkopt then nf.ar = nf.a:real() ; nf.ar.status = 'Aset' end
+
+    elseif is_nform(X0[i]) then
+      local nf = X0[i]
+
+      nf0[m.id] = { nf=nf, id=m.id, mt={} }
+      if trkrdt then nf:analyse'all' end
+      if trkopt then nf.ar = nf.a:real() ; nf.ar.status = 'Aset' end
+
+    elseif trkopt and not (trkrdt or saveanf) then
+      nf0[m.id] = { nf={ar=m}, id=m.id, mt={} }
+
+    elseif trkrdt or saveanf then
+      error("Twiss needs analysed normal forms to track RDTs (got Aset damap)")
     end
 
     -- create beta0 from damap
