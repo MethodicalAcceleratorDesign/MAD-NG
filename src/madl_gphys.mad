@@ -737,10 +737,13 @@ local function nfcpy (nf, a_)
     copy    = nf.copy,
     q1      = nf.q1,
     q2      = nf.q2,
+    q3      = nf.q3,
     dq1     = nf.dq1,
     dq2     = nf.dq2,
+    dq3     = nf.dq3,
     anhx    = nf.anhx,
     anhy    = nf.anhy,
+    anht    = nf.anht,
     gnfu    = nf.gnfu,
     haml    = nf.haml,
     optf    = nf.optf,
@@ -766,8 +769,8 @@ local function nfcpy (nf, a_)
 
     t_op    = nf.t_op,
     anh     = nf.anh,
-    gnf     = nil,
-    ham     = nil,
+    gnf     = nil, -- nf.gnf,
+    ham     = nil, -- nf.ham,
   }
 
   return cpy
@@ -775,37 +778,30 @@ end
 
 -- getters --
 
-local function nf_pms (nf, ki_, ko_, nn_)
+local function nf_pms (nf, ki_, ko_)
   assert(is_nf(nf), "invalid argument #1 (normal form expected)")
-  local np, ks = nf.nn - nf.nv, ""
+  local np, ki, ks = nf.nn - nf.nv, ki_ or 0
 
-  if is_monomial(ki_) then   -- monomial case
-    ks = ki_:tostring()
-
-  elseif is_number(ki_) then -- number case
-    local ko = ko_ or 0
-    assert(is_natural(ki_), "invalid knob index (ki >= 0 expected)")
-    assert(is_natural(ko ), "invalid knob order (ko >= 0 expected)")
-    ks = ("0"):rep(ki_-1) .. ko
-
-  elseif ki_ then            -- string case
-    ks = ki_
-    assert(is_string(ks), "invalid argument #3 (monomial, string or number expected)")
+  if is_natural(ki) then      -- index case
+    local ko = ko_ or 1
+    assert(is_natural(ko), "invalid knob order (ko >= 0 expected)")
+    ks = ki > 0 and ko > 0 and ("0"):rep(ki-1)..ko..("0"):rep(np-(ki-1)-1)
+                            or ("0"):rep(np)
+  else
+    if is_monomial(ki) then -- monomial case
+      ks = ki:tostring()
+    elseif is_string(ki) then   -- string case
+      ks = ki
+    else error("invalid argument #2 (monomial, string or index expected)")
+    end
+    if #ks < np then ks = ks..("0"):rep(np-#ks) end
   end
 
-  if nn_ and #ks < np then ks = ks..("0"):rep(np - #ks) end
   return ks
 end
 
-local function nf_ms (nf, ms, ki_, ko_, nn_)
+local function nf_ms (nf, ms, ki_, ko_)
   assert(is_nf(nf), "invalid argument #1 (normal form expected)")
-
-  -- right shift
-  if is_boolean(ki_) then
-    nn_, ki_ = ki_, nil
-  elseif is_boolean(ko_) then
-    nn_, ko_ = ko_, nil
-  end
 
   if is_table(ms) then -- expand table
     ms, ki_, ko_ = ms[1], ms[2], ms[3]
@@ -817,40 +813,44 @@ local function nf_ms (nf, ms, ki_, ko_, nn_)
     assert(is_string(ms), "invalid argument #2 (monomial or string expected)")
   end
 
-  if #ms < nf.nv then ms = ms..("0"):rep(nf.nv - #ms)    end
-  if ki_         then ms = ms..nf_pms(nf, ki_, ko_, nn_) end
+  if ki_
+  then if #ms < nf.nv then ms = ms..("0"):rep(nf.nv - #ms) end
+           ms = ms..nf_pms(nf, ki_, ko_)
+  else if #ms < nf.nn then ms = ms..("0"):rep(nf.nn - #ms) end
+  end
+
   return ms
 end
 
 local function nf_q (nf, ord, x, y, t)
   local ms = table.concat{x, 0, y, 0, t, 0}
-  local ks = nf_pms(nf, ord[2], nil, true)
+  local ks = nf_pms(nf, ord[2])
   local rv = nf.anh[ms..ks] or 0
-  --print("nf_q"..(x==1 and '1' or y==1 and '2' or t==1 and '3' or '0'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
+--print("nf_q"..(x==1 and '1' or y==1 and '2' or t==1 and '3' or '0'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
   return rv
 end
 
 local function nf_dq (nf, ord, x, y, t)
   local ms = table.concat{x, 0, y, 0, t, ord[1]}
-  local ks = nf_pms(nf, ord[2], nil, true)
+  local ks = nf_pms(nf, ord[2])
   local rv = nf.anh[ms..ks] or 0
-  --print("nf_dq"..(x==1 and '1' or y==1 and '2' or t==1 and '3' or '0'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
+--print("nf_dq"..(x==1 and '1' or y==1 and '2' or t==1 and '3' or '0'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
   return rv
 end
 
 local function nf_anh (nf, ord, x, y, t)
   local mn = {ord[1]+x, ord[1], ord[2]+y, ord[2], nf.npt==0 and ord[3]+t or 0, ord[3] or 0}
   local ms = table.concat(mn)
-  local ks = nf_pms(nf, ord[4], nil, true)
+  local ks = nf_pms(nf, ord[4])
   local rv = nf.anh[ms..ks] or 0
-  --print("nf_anh"..(x==1 and 'x' or y==1 and 'y' or t==1 and 't' or '?'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
+--print("nf_anh"..(x==1 and 'x' or y==1 and 'y' or t==1 and 't' or '?'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
   return rv
 end
 
 -- tunes --
 
 local function nf_q1 (nf, ord)
-  if ord == nil then ord = {1} elseif is_number(ord) then ord = {ord} end
+  if is_nil(ord) or is_number(ord) then ord = {ord or 1} end
   assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
   assert(is_nznatural(ord[1]), "invalid q1 order (q1 > 0 expected)")
   if ord[1] == 1 and (ord[2] or 0) == 0 then return nf.q1_ end
@@ -858,7 +858,7 @@ local function nf_q1 (nf, ord)
 end
 
 local function nf_q2 (nf, ord)
-  if ord == nil then ord = {1} elseif is_number(ord) then ord = {ord} end
+  if is_nil(ord) or is_number(ord) then ord = {ord or 1} end
   assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
   assert(is_nznatural(ord[1]), "invalid q2 order (q2 > 0 expected)")
   if ord[1] == 1 and (ord[2] or 0) == 0 then return nf.q2_ end
@@ -866,7 +866,7 @@ local function nf_q2 (nf, ord)
 end
 
 local function nf_q3 (nf, ord)
-  if ord == nil then ord = {1} elseif is_number(ord) then ord = {ord} end
+  if is_nil(ord) or is_number(ord) then ord = {ord or 1} end
   assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
   assert(is_nznatural(ord[1]), "invalid q3 order (q3 > 0 expected)")
   if ord[1] == 1 and (ord[2] or 0) == 0 then return nf.q3_ end
@@ -876,21 +876,21 @@ end
 -- chromaticities --
 
 local function nf_dq1 (nf, ord)
-  if ord == nil then ord = {1} elseif is_number(ord) then ord = {ord} end
+  if is_nil(ord) or is_number(ord) then ord = {ord or 1} end
   assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
   assert(is_nznatural(ord[1]), "invalid pt order (pt > 0 expected)")
   return nf_dq(nf, ord, 1, 0, 0)
 end
 
 local function nf_dq2 (nf, ord)
-  if ord == nil then ord = {1} elseif is_number(ord) then ord = {ord} end
+  if is_nil(ord) or is_number(ord) then ord = {ord or 1} end
   assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
   assert(is_nznatural(ord[1]), "invalid pt order (pt > 0 expected)")
   return nf_dq(nf, ord, 0, 1, 0)
 end
 
 local function nf_dq3 (nf, ord)
-  if ord == nil then ord = {1} elseif is_number(ord) then ord = {ord} end
+  if is_nil(ord) or is_number(ord) then ord = {ord or 1} end
   assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
   assert(is_nznatural(ord[1]), "invalid pt order (pt > 0 expected)")
   return nf_dq(nf, ord, 0, 0, 1)
@@ -899,21 +899,21 @@ end
 -- anharmonicities --
 
 local function nf_anhx (nf, ord)
-  if ord == nil then ord = {0,0,0} elseif is_number(ord) then ord = {ord,0,0} end
+  if is_nil(ord) or is_number(ord) then ord = {ord or 0,0,0} end
   assert(is_indexable(ord), "invalid argument #2 (order or indexable expected)")
   assert(is_natural(ord[1]),"invalid x order (x >= 0 expected)")
   return nf_anh(nf, ord, 1, 0, 0)
 end
 
 local function nf_anhy (nf, ord)
-  if ord == nil then ord = {0,0,0} elseif is_number(ord) then ord = {0,ord,0} end
+  if is_nil(ord) or is_number(ord) then ord = {0,ord or 0,0} end
   assert(is_indexable(ord), "invalid argument #2 (order or indexable expected)")
   assert(is_natural(ord[2]),"invalid y order (y >= 0 expected)")
   return nf_anh(nf, ord, 0, 1, 0)
 end
 
 local function nf_anht (nf, ord)
-  if ord == nil then ord = {0,0,0} elseif is_number(ord) then ord = {0,0,ord} end
+  if is_nil(ord) or is_number(ord) then ord = {0,0,ord or 0} end
   assert(is_indexable(ord), "invalid argument #2 (order or indexable expected)")
   assert(is_natural(ord[3]),"invalid t order (t >= 0 expected)")
   return nf_anh(nf, ord, 0, 0, 1)
@@ -922,14 +922,14 @@ end
 -- generating functions --
 
 local function nf_gnfu (nf, ms, ki_, ko_)
-  local ms = nf_ms(nf, ms, ki_, ko_, true)
+  local ms = nf_ms(nf, ms, ki_, ko_)
   return nf.gnf[ms] or 0i
 end
 
 -- hamiltonian terms --
 
 local function nf_haml (nf, ms, ki_, ko_)
-  local ms = nf_ms(nf, ms, ki_, ko_, true)
+  local ms = nf_ms(nf, ms, ki_, ko_)
   return nf.ham[ms] or 0i
 end
 
@@ -1092,7 +1092,7 @@ local function nfopt (nf, of, ki_, ko_, mt_, a0_, mt0_)
 
   -- extract damap
   if is_nf(nf) then
-    if ki_ then ks = nf_pms(nf, ki_, ko_, true) end
+    if ki_ then ks = nf_pms(nf, ki_, ko_) end
     ar = nf.ar or nf.a:real()
   end
 
