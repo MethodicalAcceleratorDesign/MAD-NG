@@ -1113,8 +1113,7 @@ mad_desc_isvalids (const D *d, ssz_t n, str_t s)
   assert(d && s);
   if (n <= 0) n = strlen(s);
 
-  ord_t m[n];
-  n = mad_mono_str(n, m, s); // n can be shrinked by '\0'
+  ord_t m[n]; mad_mono_str(n, m, s);
   const log_t ret = 0 <= n && n <= d->nn && mono_isvalid(d, n, m);
   DBGFUN(<-); return ret;
 }
@@ -1190,11 +1189,11 @@ mad_desc_idxm (const D *d, ssz_t n, const ord_t m[n])
 idx_t
 mad_desc_idxs (const D *d, ssz_t n, str_t s)
 {
-  assert(d && s); DBGFUN(->);
+  DBGFUN(->);
+  assert(d && s);
   if (n <= 0) n = strlen(s);
 
-  ord_t m[n];
-  n = mad_mono_str(n, m, s); // n can be shrinked by '\0'
+  ord_t m[n]; mad_mono_str(n, m, s);
   const idx_t ret = mad_desc_idxm(d, n, m);
   DBGFUN(<-); return ret;
 }
