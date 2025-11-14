@@ -40,9 +40,8 @@ typedef unsigned char ord_t;
 
 // --- interface --------------------------------------------------------------o
 
-ssz_t mad_mono_str   (ssz_t n,       ord_t a[], str_t s);  // from string
 str_t mad_mono_prt   (ssz_t n, const ord_t a[], char s[]); // to   string
-
+void  mad_mono_str   (ssz_t n,       ord_t a[], str_t s);  // from string
 void  mad_mono_fill  (ssz_t n,       ord_t a[], ord_t v);
 void  mad_mono_copy  (ssz_t n, const ord_t a[], ord_t r[]);
 

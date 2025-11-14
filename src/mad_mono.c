@@ -26,16 +26,6 @@
 
 // --- implementation ---------------------------------------------------------o
 
-ssz_t
-mad_mono_str (ssz_t n, ord_t a[n], str_t s)
-{
-  assert(a && s);
-  idx_t i = 0;
-  for (; i < n && s[i]; ++i)
-    a[i] = s[i] - (s[i] < 'A' ? '0' : (s[i] < 'a' ? 'A'-10 : 'a'-36));
-  return i;
-}
-
 str_t
 mad_mono_prt (ssz_t n, const ord_t a[n], char s[n+1])
 {
@@ -43,6 +33,17 @@ mad_mono_prt (ssz_t n, const ord_t a[n], char s[n+1])
   FOR(i,n) s[i] = a[i] + (a[i] < 10 ? '0' : (a[i] < 36 ? 'A'-10 : 'a'-36));
   s[n] = '\0';
   return s;
+}
+
+void
+mad_mono_str (ssz_t n, ord_t a[n], str_t s)
+{
+  assert(a && s);
+  idx_t i = 0;
+  for (; i < n && s[i]; ++i)
+    a[i] = s[i] - (s[i] < 'A' ? '0' : (s[i] < 'a' ? 'A'-10 : 'a'-36));
+  for (; i < n        ; ++i)
+    a[i] = 0;
 }
 
 void
