@@ -96,7 +96,6 @@ int mad_is_interactive = 0;
 
 int mad_trace_level    = 0;
 int mad_trace_location = 0;
-int mad_trace_fortid   = 0;
 
 str_t mad_release = MKSTR(MAD_VERSION)
 #ifdef _OPENMP
