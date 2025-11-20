@@ -102,24 +102,6 @@ local gphys = {
     'betx'  , 'bety'  , 'alfx'  , 'alfy'  , 'kpa'   , 'r11'   , 'r12'   , 'r21'   , 'r22'   , -- Edwards-Teng
     'f1010' , 'f1001' , -- linear RDTs
   },
-
-  -- optical functions names converter (e.g. from MAD-X), see also beta0
-  ofcvtname = {
-    -- MAD-X names
-    alfx='alfa11', betx='beta11', mux='mu1', dmux='dmu1',
-    alfy='alfa22', bety='beta22', muy='mu2', dmuy='dmu2',
-    alfz='alfa33', betz='beta33', muz='mu3', dmuz='dmu3', -- not MAD-X
-
-    -- other shortcut
-    alfa1='alfa11', beta1='beta11',
-    alfa2='alfa22', beta2='beta22',
-    alfa3='alfa33', beta3='beta33',
-
-    -- tunes, chromas
-    qx='q1', dqx='dq1',
-    qy='q2', dqy='dq2',
-    qz='q3', dqz='dq3',
-  },
 }
 
 local phystol = gphys.tol
@@ -1379,9 +1361,6 @@ function gphys.bet2map (bb0, map, sav_) -- TODO: move to beta0
   assert(typeid.is_beta0(bb0), "invalid argument #1 (beta0 block expected)")
   assert(       is_damap(map), "invalid argument #2 (damap expected)")
 
-  local rnk = bb0.rank or 4
-  local cpl = bb0.cplg or nil
-  local dir = bb0.sdir or 1
   local X   = (bb0.X or vector(6)):zeros()
   local A   = (bb0.A or matrix(6)):eye()
 
@@ -1399,8 +1378,8 @@ function gphys.bet2map (bb0, map, sav_) -- TODO: move to beta0
 
   -- x plane
 
-  local beta11 = bb0.beta11 or bb0.beta1 or bb0.betx or 1
-  local alfa11 = bb0.alfa11 or bb0.alfa1 or bb0.alfx or 0
+  local beta11 = bb0.beta11
+  local alfa11 = bb0.alfa11
   local gama11 = bb0.gama11 or (1+alfa11^2)/beta11
 
   assertf(beta11 > 0, "invalid beta11=%.3fm (>0 expected)", beta11)
@@ -1414,8 +1393,8 @@ function gphys.bet2map (bb0, map, sav_) -- TODO: move to beta0
 
   -- y plane
 
-  local beta22 = bb0.beta22 or bb0.beta2 or bb0.bety or 1
-  local alfa22 = bb0.alfa22 or bb0.alfa2 or bb0.alfy or 0
+  local beta22 = bb0.beta22
+  local alfa22 = bb0.alfa22
   local gama22 = bb0.gama22 or (1+alfa22^2)/beta22
 
   assertf(beta22 > 0, "invalid beta22=%.3fm (>0 expected)", beta22)
@@ -1429,23 +1408,18 @@ function gphys.bet2map (bb0, map, sav_) -- TODO: move to beta0
 
   -- t plane
 
-  local beta33 = bb0.beta33 or bb0.beta3 or bb0.betz or 0
+  local beta33 = bb0.beta33
+  local alfa33 = bb0.alfa33
+  local gama33 = bb0.gama33 or (1+alfa33^2)/beta33
 
-  if beta33 ~= 0 then
-    local alfa33 = bb0.alfa33 or bb0.alfa3 or bb0.alfz or 0
-    local gama33 = bb0.gama33 or (1+alfa33^2)/beta33
+  assertf(beta33 > 0, "invalid beta33=%.3fm (>0 expected)", beta33)
 
-    assertf(beta33 > 0, "invalid beta33=%.3fm (>0 expected)", beta33)
+  local A55 = sqrt(beta33)
+  local A65 = -alfa33/A55
+  local A66 = sqrt(gama33 - A65^2) -- 1/A55
 
-    local A55 = sqrt(beta33)
-    local A65 = -alfa33/A55
-    local A66 = sqrt(gama33 - A65^2) -- 1/A55
-
-    set(A,5,5, A55) ; set(A,5,6,  0 ) -- Courant-Snyder form
-    set(A,6,5, A65) ; set(A,6,6, A66)
-
-    if rnk == 4 then rnk = 6 end
-  end
+  set(A,5,5, A55) ; set(A,5,6,  0 ) -- Courant-Snyder form
+  set(A,6,5, A65) ; set(A,6,6, A66)
 
   -- set dispersion
 
@@ -1454,12 +1428,12 @@ function gphys.bet2map (bb0, map, sav_) -- TODO: move to beta0
   if bb0.dy  then set(A,3,6, bb0.dy ) end
   if bb0.dpy then set(A,4,6, bb0.dpy) end
 
-  -- backup rank and coupling
+  -- backup rank
 
-  if sav_ then bb0.rank, bb0.cplg, bb0.sdir = rnk, cpl, dir end
+  local rnk = bb0.rank or has_dpt(A) and 6 or 4
+  if sav_ then bb0.rank = rnk end
 
   -- sanity checks
-
   local serr, merr = (rnk >= 6 and A or A:getsub(r4,r4)):symperr(matrix(rnk))
   if serr > symp_tol then
     io.flush()
