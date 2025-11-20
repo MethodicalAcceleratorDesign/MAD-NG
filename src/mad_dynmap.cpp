@@ -812,7 +812,7 @@ inline void quad_thick (cflw<M> &m, num_t lw, int is)
   P cx(1), sx(1), mx1(1), mx2(1);
   P cy(1), sy(1), my1(1), my2(1);
 
-  if (fabs(m.k1) > minstr) {
+  if (fabs(m.k1) > minstr) {                                                  // k1 as prm?
     P w = sqrt(abs(R(m.k1)))*(ws*m.sdir*m.edir);
     cx = cos (w*l), sx  = sin (w*l);
     cy = cosh(w*l), sy  = sinh(w*l);
@@ -956,7 +956,7 @@ inline void quad_thickh (cflw<M> &m, num_t lw, int is)
   P mx21(1), mx22(1), mx23(1), my21(1), my22(1);
   P mx31(1), mx32(1), mx33(1);
 
-  if (fabs(kx) > minstr) {
+  if (fabs(kx) > minstr) {                                                    // k0 & k1 as prm?
     wx = sqrt(abs(kx))*(wxs*m.charge); wxs *= -m.charge;
     if (fval(wx) > 0) cx = cos (wx*l), sx = sin (wx*l);
     else              cx = cosh(wx*l), sx = sinh(wx*l);
@@ -970,7 +970,7 @@ inline void quad_thickh (cflw<M> &m, num_t lw, int is)
     mx31 = mx23, mx32 = mx13, mx33 = mx13*mx23/3;
   }
 
-  if (fabs(ky) > minstr) {
+  if (fabs(ky) > minstr) {                                                    // k1 as prm?
     wy = sqrt(abs(ky))*(wys*m.charge); wys *= -m.charge;
     if (fval(wy) > 0) cy = cos (wy*l), sy = sin (wy*l);
     else              cy = cosh(wy*l), sy = sinh(wy*l);
@@ -1342,7 +1342,7 @@ template <typename M, typename T=M::T, typename P=M::P, typename R=M::R, typenam
 inline void bend_wedge (cflw<M> &m, num_t lw, const V &e)
 {                                   (void)lw;
   if (!chck(e, minang)) return;
-  if (fabs(m.knl[0]) < minstr) return yrotation<M>(m,m.sdir,-e);
+  if (fabs(m.knl[0]) < minstr) return yrotation<M>(m,m.sdir,-e);              // k0 as prm?
 
   mdump(0);
   P b1 = R(m.knl[0])/R(m.el)*(m.edir*m.charge);
