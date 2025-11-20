@@ -104,24 +104,36 @@ local function fill_sum (mflw)
       local m    = mflw[i]
       local of   = ofun[id]
       local beam = m.beam or beam
+      local mo   = m:mord()
 
       q1[id] = of.mu1
       q2[id] = of.mu2
       q3[id] = of.mu3
 
-      if m:mord() >= 2 and is_nform(nf0[id].nf) then
+      if mo >= 2 and is_nform(nf0[id].nf) then
+        --print("dq(NF)")
         local nf = nf0[id].nf
-        dq1[id] = nf:dq1{1} ; if abs(dq1[id]) < ofun_tol then dq1[id] = 0 end
-        dq2[id] = nf:dq2{1} ; if abs(dq2[id]) < ofun_tol then dq2[id] = 0 end
-        dq3[id] = nf:dq3{1} ; if abs(dq3[id]) < ofun_tol then dq3[id] = 0 end
+        dq1[id] = nf:dq1{1}
+        dq2[id] = nf:dq2{1}
+        dq3[id] = nf:dq3{1}
+      elseif mo >= 2 then
+        --print("dq(OF)")
+        local m0 = nf0[id].nf.ar
+        dq1[id] = optfun(m, "dmu1_", m0)
+        dq2[id] = optfun(m, "dmu2_", m0)
+        dq3[id] = q3[id]>0 and optfun(m, "dmu3_", m0) or 0
       elseif chrm then
+        --print("dq(DP)")
         local dpt  = dp2pt(chrm, beam.beta)
         local ofdp = ofun[id+npar]
-
         dq1[id] = (ofdp.mu1 - of.mu1) / dpt
         dq2[id] = (ofdp.mu2 - of.mu2) / dpt
         dq3[id] = (ofdp.mu3 - of.mu3) / dpt
       end
+
+      if abs(dq1[id]) < ofun_tol then dq1[id] = 0 end
+      if abs(dq2[id]) < ofun_tol then dq2[id] = 0 end
+      if abs(dq3[id]) < ofun_tol then dq3[id] = 0 end
 
       -- calculation from MAD-X, need to be reviewed
       local R  = m:get1()
@@ -404,7 +416,7 @@ end
 
 local function twiss_nform (self, mflw0)
   local npar, sdir, info, debug in mflw0
-  local coupling, trkopt, trkrdt in self
+  local coupling, trkopt, trkrdt, saveanf in self
 
   -- compute normal form(s)
   if info >= 2 then
@@ -420,26 +432,24 @@ local function twiss_nform (self, mflw0)
     local bet = (m.beam or mflw0.beam).beta
 
     -- convert in place one-turn-map M into normal form A
-    if m.status ~= 'Aset' then
-      local nf = normal(m) ; nf.a:copy(m):set0(nf.x0).status = 'Aset'
-
-      nf0[m.id] = { nf=nf, id=m.id, mt={} }
+    local nf
+    if m.status ~= 'Aset' then -- compute normal form
+      nf = normal(m) ; nf.a:copy(m):set0(nf.x0).status = 'Aset'
       if trkrdt then nf:analyse'all' end
-      if trkopt then nf.ar = nf.a:real() ; nf.ar.status = 'Aset' end
 
     elseif m.__nf then -- extract Normal Form nf from normalizing map m
-      local nf = m.__nf
-
-      nf0[m.id] = { nf=nf, id=m.id, mt={} }
+      nf = m.__nf
       if trkrdt then nf:analyse'all' end
-      if trkopt then nf.ar = nf.a:real() ; nf.ar.status = 'Aset' end
 
-    elseif trkopt and not (trkrdt or saveanf) then
-      nf0[m.id] = { nf={ar=m}, id=m.id, mt={} }
+    elseif not (trkrdt or saveanf) then
+      nf = {} -- dummy normal form
 
-    elseif trkrdt or saveanf then
+    else
       error("Twiss needs analysed normal forms to track RDTs (got Aset damap)")
     end
+
+    -- backup initial conditions
+    nf0[m.id] = { nf=nf, id=m.id, mt={} } ; nf.ar=m:copy():set0(0)
 
     -- create beta0 from damap
     local of = map2bet(m, nil, coupling, bet, sdir)
