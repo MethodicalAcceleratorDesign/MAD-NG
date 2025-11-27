@@ -429,9 +429,14 @@ function MR.set0 (x, v, a_)
     for i=1,#x do
       _C.mad_tpsa_seti(x[i], 0, a, v)
     end
-  else
+  elseif is_number(v[1]) then
     for i=1,min(#x,#v) do
       _C.mad_tpsa_seti(x[i], 0, a, v[i])
+    end
+  else
+    local vn = x.__vn
+    for i=1,#x do
+      _C.mad_tpsa_seti(x[i], 0, a, v[vn[i]] or 0)
     end
   end
   return x
@@ -446,9 +451,15 @@ function MC.set0 (x, v, a_)
     for i=1,#x do
       _C.mad_ctpsa_seti_r(x[i], 0, a.re, a.im, b.re, b.im)
     end
-  else
+  elseif is_scalar(v[1]) then
     for i=1,min(#x,#v) do
       local b = complex(v[i])
+      _C.mad_ctpsa_seti_r(x[i], 0, a.re, a.im, b.re, b.im)
+    end
+  else
+    local vn = x.__vn
+    for i=1,#x do
+      local b = complex(v[vn[i]] or 0)
       _C.mad_ctpsa_seti_r(x[i], 0, a.re, a.im, b.re, b.im)
     end
   end
@@ -637,30 +648,28 @@ function MC.pinv (x, sel, r)
   _C.mad_ctpsa_pminv(x.__td.nn, x.__ta, x.__td.nv, r.__ta, s) return r
 end
 
--- map exponential and poisson bracket: r = exp(:x:) y
+-- map exponential and poisson bracket: r = exp(:y:) x
 
 function MR.exppb (x, y, r)
   if is_string(r) and r == 'in' then r = x end   -- in place
   r = r or map_alloc(x)
-  assert(is_damap(y),           "invalid argument #2 (damap expected)")
-  assert(is_damap(r),           "invalid argument #3 (damap expected)")
+  assert(is_damap(x),      "invalid argument #2 (damap expected)")
+  assert(is_damap(r),      "invalid argument #3 (damap expected)")
   assert(r.__td == x.__td, "incompatible damap (GTPSA descriptors differ)")
-  assert(r.__td == y.__td, "incompatible damap (GTPSA descriptors differ)")
-  assert(#r == #x, "incompatible damap lengths")
-  assert(#y == #x, "incompatible damap lengths")
-  _C.mad_tpsa_exppb(#x, x.__ta, y.__ta, r.__ta) return r
+  assert(x.__td == y.__td, "incompatible damap (GTPSA descriptors differ)")
+  assert(    #r == #x    , "incompatible cdamap lengths")
+  _C.mad_tpsa_exppb(#y, y.__ta, #x, x.__ta, r.__ta) return r
 end
 
 function MC.exppb (x, y, r)
   if is_string(r) and r == 'in' then r = x end   -- in place
   r = r or map_alloc(x)
-  assert(is_cdamap(y),          "invalid argument #2 (cdamap expected)")
-  assert(is_cdamap(r),          "invalid argument #3 (cdamap expected)")
+  assert(is_cdamap(x),     "invalid argument #2 (cdamap expected)")
+  assert(is_cdamap(r),     "invalid argument #3 (cdamap expected)")
   assert(r.__td == x.__td, "incompatible cdamap (GTPSA descriptors differ)")
-  assert(r.__td == y.__td, "incompatible cdamap (GTPSA descriptors differ)")
-  assert(#r == #x, "incompatible cdamap lengths")
-  assert(#y == #x, "incompatible cdamap lengths")
-  _C.mad_ctpsa_exppb(#x, x.__ta, y.__ta, r.__ta) return r
+  assert(x.__td == y.__td, "incompatible damap (GTPSA descriptors differ)")
+  assert(    #r == #x    , "incompatible cdamap lengths")
+  _C.mad_ctpsa_exppb(#y, y.__ta, #x, x.__ta, r.__ta) return r
 end
 
 -- map logarithm of exponential poisson bracket: r = exp(:log(x):) y
@@ -733,7 +742,7 @@ function MR.lieexppb (x, y, r, inv)
     assert(r.__td == y.__td, "incompatible damap (GTPSA descriptors differ)")
     assert(#r == #y, "incompatible damap lengths")
     if inv == -1 then y = -y end
-    _C.mad_tpsa_exppb(#y, y.__ta, r.__ta, r.__ta)
+    _C.mad_tpsa_exppb(#y, y.__ta, #r, r.__ta, r.__ta)
   end
   return r
 end
@@ -755,25 +764,29 @@ function MC.lieexppb (x, y, r, inv)
     assert(r.__td == y.__td, "incompatible cdamap (GTPSA descriptors differ)")
     assert(#r == #y, "incompatible cdamap lengths")
     if inv == -1 then y = -y end
-    _C.mad_ctpsa_exppb(#y, y.__ta, r.__ta, r.__ta)
+    _C.mad_ctpsa_exppb(#y, y.__ta, #r, r.__ta, r.__ta)
   end
   return r
 end
 
 -- vector to field map:
 
-function MR.vec2fld (x, f, s_)
+function MR.vec2fld (x, f, s_, r_)
+  if is_damap(s_) and is_nil(r_) then r_, s_ = s_, nil end -- right shift
   assert(f.d == x.__td, "incompatible tpsa and damap (GTPSA descriptors differ)")
-  _C.mad_tpsa_vec2fld(#x, f, x.__ta)
-  if s_ ~= false then x = -2i*x end
-  return x
+  local r = r_ or x:same()
+  _C.mad_tpsa_vec2fld(#r, f, r.__ta) -- G(x;0) = -J grad.f(x;0)
+  if s_ == true then r = -2i*r end
+  return r
 end
 
-function MC.vec2fld (x, f, s_)
+function MC.vec2fld (x, f, s_, r_)
+  if is_cdamap(s_) and is_nil(r_) then r_, s_ = s_, nil end -- right shift
   assert(f.d == x.__td, "incompatible ctpsa and cdamap (GTPSA descriptors differ)")
-  _C.mad_ctpsa_vec2fld(#x, f, x.__ta)
-  if s_ ~= false then x:mul(-2i, x) end
-  return x
+  local r = r_ or x:same()
+  _C.mad_ctpsa_vec2fld(#r, f, r.__ta) -- G(x;0) = -J grad.f(x;0)
+  if s_ == true then r:mul(-2i, r) end
+  return r
 end
 
 -- field map to vector:
@@ -782,8 +795,8 @@ function MR.fld2vec (x, f_, s_)
   if is_boolean(f_) and is_nil(s_) then f_, s_ = nil, f_ end -- right shift
   local f = f_ or x[1]:same()
   assert(f.d == x.__td, "incompatible tpsa and damap (GTPSA descriptors differ)")
-  _C.mad_tpsa_fld2vec(#x, x.__ta, f)
-  if s_ ~= false then f = 0.5i*f end
+  _C.mad_tpsa_fld2vec(#x, x.__ta, f) -- f(x;0) = \int_0^x J G(x';0) dx'
+  if s_ == true then f = 0.5i*f end
   return f
 end
 
@@ -791,8 +804,8 @@ function MC.fld2vec (x, f_, s_)
   if is_boolean(f_) and is_nil(s_) then f_, s_ = nil, f_ end -- right shift
   local f = f_ or x[1]:same()
   assert(f.d == x.__td, "incompatible ctpsa and cdamap (GTPSA descriptors differ)")
-  _C.mad_ctpsa_fld2vec(#x, x.__ta, f)
-  if s_ ~= false then f:mul(0.5i,f) end
+  _C.mad_ctpsa_fld2vec(#x, x.__ta, f) -- f(x;0) = \int_0^x J G(x';0) dx'
+  if s_ == true then f:mul(0.5i,f) end
   return f
 end
 
