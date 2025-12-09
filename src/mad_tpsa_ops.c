@@ -544,7 +544,7 @@ FUN(equ) (const T *a, const T *b, num_t tol)
   assert(a && b); DBGFUN(->);
   ensure(IS_COMPAT(a,b), "incompatibles GTPSA (descriptors differ)");
 
-  if (a == b && !tol) return TRUE;
+  if (a == b) return TRUE;
 
   const D *d = a->d;
   T c_ = {.d=d, .mo=d->mo, .ao=d->mo}, *c = &c_; // fake TPSA
