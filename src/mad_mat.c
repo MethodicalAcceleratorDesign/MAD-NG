@@ -1776,7 +1776,7 @@ mad_mat_eigen (const num_t x[], cpx_t w[], num_t vl_[], num_t vr_[], ssz_t n)
   mad_vec_cplx(wr, wi, w, n);
   mad_free_tmp(wk); mad_free_tmp(ra);
   mad_free_tmp(wi); mad_free_tmp(wr);
-//if (vl_) mad_mat_trans(vl_, vl_, n, n);
+  if (vl_) mad_mat_trans(vl_, vl_, n, n);
   if (vr_) mad_mat_trans(vr_, vr_, n, n);
 
   if (info < 0) error("Eigen: invalid input argument");
@@ -1804,7 +1804,7 @@ mad_cmat_eigen (const cpx_t x[], cpx_t w[], cpx_t vl_[], cpx_t vr_[], ssz_t n)
   mad_alloc_tmp(cpx_t, wk, lwork);
   zgeev_(vls, vrs, &nn, ra, &nn, w, vl_, &nn, vr_, &nn,  wk, &lwork, rwk, &info); // compute
   mad_free_tmp(wk); mad_free_tmp(ra); mad_free_tmp(rwk);
-//if (vl_) mad_cmat_trans(vl_, vl_, n, n);
+  if (vl_) mad_cmat_trans(vl_, vl_, n, n);
   if (vr_) mad_cmat_trans(vr_, vr_, n, n);
 
   if (info < 0) error("Eigen: invalid input argument");
