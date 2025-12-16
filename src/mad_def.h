@@ -54,6 +54,7 @@ typedef const void*      ptr_t;
 
 #define SQR(a)           ((a)*(a))
 #define CUB(a)           ((a)*(a)*(a))
+#define NRM2(a,b)        (SQR(a)+SQR(b))
 #define SWAP(a,b,t)      ((t)=(a), (a)=(b), (b)=(t))
 #define SIGN(a)          (((a) >  0) - ((a) < 0)) // -1, 0, 1
 #define SIGN1(a)         (((a) >= 0) - ((a) < 0)) // -1, 1
