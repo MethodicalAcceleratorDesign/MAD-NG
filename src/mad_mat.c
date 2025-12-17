@@ -1754,6 +1754,36 @@ mad_cmat_gmsolve (const cpx_t a[], const cpx_t b[], const cpx_t d[],
 // Eigen values and vectors
 // A:[n x n], U:[m x m], S:[min(m,n)], V:[n x n]
 
+static void
+canon_eig(ssz_t n, num_t v[], num_t wi[])
+{
+  idx_t mm[2];
+  FOR(i,n) {
+    num_t *vi = v+i*n;
+    mad_vec_minmax(vi, TRUE, mm, n);
+    if (vi[mm[1]] < 0) {
+      mad_vec_muln(vi, -1, vi, n);
+      if (wi[i])
+        ensure(!vi[mm[1]+n], "dgeev: unexpected non-zero slot %d,%d", mm[1], i+1),
+        mad_vec_muln(vi+n, -1, vi+n, n);
+    }
+    i += !!wi[i];
+  }
+}
+
+static void
+canon_ceig(ssz_t n, cpx_t v[])
+{
+  idx_t mm[2];
+  FOR(i,n) {
+    cpx_t *vi = v+i*n;
+    mad_cvec_minmax(vi, mm, n);
+    if (creal(vi[mm[1]]) < 0)
+      ensure(!cimag(vi[mm[1]]), "zgeev: unexpected non-zero imag at slot %d,%d", mm[1], i),
+      mad_cvec_muln(vi, -1, vi, n);
+  }
+}
+
 int
 mad_mat_eigen (const num_t x[], cpx_t w[], num_t vl_[], num_t vr_[], ssz_t n)
 {
@@ -1773,11 +1803,13 @@ mad_mat_eigen (const num_t x[], cpx_t w[], num_t vl_[], num_t vr_[], ssz_t n)
   lwork=sz;
   mad_alloc_tmp(num_t, wk, lwork);
   dgeev_(vls, vrs, &nn, ra, &nn, wr, wi, vl_, &nn, vr_, &nn,  wk, &lwork, &info); // compute
-  mad_vec_cplx(wr, wi, w, n);
   mad_free_tmp(wk); mad_free_tmp(ra);
+
+  if (vl_) canon_eig(n, vl_, wi), mad_mat_trans(vl_, vl_, n, n);
+  if (vr_) canon_eig(n, vr_, wi), mad_mat_trans(vr_, vr_, n, n);
+
+  mad_vec_cplx(wr, wi, w, n);
   mad_free_tmp(wi); mad_free_tmp(wr);
-  if (vl_) mad_mat_trans(vl_, vl_, n, n);
-  if (vr_) mad_mat_trans(vr_, vr_, n, n);
 
   if (info < 0) error("Eigen: invalid input argument");
   if (info > 0) warn ("Eigen: failed to compute all eigenvalues");
@@ -1804,8 +1836,9 @@ mad_cmat_eigen (const cpx_t x[], cpx_t w[], cpx_t vl_[], cpx_t vr_[], ssz_t n)
   mad_alloc_tmp(cpx_t, wk, lwork);
   zgeev_(vls, vrs, &nn, ra, &nn, w, vl_, &nn, vr_, &nn,  wk, &lwork, rwk, &info); // compute
   mad_free_tmp(wk); mad_free_tmp(ra); mad_free_tmp(rwk);
-  if (vl_) mad_cmat_trans(vl_, vl_, n, n);
-  if (vr_) mad_cmat_trans(vr_, vr_, n, n);
+
+  if (vl_) canon_ceig(n, vl_), mad_cmat_trans(vl_, vl_, n, n);
+  if (vr_) canon_ceig(n, vr_), mad_cmat_trans(vr_, vr_, n, n);
 
   if (info < 0) error("Eigen: invalid input argument");
   if (info > 0) warn ("Eigen: failed to compute all eigenvalues");
