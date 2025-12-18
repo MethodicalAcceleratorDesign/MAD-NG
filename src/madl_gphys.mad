@@ -451,9 +451,7 @@ local function order_eigen (V, W)
     if ii ~= kk then
       local i, k = ii*2-1, kk*2-1
       V:swpcol({i,i+1}, {k,k+1})   -- swap eigenvectors/eigenvalues pairs
-      if not is_nil(W) then
-        W[i], W[i+1], W[k], W[k+1] = W[k], W[k+1], W[i], W[i+1]
-      end
+      W[i], W[i+1], W[k], W[k+1] = W[k], W[k+1], W[i], W[i+1]
     end
   end
 
@@ -463,15 +461,15 @@ local function order_eigen (V, W)
       io.write("order_eigen: rk=",n,", ",i," <-> ",k,"\n")
     end
     V:print('Eigenvectors ')
-    if not is_nil(W) then W:print('Eigenvalues ') end
+    W:print('Eigenvalues ')
   end
 end
 
-gphys.order_eigen = \V,W_ -> order_eigen(chksysiz(V,W_))
+gphys.order_eigen = \V,W -> order_eigen(chksysiz(V,W))
 
 -- normalize in place eigenvectors such that [x,px]=1, [y,py]=1 and [t,pt]=1
 
-local function norml_eigen (A)
+local function norml_eigen (A, W)
   for j=2,A.ncol,2 do
     local pb = 0           -- poisson bracket (columns pair)
     for i=2,A.nrow,2 do
@@ -483,18 +481,21 @@ local function norml_eigen (A)
       A:set(i,j-1, A:get(i,j-1) * (spb / pb))
       A:set(i,j  , A:get(i,j  ) /  spb      )
     end
+    if pb < 0 then W[j-1], W[j] = W[j], W[j-1] end -- w = conj(w)
   end
 
   if option.debug >= 2 then
     io.write("**Normalized eigensystem:\n")
     A:print('Eigenvectors ') ; io.write("symperr=", num2str(A:symperr()), "\n")
+    W:print('Eigenvalues ')
   end
 end
 
-gphys.norml_eigen = \A -> norml_eigen(chksysiz(A))
+gphys.norml_eigen = \A,W -> norml_eigen(chksysiz(A,W))
 
 -- rephase in place the eigenvectors to obtain the Courant-Snyder form
 -- i.e. A(1,2)=0 and mu1>0, A(3,4)=0 and mu2>0, A(5,6)=0 and mu3>0
+-- note: eigensystems are invariant to eigenvectors phase (easy to demonstrate)
 
 local function phase_eigen (A)
   local nr, nc = A:sizes()
@@ -503,7 +504,6 @@ local function phase_eigen (A)
   for i=2,min(nr,nc),2 do
     local a11, a12 = A:get(i-1,i-1), A:get(i-1,i) -- mu = atan2(a12, a11) / 2pi
     local d = hypot(a11,a12)
-!   if a11 < 0 then d = -d end  -- add pi (sometimes needed for comparison with PTC...)
     assertf(d > 1e-14, "invalid eigenvectors (unexpected denom |% -.16e|>0)", d)
     a11, a12 = a11/d, a12/d
     P:set(i-1,i-1,  a11) -- P = [ a11/d  -a12/d ] = [ cos a  -sin a ]
@@ -521,8 +521,6 @@ local function phase_eigen (A)
     io.write("**Rephased eigenvectors:\n")
     A:print('Eigenvectors ') ; io.write("symperr=", num2str(A:symperr()), "\n")
   end
-
-  return A
 end
 
 gphys.phase_eigen = \A -> phase_eigen(chksysiz(A))
@@ -914,9 +912,9 @@ local function nfana (nf, k_, a_)
   -- propagated normalizing form, clone current nf with new map, apply rotations
   if a_ then                             -- normal(nfa, "close").a
     local nfa = nf:copy(a_) ; a_, nfa.m_n = nfa.m_n:set0(0), nil
-    local mu1 =                 atan2(a_.x:get(3), a_.x:get(2))
-    local mu2 =                 atan2(a_.y:get(5), a_.y:get(4))
-    local mu3 = nf.ipt == 0 and atan2(a_.t:get(7), a_.t:get(6)) or 0
+    local mu1 =                atan2(a_.x:get(3), a_.x:get(2))
+    local mu2 =                atan2(a_.y:get(5), a_.y:get(4))
+    local mu3 = nf.rk >= 6 and atan2(a_.t:get(7), a_.t:get(6)) or 0
 
     if abs(mu1)+abs(mu2)+abs(mu3) > 0 then
       local ri = a_:same():eye()
@@ -1157,8 +1155,8 @@ end
 local function normal_qs (nf, lam)
   local q1 = lam[1]:carg()/twopi ; if q1 < 0 then q1 = q1+1 end
   local q2 = lam[3]:carg()/twopi ; if q2 < 0 then q2 = q2+1 end
-  local q3 = #lam < 5 and 0 or
-             lam[5]:carg()/twopi ; if q3 < 0 then q3 = q3+1 end
+  local q3 = 0 ; if #lam > 4 then
+        q3 = lam[5]:carg()/twopi ; if q3 < 0 then q3 = q3+1 end end
 
   -- hook data/ add methods
   nf.lam, nf.q1_, nf.q2_, nf.q3_, nf.q1, nf.q2, nf.q3 =
@@ -1172,11 +1170,11 @@ local function normal_a1 (nf)
     return nf
   end
 
-  local ipt, m_n in nf
+  local rk, m_n in nf
   local M = m_n:get1()            -- retrieve one-turn map
 
   -- remove parameters
-  local rg = ipt ~= 0 and r4 or r6
+  local rg = rk == 4 and r4 or r6
   M = M:getsub(rg,rg)             -- reduce M to rank
 
   make_stable(M)                  -- stabilise    M if needed
@@ -1184,7 +1182,7 @@ local function normal_a1 (nf)
                                   -- eigenvalues (W) and right eigenvectors (A)
   local W, info, A = M:eigen(M:same())
 
-  norml_eigen(A)                  -- normalize eigen system
+  norml_eigen(A, W)               -- normalize eigen system
   order_eigen(A, W)               -- order eigval and eigvec by planes
   phase_eigen(A)                  -- rephase eigen vectors to CS form
 
@@ -1207,10 +1205,10 @@ local function phasor (nf, inv_)
   assert(is_nf(nf)  , "invalid argument #1 (normal form expected)")
   assert(is_table(v), "invalid argument #2 (-1 or 1 expected)")
 
-  local ipt, m_n in nf
-  local c, rk = m_n:same(0i):eye(), ipt ~= 0 and 4 or 6
+  local rk, m_n in nf
+  local c = m_n:same(0i):eye()
 
-  for i=2,rk,2 do -- 2,4,6,..
+  for i=2,rk,2 do
     c[i-1]:clear():set(i, 0, v[1]):set(i+1, 0, v[2]) -- c[1] -- clear?
     c[i  ]:clear():set(i, 0, v[3]):set(i+1, 0, v[4]) -- c[2] -- clear?
   end
@@ -1254,7 +1252,7 @@ function normal (m, urdt_)
   normal_a0(nf)                    -- closed form (fix point)
 
   if ustop == "close" then
-    nf.a = nf.m_n -- shared
+    nf.a = nf.a_0 -- shared
     return nf
   end
 
@@ -1263,8 +1261,8 @@ function normal (m, urdt_)
   normal_a1(nf)                    -- linear normal form (Courant-Snyder basis)
 
   if ustop == "linear" or m:mord() == 1 then
-    nf.a = nf.m_n -- shared
     if m:mord() == 1 then nf.m_n = nil end
+    nf.a = nf.a_0 * nf_a_1
     return nf
   end
 
@@ -1274,10 +1272,14 @@ function normal (m, urdt_)
 
   local r1i = nf.m_n:getord(1)^-1  -- linear map (only) in phasors basis
 
-  if is_nil(nf.lam) then           -- eigentunes (lambda)
-    local lam = cvector(nf.rk)
-    for i=1,nf.rk do lam[i] = r1i[i]:get(i+1) end
-    normal_qs(nf, lam)
+  for i=1,nf.rk do                 -- crosscheck eigentunes (set in normal_a1)
+    local ok = r1i[i]:get(i+1):eq(nf.lam[i],100*eig_tol)
+    if not ok then
+      local tostring in MAD
+      local a,b,c = r1i[i]:get(i+1), nf.lam[i], r1i[i]:get(i+1)-nf.lam[i]
+      warn("unexpected inconsistent eigentune no %d", i)
+      warn("%s ~= %s, dif = %s", tostring(a), tostring(b), tostring(c))
+    end
   end
 
   -- non-linear normal form ---------------------
