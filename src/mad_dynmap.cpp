@@ -53,14 +53,17 @@ struct cflw { // must be identical to def of 3 variants in madl_etck.mad!!
   // directions, path
   int sdir, edir, pdir, T, Tbak;
 
+  // internal sine & cosine
+  num_t sa, ca;
+
 // start of polymorphic section
 
   // element data
   MP el, eld, elc, lrad;
   MP eh, ehd, ang, mang;
 
-  // quad, solenoid, multipole, esptum, rfcav, sine & cosine
-  MP k1, ks, volt, freq, lag, sa, ca;
+  // quad, solenoid, multipole, esptum, rfcav
+  MP k1, ks, volt, freq, lag;
   int nbsl;
 
   // fringes
@@ -883,7 +886,7 @@ inline void quad_thicks (cflw<M> &m, num_t lw, int is)
   P cy  = cosh(w*l), sy  = sinh(w*l);
   P mx1 = sx/w     , mx2 = -sx*w;
   P my1 = sy/w     , my2 =  sy*w;
-  R ca  = m.ca, sa = m.sa;
+  num_t ca = m.ca, sa = m.sa;
 
   if (ws != m.charge) // swap x <-> y
     swap(cx,cy), swap(sx,sy), swap(mx1,my1), swap(mx2,my2);
@@ -1077,7 +1080,7 @@ inline void esept_thick (cflw<M> &m, num_t lw, int is)
   mdump(0);
   P l  = R(m.el)*lw;
   P k1 = R(m.volt)*(m.edir*m.charge/m.pc);
-  R ca = m.ca, sa = m.sa;
+  num_t ca = m.ca, sa = m.sa;
 
   FOR (i,m.npar) {
     M p(m,i);
@@ -1520,11 +1523,12 @@ inline void qsad_fringe (cflw<M> &m, num_t lw)
   if (!(chck(m.f1    , minstr) || chck(m.f2    , minstr))) return;
 
   mdump(0);
-  P a   = -0.5*atan2(R(m.ksl[1]), R(m.knl[1]));
-  P b2  = hypot(R(m.knl[1]), R(m.ksl[1]))/R(m.el)*m.edir;
-  P ca  = cos(a), sa = sin(a);
+  P b2  = sqrt(sqr(R(m.knl[1]))+sqr(R(m.ksl[1])))/R(m.el)*m.edir;
   P bf1 = (abs(R(m.f1))*R(m.f1)/-24)*b2;
   P bf2 =               R(m.f2)     *b2*m.sdir;
+
+  num_t a  = -0.5*atan2(fval(m.ksl[1]), fval(m.knl[1]));
+  num_t ca = cos(a), sa = sin(a);
 
   // Lee-Whiting formula, E. Forest ch 13.2.3, eq 13.33
   FOR (i,m.npar) {
