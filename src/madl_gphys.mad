@@ -695,9 +695,7 @@ end
 local s2p = { 1, 2, 3, ["1"]=1, ["2"]=2, ["3"]=3, x=1, y=2, z=3, t=3 }
 local s2v = { 1, 2, 3, 4, ["1"]=1, ["2"]=2, ["3"]=3, ["4"]=4, x=1, px=2, y=3, py=4 }
 
-local function nf_bet (a, p, mon, mt)
-  assert(a:maxord() >= 1+mon:ord(),
-    "beta: damap order is too low %d < %d", a:maxord(), 1+mon:ord())
+local function nf_bet (a, p, mon_, mt)
   local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
   local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
   local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
@@ -707,12 +705,13 @@ local function nf_bet (a, p, mon, mt)
     local a12 = mt[v1..v2+1] or a[v1]:deriv(v2+1) ; mt[v1..v2+1] = a12
           bet = a11^2 + a12^2                     ; mt["bet"..p] = bet
   end
-  return bet:get(mon) * mon:ordpf()
+  if is_nil(mon_) then return bet end
+  assert(a:maxord() >= 1+mon_:ord(),
+    "beta: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
+  return bet:get(mon_) * mon_:ordpf()
 end
 
-local function nf_alf (a, p, mon, mt)
-  assert(a:maxord() >= 1+mon:ord(),
-    "alfa: damap order is too low %d < %d", a:maxord(), 1+mon:ord())
+local function nf_alf (a, p, mon_, mt)
   local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
   local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
   local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
@@ -724,12 +723,13 @@ local function nf_alf (a, p, mon, mt)
     local a22 = mt[v1+1..v2+1] or a[v1+1]:deriv(v2+1) ; mt[v1+1..v2+1] = a22
           alf = -(a11*a21+a12*a22)                    ; mt["alf"..p  ] = alf
   end
-  return alf:get(mon) * mon:ordpf()
+  if is_nil(mon_) then return alf end
+  assert(a:maxord() >= 1+mon_:ord(),
+    "alfa: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
+  return alf:get(mon_) * mon_:ordpf()
 end
 
-local function nf_gam (a, p, mon, mt)
-  assertf(a:maxord() >= 1+mon:ord(),
-    "gama: damap order is too low %d < %d", a:maxord(), 1+mon:ord())
+local function nf_gam (a, p, mon_, mt)
   local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
   local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
   local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
@@ -739,7 +739,10 @@ local function nf_gam (a, p, mon, mt)
     local a22 = mt[v1+1..v2+1] or a[v1+1]:deriv(v2+1) ; mt[v1+1..v2+1] = a22
           gam = a21^2+a22^2                           ; mt["gam"..p  ] = gam
   end
-  return gam:get(mon) * mon:ordpf()
+  if is_nil(mon_) then return gam end
+  assertf(a:maxord() >= 1+mon_:ord(),
+    "gama: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
+  return gam:get(mon_) * mon_:ordpf()
 end
 
 local function nf_pha (a, p, mt)
@@ -754,27 +757,40 @@ local function nf_pha (a, p, mt)
   return pha
 end
 
-local function nf_mu (a, p, mon, mt, a0_, mt0_)
-  assertf(a:maxord() >= 1+mon:ord(),
-    "mu: damap order is too low %d < %d", a:maxord(), 1+mon:ord())
+local function nf_mu (a, p, mon_, mt, a0_, mt0_)
   local pha = nf_pha(a, p, mt)
   if a0_ then pha = pha - nf_pha(a0_, p, mt0_) end
-  return pha:get(mon) * mon:ordpf()
+  if is_nil(mon_) then return pha end
+  assertf(a:maxord() >= 1+mon_:ord(),
+    "mu: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
+  return pha:get(mon_) * mon_:ordpf()
 end
 
-local function nf_dmu (a, p, mon, mt, a0_, mt0_)
-  assertf(a:maxord() >= 2+mon:ord(),
-    "dmu: damap order is too low %d < %d", a:maxord() , 2+mon:ord())
-  mon[6] = mon[6]+1
-  return nf_mu(a, p, mon, mt, a0_, mt0_)
+local function nf_dmu (a, p, mon_, mt, a0_, mt0_)
+  if is_nil(mon_) then
+    local dmu = mt["dmu"..p] --; io.write("dmu"..p, "\n")
+    if not dmu then
+      dmu = nf_mu(a, p, mon_, mt, a0_, mt0_):deriv(6) ; mt["dmu"..p] = dmu
+    end
+    return dmu
+  end
+  assertf(a:maxord() >= 2+mon_:ord(),
+    "dmu: damap order is too low %d < %d", a:maxord() , 2+mon_:ord())
+  mon_[6] = mon_[6]+1
+  return nf_mu(a, p, mon_, mt, a0_, mt0_)
 end
 
-local function nf_dsp (a, v, mon)
-  assertf(a:maxord() >= 1+mon:ord(),
-    "disp: damap order is too low %d < %d", a:maxord() , 1+mon:ord())
+local function nf_dsp (a, v, mon_, mt)
   local v = assertf(s2v[v], "invalid variable '%s'", v)
-  mon[6] = mon[6]+1
-  return a[v]:get(mon) * mon:ordpf()
+  if is_nil(mon_) then
+    local dsp = mt["dsp"..v] --; io.write("dsp"..v, "\n")
+    if not dsp then dsp = a[v]:deriv(6) ; mt["dsp"..v] = dsp end
+    return dsp
+  end
+  assertf(a:maxord() >= 1+mon_:ord(),
+    "disp: damap order is too low %d < %d", a:maxord() , 1+mon_:ord())
+  mon_[6] = mon_[6]+1
+  return a[v]:get(mon_) * mon_:ordpf()
 end
 
 local function nf_wf (a, p, mt)
@@ -797,26 +813,28 @@ local function nf_wf (a, p, mt)
   return bx, ax
 end
 
-local function nf_wrf (a, p, mon, mt)
-  assertf(a:maxord() >= 2+mon:ord(),
-    "wf: damap order is too low %d < %d", a:maxord(), 2+mon:ord())
+local function nf_wrf (a, p, mon_, mt)
   local wrf = mt["wrf"..p] --; io.write("wrf"..p, "\n")
   if not wrf then
     local bx, ax = nf_wf(a, p, mt)
     wrf = sqrt(bx^2 + ax^2) ; mt["wrf"..p] = wrf
   end
-  return wrf:get(mon) * mon:ordpf()
+  if is_nil(mon_) then return wrf end
+  assertf(a:maxord() >= 2+mon_:ord(),
+    "wf: damap order is too low %d < %d", a:maxord(), 2+mon_:ord())
+  return wrf:get(mon_) * mon_:ordpf()
 end
 
-local function nf_wpf (a, p, mon, mt)
-  assertf(a:maxord() >= 2+mon:ord(),
-    "wfp: damap order is too low %d < %d", a:maxord(), 2+mon:ord())
+local function nf_wpf (a, p, mon_, mt)
   local wpf = mt["wpf"..p] --; io.write("wpf"..p, "\n")
   if not wpf then
     local bx, ax = nf_wf(a, p, mt)
     wpf = atan2(ax, bx) ; mt["wpf"..p] = wpf
   end
-  return wpf:get(mon) * mon:ordpf()/twopi
+  if is_nil(mon_) then return wpf/twopi end
+  assertf(a:maxord() >= 2+mon_:ord(),
+    "wfp: damap order is too low %d < %d", a:maxord(), 2+mon_:ord())
+  return wpf:get(mon_) * mon_:ordpf()/twopi
 end
 
 local optfct = { alfa=nf_alf, beta=nf_bet, gama=nf_gam, disp=nf_dsp, mu=nf_mu, dmu=nf_dmu,
@@ -828,14 +846,15 @@ local optlst = { alfa="alfa", beta="beta", gama="gama", disp="disp", mu="mu", dm
 local optvar = { dx="1", dpx="2", dy="3", dpy="4", wx="1", wy="2", wxp="1", wyp="2" }
 local optlen = { alfa=2, beta=2, gama=2, disp=1, mu=1, dmu=1,
                  dx=0, dy=0, dpx=0, dpy=0, wx=0, wy=0, wxp=0, wyp=0 }
-local optsep = { [("_"):byte()] = "000000", [("-"):byte()] = "", [("v"):byte()] = "" }
+local optsep = { [("_"):byte()] = "000000", [("-"):byte()] = "",
+                 [("v"):byte()] = ""      , [("f"):byte()] = "f" }
 
 local function nf_pk (of)
   local f = assertf(optlst[of:match("%l+")], "invalid function '%s'", of)
   local n = optlen[f]
   local p, k = optvar[f] or of:sub(#f+1,#f+n), of:sub(#f+1+n) or "_"
   local m = assertf(optsep[k:byte()], "invalid separateur '%s'", of)
-  return f, p, m..k:sub(2)
+  return f, p, m ~= "f" and m..k:sub(2) or nil
 end
 
 local function nfopt (nf, of, ki_, ko_, mt_, a0_, mt0_)
@@ -861,7 +880,7 @@ local function nfopt (nf, of, ki_, ko_, mt_, a0_, mt0_)
 
   local f, p, ms = nf_pk(of)
 --print("of=", of, "f=", f, "p=", p, "ms=", ms, "ks=", ks)
-  return optfct[f](ar, p, monomial(ms..ks), mt_ or {}, a0_, mt0_ or {})
+  return optfct[f](ar, p, ms and monomial(ms..ks) or nil, mt_ or {}, a0_, mt0_ or {})
 end
 
 gphys.optfun = nfopt
