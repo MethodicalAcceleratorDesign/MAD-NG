@@ -35,11 +35,12 @@ local assertf, errorf, printf, num2str, tbl2str, setkeys, tblcat,
 local lbool                                                      in MAD.gfunc
 local pi, twopi, rad2deg                                         in MAD.constant
 local abs, cabs, sqrt, exp, log, sin, cos, tan, atan2, tgamma, lgamma,
-      sinh, cosh, real, imag, cplx, fact, rangle, hypot, sign, conj in MAD.gmath
+      sinh, cosh, real, imag, cplx, fact, rangle, hypot, sign, conj,
+      fabs, fval                                                 in MAD.gmath
     
 local is_nil, is_boolean, is_number, is_positive, is_nonzero, is_integer,
       is_natural, is_nznatural, is_even, is_odd, is_string, is_table,
-      is_mappable, is_indexable, is_monomial,
+      is_mappable, is_indexable, is_monomial, is_rawtable,
       is_matrix, is_cmatrix, isa_matrix, is_vector, is_cvector,
       is_tpsa, is_damap, is_cdamap, isa_damap, wrestrict         in MAD.typeid
 
@@ -690,12 +691,156 @@ local function nf_haml (nf, ms, ki_, ko_)
   return nf.ham[ms] or 0i
 end
 
+-- coupling terms -- Edwards-Teng coupling formalism (Lebedev & Bogacz 2010)
+
+local nf_bet, nf_alf -- forward decl
+
+local det = \a       -> a[1]*a[4] - a[2]*a[3] -- polymorphic 2x2 matrix helpers
+local scl = \a,v     -> {a[1]*v, a[2]*v, a[3]*v, a[4]*v}
+local dot = \a,b,i,j -> a[i]*b[j] + a[i+1]*b[j+2]
+local mul = \a,b     -> {dot(a,b,1,1),dot(a,b,1,2),dot(a,b,3,1),dot(a,b,3,2)}
+
+local function nf_cplg (a, mt_)
+  local fun = is_damap(a) -- either damap (functions) or beta0 block (scalars)
+  local res = fun and mt_ or a -- mt is required for functions calculation
+
+  assert(fun or typeid.is_beta0(a),
+                          "invalid argument #1 (damap or beta0 block expected)")
+  assert(not is_nil(res), "invalid argument #2 (table expected)")
+
+  if fun and mt_.kpa then return end -- memoization already done
+
+  local bet0 = assert(a.beta or mt_.beta, "unable to retrieve beta0")
+  local dpp1 = sqrt(1 + 2/bet0*a.pt + a.pt^2)
+
+  local beta11 = fun and nf_bet(a, "11", nil, mt_) or a.beta11
+  local beta12 = fun and nf_bet(a, "12", nil, mt_) or a.beta12
+  local beta21 = fun and nf_bet(a, "21", nil, mt_) or a.beta21
+  local beta22 = fun and nf_bet(a, "22", nil, mt_) or a.beta22
+  local alfa11 = fun and nf_alf(a, "11", nil, mt_) or a.alfa11
+  local alfa22 = fun and nf_alf(a, "22", nil, mt_) or a.alfa22
+
+  res.betx  = beta11*dpp1
+  res.bety  = beta22*dpp1
+  res.alfx  = alfa11
+  res.alfy  = alfa22
+  res.kpa   = 1
+  res.r11   = 0
+  res.r22   = 0
+  res.r12   = 0
+  res.r21   = 0
+  res.f1010 = 0
+  res.f1001 = 0
+
+  local kx2 = beta12/beta11                                         -- eq. 4.7
+  local ky2 = beta21/beta22
+  local kxy = kx2*ky2
+
+  if fabs(kx2-ky2) >= stab_tol and fabs(1-kxy) >= stab_tol then -- eq. 4.8 & 4.9
+    local alfa12 = fun and nf_alf(a, "12", nil, mt_) or a.alfa12
+    local alfa21 = fun and nf_alf(a, "21", nil, mt_) or a.alfa21
+    local kx, ky = sqrt(kx2), sqrt(ky2)
+    local ax = alfa11*kx - alfa12/kx                                -- eq. 4.7
+    local ay = alfa22*ky - alfa21/ky
+    local ku = kxy*(1+(ax*ax-ay*ay)/(kx2-ky2)*(1-kxy))              -- eq. 4.8
+    local u = -kxy/(1-kxy)
+    local s = 0
+    if fval(ku) >= stab_tol then
+      local su = sqrt(ku)
+      s = kxy <= su and +1 or -1
+      u = u + s * su/(1-kxy)                                        -- eq. 4.8
+    end
+    local kpa = 1-u
+
+    res.betx = res.betx/kpa                                        -- eq. 7.16
+    res.bety = res.bety/kpa
+    res.alfx = res.alfx/kpa
+    res.alfy = res.alfy/kpa
+    res.kpa  = kpa
+
+    local bx  = kx*kpa + u/kx                                      -- eq. 4.10
+    local by  = ky*kpa + u/ky
+    local cx  = kx*kpa - u/kx
+    local cy  = ky*kpa - u/ky
+    local evp = (ax + 1i*bx) / (ay - 1i*by)
+    local evm = (ax + 1i*cx) / (ay + 1i*cy)
+    local ev1 = sqrt(evp*evm)                                      -- eq. 4.11
+    local ev2 = sqrt(evp/evm)
+
+    local ev1_re, ev1_im = real(ev1), imag(ev1)
+    local ev2_re, ev2_im = real(ev2), imag(ev2)
+
+--  local swp = ""
+--  cnt = cnt + 1
+
+    if sign(fval(ev1_im)) ~= sign(fval(ev2_im)) then               -- eq. 7.12
+      -- see discussion in paragraph after eq. 4.11
+      if fval(ev1_re) < 0
+      then ev1_re, ev1_im = -ev1_re, -ev1_im -- ; swp = "[1]"
+      else ev2_re, ev2_im = -ev2_re, -ev2_im -- ; swp = "[2]"
+      end
+    end
+
+    res.r11 =  sqrt(beta22/beta12) * (u*ev2_re + alfa12*ev2_im)/kpa
+    res.r22 = -sqrt(beta11/beta21) * (u*ev1_re + alfa21*ev1_im)/kpa
+    res.r12 =  sqrt(beta11*beta21) * ev1_im/kpa
+    res.r21 =  (ev2_re*(alfa12*kpa - alfa22*u) -
+                ev2_im*(alfa12*alfa22 + kpa*u)) / (kpa*sqrt(beta12*beta22))
+
+--  printf("%-3d, %d, %s, %- .5e, %- .5f, %- .5f, %- .5f, %- .5f, %- .5f\n",
+--   cnt, s, swp, fval(u), fval(res.r12), fval(ev1_re), fval(ev1_im), fval(ev2_re), fval(ev2_im))
+
+    local sbetx, sbety = sqrt(res.betx), sqrt(res.bety)
+    local   r  = {res.r22, -res.r12, -res.r21, res.r11}         -- -S*R*S
+    local   ga = {1/sbetx, 0,  res.alfx/sbetx,   sbetx}
+    local  _gb = {  sbety, 0, -res.alfy/sbety, 1/sbety}         -- gb^-1
+    local    c = scl(r, 1/sqrt(1+det(r)))                       -- eq. 16
+    local cbar = mul(ga, mul(c, _gb))                           -- eq. 5
+    local   cb = scl(cbar, 0.25/sqrt(1-det(cbar)))              -- eq. 9 & 10
+
+    res.f1010 = -cb[2]-cb[3] + 1i*(cb[1]-cb[4])
+    res.f1001 =  cb[2]-cb[3] + 1i*(cb[1]+cb[4])
+  end
+end
+
 -- optical functions --
 
-local s2p = { 1, 2, 3, ["1"]=1, ["2"]=2, ["3"]=3 }
+local s2p = { 1, 2, 3, ["1"]=1, ["2"]=2, ["3"]=3, x=1, y=2, t=3 }
 local s2v = { 1, 2, 3, 4, ["1"]=1, ["2"]=2, ["3"]=3, ["4"]=4, x=1, px=2, y=3, py=4 }
+local s2k = { x="x", y="y" }
+local s2f = { ["1010"]="1010", ["1001"]="1001" }
+local s2r = { ["11"]="11", ["12"]="12", ["21"]="21", ["22"]="22" }
 
-local function nf_bet (a, p, mon_, mt)
+local function nf_kpa (a, _, mon_, mt)
+  nf_cplg(a, mt)
+  local kpa = mt.kpa
+  if is_nil(mon_) then return kpa end
+  assert(a:maxord() >= 1+mon_:ord(),
+    "rmatrix: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
+  return kpa:get(mon_) * mon_:ordpf()
+end
+
+local function nf_flc (a, f, mon_, mt)
+  assert(s2f[f], "invalid linear coupling function")
+  nf_cplg(a, mt)
+  local flc = mt["f"..f]
+  if is_nil(mon_) then return flc end
+  assert(a:maxord() >= 1+mon_:ord(),
+    "coupling: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
+  return flc:get(mon_) * mon_:ordpf()
+end
+
+local function nf_rlc (a, r, mon_, mt)
+  assert(s2r[r], "invalid linear coupling matrix term")
+  nf_cplg(a, mt)
+  local rlc = mt["r"..r]
+  if is_nil(mon_) then return rlc end
+  assert(a:maxord() >= 1+mon_:ord(),
+    "rmatrix: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
+  return rlc:get(mon_) * mon_:ordpf()
+end
+
+function nf_bet (a, p, mon_, mt)
   local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
   local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
   local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
@@ -705,13 +850,14 @@ local function nf_bet (a, p, mon_, mt)
     local a12 = mt[v1..v2+1] or a[v1]:deriv(v2+1) ; mt[v1..v2+1] = a12
           bet = a11^2 + a12^2                     ; mt["bet"..p1..p2] = bet
   end
+  if s2k[p] then nf_cplg(a, mt) ; bet = mt["bet"..p] end
   if is_nil(mon_) then return bet end
   assert(a:maxord() >= 1+mon_:ord(),
     "beta: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
   return bet:get(mon_) * mon_:ordpf()
 end
 
-local function nf_alf (a, p, mon_, mt)
+function nf_alf (a, p, mon_, mt)
   local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
   local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
   local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
@@ -723,6 +869,7 @@ local function nf_alf (a, p, mon_, mt)
     local a22 = mt[v1+1..v2+1] or a[v1+1]:deriv(v2+1) ; mt[v1+1..v2+1] = a22
           alf = -(a11*a21+a12*a22)                    ; mt["alf"..p1..p2] = alf
   end
+  if s2k[p] then nf_cplg(a, mt) ; alf = mt["alf"..p] end
   if is_nil(mon_) then return alf end
   assert(a:maxord() >= 1+mon_:ord(),
     "alfa: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
@@ -837,33 +984,41 @@ local function nf_wpf (a, p, mon_, mt)
   return wpf:get(mon_) * mon_:ordpf()/twopi
 end
 
-local optfct = { alfa=nf_alf, beta=nf_bet, gama=nf_gam, disp=nf_dsp, mu=nf_mu, dmu=nf_dmu,
-                 dx=nf_dsp, dy=nf_dsp, dpx=nf_dsp, dpy=nf_dsp,
-                 wx=nf_wrf, wy=nf_wrf, wxp=nf_wpf, wyp=nf_wpf, }
+-- interface to optfun
+
+local optfct = { alfa=nf_alf, beta=nf_bet, gama=nf_gam, disp=nf_dsp,  mu=nf_mu, dmu=nf_dmu,
+                 alfx=nf_alf, betx=nf_bet, alfy=nf_alf, bety=nf_bet,   f=nf_flc,  r=nf_rlc,
+                   dx=nf_dsp,   dy=nf_dsp,  dpx=nf_dsp,  dpy=nf_dsp, kpa=nf_kpa,
+                   wx=nf_wrf,   wy=nf_wrf,  wxp=nf_wpf,  wyp=nf_wpf, }
 local optlst = { alfa="alfa", beta="beta", gama="gama", disp="disp", mu="mu", dmu="dmu",
+                 alfx="alfx", betx="betx", alfy="alfy", bety="bety", f="f", r="r", kpa="kpa",
                  dx="dx", dy="dy", dpx="dpx", dpy="dpy",
                  wx="wx", wy="wy", wxp="wxp", wyp="wyp" }
-local optvar = { dx="1", dpx="2", dy="3", dpy="4", wx="1", wy="2", wxp="1", wyp="2" }
 local optlen = { alfa=2, beta=2, gama=2, disp=1, mu=1, dmu=1,
+                 alfx=0, betx=0, alfy=0, bety=0, f=4, r=2, kpa=0,
                  dx=0, dy=0, dpx=0, dpy=0, wx=0, wy=0, wxp=0, wyp=0 }
+local optvar = { alfx="x", betx="x", alfy="y", bety="y", kpa="",
+                 dx="1", dpx="2", dy="3", dpy="4", wx="1", wy="2", wxp="1", wyp="2" }
 local optsep = { [("_"):byte()] = "000000", [("-"):byte()] = "",
-                 [("v"):byte()] = ""      , [("f"):byte()] = "f" }
+                 [("v"):byte()] = ""      , [("!"):byte()] = "!" }
 
 local function nf_pk (of)
   local f = assertf(optlst[of:match("%l+")], "invalid function '%s'", of)
   local n = optlen[f]
   local p, k = optvar[f] or of:sub(#f+1,#f+n), of:sub(#f+1+n) or "_"
   local m = assertf(optsep[k:byte()], "invalid separateur '%s'", of)
-  return f, p, m ~= "f" and m..k:sub(2) or nil
+  return f, p, m ~= "!" and m..k:sub(2) or nil
 end
 
 local function nfopt (nf, of, ki_, ko_, mt_, a0_, mt0_)
   local ar, ks = nf, ""
 
-  if is_damap(ki_) then      -- right shifts
+  if is_damap(ki_) then        -- right shifts
     a0_, ki_, ko_ = ki_, nil, nil
-  elseif is_damap(ko_) then  -- right shifts
+  elseif is_damap(ko_) then    -- right shifts
     a0_, ko_ = ko_, nil
+  elseif is_rawtable(ki_) then -- right shifts
+    mt_, ki_, ko_ = ki_, nil, nil
   end
 
   -- build knobs monomial string
@@ -1619,90 +1774,7 @@ function gphys.map2bet (map, rnk_, cpl_, bet_, dir_) -- TODO: move to beta0
   end
 
   -- Edwards-Teng coupling formalism (Lebedev & Bogacz 2010)
-
-  if bb0.cplg then
-    local dpp1 = sqrt(1 + 2/bb0.beta*bb0.pt + bb0.pt^2)
-    bb0.betx = bb0.beta11*dpp1
-    bb0.bety = bb0.beta22*dpp1
-    bb0.alfx = bb0.alfa11
-    bb0.alfy = bb0.alfa22
-    bb0.kpa  = 1
-
-    local kx2 = bb0.beta12/bb0.beta11                                 -- eq. 4.7
-    local ky2 = bb0.beta21/bb0.beta22
-    local kxy = kx2*ky2
-
-    if abs(kx2-ky2) >= stab_tol and abs(1-kxy) >= stab_tol then -- eq. 4.8 & 4.9
-      local kx, ky = sqrt(kx2), sqrt(ky2)
-      local ax = (bb0.alfa11*kx - bb0.alfa12/kx);                     -- eq. 4.7
-      local ay = (bb0.alfa22*ky - bb0.alfa21/ky);
-      local ku = kxy*(1+(ax*ax-ay*ay)/(kx2-ky2)*(1-kxy))              -- eq. 4.8
-      local u = -kxy/(1-kxy)
-      local s = 0
-      if ku >= stab_tol then
-        local su = sqrt(ku)
-        s = kxy <= su and +1 or -1
-        u = u + s * su/(1-kxy)                                        -- eq. 4.8
-      end
-      local kpa = 1-u
-
-      bb0.betx = bb0.betx/kpa                                        -- eq. 7.16
-      bb0.bety = bb0.bety/kpa
-      bb0.alfx = bb0.alfx/kpa
-      bb0.alfy = bb0.alfy/kpa
-      bb0.kpa  = kpa
-
-      local bx  = kx*kpa + u/kx                                      -- eq. 4.10
-      local by  = ky*kpa + u/ky
-      local cx  = kx*kpa - u/kx
-      local cy  = ky*kpa - u/ky
-      local evp = (ax + 1i*bx) / (ay - 1i*by)
-      local evm = (ax + 1i*cx) / (ay + 1i*cy)
-      local ev1 = sqrt(evp*evm)                                      -- eq. 4.11
-      local ev2 = sqrt(evp/evm)
-
-      local swp = ""
-      cnt = cnt + 1
-
---    local a1  = rad2deg*ev1:carg()
---    local a2  = rad2deg*ev2:carg()
-
-      if sign(ev1.im) ~= sign(ev2.im) then                           -- eq. 7.12
-        -- see discussion in paragraph after eq. 4.11
-        if ev1.re < 0 then ev1 = -ev1 ; swp = "[1]" else ev2 = -ev2 ; swp = "[2]" end
-      end
-
-      bb0.r11  =  sqrt(bb0.beta22/bb0.beta12) * (u*ev2.re + bb0.alfa12*ev2.im)/kpa
-      bb0.r22  = -sqrt(bb0.beta11/bb0.beta21) * (u*ev1.re + bb0.alfa21*ev1.im)/kpa
-      bb0.r12  =  sqrt(bb0.beta11*bb0.beta21) * ev1.im/kpa
-      bb0.r21  = (ev2.re*(bb0.alfa12*kpa - bb0.alfa22*u) -
-                  ev2.im*(bb0.alfa12*bb0.alfa22 + kpa*u)) / (kpa*sqrt(bb0.beta12*bb0.beta22))
-
---    local b1  = rad2deg*ev1:carg()
---    local b2  = rad2deg*ev2:carg()
-
---    printf("%-3d, %d, %- .5e, %- .5f, %- .5f, %- .5f, %- .5f, %- .5f, % 7.2f, % 7.2f %s\n",
---            cnt, s, u, bb0.r12, ev1.re, ev1.im, ev2.re, ev2.im, a1-a2, b1-b2, swp)
-
-      local sbetx, sbety = sqrt(bb0.betx), sqrt(bb0.bety)
-      local    r  = matrix(2):fill{bb0.r22, -bb0.r12, -bb0.r21, bb0.r11} -- -S*R*S
-      local    ga = matrix(2):fill{1/sbetx, 0,  bb0.alfx/sbetx,   sbetx}
-      local   _gb = matrix(2):fill{  sbety, 0, -bb0.alfy/sbety, 1/sbety} -- gb^-1
-      local     c = r/sqrt(1+r:det())              -- eq. 16
-      local  cbar = ga * c * _gb                   -- eq. 5
-      local    cb = 0.25/sqrt(1-cbar:det())*cbar   -- eq. 9 & 10
-
-      bb0.f1010 = -cb:get(1,2)-cb:get(2,1) + 1i*(cb:get(1,1)-cb:get(2,2))
-      bb0.f1001 =  cb:get(1,2)-cb:get(2,1) + 1i*(cb:get(1,1)+cb:get(2,2))
-    else
-      bb0.r11   = 0
-      bb0.r22   = 0
-      bb0.r12   = 0
-      bb0.r21   = 0
-      bb0.f1010 = 0
-      bb0.f1001 = 0
-    end
-  end
+  if bb0.cplg then nf_cplg(bb0) end
 
   return bb0
 end
