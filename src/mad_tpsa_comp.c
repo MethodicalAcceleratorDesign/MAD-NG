@@ -300,11 +300,7 @@ FUN(eval) (ssz_t sa, const T *ma[sa], ssz_t sb, const NUM tb[sb], NUM tc[sa])
     FUN(setval)(t, tb[ib]);
     mb[ib] = t;
   }
-  FOR(ic,sa) {
-    T *t = FUN(newd)(ma[0]->d,0);
-    FUN(setval)(t, tc[ic]);
-    mc[ic] = t;
-  }
+  FOR(ic,sa) mc[ic] = FUN(newd)(ma[0]->d,0);
 
   FUN(compose)(sa, ma, sb, mb, mc);
 
