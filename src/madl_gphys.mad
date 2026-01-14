@@ -33,13 +33,14 @@ local vector, cvector, matrix, monomial, damap, cdamap,
 local assertf, errorf, printf, num2str, tbl2str, setkeys, tblcat,
       mockfile, openfile                                         in MAD.utility
 local lbool                                                      in MAD.gfunc
-local pi, twopi                                                  in MAD.constant
-local abs, sqrt, exp, log, sin, cos, tan, atan2, tgamma, lgamma,
-      sinh, cosh, real, imag, cplx, fact, rangle, hypot, sign    in MAD.gmath
+local pi, twopi, rad2deg                                         in MAD.constant
+local abs, cabs, sqrt, exp, log, sin, cos, tan, atan2, tgamma, lgamma,
+      sinh, cosh, real, imag, cplx, fact, rangle, hypot, sign, conj,
+      fabs, fval                                                 in MAD.gmath
     
 local is_nil, is_boolean, is_number, is_positive, is_nonzero, is_integer,
       is_natural, is_nznatural, is_even, is_odd, is_string, is_table,
-      is_mappable, is_indexable, is_monomial,
+      is_mappable, is_indexable, is_monomial, is_rawtable,
       is_matrix, is_cmatrix, isa_matrix, is_vector, is_cvector,
       is_tpsa, is_damap, is_cdamap, isa_damap, wrestrict         in MAD.typeid
 
@@ -101,24 +102,6 @@ local gphys = {
     'alfa31', 'beta31', 'gama31', 'alfa32', 'beta32', 'gama32', 'alfa33', 'beta33', 'gama33', 'mu3', 'dmu3',
     'betx'  , 'bety'  , 'alfx'  , 'alfy'  , 'kpa'   , 'r11'   , 'r12'   , 'r21'   , 'r22'   , -- Edwards-Teng
     'f1010' , 'f1001' , -- linear RDTs
-  },
-
-  -- optical functions names converter (e.g. from MAD-X), see also beta0
-  ofcvtname = {
-    -- MAD-X names
-    alfx='alfa11', betx='beta11', mux='mu1', dmux='dmu1',
-    alfy='alfa22', bety='beta22', muy='mu2', dmuy='dmu2',
-    alfz='alfa33', betz='beta33', muz='mu3', dmuz='dmu3', -- not MAD-X
-
-    -- other shortcut
-    alfa1='alfa11', beta1='beta11',
-    alfa2='alfa22', beta2='beta22',
-    alfa3='alfa33', beta3='beta33',
-
-    -- tunes, chromas
-    qx='q1', dqx='dq1',
-    qy='q2', dqy='dq2',
-    qz='q3', dqz='dq3',
   },
 }
 
@@ -197,8 +180,6 @@ function gphys.melmcol (mtbl, cols)
 end
 
 -- mflows ---------------------------------------------------------------------o
-
- -- TODO: move to track
 
 -- particles/damaps status rank: Xset/Mset/Aset/stable/unstable/singular/lost
 local mrnk = {Xset=1, Mset=1, Aset=1, stable=1, unstable=2, singular=3, lost=4}
@@ -444,111 +425,52 @@ gphys.make_symp = \M -> make_symp(chksysiz(M))
 
 -- closed form, eigen systems -------------------------------------------------o
 
--- closed form of M in place or in A_ (see also normal_a0)
+  -- order in place eigenvectors/values by planes (x,px), (y,py) and (t,pt).
 
-local function closed_form (M, A_)
-  local nr, nc = M:sizes()
+local function order_eigen (V, W)
+  local n = min(6,V:sizes())
+  local f = {false,false}
+  local p
 
-  if nr == 4 and nc == 4 then return end
-  local pt = nc >= 6 and 6 or 5
-
-  -- close dispersion as a function of pt (multiply by beta for function of dp)
-  local D4 = M:getsub(r4,pt)
-  local R4 = M:getsub(r4,r4)
-  local C4, rnk = (I4-R4):solve(D4) ;
-  (A_ or M):setsub(r4,pt,C4)
-
-  if option.debug >= 2 then
-    io.write("**Closed dispersion:\n")
-    C4:print("Dispersion ") ;
-    (A_ or M):print("AorM")
+  if option.eigen123
+  then p = n > 4 and {1,3,5} or {1,3}  -- search by 1st, 2nd, 3rd order.
+  else p = n > 4 and {3,1,5} or {3,1}  -- search by 2nd, 1st, 3rd order.
   end
-end
 
-gphys.closed_form = \M,A_ -> closed_form(chksysiz(M,A_))
-
--- order in place eigenvectors and eigenvalues by planes (x,px), (y,py) and
--- (t,pt), detect by horizontal, vertical, longitudinal order (MAD-NG order)
-
-local function order_eigen (V, W)  -- default
-  local n = min(V:sizes())
-  for i=1,n-3,2 do
-    local mv, k = 0
-
-    for j=i,n-1,2 do
+  for _,i in ipairs(p) do -- scan planes
+    local mv, k = 0, i
+    for j=1,n-1,2 do
       local pv = V:get(i,j  )^2 + V:get(i+1,j  )^2 + -- real part
                  V:get(i,j+1)^2 + V:get(i+1,j+1)^2   -- imag part
       if pv > mv then mv, k = pv, j end
     end
+    assert(mv > 0, "invalid sub-rank eigenvectors (zero-row pair found)")
+    if not f[(k+1)/2] then f[(i+1)/2] = (k+1)/2 end
+  end
 
-    if i ~= k then
-      -- swap eigenvectors/eigenvalues pairs (i,i+1) with (k,k+1)
-      V:swpcol({i,i+1}, {k,k+1})
-      if not is_nil(W) then
-        W[i], W[i+1], W[k], W[k+1] = W[k], W[k+1], W[i], W[i+1]
-      end
+  for ii,kk in ipairs(f) do
+    if ii ~= kk then
+      local i, k = ii*2-1, kk*2-1
+      V:swpcol({i,i+1}, {k,k+1})   -- swap eigenvectors/eigenvalues pairs
+      W[i], W[i+1], W[k], W[k+1] = W[k], W[k+1], W[i], W[i+1]
     end
   end
 
   if option.debug >= 2 then
     io.write("**Ordered eigensystem:\n")
+    for i,k in ipairs(f) do
+      io.write("order_eigen: rk=",n,", ",i," <-> ",k,"\n")
+    end
     V:print('Eigenvectors ')
-    if not is_nil(W) then W:print('Eigenvalues ') end
+    W:print('Eigenvalues ')
   end
 end
 
 gphys.order_eigen = \V,W -> order_eigen(chksysiz(V,W))
 
--- order in place eigenvectors and eigenvalues by planes (x,px), (y,py) and
--- (t,pt), detect by vertical, horizontal, longitudinal order (MAD-X order)
-
-local idx_p = {3,1,5} -- vertical, horizontal, longitudinal
-local idx_l = {[1]=3,[3]=1,[4]=5,[6]=3,[8]=1}
-
-local function order_eigen_madx (V)  -- for comparison
-  local n, idx, sel = min(V.nrow,6), {0,0}, {}
-
-  -- collect columns with largest components for each plane
-  for k=1,n/2-1 do
-    local i, mv = idx_p[k], 0
-    for j=1,n-1,2 do
-      if not sel[j] then -- not yet selected
-        local pv = V:get(i,j  )^2 + V:get(i+1,j  )^2 + -- real part
-                   V:get(i,j+1)^2 + V:get(i+1,j+1)^2   -- imag part
-        if pv > mv then mv, idx[k], sel[j] = pv, j, true end
-      end
-    end
-  end
-  -- last plane: remaining index
-  idx[n/2] = idx_l[idx[1]+idx[2]]
-  -- swap indexes: vertical, horizontal => horizontal, vertical
-  idx[1], idx[2] = idx[2], idx[1]
-
-  -- reorder eigenvectors and eigenvalues
-  local Vc = V:copy()
-  for kk,j in ipairs(idx) do
-    local k = 2*kk-1
-    if k ~= j then
-      for i=1,n do
-        V:set(i,k  , Vc:get(i,j  ))
-        V:set(i,k+1, Vc:get(i,j+1))
-      end
-    end
-  end
-
-  if option.debug >= 2 then
-    io.write("**Ordered eigensystem (madx-like):")
-    for kk,j in ipairs(idx) do io.write(' ',j,'->',2*kk-1) end
-    io.write('\n')
-    V:print('Eigenvectors ')
-  end
-end
-
-gphys.order_eigen_madx = \V -> order_eigen_madx(chksysiz(V))
-
 -- normalize in place eigenvectors such that [x,px]=1, [y,py]=1 and [t,pt]=1
 
-local function norml_eigen (A)
+local function norml_eigen (A, W)
   for j=2,A.ncol,2 do
     local pb = 0           -- poisson bracket (columns pair)
     for i=2,A.nrow,2 do
@@ -560,18 +482,21 @@ local function norml_eigen (A)
       A:set(i,j-1, A:get(i,j-1) * (spb / pb))
       A:set(i,j  , A:get(i,j  ) /  spb      )
     end
+    if pb < 0 then W[j-1], W[j] = W[j], W[j-1] end -- w = conj(w)
   end
 
   if option.debug >= 2 then
     io.write("**Normalized eigensystem:\n")
     A:print('Eigenvectors ') ; io.write("symperr=", num2str(A:symperr()), "\n")
+    W:print('Eigenvalues ')
   end
 end
 
-gphys.norml_eigen = \A -> norml_eigen(chksysiz(A))
+gphys.norml_eigen = \A,W -> norml_eigen(chksysiz(A,W))
 
 -- rephase in place the eigenvectors to obtain the Courant-Snyder form
 -- i.e. A(1,2)=0 and mu1>0, A(3,4)=0 and mu2>0, A(5,6)=0 and mu3>0
+-- note: eigensystems are invariant to eigenvectors phase (easy to demonstrate)
 
 local function phase_eigen (A)
   local nr, nc = A:sizes()
@@ -580,7 +505,6 @@ local function phase_eigen (A)
   for i=2,min(nr,nc),2 do
     local a11, a12 = A:get(i-1,i-1), A:get(i-1,i) -- mu = atan2(a12, a11) / 2pi
     local d = hypot(a11,a12)
-!   if a11 < 0 then d = -d end  -- add pi (sometimes needed for comparison with PTC...)
     assertf(d > 1e-14, "invalid eigenvectors (unexpected denom |% -.16e|>0)", d)
     a11, a12 = a11/d, a12/d
     P:set(i-1,i-1,  a11) -- P = [ a11/d  -a12/d ] = [ cos a  -sin a ]
@@ -598,201 +522,61 @@ local function phase_eigen (A)
     io.write("**Rephased eigenvectors:\n")
     A:print('Eigenvectors ') ; io.write("symperr=", num2str(A:symperr()), "\n")
   end
-
-  return A
 end
 
 gphys.phase_eigen = \A -> phase_eigen(chksysiz(A))
 
--- linear normal form ---------------------------------------------------------o
-
--- check one-turn map linear normalisation
--- check that N = (A^-1 * R * A) [= Abar * R * A] contains only rotations
-
-local nrm_tol in phystol
-
-function gphys.is_normal1 (A, R, nrmtol_)
-  local tol = nrmtol_ or nrm_tol
-  local get, set, n = A.get, A.set, A.nrow
-
-  -- use 'true' inverse in case of large symplectic deviation
-  local N = A:inv() * R * A
-
-  if option.debug >= 2 then
-    io.write("**Normalized form:\n")
-    N:print("N = A^-1 R A ") ; (A:bar() * R * A) :print("Abar R A ")
-  end
-
-  for i = 1,n-1,2 do
-    local a1 = atan2( get(N,i,i+1), get(N,i  ,i  ))
-    local a2 = atan2(-get(N,i+1,i), get(N,i+1,i+1))
-    if abs(a1-a2) > tol then
-      warn("invalid linear normal form #%d (deviates from a pure rotation by %s)",
-           i, num2str(a1-a2))
-      R:print('R') ; N:print('N')
-      return false
-    end
-    local rg = range(i,i+1)
-    N:setsub(rg, rg, 0)
-  end
-  if not N:eq(0, tol) then
-    warn("invalid linear normal form N (contains coupling terms)")
-    R:print('R') ; N:print('N')
-    return false
-  end
-
-  return true
-end
-
--- linear normal form in matrix A from one-turn-map R in place ----------------o
-
-function gphys.normal1 (m, nocheck_) -- combines normal_a0 and normal_a1
-  assert(is_damap(m), "invalid argument #1 (damap expected)")
-
-  -- already a normal form
-  if m.status == 'Aset' then return end
-
-  local fmt
-  if option.debug >= 2 then
-    io.write("-> Normal form\n")
-    fmt, option.numfmt = option.numfmt, "% .5e"
-  end
-
-  -- one-turn map R
-  local R = m:get1() ; chksysiz(R)
-
-  if option.debug >= 2 then
-    io.write("One-turn map (input):\n")
-    R:print('R ') ; io.write("symperr=", num2str(R:symperr()), "\n")
-  end
-
-  -- detect rank of the system
-  local nr, nc = R:sizes()
-  local dim = min(nr,nc)
-  local rnk = has_dpt(R) and 6 or 4
-  local R6
-
-  -- switch to 4D
-  if rnk == 4 and dim > 4 then R6, R = R, R:getsub(r4,r4) end
-
-  -- stabilise R if needed
-  make_stable(R)
-
-  -- symplectifiy R if needed
-  make_symp(R)
-
-  -- get eigenvalues (W) and right eigenvectors (A) of R
-  local W, info, A = R:eigen(R:same())
-
-  -- check that system is eigen
-  if not nocheck_ then gphys.is_eigsys(A, W, R) end
-
-  -- normalize eigen system
-  norml_eigen(A)
-
-  -- order eigenvalues and eigenvectors by planes
-  order_eigen(A)
-
-  -- rephase eigen vectors to Courant-Snyder form
-  phase_eigen(A)
-
-  -- check that system is a linear normal form
-  if not nocheck_ then gphys.is_normal1(A, R) end
-
-  -- back to 6D, close dispersion (5D)
-  if rnk == 4 and dim > 4 then
-    A, R = I6:copy():setsub(r4,r4,A), R6
-    closed_form(R, A)
-  end
-
-  if option.debug >= 2 then
-    io.write("Normalising map (output):\n")
-    A:print('A ') ;
-    option.numfmt = fmt
-    io.write("<- Normal form\n")
-  end
-
-  return A, rnk, info
-end
-
 -- linear and non-linear normal form ------------------------------------------o
 
 local nf_id = {}
-local is_nf = \a -> a.__id == nf_id
+local is_nf = \a -> is_table(a) and a.__id == nf_id
 
-local nf_knd = {all='all', anh='anh', gnf='gnf', ham='ham'}
-
-local function nfcpy (nf, a_)
-  assert(is_nf (nf), "invalid argument #1 (normal form expected)")
-  assert(is_nil(a_) or is_cdamap(a_), "invalid argument #3 (cdamap expected)")
-
-  -- make a copy for nfana
-  local cpy = {
-    __id    = nf_id,
-
-    -- "methods"
-    analyse = nf.analyse,
-    copy    = nf.copy,
-    q1      = nf.q1,
-    q2      = nf.q2,
-    dq1     = nf.dq1,
-    dq2     = nf.dq2,
-    anhx    = nf.anhx,
-    anhy    = nf.anhy,
-    gnfu    = nf.gnfu,
-    haml    = nf.haml,
-    getms   = nf.getms,
-    getpms  = nf.getpms,
-
-    -- "data"
-    nn      = nf.nn,         -- #(variables + parameters)
-    nv      = nf.nv,         -- #(variables)
-    nt      = nf.nt,         -- index of t  when coasting
-    npt     = nf.npt,        -- index of pt when constant
-    urdt    = nf.urdt,       -- user defined rdt (optional)
-    x0      = nf.x0,         -- backup initial orbit
-    m0      = nf.m0,         -- backup initial one-turn map
-    a       = a_ or nf.a,    -- normalizing map (output)
-    c       = nf.c,          -- maps to go to phasor basis
-    ci      = nf.ci,
-    lam     = nf.lam,        -- eigentunes
-
-    q1_     = nf.q1_,
-    q2_     = nf.q2_,
-    q3_     = nf.q3_,
-
-    t_op    = nf.t_op,
-    anh     = nf.anh,
-    gnf     = nil,
-    ham     = nil,
-  }
-
-  return cpy
-end
+MAD.typeid.is_nform = is_nf
 
 -- getters --
 
 local function nf_pms (nf, ki_, ko_)
-  assert(is_nf(nf), "invalid argument #1 (normal form expected)")
-  local np, ki, ko = nf.nn - nf.nv, ki_ or 0, ko_ or 1
-  assert(is_natural  (ki), "invalid knob index (ki >= 0 expected)")
-  assert(is_nznatural(ko), "invalid knob order (ko >= 1 expected)")
-  if ki > 0
-  then return ("0"):rep(ki-1) .. ko .. ("0"):rep(np-(ki-1)-1)
-  else return ("0"):rep(np)
+  assert(is_nf(nf) or is_damap(nf),
+         "invalid argument #1 (damap or normal form expected)")
+  local np, ki, ks = is_nf(nf) and nf.nn-nf.nv or nf:np(), ki_ or 0
+
+  if is_natural(ki) then      -- index case
+    local ko = ko_ or 1
+    assert(is_natural(ko), "invalid knob order (ko >= 0 expected)")
+    ks = ki > 0 and ko > 0 and ("0"):rep(ki-1)..ko..("0"):rep(np-(ki-1)-1)
+                            or ("0"):rep(np)
+  else
+    if is_monomial(ki) then -- monomial case
+      ks = ki:tostring()
+    elseif is_string(ki) then   -- string case
+      ks = ki
+    else error("invalid argument #2 (monomial, string or index expected)")
+    end
+    if #ks < np then ks = ks..("0"):rep(np-#ks) end
   end
+
+  return ks
 end
 
 local function nf_ms (nf, ms, ki_, ko_)
   assert(is_nf(nf), "invalid argument #1 (normal form expected)")
-  if is_table(ms) then ms, ki_, ko_ = ms[1], ms[2], ms[3] end
-  if is_monomial(ms) then ms = ms:tostring() end
-  assert(is_string(ms), "invalid argument #2 (monomial or string expected)")
+
+  if is_table(ms) then -- expand table
+    ms, ki_, ko_ = ms[1], ms[2], ms[3]
+  end
+
+  if is_monomial(ms) then -- monomial case
+    ms = ms:tostring()
+  else                    -- string case
+    assert(is_string(ms), "invalid argument #2 (monomial or string expected)")
+  end
+
   if ki_
   then if #ms < nf.nv then ms = ms..("0"):rep(nf.nv - #ms) end
            ms = ms..nf_pms(nf, ki_, ko_)
   else if #ms < nf.nn then ms = ms..("0"):rep(nf.nn - #ms) end
   end
+
   return ms
 end
 
@@ -800,7 +584,7 @@ local function nf_q (nf, ord, x, y, t)
   local ms = table.concat{x, 0, y, 0, t, 0}
   local ks = nf_pms(nf, ord[2])
   local rv = nf.anh[ms..ks] or 0
-  --print("nf_q"..(x==1 and '1' or y==1 and '2' or t==1 and '3' or '0'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
+--print("nf_q"..(x==1 and '1' or y==1 and '2' or t==1 and '3' or '0'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
   return rv
 end
 
@@ -808,23 +592,23 @@ local function nf_dq (nf, ord, x, y, t)
   local ms = table.concat{x, 0, y, 0, t, ord[1]}
   local ks = nf_pms(nf, ord[2])
   local rv = nf.anh[ms..ks] or 0
-  --print("nf_dq"..(x==1 and '1' or y==1 and '2' or t==1 and '3' or '0'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
+--print("nf_dq"..(x==1 and '1' or y==1 and '2' or t==1 and '3' or '0'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
   return rv
 end
 
 local function nf_anh (nf, ord, x, y, t)
-  local mn = {ord[1]+x, ord[1], ord[2]+y, ord[2], nf.npt==0 and ord[3]+t or 0, ord[3] or 0}
+  local mn = {ord[1]+x, ord[1], ord[2]+y, ord[2], nf.ipt==0 and ord[3]+t or 0, ord[3] or 0}
   local ms = table.concat(mn)
   local ks = nf_pms(nf, ord[4])
   local rv = nf.anh[ms..ks] or 0
-  --print("nf_anh"..(x==1 and 'x' or y==1 and 'y' or t==1 and 't' or '?'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
+--print("nf_anh"..(x==1 and 'x' or y==1 and 'y' or t==1 and 't' or '?'), ms..ks, rv, nf.anh[ms..ks] and '' or nil)
   return rv
 end
 
 -- tunes --
 
 local function nf_q1 (nf, ord)
-  if ord == nil then ord = {1} elseif is_number(ord) then ord = {ord} end
+  if is_nil(ord) or is_number(ord) then ord = {ord or 1} end
   assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
   assert(is_nznatural(ord[1]), "invalid q1 order (q1 > 0 expected)")
   if ord[1] == 1 and (ord[2] or 0) == 0 then return nf.q1_ end
@@ -832,7 +616,7 @@ local function nf_q1 (nf, ord)
 end
 
 local function nf_q2 (nf, ord)
-  if ord == nil then ord = {1} elseif is_number(ord) then ord = {ord} end
+  if is_nil(ord) or is_number(ord) then ord = {ord or 1} end
   assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
   assert(is_nznatural(ord[1]), "invalid q2 order (q2 > 0 expected)")
   if ord[1] == 1 and (ord[2] or 0) == 0 then return nf.q2_ end
@@ -840,7 +624,7 @@ local function nf_q2 (nf, ord)
 end
 
 local function nf_q3 (nf, ord)
-  if ord == nil then ord = {1} elseif is_number(ord) then ord = {ord} end
+  if is_nil(ord) or is_number(ord) then ord = {ord or 1} end
   assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
   assert(is_nznatural(ord[1]), "invalid q3 order (q3 > 0 expected)")
   if ord[1] == 1 and (ord[2] or 0) == 0 then return nf.q3_ end
@@ -850,21 +634,21 @@ end
 -- chromaticities --
 
 local function nf_dq1 (nf, ord)
-  if ord == nil then ord = {1} elseif is_number(ord) then ord = {ord} end
+  if is_nil(ord) or is_number(ord) then ord = {ord or 1} end
   assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
   assert(is_nznatural(ord[1]), "invalid pt order (pt > 0 expected)")
   return nf_dq(nf, ord, 1, 0, 0)
 end
 
 local function nf_dq2 (nf, ord)
-  if ord == nil then ord = {1} elseif is_number(ord) then ord = {ord} end
+  if is_nil(ord) or is_number(ord) then ord = {ord or 1} end
   assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
   assert(is_nznatural(ord[1]), "invalid pt order (pt > 0 expected)")
   return nf_dq(nf, ord, 0, 1, 0)
 end
 
 local function nf_dq3 (nf, ord)
-  if ord == nil then ord = {1} elseif is_number(ord) then ord = {ord} end
+  if is_nil(ord) or is_number(ord) then ord = {ord or 1} end
   assert(is_indexable(ord)   , "invalid argument #2 (indexable expected)")
   assert(is_nznatural(ord[1]), "invalid pt order (pt > 0 expected)")
   return nf_dq(nf, ord, 0, 0, 1)
@@ -873,21 +657,21 @@ end
 -- anharmonicities --
 
 local function nf_anhx (nf, ord)
-  if ord == nil then ord = {0,0,0} elseif is_number(ord) then ord = {ord,0,0} end
+  if is_nil(ord) or is_number(ord) then ord = {ord or 0,0,0} end
   assert(is_indexable(ord), "invalid argument #2 (order or indexable expected)")
   assert(is_natural(ord[1]),"invalid x order (x >= 0 expected)")
   return nf_anh(nf, ord, 1, 0, 0)
 end
 
 local function nf_anhy (nf, ord)
-  if ord == nil then ord = {0,0,0} elseif is_number(ord) then ord = {0,ord,0} end
+  if is_nil(ord) or is_number(ord) then ord = {0,ord or 0,0} end
   assert(is_indexable(ord), "invalid argument #2 (order or indexable expected)")
   assert(is_natural(ord[2]),"invalid y order (y >= 0 expected)")
   return nf_anh(nf, ord, 0, 1, 0)
 end
 
 local function nf_anht (nf, ord)
-  if ord == nil then ord = {0,0,0} elseif is_number(ord) then ord = {0,0,ord} end
+  if is_nil(ord) or is_number(ord) then ord = {0,0,ord or 0} end
   assert(is_indexable(ord), "invalid argument #2 (order or indexable expected)")
   assert(is_natural(ord[3]),"invalid t order (t >= 0 expected)")
   return nf_anh(nf, ord, 0, 0, 1)
@@ -907,59 +691,404 @@ local function nf_haml (nf, ms, ki_, ko_)
   return nf.ham[ms] or 0i
 end
 
+-- coupling terms -- Edwards-Teng coupling formalism (Lebedev & Bogacz 2010)
+
+local nf_bet, nf_alf -- forward decl
+
+local det = \a       -> a[1]*a[4] - a[2]*a[3] -- polymorphic 2x2 matrix helpers
+local scl = \a,v     -> {a[1]*v, a[2]*v, a[3]*v, a[4]*v}
+local dot = \a,b,i,j -> a[i]*b[j] + a[i+1]*b[j+2]
+local mul = \a,b     -> {dot(a,b,1,1),dot(a,b,1,2),dot(a,b,3,1),dot(a,b,3,2)}
+
+local function nf_cplg (a, mt_)
+  local fun = is_damap(a) -- either damap (functions) or beta0 block (scalars)
+  local res = fun and mt_ or a -- mt is required for functions calculation
+
+  assert(fun or typeid.is_beta0(a),
+                          "invalid argument #1 (damap or beta0 block expected)")
+  assert(not is_nil(res), "invalid argument #2 (table expected)")
+
+  if fun and mt_.kpa then return end -- memoization already done
+
+  local bet0 = assert(a.beta or mt_.beta, "unable to retrieve beta0")
+  local dpp1 = sqrt(1 + 2/bet0*a.pt + a.pt^2)
+
+  local beta11 = fun and nf_bet(a, "11", nil, mt_) or a.beta11
+  local beta12 = fun and nf_bet(a, "12", nil, mt_) or a.beta12
+  local beta21 = fun and nf_bet(a, "21", nil, mt_) or a.beta21
+  local beta22 = fun and nf_bet(a, "22", nil, mt_) or a.beta22
+  local alfa11 = fun and nf_alf(a, "11", nil, mt_) or a.alfa11
+  local alfa22 = fun and nf_alf(a, "22", nil, mt_) or a.alfa22
+
+  res.betx  = beta11*dpp1
+  res.bety  = beta22*dpp1
+  res.alfx  = alfa11
+  res.alfy  = alfa22
+
+  local kx2 = beta12/beta11                                         -- eq. 4.7
+  local ky2 = beta21/beta22
+  local kxy = kx2*ky2
+
+  if fabs(kx2-ky2) >= stab_tol and fabs(1-kxy) >= stab_tol then -- eq. 4.8 & 4.9
+    local alfa12 = fun and nf_alf(a, "12", nil, mt_) or a.alfa12
+    local alfa21 = fun and nf_alf(a, "21", nil, mt_) or a.alfa21
+    local kx, ky = sqrt(kx2), sqrt(ky2)
+    local ax = alfa11*kx - alfa12/kx                                -- eq. 4.7
+    local ay = alfa22*ky - alfa21/ky
+    local ku = kxy*(1+(ax*ax-ay*ay)/(kx2-ky2)*(1-kxy))              -- eq. 4.8
+    local u = -kxy/(1-kxy)
+    local s = 0
+    if fval(ku) >= stab_tol then
+      local su = sqrt(ku)
+      s = kxy <= su and +1 or -1
+      u = u + s * su/(1-kxy)                                        -- eq. 4.8
+    end
+    local kpa = 1-u
+
+    res.betx = res.betx/kpa                                        -- eq. 7.16
+    res.bety = res.bety/kpa
+    res.alfx = res.alfx/kpa
+    res.alfy = res.alfy/kpa
+    res.kpa  = kpa
+
+    local bx  = kx*kpa + u/kx                                      -- eq. 4.10
+    local by  = ky*kpa + u/ky
+    local cx  = kx*kpa - u/kx
+    local cy  = ky*kpa - u/ky
+    local evp = (ax + 1i*bx) / (ay - 1i*by)
+    local evm = (ax + 1i*cx) / (ay + 1i*cy)
+    local ev1 = sqrt(evp*evm)                                      -- eq. 4.11
+    local ev2 = sqrt(evp/evm)
+
+    local ev1_re, ev1_im = real(ev1), imag(ev1)
+    local ev2_re, ev2_im = real(ev2), imag(ev2)
+
+--  local swp = ""
+
+    if sign(fval(ev1_im)) ~= sign(fval(ev2_im)) then               -- eq. 7.12
+      -- see discussion in paragraph after eq. 4.11
+      if fval(ev1_re) < 0
+      then ev1_re, ev1_im = -ev1_re, -ev1_im -- ; swp = "[1]"
+      else ev2_re, ev2_im = -ev2_re, -ev2_im -- ; swp = "[2]"
+      end
+    end
+
+    res.r11 =  sqrt(beta22/beta12) * (u*ev2_re + alfa12*ev2_im)/kpa
+    res.r22 = -sqrt(beta11/beta21) * (u*ev1_re + alfa21*ev1_im)/kpa
+    res.r12 =  sqrt(beta11*beta21) * ev1_im/kpa
+    res.r21 =  (ev2_re*(alfa12*kpa - alfa22*u) -
+                ev2_im*(alfa12*alfa22 + kpa*u)) / (kpa*sqrt(beta12*beta22))
+
+--  printf("%s, %d, %- .5e, %- .5f, %- .5f, %- .5f, %- .5f, %- .5f\n",
+--    swp, s, fval(u), fval(res.r12), fval(ev1_re), fval(ev1_im), fval(ev2_re), fval(ev2_im))
+
+    local sbetx, sbety = sqrt(res.betx), sqrt(res.bety)
+    local   r  = {res.r22, -res.r12, -res.r21, res.r11}         -- -S*R*S
+    local   ga = {1/sbetx, 0,  res.alfx/sbetx,   sbetx}
+    local  _gb = {  sbety, 0, -res.alfy/sbety, 1/sbety}         -- gb^-1
+    local    c = scl(r, 1/sqrt(1+det(r)))                       -- eq. 16
+    local cbar = mul(ga, mul(c, _gb))                           -- eq. 5
+    local   cb = scl(cbar, 0.25/sqrt(1-det(cbar)))              -- eq. 9 & 10
+
+    res.f1010 = -cb[2]-cb[3] + 1i*(cb[1]-cb[4])
+    res.f1001 =  cb[2]-cb[3] + 1i*(cb[1]+cb[4])
+  else
+    res.kpa   = fun and beta11:same():set0(1) or 1
+    res.r11   = fun and beta11:same()         or 0
+    res.r22   = fun and beta11:same()         or 0
+    res.r12   = fun and beta11:same()         or 0
+    res.r21   = fun and beta11:same()         or 0
+    res.f1010 = fun and beta11:same(0i)       or 0i
+    res.f1001 = fun and beta11:same(0i)       or 0i
+  end
+end
+
+-- optical functions --
+
+local s2p = { 1, 2, 3, ["1"]=1, ["2"]=2, ["3"]=3, x=1, y=2, t=3 }
+local s2v = { 1, 2, 3, 4, ["1"]=1, ["2"]=2, ["3"]=3, ["4"]=4, x=1, px=2, y=3, py=4 }
+local s2k = { x="x", y="y" }
+local s2f = { ["1010"]="1010", ["1001"]="1001" }
+local s2r = { ["11"]="11", ["12"]="12", ["21"]="21", ["22"]="22" }
+
+local function nf_kpa (a, _, mon_, mt)
+  nf_cplg(a, mt)
+  local kpa = mt.kpa
+  if is_nil(mon_) then return kpa end
+  assert(a:maxord() >= 1+mon_:ord(),
+    "rmatrix: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
+  return kpa:get(mon_) * mon_:ordpf()
+end
+
+local function nf_flc (a, f, mon_, mt)
+  assert(s2f[f], "invalid linear coupling function")
+  nf_cplg(a, mt)
+  local flc = mt["f"..f]
+  if is_nil(mon_) then return flc end
+  assert(a:maxord() >= 1+mon_:ord(),
+    "coupling: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
+  return flc:get(mon_) * mon_:ordpf()
+end
+
+local function nf_rlc (a, r, mon_, mt)
+  assert(s2r[r], "invalid linear coupling matrix term")
+  nf_cplg(a, mt)
+  local rlc = mt["r"..r]
+  if is_nil(mon_) then return rlc end
+  assert(a:maxord() >= 1+mon_:ord(),
+    "rmatrix: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
+  return rlc:get(mon_) * mon_:ordpf()
+end
+
+function nf_bet (a, p, mon_, mt)
+  local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
+  local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
+  local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
+  local bet = mt["bet"..p1..p2] --; io.write("bet"..p1..p2, "\n")
+  if not bet then
+    local a11 = mt[v1..v2  ] or a[v1]:deriv(v2+0) ; mt[v1..v2  ] = a11
+    local a12 = mt[v1..v2+1] or a[v1]:deriv(v2+1) ; mt[v1..v2+1] = a12
+          bet = a11^2 + a12^2                     ; mt["bet"..p1..p2] = bet
+  end
+  if s2k[p] then nf_cplg(a, mt) ; bet = mt["bet"..p] end
+  if is_nil(mon_) then return bet end
+  assert(a:maxord() >= 1+mon_:ord(),
+    "beta: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
+  return bet:get(mon_) * mon_:ordpf()
+end
+
+function nf_alf (a, p, mon_, mt)
+  local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
+  local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
+  local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
+  local alf = mt["alf"..p1..p2] --; io.write("alf"..p1..p2, "\n")
+  if not alf then
+    local a11 = mt[v1  ..v2  ] or a[v1  ]:deriv(v2+0) ; mt[v1  ..v2  ] = a11
+    local a12 = mt[v1  ..v2+1] or a[v1  ]:deriv(v2+1) ; mt[v1  ..v2+1] = a12
+    local a21 = mt[v1+1..v2  ] or a[v1+1]:deriv(v2+0) ; mt[v1+1..v2  ] = a21
+    local a22 = mt[v1+1..v2+1] or a[v1+1]:deriv(v2+1) ; mt[v1+1..v2+1] = a22
+          alf = -(a11*a21+a12*a22)                    ; mt["alf"..p1..p2] = alf
+  end
+  if s2k[p] then nf_cplg(a, mt) ; alf = mt["alf"..p] end
+  if is_nil(mon_) then return alf end
+  assert(a:maxord() >= 1+mon_:ord(),
+    "alfa: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
+  return alf:get(mon_) * mon_:ordpf()
+end
+
+local function nf_gam (a, p, mon_, mt)
+  local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
+  local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
+  local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
+  local gam = mt["gam"..p1..p2] --; io.write("gam"..p1..p2, "\n")
+  if not gam then
+    local a21 = mt[v1+1..v2  ] or a[v1+1]:deriv(v2+0) ; mt[v1+1..v2  ] = a21
+    local a22 = mt[v1+1..v2+1] or a[v1+1]:deriv(v2+1) ; mt[v1+1..v2+1] = a22
+          gam = a21^2+a22^2                           ; mt["gam"..p1..p2] = gam
+  end
+  if is_nil(mon_) then return gam end
+  assertf(a:maxord() >= 1+mon_:ord(),
+    "gama: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
+  return gam:get(mon_) * mon_:ordpf()
+end
+
+local function nf_pha (a, p, mt)
+  local p = assertf(s2p[p], "invalid plane '%s'", p)
+  local v = 2*(p-1)+1
+  local pha = mt["pha"..p] --; io.write("pha"..p, "\n")
+  if not pha then
+    local a11 = mt[v..v  ] or a[v]:deriv(v+0) ; mt[v..v    ] = a11
+    local a12 = mt[v..v+1] or a[v]:deriv(v+1) ; mt[v..v+1  ] = a12
+    pha = atan2(a12, a11)/twopi               ; mt["pha"..p] = pha
+  end
+  return pha
+end
+
+local function nf_mu (a, p, mon_, mt, a0_, mt0_)
+  local pha = nf_pha(a, p, mt)
+  if a0_ then pha = pha - nf_pha(a0_, p, mt0_) end
+  if is_nil(mon_) then return pha end
+  assertf(a:maxord() >= 1+mon_:ord(),
+    "mu: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
+  return pha:get(mon_) * mon_:ordpf()
+end
+
+local function nf_dmu (a, p, mon_, mt, a0_, mt0_)
+  if is_nil(mon_) then
+    local dmu = mt["dmu"..p] --; io.write("dmu"..p, "\n")
+    if not dmu then
+      dmu = nf_mu(a, p, mon_, mt, a0_, mt0_):deriv(6) ; mt["dmu"..p] = dmu
+    end
+    return dmu
+  end
+  assertf(a:maxord() >= 2+mon_:ord(),
+    "dmu: damap order is too low %d < %d", a:maxord() , 2+mon_:ord())
+  mon_[6] = mon_[6]+1
+  return nf_mu(a, p, mon_, mt, a0_, mt0_)
+end
+
+local function nf_dsp (a, v, mon_, mt)
+  local v = assertf(s2v[v], "invalid variable '%s'", v)
+  if is_nil(mon_) then
+    local dsp = mt["dsp"..v] --; io.write("dsp"..v, "\n")
+    if not dsp then dsp = a[v]:deriv(6) ; mt["dsp"..v] = dsp end
+    return dsp
+  end
+  assertf(a:maxord() >= 1+mon_:ord(),
+    "disp: damap order is too low %d < %d", a:maxord() , 1+mon_:ord())
+  mon_[6] = mon_[6]+1
+  return a[v]:get(mon_) * mon_:ordpf()
+end
+
+local function nf_wf (a, p, mt)
+  local p = assertf(s2p[p], "invalid plane '%s'", p)
+  local v = 2*(p-1)+1
+  local bet, alf = mt["bet"..p..p], mt["alf"..p..p] --; io.write("bet"..p..p, ", ", "alf"..p..p, "\n")
+  if not (bet and alf) then
+    local a11 = mt[v  ..v  ] or a[v  ]:deriv(v+0) ; mt[v  ..v     ] = a11
+    local a12 = mt[v  ..v+1] or a[v  ]:deriv(v+1) ; mt[v  ..v+1   ] = a12
+    local a21 = mt[v+1..v  ] or a[v+1]:deriv(v+0) ; mt[v+1..v     ] = a21
+    local a22 = mt[v+1..v+1] or a[v+1]:deriv(v+1) ; mt[v+1..v+1   ] = a22
+          bet =   a11^2 + a12^2                   ; mt["bet"..p..p] = bet
+          alf = -(a11*a21+a12*a22)                ; mt["alf"..p..p] = alf
+  end
+  local bx, ax = mt["bx"..p], mt["ax"..p]
+  if not (bx and ax) then
+    bx = bet:deriv(6) / bet    ; mt["bx"..p] = bx
+    ax = alf:deriv(6) - alf*bx ; mt["ax"..p] = ax
+  end
+  return bx, ax
+end
+
+local function nf_wrf (a, p, mon_, mt)
+  local wrf = mt["wrf"..p] --; io.write("wrf"..p, "\n")
+  if not wrf then
+    local bx, ax = nf_wf(a, p, mt)
+    wrf = sqrt(bx^2 + ax^2) ; mt["wrf"..p] = wrf
+  end
+  if is_nil(mon_) then return wrf end
+  assertf(a:maxord() >= 2+mon_:ord(),
+    "wf: damap order is too low %d < %d", a:maxord(), 2+mon_:ord())
+  return wrf:get(mon_) * mon_:ordpf()
+end
+
+local function nf_wpf (a, p, mon_, mt)
+  local wpf = mt["wpf"..p] --; io.write("wpf"..p, "\n")
+  if not wpf then
+    local bx, ax = nf_wf(a, p, mt)
+    wpf = atan2(ax, bx) ; mt["wpf"..p] = wpf
+  end
+  if is_nil(mon_) then return wpf/twopi end
+  assertf(a:maxord() >= 2+mon_:ord(),
+    "wfp: damap order is too low %d < %d", a:maxord(), 2+mon_:ord())
+  return wpf:get(mon_) * mon_:ordpf()/twopi
+end
+
+-- interface to optfun
+
+local optfct = { alfa=nf_alf, beta=nf_bet, gama=nf_gam, disp=nf_dsp,  mu=nf_mu, dmu=nf_dmu,
+                 alfx=nf_alf, betx=nf_bet, alfy=nf_alf, bety=nf_bet,   f=nf_flc,  r=nf_rlc,
+                   dx=nf_dsp,   dy=nf_dsp,  dpx=nf_dsp,  dpy=nf_dsp, kpa=nf_kpa,
+                   wx=nf_wrf,   wy=nf_wrf,  wxp=nf_wpf,  wyp=nf_wpf, }
+local optlst = { alfa="alfa", beta="beta", gama="gama", disp="disp", mu="mu", dmu="dmu",
+                 alfx="alfx", betx="betx", alfy="alfy", bety="bety", f="f", r="r", kpa="kpa",
+                 dx="dx", dy="dy", dpx="dpx", dpy="dpy",
+                 wx="wx", wy="wy", wxp="wxp", wyp="wyp" }
+local optlen = { alfa=2, beta=2, gama=2, disp=1, mu=1, dmu=1,
+                 alfx=0, betx=0, alfy=0, bety=0, f=4, r=2, kpa=0,
+                 dx=0, dy=0, dpx=0, dpy=0, wx=0, wy=0, wxp=0, wyp=0 }
+local optvar = { alfx="x", betx="x", alfy="y", bety="y", kpa="",
+                 dx="1", dpx="2", dy="3", dpy="4", wx="1", wy="2", wxp="1", wyp="2" }
+local optsep = { [("_"):byte()] = "000000", [("-"):byte()] = "",
+                 [("v"):byte()] = ""      , [("!"):byte()] = "!" }
+
+local function nf_pk (of)
+  local f = assertf(optlst[of:match("%l+")], "invalid function '%s'", of)
+  local n = optlen[f]
+  local p, k = optvar[f] or of:sub(#f+1,#f+n), of:sub(#f+1+n) or "_"
+  local m = assertf(optsep[k:byte()], "invalid separateur '%s'", of)
+  return f, p, m ~= "!" and m..k:sub(2) or nil
+end
+
+local function nfopt (nf, of, ki_, ko_, mt_, a0_, mt0_)
+  local ar, ks = nf, ""
+
+  if is_damap(ki_) then        -- right shifts
+    a0_, ki_, ko_ = ki_, nil, nil
+  elseif is_damap(ko_) then    -- right shifts
+    a0_, ko_ = ko_, nil
+  elseif is_rawtable(ki_) then -- right shifts
+    mt_, ki_, ko_ = ki_, nil, nil
+  end
+
+  -- build knobs monomial string
+  if ki_ then ks = nf_pms(nf, ki_, ko_) end
+
+  -- extract damap from nf
+  if is_nf(nf) then ar = nf.ar or nf.a:real() end
+
+  assert(is_damap(ar) and  ar.status == "Aset",
+    "invalid argument #1 (Aset damap or normal form expected)")
+  assert(is_nil(a0_) or is_damap(a0_) and a0_.status == "Aset",
+    "invalid argument #3 (Aset damap expected)")
+  assert(is_string(of), "invalid argument #2, function as string expected")
+
+  local f, p, ms = nf_pk(of)
+--print("of=", of, "f=", f, "p=", p, "ms=", ms, "ks=", ks)
+  return optfct[f](ar, p, ms and monomial(ms..ks) or nil, mt_ or {}, a0_, mt0_ or {})
+end
+
+gphys.optfun = nfopt
+
 -- analyse anh, gnf, ham --
 
-local T1, T11, T12, T2, T21, T22, T3, T4, T5 = 0, 0, 0, 0, 0, 0, 0, 0, 0
+local T1, T2, T21, T22, T23, T24 = 0, 0, 0, 0, 0, 0
 
-local function time_nfana ()
-  printf("time_rot1=% 8.2fs %d%%\n", T11, T11/(T1 > 0 and T1 or 1)*100)
-  printf("time_rot2=% 8.2fs %d%%\n", T12, T12/(T1 > 0 and T1 or 1)*100)
-  printf("time_rot =% 8.2fs\n", T1)
-  printf("time_log1=% 8.2fs %d%%\n", T21, T21/(T2 > 0 and T2 or 1)*100)
-  printf("time_log2=% 8.2fs %d%%\n", T22, T22/(T2 > 0 and T2 or 1)*100)
-  printf("time_log =% 8.2fs\n", T2 )
-  printf("time_gnf =% 8.2fs\n", T3 )
-  printf("time_anh =% 8.2fs\n", T4 )
-  printf("time_tun =% 8.2fs\n", T5 )
-  printf("time_tot =% 8.2fs\n", T1+T2+T3+T4+T5)
+local function nfana_timing ()
+  local T = T1+T2
+  printf("time_rot =% 8.2fs [%2d%%]\n", T1 , math.floor(T1 /T*100))
+  printf("time_gnf =% 8.2fs [%2d%%]\n", T2 , math.floor(T2 /T*100))
+  printf("     pha =% 8.2fs [%2d%%]\n", T21, math.floor(T21/T*100))
+  printf("     log =% 8.2fs [%2d%%]\n", T22, math.floor(T22/T*100))
+  printf("     fld =% 8.2fs [%2d%%]\n", T23, math.floor(T23/T*100))
+  printf("     gnf =% 8.2fs [%2d%%]\n", T24, math.floor(T24/T*100))
+  printf("time_tot =% 8.2fs\n", T)
 end
 
 -- uncomment to print the timings at exit
-!MAD.utility.atexit(time_nfana)
+!MAD.utility.atexit(nfana_timing)
 
 --[[
-                                            Total
-time_rot1=  457.77s 72%  normal_a0          [25%]
-time_rot2=  169.21s 26%  compose rotation   [ 9%]
-time_rot =  628.20s                          34%
-time_log1=  312.26s 26%  phasors similarity [18%]
-time_log2=  844.11s 72%  factor_map (logpb) [46%]
-time_log = 1156.81s                          64%
-time_gnf =   34.38s                           2%
-time_anh =    0.02s                           0%
-time_tun =    0.02s                           0%
-time_tot = 1819.42s                         100%
+FCC-ee full RDT calculation
+time_rot =   40.24s [ 6%]
+time_gnf =  620.11s [94%]
+     pha =   88.13s [13%]
+     log =  503.13s [76%]
+     fld =    0.45s [ 0%]
+     gnf =   28.40s [ 4%]
+time_tot =  660.35s
 --]]
 
-local normal_a0 -- forward local decl
+local normal -- forward local decl
+
+local nf_knd = {anh=1, gnf=2, ham=3, all=3}
 
 local function nfana (nf, k_, a_)
   if is_damap(k_) and is_nil(a_) then a_, k_ = k_ end -- right shift
 
+  local kind = nf_knd[k_]
   assert(is_nf (nf), "invalid argument #1 (normal form expected)")
-  assert(is_nil(k_) or nf_knd[k_]   , "invalid argument #2 (kind expected)" )
-  assert(is_nil(a_) or isa_damap(a_), "invalid argument #3 (A-damap expected)")
+  assert(is_nil(k_) or kind, "invalid argument #2 (kind expected)" )
+  assert(is_nil(a_) or is_damap(a_), "invalid argument #3 (A-damap expected)")
 
   local t0  = os.clock()
-  local t11, t12 = t0, t0
 
-  -- propagated normal form, apply rotations
-  if a_ then
-    local nfa = normal_a0(a_) ; a_ = nfa.m_n
-    t11 = os.clock()
-    local mu1 =                 atan2(a_.x:get(3), a_.x:get(2))-- mu1 = atan2(A12, A11)
-    local mu2 =                 atan2(a_.y:get(5), a_.y:get(4))
-    local mu3 = nf.npt == 0 and atan2(a_.t:get(7), a_.t:get(6)) or 0
+  -- propagated normalizing form, clone current nf with new map, apply rotations
+  if a_ then                             -- normal(nfa, "close").a
+    local nfa = nf:copy(a_) ; a_, nfa.m_n = nfa.m_n:set0(0), nil
+    local mu1 =                atan2(a_.x:get(3), a_.x:get(2))
+    local mu2 =                atan2(a_.y:get(5), a_.y:get(4))
+    local mu3 = nf.rk >= 6 and atan2(a_.t:get(7), a_.t:get(6)) or 0
 
     if abs(mu1)+abs(mu2)+abs(mu3) > 0 then
       local ri = a_:same():eye()
@@ -971,39 +1100,32 @@ local function nfana (nf, k_, a_)
       ri.pt:set(6, sin(mu3)) ; ri.pt:set(7, cos(mu3))
       a_ = a_*ri
     end
-    t12 = os.clock()
-
-    nf = nf:copy(a_:cplx():set0(0))
+    nf, nfa.a = nfa, a_:cplx()
   end
 
   local t1 = os.clock()
-  local t2, t21, t22 = t1, t1, t1
-
-  local kind = nf_knd[k_]
-  local mono = monomial(nf.nn)
+  local t21, t22, t23 = t1, t1, t1
 
   -- GNF and HAM
-  if is_nil(nf.gnf) and (kind == 'all' or kind == 'gnf' or kind == 'ham') then
-    local a, c, ci, nv, nn, nt, lam in nf
-    local gnf, ham = {}, {}
+  if is_nil(nf.gnf) and kind >= 2 then
+    local a, c, ci, rk, nn, it, lam in nf
+    local gnf, ham = table.new(32,32), table.new(32,32)
+    local ng, nh, mono = 1, 1, monomial(nn)
     local g, l = ci*a*c
     t21 = os.clock()
-    g, l = g:factor_map(-1) -- ; l:print("L") ; l:fld2vec():print("V") ; l:logpb():print("log(L)")
+    g, l = g:factor_map(-1)
     t22 = os.clock()
-    g = g:fld2vec()
-    g:cutord(-2, g) -- keep only orders 3..
-    t2 = os.clock()
-
-    if nt ~= 0 then nv = 4 end -- t,pt are parameters
+    g = g:fld2vec(true):cutord(-2) -- keep only orders 3..
+    t23 = os.clock()
 
     for i,v in g:iter(mono) do
       local ms = mono:tostring()
-      gnf[#gnf+1], gnf[ms] = ms, v                                  -- gnf terms
+      gnf[ng], gnf[ms], ng = ms, v, ng+1                            -- gnf terms
 
-      if kind == 'all' or kind == 'ham' then
+      if kind >= 3 then
         local p = 1
-        for j=2,nv,2 do p = p*lam[j-1]^(mono[j-1]-mono[j]) end
-        ham[#ham+1], ham[ms] = ms, v*(1-p)                          -- ham terms
+        for j=2,rk,2 do p = p*lam[j-1]^(mono[j-1]-mono[j]) end
+        ham[nh], ham[ms], nh = ms, v*(1-p), nh+1                    -- ham terms
       end
     end
     nf.gnf, nf.ham = gnf, ham
@@ -1012,162 +1134,184 @@ local function nfana (nf, k_, a_)
     nf.gnfu, nf.haml = nf_gnfu, nf_haml
   end
 
-  local t3 = os.clock()
+  local t2 = os.clock()
 
-  -- ANH
-  if is_nil(nf.anh) and (kind == 'all' or kind == 'anh') then
-    local nv, t_op in nf
-    local anh = {}
-    for o=2,#t_op do
-      for n=1,nv,2 do
-        for _,v in t_op[o][n]:iter(mono) do
-          local ms, pf = mono:tostring(), mono:ordpf(nv,1,2)
-        --print("ms=", ms, "pf=", pf, "anh=", -v:imag()/twopi)
-          anh[#anh+1], anh[ms] = ms, -v:imag()*pf/twopi             -- anh terms
-        end
-      end
-    end
-    nf.anh, nf.t_op = anh, nil
-
-    -- add access methods
-    nf.q1, nf.q2, nf.q3, nf.dq1, nf.dq2, nf.dq3, nf.anhx, nf.anhy, nf.anht =
-    nf_q1, nf_q2, nf_q3, nf_dq1, nf_dq2, nf_dq3, nf_anhx, nf_anhy, nf_anht
-  end
-
-  local t4 = os.clock()
-
-  -- TUNES (fractionnal part)
-  if is_nil(nf.q1_) then
-    local lam in nf
-    nf.q1_ = lam[1]:carg()/twopi ; if nf.q1_ < 0 then nf.q1_ = nf.q1_+1 end
-    nf.q2_ = lam[3]:carg()/twopi ; if nf.q2_ < 0 then nf.q2_ = nf.q2_+1 end
-    nf.q3_ = lam[5]:carg()/twopi ; if nf.q3_ < 0 then nf.q3_ = nf.q3_+1 end
-
-    -- add access methods
-    nf.q1, nf.q2, nf.q3 =
-    nf_q1, nf_q2, nf_q3
-  end
-
-  -- method for ks and ms
-  nf.getpms, nf.getms = nf_pms, nf_ms
-
-  local t5 = os.clock()
-
-  T1, T2, T3, T4, T5 = T1+t1-t0, T2+t2-t1, T3+t3-t2, T4+t4-t3, T5+t5-t4
-  T11, T12, T21, T22 = T11+t11-t0, T12+t12-t11, T21+t21-t1, T22+t22-t21
+  T1, T2 = T1+t1-t0, T2+t2-t1
+  T21, T22, T23, T24 = T21+t21-t1, T22+t22-t21, T23+t23-t22, T24+t2-t23
 
   return nf
 end
 
--- normal form init -------------------------------------------------
+-- normal form init & copy ----------------------------------------------------o
 
-local nosave = \nf -> nf
+local function nfcpy (nf, a_)
+  local na = is_nil(a_)
 
-local function nfsave (nf, a, nam)
-  assert(is_nf(nf), "invalid argument #1 (normal form expected)")
+  assert(is_nf (nf), "invalid argument #1 (normal form expected)")
+  assert(na or is_damap(a_) and a_.status == 'Aset',
+                     "invalid argument #2 (Aset damap expected)")
+  assert(na or a_.__td == nf.a.__td,
+                     "invalid argument #2 (incompatible GTPSA descriptors)")
 
-  local v = is_string(a) and nf[a] or a
-  assert(isa_damap(v) or isa_tpsa(v) or isa_matrix(v),
-         "invalid argument #2 (damap, tpsa or matrix expected)")
+  local cpy = {
+    __id    = nf_id,
 
-  local id = option.fortid
-  v:write("fort_n."..id, nam or is_string(a) and a or nil)
-  option.fortid = id+1
-  return nf
+    -- data
+    nn      = nf.nn,                     -- #(variables + parameters)   (values)
+    nv      = nf.nv,                     -- #(variables)                (values)
+    rk      = nf.rk,                     -- rank of variables           (values)
+    it      = nf.it,                     -- index of t  when coasting   (values)
+    ipt     = nf.ipt,                    -- index of pt when constant   (values)
+    urdt    = nf.urdt,                   -- user defined rdt (optional) (shared)
+    x0      = na and nf.x0  or a_:get0(),-- backup initial orbit        (shared)
+    m0      = na and nf.m0  or a_:copy(),-- backup initial one-turn map (shared)
+    m_n     = na and nf.m_n or a_:copy(),-- working map                 (shared)
+    a       = na and nf.a   or nil,      -- normalizing map (output)    (shared)
+    a_0     = na and nf.a_0 or nil,      -- map to PI basis             (shared)
+    a_1     = na and nf.a_1 or nil,      -- map to CS basis             (shared)
+    a_2     = na and nf.a_2 or nil,      -- map to NL basis             (shared)
+    c       = nf.c ,                     -- map to AA basis             (shared)
+    ci      = nf.ci,                     -- map to AA basis             (shared)
+    q1_     = nf.q1_,                    -- tunes                       (values)
+    q2_     = nf.q2_,                    -- tunes                       (values)
+    q3_     = nf.q3_,                    -- tunes                       (values)
+    lam     = nf.lam,                    -- eigentunes                  (shared)
+    anh     = nf.anh,                    -- anharmonicities             (shared)
+    gnf     = na and nf.gnf or nil,      -- generating functions RDTs   (shared)
+    ham     = na and nf.ham or nil,      -- hamiltonian terms           (shared)
+
+    -- methods
+    q1      = nf.q1,
+    q2      = nf.q2,
+    q3      = nf.q3,
+    dq1     = nf.dq1,
+    dq2     = nf.dq2,
+    dq3     = nf.dq3,
+    anhx    = nf.anhx,
+    anhy    = nf.anhy,
+    anht    = nf.anht,
+    gnfu    = nf.gnfu,
+    haml    = nf.haml,
+    getms   = nf.getms,
+    getpms  = nf.getpms,
+    copy    = nf.copy,
+    optfun  = nf.optfun,
+    analyse = nf.analyse,
+  }
+
+  return cpy
 end
 
 local function normal_init (m, urdt_)
   assert(is_damap(m), "invalid argument #1 (damap expected)")
+  assert(mrnk[m.status] == 1 and m.status ~= 'Aset',
+                      "invalid argument #1 (Xset or Mset damap expected)")
   assert(is_nil(urdt_) or is_table(urdt_), "invalid argument #2 (table expected)")
 
-  local nfsav = option.fortid > 0 and nfsave or nosave
-  local ndpt  = not has_dpt(m)
-  local ndt   = ndpt and m.t ~= nil
+  local ndpt = not has_dpt(m)
+  local ndt  = ndpt and m.t ~= nil
 
   -- 0 1 2  3 4    5  6  nv       nn
-  -- | x px y py | t  pt | params |  6D  (nv==6 and ndpt==false -> nt=0, npt=0)
-  -- | x px y py | t  pt | params |  56D (nv==6 and ndpt==true  -> nt=5, npt=6)
-  -- | x px y py | pt    | params |  5D  (nv==5 and ndpt==true  -> nt=0, npt=5)
-  -- | x px y py |       | params |  4D  (nv==4 and ndpt==true  -> nt=0, npt=0)
+  -- | x px y py | t  pt | params |  6D  (nv==6 and ndpt==false -> it=0, ipt=0)
+  -- | x px y py | t  pt | params |  56D (nv==6 and ndpt==true  -> it=5, ipt=6)
+  -- | x px y py | pt    | params |  5D  (nv==5 and ndpt==true  -> it=0, ipt=5)
+  -- | x px y py |       | params |  4D  (nv==4 and ndpt==true  -> it=0, ipt=0)
 
   local nf = {
-    analyse = nfana,                     -- compute rdt, fill ham, gnf, anh
-    copy    = nfcpy,                     -- make a copy
-    dump    = nfsav,                     -- dump (c)damap/matrix in fort_n.N
+    __id = nf_id,                          -- is_nf
 
-    __id = nf_id,                        -- is_nf
-    nn   = m.__td.nn,                    -- #(variables + parameters)
-    nv   = m.__td.nv,                    -- #(variables)
-    nt   = ndt and 5 or 0,               -- index of t  when coasting
-    npt  = ndt and 6 or ndpt and 5 or 0, -- index of pt when constant
-    urdt = urdt_,                        -- user defined rdt (optional)
-    x0   = m:get0(),                     -- backup orbit
-    m0   = m:copy(),                     -- backup one-turn map
-    m_n  = m:copy(),                     -- normalized map
-    a    = nil,                          -- normalizing map (output)
-    a0   = nil,                          -- map to go to fix point
-    a1   = nil,                          -- map to go to CS basis
-    c    = nil,                          -- map to go to phasor basis
+    -- data
+    nn   = m.__td.nn,                      -- #variables + #parameters
+    nv   = m.__td.nv,                      -- #variables
+    rk   = ndt and 4 or 6,                 -- rank of variables
+    it   = ndt and 5 or 0,                 -- index of t  when coasting
+    ipt  = ndt and 6 or ndpt and 5 or 0,   -- index of pt when constant
+    urdt = urdt_,                          -- user defined rdt (optional)
+    x0   = m:get0(),                       -- backup orbit
+    m0   = m:copy(),                       -- backup original one-turn map
+    m_n  = m:copy(),                       -- working map
+
+    -- methods
+    copy   = nfcpy,                        -- make a copy
+    getms  = nf_ms,                        -- build monomial vars  string
+    getpms = nf_pms,                       -- build monomial knobs string
+
+    -- other data
+    -- a       = nf.a,        -- set by normal[_a0, _a1, _c]
+    -- a_0     = nf.a_0,      -- set by normal_a0
+    -- a_1     = nf.a_1,      -- set by normal_a1
+    -- a_2     = nf.a_2,      -- set by normal
+    -- c       = nf.c,        -- set by normal_c
+    -- ci      = nf.ci,       -- set by normal_c
+    -- q1_     = nf.q1_,      -- set by normal_qs
+    -- q2_     = nf.q2_,      -- set by normal_qs
+    -- q3_     = nf.q3_,      -- set by normal_qs
+    -- lam     = nf.lam,      -- set by normal[_a1]
+    -- anh     = nf.anh,      -- set by normal
+    -- gnf     = nf.gnf,      -- set by analyse
+    -- ham     = nf.ham,      -- set by analyse
+
+    -- other methods
+    -- q1      = nf.q1,       -- set by normal_qs
+    -- q2      = nf.q2,       -- set by normal_qs
+    -- q3      = nf.q3,       -- set by normal_qs
+    -- dq1     = nf.dq1,      -- set by normal
+    -- dq2     = nf.dq2,      -- set by normal
+    -- dq3     = nf.dq3,      -- set by normal
+    -- anhx    = nf.anhx,     -- set by normal
+    -- anhy    = nf.anhy,     -- set by normal
+    -- anht    = nf.anht,     -- set by normal
+    -- gnfu    = nf.gnfu,     -- set by analyse
+    -- haml    = nf.haml,     -- set by analyse
+    -- optfun  = nf.optfun,   -- set by normal
+    -- analyse = nf.analyse,  -- set by normal
   }
 
--- debug pnf
--- io.write("nv=", nf.nv, ", np=", nf.nn-nf.nv, ", nt=", nf.nt, ", npt=", nf.npt,
---          ", fortid=", option.fortid, "\n")
+-- io.write("nv=", nf.nv, ", np=", nf.nn-nf.nv, ", it=", nf.it, ", ipt=", nf.ipt, "\n")
 
   return nf
 end
 
 -- closed form (fix point) = a0^-1 * m * a0 -----------------------------------o
 
-function normal_a0 (nf, ord_)
-  if is_damap(nf) then nf = normal_init(nf) end
+local function normal_a0 (nf)
   assert(is_nf(nf), "invalid argument #1 (normal form expected)")
 
--- io.write("a0 in\n") -- debug pnf
+  if not is_nil(nf.a_0) then                        -- already processed
+    return nf
+  end
 
-  if option.fortid ~= 0 then io.stderr:write("closing form a0\n") end
+  local nv, rk, it, ipt, m_n in nf
+  local v, x = m_n:copy(), m_n:same()
 
--- if nf.npt > 0 then -- debug pnf
---   nf.m_n:print("M_n", true)
--- end
-
-  local nn, nv, nt, npt, m_n in nf
-  local v, x, ord = m_n:copy(), m_n:same(), ord_ or 1
-
-  nn = nv
-  if npt ~= 0 then nv = 4 end                       -- process t,pt as params
+  local nn, nv = nv, rk                             -- process t,pt as params
 
   for i=1,nv    do v[i]:set(i+1,1,-1) end           -- sub id to vars
   for i=nv+1,nn do v[i]:setvar(0,i)                 -- set t,pt params to id
                    x[i]:setvar(0,i)   end
-  if nt ~= 0 then  x.t :clear()       end           -- 56D coasting beam
-
---v:cutord(ord+1, v)                                -- keep 1st order (or more)
---v:print("v") ; (v^-1):print("v^-1") ; x:print("x")
+  if it ~= 0 then  x.t :clear()       end           -- 56D coasting beam
 
   local a0 = v^-1 * x                               -- closing form (all orders)
 
---a0:print("a0")
-
-  if nt ~= 0 then                                   -- 56D coasting beam
-    if (a0.pt - x.pt:setvar(0,npt)):isnul() then
-      a0.t:setvar(0,nt)
+  if it ~= 0 then                                   -- 56D coasting beam
+    if (a0.pt - x.pt:setvar(0,ipt)):isnul() then
+      a0.t:setvar(0,it)
     else
       local t1, m1 = v.x:same(), v.x:same()
       for i=2,nv,2 do                               -- make t symplectic
         x[i], x[i-1] = -a0[i-1], a0[i]              -- swap
-        v[i], v[i-1] = x[i]:deriv(npt), x[i-1]:deriv(npt)
+        v[i], v[i-1] = x[i]:deriv(ipt), x[i-1]:deriv(ipt)
         t1 = t1 - m1:setvar(0,i  ) * v[i  ]         -- 1st order
                 - m1:setvar(0,i-1) * v[i-1]         --  "
                 - 0.5*(x[i-1]*v[i] - x[i]*v[i-1])   -- 2nd order
       end
       a0.t = t1                                     -- will make t symplectic
-      if a0.t:isnul() then a0.t:setvar(0,nt) end
+      if a0.t:isnul() then a0.t:setvar(0,it) end
     end
   end
 
-  if npt ~= 0 and m_n.pt:isnul() then               -- 5D coasting beam
-    m_n.pt:setvar(0,npt)                            --    with implicit pt (!)
+  if ipt ~= 0 and m_n.pt:isnul() then               -- 5D coasting beam
+    m_n.pt:setvar(0,ipt)                            --    with implicit pt (!)
   end
 
   for i=1,nv do a0[i]:set(i+1,1,1) end              -- add id to vars
@@ -1175,55 +1319,53 @@ function normal_a0 (nf, ord_)
   m_n:set0(0)                                       -- clear orbit
 
   nf.m_n = a0^-1 * m_n * a0                         -- go to fix point
-  nf.a0  = a0
+  nf.a_0 = a0
 
--- if nf.npt > 0 then -- debug pnf
---   nf.a0    :print("A0"   , true);
---  (nf.a0^-1):print("A0^-1", true);
---   nf.m_n   :print("M_n"  , true);
--- end
-
--- io.write("a0 out\n") -- debug pnf
   return nf
 end
 
 -- linear normal form = a1^-1 * a0^-1 * m * a0 * a1 ---------------------------o
 
+local function normal_qs (nf, lam)
+  local q1 = lam[1]:carg()/twopi ; if q1 < 0 then q1 = q1+1 end
+  local q2 = lam[3]:carg()/twopi ; if q2 < 0 then q2 = q2+1 end
+  local q3 = 0 ; if #lam > 4 then
+        q3 = lam[5]:carg()/twopi ; if q3 < 0 then q3 = q3+1 end end
+
+  -- hook data/ add methods
+  nf.lam, nf.q1_, nf.q2_, nf.q3_, nf.q1, nf.q2, nf.q3 =
+     lam,    q1 ,    q2 ,    q3 , nf_q1, nf_q2, nf_q3
+end
+
 local function normal_a1 (nf)
   assert(is_nf(nf), "invalid argument #1 (normal form expected)")
 
--- io.write("a1 in\n") -- debug pnf
+  if not is_nil(nf.a_1) then      -- already processed
+    return nf
+  end
 
-  if option.fortid ~= 0 then io.stderr:write("linear normal form a1\n") end
-
-  local nn, nv, npt, m_n, fid, fil in nf
+  local rk, m_n in nf
   local M = m_n:get1()            -- retrieve one-turn map
 
   -- remove parameters
-  local rg = npt ~= 0 and r4 or r6
+  local rg = rk == 4 and r4 or r6
   M = M:getsub(rg,rg)             -- reduce M to rank
 
   make_stable(M)                  -- stabilise    M if needed
   make_symp  (M)                  -- symplectifiy M if needed
                                   -- eigenvalues (W) and right eigenvectors (A)
-  local _, info, A = M:eigen(M:same())
+  local W, info, A = M:eigen(M:same())
 
-  norml_eigen(A)                  -- normalize eigen system
-  order_eigen(A)                  -- order eigval and eigvec by planes
+  norml_eigen(A, W)               -- normalize eigen system
+  order_eigen(A, W)               -- order eigval and eigvec by planes
   phase_eigen(A)                  -- rephase eigen vectors to CS form
+
+  normal_qs(nf, W)                -- add tunes
 
   local a1 = m_n:same():eye():set1(A)
 
   nf.m_n = a1^-1 * m_n * a1       -- go to Courant-Snyder basis
-  nf.a1  = a1
-
--- if nf.npt > 0 then -- debug pnf
---   nf.a1    :print("A1"   , true);
---  (nf.a1^-1):print("A1^-1", true);
---   nf.m_n   :print("M_n"  , true);
--- end
-
--- io.write("a1 out\n") -- debug pnf
+  nf.a_1 = a1
 end
 
 -- phasor basis = c^-1 * (a1^-1 * (a0^-1 * m * a0) * a1) * c --------o
@@ -1237,10 +1379,10 @@ local function phasor (nf, inv_)
   assert(is_nf(nf)  , "invalid argument #1 (normal form expected)")
   assert(is_table(v), "invalid argument #2 (-1 or 1 expected)")
 
-  local npt, m_n in nf
-  local c, rk = m_n:same(0i):eye(), npt ~= 0 and 4 or 6
+  local rk, m_n in nf
+  local c = m_n:same(0i):eye()
 
-  for i=2,rk,2 do -- 2,4,6,..
+  for i=2,rk,2 do
     c[i-1]:clear():set(i, 0, v[1]):set(i+1, 0, v[2]) -- c[1] -- clear?
     c[i  ]:clear():set(i, 0, v[3]):set(i+1, 0, v[4]) -- c[2] -- clear?
   end
@@ -1253,47 +1395,38 @@ gphys.phasor = phasor
 local function normal_c (nf)
   assert(is_nf(nf), "invalid argument #1 (normal form expected)")
 
--- io.write("c in\n") -- debug pnf
+  if not is_nil(nf.c) then        -- already processed
+    return nf
+  end
 
-  if option.fortid ~= 0 then io.stderr:write("phasor basis c\n") end
+  local c  = phasor(nf,  1)       -- get phasor
+  local ci = phasor(nf, -1)       -- get phasor (inverse)
 
-  local c , cr  = phasor(nf,  1) -- get phasor
-  local ci, cir = phasor(nf, -1) -- get phasor (inverse)
-
-  nf.m_n = ci * nf.m_n * c       -- go to phasor (phase-action) basis
-  nf.c , nf.cr  = c , cr
-  nf.ci, nf.cir = ci, cir
-
--- if nf.npt > 0 then -- debug pnf
---   nf.c  :print("C"  , true)
---   nf.m_n:print("M_n", true)
--- end
-
--- io.write("c out\n") -- debug pnf
+  nf.m_n = ci * nf.m_n * c        -- go to phasor basis (action-angle)
+  nf.c, nf.ci = c, ci
 end
 
--- full normal form (PTC-like) ------------------
+-- full normal form (PTC-like) ------------------------------------------------o
 
-function gphys.normal (m, urdt_)
-  assert(is_damap(m), "invalid argument #1 (damap expected)")
+function normal (m, urdt_)
+  assert(is_damap(m) or is_nf(m),
+         "invalid argument #1 (damap or normal form expected)")
 
-  -- already a normalizing form
-  if m.status == 'Aset' then return nil end
+  local ustop
+  if is_string(urdt_) then
+    ustop, urdt_ = urdt_, nil
+  end
 
   -- initialization -----------------------------
 
-  local closed_only
-  if urdt_ == "closed" then closed_only, urdt_ = true, nil end
-
-  local nf = normal_init(m, urdt_) -- one-turn map
+  local nf = is_nf(m) and m or normal_init(m, urdt_)
 
   -- closed form --------------------------------
 
   normal_a0(nf)                    -- closed form (fix point)
 
-  -- stop here for closed form
-  if closed_only then
-    nf.a = nf.a0
+  if ustop == "close" then
+    nf.a = nf.a_0 -- shared
     return nf
   end
 
@@ -1301,58 +1434,45 @@ function gphys.normal (m, urdt_)
 
   normal_a1(nf)                    -- linear normal form (Courant-Snyder basis)
 
-  -- stop here for order 1
-  if m:mord() == 1 then
-    nf.a = nf.a0 * nf.a1
+  if ustop == "linear" or m:mord() == 1 then
+    if m:mord() == 1 then nf.m_n = nil end
+    nf.a = nf.a_0 * nf_a_1
     return nf
   end
 
-  -- phasor basis -------------------------------
+  -- phasor basis & tunes -----------------------
 
-  normal_c(nf)                     -- resonance basis (phase-action basis)
+  normal_c(nf)                     -- resonance basis (action-angle basis)
+
+  local r1i = nf.m_n:getord(1)^-1  -- linear map (only) in phasors basis
+
+  for i=1,nf.rk do                 -- crosscheck eigentunes (set in normal_a1)
+    local ok = r1i[i]:get(i+1):eq(nf.lam[i],100*eig_tol)
+    if not ok then
+      local tostring in MAD
+      local a,b,c = r1i[i]:get(i+1), nf.lam[i], r1i[i]:get(i+1)-nf.lam[i]
+      warn("unexpected inconsistent eigentune no %d", i)
+      warn("%s ~= %s, dif = %s", tostring(a), tostring(b), tostring(c))
+    end
+  end
 
   -- non-linear normal form ---------------------
 
-  local fid = option.fortid ~= 0
-
-  if fid then io.stderr:write("non-linear normal form\n") end
-
   -- prepare factored Lie representation of A and N
-  local nn, nv, npt, m_n, urdt, fil in nf
-  local rk   = npt ~= 0 and 4 or 6
+  local nn, nv, rk, urdt, lam, m_n in nf
   local f_op, t_op = {m_n:same()}, {m_n:same()}
-  local id   = m_n:same():eye()
-  local mono = monomial(nn)
-
-  -- linear map (only) in phasors basis
-  local r1 = m_n:getord(1)                                                      ; nf:dump(r1,"r1")
-  local r1i = r1^-1                                                             ; nf:dump(r1i,"r1^-1")
-
-  -- retrieve the eigentunes (lambda)
-  local lam = cvector(nv)
-  for i=1,#lam do lam[i] = r1i[i]:get(i+1) end
+  local id, mono = m_n:same():eye(), monomial(nn)
+  local anh, ai = table.new(32,32), 1
 
   -- nonlinear iterations
   for n=2,m_n:mord() do
-    if fid then
-      io.stderr:write("****************************************\n")
-      io.stderr:write("Order ",n,", fid=", option.fortid,"\n")
-    end
-
     -- project remaining orders on resonance basis
-    local n_n = (m_n * r1i):lieexppb(t_op, -1):getord(n)                        ; nf:dump(n_n,"n_n @"..n) --; nfsave(nf,n_n,"n_n @"..n)
-
---  n_n:write(io.stderr, "n_n("..n..")", true)
+    local n_n = (m_n * r1i):lieexppb(t_op, -1):getord(n)
 
     -- use directly the vector field
     local f_n, t_n = n_n:same(), n_n:same() -- fun, ker
 
     for k=1,nv do
-      if fid then
-        io.stderr:write("****************************************\n")
-        io.stderr:write("Field ",k,", fid=", option.fortid, "\n")
-      end
-
       -- select/reject resonances
       for i,v in n_n[k]:iter(mono) do
         local ms = mono:tostring()
@@ -1379,187 +1499,42 @@ function gphys.normal (m, urdt_)
           local p = 1
           for j=1,rk do p = p * lam[j]^mt[j] end
           v = v / (1-p)
-          if abs(1-p) < 1e-12 then
+          if cabs(1-p) < stab_tol then
             io.stderr:write("Warn: trying to kill ", ms, " with p = ", p:tostring(), "\n")
           end
           f_n[k]:set(mono, 1, v)
         else
           t_n[k]:set(mono, 1, v)
+          anh[ai], anh[ms], ai = ms, -v:imag()/twopi * mono:ordpf(nv,1,2), ai+1
         end
       end -- iter
     end -- for k
 
     -- save vector fields
-    f_op[n], t_op[n] = f_n, t_n                                                 ; nf:dump(f_n,"f_n @"..n):dump(t_n,"t_n @"..n)
+    f_op[n], t_op[n] = f_n, t_n
     if n == m_n:mord() then break end
 
-    m_n = f_n:exppb((-f_n):exppb(id) * m_n)                                     ; nf:dump(m_n, "m_n("..n..")")
+    m_n = (id:exppb(-f_n) * m_n):exppb(f_n)
   end -- for n
 
-  -- the normalizing map A
-  local lieex = id:lieexppb(f_op)                                               ; nf:dump(lieex, "lieex")
+  -- the normalizing map A (nonlinear part)
+  nf.a_2 = nf.c * id:lieexppb(f_op) * nf.ci
 
-  nf.a2 = nf.c * lieex * nf.ci
-  nf.a = nf.a0 * nf.a1 * nf.a2                                                  ; nf:dump"a"
---nf.a:real():copy(m):set0(nf.x0).status = 'Aset'
+  -- the normalizing map A (full reconstruction)
+  nf.a   = nf.a_0 * nf.a_1 * nf.a_2
 
---  if fid then io.stderr:write("end of normal form\n") end
+  -- hook/clear results
+  nf.m_n, nf.anh =
+     nil,    anh
 
-  -- hook the results
-  nf.lam, nf.m_n, nf.t_op =
-     lam,    m_n,    t_op
+  -- add methods
+  nf.dq1, nf.dq2, nf.dq3, nf.anhx, nf.anhy, nf.anht, nf.optfun, nf.analyse =
+  nf_dq1, nf_dq2, nf_dq3, nf_anhx, nf_anhy, nf_anht,     nfopt,      nfana
 
   return nf
 end
 
--- full normal form (NG) -------------------
-
-function gphys.normal_ng (m, urdt_)
-  assert(is_damap(m), "invalid argument #1 (damap expected)")
-
-  -- already a normalizing form
-  if m.status == 'Aset' then return m end
-
-  -- linear normal form -------------------------
-
-  if option.fortid ~= 0 then io.stderr:write("linear normal form\n") end
-
-  local nf = normal_init(m, urdt_) ; nf:dump(nf.m_n,"m1(--)")  -- one-turn map
-  normal_a0(nf)                    ; nf:dump(nf.m_n,"m1(a1)")  -- closed form
-                                       :dump(nf.a0 ,"a1"    )
-  normal_a1(nf)                    ; nf:dump(nf.m_n,"m1(a2)")  -- linear normal form
-                                       :dump(nf.a1 ,"a2"    )
-
-  -- stop here for order 1
-  if m:mord() == 1 then
-    nf.a = nf.a0 * nf.a1
-    nf.a:copy(m):set0(nf.x0).status = 'Aset'
-    return m, nf
-  end
-
-  -- phasor basis -------------------------------
-
-  if option.fortid ~= 0 then io.stderr:write("phasor basis\n") end
-
-  normal_c(nf)                    ; nf:dump(nf.m_n,"m1(ri)") -- resonance basis
-                                      :dump(nf.ci ,"ri"    )
-
-  -- non-linear normal form ---------------------
-
-  if option.fortid ~= 0 then io.stderr:write("non-linear normal form\n") end
-
-  -- prepare factored Lie representation of A and N
-  local nv, npt, m_n, urdt, fil in nf
-  local rk            = npt ~= 0 and 4 or 6
-  local mono          = monomial(nv)
-  local id            = m_n:same():eye()
-  local f_op, t_op    = {m_n:same()}, {m_n:same()}
-  local ham, gnf, anh = {}, {}, {}
-
-  -- linear map (only) in phasors basis
-  local r1 = m_n:getord(1)
-  local r1i = r1^-1              !; nf:dump(r1,"r1"):dump(r1i,"r1^-1")
-
-  -- retrieve the eigentunes (lambda)
-  local lam = cvector(nv)
-  for i=1,nv do lam[i] = r1i[i]:get(i+1) end lam:write(fil, "tunes")
-
-  -- cdamap for pseudo hamiltonian (need mo+1)
-  local mo, np, po in m_n.__td
-
-  io.stderr:write("nv=", nv, ", np=", np, ", rk=", rk, ", npt=", npt, ", #vn=", #m.__vn, "\n")
-
-  if npt == 5 then nv, np = nv-1, np+1 end
-
-  io.stderr:write("nv=", nv, ", np=", np, ", rk=", rk, ", npt=", npt, ", #vn=", #m.__vn, "\n")
-
-  local tc = cdamap{nv=nv, mo=mo+1, np=np, po=po, vn=m.__vn} -- tmp for conv.
-                    -- rk              np+nv-rk
-
-  -- nonlinear iterations
-  for n=2,m_n:mord() do
-    fil:write("****************************************\n")
-    fil:write("Order ",n,", fid=", nf.fid,"\n")
-
-    -- project remaining orders on resonance basis
-    local n_n = (m_n * r1i):lieexppb(t_op, -1):getord(n) ; nf:dump(n_n,"n_n @"..n)
-
-    -- compute pseudo-hamiltonian
-    local g_n = n_n:convert(tc):fld2vec()                !; g_n:print("g_n @ "..n)
-    local f_pb, t_pb = g_n:same(), g_n:same()
-
-    -- select/reject resonances
-    for i,v in g_n:iter(mono) do
-      local ms = mono:tostring()
-
-      local s = 0
-      for j=2,rk,2 do                   -- check for resonances
-        s = s + abs(mono[j]-mono[j-1])
-      end
-      if s ~= 0 and urdt then           -- check for user resonances
-        for _,r in ipairs(urdt) do      -- {{3,0,0}, {1,2,0}, {0,3,0}, etc.}
-          local rs = 0
-          for j=2,rk,2 do
-            rs = rs + abs(abs(mono[j]-mono[j-1]) - r[j/2])
-          end
-          if rs == 0 then s = 0 ; break end -- keep user resonances
-        end
-      end
-
-      ham[#ham+1], ham[ms] = ms, v                                            -- ham terms
-
-      if s ~= 0 then
-        local p = 1
-        for j=2,rk,2 do
-          p = p * lam[j-1]^(mono[j]-mono[j-1])
-        end
-        v = v / (1-p)
-        if abs(1-p) < 1e-12 then
-          io.stderr:write("Warn: killing [", ms, "] with p = ", p:tostring(), "\n")
-        end
-        f_pb:set(mono, 1, v)
-        gnf[#gnf+1], gnf[ms] = ms, -v                                         -- gnf terms
-        fil:write("gnf[",ms,"]=", gnf[ms]:tostring(), ", v=", v:tostring(), "\n")
-      else
-        t_pb:set(mono, 1, v)
-        anh[#anh+1], anh[ms] = ms, -mono:ordpf(nv,1,2)*v:imag()/twopi         -- anh terms
-        fil:write("anh[",ms,"]=", num2str(anh[ms]), ", v=", v:tostring(), "\n")
-      end
-    end -- iter
-    -- f_pb:print("f_pb @ "..n)
-
-    -- compute vector fields
-    local f_n = tc:vec2fld(f_pb):convert(m_n:same():eye())
-    local t_n = tc:vec2fld(t_pb):convert(m_n:same():eye())
-
-    -- save vector fields
-    f_op[n], t_op[n] = f_n, t_n
-    if n == m_n:mord() and nf.fid == 0 then break end
-
-    -- kill resonances in the map
-!   local m_n_1 = (-f_n):exppb(id) ; nf:dump(m_n_1, "m_n_1 @"..n)
-!   local m_n_2 = m_n_1 * m_n      ; nf:dump(m_n_2, "m_n_2 @"..n)
-!   local m_n_3 = f_n:exppb(m_n_2) ; nf:dump(m_n_3, "m_n_3 @"..n)
-!   nf:dump(t_n,"t_n @"..n):dump(f_n,"f_n @"..n):dump(m_n,"m_n @"..n)
-
-    m_n = f_n:exppb((-f_n):exppb(id) * m_n) ; nf:dump(m_n, "m1("..n..")")
-  end -- for n
-
-  -- the normalizing map A
-  nf.lieex = id:lieexppb(f_op) !; nf:dump"lieex"
-
-  nf.a = nf.a0 * nf.a1 * nf.c * nf.lieex * nf.ci ; nf:dump"a"
-  nf.a:real():copy(m):set0(nf.x0).status = 'Aset'
-
-  nf.fil:write("fid(a)=", nf.fid, "\n")
-  nf.fil:close() ; nf.fil = nil
-
-  -- hook the results
-  nf.ham_, nf.gnf_, nf.anh, nf.lam, nf.m_n, nf.t_op =
-     ham ,    gnf ,    anh,    lam,    m_n,    t_op
-
-  return nf
-end
+gphys.normal = normal
 
 -- beta0 block conversion -----------------------------------------------------o
 
@@ -1575,9 +1550,6 @@ function gphys.bet2map (bb0, map, sav_) -- TODO: move to beta0
   assert(typeid.is_beta0(bb0), "invalid argument #1 (beta0 block expected)")
   assert(       is_damap(map), "invalid argument #2 (damap expected)")
 
-  local rnk = bb0.rank or 4
-  local cpl = bb0.cplg or nil
-  local dir = bb0.sdir or 1
   local X   = (bb0.X or vector(6)):zeros()
   local A   = (bb0.A or matrix(6)):eye()
 
@@ -1595,8 +1567,8 @@ function gphys.bet2map (bb0, map, sav_) -- TODO: move to beta0
 
   -- x plane
 
-  local beta11 = bb0.beta11 or bb0.beta1 or bb0.betx or 1
-  local alfa11 = bb0.alfa11 or bb0.alfa1 or bb0.alfx or 0
+  local beta11 = bb0.beta11
+  local alfa11 = bb0.alfa11
   local gama11 = bb0.gama11 or (1+alfa11^2)/beta11
 
   assertf(beta11 > 0, "invalid beta11=%.3fm (>0 expected)", beta11)
@@ -1610,8 +1582,8 @@ function gphys.bet2map (bb0, map, sav_) -- TODO: move to beta0
 
   -- y plane
 
-  local beta22 = bb0.beta22 or bb0.beta2 or bb0.bety or 1
-  local alfa22 = bb0.alfa22 or bb0.alfa2 or bb0.alfy or 0
+  local beta22 = bb0.beta22
+  local alfa22 = bb0.alfa22
   local gama22 = bb0.gama22 or (1+alfa22^2)/beta22
 
   assertf(beta22 > 0, "invalid beta22=%.3fm (>0 expected)", beta22)
@@ -1625,23 +1597,18 @@ function gphys.bet2map (bb0, map, sav_) -- TODO: move to beta0
 
   -- t plane
 
-  local beta33 = bb0.beta33 or bb0.beta3 or bb0.betz or 0
+  local beta33 = bb0.beta33
+  local alfa33 = bb0.alfa33
+  local gama33 = bb0.gama33 or (1+alfa33^2)/beta33
 
-  if beta33 ~= 0 then
-    local alfa33 = bb0.alfa33 or bb0.alfa3 or bb0.alfz or 0
-    local gama33 = bb0.gama33 or (1+alfa33^2)/beta33
+  assertf(beta33 > 0, "invalid beta33=%.3fm (>0 expected)", beta33)
 
-    assertf(beta33 > 0, "invalid beta33=%.3fm (>0 expected)", beta33)
+  local A55 = sqrt(beta33)
+  local A65 = -alfa33/A55
+  local A66 = sqrt(gama33 - A65^2) -- 1/A55
 
-    local A55 = sqrt(beta33)
-    local A65 = -alfa33/A55
-    local A66 = sqrt(gama33 - A65^2) -- 1/A55
-
-    set(A,5,5, A55) ; set(A,5,6,  0 ) -- Courant-Snyder form
-    set(A,6,5, A65) ; set(A,6,6, A66)
-
-    if rnk == 4 then rnk = 6 end
-  end
+  set(A,5,5, A55) ; set(A,5,6,  0 ) -- Courant-Snyder form
+  set(A,6,5, A65) ; set(A,6,6, A66)
 
   -- set dispersion
 
@@ -1650,12 +1617,12 @@ function gphys.bet2map (bb0, map, sav_) -- TODO: move to beta0
   if bb0.dy  then set(A,3,6, bb0.dy ) end
   if bb0.dpy then set(A,4,6, bb0.dpy) end
 
-  -- backup rank and coupling
+  -- backup rank
 
-  if sav_ then bb0.rank, bb0.cplg, bb0.sdir = rnk, cpl, dir end
+  local rnk = bb0.rank or has_dpt(A) and 6 or 4
+  if sav_ then bb0.rank = rnk end
 
   -- sanity checks
-
   local serr, merr = (rnk >= 6 and A or A:getsub(r4,r4)):symperr(matrix(rnk))
   if serr > symp_tol then
     io.flush()
@@ -1723,7 +1690,7 @@ function gphys.map2bet (map, rnk_, cpl_, bet_, dir_) -- TODO: move to beta0
     bb0.beta33 = oval(   get(A,5,5)^2            + get(A,5,6)^2             )
     bb0.gama33 = oval(   get(A,6,5)^2            + get(A,6,6)^2             )
   else
-    bb0.alfa33, bb0.beta33, bb0.gama33 = 0, 0, 0
+    bb0.alfa33, bb0.beta33, bb0.gama33 = 0, 1, 0
   end
 
   -- coupling terms
@@ -1805,77 +1772,7 @@ function gphys.map2bet (map, rnk_, cpl_, bet_, dir_) -- TODO: move to beta0
   end
 
   -- Edwards-Teng coupling formalism (Lebedev & Bogacz 2010)
-
-  if bb0.cplg then
-    local dpp1 = sqrt(1 + 2/bb0.beta*bb0.pt + bb0.pt^2)
-    bb0.betx = bb0.beta11*dpp1
-    bb0.bety = bb0.beta22*dpp1
-    bb0.alfx = bb0.alfa11
-    bb0.alfy = bb0.alfa22
-    bb0.kpa  = 1
-
-    local kx2 = bb0.beta12/bb0.beta11                                 -- eq. 4.7
-    local ky2 = bb0.beta21/bb0.beta22
-    local kxy = kx2*ky2
-
-    if abs(kx2-ky2) >= stab_tol and abs(1-kxy) >= stab_tol then -- eq. 4.8 & 4.9
-      local kx, ky = sqrt(kx2), sqrt(ky2)
-      local ax = (bb0.alfa11*kx - bb0.alfa12/kx);                     -- eq. 4.7
-      local ay = (bb0.alfa22*ky - bb0.alfa21/ky);
-      local ku = kxy*(1+(ax*ax-ay*ay)/(kx2-ky2)*(1-kxy))              -- eq. 4.8
-      local u = -kxy/(1-kxy)
-      if ku >= stab_tol then
-        local su = sqrt(ku)
-        u = u + (kxy <= su and +1 or -1) * su/(1-kxy)                 -- eq. 4.8
-      end
-      local kpa = 1-u
-
-      bb0.betx = bb0.betx/kpa                                        -- eq. 7.16
-      bb0.bety = bb0.bety/kpa
-      bb0.alfx = bb0.alfx/kpa
-      bb0.alfy = bb0.alfy/kpa
-      bb0.kpa  = kpa
-
-      local bx  = kx*kpa + u/kx                                      -- eq. 4.10
-      local by  = ky*kpa + u/ky
-      local cx  = kx*kpa - u/kx
-      local cy  = ky*kpa - u/ky
-      local evp = (ax + 1i*bx) / (ay - 1i*by)
-      local evm = (ax + 1i*cx) / (ay + 1i*cy)
-      local ev1 = sqrt(evp*evm)                                      -- eq. 4.11
-      local ev2 = sqrt(evp/evm)
-
-      if sign(ev1.im) ~= sign(ev2.im) then                           -- eq. 7.12
-        if ev1.im < 0 then ev1 = -ev1 else ev2 = -ev2 end
-      end
-                                                                     -- eq. 7.11
-      bb0.r11  =  sqrt(bb0.beta22/bb0.beta12) * (u*ev2.re + bb0.alfa12*ev2.im)/kpa
-      bb0.r22  = -sqrt(bb0.beta11/bb0.beta21) * (u*ev1.re + bb0.alfa21*ev1.im)/kpa
-      bb0.r12  =  sqrt(bb0.beta11*bb0.beta21) * ev1.im/kpa
-      bb0.r21  = (ev2.re*(bb0.alfa12*kpa - bb0.alfa22*u) -
-                  ev2.im*(bb0.alfa12*bb0.alfa22 + kpa*u)) / (kpa*sqrt(bb0.beta12*bb0.beta22))
-
-      local sbetx, sbety = sqrt(bb0.betx), sqrt(bb0.bety)
-      local    r  = matrix(2):fill{bb0.r22, -bb0.r12, -bb0.r21, bb0.r11} -- -S*R*S
-      local    ga = matrix(2):fill{1/sbetx, 0,  bb0.alfx/sbetx,   sbetx}
-      local   _gb = matrix(2):fill{  sbety, 0, -bb0.alfy/sbety, 1/sbety} -- gb^-1
-      local     c = r/sqrt(1+r:det())              -- eq. 16
-      local  cbar = ga * c * _gb                   -- eq. 5
-      local    cb = 0.25/sqrt(1-cbar:det())*cbar   -- eq. 9 & 10
-      local f1010 = -cb:get(1,2)-cb:get(2,1) + 1i*(cb:get(1,1)-cb:get(2,2))
-      local f1001 =  cb:get(1,2)-cb:get(2,1) + 1i*(cb:get(1,1)+cb:get(2,2))
-
-      bb0.f1010 = f1010
-      bb0.f1001 = f1001
-    else
-      bb0.r11   = 0
-      bb0.r22   = 0
-      bb0.r12   = 0
-      bb0.r21   = 0
-      bb0.f1010 = 0
-      bb0.f1001 = 0
-    end
-  end
+  if bb0.cplg then nf_cplg(bb0) end
 
   return bb0
 end

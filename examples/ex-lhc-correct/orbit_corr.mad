@@ -1,0 +1,65 @@
+local beam, track, twiss, match, correct in MAD
+local assertf, printf                    in MAD.utility
+
+io.write("*** loading lattice and optics\n")
+MADX:load('lhc_as-built.seq', 'lhc_as-built.mad' ) -- convert and save on need
+MADX:load('opticsfile.21'   , 'opticsfile.21.mad') -- ditto
+MADX:load('lhc_unset_vars.mad') -- handmade, cleaner than disabling warnings...
+
+local lhcb1, nrj in MADX
+
+-- sanity checks
+assertf(#lhcb1 == 6694, "invalid number of elements %d in LHCB1 (6694 expected)", #lhcb1)
+
+-- attach beam
+lhcb1.beam = beam { particle='proton', energy=nrj }
+
+-- input values
+local qx, qy, dp = 62.28, 60.31, 1e-4
+
+-- pre-setup to speed up matching
+MADX.dqx_b1 = -3.00125e-02
+MADX.dqy_b1 = -1.00166e-02
+
+io.write("*** matching tunes\n")
+match {
+  command := twiss {sequence=lhcb1, observe=1},
+  variables = { rtol=1e-6, -- 1 ppm
+    { var = 'MADX.dqx_b1', name='dQx.b1' },
+    { var = 'MADX.dqy_b1', name='dQy.b1' },
+  },
+  equalities = { tol=1e-6,
+    { expr = \t -> t.q1-qx, name='q1' },
+    { expr = \t -> t.q2-qy, name='q2' },
+  },
+  info=2
+}
+
+io.write("*** reference twiss, save TFS table\n")
+twiss { sequence=lhcb1 } :write"before_correct_ng"
+
+io.write("*** off-momentum twiss, save TFS table\n")
+local tbl = twiss { sequence=lhcb1, deltap=dp } :write"before_correct_dp_ng"
+
+io.write("*** orbit correction using off momentum twiss\n")
+correct { sequence=lhcb1, model=tbl, method="micado", info=1 } :write"correct_mic_n"
+
+io.write("*** off-momentum twiss after correction, save TFS table\n")
+twiss { sequence=lhcb1, deltap=dp } :write"after_correct_dp_ng"
+
+io.write("*** rematching tunes for off-momentum twiss\n")
+match {
+  command := twiss {sequence=lhcb1, observe=1, deltap=dp},
+  variables = { rtol=1e-6, -- 1 ppm
+    { var = 'MADX.dqx_b1', name='dQx.b1' },
+    { var = 'MADX.dqy_b1', name='dQy.b1' },
+  },
+  equalities = { tol = 1e-6,
+    { expr = \t -> t.q1-qx, name='q1' },
+    { expr = \t -> t.q2-qy, name='q2' },
+  },
+  info=2
+}
+
+io.write("*** corrected off-momentum twiss, save TFS table\n")
+twiss { sequence=lhcb1, deltap=dp } :write"after_correct_match_dp_ng"

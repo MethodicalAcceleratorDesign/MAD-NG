@@ -29,8 +29,6 @@
 #include "mad_vec.h"
 #include "mad_mat.h"
 
-#define MAD_USE_MADX 0
-
 // --- helpers for debug ------------------------------------------------------o
 
 #if 0
@@ -1756,6 +1754,36 @@ mad_cmat_gmsolve (const cpx_t a[], const cpx_t b[], const cpx_t d[],
 // Eigen values and vectors
 // A:[n x n], U:[m x m], S:[min(m,n)], V:[n x n]
 
+static void
+canon_eig(ssz_t n, num_t v[], num_t wi[])
+{
+  idx_t mm[2];
+  FOR(i,n) {
+    num_t *vi = v+i*n;
+    mad_vec_minmax(vi, TRUE, mm, n);
+    if (vi[mm[1]] < 0) {
+      mad_vec_muln(vi, -1, vi, n);
+      if (wi[i])
+        ensure(!vi[mm[1]+n], "dgeev: unexpected non-zero slot %d,%d", mm[1], i+1),
+        mad_vec_muln(vi+n, -1, vi+n, n);
+    }
+    i += !!wi[i];
+  }
+}
+
+static void
+canon_ceig(ssz_t n, cpx_t v[])
+{
+  idx_t mm[2];
+  FOR(i,n) {
+    cpx_t *vi = v+i*n;
+    mad_cvec_minmax(vi, mm, n);
+    if (creal(vi[mm[1]]) < 0)
+      ensure(!cimag(vi[mm[1]]), "zgeev: unexpected non-zero imag at slot %d,%d", mm[1], i),
+      mad_cvec_muln(vi, -1, vi, n);
+  }
+}
+
 int
 mad_mat_eigen (const num_t x[], cpx_t w[], num_t vl_[], num_t vr_[], ssz_t n)
 {
@@ -1775,11 +1803,13 @@ mad_mat_eigen (const num_t x[], cpx_t w[], num_t vl_[], num_t vr_[], ssz_t n)
   lwork=sz;
   mad_alloc_tmp(num_t, wk, lwork);
   dgeev_(vls, vrs, &nn, ra, &nn, wr, wi, vl_, &nn, vr_, &nn,  wk, &lwork, &info); // compute
-  mad_vec_cplx(wr, wi, w, n);
   mad_free_tmp(wk); mad_free_tmp(ra);
+
+  if (vl_) canon_eig(n, vl_, wi), mad_mat_trans(vl_, vl_, n, n);
+  if (vr_) canon_eig(n, vr_, wi), mad_mat_trans(vr_, vr_, n, n);
+
+  mad_vec_cplx(wr, wi, w, n);
   mad_free_tmp(wi); mad_free_tmp(wr);
-//if (vl_) mad_mat_trans(vl_, vl_, n, n);
-  if (vr_) mad_mat_trans(vr_, vr_, n, n);
 
   if (info < 0) error("Eigen: invalid input argument");
   if (info > 0) warn ("Eigen: failed to compute all eigenvalues");
@@ -1806,8 +1836,9 @@ mad_cmat_eigen (const cpx_t x[], cpx_t w[], cpx_t vl_[], cpx_t vr_[], ssz_t n)
   mad_alloc_tmp(cpx_t, wk, lwork);
   zgeev_(vls, vrs, &nn, ra, &nn, w, vl_, &nn, vr_, &nn,  wk, &lwork, rwk, &info); // compute
   mad_free_tmp(wk); mad_free_tmp(ra); mad_free_tmp(rwk);
-//if (vl_) mad_cmat_trans(vl_, vl_, n, n);
-  if (vr_) mad_cmat_trans(vr_, vr_, n, n);
+
+  if (vl_) canon_ceig(n, vl_), mad_cmat_trans(vl_, vl_, n, n);
+  if (vr_) canon_ceig(n, vr_), mad_cmat_trans(vr_, vr_, n, n);
 
   if (info < 0) error("Eigen: invalid input argument");
   if (info > 0) warn ("Eigen: failed to compute all eigenvalues");
@@ -2198,125 +2229,6 @@ void mad_mat_torotq (const num_t x[NN], num_t q[4], log_t inv)
 #undef N
 #undef X
 
-// -- Orbit Correction MADX version -------------------------------------------o
-
-#if MAD_USE_MADX
-
-int mad_use_madx_micado = 0;
-int mad_use_madx_svdcnd = 0;
-
-extern void // see madx_micado.f90
-micit_(num_t cin[], num_t res[],
-       int nx[], num_t *rms, int *im, int *ic, int *iter,
-       /* working buffers */
-       int ny[], num_t ax[], num_t cinx[], num_t xinx[], num_t resx[],
-       num_t rho[], num_t ptop[], num_t rmss[], num_t xrms[], num_t xptp[],
-       num_t xiter[], int *ifail);
-
-extern void
-svddec_(num_t svdmat[], num_t umat[], num_t vmat[],
-        /* working buffers */
-        num_t ws[], num_t wvec[], int sortw[], num_t *sngcut, num_t *sngval,
-        /* sizes and output */
-        int *im, int *ic, int *iflag, int sing[]);
-
-static int // madx legacy code wrapper
-madx_micado (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
-             ssz_t N, num_t tol, num_t r_[])
-{
-  /* copy buffers */
-  mad_alloc_tmp(num_t, X   , n);
-  mad_alloc_tmp(num_t, R   , m);
-  /* working buffers */
-  mad_alloc_tmp(idx_t, nx  , n);
-  mad_alloc_tmp(idx_t, ny  , n);
-  mad_alloc_tmp(num_t, ax  , m*n);
-  mad_alloc_tmp(num_t, cinx, n);
-  mad_alloc_tmp(num_t, xinx, m);
-  mad_alloc_tmp(num_t, resx, m);
-  mad_alloc_tmp(num_t, rho , 3*n);
-  mad_alloc_tmp(num_t, ptop, n);
-  mad_alloc_tmp(num_t, rmss, n);
-  mad_alloc_tmp(num_t, xrms, n);
-  mad_alloc_tmp(num_t, xptp, n);
-  mad_alloc_tmp(num_t, xitr, n);
-
-  mad_mat_trans(a, ax  , m, n);
-  mad_vec_copy (b, xinx, m);
-  mad_vec_fill (0, x   , n);
-
-  int im=m, ic=n, iter=N, ifail=0;
-  num_t rms=tol;
-
-  micit_(X, R, nx, &rms, &im, &ic, &iter,
-         /* working buffers */
-         ny, ax, cinx, xinx, resx, rho, ptop, rmss, xrms, xptp, xitr, &ifail);
-
-  // Re-order corrector strengths and save residues. Strengths are not minused!
-  FOR(i,iter) x[i] = -X[nx[i]-1];
-  if (r_) mad_vec_copy(R, r_, m);
-
-  /* copy buffers */
-  mad_free_tmp(X);
-  mad_free_tmp(R);
-  /* working buffers */
-  mad_free_tmp(nx);
-  mad_free_tmp(ny);
-  mad_free_tmp(ax);
-  mad_free_tmp(cinx);
-  mad_free_tmp(xinx);
-  mad_free_tmp(resx);
-  mad_free_tmp(rho);
-  mad_free_tmp(ptop);
-  mad_free_tmp(rmss);
-  mad_free_tmp(xrms);
-  mad_free_tmp(xptp);
-  mad_free_tmp(xitr);
-
-  return iter;
-}
-
-static int // madx legacy code wrapper
-madx_svdcnd (const num_t a[], idx_t c[], ssz_t m, ssz_t n, num_t scut, num_t s_[], num_t sval)
-{
-  /* copy buffers */
-  mad_alloc_tmp(num_t, A  , m*n);
-  mad_alloc_tmp(num_t, U  , m*n);
-  mad_alloc_tmp(num_t, V  , n*n);
-  mad_alloc_tmp(num_t, S  , n  );
-  /* working buffers */
-  mad_alloc_tmp(num_t, W  , n  );
-  mad_alloc_tmp(idx_t, srt, n  );
-  mad_alloc_tmp(idx_t, sng, 2*n);
-
-  mad_mat_trans(a, A, m, n);
-
-  int im=m, ic=n, nc=0;
-
-  svddec_(A, U, V, W, S, srt, &scut, &sval, &im, &ic, &nc, sng);
-
-  // Backup singular values.
-  if (s_) mad_vec_copy(S, s_, MIN(m,n));
-
-  // Backup indexes of columns to remove.
-  FOR(i,nc) c[i] = sng[2*i];
-
-  /* copy buffers */
-  mad_free_tmp(A);
-  mad_free_tmp(U);
-  mad_free_tmp(V);
-  mad_free_tmp(S);
-  /* working buffers */
-  mad_free_tmp(W);
-  mad_free_tmp(srt);
-  mad_free_tmp(sng);
-
-  // Return sorted indexes of columns to remove.
-  return mad_ivec_sort(c, nc, true);
-}
-
-#endif /// MAD_USE_MADX
-
 // -- Orbit Correction --------------------------------------------------------o
 
 int // Matrix preconditionning using SVD, return indexes of columns to remove.
@@ -2324,13 +2236,6 @@ mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
                ssz_t N, num_t rcond, num_t s_[], num_t tol)
 {
   assert(a && c);
-
-#if MAD_USE_MADX
-  // X-check with MAD-X SVD cond (where N = n-5)
-  if (mad_use_madx_svdcnd) {
-    return madx_svdcnd(a, c, m, n, rcond, s_, 1/tol);
-  }
-#endif
 
   ssz_t mn = MIN(m,n);
 
@@ -2552,7 +2457,7 @@ mad_cmat_pcacnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
   CERN ISR-MA/73-17, 1973.
 */
 
-int // Micado (from MAD9 + bug fixes)
+int // Micado
 mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
                ssz_t N, num_t tol, num_t r_[])
 {
@@ -2579,13 +2484,6 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
 
   // N == 0 means to use all correctors
   if (N > n || N <= 0) N = n;
-
-#if MAD_USE_MADX
-  // X-check with MAD-X Micado
-  if (mad_use_madx_micado) {
-    return madx_micado(a, b, x, m, n, N, tol, r_);
-  }
-#endif
 
   mad_alloc_tmp(num_t, A  , m*n);
   mad_alloc_tmp(num_t, B  , m);
@@ -2622,53 +2520,50 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
   // Begin of iteration (l): loop over best-kick selection (i.e. A columns).
   FOR(k,N) {
     // Box 3: Search the columns not yet used for largest scaled change vector.
-    { num_t maxChange = 0;
-      idx_t changeIndex = -1;
+    { num_t max =  0;
+      idx_t idx = -1;
       FOR(j,k,n) {
         if (sqr[j] > sqrmin) {        // criteria rho that minimize the residues
-          num_t change = dot[j]*dot[j] / sqr[j];
-          if (change > maxChange) {
-            changeIndex = j;
-            maxChange = change;
-          }
+          num_t scl = dot[j]*dot[j] / sqr[j];
+          if (scl > max) idx = j, max = scl;
         }
       }
 
       // Stop iterations if no suitable column are found.
-      if (changeIndex < 0) { N=k; break; }
+      if (idx < 0) { N=k; break; }
 
       // Move the column just found to next position.
-      if (changeIndex > k) {
+      if (idx > k) {
         num_t tr; idx_t ti;
-        SWAP(sqr[k], sqr[changeIndex], tr);
-        SWAP(dot[k], dot[changeIndex], tr);
-        SWAP(pvt[k], pvt[changeIndex], ti);
-        FOR(i,m) SWAP(A(i,k), A(i,changeIndex), tr);
+        SWAP(sqr[k], sqr[idx], tr);
+        SWAP(dot[k], dot[idx], tr);
+        SWAP(pvt[k], pvt[idx], ti);
+        FOR(i,m) SWAP(A(i,k), A(i,idx), tr);
       }
     }
 
     // Box 4: Compute beta, sigma, and vector u[k].
-    num_t beta, hh;
+    num_t bet, hh;
     { hh = 0;
       FOR(i,k,m) hh += A(i,k) * A(i,k);
-      num_t sigma = A(k,k) < 0 ? -sqrt(hh) : sqrt(hh);
-      sqr[k] = -sigma; // saved for use in X[1..k] update
-      A(k,k) += sigma;
-      beta = 1 / (A(k,k) * sigma);
+      num_t sig = A(k,k) < 0 ? -sqrt(hh) : sqrt(hh);
+      sqr[k] = -sig; // saved for use in X[1..k] update
+      A(k,k) += sig;
+      bet = 1 / (A(k,k) * sig);
     }
 
     // Box 5: Transform remaining columns of A.
     FOR(j,k+1,n) {
       hh = 0;
       FOR(i,k,m) hh += A(i,k) * A(i,j);
-      hh *= beta;
+      hh *= bet;
       FOR(i,k,m) A(i,j) -= A(i,k) * hh;
     }
 
     // Box 6: Transform vector b.
     hh = 0;
     FOR(i,k,m) hh += A(i,k) * B[i];
-    hh *= beta;
+    hh *= bet;
     FOR(i,k,m) B[i] -= A(i,k) * hh;
 
     // Box 3: Update scalar products sqr[j]=A[j]*A[j] and dot[j]=A[j]*b.

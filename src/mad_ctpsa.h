@@ -259,12 +259,12 @@ void     mad_ctpsa_logaxpsqrtbpcx2_r (const ctpsa_t *x, num_t a_re, num_t a_im,
                                                         num_t c_re, num_t c_im, ctpsa_t *r);
 
 // map functions (to check for non-homogeneous maps & parameters)
-void     mad_ctpsa_vec2fld  (ssz_t na, const ctpsa_t *a   ,                      ctpsa_t *mc[]); // F . grad
-void     mad_ctpsa_fld2vec  (ssz_t na, const ctpsa_t *ma[],                      ctpsa_t *c   );
-void     mad_ctpsa_fgrad    (ssz_t na, const ctpsa_t *ma[], const ctpsa_t * b  , ctpsa_t *c   );
-void     mad_ctpsa_liebra   (ssz_t na, const ctpsa_t *ma[], const ctpsa_t *mb[], ctpsa_t *mc[]);
-void     mad_ctpsa_exppb    (ssz_t na, const ctpsa_t *ma[], const ctpsa_t *mb[], ctpsa_t *mc[]); // exp(:F:) K
-void     mad_ctpsa_logpb    (ssz_t na, const ctpsa_t *ma[], const ctpsa_t *mb[], ctpsa_t *mc[]); // exp(log(:F:)) K
+void     mad_ctpsa_vec2fld  (ssz_t na, const ctpsa_t *a   ,                                ctpsa_t *mc[]); // F . grad
+void     mad_ctpsa_fld2vec  (ssz_t na, const ctpsa_t *ma[],                                ctpsa_t *c   );
+void     mad_ctpsa_fgrad    (ssz_t na, const ctpsa_t *ma[],           const ctpsa_t * b  , ctpsa_t *c   );
+void     mad_ctpsa_liebra   (ssz_t na, const ctpsa_t *ma[],           const ctpsa_t *mb[], ctpsa_t *mc[]);
+void     mad_ctpsa_exppb    (ssz_t na, const ctpsa_t *ma[], ssz_t nb, const ctpsa_t *mb[], ctpsa_t *mc[]); // exp(:F:) K
+void     mad_ctpsa_logpb    (ssz_t na, const ctpsa_t *ma[],           const ctpsa_t *mb[], ctpsa_t *mc[]); // exp(log(:F:)) K
 
 ord_t    mad_ctpsa_mord     (ssz_t na, const ctpsa_t *ma[], log_t hi); // max mo (or max hi)
 num_t    mad_ctpsa_mnrm     (ssz_t na, const ctpsa_t *ma[]);

@@ -1,0 +1,227 @@
+-- Script Setup
+local fplt = "ex-lhcb1-trkopt-rng.pdf" -- file to output plots
+
+-- Import commands
+local beam, twiss, damap, plot in MAD
+-- Import utility functions
+local printf, timeit, tblcat in MAD.utility
+-- Import flags
+local observed in MAD.element.flags
+
+-- LHC Setup -------------------------------------------------------------------
+
+local pbtop=beam{particle="proton", energy=6800}
+
+MADX:load("2024_lhcb1_saved.seq", "lhcb1.mad") -- convert and save on need
+local lhcb1 in MADX
+lhcb1.beam = pbtop
+
+-- MADX:load("2024_lhcb2_saved.seq", "lhcb2.mad")
+-- local lhcb2 in MADX
+-- lhcb2.dir = -1 -- reverse direction
+-- lhcb2.beam = pbtop
+
+-- Reference Twiss ------------------------------------------------------------
+
+io.write("Reference Twiss...\n")
+
+-- Compute the reference optic functions
+local tw = timeit(\ -> twiss {sequence=lhcb1}, "Twiss Ref")
+
+plot {
+  title    = "Optical Functions",  -- plot title
+  sequence = lhcb1,            -- sequence for layout
+  table    = tw,               -- twiss table for plot
+  x1y1    = {s = {"beta11", "beta22", "dx", "dy"}}, -- x vs y1 columns
+  x1y2    = {s = {"mu1", "mu2"}},                   -- x vs y2 columns
+  xlabel  = "s [m]"   ,                             -- x-axis label
+  ylabel  = "β_{x,y} [m], D_{x,y} [m]",             -- y-axis label left
+  y2label = "μ_{x,y} [rad/2π]",                     -- y-axis label right
+  legend  = {beta11="β_x", beta22="β_y",            -- column labels
+             mu1="μ_x", mu2="μ_y",                   --   idem
+             dx="D_x", dy="D_y"},                    --   idem
+  styles  = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+-- Parametric Optical Functions -------------------------------------------
+
+if true then
+
+io.write("Twiss OPTFs...\n")
+
+-- Optical functions to check
+local kopts = {
+  "beta11_10", "beta11_01", "beta22_10", "beta22_01" , -- 1
+  "alfa11_10", "alfa11_01", "alfa22_10", "alfa22_01" , -- 5
+  "gama11_10", "gama11_01", "gama22_10", "gama22_01" , -- 9
+  "mu1_10"   , "mu1_01"   , "mu2_10"   , "mu2_01"    , -- 13
+  "dmu1_0010", "dmu1_0001", "dmu2_0010", "dmu2_0001" , -- 17
+  "disp1_10" , "disp1_01" , "disp2_10" , "disp2_01"  , -- 21
+  "disp3_10" , "disp3_01" , "disp4_10" , "disp4_01"  , -- 25
+}
+
+-- Compute various sensitivity -------------------
+
+assert(#kopts == 28, "invalid kopts, expecting 28 got "..#kopts)
+
+-- Compute parametric twiss -----------
+local mo = 3
+local x0 = damap { nv=6, no={mo,mo,mo,mo,1,1}, np=4, po=1, pn={"dqx","dqy","dqpx","dqpy"} }
+
+MADX.dqx_b1_op  = MADX.dqx_b1_op  + x0.dqx
+MADX.dqy_b1_op  = MADX.dqy_b1_op  + x0.dqy
+MADX.dqpx_b1_op = MADX.dqpx_b1_op + x0.dqpx
+MADX.dqpy_b1_op = MADX.dqpy_b1_op + x0.dqpy
+
+local twp = timeit(\ -> twiss {sequence=lhcb1, X0=x0, trkopt=kopts}, "Twiss DA")
+
+MADX.dqx_b1_op  = MADX.dqx_b1_op :get0()
+MADX.dqy_b1_op  = MADX.dqy_b1_op :get0()
+MADX.dqpx_b1_op = MADX.dqpx_b1_op:get0()
+MADX.dqpy_b1_op = MADX.dqpy_b1_op:get0()
+
+-- extend table with parametric values
+twp:addcol("beta11_vs_k1f_da", \ri -> twp[kopts[ 1]][ri])
+twp:addcol("beta11_vs_k1d_da", \ri -> twp[kopts[ 2]][ri])
+twp:addcol("beta22_vs_k1f_da", \ri -> twp[kopts[ 3]][ri])
+twp:addcol("beta22_vs_k1d_da", \ri -> twp[kopts[ 4]][ri])
+twp:addcol("alfa11_vs_k1f_da", \ri -> twp[kopts[ 5]][ri])
+twp:addcol("alfa11_vs_k1d_da", \ri -> twp[kopts[ 6]][ri])
+twp:addcol("alfa22_vs_k1f_da", \ri -> twp[kopts[ 7]][ri])
+twp:addcol("alfa22_vs_k1d_da", \ri -> twp[kopts[ 8]][ri])
+twp:addcol("gama11_vs_k1f_da", \ri -> twp[kopts[ 9]][ri])
+twp:addcol("gama11_vs_k1d_da", \ri -> twp[kopts[10]][ri])
+twp:addcol("gama22_vs_k1f_da", \ri -> twp[kopts[11]][ri])
+twp:addcol("gama22_vs_k1d_da", \ri -> twp[kopts[12]][ri])
+twp:addcol("mu1_vs_k1f_da"   , \ri -> twp[kopts[13]][ri])
+twp:addcol("mu1_vs_k1d_da"   , \ri -> twp[kopts[14]][ri])
+twp:addcol("mu2_vs_k1f_da"   , \ri -> twp[kopts[15]][ri])
+twp:addcol("mu2_vs_k1d_da"   , \ri -> twp[kopts[16]][ri])
+twp:addcol("dmu1_vs_k2f_da"  , \ri -> twp[kopts[17]][ri])
+twp:addcol("dmu1_vs_k2d_da"  , \ri -> twp[kopts[18]][ri])
+twp:addcol("dmu2_vs_k2f_da"  , \ri -> twp[kopts[19]][ri])
+twp:addcol("dmu2_vs_k2d_da"  , \ri -> twp[kopts[20]][ri])
+twp:addcol("dx_vs_k1f_da"    , \ri -> twp[kopts[21]][ri])
+twp:addcol("dx_vs_k1d_da"    , \ri -> twp[kopts[22]][ri])
+twp:addcol("dpx_vs_k1f_da"   , \ri -> twp[kopts[23]][ri])
+twp:addcol("dpx_vs_k1d_da"   , \ri -> twp[kopts[24]][ri])
+twp:addcol("dy_vs_k1f_da"    , \ri -> twp[kopts[25]][ri])
+twp:addcol("dy_vs_k1d_da"    , \ri -> twp[kopts[26]][ri])
+twp:addcol("dpy_vs_k1f_da"   , \ri -> twp[kopts[27]][ri])
+twp:addcol("dpy_vs_k1d_da"   , \ri -> twp[kopts[28]][ri])
+
+-- save table
+twp:write"twiss_prms.tfs"
+
+-- making plots
+io.write("Making plots...\n")
+
+plot {
+  title    = "beta using da",  -- plot title
+  sequence = lhcb1,            -- sequence for layout
+  table    = twp,              -- twiss table for plot
+  x1y1     = {s = {"beta11_vs_k1f_da", "beta11_vs_k1d_da", "beta22_vs_k1f_da", "beta22_vs_k1d_da"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "β_{x,y} [m]",                          -- y-axis label left
+  y2label  = "",                                     -- y-axis label right
+  legend   = {beta11_vs_k1f_da="β_x vs k1f", beta11_vs_k1d_da="β_x vs k1d",
+              beta22_vs_k1f_da="β_y vs k1f", beta22_vs_k1d_da="β_y vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "alfa using da",  -- plot title
+  sequence = lhcb1,            -- sequence for layout
+  table    = twp,              -- twiss table for plot
+  x1y1     = {s = {"alfa11_vs_k1f_da", "alfa11_vs_k1d_da", "alfa22_vs_k1f_da", "alfa22_vs_k1d_da"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "α_{x,y} [m]",                          -- y-axis label left
+  legend   = {alfa11_vs_k1f_da="α_x vs k1f", alfa11_vs_k1d_da="α_x vs k1d",
+              alfa22_vs_k1f_da="α_y vs k1f", alfa22_vs_k1d_da="α_y vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "gama using da",  -- plot title
+  sequence = lhcb1,            -- sequence for layout
+  table    = twp,              -- twiss table for plot
+  x1y1     = {s = {"gama11_vs_k1f_da", "gama11_vs_k1d_da", "gama22_vs_k1f_da", "gama22_vs_k1d_da"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "γ_{x,y} [m]",                          -- y-axis label left
+  legend   = {gama11_vs_k1f_da="γ_x vs k1f", gama11_vs_k1d_da="γ_x vs k1d",
+              gama22_vs_k1f_da="γ_y vs k1f", gama22_vs_k1d_da="γ_y vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "mu using da",   -- plot title
+  sequence = lhcb1,           -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"mu1_vs_k1f_da", "mu1_vs_k1d_da", "mu2_vs_k1f_da", "mu2_vs_k1d_da"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "μ_{x,y} [m]",                          -- y-axis label left
+  legend   = {mu1_vs_k1f_da="μ_x vs k1f", mu1_vs_k1d_da="μ_x vs k1d",
+              mu2_vs_k1f_da="μ_y vs k1f", mu2_vs_k1d_da="μ_y vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "dmu using da",   -- plot title
+  sequence = lhcb1,            -- sequence for layout
+  table    = twp,              -- twiss table for plot
+  x1y1     = {s = {"dmu1_vs_k2f_da", "dmu1_vs_k2d_da", "dmu2_vs_k2f_da", "dmu2_vs_k2d_da"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "dμ_{x,y} [m]",                         -- y-axis label left
+  legend   = {dmu1_vs_k2f_da="dμ_x vs k2f", dmu1_vs_k2d_da="dμ_x vs k2d",
+              dmu2_vs_k2f_da="dμ_y vs k2f", dmu2_vs_k2d_da="dμ_y vs k2d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "disp using da",  -- plot title
+  sequence = lhcb1,            -- sequence for layout
+  table    = twp,              -- twiss table for plot
+  x1y1     = {s = {"dx_vs_k1f_da", "dx_vs_k1d_da", "dy_vs_k1f_da", "dy_vs_k1d_da",
+                   "dpx_vs_k1f_da", "dpx_vs_k1d_da", "dpy_vs_k1f_da", "dpy_vs_k1d_da"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "d_{x,y} or dp_{x,y} [m]",              -- y-axis label left
+  legend   = {dx_vs_k1f_da ="dx vs k1f",  dx_vs_k1d_da ="dx vs k1d",
+              dy_vs_k1f_da ="dy vs k1f",  dy_vs_k1d_da ="dy vs k1d",
+              dpx_vs_k1f_da="dpx vs k1f", dpx_vs_k1d_da="dpx vs k1d",
+              dpy_vs_k1f_da="dpy vs k1f", dpy_vs_k1d_da="dpy vs k1d",},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+end -- OPTF
+
+-- Range test -----------------------------------
+
+io.write("Testing ranged RDTs...\n")
+
+local rng = {"E.DS.L5.B1", "S.DS.R5.B1"}
+local rdt = {"f3000", "f0030", "f2010", "f1020"}
+
+local mo = 3
+local x0 = damap { nv=6, no={mo,mo,mo,mo,1,1} }
+
+-- Select markers around IP5, deselect $end marker
+lhcb1:select  (observed, {list=rng})
+lhcb1:deselect(observed, {list="$end"})
+
+-- Full Twiss
+local twanf = timeit(\ -> twiss {sequence=lhcb1, X0=x0, observe=1, trkrdt=rdt, saveanf=true}, "Twiss NF")
+twanf:write"twiss_rdt.tfs"
+
+-- Ranged Twiss
+local x0, s0 = twanf[rng[1]].__nf, twanf[rng[1]].s
+
+local twrdt = timeit(\ -> twiss {sequence=lhcb1, X0=x0, observe=1, trkrdt=rdt, range=rng, s0=s0}, "Twiss RDT")
+twrdt:write"twiss_rdt_rng.tfs"
+

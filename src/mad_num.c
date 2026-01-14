@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#include "mad_omp.h"
 #include "mad_num.h"
 #include "mad_cst.h"
 

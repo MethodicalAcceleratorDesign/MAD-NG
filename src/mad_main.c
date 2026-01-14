@@ -84,6 +84,7 @@ static char *empty_argv[2] = { NULL, NULL };
 #include "lj_def.h"
 #include "mad_ver.h"
 #include "mad_log.h"
+#include "mad_omp.h"
 
 // to shut up gcc 8 invalid warnings!
 int snprintf(char *restrict str, size_t size, const char* restrict format, ...);
@@ -95,7 +96,6 @@ int mad_is_interactive = 0;
 
 int mad_trace_level    = 0;
 int mad_trace_location = 0;
-int mad_trace_fortid   = 0;
 
 str_t mad_release = MKSTR(MAD_VERSION)
 #ifdef _OPENMP
@@ -150,7 +150,7 @@ LUALIB_API void (mad_error) (str_t fn, str_t fmt, ...)
   va_list va;
   va_start(va, fmt);
   fflush(stdout);
-  fprintf(stderr, fn ? "error: %s: " : "error: ", fn);
+  fprintf(stderr, fn ? "error:%s: " : "error: ", fn);
   vfprintf(stderr, fmt, va);
   va_end(va);
   fputc('\n', stderr);
@@ -166,7 +166,7 @@ LUALIB_API void (mad_warn) (str_t fn, str_t fmt, ...)
   va_list va;
   va_start(va, fmt);
   fflush(stdout);
-  fprintf(stderr, fn ? "warning: %s: " : "warning: ", fn);
+  fprintf(stderr, fn ? "warning:%s: " : "warning: ", fn);
   vfprintf(stderr, fmt, va);
   va_end(va);
   fputc('\n', stderr);
@@ -178,7 +178,7 @@ LUALIB_API void (mad_trace) (int lvl, str_t fn, str_t fmt, ...)
   va_list va;
   va_start(va, fmt);
   fflush(stdout);
-  if (fn) fprintf(stderr, "%s", fn);
+  if (fn) fprintf(stderr, "%s: ", fn);
   vfprintf(stderr, fmt, va);
   va_end(va);
   fputc('\n', stderr);

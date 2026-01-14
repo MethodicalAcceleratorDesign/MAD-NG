@@ -1,0 +1,79 @@
+-- Import MAD modules
+local beam, twiss, tostring, track in MAD
+local hackicker, vackicker in MAD.element
+local observed in MAD.element.flags
+
+-- Load FODO sequence and set up beam
+MADX:load("fodo.seq", "fodo.mad")
+local seq = MADX.seq
+seq.beam = beam
+
+-- Define output columns for Twiss tables
+local cols = {'name', 's', 'beta11', 'beta22', 'mu1', 'mu2', 'alfa11', 'alfa22'}
+
+-- Compute initial Twiss parameters
+local tws_before = twiss { sequence=seq }
+tws_before:write("twiss_n.tfs", cols)
+
+-- Extract beta functions at M1 marker
+local bet11_m1 = tws_before['M1'].beta11
+local bet22_m1 = tws_before['M1'].beta22
+
+-- Define tune values (natural and driven)
+local qx, qy = tws_before.q1, tws_before.q2
+local qxd, qyd = qx + 0.02, qy - 0.03
+
+local ramp_profile = {1, 3, 5, 7}
+
+-- Install AC Kicker (AC Quad) elements
+seq:install{
+    hackicker "hackicker" {
+        at = 0,
+        from = "M1",
+
+        -- quad part
+        nat_q = qx,
+        drv_q = qxd,
+        ac_bet = bet11_m1,
+
+        -- dipole part
+        volt = 0.01,
+        freq = qxd,
+        lag = 0.02,
+        ramp = ramp_profile,
+    },
+    vackicker "vackicker" {
+        at = 0,
+        from = "M1",
+
+        -- quad part
+        nat_q = qy,
+        drv_q = qyd,
+        ac_bet = bet22_m1,
+
+        -- dipole part
+        volt = 0.01,
+        freq = qyd,
+        lag = 0.03,
+        ramp = ramp_profile,
+    }
+}
+
+-- Compute Twiss with ACD elements
+local tws_acd = twiss { sequence=seq }
+tws_acd:write("twiss_acd_n.tfs", cols)
+
+-- Remove ACD elements and replace with dipoles
+-- local acd_elements = seq:remove(\elm -> elm.kind=='hacmap' or elm.kind=='vacmap')
+-- print("Removed ACD elements: ", tostring(acd_elements))
+
+-- Switch AC Kickers from AC Quads to AC Dipoles elements
+seq.hackicker.ac_bet = false
+seq.vackicker.ac_bet = false
+
+-- Track particles through the sequence
+seq:deselect(observed)  -- deselect all elements
+seq:select(observed, \elm -> elm.kind=='marker')
+
+local trk_acd = track { sequence=seq, nturn=10 }
+trk_acd:write("track_acd_n.tfs")

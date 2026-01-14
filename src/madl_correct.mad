@@ -25,22 +25,23 @@
 
 local assert, error, table, tostring in _G
 
-local abs in math
+local abs, sin, cos, sqrt, pi in math
 
-local vector, matrix, command                                   in MAD
+local vector, matrix, command, mtable                           in MAD
 local rand                                                      in MAD.gmath
+local twopi                                                     in MAD.constant
 local rep, assertf, printf                                      in MAD.utility
-local ftst                                                      in MAD.gfunc
-local is_number, is_positive, is_iterable, is_callable,
-      is_mappable, is_mtable, is_sequence                       in MAD.typeid
+local ftst, third                                               in MAD.gfunc
+local is_number, is_positive, is_natural, is_iterable,
+      is_callable, is_mappable, is_mtable, is_sequence          in MAD.typeid
 
 -- prepare work pack ----------------------------------------------------------o
 
 local plans = {
-  x = { q='x', p='px', bet='beta11', mu='mu1', nu='q1',
+  x = { q='x', p='px', bet='beta11', mu='mu1', nu='q1', kq='hkick', ckq='chkck',
         mon={hmonitor=true, monitor=true}, cor={hkicker=true, kicker=true} },
 
-  y = { q='y', p='py', bet='beta22', mu='mu2', nu='q2',
+  y = { q='y', p='py', bet='beta22', mu='mu2', nu='q2', kq='vkick', ckq='cvkck',
         mon={vmonitor=true, monitor=true}, cor={vkicker=true, kicker=true} },
 }
 
@@ -55,7 +56,7 @@ local function set_work (wrk, sequ, range, model, orbit, target, plan)
   for k=1,wrk.nseq do
     local tgt = target[k] or tgt0
     assert(is_sequence(sequ[k]), "invalid sequence (sequence expected)")
-    assert(is_mtable(mode [k]) and model[k].type == 'twiss',
+    assert(is_mtable(model[k]) and model[k].type == 'twiss',
                                  "invalid model (twiss mtable expected)")
     assert(is_mtable(orbit[k]),  "invalid orbit (mtable expected)")
     assert(is_iterable(tgt)   ,  "invalid target (iterable expected)")
@@ -74,9 +75,11 @@ end
 -- collect monitors and correctors from sequences and models ------------------o
 
 local function get_moncor (wrk)
+  local pln in wrk
+
   for k,w in ipairs(wrk) do
     local seq, rng, mod, mon, cor, shr, idx in w
-    local m2s = mod.idx
+    local m2s = mod.eidx
 
     for i,e in seq:iter(rng) do
       if e:is_disabled() then goto continue end
@@ -91,7 +94,7 @@ local function get_moncor (wrk)
       if reg then -- seq -> mod
         local j = mod:index_of(e.name)
         assert(i == m2s[j], "inconsistency detected between sequence and model")
-        idx[i] = j
+        idx[i] = j -- link from sequence indexes to model indexes
       end
 
       ::continue::
@@ -112,13 +115,115 @@ local function get_moncor (wrk)
 
     wrk.nmon = wrk.nmon + mon.n
     wrk.ncor = wrk.ncor + cor.n - js
+
+    if wrk.info >= 1 then
+      printf("sequence %s for %s-plane\n\z
+              \tget %d active monitors\n\z
+              \tget %d active correctors\n", seq.name, pln.q, mon.n, cor.n)
+    end
+
+    if wrk.debug >= 1 then
+      for i,mi in ipairs(mon) do
+        local e = seq[mi]
+        printf("mon[%d]:seq[%d]:mod[%d]:%s %s x=%.6f y=%.6f\n", i, mi,
+                idx[mi], e.kind, e.name, mod[idx[mi]].x, mod[idx[mi]].y)
+      end
+      for i,ci in ipairs(cor) do
+        local e = seq[ci]
+        printf("cor[%d]:seq[%d]:mod[%d]:%s %s %s chkck=%.6f, cvkck=%.6f\n", i, ci,
+                idx[ci], e.kind, e.name, shr[ci] and " shared" or "",
+                e.chkck, e.cvkck)
+      end
+    end
   end
+end
+
+-- remove monitors disabled by monon ------------------------------------------o
+
+local function rem_monon (wrk, monon)
+  assert(is_positive(monon) and monon <= 1, "invalid monon (positive number <=1 expected)")
+  if monon == 1 then return end
+
+  local info in wrk
+  for _,w in ipairs(wrk) do
+    local seq, mon in w
+    local n = 0
+    for i=mon.n,1,-1 do
+      if rand() > monon then
+        local ii = table.remove(mon, i)
+        n, idx[ii], im[ii] = n+1
+        if info >= 2 then
+          printf("correct: monitor %s is dropped by monon\n", seq[ii].name)
+        end
+      end
+    end
+    wrk.nmon, mon.n = wrk.nmon-n, mon.n-n
+  end
+end
+
+-- remove monitors disabled by moncut -----------------------------------------o
+
+local function rem_moncut (wrk, moncut)
+  assert(is_positive(moncut), "invalid moncut (positive number expected)")
+
+  local info in wrk
+  local q, bet in wrk.pln
+  for _,w in ipairs(wrk) do
+    local seq, mod, mon, idx in w
+    local q, bet = mod[q], mod[bet]
+    local v = vector(mon.n)
+
+    for i,ii in ipairs(mon) do
+      v[i] = q[idx[ii]]/sqrt(bet[idx[ii]])
+    end
+
+    local n, avg, sdev = 0, v:mean(), v:stddev()
+    for i=mon.n,1,-1 do
+      if abs(v[i]-avg) > moncut*sdev then
+        local ii = table.remove(mon, i)
+        n, idx[ii], im[ii] = n+1
+        if info >= 2 then
+          printf("correct: monitor %s is dropped by moncut\n", seq[ii].name)
+        end
+      end
+    end
+    wrk.nmon, mon.n = wrk.nmon-n, mon.n-n
+  end
+end
+
+-- adjust orbit with monitors errors ------------------------------------------o
+
+local function adj_orbmon(wrk, monerr)
+  assert(is_natural(monerr) and monerr <= 3, "invalid monerr (0..3 expected)")
+  if monerr == 0 then return end
+
+  local Bx, By in wrk
+  for _,w in ipairs(wrk) do
+    local seq, mon, im in w
+    for _,ii in ipairs(mon) do
+      local merr, tilt in seq[ii]
+      if is_mappable(merr) then
+        local mi = im[ii]
+        if ftst(monerr, 2) then
+          Bx[mi] = Bx[mi] * (1+(merr.mresx or 0))
+          By[mi] = By[mi] * (1+(merr.mresy or 0))
+        end
+        if ftst(monerr, 1) then
+          local rx, ry, c, s = Bx[mi], By[mi], cos(tilt or 0), sin(tilt or 0)
+          Bx[mi] = rx*c + ry*s + (merr.mredx or 0)
+          By[mi] = ry*c - rx*s + (merr.mredy or 0)
+        end
+      end
+    end
+  end
+
+  wrk.Bx, wrk.By = nil, nil -- keep only B
 end
 
 -- remove correctors disabled by corcnd ---------------------------------------o
 
 local function rem_corcnd (wrk, corcnd, corcut, cortol)
-  local A in wrk
+  local A, info in wrk
   local jc, sv
   if corcnd == true or corcnd == 'svdcnd' then jc, sv = A:svdcnd(0, corcut, cortol)
   elseif               corcnd == 'pcacnd' then jc, sv = A:pcacnd(0, corcut)
@@ -138,7 +243,7 @@ local function rem_corcnd (wrk, corcnd, corcut, cortol)
       if rc[jc[cor[j]]] then
         local jj = table.remove(cor, j)
         n, shr[jj], idx[jj], jc[jj] = n+1
-        if wrk.info >= 2 then
+        if info >= 2 then
           printf("correct: corrector %s is dropped by corcnd\n", seq[jj].name)
         end
       end
@@ -147,99 +252,17 @@ local function rem_corcnd (wrk, corcnd, corcut, cortol)
   end
 end
 
--- remove monitors disabled by monon ------------------------------------------o
-
-local function rem_monoff (wrk, monon)
-  assert(is_positive(monon) and monon <= 1, "invalid monon (positive number <=1 expected)")
-  if monon == 1 then return end
-
-  for _,w in ipairs(wrk) do
-    local seq, mon in w
-    local n = 0
-    for i=mon.n,1,-1 do
-      if rand() > monon then
-        local ii = table.remove(mon, i)
-        n, idx[ii], im[ii] = n+1
-        if wrk.info >= 2 then
-          printf("correct: monitor %s is dropped by monon\n", seq[ii].name)
-        end
-      end
-    end
-    wrk.nmon, mon.n = wrk.nmon-n, mon.n-n
-  end
-end
-
--- remove monitors disabled by moncut -----------------------------------------o
-
-local function rem_moncut (wrk, moncut)
-  assert(is_positive(moncut), "invalid moncut (positive number expected)")
-
-  local q, bet in wrk.pln
-  for _,w in ipairs(wrk) do
-    local seq, mod, mon, idx in w
-    local v = vector(mon.n)
-    local q, bet in mod
-
-    for i,ii in ipairs(mon) do
-      v[i] = q[idx[ii]]/sqrt(b[idx[ii]])
-    end
-
-    local n, avg, var = 0, v:mean(), v:variance()
-    for i=mon.n,1,-1 do
-      if abs(v[i]-avg) > moncut*var then
-        local ii = table.remove(mon, i)
-        n, idx[ii], im[ii] = n+1
-        if wrk.info >= 2 then
-          printf("correct: monitor %s is dropped by moncut\n", seq[ii].name)
-        end
-      end
-    end
-    wrk.nmon, mon.n = wrk.nmon-n, mon.n-n
-  end
-end
-
--- adjust orbit with monitors errors ------------------------------------------o
-
-local merrcode = {[0]=true, true, true, true}
-
-local function adj_orbmon(wrk, monerr)
-  assert(merrcode[monerr], "invalid monerr (0..3 expected)")
-  if monerr == 0 then return end
-
-  local Bx, By in wrk
-  for _,w in ipairs(wrk) do
-    local seq, mon, im in w
-    for _,ii in ipairs(mon) do
-      local merr, tilt in seq[ii]
-      if is_mappable(merr) then
-        local mi = im[ii]
-        if ftst(monerr, 2) then
-          Bx[mi] = Bx[mi] * (1+(merr.mrexs or 0))
-          By[mi] = By[mi] * (1+(merr.mreys or 0))
-        end
-        if ftst(monerr, 1) then
-          local rx, ry, c, s = Bx[mi], By[mi], cos(tilt or 0), sin(tilt or 0)
-          Bx[mi] = rx*c + ry*s + (merr.mredx or 0)
-          By[mi] = ry*c - rx*s + (merr.mredy or 0)
-        end
-      end
-    end
-  end
-
-  wrk.Bx, wrk.By = nil, nil
-end
-
 -- response matrix and orbit vector -------------------------------------------o
 
 -- TODO: add dispersion correction (DFS)
 
 local aij_fct = {
   line = function (beti, mui, betj, muj)
-    return mui > muj and sqrt(beti*betj) * sin(abs(mui-muj)) or 0
+    return mui > muj and sqrt(beti*betj) * sin(abs(mui-muj)*twopi) or 0
   end,
 
   ring = function (beti, mui, betj, muj, nu)
-    return sqrt(beti*betj) * cos(abs(mui-muj) - pi*nu) / (2*sin(pi*nu))
+    return sqrt(beti*betj) * cos(abs(mui-muj)*twopi - pi*nu) / (2*sin(pi*nu))
   end,
 }
 
@@ -274,8 +297,10 @@ local function mak_system (wrk, kind, units)
 
   for k,w in ipairs(wrk) do
     local mod, orb, tgt, mon, cor, shr, idx, im, jc in w
-    local pidx, pjc = wrk[k-1].idx, wrk[k-1].jc
-    local bet, mu, nu in mod
+    local bet, mu, nu = mod[bet], mod[mu], mod[nu]
+    local pidx, pjc
+
+    if k > 1 then pidx, pjc = wrk[k-1].idx, wrk[k-1].jc end
 
     -- response matrix
     local js = 0
@@ -307,6 +332,10 @@ local function mak_system (wrk, kind, units)
 
   wrk.A = A
   wrk.B = wrk['B'..q]
+
+  if wrk.debug >= 2 then
+    wrk.A:print"A" ; wrk.B:print"B"
+  end
 end
 
 -- compute correctors strengths -----------------------------------------------o
@@ -314,7 +343,7 @@ end
 local mmth = { micado='nsolve', svd   ='ssolve', lsq  ='solve',
                nsolve='nsolve', ssolve='ssolve', solve='solve' }
 
-local function get_correct (wrk, method, ncor, tol)
+local function get_correct (wrk, method, ncor, tol, units)
   local A, B in wrk
   local mth = mmth[string.lower(tostring(method))]
 
@@ -328,69 +357,87 @@ local function get_correct (wrk, method, ncor, tol)
   end
 
   if wrk.info >= 1 then
-      if mth ==  'solve' then printf("correct: LSQ selected %d correctors\n", rnk)
-  elseif mth == 'nsolve' then printf("correct: MICADO selected %d correctors\n", rnk)
-  elseif mth == 'ssolve' then printf("correct: SVD selected %d singular values\n", rnk)
+      if mth ==  'solve' then printf("correct: LSQ rank = %d\n", rnk)
+  elseif mth == 'nsolve' then printf("correct: MICADO rank = %d\n", rnk)
+  elseif mth == 'ssolve' then printf("correct: SVD #singular values = %d\n", rnk)
   end end
 
-  wrk.X = X       -- predicted correction
-  wrk.O = A*X     -- predicted orbit
-  wrk.E = B-wrk.O -- predicted residues
+  wrk.X = -X      -- predicted correction
+  wrk.E = B-A*X   -- predicted residues (new orbit)
   wrk.R = R       -- only MICADO
   wrk.S = S       -- only SVD
+
+  if wrk.info >= 1 then
+    local B, E in wrk
+    local u = 1e3*units
+    printf("correct summary:\n\z
+            .         average [mm]   stddev [mm]    RMS [mm]       peak-to-peak [mm]\n\z
+            before   % 8.6f      % 8.6f      % 8.6f      % 8.6f\n\z
+            after    % 8.6f      % 8.6f      % 8.6f      % 8.6f\n",
+            B:mean()*1e3, B:stddev()*1e3, B:rms()*1e3, third(B:minmax())*1e3,
+            E:mean()*1e3, E:stddev()*1e3, E:rms()*1e3, third(E:minmax())*1e3 )
+  end
+
+  if wrk.debug >= 2 then
+    wrk.X:print"X" ; wrk.E:print"E" ;
+    if wrk.R then wrk.R:print"R" end
+    if wrk.S then wrk.S:print"S" end
+  end
 end
 
 -- save results to mtables ----------------------------------------------------o
 
 local function sav_mtable (wrk, lst, self)
-  local q in wrk.pln
-  local kq, rq
-
-  if q == 'x'
-  then kq, rq = 'hkick', 'rx'
-  else kq, rq = 'vkick', 'ry'
-  end
+  local X, E in wrk
+  local q, kq, ckq in wrk.pln
+  local oq, okq = q.."_old", kq.."_old"
 
   for k,w in ipairs(wrk) do
-    local seq, rng, mod, mon, cor, shr, idx, im, jc, X, O, E in w
+    local seq, rng, mod, mon, cor, shr, idx, im, jc in w
     local dir in seq
+    local mtbl = lst[k]
 
-    local mtbl = lst[k] or mtable(seq.name, {
-      type='correct', range=rng, reserve=mon.n+cor.n, __seq=seq,
-      'name', 'kind', 's', 'l', 'x_old', 'y_old', 'x', 'y', 'rx', 'ry',
-      'hkick_old', 'vkick_old', 'hkick', 'vkick', 'shared', {'eidx'},
-    })
-    -- add ename for direct access to column 'name'
-    mtbl:addcol("ename", \ri -> mtbl:getcol("name")[ri])
-
-    for i,ii in ipairs(mon) do
-      local el, mi = seq[ii], idx[ii]
-      local n = mtbl:index_of(ii)
-      if n == nil then
-        mtbl = mtbl + {
-          el.name, el.kind, mod.s[mi], mod.l[mi],
-          mod.x[mi], mod.y[mi], 0,0,0,0, 0,0,0,0, false,
-          ii, seq[ii],
-        }
-        n = #mtbl
-      end
-      mtbl[q][n], mtbl[rq][n] = O[im[jj]], E[im[jj]]
+    if not mtbl then -- first iteration, create mtable and fill with mon and cor
+      mtbl = mtable(seq.name, {
+        type='correct', range=rng, reserve=mon.n+cor.n, __seq=seq,
+        {'name'}, 'kind', 's', 'l', 'x_old', 'y_old', 'x', 'y',
+        'hkick_old', 'vkick_old', 'hkick', 'vkick', 'shared', 'eidx',
+      })
+      -- add ename for direct access to column 'name'
+      lst[k] = mtbl:addcol("ename", \ri -> mtbl:getcol("name")[ri])
     end
 
-    for j,jj in ipairs(cor) do
-      local el, mi, sh = seq[jj], idx[jj], shr[jj] ~= nil
-      local n, hk, vk = mtbl:index_of(jj)
-      if n == nil then
-        local hk = el.hkick + el.chkck
-        local vk = el.vkick + el.cvkck
+    -- add/update monitor
+    for _,ii in ipairs(mon) do
+      local el = seq[ii]
+      local ei = mtbl:index_of(el)
+      if not ei then
+        local mi = idx[ii]
         mtbl = mtbl + {
-          el.name, el.kind, mod.s[mi], mod.l[mi],
-          mod.x[mi], mod.y[mi], 0,0,0,0, hk,vk,hk,vk, sh,
-          jj, seq[jj],
+          el.name, el.kind, mod.s[mi], mod.l[mi], 0,0,0,0, 0,0,0,0, false, ii,
         }
-        n = #mtbl
+        ei = #mtbl
       end
-      mtbl[kq][n] = -X[jc[jj]]*dir
+      mtbl[ q][ei] = E[im[ii]]
+      mtbl[oq][ei] = mod[q][idx[ii]]
+    end
+
+    -- add/update corrector
+    for _,jj in ipairs(cor) do
+      local el = seq[jj]
+      local ei = mtbl:index_of(el)
+      local ek = el[kq]+el[ckq]
+      if not ei then
+        local ci, sh = idx[jj], shr[jj] ~= nil
+        mtbl = mtbl + {
+          el.name, el.kind, mod.s[ci], mod.l[ci], 0,0,0,0, 0,0,0,0, sh, jj,
+        }
+        ei = #mtbl
+      end
+--    mtbl[  q][ei] = E[jc[jj]]
+--    mtbl[ oq][ei] = mod[q][idx[jj]]
+      mtbl[ kq][ei] = ek + X[jc[jj]]*dir
+      mtbl[okq][ei] = ek
     end
   end
 end
@@ -398,19 +445,26 @@ end
 -- adjust correctors strengths ------------------------------------------------o
 
 local function adj_seqcor (wrk)
-  local q in wrk.pln
+  local X, pln, info in wrk
+  local q, kq, ckq   in pln
 
   for k,w in ipairs(wrk) do
-    local seq, cor, shr, jc, X in w
+    local seq, cor, shr, jc in w
     local dir in seq
+
+    if info >= 1 then
+      printf("correct: sequence %s for %s-plane\n\z
+              \tadjusting %d active correctors\n", seq.name, q, cor.n)
+    end
 
     for _,jj in ipairs(cor) do
       if shr[jj] then goto continue end
 
       local el = seq[jj]
-      if q == 'x'
-      then el.chkck = -X[jc[jj]]*dir - el.hkick
-      else el.cvkck = -X[jc[jj]]*dir - el.vkick
+      el[ckq] = el[ckq] + X[jc[jj]]*dir
+
+      if info >= 2 and el[ckq] ~= 0 then
+        printf("correct: '%s' %s = %g\n", el.name, ckq, el[ckq])
       end
 
       ::continue::
@@ -441,7 +495,7 @@ local function exec (self)
   -- list of mtables
   local lst = {}
 
-  for pln in ipairs(plan) do
+  for _, pln in ipairs(plan) do
     local wrk = {info=info or 0, debug=debug or 0}
 
     -- prepare wrk with information required
@@ -466,7 +520,7 @@ local function exec (self)
     if corcnd then rem_corcnd(wrk, corcnd, corcut, cortol) end
 
     -- compute corrector strengths
-    get_correct(wrk, method, ncor, tol)
+    get_correct(wrk, method, ncor, tol, units)
 
     -- save data to mtable(s) (one per sequence)
     sav_mtable(wrk, lst, self)
@@ -475,10 +529,10 @@ local function exec (self)
     if corset then adj_seqcor(wrk) end
   end
 
-  -- disable dict and sort data by position
-  for _,t in ipairs(lst) do t:build_index'none':sort's' end
+  -- sort data by position
+  for _,t in ipairs(lst) do t:sort's' end
 
-  -- convert list to mtable in cas of singleton
+  -- convert list to mtable in case of singleton
   if #lst == 1 then lst = lst[1] end
 
   -- return (list of) mtables
@@ -497,7 +551,7 @@ local correct = command 'correct' {
   plane='xy',        -- 'x', 'y' or 'xy'                                  (corr)
   method='micado',   -- 'LSQ', 'SVD' or 'MICADO'                          (corr)
   ncor=0,            -- number of correctors to consider by method, 0=all (corr)
-  tol=1e-5,          -- rms tolerance on the orbit                        (corr)
+  tol=1e-8,          -- rms tolerance on the orbit                        (corr)
   units=1,           -- units in [m] of the orbit                         (corr)
 
   corcnd=false,      -- precond of correctors using 'svdcnd' or 'pcacnd'  (corr)

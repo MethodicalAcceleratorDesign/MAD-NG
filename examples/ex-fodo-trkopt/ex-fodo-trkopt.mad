@@ -1,0 +1,750 @@
+-- Script Setup
+local fdif = false                -- use finite difference for matching
+local chrm = true                 -- compute chromatic functions
+local dh   = 1e-6                 -- finite differences step
+local fplt = "ex-fodo-trkopt.pdf" -- file to output plots
+
+-- Import commands
+local sequence, beam, twiss, match, damap, plot in MAD
+-- Import elements
+local sbend, quadrupole, sextupole in MAD.element
+-- Import constants
+local pi, pi_2, twopi, deg2rad in MAD.constant
+-- Import math functions
+local sin in MAD.gmath
+-- Import utility functions
+local printf, tblcat in MAD.utility
+-- Import types functions
+local deferred in MAD.typeid
+-- Import from local toolbox
+local twiss_4plot, plot_twiss, plot_chrom, plot_wchrom, tw_cols in require "toolbox"
+
+-- FODO Setup ------------------------------------------------------------------
+
+-- Create an electron beam of 1.2 GeV
+local eb = beam { particle="electron", energy=1.2 }
+
+-- FODO parameters
+local fp = deferred {
+  n    = 11,                           -- #fodo in the ring
+  l    = 10,                           -- fodo length [m]
+  chg := eb.charge,                    -- fodo beam charge
+  mu1  = 85*deg2rad/twopi,             -- fodo horizontal phase advance
+  mu2  = 95*deg2rad/twopi,             -- fodo vertical   phase advance
+  dmu1 = 2,                            -- fodo horizontal chromaticity
+  dmu2 = 2,                            -- fodo horizontal chromaticity
+}
+
+-- Magnet families
+local mb = sbend      'mb' { l=3.0 }   -- generic mb class (bend magnet)
+local mq = quadrupole 'mq' { l=0.8 }   -- generic mq class (quad magnet)
+local ms = sextupole  'ms' { l=0.4 }   -- generic ms class (sext magnet)
+
+-- MQ circuits
+local qf = mq 'qf' { k1=0 }            -- focusing   qf class (quad magnet)
+local qd = mq 'qd' { k1=0 }            -- defocusing qd class (quad magnet)
+
+-- MS circuits
+local sf = ms 'sf' { k2=0 }            -- focusing   sf class (sext magnet)
+local sd = ms 'sd' { k2=0 }            -- defocusing sd class (sext magnet)
+
+local fodo = sequence 'fodo' { l=fp.l, refer="entry",
+  qf { at=0                },
+  sf { at=0.2, from="prev" }, -- leave space of 0.2 [m]
+  mb { at=0.2, from="prev" }, --   idem
+  qd { at=fp.l/2           }, -- middle of fodo
+  sd { at=0.2, from="prev" }, -- leave space of 0.2 [m]
+  mb { at=0.2, from="prev" }, --   idem
+  beam=eb, prms= fp, -- attach beam and parameters for convenience
+}
+
+-- MQ circuits initial guess (deferred expressions)
+qf.k1 =\s ->  4*fp.chg*sin(pi*fp.mu1)/(fp.l*s.l)
+qd.k1 =\s -> -4*fp.chg*sin(pi*fp.mu2)/(fp.l*s.l)
+
+-- MB geometry and circuits (deferred expressions)
+mb.angle =\  -> pi/fp.n                -- angle   for mb class (clockwise ring)
+mb.k0    =\s -> fp.chg*s.angle/s.l     -- stength for mb class
+
+fodo:dumpseq()
+
+printf("initial sbend angle    = %.5f\n", mb.angle)
+printf("initial quads strength = %.5f, %.5f\n", qf.k1, qd.k1)
+
+-- Preliminary Twiss -----------------------------------------------------------
+
+if not fplt then
+
+-- Compute the optic functions
+local tw = twiss { sequence=fodo }
+-- Save the twiss Mtable, filtering out all drifts
+tw :remove{ kind="drift" } :write("fodo_twiss.tfs", tw_cols)
+
+else
+
+-- Compute the optic functions with 10 slices for smooth plot
+local twp = twiss_4plot { sequence=fodo, chrom=chrm }
+-- Plot some optic functions
+plot_twiss {
+  title    = "FODO",  -- plot title
+  sequence = fodo,    -- sequence for layout
+  table    = twp,     -- twiss table for plot
+  output   = fplt,
+}
+if chrm then
+plot_chrom {
+  title    = "FODO (chrom)", -- plot title
+  sequence = fodo,    -- sequence for layout
+  table    = twp,     -- twiss table for plot
+  output   = fplt,
+}
+plot_wchrom {
+  title    = "FODO (chrom)", -- plot title
+  sequence = fodo,    -- sequence for layout
+  table    = twp,     -- twiss table for plot
+  output   = fplt,
+}
+end
+end -- fplt
+
+if fdif then
+
+-- Match the tunes and chromas using quadrupoles and sextupoles
+match {
+  -- Command to run at each optimizer iteration
+  command := twiss { sequence=fodo, observe=1 },
+  -- List of variables to changes (knobs)
+  variables = { rtol=1e-6, -- 1 ppm power supplies' resolution
+    { var = "qf.k1" }, -- vary strength of qf class
+    { var = "qd.k1" }, -- vary strength of qd class
+    { var = "sf.k2" }, -- vary strength of sf class
+    { var = "sd.k2" }, -- vary strength of sd class
+  },
+  -- List of equalities to satisfy (constraints)
+  equalities = {
+    { name = "mu1" , expr = \t -> t.q1  - fp.mu1  }, -- H-tune
+    { name = "mu2" , expr = \t -> t.q2  - fp.mu2  }, -- V-tune
+    { name = "dmu1", expr = \t -> t.dq1 - fp.dmu1 }, -- H-chroma
+    { name = "dmu2", expr = \t -> t.dq2 - fp.dmu2 }, -- V-chroma
+  },
+  -- Display the final summary
+  info=1,
+}
+
+else -- fdif
+
+-- Match the tunes and chromas using quadrupoles and sextupoles
+local knbs = {"10", "01", "0010", "0001"}
+local prms = {"k1f", "k1d", "k2f", "k2d"}
+local optf = {"mu1_"     , "mu2_"     , -- local tunes
+              "mu1_10"   , "mu1_01"   , -- local tunes  derivatives
+              "mu2_10"   , "mu2_01"   ,
+              "dmu1_"    , "dmu2_"    , -- local chroma
+              "dmu1_0010", "dmu1_0001", -- local chroma derivatives
+              "dmu2_0010", "dmu2_0001",}
+local x0 = damap { nv=6, mo=3, np=#prms, po=1, pn=prms }
+
+-- Build parametric knobs
+qf.k1 = qf.k1 + x0.k1f
+qd.k1 = qd.k1 + x0.k1d
+sf.k2 = sf.k2 + x0.k2f
+sd.k2 = sd.k2 + x0.k2d
+
+match {
+  -- Command to run at each optimizer iteration
+  command := twiss { sequence=fodo, observe=1, trkopt=optf, X0=x0 },
+  -- Build jacobian
+  jacobian = \t,_,J =>
+    for k=1,2 do
+      J:set(1, k  , t["mu1_" ..knbs[k+0]][1])
+      J:set(2, k  , t["mu2_" ..knbs[k+0]][1])
+      J:set(3, k+2, t["dmu1_"..knbs[k+2]][1])
+      J:set(4, k+2, t["dmu2_"..knbs[k+2]][1])
+    end
+  end,
+  -- List of variables to changes (knobs)
+  variables = { rtol=1e-6, -- 1 ppm power supplies' resolution
+    { var = "qf.k1" }, -- vary strength of qf class
+    { var = "qd.k1" }, -- vary strength of qd class
+    { var = "sf.k2" }, -- vary strength of sf class
+    { var = "sd.k2" }, -- vary strength of sd class
+  },
+  -- List of equalities to satisfy (constraints)
+  equalities = {
+    { name = "mu1" , expr = \t -> t.mu1_ [1] - fp.mu1  }, -- H-tune
+    { name = "mu2" , expr = \t -> t.mu2_ [1] - fp.mu2  }, -- V-tune
+    { name = "dmu1", expr = \t -> t.dmu1_[1] - fp.dmu1 }, -- H-chroma
+    { name = "dmu2", expr = \t -> t.dmu2_[1] - fp.dmu2 }, -- V-chroma
+  },
+  -- Display the final summary
+  info=2, maxcall=10,
+}
+
+-- Restore scalar knobs
+qf.k1 = qf.k1:get0()
+qd.k1 = qd.k1:get0()
+sf.k2 = sf.k2:get0()
+sd.k2 = sd.k2:get0()
+
+end -- fdif
+
+if not fplt then
+
+-- Compute the optic functions
+local tw = twiss { sequence=fodo }
+-- Save the twiss Mtable, filtering out all drifts
+tw :remove{ kind="drift" } :write("fodo_twiss_matched.tfs", tw_cols)
+
+else
+
+-- Compute the optic functions with 10 slices for smooth plot
+local twp = twiss_4plot { sequence=fodo, chrom=chrm }
+-- Plot some optic functions
+plot_twiss {
+  title    = "Matched FODO",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  output   = fplt,
+}
+if chrm then
+plot_chrom {
+  title    = "Matched FODO (chrom)", -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  output   = fplt,
+}
+plot_wchrom {
+  title    = "Matched FODO (chrom)", -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  output   = fplt,
+}
+end
+end
+
+-- First and Second derivative check -------------------------------------------
+
+-- Compute the reference optic functions
+local tw = twiss_4plot { sequence=fodo, chrom=chrm }
+
+-- Optical functions to check
+local kopts = {
+  tblcat(
+  {"beta11_10", "beta11_01", "beta22_10", "beta22_01", -- 1
+  "alfa11_10", "alfa11_01", "alfa22_10", "alfa22_01" , -- 5
+  "gama11_10", "gama11_01", "gama22_10", "gama22_01" , -- 9
+  "mu1_10"   , "mu1_01"   , "mu2_10"   , "mu2_01"    , -- 13
+  "disp1_10" , "disp1_01" , "disp2_10" , "disp2_01"  , -- 17
+  "disp3_10" , "disp3_01" , "disp4_10" , "disp4_01"} , -- 21
+  not chrm and {} or
+  {"dmu1_10" , "dmu1_01"  , "dmu2_10"  , "dmu2_01"   , -- 25
+   "wx_10"   , "wx_01"    , "wxp_10"   , "wxp_01"    , -- 29
+   "wy_10"   , "wy_01"    , "wyp_10"   , "wyp_01"  })  -- 33
+  ,
+  tblcat(
+  {"beta11_20", "beta11_02", "beta22_20", "beta22_02", -- 1
+  "alfa11_20", "alfa11_02", "alfa22_20", "alfa22_02" , -- 5
+  "gama11_20", "gama11_02", "gama22_20", "gama22_02" , -- 9
+  "mu1_20"   , "mu1_02"   , "mu2_20"   , "mu2_02"    , -- 13
+  "disp1_20" , "disp1_02" , "disp2_20" , "disp2_02"  , -- 17
+  "disp3_20" , "disp3_02" , "disp4_20" , "disp4_02"} , -- 21
+  not chrm and {} or
+  {"dmu1_20" , "dmu1_02"  , "dmu2_20"  , "dmu2_02"   , -- 25
+   "wx_20"   , "wx_02"    , "wxp_20"   , "wxp_02"    , -- 29
+   "wy_20"   , "wy_02"    , "wyp_20"   , "wyp_02"  })  -- 33
+}
+
+-- Loop over orders -------------------
+
+for ord=1,2 do
+
+local nk = 24+(chrm and 12 or 0)
+assert(#kopts[ord] == nk, "invalid kopts, expecting "..nk.." got "..#kopts[ord])
+
+-- Compute parametric twiss -----------
+local mo = ord+(chrm and 2 or 1)
+local x0 = damap { nv=6, np=2, mo=mo, po=ord, pn={"k1f", "k1d"} }
+
+qf.k1 = qf.k1 + x0.k1f -- create knobs directly in classes
+qd.k1 = qd.k1 + x0.k1d
+
+local twp = twiss_4plot { sequence=fodo, X0=x0, trkopt=kopts[ord] }
+
+qf.k1 = qf.k1:get0()   -- restore knobs as scalar (strength) in classes
+qd.k1 = qd.k1:get0()
+
+-- extend table with parametric values
+twp:addcol("beta11_vs_k1f_da", \ri -> twp[kopts[ord][ 1]][ri])
+twp:addcol("beta11_vs_k1d_da", \ri -> twp[kopts[ord][ 2]][ri])
+twp:addcol("beta22_vs_k1f_da", \ri -> twp[kopts[ord][ 3]][ri])
+twp:addcol("beta22_vs_k1d_da", \ri -> twp[kopts[ord][ 4]][ri])
+twp:addcol("alfa11_vs_k1f_da", \ri -> twp[kopts[ord][ 5]][ri])
+twp:addcol("alfa11_vs_k1d_da", \ri -> twp[kopts[ord][ 6]][ri])
+twp:addcol("alfa22_vs_k1f_da", \ri -> twp[kopts[ord][ 7]][ri])
+twp:addcol("alfa22_vs_k1d_da", \ri -> twp[kopts[ord][ 8]][ri])
+twp:addcol("gama11_vs_k1f_da", \ri -> twp[kopts[ord][ 9]][ri])
+twp:addcol("gama11_vs_k1d_da", \ri -> twp[kopts[ord][10]][ri])
+twp:addcol("gama22_vs_k1f_da", \ri -> twp[kopts[ord][11]][ri])
+twp:addcol("gama22_vs_k1d_da", \ri -> twp[kopts[ord][12]][ri])
+twp:addcol("mu1_vs_k1f_da"   , \ri -> twp[kopts[ord][13]][ri])
+twp:addcol("mu1_vs_k1d_da"   , \ri -> twp[kopts[ord][14]][ri])
+twp:addcol("mu2_vs_k1f_da"   , \ri -> twp[kopts[ord][15]][ri])
+twp:addcol("mu2_vs_k1d_da"   , \ri -> twp[kopts[ord][16]][ri])
+twp:addcol("dx_vs_k1f_da"    , \ri -> twp[kopts[ord][17]][ri])
+twp:addcol("dx_vs_k1d_da"    , \ri -> twp[kopts[ord][18]][ri])
+twp:addcol("dpx_vs_k1f_da"   , \ri -> twp[kopts[ord][19]][ri])
+twp:addcol("dpx_vs_k1d_da"   , \ri -> twp[kopts[ord][20]][ri])
+twp:addcol("dy_vs_k1f_da"    , \ri -> twp[kopts[ord][21]][ri])
+twp:addcol("dy_vs_k1d_da"    , \ri -> twp[kopts[ord][22]][ri])
+twp:addcol("dpy_vs_k1f_da"   , \ri -> twp[kopts[ord][23]][ri])
+twp:addcol("dpy_vs_k1d_da"   , \ri -> twp[kopts[ord][24]][ri])
+if chrm then
+twp:addcol("dmu1_vs_k1f_da"  , \ri -> twp[kopts[ord][25]][ri])
+twp:addcol("dmu1_vs_k1d_da"  , \ri -> twp[kopts[ord][26]][ri])
+twp:addcol("dmu2_vs_k1f_da"  , \ri -> twp[kopts[ord][27]][ri])
+twp:addcol("dmu2_vs_k1d_da"  , \ri -> twp[kopts[ord][28]][ri])
+twp:addcol("wx_vs_k1f_da"    , \ri -> twp[kopts[ord][29]][ri])
+twp:addcol("wx_vs_k1d_da"    , \ri -> twp[kopts[ord][30]][ri])
+twp:addcol("wxp_vs_k1f_da"   , \ri -> twp[kopts[ord][31]][ri])
+twp:addcol("wxp_vs_k1d_da"   , \ri -> twp[kopts[ord][32]][ri])
+twp:addcol("wy_vs_k1f_da"    , \ri -> twp[kopts[ord][33]][ri])
+twp:addcol("wy_vs_k1d_da"    , \ri -> twp[kopts[ord][34]][ri])
+twp:addcol("wyp_vs_k1f_da"   , \ri -> twp[kopts[ord][35]][ri])
+twp:addcol("wyp_vs_k1d_da"   , \ri -> twp[kopts[ord][36]][ri])
+end
+
+-- Compute finite difference twiss ----
+
+-- twiss with k1f as dh
+qf.k1 = qf.k1 + dh
+local twfp = twiss_4plot { sequence=fodo, chrom=chrm }
+qf.k1 = qf.k1 - 2*dh
+local twfm = twiss_4plot { sequence=fodo, chrom=chrm }
+qf.k1 = qf.k1 + dh
+
+-- twiss with k1d as dh
+qd.k1 = qd.k1 + dh
+local twdp = twiss_4plot { sequence=fodo, chrom=chrm }
+qd.k1 = qd.k1 - 2*dh
+local twdm = twiss_4plot { sequence=fodo, chrom=chrm }
+qd.k1 = qd.k1 + dh
+
+do
+  local a,b,c,d,e in ({
+    { a=1, b= 0, c=-1, d=2, e=1 },
+    { a=1, b=-2, c= 1, d=1, e=2 },
+  })[ord]
+
+  -- extend table with finite difference values
+  twp:addcol("beta11_vs_k1f_fd", \ri -> ((a*twfp.beta11[ri] + b*tw.beta11[ri] + c*twfm.beta11[ri])/(d*dh^e)))
+  twp:addcol("beta11_vs_k1d_fd", \ri -> ((a*twdp.beta11[ri] + b*tw.beta11[ri] + c*twdm.beta11[ri])/(d*dh^e)))
+  twp:addcol("beta22_vs_k1f_fd", \ri -> ((a*twfp.beta22[ri] + b*tw.beta22[ri] + c*twfm.beta22[ri])/(d*dh^e)))
+  twp:addcol("beta22_vs_k1d_fd", \ri -> ((a*twdp.beta22[ri] + b*tw.beta22[ri] + c*twdm.beta22[ri])/(d*dh^e)))
+  twp:addcol("alfa11_vs_k1f_fd", \ri -> ((a*twfp.alfa11[ri] + b*tw.alfa11[ri] + c*twfm.alfa11[ri])/(d*dh^e)))
+  twp:addcol("alfa11_vs_k1d_fd", \ri -> ((a*twdp.alfa11[ri] + b*tw.alfa11[ri] + c*twdm.alfa11[ri])/(d*dh^e)))
+  twp:addcol("alfa22_vs_k1f_fd", \ri -> ((a*twfp.alfa22[ri] + b*tw.alfa22[ri] + c*twfm.alfa22[ri])/(d*dh^e)))
+  twp:addcol("alfa22_vs_k1d_fd", \ri -> ((a*twdp.alfa22[ri] + b*tw.alfa22[ri] + c*twdm.alfa22[ri])/(d*dh^e)))
+  twp:addcol("gama11_vs_k1f_fd", \ri -> ((a*twfp.gama11[ri] + b*tw.gama11[ri] + c*twfm.gama11[ri])/(d*dh^e)))
+  twp:addcol("gama11_vs_k1d_fd", \ri -> ((a*twdp.gama11[ri] + b*tw.gama11[ri] + c*twdm.gama11[ri])/(d*dh^e)))
+  twp:addcol("gama22_vs_k1f_fd", \ri -> ((a*twfp.gama22[ri] + b*tw.gama22[ri] + c*twfm.gama22[ri])/(d*dh^e)))
+  twp:addcol("gama22_vs_k1d_fd", \ri -> ((a*twdp.gama22[ri] + b*tw.gama22[ri] + c*twdm.gama22[ri])/(d*dh^e)))
+  twp:addcol("mu1_vs_k1f_fd"   , \ri -> ((a*twfp.mu1   [ri] + b*tw.mu1   [ri] + c*twfm.mu1   [ri])/(d*dh^e)))
+  twp:addcol("mu1_vs_k1d_fd"   , \ri -> ((a*twdp.mu1   [ri] + b*tw.mu1   [ri] + c*twdm.mu1   [ri])/(d*dh^e)))
+  twp:addcol("mu2_vs_k1f_fd"   , \ri -> ((a*twfp.mu2   [ri] + b*tw.mu2   [ri] + c*twfm.mu2   [ri])/(d*dh^e)))
+  twp:addcol("mu2_vs_k1d_fd"   , \ri -> ((a*twdp.mu2   [ri] + b*tw.mu2   [ri] + c*twdm.mu2   [ri])/(d*dh^e)))
+  twp:addcol("dx_vs_k1f_fd"    , \ri -> ((a*twfp.dx    [ri] + b*tw.dx    [ri] + c*twfm.dx    [ri])/(d*dh^e)))
+  twp:addcol("dx_vs_k1d_fd"    , \ri -> ((a*twdp.dx    [ri] + b*tw.dx    [ri] + c*twdm.dx    [ri])/(d*dh^e)))
+  twp:addcol("dpx_vs_k1f_fd"   , \ri -> ((a*twfp.dpx   [ri] + b*tw.dpx   [ri] + c*twfm.dpx   [ri])/(d*dh^e)))
+  twp:addcol("dpx_vs_k1d_fd"   , \ri -> ((a*twdp.dpx   [ri] + b*tw.dpx   [ri] + c*twdm.dpx   [ri])/(d*dh^e)))
+  twp:addcol("dy_vs_k1f_fd"    , \ri -> ((a*twfp.dy    [ri] + b*tw.dy    [ri] + c*twfm.dy    [ri])/(d*dh^e)))
+  twp:addcol("dy_vs_k1d_fd"    , \ri -> ((a*twdp.dy    [ri] + b*tw.dy    [ri] + c*twdm.dy    [ri])/(d*dh^e)))
+  twp:addcol("dpy_vs_k1f_fd"   , \ri -> ((a*twfp.dpy   [ri] + b*tw.dpy   [ri] + c*twfm.dpy   [ri])/(d*dh^e)))
+  twp:addcol("dpy_vs_k1d_fd"   , \ri -> ((a*twdp.dpy   [ri] + b*tw.dpy   [ri] + c*twdm.dpy   [ri])/(d*dh^e)))
+if chrm then
+  twp:addcol("dmu1_vs_k1f_fd"  , \ri -> ((a*twfp.dmu1  [ri] + b*tw.dmu1  [ri] + c*twfm.dmu1  [ri])/(d*dh^e)))
+  twp:addcol("dmu1_vs_k1d_fd"  , \ri -> ((a*twdp.dmu1  [ri] + b*tw.dmu1  [ri] + c*twdm.dmu1  [ri])/(d*dh^e)))
+  twp:addcol("dmu2_vs_k1f_fd"  , \ri -> ((a*twfp.dmu2  [ri] + b*tw.dmu2  [ri] + c*twfm.dmu2  [ri])/(d*dh^e)))
+  twp:addcol("dmu2_vs_k1d_fd"  , \ri -> ((a*twdp.dmu2  [ri] + b*tw.dmu2  [ri] + c*twdm.dmu2  [ri])/(d*dh^e)))
+  twp:addcol("wx_vs_k1f_fd"    , \ri -> ((a*twfp.wx    [ri] + b*tw.wx    [ri] + c*twfm.wx    [ri])/(d*dh^e)))
+  twp:addcol("wx_vs_k1d_fd"    , \ri -> ((a*twdp.wx    [ri] + b*tw.wx    [ri] + c*twdm.wx    [ri])/(d*dh^e)))
+  twp:addcol("wxp_vs_k1f_fd"   , \ri -> ((a*twfp.phix  [ri] + b*tw.phix  [ri] + c*twfm.phix  [ri])/(d*dh^e)))
+  twp:addcol("wxp_vs_k1d_fd"   , \ri -> ((a*twdp.phix  [ri] + b*tw.phix  [ri] + c*twdm.phix  [ri])/(d*dh^e)))
+  twp:addcol("wy_vs_k1f_fd"    , \ri -> ((a*twfp.wy    [ri] + b*tw.wy    [ri] + c*twfm.wy    [ri])/(d*dh^e)))
+  twp:addcol("wy_vs_k1d_fd"    , \ri -> ((a*twdp.wy    [ri] + b*tw.wy    [ri] + c*twdm.wy    [ri])/(d*dh^e)))
+  twp:addcol("wyp_vs_k1f_fd"   , \ri -> ((a*twfp.phiy  [ri] + b*tw.phiy  [ri] + c*twfm.phiy  [ri])/(d*dh^e)))
+  twp:addcol("wyp_vs_k1d_fd"   , \ri -> ((a*twdp.phiy  [ri] + b*tw.phiy  [ri] + c*twdm.phiy  [ri])/(d*dh^e)))
+end
+end
+
+-- Build plots ------------------------
+
+do
+  twp:addcol("beta11_vs_k1f_dif", \ri -> twp.beta11_vs_k1f_da[ri] - twp.beta11_vs_k1f_fd[ri])
+  twp:addcol("beta11_vs_k1d_dif", \ri -> twp.beta11_vs_k1d_da[ri] - twp.beta11_vs_k1d_fd[ri])
+  twp:addcol("beta22_vs_k1f_dif", \ri -> twp.beta22_vs_k1f_da[ri] - twp.beta22_vs_k1f_fd[ri])
+  twp:addcol("beta22_vs_k1d_dif", \ri -> twp.beta22_vs_k1d_da[ri] - twp.beta22_vs_k1d_fd[ri])
+  twp:addcol("alfa11_vs_k1f_dif", \ri -> twp.alfa11_vs_k1f_da[ri] - twp.alfa11_vs_k1f_fd[ri])
+  twp:addcol("alfa11_vs_k1d_dif", \ri -> twp.alfa11_vs_k1d_da[ri] - twp.alfa11_vs_k1d_fd[ri])
+  twp:addcol("alfa22_vs_k1f_dif", \ri -> twp.alfa22_vs_k1f_da[ri] - twp.alfa22_vs_k1f_fd[ri])
+  twp:addcol("alfa22_vs_k1d_dif", \ri -> twp.alfa22_vs_k1d_da[ri] - twp.alfa22_vs_k1d_fd[ri])
+  twp:addcol("gama11_vs_k1f_dif", \ri -> twp.gama11_vs_k1f_da[ri] - twp.gama11_vs_k1f_fd[ri])
+  twp:addcol("gama11_vs_k1d_dif", \ri -> twp.gama11_vs_k1d_da[ri] - twp.gama11_vs_k1d_fd[ri])
+  twp:addcol("gama22_vs_k1f_dif", \ri -> twp.gama22_vs_k1f_da[ri] - twp.gama22_vs_k1f_fd[ri])
+  twp:addcol("gama22_vs_k1d_dif", \ri -> twp.gama22_vs_k1d_da[ri] - twp.gama22_vs_k1d_fd[ri])
+  twp:addcol("mu1_vs_k1f_dif"   , \ri -> twp.mu1_vs_k1f_da   [ri] - twp.mu1_vs_k1f_fd   [ri])
+  twp:addcol("mu1_vs_k1d_dif"   , \ri -> twp.mu1_vs_k1d_da   [ri] - twp.mu1_vs_k1d_fd   [ri])
+  twp:addcol("mu2_vs_k1f_dif"   , \ri -> twp.mu2_vs_k1f_da   [ri] - twp.mu2_vs_k1f_fd   [ri])
+  twp:addcol("mu2_vs_k1d_dif"   , \ri -> twp.mu2_vs_k1d_da   [ri] - twp.mu2_vs_k1d_fd   [ri])
+  twp:addcol("dx_vs_k1f_dif"    , \ri -> twp.dx_vs_k1f_da    [ri] - twp.dx_vs_k1f_fd    [ri])
+  twp:addcol("dx_vs_k1d_dif"    , \ri -> twp.dx_vs_k1d_da    [ri] - twp.dx_vs_k1d_fd    [ri])
+  twp:addcol("dpx_vs_k1f_dif"   , \ri -> twp.dpx_vs_k1f_da   [ri] - twp.dpx_vs_k1f_fd   [ri])
+  twp:addcol("dpx_vs_k1d_dif"   , \ri -> twp.dpx_vs_k1d_da   [ri] - twp.dpx_vs_k1d_fd   [ri])
+  twp:addcol("dy_vs_k1f_dif"    , \ri -> twp.dy_vs_k1f_da    [ri] - twp.dy_vs_k1f_fd    [ri])
+  twp:addcol("dy_vs_k1d_dif"    , \ri -> twp.dy_vs_k1d_da    [ri] - twp.dy_vs_k1d_fd    [ri])
+  twp:addcol("dpy_vs_k1f_dif"   , \ri -> twp.dpy_vs_k1f_da   [ri] - twp.dpy_vs_k1f_fd   [ri])
+  twp:addcol("dpy_vs_k1d_dif"   , \ri -> twp.dpy_vs_k1d_da   [ri] - twp.dpy_vs_k1d_fd   [ri])
+if chrm then
+  twp:addcol("dmu1_vs_k1f_dif"  , \ri -> twp.dmu1_vs_k1f_da  [ri] - twp.dmu1_vs_k1f_fd  [ri])
+  twp:addcol("dmu1_vs_k1d_dif"  , \ri -> twp.dmu1_vs_k1d_da  [ri] - twp.dmu1_vs_k1d_fd  [ri])
+  twp:addcol("dmu2_vs_k1f_dif"  , \ri -> twp.dmu2_vs_k1f_da  [ri] - twp.dmu2_vs_k1f_fd  [ri])
+  twp:addcol("dmu2_vs_k1d_dif"  , \ri -> twp.dmu2_vs_k1d_da  [ri] - twp.dmu2_vs_k1d_fd  [ri])
+  twp:addcol("wx_vs_k1f_dif"    , \ri -> twp.wx_vs_k1f_da    [ri] - twp.wx_vs_k1f_fd    [ri])
+  twp:addcol("wx_vs_k1d_dif"    , \ri -> twp.wx_vs_k1d_da    [ri] - twp.wx_vs_k1d_fd    [ri])
+  twp:addcol("wxp_vs_k1f_dif"   , \ri -> twp.wxp_vs_k1f_da   [ri] - twp.wxp_vs_k1f_fd   [ri])
+  twp:addcol("wxp_vs_k1d_dif"   , \ri -> twp.wxp_vs_k1d_da   [ri] - twp.wxp_vs_k1d_fd   [ri])
+  twp:addcol("wy_vs_k1f_dif"    , \ri -> twp.wy_vs_k1f_da    [ri] - twp.wy_vs_k1f_fd    [ri])
+  twp:addcol("wy_vs_k1d_dif"    , \ri -> twp.wy_vs_k1d_da    [ri] - twp.wy_vs_k1d_fd    [ri])
+  twp:addcol("wyp_vs_k1f_dif"   , \ri -> twp.wyp_vs_k1f_da   [ri] - twp.wyp_vs_k1f_fd   [ri])
+  twp:addcol("wyp_vs_k1d_dif"   , \ri -> twp.wyp_vs_k1d_da   [ri] - twp.wyp_vs_k1d_fd   [ri])
+end
+end
+
+-- save table
+twp:write"twiss_prms.tfs"
+
+plot {
+  title    = "beta vs da (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"beta11_vs_k1f_da", "beta11_vs_k1d_da", "beta22_vs_k1f_da", "beta22_vs_k1d_da"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "β_{x,y} [m]",                          -- y-axis label left
+  y2label  = "",                                     -- y-axis label right
+  legend   = {beta11_vs_k1f_da="β_x vs k1f", beta11_vs_k1d_da="β_x vs k1d",
+              beta22_vs_k1f_da="β_y vs k1f", beta22_vs_k1d_da="β_y vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "beta vs fd (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"beta11_vs_k1f_fd", "beta11_vs_k1d_fd", "beta22_vs_k1f_fd", "beta22_vs_k1d_fd"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "β_{x,y} [m]",                          -- y-axis label left
+  legend   = {beta11_vs_k1f_fd="β_x vs k1f", beta11_vs_k1d_fd="β_x vs k1d",
+              beta22_vs_k1f_fd="β_y vs k1f", beta22_vs_k1d_fd="β_y vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "beta vs da and fd diff (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"beta11_vs_k1f_dif", "beta11_vs_k1d_dif", "beta22_vs_k1f_dif", "beta22_vs_k1d_dif"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "Error on β_{x,y} [m]",                 -- y-axis label left
+  legend   = {beta11_vs_k1f_dif="β_x vs k1f err", beta11_vs_k1d_dif="β_x vs k1d err",
+              beta22_vs_k1f_dif="β_y vs k1f err", beta22_vs_k1d_dif="β_y vs k1d err"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "alfa vs da (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"alfa11_vs_k1f_da", "alfa11_vs_k1d_da", "alfa22_vs_k1f_da", "alfa22_vs_k1d_da"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "α_{x,y} [m]",                          -- y-axis label left
+  legend   = {alfa11_vs_k1f_da="α_x vs k1f", alfa11_vs_k1d_da="α_x vs k1d",
+              alfa22_vs_k1f_da="α_y vs k1f", alfa22_vs_k1d_da="α_y vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "alfa vs fd (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"alfa11_vs_k1f_fd", "alfa11_vs_k1d_fd", "alfa22_vs_k1f_fd", "alfa22_vs_k1d_fd"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "α_{x,y} [m]",                          -- y-axis label left
+  legend   = {alfa11_vs_k1f_fd="α_x vs k1f", alfa11_vs_k1d_fd="α_x vs k1d",
+              alfa22_vs_k1f_fd="α_y vs k1f", alfa22_vs_k1d_fd="α_y vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "alfa vs da and fd diff (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"alfa11_vs_k1f_dif", "alfa11_vs_k1d_dif", "alfa22_vs_k1f_dif", "alfa22_vs_k1d_dif"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "Error on α_{x,y} [m]",                 -- y-axis label left
+  legend   = {alfa11_vs_k1f_dif="α_x vs k1f err", alfa11_vs_k1d_dif="α_x vs k1d err",
+              alfa22_vs_k1f_dif="α_y vs k1f err", alfa22_vs_k1d_dif="α_y vs k1d err"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "gama vs da (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"gama11_vs_k1f_da", "gama11_vs_k1d_da", "gama22_vs_k1f_da", "gama22_vs_k1d_da"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "γ_{x,y} [m]",                          -- y-axis label left
+  legend   = {gama11_vs_k1f_da="γ_x vs k1f", gama11_vs_k1d_da="γ_x vs k1d",
+              gama22_vs_k1f_da="γ_y vs k1f", gama22_vs_k1d_da="γ_y vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "gama vs fd (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"gama11_vs_k1f_fd", "gama11_vs_k1d_fd", "gama22_vs_k1f_fd", "gama22_vs_k1d_fd"}},
+  xlabel   = "s [m]"   ,                             -- x-axis labellabel
+  ylabel   = "γ_{x,y} [m]",                          -- y-axis label left
+  legend   = {gama11_vs_k1f_fd="γ_x vs k1f", gama11_vs_k1d_fd="γ_x vs k1d",
+              gama22_vs_k1f_fd="γ_y vs k1f", gama22_vs_k1d_fd="γ_y vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "gama vs da and fd diff (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"gama11_vs_k1f_dif", "gama11_vs_k1d_dif", "gama22_vs_k1f_dif", "gama22_vs_k1d_dif"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "Error on γ_{x,y} [m]",                 -- y-axis label left
+  legend   = {gama11_vs_k1f_dif="γ_x vs k1f err", gama11_vs_k1d_dif="γ_x vs k1d err",
+              gama22_vs_k1f_dif="γ_y vs k1f err", gama22_vs_k1d_dif="γ_y vs k1d err"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "mu vs da (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"mu1_vs_k1f_da", "mu1_vs_k1d_da", "mu2_vs_k1f_da", "mu2_vs_k1d_da"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "μ_{x,y} [m]",                          -- y-axis label left
+  legend   = {mu1_vs_k1f_da="μ_x vs k1f", mu1_vs_k1d_da="μ_x vs k1d",
+              mu2_vs_k1f_da="μ_y vs k1f", mu2_vs_k1d_da="μ_y vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "mu vs fd (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"mu1_vs_k1f_fd", "mu1_vs_k1d_fd", "mu2_vs_k1f_fd", "mu2_vs_k1d_fd"}},
+  xlabel   = "s [m]"   ,                             -- x-axis labellabel
+  ylabel   = "μ_{x,y} [m]",                          -- y-axis label left
+  legend   = {mu1_vs_k1f_fd="μ_x vs k1f", mu1_vs_k1d_fd="μ_x vs k1d",
+              mu2_vs_k1f_fd="μ_y vs k1f", mu2_vs_k1d_fd="μ_y vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "mu vs da and fd diff (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"mu1_vs_k1f_dif", "mu1_vs_k1d_dif", "mu2_vs_k1f_dif", "mu2_vs_k1d_dif"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "Error on μ_{x,y} [m]",                 -- y-axis label left
+  legend   = {mu1_vs_k1f_dif="μ_x vs k1f err", mu1_vs_k1d_dif="μ_x vs k1d err",
+              mu2_vs_k1f_dif="μ_y vs k1f err", mu2_vs_k1d_dif="μ_y vs k1d err"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "disp vs da (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"dx_vs_k1f_da", "dx_vs_k1d_da", "dy_vs_k1f_da", "dy_vs_k1d_da",
+                   "dpx_vs_k1f_da", "dpx_vs_k1d_da", "dpy_vs_k1f_da", "dpy_vs_k1d_da"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "d_{x,y} or dp_{x,y} [m]",              -- y-axis label left
+  legend   = {dx_vs_k1f_da ="dx vs k1f",  dx_vs_k1d_da ="dx vs k1d",
+              dy_vs_k1f_da ="dy vs k1f",  dy_vs_k1d_da ="dy vs k1d",
+              dpx_vs_k1f_da="dpx vs k1f", dpx_vs_k1d_da="dpx vs k1d",
+              dpy_vs_k1f_da="dpy vs k1f", dpy_vs_k1d_da="dpy vs k1d",},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "disp vs fd (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"dx_vs_k1f_fd",  "dx_vs_k1d_fd",  "dy_vs_k1f_fd",  "dy_vs_k1d_fd",
+                   "dpx_vs_k1f_fd", "dpx_vs_k1d_fd", "dpy_vs_k1f_fd", "dpy_vs_k1d_fd"}},
+  xlabel   = "s [m]"   ,                             -- x-axis labellabel
+  ylabel   = "d_{x,y} or dp_{x,y} [m]",              -- y-axis label left
+  legend   = {dx_vs_k1f_fd ="dx vs k1f",  dx_vs_k1d_fd ="dx vs k1d",
+              dy_vs_k1f_fd ="dy vs k1f",  dy_vs_k1d_fd ="dy vs k1d",
+              dpx_vs_k1f_fd="dpx vs k1f", dpx_vs_k1d_fd="dpx vs k1d",
+              dpy_vs_k1f_fd="dpy vs k1f", dpy_vs_k1d_fd="dpy vs k1d",},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "disp vs da and fd diff (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"dx_vs_k1f_dif",  "dx_vs_k1d_dif",  "dy_vs_k1f_dif",  "dy_vs_k1d_dif",
+                   "dpx_vs_k1f_dif", "dpx_vs_k1d_dif", "dpy_vs_k1f_dif", "dpy_vs_k1d_dif"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "Error on d_{x,y} or dp_{x,y} [m]",     -- y-axis label left
+  legend   = {dx_vs_k1f_dif ="dx vs k1f err",  dx_vs_k1d_dif ="dx vs k1d err",
+              dy_vs_k1f_dif ="dy vs k1f err",  dy_vs_k1d_dif ="dy vs k1d err",
+              dpx_vs_k1f_dif="dpx vs k1f err", dpx_vs_k1d_dif="dpx vs k1d err",
+              dpy_vs_k1f_dif="dpy vs k1f err", dpy_vs_k1d_dif="dpy vs k1d err",},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+if chrm then
+
+plot {
+  title    = "dmu vs da (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"dmu1_vs_k1f_da", "dmu1_vs_k1d_da", "dmu2_vs_k1f_da", "dmu2_vs_k1d_da"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "dμ_{x,y} [m]",                         -- y-axis label left
+  legend   = {dmu1_vs_k1f_da="dμ_x vs k1f", dmu1_vs_k1d_da="dμ_x vs k1d",
+              dmu2_vs_k1f_da="dμ_y vs k1f", dmu2_vs_k1d_da="dμ_y vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "dmu vs fd (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"dmu1_vs_k1f_fd", "dmu1_vs_k1d_fd", "dmu2_vs_k1f_fd", "dmu2_vs_k1d_fd"}},
+  xlabel   = "s [m]"   ,                             -- x-axis labellabel
+  ylabel   = "dμ_{x,y} [m]",                         -- y-axis label left
+  legend   = {dmu1_vs_k1f_fd="dμ_x vs k1f", dmu1_vs_k1d_fd="dμ_x vs k1d",
+              dmu2_vs_k1f_fd="dμ_y vs k1f", dmu2_vs_k1d_fd="dμ_y vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "dmu vs da and fd diff (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"dmu1_vs_k1f_dif", "dmu1_vs_k1d_dif", "dmu2_vs_k1f_dif", "dmu2_vs_k1d_dif"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "Error on dμ_{x,y} [m]",                -- y-axis label left
+  legend   = {dmu1_vs_k1f_dif="dμ_x vs k1f err", dmu1_vs_k1d_dif="dμ_x vs k1d err",
+              dmu2_vs_k1f_dif="dμ_y vs k1f err", dmu2_vs_k1d_dif="dμ_y vs k1d err"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "w vs da (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"wx_vs_k1f_da", "wx_vs_k1d_da", "wy_vs_k1f_da", "wy_vs_k1d_da"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "w_{x,y}",                              -- y-axis label left
+  legend   = {wx_vs_k1f_da ="wx vs k1f",  wx_vs_k1d_da ="wx vs k1d",
+              wy_vs_k1f_da ="wy vs k1f",  wy_vs_k1d_da ="wy vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "w vs fd (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"wx_vs_k1f_fd",  "wx_vs_k1d_fd",  "wy_vs_k1f_fd",  "wy_vs_k1d_fd"}},
+  xlabel   = "s [m]"   ,                             -- x-axis labellabel
+  ylabel   = "w_{x,y}",                              -- y-axis label left
+  legend   = {wx_vs_k1f_fd ="wx vs k1f",  wx_vs_k1d_fd ="wx vs k1d",
+              wy_vs_k1f_fd ="wy vs k1f",  wy_vs_k1d_fd ="wy vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "w vs da and fd diff (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"wx_vs_k1f_dif",  "wx_vs_k1d_dif",  "wy_vs_k1f_dif",  "wy_vs_k1d_dif"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "Error on w_{x,y}",                     -- y-axis label left
+  legend   = {wx_vs_k1f_dif ="wx vs k1f err",  wx_vs_k1d_dif ="wx vs k1d err",
+              wy_vs_k1f_dif ="wy vs k1f err",  wy_vs_k1d_dif ="wy vs k1d err"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "wp vs da (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"wxp_vs_k1f_da", "wxp_vs_k1d_da", "wyp_vs_k1f_da", "wyp_vs_k1d_da"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "w_{x,y}p",                             -- y-axis label left
+  legend   = {wxp_vs_k1f_da="wpx vs k1f", wxp_vs_k1d_da="wpx vs k1d",
+              wyp_vs_k1f_da="wpy vs k1f", wyp_vs_k1d_da="wpy vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "wp vs fd (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"wxp_vs_k1f_fd", "wxp_vs_k1d_fd", "wyp_vs_k1f_fd", "wyp_vs_k1d_fd"}},
+  xlabel   = "s [m]"   ,                             -- x-axis labellabel
+  ylabel   = "w_{x,y}p",                             -- y-axis label left
+  legend   = {wxp_vs_k1f_fd="wxp vs k1f", wxp_vs_k1d_fd="wxp vs k1d",
+              wyp_vs_k1f_fd="wyp vs k1f", wyp_vs_k1d_fd="wyp vs k1d"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+plot {
+  title    = "wp vs da and fd diff (order "..ord..")",  -- plot title
+  sequence = fodo,            -- sequence for layout
+  table    = twp,             -- twiss table for plot
+  x1y1     = {s = {"wxp_vs_k1f_dif", "wxp_vs_k1d_dif", "wyp_vs_k1f_dif", "wyp_vs_k1d_dif"}},
+  xlabel   = "s [m]"   ,                             -- x-axis label
+  ylabel   = "Error on w_{x,y}p",                    -- y-axis label left
+  legend   = {wxp_vs_k1f_dif="wxp vs k1f err", wxp_vs_k1d_dif="wxp vs k1d err",
+              wyp_vs_k1f_dif="wyp vs k1f err", wyp_vs_k1d_dif="wyp vs k1d err"},
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+end
+
+end -- over order ord

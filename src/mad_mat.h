@@ -155,10 +155,6 @@ void  mad_mat_torotq   (const num_t x[3*3],       num_t q[4], log_t inv);
 void  mad_mat_rtbar    (      num_t Rb[3*3],       num_t Tb[3], num_t el, num_t ang, num_t tlt,
                         const num_t R_[3*3], const num_t T [3]);
 
-// special flags
-extern int mad_use_madx_micado;
-extern int mad_use_madx_svdcnd;
-
 // matrix functions -----------------------------------------------------------o
 
 struct  matrix;

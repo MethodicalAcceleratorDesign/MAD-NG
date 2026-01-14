@@ -1,0 +1,127 @@
+local track, beam, damap, tostring in MAD
+local sequence, drift, sextupole in MAD.element
+local sqrt in MAD.gmath
+local beta in beam
+
+-- drift -----------------------------------------------------------------------
+
+print("drift")
+
+local seq = sequence { beam=beam,
+  drift 'dft' { l=2 }
+}
+
+local x0 = { px=1e-3, py=1e-4 }
+
+local tbl, mflw = track { sequence=seq, X0=x0 }
+
+tbl:print({'s','x','px','y','py'},{}) ; print(tostring(mflw[1]))
+
+local tbl, mflw = track { sequence=seq, X0=x0, mapdef=2 }
+
+tbl:print({'s','x','px','y','py'},{}) ; mflw[1]:print("mflw")
+
+local tbl, mflw = track { sequence=seq, mapdef=3 }
+
+mflw[1]:print("drift transfer map")
+
+local z0 = damap{nv=6,mo=3}:set0(x0) ;
+
+(mflw[1]*z0):print("expanded map and composition")
+
+local z0 = damap{nv=6,mo=3}:set0(x0)
+local L  = seq.dft.l
+local px, py, pt in z0
+
+-- Hamiltonian of the exact straight drift
+local H = -sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
+
+-- Explicit method for each variables
+local z = z0:same()
+z.x  = z0.x + z0.x:poisbra(L*H)   -- x + {x,LH}
+z.px = z0.px
+z.y  = z0.y + z0.y:poisbra(L*H)   -- y + {y,LH}
+z.py = z0.py
+
+-- Explicit propagator
+local F   = -z0:vec2fld(L*H)      -- F = {.,LH} = -{LH,.}
+local zp  = z0 + F                -- z + {z,LH}
+
+-- Full Lie propagator
+local zpp = z0:exppb(F)           -- exp({.,LH})z
+
+z0:print("z0") ; H:print("H")
+z:print("z") ; zp:print("z'") ; zpp:print("z''")
+
+-- check
+
+; (H-z0:vec2fld(H, false):fld2vec(false)):print("CHK")
+; (H-z0:vec2fld(H, true ):fld2vec(true )):print("CHK")
+
+-- sextupole -------------------------------------------------------------------
+
+print("sextupole")
+
+local seq = sequence { beam=beam,
+  sextupole 'sf' { l=0.5, k2=10 }
+}
+
+local _, mflw = track { sequence=seq }
+
+print(tostring(mflw[1]))
+
+local _, mflw = track { sequence=seq, mapdef=2 }
+
+mflw[1]:print("sf transfer map")
+
+local z0 = damap{nv=6,mo=3}
+local l, k2 in seq.sf
+local x, px, y, py, pt in z0
+
+-- Hamiltonian of the exact thick sextupole
+local H = -sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2) + k2/6 * (x^3 - 3*x*y^2)
+
+-- Full Lie propagator
+local z = z0:exppb(l*H)   -- exp({.,LH})z
+
+H:print("H") ; z:cutord(3):print("z")
+
+--- sextupole & parametric map -------------------------------------------------
+
+local z0 = damap{nv=6,mo=3,np=1,po=1,pn={"k2"}}
+
+seq.sf.k2 = k2 + z0.k2
+local _, mflw = track { sequence=seq, X0=z0 }
+mflw[1]:print("sf parametric transfer map")
+
+local z0 = damap{nv=6,mo=4,np=1,po=1,pn={"k2"}}
+local x, px, y, py, pt in z0
+k2 = k2 + z0.k2
+
+-- Hamiltonian of the exact thick sextupole
+local H = -sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2) + k2/6 * (x^3 - 3*x*y^2)
+
+-- Full Lie propagator
+local z = z0:exppb(l*H)    -- exp({.,LH})z
+
+H:print("H") ; z:cutord(4):print("z")
+
+--- sextupole (off) & sensitivity map ------------------------------------------
+
+local z0 = damap{nv=6,mo=4,np=1,po=2,pn={"k2"}}
+
+seq.sf.k2 = z0.k2 -- k2=0
+local _, mflw = track { sequence=seq, X0=z0 }
+mflw[1]:print("sf parametric sensivity map")
+
+local z0 = damap{nv=6,mo=5,np=1,po=2,pn={"k2"}}
+local x, px, y, py, pt in z0
+k2 = z0.k2 -- k2=0
+
+-- Hamiltonian of the exact thick sextupole
+local H = -sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2) + k2/6 * (x^3 - 3*x*y^2)
+
+-- Full Lie propagator
+local z = z0:exppb(l*H)    -- exp({.,LH})z
+
+H:print("H") ; z:cutord(5):print("z")

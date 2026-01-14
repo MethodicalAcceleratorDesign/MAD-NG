@@ -29,7 +29,7 @@ local object, option, warn                                        in MAD
 local openfile, fileisnewer,
       assertf, strtrim, strqsplit, strsplitall                    in MAD.utility
 local bind1st                                                     in MAD.gfunc
-local is_nil, is_boolean, is_number, is_string, is_callable       in MAD.typeid
+local is_nil, is_boolean, is_number, is_string, is_table, is_callable in MAD.typeid
 
 assert(is_nil(rawget(_G,'MADX')), "MADX environment already defined")
 
@@ -131,9 +131,14 @@ local function close_sequ (env)
   assertf(cur ~= 0, "missing %s sequence environment line %d", env[cur], out.n)
   out[out.n], out.n = '}', out.n+1 -- close last bline
 
+  local atts = "" -- sequence's attributes to add
+  for k,v in pairs{rbarc=env.rbarc, nopub=env.nopub} do
+    atts = atts .. k .. "=" .. tostring(v) .. ", "
+  end
+
   local nam = env[cur]
-  local str = string.format("%s = sequence '%s' { %s, %s }",
-                            nam, sln[nam].seqnam, sln[nam].seqatt,
+  local str = string.format("%s = sequence '%s' { %s, %s%s }",
+                            nam, sln[nam].seqnam, sln[nam].seqatt, atts,
                             table.concat(sln[nam], ", "))
   env.cur, out[out.n], out.n = 0, str, out.n+1
   out[out.n], out.n = table.concat(sln[nam], "=nil ; ").."=nil", out.n+1
@@ -485,18 +490,32 @@ end
   cls[nam] = cls_nam  : element's class name, i.e. (elm[cls[nam]] -> cls_idx)
 --]=]
 
-local function load2madx (madx, src, dst, reload_, mad8_)
+local function load2madx (madx, src, dst, cfg_, mad8_, rbarc_, nopub_)
   assert(madx == MADX or object.is_instanceOf(madx, MADX), "invalid MADX environment")
-  if is_boolean(dst) and is_nil(mad8_) then
-    reload_, mad8_, dst = dst, reload_, nil -- right shift
+
+  -- right shift (old and new interface)
+  if is_table(dst) and is_nil(cfg_) or is_boolean(dst) and is_nil(cfg_) then
+    cfg_, dst = dst, nil
   end
+
+  -- old interface
+  if is_boolean(cfg_) or is_boolean(mad8_) then
+    cfg_ = {reload=cfg_, mad8=mad8_, rbarc=rbarc_, nopub=nopub_}
+  end
+
+  -- options
+  local reload, mad8, rbarc, nopub in cfg_ or {}
+
+  if is_nil(rbarc) and madx.option.rbarc then rbarc = true end
+  if is_nil(nopub) and madx.option.nopub then nopub = true end
 
   local out = table.new(65536,2) ; out.n, out.nchk = 1, 1
   local env = { out=out, seq={}, sln={}, elm={}, cls={}, cur=0, stp=false,
-                wrn=madx.option.warn, opt=madx.option, madx=madx, mad8=mad8_ }
+                wrn=madx.option.warn, opt=madx.option, madx=madx, mad8=mad8,
+                rbarc=rbarc, nopub=nopub }
 
   -- if dst (MAD-NG) is newer than src (MAD-X), use dst (no translation)
-  if reload_ ~= true                                      -- reload not enforced
+  if reload ~= true                                       -- reload not enforced
      and is_string(dst) and string.sub(dst, -4) == '.mad' -- dst is a mad file
      and is_string(src) and fileisnewer(dst, src) then    -- dst newer than src
      src, dst = dst, nil
@@ -515,7 +534,7 @@ local function load2madx (madx, src, dst, reload_, mad8_)
   -- translate source file
   do
     local n, inp
-    if mad8_ then
+    if mad8 then
       -- remove comments, concat lines ended by "&", reset out
       inp, n = remove_comments_and_merge(out)
     else
@@ -532,7 +551,7 @@ local function load2madx (madx, src, dst, reload_, mad8_)
     table.clear(out) ; out.n, out.nchk = 1, 1
 
     -- translate mad8 to madx and save
-    -- if mad8_ and is_string(dst) then
+    -- if mad8 and is_string(dst) then
     --   local md8 = {}
     --   io.write("converting mad8 to madx '", dst, ".madx'\n")
     --   for i,str in ipairs(inp) do md8[i] = convert_namd8(str) end
@@ -608,7 +627,7 @@ end
 
 local function open_env (madx, ctx_)
   assert(madx == MADX or object.is_instanceOf(madx, MADX), "invalid MADX environment")
-  option.madxenv = true
+  option.madxenv = madx
   return object.open_env(madx, ctx_)
 end
 
@@ -625,15 +644,17 @@ local cord2arc, arc2cord in MAD.gmath
 -- wrap element length: from cord to arc (unused)
 local function cord2arc_w (e)
   local l = e:var_get 'l'
+  if l == cord2arc then return end
   if is_callable(l)
   then e.l = \s -> cord2arc(l(s), s.angle)
   else e.l = \s -> cord2arc(l   , s.angle)
   end
 end
 
--- wrap element length: from arc to cord (unused)
+-- wrap element length: from arc to cord
 local function arc2cord_w (e)
   local l = e:var_get 'l'
+  if l == arc2cord then return end
   if is_callable(l)
   then e.l = \s -> arc2cord(l(s), s.angle)
   else e.l = \s -> arc2cord(l   , s.angle)
@@ -645,7 +666,7 @@ end
 local MADX = object 'MADX' {
   _G=_G, MAD=MAD,
   option = {
-    debug=false, info=false, warn=true, rbarc=true,
+    debug=false, info=false, warn=true, rbarc=true, nopub=false,
   },
 }
 

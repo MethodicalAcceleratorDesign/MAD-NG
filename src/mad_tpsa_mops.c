@@ -100,13 +100,13 @@ mnrm (ssz_t na, const T *ma[na])
 }
 
 static inline void
-exppb (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na], T *t[4])
+exppb (ssz_t na, const T *ma[na], ssz_t nb, const T *mb[nb], T *mc[nb], T *t[4])
 {
   const int nmax = 100;
   const num_t nrm_min1 = 1e-9 , nrm_min2 = 100*DBL_EPSILON*na;
 //const num_t nrm_min1 = 1e-10, nrm_min2 =   4*DBL_EPSILON*na;
 
-  FOR(i,na) {
+  FOR(i,nb) {
     num_t nrm_ = INFINITY;
     log_t conv = FALSE;
 
@@ -158,7 +158,7 @@ logpb (ssz_t na, const T *ma[na], T *mc[na], T *t[4+5*na], num_t eps)
     if (n==nmax/4) trace(2, "logpb: n=%d (slow convergence)", n);
 
     FOR(i,na) FUN(scl) (mc[i], -1, t1[i]);     // t1 = -mc
-    exppb(na, TC t1, ma, t0, t);               // t0 = exp(:-mc:) ma
+    exppb(na, TC t1, na, ma, t0, t);           // t0 = exp(:-mc:) ma
     FOR(i,na) FUN(seti)(t0[i], i+1, 1, -1);    // t0 = t0-Id
 
     if (nrm < epsone) {
@@ -210,28 +210,28 @@ logpb (ssz_t na, const T *ma[na], T *mc[na], T *t[4+5*na], num_t eps)
 // --- public -----------------------------------------------------------------o
 
 void // compute M x = exp(:f(x;0):) x (eq. 32, 33 & 38 and inverse)
-FUN(exppb) (ssz_t na, const T *ma[na], const T *mb[na], T *mc[na])
+FUN(exppb) (ssz_t na, const T *ma[na], ssz_t nb, const T *mb[nb], T *mc[nb])
 {
   DBGFUN(->); assert(mb);
   check_compat(na, ma, mb, mc);
   const D *d = ma[0]->d;
 
   // handle aliasing
-  mad_alloc_tmp(T*, mc_, na);
-  FOR(i,na) mc_[i] = FUN(new)(mc[i], mad_tpsa_same);
+  mad_alloc_tmp(T*, mc_, nb);
+  FOR(i,nb) mc_[i] = FUN(new)(mc[i], mad_tpsa_same);
 
   // temporaries
-  const ord_t mo = FUN(mord)(na, TC mc, FALSE);
+  const ord_t mo = FUN(mord)(nb, TC mc, FALSE);
   T *t[4]; FOR(i,4) t[i] = FUN(newd)(d, mo);
 
   // main call
-  exppb(na, ma, mb, mc_, t);
+  exppb(na, ma, nb, mb, mc_, t);
 
   // temporaries
   FOR(i,4) FUN(del)(t[i]);
 
   // copy back
-  FOR(i,na) {
+  FOR(i,nb) {
     FUN(copy)(mc_[i], mc[i]);
     FUN(del )(mc_[i]);
   }

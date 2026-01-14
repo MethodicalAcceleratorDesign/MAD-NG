@@ -54,6 +54,7 @@ typedef const void*      ptr_t;
 
 #define SQR(a)           ((a)*(a))
 #define CUB(a)           ((a)*(a)*(a))
+#define NRM2(a,b)        (SQR(a)+SQR(b))
 #define SWAP(a,b,t)      ((t)=(a), (a)=(b), (b)=(t))
 #define SIGN(a)          (((a) >  0) - ((a) < 0)) // -1, 0, 1
 #define SIGN1(a)         (((a) >= 0) - ((a) < 0)) // -1, 1
@@ -136,18 +137,6 @@ typedef const void*      ptr_t;
 // #else
 // #define expect_p(a,v,p) ((p) >= 0.9 ? __builtin_expect((a),v) : (a))
 // #endif
-#endif
-
-// --- Open Multi-Processing -------------------------------------------------o
-
-#ifdef _OPENMP
-#include <omp.h>
-#else
-#define __thread
-#define omp_get_num_procs()   1
-#define omp_get_num_threads() 1
-#define omp_get_max_threads() 1
-#define omp_get_thread_num()  0
 #endif
 
 // --- POSIX & WIN -----------------------------------------------------------o

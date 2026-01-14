@@ -33,15 +33,15 @@ local abs, min, max, modf in math
 
 local option, warn, trace, gfunc                                 in MAD
 local ident, second, bind1st, bind2nd, bind2st, ltrue, lfalse,
-      sub, opstr                                                 in MAD.gfunc
+      sub, opstr, btst                                           in MAD.gfunc
 local sequence, marker, drift, changedir, changeref, flags       in MAD.element
 local minlen, eps                                                in MAD.constant
 local strtrim, strsplit, strbracket, bsearch, assertf, errorf,
       openfile, lst2tbl                                          in MAD.utility
-local is_nil, is_boolean, is_number, is_integer, is_nznatural,
-      is_index, is_string, is_table, is_rawtable, is_iterable,
-      is_mappable, is_callable, is_range, is_element, is_object,
-      set_concept, concept                                       in MAD.typeid
+local is_nil, is_boolean, is_logical, is_number, is_integer,
+      is_nznatural, is_index, is_string, is_table, is_rawtable,
+      is_iterable, is_mappable, is_callable, is_range, is_element,
+      is_object, set_concept, concept                            in MAD.typeid
 local not_mappable, not_extendable, not_mutable                  in concept
 local implicit, observed                                         in flags
 
@@ -307,7 +307,7 @@ local function index_of_str (seq, str, ref_, dir_)
   if num then return index_of_num(seq, num, ref_, dir_) end
   local nam, cnt, _, bra = strbracket(str)
   cnt = is_nil(cnt) and 1 or tonumber(cnt)
-  assert(is_index(cnt), "invalid argument #2 (non-zero count expected)")
+  assert(is_index(abs(cnt)), "invalid argument #2 (non-zero count expected)")
   if is_nil(ref_) or bra == 1 then
     return index_of_cnam(seq, nam, cnt      )
   else
@@ -320,7 +320,7 @@ function index_of_fnam (seq, nam, ref_) -- already declared local
   assert(is_string(nam), "invalid argument #2 (string expected)")
   local nam, cnt, _, bra = strbracket(nam)
   cnt = is_nil(cnt) and 1 or tonumber(cnt)
-  assert(is_index(cnt), "invalid argument #2 (non-zero count expected)")
+  assert(is_index(abs(cnt)), "invalid argument #2 (non-zero count expected)")
   if is_nil(ref_) or bra ~= 2 then -- need both for relative from
     return index_of_cnam(seq, nam, cnt      ), bra
   else
@@ -391,7 +391,11 @@ local elem_pos
 local function from_upos (seq, from, idx)
   local data = seq.__dat
   if data.last_from ~= from then                     -- memoized?
-    local idx, bra = index_of_fnam(seq, from, idx)
+    local idx, bra
+    if is_element(from)
+    then idx      = index_of_elm (seq, from, idx)
+    else idx, bra = index_of_fnam(seq, from, idx)
+    end
     if is_nil(idx) then                              -- not found
       seq_error("invalid from of '" .. from .. "'", seq, idx)
     end
@@ -643,7 +647,16 @@ end
 
 -- flatter assembly
 local function flatten_asm (elm, flat, sref, idx, dir)
-  idx, flat[idx] = idx+1, elm { entexi= dir, [1]=false }
+  local ent = elm { entexi= 1, l=0, lrad := elm.l, [1]=false, lnk_=nil }
+  local exi = elm { entexi=-1, l=0, lrad := elm.l, [1]=false, lnk_=ent }
+  ent.lnk_ = exi
+
+  if elm.l > 0
+  then exi.at, exi.from = elm.l, ent -- elm.name.."{-2}"
+  else exi.at, exi.from = 0    , "prev"
+  end
+
+  idx, flat[idx] = idx+1, ent
 
   local snam = sref.seq.name
   local cref, elst = elm[snam], elm
@@ -657,7 +670,7 @@ local function flatten_asm (elm, flat, sref, idx, dir)
     elm[snam] = changeref(elm.name, cref)
   end
 
-  idx, flat[idx] = idx+1, elm { entexi=-dir, [1]=false }
+  idx, flat[idx] = idx+1, exi
   return idx
 end
 
@@ -702,6 +715,15 @@ local function build_idx (data)     -- must be very fast
       local n = val.n+1
       val[n], val.n = idx, n
     end
+  end
+end
+
+-- rbend wrapper --------------------------------------------------------------o
+
+local function rbend_wrp (data)
+  local cord2arc_w in MADX
+  for _,elm in ipairs(data) do
+    if elm.is_rbend then cord2arc_w(elm) end
   end
 end
 
@@ -772,8 +794,19 @@ local function init_mm (seq)
   data.ne   = ne
   seq.__dat = data
 
-  -- set minlen to 1e-6 [m] for MAD-X compatibility
-  if option.madxenv then seq.minlen = 1e-6 end
+  -- set minlen to 1e-6 [m] and check rbarc and nopub for MAD-X compatibility
+  if option.madxenv then
+    seq.minlen = 1e-6
+    if is_nil(seq.rbarc) then
+      seq.rbarc = option.madxenv.option.rbarc == true or nil
+    end
+    if is_nil(seq.nopub) then
+      seq.nopub = option.madxenv.option.nopub == true or nil
+    end
+  end
+
+  -- process MADX-like rbends
+  if seq.rbarc == true then rbend_wrp(data) end
 
   build_idx(data)
   build_pos(seq, sref)
@@ -781,7 +814,7 @@ local function init_mm (seq)
   fini_sequ(seq)
 
   -- publish sequence elements in MADX environment
-  if option.madxenv then seq:publish(MADX, true) end
+  if option.madxenv then seq:publish(option.madxenv) end
 
   return seq
 end
@@ -1087,12 +1120,26 @@ local function misalign (seq, knd_, mis, rng_, sel_)
   -- case of single element
   if is_element(rng_) then
     local idx = assert(seq:index_of(rng_), "invalid argument #4, unknown element")
-    local algn = is_callable(mis) and (mis() or {}) or
-                 is_mappable(mis) and  mis   or {}
-    data[idx] = {
-      dx    =algn.dx    , dy  =algn.dy  , ds  =algn.ds,
-      dtheta=algn.dtheta, dphi=algn.dphi, dpsi=algn.dpsi
-    }
+
+    local algn
+    if is_callable(mis) then
+      algn = mis()
+    elseif is_mappable(mis) then
+      algn = mis
+    else error("invalid argument #3 (iterable or callable expected)")
+    end
+    if algn then
+      data[idx] = {
+        dx    =algn.dx    , dy  =algn.dy  , ds  =algn.ds  ,
+        dtheta=algn.dtheta, dphi=algn.dphi, dpsi=algn.dpsi,
+      }
+    end
+
+    if rng_.kind == 'assembly' then
+      local idx2 = assert(seq:index_of(rng_.lnk_), "unexpected error")
+      data[idx2] = data[idx]
+    end
+
     return seq
   end
 
@@ -1114,8 +1161,8 @@ local function misalign (seq, knd_, mis, rng_, sel_)
       local algn = mis(idx_m[i])
       if algn then
         data[idx_m[i]] = {
-          dx    =algn.dx    , dy  =algn.dy  , ds  =algn.ds,
-          dtheta=algn.dtheta, dphi=algn.dphi, dpsi=algn.dpsi
+          dx    =algn.dx    , dy  =algn.dy  , ds  =algn.ds  ,
+          dtheta=algn.dtheta, dphi=algn.dphi, dpsi=algn.dpsi,
         }
       end
     end
@@ -1123,8 +1170,8 @@ local function misalign (seq, knd_, mis, rng_, sel_)
     if #mis == 0 then              -- same (random) misalignment for all
       for i=1,ne do
         data[idx_m[i]] = {
-          dx    =mis.dx    , dy  =mis.dy  , ds  =mis.ds,
-          dtheta=mis.dtheta, dphi=mis.dphi, dpsi=mis.dpsi
+          dx    =mis.dx    , dy  =mis.dy  , ds  =mis.ds  ,
+          dtheta=mis.dtheta, dphi=mis.dphi, dpsi=mis.dpsi,
         }
       end
     else                           -- specific (random) misalignment for each
@@ -1132,13 +1179,22 @@ local function misalign (seq, knd_, mis, rng_, sel_)
         local algn = mis[idx_m[i]]
         if algn then
           data[idx_m[i]] = {
-            dx    =algn.dx    , dy  =algn.dy  , ds  =algn.ds,
-            dtheta=algn.dtheta, dphi=algn.dphi, dpsi=algn.dpsi
+            dx    =algn.dx    , dy  =algn.dy  , ds  =algn.ds  ,
+            dtheta=algn.dtheta, dphi=algn.dphi, dpsi=algn.dpsi,
           }
         end
       end
     end
   else error("invalid argument #3 (iterable or callable expected)") end
+
+  -- unify assembly entry/exit
+  for i=1,ne do
+    local idx = idx_m[i]
+    if seq[idx].kind == "assembly" then
+      local idx2 = assert(seq:index_of(seq[idx].lnk_), "unexpected error")
+      data[idx2] = data[idx]
+    end
+  end
 
   return seq
 end
@@ -1179,6 +1235,8 @@ end
 
 local function update (seq)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
+  local data = seq.__dat
+  if seq.rbarc == true then rbend_wrp(data) end -- process MADX-like rbends
   build_pos(seq, {}) -- update elem positions (some "l", "at" or "from" changed)
   if option.debug >= 2 then check_sequ(seq) end -- sanity checks
   return seq
@@ -1255,6 +1313,9 @@ local function replace (seq, elm, rng_, sel_)
     end
   end
 
+  -- process MADX-like rbends
+  if seq.rbarc == true then rbend_wrp(elm) end
+
   -- collect indexes of elements to replace
   local idx_r, nr = filter(seq, rng_, sel_, true)
   if nr == 0 then return end
@@ -1326,6 +1387,9 @@ local function install (seq, elm, rng_, sel_, cmp_)
   local ins = table.new(ne,0) -- no sref -> keep subsequence as-is
   flatten_line(elm, ins, nil, 1, 1)
   elm, ne, ins = ins, #ins, nil -- update
+
+  -- process MADX-like rbends
+  if seq.rbarc == true then rbend_wrp(elm) end
 
   -- precompute number of elements with from='selected'
   local ns = 0
@@ -1416,20 +1480,30 @@ end
 
 -- special --------------------------------------------------------------------o
 
-local function publish (seq, env, keeporig_)
+local function publish (seq, env)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(is_mappable(env), "invalid argument #2 (mappable expected)")
-  local data, wrn = seq.__dat
+
+  if seq.nopub == true then return seq end
+
+  local data, wrn, mdx = seq.__dat
   if env == MADX or is_instanceOf(env, MADX) then
-    wrn, env.option.warn = env.option.warn, false
+    if env.option.nopub == true then return seq end
+    wrn, mdx, env.option.warn = env.option.warn, MADX.parent, false
   end
 
-  if not keeporig_ then
-    for idx,elm in ipairs(data) do env[elm.name] = elm end
+  if mdx then
+    for idx,elm in ipairs(data) do
+      if not is_element(mdx[elm.name]) then
+        env[elm.name] = elm
+      elseif wrn then
+        warn("element '%s' defined in '%s' has a MADX class name, not published",
+                       elm.name,       env.name)
+      end
+    end
   else
     for idx,elm in ipairs(data) do
-      local nam = elm.name
-      if is_element(env[nam]) then data[idx] = env[nam] else env[nam] = elm end
+      env[elm.name] = elm
     end
   end
 
@@ -1707,18 +1781,18 @@ end
 
 -- dump seq positions
 local function dumpseq (seq, filnam_, info_)
-  if is_boolean(filnam_) and is_nil(info_) then
+  if (is_boolean(filnam_) or is_number(filnam_)) and is_nil(info_) then
     info_, filnam_ = filnam_ -- right shift
   end
-  local res, eal0 = table.new(#seq,0)
+  if is_logical(info_) then info_ = info_ == true and 3 or 0 end
+  local res = table.new(#seq,0)
 
   -- header
   res[1] = 'sequence: ' .. seq.name .. ', ' ..
            'l=' .. (seq.l == uninitialized and 'uninitialized' or seq.l)
   res[2] = 'idx  kind           flg name                    l           dl      \z
             spos       upos    uds'
-  if info_ then
-    eal0 = {dx=0, dy=0, ds=0, dtheta=0, dphi=0, dpsi=0}
+  if info_ > 0 then
     res[2] = res[2] .. '       dx         dy         ds         \z
                                dtheta     dphi       dpsi'
   end
@@ -1730,11 +1804,13 @@ local function dumpseq (seq, filnam_, info_)
     res[#res+1] = string.format('%04d %-14s %-3d %-20s%9.3f%9.3g%11.3f%11.3f%8.3f%s',
                   i, e.kind, e:get_flags(), e.name, e.l, dl, sp, up, uds,
                   (uds<0 or uds>ds) and '*' or '')
-    if info_ then
-      local eal = seq:align(i) or eal0
+    if info_ > 0 then
+      local eal = btst(info_, 0) and seq:ealign(i) or {}
+      local al  = btst(info_, 1) and seq: align(i) or {}
       res[#res] = res[#res] ..
-                  string.format('%11.4f%11.4f%11.4f%11.4f%11.4f%11.4f',
-                    eal.dx, eal.dy, eal.ds, eal.dtheta, eal.dphi, eal.dpsi)
+        string.format('%11.4f%11.4f%11.4f%11.4f%11.4f%11.4f',
+          (al.dx   or 0)+(eal.dx   or 0),(al.dy   or 0)+(eal.dy   or 0),(al.ds   or 0)+(eal.ds   or 0),
+          (al.dthe or 0)+(eal.dthe or 0),(al.dphi or 0)+(eal.dphi or 0),(al.dpsi or 0)+(eal.dpsi or 0))
     end
     if e[1] then
       for is=1,#e do

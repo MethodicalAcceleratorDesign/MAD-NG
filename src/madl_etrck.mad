@@ -37,13 +37,10 @@ local abs, max  in math -- ensure that abs will not work on GTPSA.
 local element, damap, symint, option, warn, _C                  in MAD
 local is_nil, is_number, is_function                            in MAD.typeid
 local fnil, fcut, ftst, bind3rd                                 in MAD.gfunc
-local fact, arc2cord, sqrt, sin, cos, atan2                     in MAD.gmath
+local fact, arc2cord, sqrt, sin, cos, atan2, fval, fabs, fchk   in MAD.gmath
 local assertf, errorf                                           in MAD.utility
 local minlen, minang, minstr, clight, mu0, twopi, pi_2          in MAD.constant
 local is_implicit                                               in element.drift
-
--- redefine abs for this module (only!)
-local abs = \a -> type(a) == "number" and abs(a) or abs(a:get0())
 
 -- constants
 local minvolt = 1e-6
@@ -95,6 +92,9 @@ local wire_kick                                                    in MAD.dynmap
 -- generic linear map and damap
 local linm_thin, genm_thick                                        in MAD.dynmap
 
+-- hackicker and vackicker
+local acdip_kick, acquad_kick                                      in MAD.dynmap
+
 -- patches
 local xrotation, yrotation, srotation, translate,
       changeref, changedir, changenrj, misalign, tilt              in MAD.dynmap
@@ -118,14 +118,17 @@ struct cflw_r { // must be identical to def in mad_dynmap.cpp with M=par_t !!
   // directions, path
   int sdir, edir, pdir, T, Tbak;
 
+  // internal sine & cosine
+  num_t sa, ca;
+
 // start of polymorphic section
 
   // element data
   num_t el, eld, elc, lrad;
   num_t eh, ehd, ang, mang;
 
-  // quad, solenoid, multipole, esptum, rfcav, sine & cosine
-  num_t k1, ks, volt, freq, lag, sa, ca;
+  // quad, solenoid, multipole, esptum, rfcav
+  num_t k1, ks, volt, freq, lag;
   int nbsl;
 
   // fringes
@@ -163,14 +166,17 @@ struct cflw_t { // must be identical to def in mad_dynmap.cpp with M=map_t !!
   // directions, path
   int sdir, edir, pdir, T, Tbak;
 
+  // internal sine & cosine
+  num_t sa, ca;
+
 // start of polymorphic section
 
   // element data
   num_t el, eld, elc, lrad;
   num_t eh, ehd, ang, mang;
 
-  // quad, solenoid, multipole, esptum, rfcav, sine & cosine
-  num_t k1, ks, volt, freq, lag, sa, ca;
+  // quad, solenoid, multipole, esptum, rfcav
+  num_t k1, ks, volt, freq, lag;
   int nbsl;
 
   // fringes
@@ -208,14 +214,17 @@ struct cflw_p { // must be identical to def in mad_dynmap.cpp with M=prm_t !!
   // directions, path
   int sdir, edir, pdir, T, Tbak;
 
+  // internal sine & cosine
+  num_t sa, ca;
+
 // start of polymorphic section
 
   // element data
   tpsa_t *el, *eld, *elc, *lrad;
   tpsa_t *eh, *ehd, *ang, *mang;
 
-  // quad, solenoid, multipole, esptum, rfcav, sine & cosine
-  tpsa_t *k1, *ks, *volt, *freq, *lag, *sa, *ca;
+  // quad, solenoid, multipole, esptum, rfcav
+  tpsa_t *k1, *ks, *volt, *freq, *lag;
   int nbsl;
 
   // fringes
@@ -275,7 +284,7 @@ local function xcpy (a, b)
 end
 
 local maps = {
-  r = { -- real, not used
+  r = { -- scalar
     [strex_drift ] = _C.mad_trk_strex_drift_r ,
     [strex_kick  ] = _C.mad_trk_strex_kick_r  ,
     [strex_kickhs] = _C.mad_trk_strex_kickhs_r,
@@ -308,6 +317,8 @@ local maps = {
     [bbeam_kick6D] =            bbeam_kick6D  ,
     [wire_kick   ] =            wire_kick     ,
     [genm_thick  ] =            genm_thick    ,
+    [acdip_kick  ] =            acdip_kick    ,
+    [acquad_kick ] =            acquad_kick   ,
     [xrotation   ] = _C.mad_trk_xrotation_r   ,
     [yrotation   ] = _C.mad_trk_yrotation_r   ,
     [srotation   ] = _C.mad_trk_srotation_r   ,
@@ -352,6 +363,8 @@ local maps = {
     [bbeam_kick6D] =            bbeam_kick6D  ,
     [wire_kick   ] =            wire_kick     ,
     [genm_thick  ] =            genm_thick    ,
+    [acdip_kick  ] =            acdip_kick    ,
+    [acquad_kick ] =            acquad_kick   ,
     [xrotation   ] = _C.mad_trk_xrotation_t   ,
     [yrotation   ] = _C.mad_trk_yrotation_t   ,
     [srotation   ] = _C.mad_trk_srotation_t   ,
@@ -396,6 +409,8 @@ local maps = {
     [bbeam_kick6D] =            bbeam_kick6D  ,
     [wire_kick   ] =            wire_kick     ,
     [genm_thick  ] =            genm_thick    ,
+    [acdip_kick  ] =            acdip_kick    ,
+    [acquad_kick ] =            acquad_kick   ,
     [xrotation   ] = _C.mad_trk_xrotation_p   ,
     [yrotation   ] = _C.mad_trk_yrotation_p   ,
     [srotation   ] = _C.mad_trk_srotation_p   ,
@@ -432,7 +447,7 @@ local function adj_mult (elm, m) -- adjust multipoles in mflw
   m.nmul = 0
 
   for i=nmul,1,-1 do
-    if abs(knl[i])+abs(ksl[i]) > 0 then m.nmul = i ; break end
+    if fchk(knl[i],0) or fchk(ksl[i],0) then m.nmul = i ; break end
   end
 
   if ktap ~= 0 then
@@ -478,10 +493,10 @@ end
 
 local function get_tilt (elm, m)
   local tlt = elm.tilt
-  if abs(tlt) < minang then tlt = 0
-  elseif m.cmap and not is_number(tlt) then m.cmap = 'p' end
+  if not fchk(tlt, minang) then return nil end
+  if m.cmap and not is_number(tlt) then m.cmap = 'p' end
   m.tlt = tlt
-  return m.tlt
+  return tlt
 end
 
 local function get_algn (elm, m)
@@ -504,8 +519,8 @@ local function get_algn (elm, m)
     ds, dpsi = ds+(el.ds or 0), dpsi+(el.dpsi   or 0) -- longitudinal/roll
   end
 
-  local trn = abs(dx  )+abs(dy  )+abs(ds  ) >= minlen
-  local rot = abs(dthe)+abs(dphi)+abs(dpsi) >= minang
+  local trn = fchk(dx  , minlen) or fchk(dy  , minlen) or fchk(ds  , minlen)
+  local rot = fchk(dthe, minang) or fchk(dphi, minang) or fchk(dpsi, minang)
 
   if not (trn or rot) then m.algn = nil ; return nil end
 
@@ -709,9 +724,9 @@ local function trackelm (elm, m, inter, thick, thin, fringe)
   local tlt = get_tilt(elm, m)
   local alg = get_algn(elm, m)
   local frg = get_frng(elm, m, fringe)
-  local rot = tlt ~= 0 and ctilt     or fnil
-  local mis = alg      and cmisalign or fnil
-  local fng = frg      and cfringe   or fnil
+  local rot = tlt and ctilt     or fnil
+  local mis = alg and cmisalign or fnil
+  local fng = frg and cfringe   or fnil
   local slc = slc_fwd
 
   if sdir < 0 then
@@ -755,9 +770,9 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
   local tlt = get_tilt(elm, m)
   local alg = get_algn(elm, m)
   local frg = get_frng(elm, m, fringe)
-  local rot = tlt ~= 0 and ctilt     or fnil
-  local mis = alg      and cmisalign or fnil
-  local fng = frg      and cfringe   or fnil
+  local rot = tlt and ctilt     or fnil
+  local mis = alg and cmisalign or fnil
+  local fng = frg and cfringe   or fnil
   local slc  = slc_fwd
   m.eidx = 0
 
@@ -784,7 +799,7 @@ if not elm.kill_body then
     local at, lw = 0
     for i=1,#elm do
       at, lw = elm[i].sat, elm[i].sat - at
-      if abs(lw) >= minlen then -- body step
+      if fabs(lw) > minlen then -- body step
         inter(elm, m, lw, thick, thin)
       end
       __sdat.clw = at
@@ -792,7 +807,7 @@ if not elm.kill_body then
       at = at + elm[i].l/m.el
     end
     lw = 1 - at
-    if abs(lw) >= minlen then  -- last body step
+    if fabs(lw) > minlen then  -- last body step
       inter(elm, m, lw, thick, thin)
     end
 
@@ -801,7 +816,7 @@ if not elm.kill_body then
     for i=#elm,1,-1 do
       local sat = elm[i].sat + elm[i].l/m.el
       at, lw = sat, at - sat
-      if abs(lw) >= minlen then -- body step
+      if fabs(lw) > minlen then -- body step
         inter(elm, m, -lw, thick, thin)
       end
       __sdat.clw = at
@@ -809,7 +824,7 @@ if not elm.kill_body then
       at = at - elm[i].l/m.el
     end
     lw = at
-    if abs(lw) >= minlen then -- first body step
+    if fabs(lw) > minlen then -- first body step
       inter(elm, m, -lw, thick, thin)
     end
   end
@@ -922,8 +937,8 @@ local function track_assembly (elm, m)
   if sref then
     m.dx  , m.dy  , m.ds   = sref.dx    , sref.dy  , sref.ds
     m.dthe, m.dphi, m.dpsi = sref.dtheta, sref.dphi, sref.dpsi
-    local trn = abs(m.dx  )+abs(m.dy  )+abs(m.ds  ) >= minlen
-    local rot = abs(m.dthe)+abs(m.dphi)+abs(m.dpsi) >= minang
+    local trn = fchk(m.dx  , minlen) or fchk(m.dy  , minlen) or fchk(m.ds  , minlen)
+    local rot = fchk(m.dthe, minang) or fchk(m.dphi, minang) or fchk(m.dpsi, minang)
     if not (trn or rot) then sref = nil end
   end
 
@@ -974,7 +989,7 @@ local function track_drift (elm, m)
     local inter = m.implicit and thickonly or driftonly
     trackone(elm, m, inter, strex_drift)
   else
-    local inter = m.el >= minlen and thickonly or driftonly
+    local inter = m.el > minlen and thickonly or driftonly
     local track = is_nil(elm[1]) and trackelm or tracksub
     track(elm, m, inter, strex_drift, fnil, fnil)
   end
@@ -994,21 +1009,21 @@ end
 local function track_multipole (elm, m)
   get_mult(elm, m, 1) ; adj_mult(elm, m)
 
-  if m.nmul == 0 and abs(elm.ksi) < minstr then
+  if m.nmul == 0 and not fchk(elm.ksi, minstr) then
     return track_marker(elm, m)
   end
 
   local ksi, lrad in elm
   local knl, ksl in m
 
-  if lrad == 0 and abs(ksi) > 0 then
+  if lrad == 0 and fabs(ksi) > 0 then
     errorf("thin solenoid '%s' defines strength with zero lrad", elm.name)
   end
 
   m.lrad, m.ksi = lrad, ksi or 0
 
   local kick = strex_kick
-  if abs(knl[1]) + abs(ksl[1]) + abs(m.ksi) >= minstr then
+  if fchk(m.ksi, minstr) then
     m.ks = m.ksi/(m.lrad > 0 and m.lrad or 1)
     kick = strex_kickhs
   end
@@ -1060,8 +1075,8 @@ local function track_sbend (elm, m, e1_, e2_)
   m.e1, m.e2 = (e1_ or elm.e1), (e2_ or elm.e2)
   m.mang     = angle
 
-  if abs(angle) < minang then
-    m.eh, m.e1, m.e2, m.mang = 0, nil, nil, nil
+  if not fchk(angle, minang) then
+    m.eh, m.e1, m.e2, m.mang = 0, nil, nil, 0
     return track_strexgen(elm, m)
   end
 
@@ -1070,8 +1085,10 @@ local function track_sbend (elm, m, e1_, e2_)
   local snmul  = elm.secnmul or m.secnmul or -1
   local inter, thick, kick
 
-  -- enforce small angle numerical stability
-  if abs(m.eh) < 1e-6 then model, method = 'DKD', max(method,4) end
+  -- validity for length or strength are too small
+  if not fabs(knl[1], minstr) or fabs(m.eh) < 1e-6 then
+    model, method = 'DKD', max(method,4)
+  end
 
   m.snm = snmul ; adj_mult(elm, m) ; getanbnr(elm, m)
 
@@ -1136,8 +1153,8 @@ local function track_rbend (elm, m)
   m.elc  = arc2cord(m.eld, angle)
   m.mang = angle
 
-  if is_number(e1) and abs(e1) > twopi then e1 = false end
-  if is_number(e2) and abs(e2) > twopi then e2 = false end
+  if is_number(e1) and fabs(e1) > twopi then e1 = false end
+  if is_number(e2) and fabs(e2) > twopi then e2 = false end
 
   if e1 and e2 then                                                           -- Straight
     m.e1, m.e2, m.pdir = e1+angle/2, e2+angle/2, nil
@@ -1168,8 +1185,10 @@ local function track_rbend (elm, m)
   local method = elm.method or m.method
   local inter, thick, kick
 
-  -- enforce small angle numerical stability
-  if abs(m.ehd) < 1e-6 then model, method = 'DKD', max(method,4) end
+  -- validity for length or strength are too small
+  if not fabs(knl[1], minstr) or fabs(m.ehd) < 1e-6 then
+    model, method = 'DKD', max(method,4)
+  end
 
   if model == 'DKD' then
     inter, thick, kick = DKD[method], strex_drift, strex_kick
@@ -1189,7 +1208,8 @@ local function track_rbend (elm, m)
 
   local track = is_nil(elm[1]) and trackelm or tracksub
   track(elm, m, inter, thick, kick, strex_fringe)
-  m.e1, m.e2, m.elc, m.eld, m.ehd, m.pdir = nil, nil, nil, nil, nil, nil
+  m.e1, m.e2, m.elc, m.eld, m.ehd, m.mang, m.pdir =
+   nil,  nil,   nil,   nil,   nil,    nil,    nil
 end
 
 local function xflw_quad (m, clr)
@@ -1215,7 +1235,7 @@ local function track_quadrupole (elm, m)
 
   if elm.kill_body then l = elm.lrad end
 
-  if l == 0 and abs(k1)+abs(k1s)+abs(k0)+abs(k0s) > 0 then
+  if l == 0 and fabs(k1)+fabs(k1s)+fabs(k0)+fabs(k0s) > 0 then
     warn("quadrupole '%s' defines strength with zero length", elm.name)
   end
 
@@ -1227,10 +1247,10 @@ local function track_quadrupole (elm, m)
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method
-  local no_k1  = abs(knl[2]) < minstr
-  local no_k1s = abs(ksl[2]) < minstr
-  local no_ang = abs(angle)  < minang
-  local no_tlt = ptcmodel and not no_k1s and (abs(knl[1]) > minstr or nmul > 2 or elm.fringe > 0)
+  local no_k1  = fabs(knl[2]) < minstr
+  local no_k1s = fabs(ksl[2]) < minstr
+  local no_ang = fabs(angle ) < minang
+  local no_tlt = ptcmodel and not no_k1s and (fabs(knl[1]) > minstr or nmul > 2 or elm.fringe > 0)
   local inter  = ptcmodel and method > 2 and KMK[method] or TKT[method]
   local thick, kick
 
@@ -1240,7 +1260,7 @@ local function track_quadrupole (elm, m)
     m.k1 = knl[2]/l
     thick, kick = quad_thick, ptcmodel and quad_kick_ or quad_kick
   elseif no_ang then                            -- skew thick
-    local a = -0.5*atan2(ksl[2], knl[2])
+    local a = -0.5*atan2(fval(ksl[2]), fval(knl[2]))
     m.k1, m.ca, m.sa = sqrt(knl[2]^2 + ksl[2]^2)/l, cos(a), sin(a)
     thick, kick = quad_thicks, ptcmodel and quad_kicks_ or quad_kicks
   else                                          -- combined thick            -- unchecked
@@ -1287,7 +1307,7 @@ function track_strexgen (elm, m, ptc_, mth_) -- see fwd decl
     inter, thick, kick, fringe = thinonly, strex_kick, fnil, fnil
   elseif not ptc_ then
     inter, thick, kick, fringe = DKD[method], strex_drift, strex_kick, strex_fringe
-  else
+  else -- special case for compatibility with PTC
     m.k1 = m.knl[2]/l
     inter = method > 2 and KMK[method] or TKT[method]
     thick, kick, fringe = quad_thick, quad_kick_, strex_fringe
@@ -1311,7 +1331,7 @@ local function track_sextupole (elm, m)
 
   if elm.kill_body then l = elm.lrad end
 
-  if l == 0 and abs(k2)+abs(k2s) > 0 then
+  if l == 0 and fabs(k2)+fabs(k2s) > 0 then
     warn("sextupole '%s' defines strength with zero length", elm.name)
   end
 
@@ -1329,7 +1349,7 @@ local function track_octupole (elm, m)
 
   if elm.kill_body then l = elm.lrad end
 
-  if l == 0 and abs(k3)+abs(k3s) > 0 then
+  if l == 0 and fabs(k3)+fabs(k3s) > 0 then
     warn("octupole '%s' defines strength with zero length", elm.name)
   end
 
@@ -1347,7 +1367,7 @@ local function track_decapole (elm, m)
 
   if elm.kill_body then l = elm.lrad end
 
-  if l == 0 and abs(k4)+abs(k4s) > 0 then
+  if l == 0 and fabs(k4)+fabs(k4s) > 0 then
     warn("decapole '%s' defines strength with zero length", elm.name)
   end
 
@@ -1365,7 +1385,7 @@ local function track_dodecapole (elm, m)
 
   if elm.kill_body then l = elm.lrad end
 
-  if l == 0 and abs(k5)+abs(k5s) > 0 then
+  if l == 0 and fabs(k5)+fabs(k5s) > 0 then
     warn("dodecapole '%s' defines strength with zero length", elm.name)
   end
 
@@ -1405,6 +1425,55 @@ local function track_vkicker (elm, m)
   track_kickgen(elm, m, 0, elm.kick+elm.cvkck)
 end
 
+-- wiggler
+
+local function xflw_wiggler (m, clr)
+  local c = xflw(m)
+  if not clr then
+    c.el = xcpy(c.el, m.el)
+    cpy_mult(m)
+  end
+end
+
+local function track_wiggler (elm, m)
+  local l, hkick, vkick, npole, wpole in elm
+
+  if l < minlen then
+    errorf("invalid wiggler '%s' length=%.4e [m] (>0 expected)", elm.name, l)
+  end
+
+  get_mult(elm, m, 1)
+
+  local nmul, knl, ksl, edir, sdir in m
+
+  knl[1] = knl[1] - hkick
+  ksl[1] = ksl[1] + vkick
+  m.el = l/npole
+
+  local dir, k0l, k0sl = edir*sdir, knl[1], ksl[1]
+
+  adj_mult(elm, m)
+
+  if m.cmap then
+    if not is_number(m.el) then m.cmap = 'p' end
+    m.xflw = xflw_wiggler
+  end
+
+  local model  = elm.model  or m.model
+  local method = elm.method or m.method
+  local inter  = symint[model][method]
+  local track  = is_nil(elm[1]) and trackelm or tracksub
+
+  local nw, np = #wpole, npole
+  for i=1,np do
+    local wp = i <= nw    and dir*wpole[   i  ] or
+               i <= np-nw and dir*wpole[np-i+1] or dir
+    knl[1], ksl[1] = wp*k0l, wp*k0sl
+    track(elm, m, inter, strex_drift, strex_kick, fnil)
+    dir = -dir
+  end
+end
+
 -- solenoid
 
 local function xflw_sol (m, clr)
@@ -1426,7 +1495,7 @@ local function track_solenoid (elm, m)
 
   if elm.kill_body then l = elm.lrad end
 
-  if l == 0 and abs(ks) > 0 then
+  if l == 0 and fabs(ks) > 0 then
     warn("solenoid '%s' defines strength with zero length", elm.name)
   end
 
@@ -1440,7 +1509,7 @@ local function track_solenoid (elm, m)
   m.el = l
 
   local ksi = ksi + ks*l
-  local no_ksi = abs(ksi) < minstr
+  local no_ksi = not fchk(ksi, minstr)
   local method = elm.method or m.method
   local thick, kick, fringe
 
@@ -1483,7 +1552,7 @@ local function track_eseptum (elm, m)
 
   local l, ex, ey, exl, eyl in elm
 
-  if l == 0 and abs(ex)+abs(ey) > 0 then
+  if l == 0 and fabs(ex)+fabs(ey) > 0 then
     warn("eseptum '%s' defines strength with zero length", elm.name)
   end
 
@@ -1494,10 +1563,10 @@ local function track_eseptum (elm, m)
   local volt = sqrt(exl^2 + eyl^2)/l
   local thick
 
-  if abs(volt) < minvolt then
+  if not fchk(volt, minvolt) then
     thick = strex_drift
   else
-    local a = -atan2(eyl, exl)
+    local a = -atan2(fval(eyl), fval(exl))
     m.volt, m.ca, m.sa = volt*1e-3, cos(a), sin(a)
     thick = esept_thick
   end
@@ -1548,7 +1617,7 @@ local function track_rfcavgen (elm, m, crab)
   if m.freq == 0 then
     m.freq = harmon*clight*m.beam.beta/m.sequ.l
   end
-  if m.freq <= 0 and abs(m.volt) ~= 0 then
+  if m.freq <= 0 and fabs(m.volt) ~= 0 then
     errorf("invalid rfcavity '%s' frequency =%.4e [MHz] (>0 or harmon expected)",
             elm.name, m.freq)
   end
@@ -1659,16 +1728,67 @@ local function track_genmap (elm, m)
 
   m.el, m.lrad, m.eh = l*sdir, lrad*sdir, angle/l*edir
 
-  if nmul > 0 and abs(angle) >= minang then
+  if nmul > 0 and fabs(angle) > minang then
     m.snm = elm.secnmul or m.secnmul or -1 ; getanbnr(elm, m)
   end
 
   local inter  = nmul == 0  and thickonly or KMK[elm.method or m.method]
-  local kick   = nmul == 0  and fnil or abs(angle) < minang and strex_kick   or curex_kick
-  local fringe = l < minlen and fnil or abs(angle) < minang and strex_fringe or curex_fringe
+  local kick   = nmul == 0  and fnil or fabs(angle) > minang and curex_kick   or strex_kick
+  local fringe = l < minlen and fnil or fabs(angle) > minang and curex_fringe or strex_fringe
 
   trackelm(elm, m, inter, genm_thick, kick, fringe)
   m.eh, m.snm = 0, 0
+end
+
+-- AC kicker element
+
+local plan = {x='x', y='y'}
+
+local function track_ackicker (elm, m)
+  local l, ac_bet in elm
+  local ackick
+
+  m.cor = assert(plan[elm.plane], "invalid ackicker, h or v expected")
+
+  if ac_bet then
+    local nat_q, drv_q in elm
+    m.egrad = 2*(cos(twopi*drv_q) - cos(twopi*nat_q))
+                        / (ac_bet * sin(twopi*nat_q))
+    ackick = m.egrad ~= 0 and acquad_kick or fnil
+  else
+    local volt, freq, lag, ramp in elm
+    local turn in m
+    local vs = 0
+    if turn >= ramp[1] and turn < ramp[4] then
+          if turn < ramp[2] then vs = (turn-ramp[1]) / (ramp[2]-ramp[1])
+      elseif turn < ramp[3] then vs = 1
+      else                       vs = (ramp[4]-turn) / (ramp[4]-ramp[3])
+      end
+    end
+
+    m.vscl = 0.3*vs*volt
+    m.spha = sin(twopi*(turn*freq + lag))
+    ackick = m.vscl ~= 0 and acdip_kick or fnil
+  end
+
+print(ackick, acdip_kick, acquad_kick, fnil)
+
+  local model  = elm.model  or m.model
+  local method = elm.method or m.method
+  local inter, thick, kick
+
+  if l < minlen then
+    inter, thick, kick = thinonly, ackick, fnil
+  elseif ackick == fnil then
+    inter, thick, kick = thickonly, strex_drift, fnil
+  else
+    inter, thick, kick = DKD[method], strex_drift, ackick
+  end
+
+  local track = is_nil(elm[1]) and trackelm or tracksub
+  track(elm, m, inter, thick, kick, fnil)
+
+  m.vscl, m.spha, m.egrad, m.cor = nil, nil, nil, nil
 end
 
 -- load maps into elements ----------------------------------------------------o
@@ -1705,13 +1825,16 @@ E.rfmultipole:set_methods {track = track_rfcavity  } -- straight, volt, freq!, l
 E.crabcavity :set_methods {track = track_crabcavity} -- straight, volt, freq!, lag, harmon, mult
 
 E.wire       :set_methods {track = track_wire   }    -- straight
-E.wiggler    :set_methods {track = _nyi         }    -- straight
+E.wiggler    :set_methods {track = track_wiggler}    -- straight
 E.elseparator:set_methods {track = track_eseptum}    -- straight
 
 E.tkicker    :set_methods {track = track_tkicker}    -- straight, hkick, vkick
 E.kicker     :set_methods {track = track_kicker }    -- straight, hkick, vkick
 E.hkicker    :set_methods {track = track_hkicker}    -- straight,  kick
 E.vkicker    :set_methods {track = track_vkicker}    -- straight,  kick
+
+E.hackicker  :set_methods {track = track_ackicker}   -- thin, volt, freq, lag, ramp, nat_q, drv_q, ac_bet
+E.vackicker  :set_methods {track = track_ackicker}   -- thin, volt, freq, lag, ramp, nat_q, drv_q, ac_bet
 
 -- thin elements
 E.multipole  :set_methods {track = track_multipole}  -- thin
