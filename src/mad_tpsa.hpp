@@ -24,9 +24,8 @@
  o-----------------------------------------------------------------------------o
  */
 
-// comment to disable temporaries, default ctors, and traces
+// set to (0/1) to (dis/en)able temporaries and traces
 #define TPSA_USE_TMP 1
-#define TPSA_USE_DFT 0
 #define TPSA_USE_TRC 0
 
 // --- includes ---------------------------------------------------------------o
@@ -184,11 +183,6 @@ private:
 
 // public class handle tpsa_t* _with_ memory management.
 struct tpsa : tpsa_base<tpsa> {
-#if TPSA_USE_DFT
-  explicit tpsa()         : t(mad_tpsa_newd(mad_desc_curr,dflt)) { TRC("dft! %p", (void*)t.get()) }
-#endif
-  explicit tpsa(ord_t mo) : t(mad_tpsa_newd(mad_desc_curr,mo  )) { TRC("ord! %p", (void*)t.get()) }
-
   explicit tpsa(const tpsa &a)                   : t(mad_tpsa_new(a.ptr(),same)) { TRC("&tpa! %p", (void*)t.get()) }
   template <class A>
   explicit tpsa(const tpsa_base<A> &a)           : t(mad_tpsa_new(a.ptr(),same)) { TRC("&baz! %p", (void*)t.get()) }
@@ -227,9 +221,7 @@ protected:
   explicit tpsa(tpsa_t *a) : t(a) { TRC("tpsa_t* %p", (void*)a) }
 
 private:
-#if !TPSA_USE_DFT
   tpsa()                                   = delete;  // dflt    ctor
-#endif
 #if TPSA_USE_TMP
   tpsa(tpsa&&)                             = delete;  // move    ctor
 #endif
@@ -254,9 +246,6 @@ private:
 namespace mad_prv_ {
 
 struct tpsa_tmp_ : tpsa {
-#if TPSA_USE_DFT
-  explicit tpsa_tmp_() : tpsa()                 { TRC("dft! %p", (void*)ptr()) }
-#endif
   tpsa_tmp_(tpsa_t *a) : tpsa(a)                { TRC("*tmp") } // capture ptr (see scan)
   tpsa_tmp_(tpsa_tmp_ &&a) : tpsa(std::move(a)) { TRC("<tmp") } // move ctor
   tpsa_tmp_(const tpsa_tmp_ &a) : tpsa(a)       { TRC("&tmp") } // copy ctor
@@ -277,9 +266,7 @@ struct tpsa_tmp_ : tpsa {
             const tpsa_base<B> &b) : tpsa(a,b)  { TRC("&baz,&baz") }
 
 private:
-#if !TPSA_USE_DFT
   tpsa_tmp_()                              = delete; // dflt    ctor
-#endif
 //tpsa_tmp_(tpsa_tmp_ &&)                  = delete; // move    ctor
 //tpsa_tmp_(const tpsa_tmp_ &)             = delete; // copy    ctor
   tpsa_tmp_(std::nullptr_t)                = delete; // nullptr ctor

@@ -173,11 +173,6 @@ private:
 
 // public class handle tpsa_t* _with_ memory management.
 struct ctpsa : ctpsa_base<ctpsa> {
-#if TPSA_USE_DFT
-  explicit ctpsa()         : t(mad_ctpsa_newd(mad_desc_curr,dflt)) { TRC("dft! %p", (void*)t.get()) }
-#endif
-  explicit ctpsa(ord_t mo) : t(mad_ctpsa_newd(mad_desc_curr,mo  )) { TRC("ord! %p", (void*)t.get()) }
-
   explicit ctpsa(const ctpsa &a)                   : t(mad_ctpsa_new(a.ptr(),same)) { TRC("&tpa! %p", (void*)t.get()) }
   template <class A>
   explicit ctpsa(const ctpsa_base<A> &a)           : t(mad_ctpsa_new(a.ptr(),same)) { TRC("&baz! %p", (void*)t.get()) }
@@ -226,9 +221,7 @@ protected:
   explicit ctpsa(ctpsa_t *a) : t(a) { TRC("ctpsa_t* %p", (void*)a) }
 
 private:
-#if !TPSA_USE_DFT
   ctpsa()                                    = delete;  // dflt    ctor
-#endif
 #if TPSA_USE_TMP
   ctpsa(ctpsa&&)                             = delete;  // move    ctor
 #endif
@@ -253,9 +246,6 @@ private:
 namespace mad_prv_ {
 
 struct ctpsa_tmp_ : ctpsa {
-#if TPSA_USE_DFT
-  explicit ctpsa_tmp_() : ctpsa()                  { TRC("dft! %p", (void*)ptr()) }
-#endif
   ctpsa_tmp_(ctpsa_t *a) : ctpsa(a)                { TRC("*tmp") } // capture ptr (see scan)
   ctpsa_tmp_(ctpsa_tmp_ &&a) : ctpsa(std::move(a)) { TRC("<tmp") } // move ctor
   ctpsa_tmp_(const ctpsa_tmp_ &a) : ctpsa(a)       { TRC("&tmp") } // copy ctor
@@ -276,9 +266,7 @@ struct ctpsa_tmp_ : ctpsa {
              const ctpsa_base<B> &b) : ctpsa(a,b)  { TRC("&baz,&baz") }
 
 private:
-#if !TPSA_USE_DFT
   ctpsa_tmp_()                               = delete; // dflt    ctor
-#endif
 //ctpsa_tmp_(ctpsa_tmp_ &&)                  = delete; // move    ctor
 //ctpsa_tmp_(const ctpsa_tmp_ &)             = delete; // copy    ctor
   ctpsa_tmp_(std::nullptr_t)                 = delete; // nullptr ctor
