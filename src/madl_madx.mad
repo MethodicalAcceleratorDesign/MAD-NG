@@ -102,11 +102,11 @@ local trim = \str -> ((str:gsub("^%s*(.-)%s*$", "%1")))
 
 local BEGOFCHUNK = "do  -- BEGOFCHUNK"
 local ENDOFCHUNK = "end -- ENDOFCHUNK"
-local MINSZCHUNK = 4000
+local DFTSZCHUNK = 4000
 
 local function check_chunk (env, doit)
   local out in env
-  if out.n ~= out.nchk and (doit or out.n-out.nchk >= MINSZCHUNK) then
+  if out.n ~= out.nchk and (doit or out.n-out.nchk >= env.chunksz) then
     if option.debug >= 2 then io.write("chunk size=", out.n-out.nchk, "\n") end
     if env.cur ~= 0 then                    -- close previous bline
       out[out.n], out.n = '}', out.n+1
@@ -504,7 +504,7 @@ local function load2madx (madx, src, dst, cfg_, mad8_, rbarc_, nopub_)
   end
 
   -- options
-  local reload, mad8, rbarc, nopub in cfg_ or {}
+  local reload, mad8, rbarc, nopub, chunksz in cfg_ or {}
 
   if is_nil(rbarc) and madx.option.rbarc then rbarc = true end
   if is_nil(nopub) and madx.option.nopub then nopub = true end
@@ -512,7 +512,7 @@ local function load2madx (madx, src, dst, cfg_, mad8_, rbarc_, nopub_)
   local out = table.new(65536,2) ; out.n, out.nchk = 1, 1
   local env = { out=out, seq={}, sln={}, elm={}, cls={}, cur=0, stp=false,
                 wrn=madx.option.warn, opt=madx.option, madx=madx, mad8=mad8,
-                rbarc=rbarc, nopub=nopub }
+                rbarc=rbarc, nopub=nopub, chunksz=chunksz or DFTSZCHUNK }
 
   -- if dst (MAD-NG) is newer than src (MAD-X), use dst (no translation)
   if reload ~= true                                       -- reload not enforced
@@ -604,12 +604,11 @@ local function load2madx (madx, src, dst, cfg_, mad8_, rbarc_, nopub_)
     li, eoc = li+1, out[li] == ENDOFCHUNK
     return out[li] and out[li]..'\n' or nil
   end
-
   while li < out.n do
     local fct, err = load(loadchunk)
     if fct == nil and err ~= nil then
       local fil = is_string(src) and src or "?"
-      io.stderr:write("MADX parse error:", fil,':',li,': ', out[li], '\n')
+      io.stderr:write("MADX parse error:", fil,':',li,': "', out[li] or "", '"\n')
       error(err)
     end
     madx:load_env(assert( fct, err ))
