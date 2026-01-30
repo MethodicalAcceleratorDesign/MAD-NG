@@ -42,6 +42,7 @@ typedef uint32_t         u32_t;
 typedef uint64_t         u64_t;
 typedef double           num_t;
 typedef double _Complex  cpx_t;
+typedef unsigned char    chr_t;
 typedef const char*      str_t;
 typedef const void*      ptr_t;
 
