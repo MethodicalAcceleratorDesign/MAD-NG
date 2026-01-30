@@ -26,19 +26,22 @@
 static inline void
 mad_str_trim_front (str_t str, ssz_t arg[2])
 {
-  while (arg[1] > 0 && isspace(str[arg[0]])) --arg[1], ++arg[0];
+  while (arg[1] > 0 && isspace((chr_t)str[arg[0]])) --arg[1], ++arg[0];
 }
 
 static inline void
 mad_str_trim_back (str_t str, ssz_t arg[2])
 {
-  while (arg[1] > 0 && isspace(str[arg[0]+arg[1]-1])) --arg[1];
+  while (arg[1] > 0 && isspace((chr_t)str[arg[0]+arg[1]-1])) --arg[1];
 }
 
 str_t
 mad_str_trim (str_t str, ssz_t arg[2])
 {
   assert(str && arg);
+  assert(arg[0] >= 0);
+  assert(arg[1] >= 0);
+
   mad_str_trim_front(str, arg);
   mad_str_trim_back (str, arg);
   return str;
@@ -48,6 +51,9 @@ str_t
 mad_str_quote (str_t str, ssz_t arg[5], log_t sq)
 {
   assert(str && arg);
+  assert(arg[0] >= 0);
+  assert(arg[1] >= 0);
+
   mad_str_trim_front(str, arg);
 
   if (str[arg[0]] != '"' && (str[arg[0]] != '\'' || !sq)) { // no quote found
@@ -59,10 +65,10 @@ mad_str_quote (str_t str, ssz_t arg[5], log_t sq)
 
   if (str[i] == '"')
     while (j < k && str[j] != '"' )
-      j += (str[j] == '\\' && str[j+1] == '"' ) ? ++q, 2 : 1;
+      j += (str[j] == '\\' && (j+1) < k && str[j+1] == '"' ) ? ++q, 2 : 1;
   else if (sq)
     while (j < k && str[j] != '\'')
-      j += (str[j] == '\\' && str[j+1] == '\'') ? ++q, 2 : 1;
+      j += (str[j] == '\\' && (j+1) < k && str[j+1] == '\'') ? ++q, 2 : 1;
 
   if (j == k) return NULL; // error: no closing quote found
 
@@ -79,6 +85,9 @@ str_t
 mad_str_bracket (str_t str, ssz_t arg[6])
 {
   assert(str && arg);
+  assert(arg[0] >= 0);
+  assert(arg[1] >= 0);
+
   mad_str_trim_front(str, arg);
 
   idx_t i = arg[0], k = arg[0]+arg[1];
@@ -117,6 +126,9 @@ str_t
 mad_str_split (str_t str, ssz_t arg[4], str_t sep)
 {
   assert(str && arg && sep);
+  assert(arg[0] >= 0);
+  assert(arg[1] >= 0);
+  assert(arg[2] >= 0);
 
   idx_t i = arg[0], j = -1, k = arg[0]+arg[1], l = arg[2];
 
@@ -143,6 +155,9 @@ str_t
 mad_str_num (str_t str, ssz_t arg[5])
 {
   assert(str && arg);
+  assert(arg[0] >= 0);
+  assert(arg[1] >= 0);
+
   mad_str_trim_front(str, arg);
 
   idx_t i = arg[0], d = -1, e = -1, n = 0;
@@ -151,13 +166,13 @@ mad_str_num (str_t str, ssz_t arg[5])
   if (str[i] == '-' || str[i] == '+') ++i;
 
   // inf or nan ?
-  if (isalpha(str[i])) {
-    if (tolower(str[i  ]) == 'i' &&  tolower(str[i+1]) == 'n' &&
-        tolower(str[i+2]) == 'f' && !isalpha(str[i+3])) {
+  if (isalpha((chr_t)str[i])) {
+    if (tolower((chr_t)str[i  ]) == 'i' &&  tolower((chr_t)str[i+1]) == 'n' &&
+        tolower((chr_t)str[i+2]) == 'f' && !isalpha((chr_t)str[i+3])) {
       i += 3; goto fini;
     }
-    if (tolower(str[i  ]) == 'n' &&  tolower(str[i+1]) == 'a' &&
-        tolower(str[i+2]) == 'n' && !isalpha(str[i+3])) {
+    if (tolower((chr_t)str[i  ]) == 'n' &&  tolower((chr_t)str[i+1]) == 'a' &&
+        tolower((chr_t)str[i+2]) == 'n' && !isalpha((chr_t)str[i+3])) {
       i += 3; goto fini;
     }
     arg[1] = 0, arg[2] = arg[3] = arg[4] = -1; // no number found
@@ -165,7 +180,7 @@ mad_str_num (str_t str, ssz_t arg[5])
   }
 
   // integer part
-  while(isdigit(str[i])) ++i, ++n;
+  while(isdigit((chr_t)str[i])) ++i, ++n;
 
   // decimal part
   if (str[i] == '.') {
@@ -178,7 +193,7 @@ mad_str_num (str_t str, ssz_t arg[5])
       return str;
     }
 
-    while(isdigit(str[i])) ++i, ++n;
+    while(isdigit((chr_t)str[i])) ++i, ++n;
   }
 
   // ensure at least ±# or ±#. or ±.#
@@ -195,10 +210,10 @@ mad_str_num (str_t str, ssz_t arg[5])
     if (str[i] == '-' || str[i] == '+') ++i;
 
     // digits
-    while(isdigit(str[i])) ++i;
+    while(isdigit((chr_t)str[i])) ++i;
 
     // ensure e# or e±# otherwise backtrack
-    if (!isdigit(str[i-1])) { i = e-1, e = -1; goto fini; }
+    if (!isdigit((chr_t)str[i-1])) { i = e-1, e = -1; goto fini; }
   }
 
 fini:
@@ -214,21 +229,24 @@ str_t
 mad_str_ident (str_t str, ssz_t arg[4])
 {
   assert(str && arg);
+  assert(arg[0] >= 0);
+  assert(arg[1] >= 0);
+
   mad_str_trim_front(str, arg);
 
   idx_t i = arg[0];
 
-  if (!isalpha(str[i]) && str[i] != '_') {
+  if (!isalpha((chr_t)str[i]) && str[i] != '_') {
     arg[1] = 0, arg[2] = arg[3] = -1; // no identifier found
     return str;
   }
 
-  ++i; while (isalnum(str[i]) || str[i] == '_') ++i;
+  ++i; while (isalnum((chr_t)str[i]) || str[i] == '_') ++i;
 
   arg[1] = i-arg[0]; // len
   arg[2] = i; // index right after identifier
 
-  while (isspace(str[i])) ++i;
+  while (isspace((chr_t)str[i])) ++i;
 
   arg[3] = i; // index right after leading spaces
 
