@@ -59,4 +59,4 @@ int main(void)
    // destroy all created descriptors (optional cleanup)
    mad_desc_del(0);
    return 0;
-} 
+}
