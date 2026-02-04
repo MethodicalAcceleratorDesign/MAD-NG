@@ -22,9 +22,11 @@
 
 #include <stdio.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <stdalign.h>
 
 #include "mad_omp.h"
 #include "mad_mem.h"
@@ -72,35 +74,34 @@ struct memblk {
   uint16_t slot; // slot index (i.e. rounded size).
   uint16_t next; // index of next memblk (i.e. linked list).
   uint32_t mark; // memory boundary marker
-  union { // alignment of data
-    ptrdiff_t s, *sp;
-    size_t    u, *up;
-    double    d, *dp;
-    void         *vp;
-    void        (*fp)(void);
-  } data[1];
+  alignas(max_align_t) chr_t data[]; // C11
 };
 
 // memory pool
 struct pool {
-  uint32_t mkch;            // amount of cached memory in stp_slot unit
-  uint16_t free;            // index of first free slot in mblk
-  uint16_t _dum;            // for alignment
-  uint16_t slot[max_slot];  // index+1 in mblk of first mbp for this size
-  union {
-    size_t         nxt;     // index in mblk of next free slot
-    struct memblk *mbp;
-  }        mblk[max_mblk];
-  char     str[128];        // for debug, see pdump()
+  uint32_t  mkch;           // amount of cached memory in stp_slot unit
+  uint16_t  free;           // index of first free slot in mblk
+  uint16_t  _dum;           // for alignment
+  uint16_t  slot[max_slot]; // index+1 in mblk of first mbp for this size
+  uintptr_t mblk[max_mblk]; // either index (<=IDXMAX) or pointer (>IDXMAX)
+  char      str[128];       // for debug, see pdump()
 };
 
 // macros
-#define BASE(ptr) ((void*)((char*)(ptr)-stp_slot)) // ptr -> mbp
-#define SIZE(idx) (((size_t)(idx)+2)*stp_slot)     // sizeof(*mbp)
-#define CACHED(p) ((size_t)(p)->mkch*stp_slot)
-#define IDXMAX    0xFFFF
-#define SLTMAX    0xFFFFFFFF
-#define MARK      0xACCEDEAD
+#define HDROFF      offsetof(struct memblk, data)
+#define PBASE(ptr)  ((struct memblk*)((char*)(ptr)-HDROFF)) // ptr -> mbp
+#define PSIZE(idx)  (((size_t)(idx)+1)*stp_slot)     // rounded payload
+#define TSIZE(idx)  (HDROFF+PSIZE(idx))              // total bytes
+#define HSLOTS     ((HDROFF+stp_slot-1)/stp_slot)    // 16 -> 2 slots
+#define BSLOTS(idx) (HSLOTS+(idx)+1)                 // header slots + payload slots
+#define IDXMAX       0xFFFF
+#define SLTMAX       0xFFFFFFFF
+#define MARK         0xACCEDEAD
+
+#define IS_PTR(v)   ((v) > IDXMAX)
+#define AS_PTR(v)   ((struct memblk*)(uintptr_t)(v))
+#define AS_IDX(v)   ((idx_t)(v))
+#define TO_VAL(p)   ((uintptr_t)(p))
 
 // static sanity checks
 enum {
@@ -113,12 +114,15 @@ enum {
 
   static_assert__stp_slot_not_a_power_of_2 = 1/!(stp_slot & (stp_slot-1)),
   static_assert__stp_slot_neq_sizeof       = 1/ (stp_slot == sizeof(double)),
-  static_assert__stp_slot_neq_offsetof     = 1/ (stp_slot == offsetof(struct memblk,data)), // very important...
+  static_assert__stp_slot_neq_offsetof     = 1/!(HDROFF % alignof(max_align_t)),
+  static_assert__stp_slot_not_a_multiple   = 1/!(HDROFF % stp_slot),
+
+  static_assert__invalid_ptr_as_int        = 1/ (sizeof(uintptr_t) >= sizeof(void*)),
 };
 
 // --- locals -----------------------------------------------------------------o
 
-static struct pool pool = {0,0,0,{0},{{0}},{0}};
+static struct pool pool = {0};
 
 #ifdef _OPENMP
 #pragma omp threadprivate(pool)
@@ -128,9 +132,9 @@ static inline char*
 pdump(struct memblk *mbp)
 {
   struct pool *p = &pool;
-  snprintf(p->str, sizeof(p->str), "%p {slot=%4d(%5td), next=%4d, mark=%x}%s",
+  snprintf(p->str, sizeof(p->str), "%p {slot=%4d(%5zu), next=%4d, mark=%x}%s",
          (void*)mbp, mbp->slot,
-         mbp->slot == IDXMAX ? -1 : (ptrdiff_t)SIZE(mbp->slot),
+         mbp->slot == IDXMAX ? 0 : TSIZE(mbp->slot),
          mbp->next-1, mbp->mark, mbp->mark == MARK ? "" : " (corrupted!)");
   return p->str;
 }
@@ -147,19 +151,19 @@ void*
   if (idx < max_slot && p->slot[idx]) {
     idx_t slt = p->slot[idx]-1;
     DBGMEM( printf("alloc: reuse mblk[[%d]=%d]", (int)idx, slt); )
-    mbp = p->mblk[slt].mbp, p->mblk[slt].nxt = p->free;
+    mbp = AS_PTR(p->mblk[slt]), p->mblk[slt] = p->free;
     p->free = p->slot[idx], p->slot[idx] = mbp->next;
-    p->mkch -= idx+2;
+    p->mkch -= BSLOTS(idx);
 #if MAD_MEM_CLR
     memset(mbp->data, 0, size);
 #endif
   } else {
     DBGMEM( printf("alloc: malloc(%2zu)", size); )
-    mbp = malloc(SIZE(idx));
+    mbp = malloc(TSIZE(idx));
     if (!mbp) return warn("cannot allocate %zu bytes", size), NULL;
     mbp->slot = idx < max_slot ? idx : IDXMAX;
     mbp->mark = MARK;
-    ensure((size_t)mbp > IDXMAX, "unexpected very low address"); // see collect
+    ensure(IS_PTR(TO_VAL(mbp)), "unexpected very low address");
   }
 
   DBGMEM( printf(" at %s\n", pdump(mbp)); )
@@ -171,7 +175,7 @@ void
 {
   if (!ptr) return;
 
-  struct memblk *mbp = BASE(ptr);
+  struct memblk *mbp = PBASE(ptr);
   idx_t idx = mbp->slot;
 
   ensure(mbp->mark == MARK, "invalid or corrupted allocated memory");
@@ -188,8 +192,8 @@ void
   idx_t slt = p->free-1;
   DBGMEM( printf("free : cache mblk[[%d]=%d]", idx, slt); )
   mbp->next = p->slot[idx], p->slot[idx] = p->free;   // update slot
-  p->free = p->mblk[slt].nxt, p->mblk[slt].mbp = mbp; // store  mblk
-  p->mkch += idx+2;
+  p->free = AS_IDX(p->mblk[slt]), p->mblk[slt] = TO_VAL(mbp); // store  mblk
+  p->mkch += BSLOTS(idx);
 
   DBGMEM( printf(" at %s\n", pdump(mbp)); )
 }
@@ -209,18 +213,19 @@ void*
   if (!ptr ) return (mad_malloc)(size);
 
   DBGMEM( printf("alloc: realloc(%2zu)", size); )
-  struct memblk *mbp = BASE(ptr);
+  struct memblk *mbp = PBASE(ptr);
 
   ensure(mbp->mark == MARK, "invalid or corrupted allocated memory");
 
   size_t idx = (size-1) / stp_slot;
-  mbp = realloc(mbp, SIZE(idx));
+  mbp = realloc(mbp, TSIZE(idx));
   if (!mbp) return warn("cannot reallocate %zu bytes", size), NULL;
 
 #if MAD_MEM_CLR
   if (mbp->slot < idx && idx < max_slot) {
-    size_t off = SIZE(mbp->slot)-SIZE(idx);
-    memset((char*)mbp->data+off, 0, size-off);
+    size_t oldp = PSIZE(mbp->slot);
+    size_t newp = PSIZE(idx);
+    memset((char*)mbp->data+oldp, 0, newp-oldp);
   }
 #endif
 
@@ -235,16 +240,18 @@ size_t
 mad_mcached (log_t check)
 {
   struct pool *p = &pool;
-  size_t cached = CACHED(p);
+  size_t cached = 0, slots = 0;
 
-  if (check) {
-    size_t ccached = 0;
-    for (idx_t i=0; i < max_mblk; i++)
-      if (p->mblk[i].nxt > IDXMAX) // ptr
-        ccached += SIZE(p->mblk[i].mbp->slot);
+  for (idx_t i = 0; i < max_mblk; ++i)
+    if (IS_PTR(p->mblk[i])) {
+      struct memblk *mbp = AS_PTR(p->mblk[i]);
+      cached +=  TSIZE(mbp->slot);
+      slots  += BSLOTS(mbp->slot);
+    }
 
-    ensure(ccached==cached, "corrupted cache %zu != %zu bytes", ccached,cached);
-  }
+  if (check)
+    ensure(slots == p->mkch, "corrupted cache %zu != %u slots", slots, p->mkch);
+
   return cached;
 }
 
@@ -252,7 +259,7 @@ size_t
 mad_mcollect (void)
 {
   struct pool *p = &pool;
-  size_t cached = CACHED(p);
+  size_t cached = 0;
 
   DBGMEM( printf("collect/clear/init cache\n"); )
   DBGMEM( printf("collecting %zu bytes\n", mad_mcached(TRUE)); )
@@ -260,15 +267,17 @@ mad_mcollect (void)
   p->mkch = 0;
   p->free = 1;
 
-  for (idx_t i=0; i < max_slot; i++)
+  for (idx_t i = 0; i < max_slot; i++)
     p->slot[i] = 0;
 
-  for (idx_t i=0; i < max_mblk; i++) {
-    if (p->mblk[i].nxt > IDXMAX) // ptr
-      free(p->mblk[i].mbp);
-    p->mblk[i].nxt = i+2;
+  for (idx_t i = 0; i < max_mblk; i++) {
+    if (IS_PTR(p->mblk[i])) {
+      cached += TSIZE(AS_PTR(p->mblk[i])->slot);
+      free(AS_PTR(p->mblk[i]));
+    }
+    p->mblk[i] = i+2;
   }
-  p->mblk[max_mblk-1].nxt = 0; // close linked list
+  p->mblk[max_mblk-1] = 0; // close linked list
 
   return cached;
 }
@@ -279,24 +288,23 @@ void
 mad_mdump (FILE *fp)
 {
   struct pool *p = &pool;
-  size_t cached = CACHED(p);
 
   if (!fp) fp = stdout;
 
   // init cache to avoid full dump of empty mblk
-  if (!p->free && !cached) mad_mcollect();
-
+  if (!p->free) mad_mcollect();
+  size_t cached = mad_mcached(FALSE);
   fprintf(fp, "mdump: %zu bytes\n", cached);
 
   // display content of slot[] when used, i.e. link to mblk[] + linked list.
-  for (idx_t i=0; i < max_slot; i++) {
+  for (idx_t i = 0; i < max_slot; i++) {
     idx_t slt = p->slot[i];
     if (slt) { // from slot (size) to memblk (object)
       fprintf(fp, "  slot[%4d] -> mblk[%d]", i, slt-1);
-      struct memblk *mbp = p->mblk[slt-1].mbp;
+      struct memblk *mbp = AS_PTR(p->mblk[slt-1]);
       idx_t nxt = -1, j = 0;
       while (mbp->next) { // linked list
-        nxt = mbp->next-1, mbp = p->mblk[nxt].mbp;
+        nxt = mbp->next-1, mbp = AS_PTR(p->mblk[nxt]);
         if (++j < 8) fprintf(fp, "->[%d]", nxt);
       }
       if (j == 8) fprintf(fp,     "->[%d]\n", nxt); else
@@ -306,13 +314,13 @@ mad_mdump (FILE *fp)
   }
 
   // display content of mblk[], i.e. object or not trivial link into mblk[]
-  for (idx_t i=0; i < max_mblk; i++)
-    if (p->mblk[i].nxt > IDXMAX)         // ptr
-      fprintf(fp, "  mblk[%4d] -> %s\n", i, pdump(p->mblk[i].mbp));
+  for (idx_t i = 0; i < max_mblk; i++)
+    if (IS_PTR(p->mblk[i]))
+      fprintf(fp, "  mblk[%4d] -> %s\n", i, pdump(AS_PTR(p->mblk[i])));
     else if (i+1 == p->free)             // free
-      fprintf(fp, "->mblk[%4d] -> [%d]\n", i, (int)p->mblk[i].nxt-1);
-    else if (i+2 != (int)p->mblk[i].nxt) // idx
-      fprintf(fp, "  mblk[%4d] -> [%d]\n", i, (int)p->mblk[i].nxt-1);
+      fprintf(fp, "->mblk[%4d] -> [%d]\n", i, AS_IDX(p->mblk[i])-1);
+    else if (i+2 != AS_IDX(p->mblk[i]))
+      fprintf(fp, "  mblk[%4d] -> [%d]\n", i, AS_IDX(p->mblk[i])-1);
 }
 
 #endif // MAD_MEM_STD != 1
@@ -339,16 +347,16 @@ main(void)
   setvbuf(stdout, 0, _IONBF, 0);
 
   DBGMEM( union { size_t val; void* ptr; } p = {.ptr=ptr}; )
-  DBGMEM( printf("ptr=%p, ptr as uint=0x%lx\n", p.ptr, p.val); )
+  DBGMEM( printf("ptr=%p, ptr as uint=0x%zx\n", p.ptr, p.val); )
 
-  for (int k=0; k<loop; k++)
-  for (int i=1, n=n0; n<mn; n+=ni, i++) {
+  for (int k = 0; k < loop; k++)
+  for (int i = 1, n = n0; n < mn; n += ni, i++) {
     DBGMEM( printf("iteration %d: n=%d\n", i, n); )
     DBGMEM( printf("calling %d malloc\n", n); )
-    for (int i=0; i<n; i++) ptr[i] = (++mcnt, mad_malloc((i%(13)+1)*z));
+    for (int i = 0; i < n; i++) ptr[i] = (++mcnt, mad_malloc((i%(13)+1)*z));
     DBGMEM( printf("status after %d malloc\n", n); mad_mdump(stdout); )
     DBGMEM( printf("calling %d free\n", n); )
-    for (int i=0; i<n; i++) (++fcnt, mad_free(ptr[i]), ptr[i]=0);
+    for (int i = 0; i < n; i++) (++fcnt, mad_free(ptr[i]), ptr[i]=0);
     DBGMEM( printf("status after %d free\n", n); mad_mdump(stdout); )
   }
   mad_mdump(stdout);
@@ -357,6 +365,7 @@ main(void)
   printf("%9zu frees   performed\n", fcnt);
   printf("%9zu bytes   cached\n", mad_mcached(TRUE));
   mad_mcollect();
+  return 0;
 }
 
 #endif
