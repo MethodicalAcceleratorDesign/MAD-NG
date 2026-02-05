@@ -34,7 +34,7 @@
 // --- macros -----------------------------------------------------------------o
 
 #define CPX(a)      CPX2(MKNAME(a,_re), MKNAME(a,_im))
-#define CPX2(re,im) ((re)+(im)*I)
+#define CPX2(re,im) ((re)+(im)*_Complex_I)
 
 // --- interface --------------------------------------------------------------o
 
