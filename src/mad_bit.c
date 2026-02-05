@@ -76,13 +76,19 @@ void mad_bit_check (void)
 {
   printf("bchk: nz=%16" PRIX64 ", lo=%2d, hi=%2d\n", (bit_t)0,
                      mad_bit_lowest(0), mad_bit_highest(0));
-  for (int i=0; i <= 64; ++i) {
+  for (int i=0; i < 64; ++i) {
     bit_t nz = 1ull << i;
     printf("i=%2d, nz=%16" PRIX64 ", lo=%2d, hi=%2d, "
                   "lc=%16" PRIX64 ", hc=%16" PRIX64 "\n", i, nz,
                      mad_bit_lowest(nz), mad_bit_highest(nz),
                      mad_bit_lcut(~0ull,i), mad_bit_hcut(~0ull,i));
   }
+
+  // i = 64: no valid single-bit value; still test cuts at width 64
+  printf("i=64, nz=%16" PRIX64 ", lo=%2d, hi=%2d, "
+         "lc=%16" PRIX64 ", hc=%16" PRIX64 "\n",
+         (bit_t)0, mad_bit_lowest(0), mad_bit_highest(0),
+         mad_bit_lcut(~0ull,64), mad_bit_hcut(~0ull,64));
 }
 
 // --- end --------------------------------------------------------------------o
