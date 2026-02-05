@@ -104,6 +104,19 @@ struct pool {
 #define TO_VAL(p)   ((uintptr_t)(p))
 
 // static sanity checks
+_Static_assert(!(max_slot & (max_slot-1))        , "max_slot is not a power of 2");
+_Static_assert(!(max_mblk & (max_mblk-1))        , "max_mblk is not a power of 2");
+_Static_assert(!(max_mkch & (max_mkch-1))        , "max_mkch is not a power of 2");
+_Static_assert(  max_slot < IDXMAX               , "max_slot is not lesser than IDXMAX");
+_Static_assert(  max_mblk < IDXMAX               , "max_mblk is not lesser than IDXMAX");
+_Static_assert(  max_mkch < SLTMAX               , "max_mkch is not lesser than SLTMAX");
+_Static_assert(!(stp_slot & (stp_slot-1))        ,"stp_slot not a power of 2");
+_Static_assert(  stp_slot == sizeof(double)      ,"stp_slot not equal sizeof");
+_Static_assert(!(HDROFF % alignof(max_align_t))  ,"stp_slot not equal offsetof");
+_Static_assert(!(HDROFF % stp_slot)              ,"stp_slot not a submultiple of header");
+_Static_assert(sizeof(uintptr_t) >= sizeof(void*),"invalid ptr as uint");
+
+#if 0 // old style static assert
 enum {
   static_assert__max_slot_not_a_power_of_2 = 1/!(max_slot & (max_slot-1)), // not a real constraint, could be remove
   static_assert__max_mblk_not_a_power_of_2 = 1/!(max_mblk & (max_mblk-1)), // not a real constraint, could be remove
@@ -119,6 +132,7 @@ enum {
 
   static_assert__invalid_ptr_as_int        = 1/ (sizeof(uintptr_t) >= sizeof(void*)),
 };
+#endif
 
 // --- locals -----------------------------------------------------------------o
 
