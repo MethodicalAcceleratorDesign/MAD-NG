@@ -20,10 +20,9 @@
 */
 
 #include <assert.h>
-#include <tgmath.h>
-#include <complex.h>
 
 #include "mad_bit.h"
+#include "mad_num.h"
 #include "mad_ctpsa.h"
 #include "mad_tpsa_impl.h"
 
@@ -51,9 +50,6 @@ struct ctpsa_ { // warning: must be identical to LuaJIT def (see mad_gtpsa.mad)
                         (fabs(cimag(num))<(eps) ? 0 : cimag(num))
 #define FMT              "%+6.4lE%+6.4lEi"
 #define SELECT(R,C)      C
-
-#define CPX(a) (* (cpx_t*) & (num_t[2]) { MKNAME(a,_re), MKNAME(a,_im) })
-
 #endif
 
 // --- helpers ----------------------------------------------------------------o

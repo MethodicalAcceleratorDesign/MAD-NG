@@ -19,13 +19,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <math.h>
-#include <float.h>
-#include <complex.h>
 #include <assert.h>
 
 #include "mad_log.h"
 #include "mad_mem.h"
+#include "mad_num.h"
 #include "mad_vec.h"
 #include "mad_mat.h"
 
@@ -58,8 +56,6 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 #define CHKYR  assert( y && r )
 #define CHKXYR assert( x && y && r )
 #define CHKXRX assert( x && r && x != r)
-
-#define CPX(re,im) (* (cpx_t*) & (num_t[2]) { re, im })
 
 // --- matrix, cmatrix, imatrix
 
@@ -577,7 +573,7 @@ void mad_cmat_eye (cpx_t r[], cpx_t v, ssz_t m, ssz_t n, ssz_t ldr)
 { CHKR; cpx_t x = 0; SET(); x = v; DIAG(); }
 
 void mad_cmat_eye_r (cpx_t r[], num_t v_re, num_t v_im, ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; mad_cmat_eye(r, CPX(v_re,v_im), m, n, ldr); }
+{ CHKR; mad_cmat_eye(r, CPX(v), m, n, ldr); }
 
 void mad_cmat_copy (const cpx_t x[], cpx_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
 { CHKXRX; CPY(); }
@@ -1088,7 +1084,7 @@ mad_mat_invn (const num_t y[], num_t x, num_t r[], ssz_t m, ssz_t n, num_t rcond
 
 int // without complex-by-value version
 mad_mat_invc_r (const num_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t m, ssz_t n, num_t rcond)
-{ return mad_mat_invc(y, CPX(x_re,x_im), r, m, n, rcond); }
+{ return mad_mat_invc(y, CPX(x), r, m, n, rcond); }
 
 int
 mad_mat_invc (const num_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcond)
@@ -1136,7 +1132,7 @@ mad_cmat_invc (const cpx_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcon
 
 int
 mad_cmat_invc_r (const cpx_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t m, ssz_t n, num_t rcond)
-{ return mad_cmat_invc(y, CPX(x_re,x_im), r, m, n, rcond); }
+{ return mad_cmat_invc(y, CPX(x), r, m, n, rcond); }
 
 // -- pseudo-inverse ----------------------------------------------------------o
 
@@ -1185,7 +1181,7 @@ finalize:
 
 int // without complex-by-value version
 mad_mat_pinvc_r (const num_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t m, ssz_t n, num_t rcond, int ncond)
-{ return mad_mat_pinvc(y, CPX(x_re,x_im), r, m, n, rcond, ncond); }
+{ return mad_mat_pinvc(y, CPX(x), r, m, n, rcond, ncond); }
 
 int
 mad_mat_pinvc (const num_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcond, int ncond)
@@ -1200,11 +1196,11 @@ mad_mat_pinvc (const num_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcon
 
 int
 mad_cmat_pinvc_r (const cpx_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t m, ssz_t n, num_t rcond, int ncond)
-{ return mad_cmat_pinvc(y, CPX(x_re,x_im), r, m, n, rcond, ncond); }
+{ return mad_cmat_pinvc(y, CPX(x), r, m, n, rcond, ncond); }
 
 int
 mad_cmat_pinvn (const cpx_t y[], num_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcond, int ncond)
-{ return mad_cmat_pinvc(y, CPX(x,0), r, m, n, rcond, ncond); }
+{ return mad_cmat_pinvc(y, CPX2(x,0), r, m, n, rcond, ncond); }
 
 int
 mad_cmat_pinvc (const cpx_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcond, int ncond)

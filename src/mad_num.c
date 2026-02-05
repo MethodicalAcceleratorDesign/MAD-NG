@@ -16,12 +16,8 @@
  o-----------------------------------------------------------------------------o
 */
 
-#include <math.h>
-#include <float.h>
 #include <stdlib.h>
 #include <assert.h>
-
-#include <complex.h>
 #include <stdatomic.h>
 
 #include "mad_omp.h"
@@ -66,13 +62,6 @@ fact2 (u32_t n) // n!!
 // --- implementation ---------------------------------------------------------o
 
 #define CHKR  assert( r )
-
-#define CPX(a)    CPX2(MKNAME(a,_re), MKNAME(a,_im))
-#ifdef CMPLX
-#define CPX2(a,b) CMPLX(a,b)
-#else
-#define CPX2(a,b) (*(cpx_t*)&(num_t[2]){a,b})
-#endif
 
 // --- num
 

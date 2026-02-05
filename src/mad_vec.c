@@ -16,15 +16,13 @@
  o-----------------------------------------------------------------------------o
 */
 
-#include <math.h>
 #include <stdlib.h>
 #include <string.h>
-#include <complex.h>
-#include <tgmath.h>
 #include <assert.h>
 
 #include "mad_log.h"
 #include "mad_mem.h"
+#include "mad_num.h"
 #include "mad_vec.h"
 
 // --- implementation ---------------------------------------------------------o
@@ -35,8 +33,6 @@
 #define CHKXR  assert( x && r )
 #define CHKYR  assert( y && r )
 #define CHKXYR assert( x && y && r )
-
-#define CPX(re,im) (* (cpx_t*) & (num_t[2]) { re, im })
 
 // --- vec
 
@@ -59,9 +55,9 @@ void mad_vec_copyv (const num_t x[], cpx_t r[], ssz_t n)
 
 void mad_vec_cplx (const num_t re[], const num_t im[], cpx_t r[], ssz_t n)
 { assert( r && (re || im) );
-  if (re && im) FOR(i,n) r[i] = CPX(re[i],im[i]);
-  else if  (re) FOR(i,n) r[i] =     re[i]       ;
-  else          FOR(i,n) r[i] = CPX(0    ,im[i]);
+  if (re && im) FOR(i,n) r[i] = CPX2(re[i],im[i]);
+  else if  (re) FOR(i,n) r[i] =      re[i]       ;
+  else          FOR(i,n) r[i] = CPX2(0    ,im[i]);
 }
 
 void mad_vec_abs (const num_t x[], num_t r[], ssz_t n)
@@ -113,7 +109,7 @@ void mad_vec_addc (const num_t x[], cpx_t y, cpx_t r[], ssz_t n)
 { CHKXR; FOR(i,n) r[i] = x[i] + y; }
 
 void mad_vec_addc_r (const num_t x[], num_t y_re, num_t y_im, cpx_t r[], ssz_t n)
-{ mad_vec_addc(x, CPX(y_re,y_im), r, n); }
+{ mad_vec_addc(x, CPX(y), r, n); }
 
 void mad_vec_sub (const num_t x[], const num_t y[], num_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] - y[i]; }
@@ -128,7 +124,7 @@ void mad_vec_subc (const num_t y[], cpx_t x, cpx_t r[], ssz_t n)
 { CHKYR; FOR(i,n) r[i] = x - y[i]; }
 
 void mad_vec_subc_r (const num_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t n)
-{ mad_vec_subc(y, CPX(x_re,x_im), r, n); }
+{ mad_vec_subc(y, CPX(x), r, n); }
 
 void mad_vec_mul (const num_t x[], const num_t y[], num_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] * y[i]; }
@@ -140,7 +136,7 @@ void mad_vec_mulc (const num_t x[], cpx_t y, cpx_t r[], ssz_t n)
 { CHKXR; FOR(i,n) r[i] = x[i] * y; }
 
 void mad_vec_mulc_r (const num_t x[], num_t y_re, num_t y_im, cpx_t r[], ssz_t n)
-{ mad_vec_mulc(x, CPX(y_re,y_im), r, n); }
+{ mad_vec_mulc(x, CPX(y), r, n); }
 
 void mad_vec_div (const num_t x[], const num_t y[], num_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] / y[i]; }
@@ -155,7 +151,7 @@ void mad_vec_divc (const num_t y[], cpx_t x, cpx_t r[], ssz_t n)
 { CHKYR; FOR(i,n) r[i] = x / y[i]; }
 
 void mad_vec_divc_r (const num_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t n)
-{  mad_vec_divc(y, CPX(x_re,x_im), r, n); }
+{  mad_vec_divc(y, CPX(x), r, n); }
 
 void mad_vec_dif (const num_t x[], const num_t y[], num_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = (x[i] - y[i]) / MAX(fabs(x[i]),1); }
@@ -373,13 +369,13 @@ log_t mad_cvec_isval (const cpx_t x[], cpx_t v, ssz_t n)
 { CHKX; FOR(i,n) if (x[i] != v) return FALSE; return TRUE; }
 
 log_t mad_cvec_isval_r (const cpx_t x[], num_t v_re, num_t v_im, ssz_t n)
-{ return mad_cvec_isval (x, CPX(v_re,v_im), n); }
+{ return mad_cvec_isval (x, CPX(v), n); }
 
 void mad_cvec_fill (cpx_t x, cpx_t r[], ssz_t n)
 { CHKR; FOR(i,n) r[i] = x; }
 
 void mad_cvec_fill_r (num_t x_re, num_t x_im, cpx_t r[], ssz_t n)
-{ mad_cvec_fill(CPX(x_re,x_im), r, n); }
+{ mad_cvec_fill(CPX(x), r, n); }
 
 void mad_cvec_copy (const cpx_t x[], cpx_t r[], ssz_t n)
 { CHKXR; if (x > r) FOR(i,n) r[    i] = x[    i];
@@ -480,7 +476,7 @@ void mad_cvec_addc (const cpx_t x[], cpx_t y, cpx_t r[], ssz_t n)
 { CHKXR; FOR(i,n) r[i] = x[i] + y; }
 
 void mad_cvec_addc_r (const cpx_t x[], num_t y_re, num_t y_im, cpx_t r[], ssz_t n)
-{ mad_cvec_addc(x, CPX(y_re,y_im), r, n); }
+{ mad_cvec_addc(x, CPX(y), r, n); }
 
 void mad_cvec_sub (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] - y[i]; }
@@ -495,7 +491,7 @@ void mad_cvec_subc (const cpx_t y[], cpx_t x, cpx_t r[], ssz_t n)
 { CHKYR; FOR(i,n) r[i] = x - y[i]; }
 
 void mad_cvec_subc_r (const cpx_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t n)
-{ mad_cvec_subc(y, CPX(x_re,x_im), r, n); }
+{ mad_cvec_subc(y, CPX(x), r, n); }
 
 void mad_cvec_mul (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] * y[i]; }
@@ -510,7 +506,7 @@ void mad_cvec_mulc (const cpx_t x[], cpx_t y, cpx_t r[], ssz_t n)
 { CHKXR; FOR(i,n) r[i] = x[i] * y; }
 
 void mad_cvec_mulc_r (const cpx_t x[], num_t y_re, num_t y_im, cpx_t r[], ssz_t n)
-{ mad_cvec_mulc(x, CPX(y_re,y_im), r, n); }
+{ mad_cvec_mulc(x, CPX(y), r, n); }
 
 void mad_cvec_div (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = x[i] / y[i]; }
@@ -525,7 +521,7 @@ void mad_cvec_divc (const cpx_t y[], cpx_t x, cpx_t r[], ssz_t n)
 { CHKYR; FOR(i,n) r[i] = x / y[i]; }
 
 void mad_cvec_divc_r (const cpx_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t n)
-{ mad_cvec_divc(y, CPX(x_re,x_im), r, n); }
+{ mad_cvec_divc(y, CPX(x), r, n); }
 
 void mad_cvec_dif  (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t n)
 { CHKXYR; FOR(i,n) r[i] = (x[i] - y[i]) / MAX(fabs(x[i]),1); }
@@ -537,7 +533,7 @@ cpx_t mad_cvec_eval (const cpx_t x[], cpx_t x0, ssz_t n) // Horner scheme
 { CHKX; cpx_t v=x[n-1]; FOR(i,1,n) v = v*x0 + x[n-1-i]; return v; }
 
 void mad_cvec_eval_r (const cpx_t x[], num_t x0_re, num_t x0_im, cpx_t *r, ssz_t n)
-{ CHKXR; *r = mad_cvec_eval(x, CPX(x0_re, x0_im), n); }
+{ CHKXR; *r = mad_cvec_eval(x, CPX(x0), n); }
 
 void mad_cvec_minmax(const cpx_t x[], idx_t r[2], ssz_t n)
 { CHKXR; num_t v[2];
