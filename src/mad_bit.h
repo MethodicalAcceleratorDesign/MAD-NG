@@ -171,7 +171,7 @@ mad_bit_lcut (bit_t b, int n) // clear bits < n
   mad_bit_chk_w(n);
   if (n <= 0 ) return b;
   if (n >= 64) return 0;
-  return b & ~((1ull << n) - 1ull); // mad_bit_mclr(b, (1ull << n)-1);
+  return b & ~((1ull << n) - 1ull);
 }
 
 static inline bit_t __attribute__((const))
@@ -180,7 +180,7 @@ mad_bit_hcut (bit_t b, int n) // clear bits > n
   mad_bit_chk_w(n);
   if (n < 0  ) return 0;
   if (n >= 64) return b;
-  return b & ((1ull << (n+1)) - 1ull); // mad_bit_mget(b, (2ull << n)-1);
+  return b & ((1ull << (n+1)) - 1ull);
 }
 
 static inline bit_t __attribute__((const))
