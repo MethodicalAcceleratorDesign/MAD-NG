@@ -51,6 +51,12 @@ typedef const void*      ptr_t;
 #define TRUE  1
 #define FALSE 0
 
+// --- helpers ---------------------------------------------------------------o
+
+static inline u32_t iabs (int n) {
+  return n < 0 ? -(int64_t)n : n; // OK for INT_MIN
+}
+
 // --- macros ----------------------------------------------------------------o
 
 #define SQR(a)           ((a)*(a))
