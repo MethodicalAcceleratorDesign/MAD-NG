@@ -224,10 +224,10 @@ num_t mad_vec_ksum (const num_t x[], ssz_t n)
   FOR(i,1,n) {
     num_t xi = x[i];
     t = s + xi;
-    if (fabs(s) >= fabs(t))
-      c = c + ((s-t) + xi);
+    if (fabs(s) >= fabs(xi))
+      c += (s-t) + xi;
     else
-      c = c + ((xi-t) + s);
+      c += (xi-t) + s;
     s = t;
   }
   return s + c;
@@ -240,10 +240,10 @@ cpx_t mad_cvec_ksum (const cpx_t x[], ssz_t n)
   FOR(i,1,n) {
     cpx_t xi = x[i];
     t = s + xi;
-    if (cabs(s) >= cabs(t))
-      c = c + ((s-t) + xi);
+    if (cabs(s) >= cabs(xi))
+      c += (s-t) + xi;
     else
-      c = c + ((xi-t) + s);
+      c += (xi-t) + s;
     s = t;
   }
   return s + c;
@@ -256,10 +256,10 @@ num_t mad_vec_kdot (const num_t x[], const num_t y[], ssz_t n)
   FOR(i,1,n) {
     v = x[i]*y[i];
     t = s + v;
-    if (fabs(s) >= fabs(t))
-      c = c + ((s-t) + v);
+    if (fabs(s) >= fabs(v))
+      c += (s-t) + v;
     else
-      c = c + ((v-t) + s);
+      c += (v-t) + s;
     s = t;
   }
   return s + c;
@@ -268,14 +268,14 @@ num_t mad_vec_kdot (const num_t x[], const num_t y[], ssz_t n)
 __attribute__((optimize("no-fast-math")))
 cpx_t mad_cvec_kdot (const cpx_t x[], const cpx_t y[], ssz_t n)
 { CHKXY; ensure(n>0, "invalid vector/matrix size");
-  cpx_t s = x[0]*y[0], c = 0, t, v;
+  cpx_t s = conj(x[0])*y[0], c = 0, t, v;
   FOR(i,1,n) {
-    v = x[i]*y[i];
+    v = conj(x[i])*y[i];
     t = s + v;
-    if (cabs(s) >= cabs(t))
-      c = c + ((s-t) + v);
+    if (cabs(s) >= cabs(v))
+      c += (s-t) + v;
     else
-      c = c + ((v-t) + s);
+      c += (v-t) + s;
     s = t;
   }
   return s + c;
@@ -284,14 +284,14 @@ cpx_t mad_cvec_kdot (const cpx_t x[], const cpx_t y[], ssz_t n)
 __attribute__((optimize("no-fast-math")))
 cpx_t mad_cvec_kdotv (const cpx_t x[], const num_t y[], ssz_t n)
 { CHKXY; ensure(n>0, "invalid vector/matrix size");
-  cpx_t s = x[0]*y[0], c = 0, t, v;
+  cpx_t s = conj(x[0])*y[0], c = 0, t, v;
   FOR(i,1,n) {
-    v = x[i]*y[i];
+    v = conj(x[i])*y[i];
     t = s + v;
-    if (cabs(s) >= cabs(t))
-      c = c + ((s-t) + v);
+    if (cabs(s) >= cabs(v))
+      c += (s-t) + v;
     else
-      c = c + ((v-t) + s);
+      c += (v-t) + s;
     s = t;
   }
   return s + c;
