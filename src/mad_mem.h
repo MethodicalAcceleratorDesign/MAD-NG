@@ -90,6 +90,10 @@ mad_mcheck (str_t loc, void *ptr_, size_t sz)
   T *NAME = (sizeof(T)*(L) < 8192 ? \
              NAME##_local_tmp__ : mad_malloc(sizeof(T)*(L)) )
 
+#undef  mad_calloc_tmp
+#define mad_calloc_tmp(T,NAME,L) \
+        mad_alloc_tmp(T,NAME,L); memset(NAME,0,sizeof(T)*(L))
+
 #undef  mad_free_tmp
 #define mad_free_tmp(NAME) \
   (NAME != NAME##_local_tmp__ ? mad_free(NAME) : (void)0)
