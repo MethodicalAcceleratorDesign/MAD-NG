@@ -2247,41 +2247,41 @@ void mad_mat_torotq (const num_t x[NN], num_t q[4], log_t inv)
     if (m == xx) {
       rr = sqrt(1+xx-yy-zz), ss = 0.5/rr;
       q[1] = 0.5*rr;
-      q[0] = (X(3,2) - X(2,3)) * ss;
-      q[2] = (X(1,3) + X(3,1)) * ss;
-      q[3] = (X(2,1) + X(1,2)) * ss;
+      q[0] = (X(3,2) - X(2,3)) * ss;   // qw
+      q[2] = (X(1,2) + X(2,1)) * ss;   // qy
+      q[3] = (X(1,3) + X(3,1)) * ss;   // qz
     } else if (m == yy) {
       rr = sqrt(1+yy-xx-zz), ss = 0.5/rr;
       q[2] = 0.5*rr;
-      q[0] = (X(3,2) - X(2,3)) * ss;
-      q[1] = (X(1,3) - X(3,1)) * ss;
-      q[3] = (X(2,1) + X(1,2)) * ss;
+      q[0] = (X(1,3) - X(3,1)) * ss;   // qw
+      q[1] = (X(1,2) + X(2,1)) * ss;   // qx
+      q[3] = (X(2,3) + X(3,2)) * ss;   // qz
     } else {
       rr = sqrt(1+zz-xx-yy), ss = 0.5/rr;
       q[3] = 0.5*rr;
-      q[0] = (X(3,2) - X(2,3)) * ss;
-      q[1] = (X(1,3) - X(3,1)) * ss;
-      q[2] = (X(2,1) - X(1,2)) * ss;
+      q[0] = (X(2,1) - X(1,2)) * ss;   // qw
+      q[1] = (X(1,3) + X(3,1)) * ss;   // qx
+      q[2] = (X(2,3) + X(3,2)) * ss;   // qy
     }
   } else {     // transposed
     if (m == xx) {
       rr = sqrt(1+xx-yy-zz), ss = 0.5/rr;
       q[1] = 0.5*rr;
       q[0] = (X(2,3) - X(3,2)) * ss;
-      q[2] = (X(3,1) + X(1,3)) * ss;
-      q[3] = (X(1,2) + X(2,1)) * ss;
+      q[2] = (X(2,1) + X(1,2)) * ss;
+      q[3] = (X(3,1) + X(1,3)) * ss;
     } else if (m == yy) {
       rr = sqrt(1+yy-xx-zz), ss = 0.5/rr;
       q[2] = 0.5*rr;
-      q[0] = (X(2,3) - X(3,2)) * ss;
-      q[1] = (X(3,1) - X(1,3)) * ss;
-      q[3] = (X(1,2) + X(2,1)) * ss;
+      q[0] = (X(3,1) - X(1,3)) * ss;
+      q[1] = (X(2,1) + X(1,2)) * ss;
+      q[3] = (X(3,2) + X(2,3)) * ss;
     } else {
       rr = sqrt(1+zz-xx-yy), ss = 0.5/rr;
       q[3] = 0.5*rr;
-      q[0] = (X(2,3) - X(3,2)) * ss;
-      q[1] = (X(3,1) - X(1,3)) * ss;
-      q[2] = (X(1,2) - X(2,1)) * ss;
+      q[0] = (X(1,2) - X(2,1)) * ss;
+      q[1] = (X(3,1) + X(1,3)) * ss;
+      q[2] = (X(3,2) + X(2,3)) * ss;
     }
   }
 }
@@ -2298,13 +2298,15 @@ mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
   assert(a && c); ensure(m>0 && n>0, "invalid matrix sizes");
 
   ssz_t mn = MIN(m,n);
+  idx_t nc = 0;  // Number of columns to remove.
+  int info = 0;
 
   mad_alloc_tmp(num_t, U, m*m);
   mad_alloc_tmp(num_t, V, n*n);
   mad_alloc_tmp(num_t, S, mn );
 
-  int info = mad_mat_svd(a, U, S, V, m, n);
-  if (info != 0) return -1;
+  info = mad_mat_svd(a, U, S, V, m, n);
+  if (info != 0) goto finalize;
 
   // Backup singular values.
   if (s_) mad_vec_copy(S, s_, mn);
@@ -2318,29 +2320,29 @@ mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
   // Tolerance on keeping singular values.
   rcond = MAX(fabs(rcond), DBL_EPSILON);
 
-  // Number of columns to remove.
-  idx_t nc = 0;
-
 #define V(i,j) V[(i)*n+(j)]
 
-  // Loop over increasing singular values.
+  // Reverse loop over increasing singular values.
   RFOR(i,mn,mn-N) {
     // Singular value is large enough, stop checking.
     if (S[i] > rcond*S[0]) break;
 
     // Loop over rows of V (i.e. columns of V^T)
-    FOR(j,n-1) FOR(k,j+1,n) {
+    FOR(j,n-1) {
       num_t vj = fabs(V(j,i));
 
-      // Proceed only significant component for this singular value.
-      if (vj > 1e-4) {
-        num_t vk  = fabs(V(k,i));
-        num_t rat = fabs(vj-vk)/(vj+vk);
+      FOR(k,j+1,n) {
+        num_t vk = fabs(V(k,i));
 
-        // Discard column j with similar (or opposite) effect of column k > j.
-        if (rat <= tol) {
-          c[nc++] = j; // can hold duplicated indexes...
-          if (nc == n) goto finalize; // c is full...
+        // Proceed only significant component for this singular value.
+        if (MAX(vj, vk) > 1e-4) {
+          num_t rat = fabs(vj-vk)/(vj+vk);
+
+          // Discard column j with similar (or opposite) effect of column k > j.
+          if (rat <= tol) {
+            c[nc++] = j; // can hold duplicated indexes...
+            if (nc == n) goto finalize; // c is full...
+          }
         }
       }
     }
@@ -2353,6 +2355,8 @@ finalize:
   mad_free_tmp(U);
   mad_free_tmp(V);
   mad_free_tmp(S);
+
+  if (info != 0) return -1;
 
   // Return sorted indexes of columns to remove.
   return mad_ivec_sort(c, nc, true);
@@ -2364,13 +2368,15 @@ mad_cmat_svdcnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
 {
   assert(a && c); ensure(m>0 && n>0, "invalid matrix sizes");
   ssz_t mn = MIN(m,n);
+  idx_t nc = 0;  // Number of columns to remove.
+  int info = 0;
 
   mad_alloc_tmp(cpx_t, U, m*m);
   mad_alloc_tmp(cpx_t, V, n*n);
   mad_alloc_tmp(num_t, S, mn );
 
-  int info = mad_cmat_svd(a, U, S, V, m, n);
-  if (info != 0) return -1;
+  info = mad_cmat_svd(a, U, S, V, m, n);
+  if (info != 0) goto finalize;
 
   // Backup singular values.
   if (s_) mad_vec_copy(S, s_, mn);
@@ -2384,29 +2390,29 @@ mad_cmat_svdcnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
   // Tolerance on keeping singular values.
   rcond = MAX(fabs(rcond), DBL_EPSILON);
 
-  // Number of columns to remove.
-  idx_t nc = 0;
-
 #define V(i,j) V[(i)*n+(j)]
 
-  // Loop over increasing singular values.
+  // Reverse loop over increasing singular values.
   RFOR(i,mn,mn-N) {
     // Singular value is large enough, stop checking.
     if (S[i] > rcond*S[0]) break;
 
     // Loop over rows of V (i.e. columns of V^T)
-    FOR(j,n-1) FOR(k,j+1,n) {
+    FOR(j,n-1) {
       num_t vj = cabs(V(j,i));
 
-      // Proceed only significant component for this singular value.
-      if (vj > 1e-4) {
-        num_t vk  = cabs(V(k,i));
-        num_t rat = fabs(vj-vk)/(vj+vk);
+      FOR(k,j+1,n) {
+        num_t vk = cabs(V(k,i));
 
-        // Discard column j with similar (or opposite) effect of column k > j.
-        if (rat <= tol) {
-          c[nc++] = j; // can hold duplicated indexes...
-          if (nc == n) goto finalize; // c is full...
+        // Proceed only significant component for this singular value.
+        if (MAX(vj, vk) > 1e-4) {
+          num_t rat = fabs(vj-vk)/(vj+vk);
+
+          // Discard column j with similar (or opposite) effect of column k > j.
+          if (rat <= tol) {
+            c[nc++] = j; // can hold duplicated indexes...
+            if (nc == n) goto finalize; // c is full...
+          }
         }
       }
     }
@@ -2420,6 +2426,8 @@ finalize:
   mad_free_tmp(V);
   mad_free_tmp(S);
 
+  if (info != 0) return -1;
+
   // Return sorted indexes of columns to remove.
   return mad_ivec_sort(c, nc, true);
 }
@@ -2430,14 +2438,15 @@ mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
 {
   assert(a && c); ensure(m>0 && n>0, "invalid matrix sizes");
   ssz_t mn = MIN(m,n);
+  int info = 0;
 
   mad_alloc_tmp(num_t, U, m*m);
   mad_alloc_tmp(num_t, V, n*n);
   mad_alloc_tmp(num_t, S, mn );
   mad_alloc_tmp(num_t, P, n  );
 
-  int info = mad_mat_svd(a, U, S, V, m, n);
-  if (info != 0) return -1;
+  info = mad_mat_svd(a, U, S, V, m, n);
+  if (info != 0) goto finalize;
 
   // Backup singular values.
   if (s_) mad_vec_copy(S, s_, mn);
@@ -2446,7 +2455,7 @@ mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
   if (N > n || N <= 0) N = n;
 
   // Tolerance on keeping singular values.
-  rcond = MAX(rcond, DBL_EPSILON);
+  rcond = MAX(fabs(rcond), DBL_EPSILON);
 
   FOR(i,N) if (S[i] <= rcond*S[0]) { N=i; break; }
 
@@ -2457,10 +2466,14 @@ mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
   // Sort projections by ascending order.
   mad_vec_sort(P, c, n);
 
+finalize:
+
   mad_free_tmp(U);
   mad_free_tmp(V);
   mad_free_tmp(S);
   mad_free_tmp(P);
+
+  if (info != 0) return -1;
 
   // Return sorted indexes of columns to remove.
   return mad_ivec_sort(c, n-N, false);
@@ -2472,6 +2485,7 @@ mad_cmat_pcacnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
 {
   assert(a && c); ensure(m>0 && n>0, "invalid matrix sizes");
   ssz_t mn = MIN(m,n);
+  int info = 0;
 
   mad_alloc_tmp(cpx_t, U, m*m);
   mad_alloc_tmp(cpx_t, V, n*n);
@@ -2479,8 +2493,8 @@ mad_cmat_pcacnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
   mad_alloc_tmp(num_t, S, mn );
   mad_alloc_tmp(num_t, P, n  );
 
-  int info = mad_cmat_svd(a, U, S, V, m, n);
-  if (info != 0) return -1;
+  info = mad_cmat_svd(a, U, S, V, m, n);
+  if (info != 0) goto finalize;
 
   // Backup singular values.
   if (s_) mad_vec_copy(S, s_, mn);
@@ -2489,7 +2503,7 @@ mad_cmat_pcacnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
   if (N > n || N <= 0) N = n;
 
   // Tolerance on keeping singular values.
-  rcond = MAX(rcond, DBL_EPSILON);
+  rcond = MAX(fabs(rcond), DBL_EPSILON);
 
   FOR(i,N) if (S[i] <= rcond*S[0]) { N=i; break; }
 
@@ -2500,11 +2514,15 @@ mad_cmat_pcacnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
   // Sort projections by ascending order.
   mad_vec_sort(P, c, n);
 
+finalize:
+
   mad_free_tmp(U);
   mad_free_tmp(V);
   mad_free_tmp(R);
   mad_free_tmp(S);
   mad_free_tmp(P);
+
+  if (info != 0) return -1;
 
   // Return sorted indexes of columns to remove.
   return mad_ivec_sort(c, n-N, false);
@@ -2587,7 +2605,10 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
       }
 
       // Stop iterations if no suitable column are found.
-      if (idx < 0) { N=k; break; }
+      if (idx < 0) {
+        mad_vec_copy(B, R, m);
+        N=k; break;
+      }
 
       // Move the column just found to next position.
       if (idx > k) {
