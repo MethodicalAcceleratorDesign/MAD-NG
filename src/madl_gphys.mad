@@ -29,7 +29,7 @@ local assert, table, type in _G
 local min, max in math
 
 local vector, cvector, matrix, monomial, damap, cdamap,
-      trace, warn, option, typeid, range, mtable                 in MAD
+      trace, warn, option, typeid, range                         in MAD
 local assertf, errorf, printf, num2str, tbl2str, setkeys, tblcat,
       mockfile, openfile                                         in MAD.utility
 local lbool                                                      in MAD.gfunc
@@ -1960,79 +1960,79 @@ local function is_ord_even (m)
   return true
 end
 
-function gphys.beamsize(x, sig, mo)
-  assert(is_tpsa(x), "invalid argument #1 (real TPSA expected)")
-  assert(is_indexable(sig) and #sig >= 5,
-                     "invalid argument #2 (iterable with 5+ values expected")
-  mo = mo or x.mo
-  assert(is_number(mo) and mo <= x.mo, "invalid argument #3 (order must not exceed TPSA order")
-
+local function beamsize(x, sig, mo)
   local nv, xs_4, xs_5 = x:nv(), 0, 0
   local mi, mj, mm = monomial(nv), monomial(nv), monomial(nv)
 
   for i,xi in x:iter(mi)   do
   for j,xj in x:iter(mj,i) do
-    if mj >= mi and is_ord_even(mi:add(mj,mm)) and mj:ord() <= mo and mi:ord() <= mo then
+    if mj >= mi and is_ord_even(mi:add(mj,mm)) and
+       mj:ord() <= mo and mi:ord() <= mo then
 
       local sk, xx = 0, (i == j and 1 or 2)*xi*xj
       for k=1,4 do
         xx = xx * sig[k]^mm[k] * tgamma((1+mm[k])/2)
         sk = sk + mm[k]
       end
-
       xx = xx * sig[5]^mm[6] * 2^(sk/2-mm[6]) / ((1+mm[6])*pi^2)
 
       xs_4 = xs_4 + (mm[6] == 0 and xx or 0)
       xs_5 = xs_5 + xx
     end
   end end
-    
   return sqrt(xs_4), sqrt(xs_5)
 end
 
-function gphys.beamsize_oo(x, sig)
+function gphys.beamsize(x, sig, mo_)
   assert(is_tpsa(x), "invalid argument #1 (real TPSA expected)")
   assert(is_indexable(sig) and #sig >= 5,
-                     "invalid argument #2 (iterable with 5+ values expected")
-  local sg, sd = {}, {} 
-  for i=1,x.mo do
-    sg[i], sd[i] = gphys.beamsize(x, sig, i)
+                     "invalid argument #2 (iterable with 5+ values expected)")
+
+  local mo = mo_ or x.mo
+  if mo_ then -- order is specified, could be x.mo itself
+    assert(is_number(mo) and mo <= x.mo,
+                     "invalid argument #3 (order must not exceed TPSA order)")
+    return beamsize(x, sig, mo)
   end
 
-  return sg, sd
+  local sg, st = table.new(mo,0), table.new(mo,0)
+  for i=1,mo do -- run all orders
+    sg[i], st[i] = beamsize(x, sig, i)
+  end
+  return sg, st
 end
 
-function gphys.beamsize_tbl(x, sig, momenta)
-  assert(is_damap(x), "invalid argument #1 (damap expected)")
+function gphys.beamsize_tbl(m, sig, p_)
+  assert(is_damap(m), "invalid argument #1 (damap expected)")
   assert(is_indexable(sig) and #sig >= 5,
-                     "invalid argument #2 (iterable with 5+ values expected")
+                      "invalid argument #2 (iterable with 5+ values expected)")
+  local colnam = not p_ and -- momenta not required
+                 {"order", "x_geo", "x_tot",  "y_geo",  "y_tot"} or
+                 {"order", "x_geo", "x_tot", "px_geo", "px_tot",
+                           "y_geo", "y_tot", "py_geo", "py_tot"}
 
-  local sg_x, sd_x = gphys.beamsize_oo(x[1], sig)
-  local sg_y, sd_y = gphys.beamsize_oo(x[3], sig)
-  local sg_px, sd_px, sg_py, sd_py
-  if momenta then
-    sg_px, sd_px = gphys.beamsize_oo(x[2], sig)
-    sg_py, sd_py = gphys.beamsize_oo(x[4], sig)
+  local tbl = MAD.mtable("rms beamsize", colnam)
+  local row = table.new(#colnam,0)
+  local mo  = min(m.x.mo,m.y.mo)
+
+  for i=1,mo do
+    row[1], row[2], row[3] = i, beamsize(m.x, sig, i)
+    if not p_ then
+      row[4], row[5] = beamsize(m.y , sig, i)
+    else
+      row[4], row[5] = beamsize(m.px, sig, i)
+      row[6], row[7] = beamsize(m.y , sig, i)
+      row[8], row[9] = beamsize(m.py, sig, i)
+    end
+    tbl:addrow(row)
   end
 
-  local tbl = MAD.mtable "rms beamsize" {{"order"}} -- why MAD.mtable is required, local mtable in MAD does not suffice?
-  for i=1,#sg_x do
-    tbl = tbl + {i} 
-  end 
-  tbl.type = sig
+  -- add sigma (init sizes)
+  tbl.sigma = sig
+  table.insert(tbl.header, "sigma")
 
-  tbl:inscol("x_geo", sg_x)
-  tbl:inscol("x_tot", sd_x)
-  if momenta then tbl:inscol("px_geo", sg_px) end 
-  if momenta then tbl:inscol("px_tot", sd_px) end 
-  tbl:inscol("y_geo", sg_y)
-  tbl:inscol("y_tot", sd_y)
-  if momenta then tbl:inscol("py_geo", sg_py) end 
-  if momenta then tbl:inscol("py_tot", sd_py) end 
-
-  return tbl 
+  return tbl
 end
-
 
 -- env ------------------------------------------------------------------------o
 
