@@ -261,6 +261,27 @@ FUN(scl) (const T *a, NUM v, T *c)
   DBGTPSA(c); DBGFUN(<-);
 }
 
+void
+FUN(divn) (const T *a, NUM v, T *c)
+{
+  assert(a && c); DBGFUN(->);
+  ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
+  ensure(v != 0, "invalid domain divn("FMT")", VAL(v));
+
+  if (v == 1) { FUN(copy)(a,c); DBGFUN(<-); return; }
+
+  FUN(copy0)(a,c);
+
+  c->coef[0] = a->coef[0]/v;
+
+  if (FUN(isval)(a)) { FUN(setval)(c, c->coef[0]); DBGFUN(<-); return; }
+
+  if (v == -1) { TPSA_SCAN(c) c->coef[i] = -a->coef[i];   }
+  else         { TPSA_SCAN(c) c->coef[i] =  a->coef[i]/v; }
+
+  DBGTPSA(c); DBGFUN(<-);
+}
+
 /* acc/add/sub/dif cases
    0   1     lo=2      hi=3        mo=4
   [.|.....|........|..........|............]
@@ -476,11 +497,7 @@ FUN(div) (const T *a, const T *b, T *c)
   ensure(b0 != 0, "invalid domain");
 
   if (FUN(isval)(b)) {
-#ifdef MAD_CTPSA_IMPL
-    FUN(scl)(a, mad_cpx_inv(b0), c);
-#else
-    FUN(scl)(a, 1/b0, c);
-#endif
+    FUN(divn)(a, b0, c);
     DBGFUN(<-); return;
   }
 
@@ -768,7 +785,7 @@ FUN(unit) (const T *x, T *r)
   assert(x && r); DBGFUN(->);
   ensure(IS_COMPAT(x,r), "incompatibles GTPSA (descriptors differ)");
 
-  FUN(scl)(x, 1/fabs(x->coef[0]), r);
+  FUN(divn)(x, fabs(x->coef[0]), r);
 
   DBGFUN(<-);
 }
@@ -910,6 +927,9 @@ void FUN(acc_r) (const T *a, num_t v_re, num_t v_im, T *c)
 
 void FUN(scl_r) (const T *a, num_t v_re, num_t v_im, T *c)
 { FUN(scl)(a, CPX(v), c); }
+
+void FUN(divn_r) (const T *a, num_t v_re, num_t v_im, T *c)
+{ FUN(divn)(a, CPX(v), c); }
 
 void FUN(axpb_r) (num_t a_re, num_t a_im, const T *x,
                   num_t b_re, num_t b_im, T *r)

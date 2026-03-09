@@ -156,6 +156,7 @@ void    mad_tpsa_wf      (const tpsa_t *a, tpsa_t *c);
 
 void    mad_tpsa_acc     (const tpsa_t *a, num_t v, tpsa_t *c); // c += v*a, aliasing OK
 void    mad_tpsa_scl     (const tpsa_t *a, num_t v, tpsa_t *c); // c  = v*a
+void    mad_tpsa_divn    (const tpsa_t *a, num_t v, tpsa_t *c); // c  = a/v
 void    mad_tpsa_inv     (const tpsa_t *a, num_t v, tpsa_t *c); // c  = v/a
 void    mad_tpsa_invsqrt (const tpsa_t *a, num_t v, tpsa_t *c); // c  = v/sqrt(a)
 
