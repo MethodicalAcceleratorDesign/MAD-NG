@@ -104,7 +104,7 @@ struct tpsa_base {
 
   template <class A>
   D& operator/=(const tpsa_base<A> &a) { TRC("baz,baz") mad_tpsa_div (ptr(),a.ptr(),ptr()); return self(); }
-  D& operator/=(      num_t         a) { TRC("baz,num") mad_tpsa_scl (ptr(),    1/a,ptr()); return self(); }
+  D& operator/=(      num_t         a) { TRC("baz,num") mad_tpsa_divn(ptr(),      a,ptr()); return self(); }
 
   template <class A>
   D& operator^=(const tpsa_base<A> &a) { TRC("baz,baz") mad_tpsa_pow (ptr(),a.ptr(),ptr()); return self(); }
@@ -480,7 +480,7 @@ inline T operator/ (const tpsa_base<A> &a, const tpsa_base<B> &b) {  TRC("baz/ba
 
 template <class A>
 inline T operator/ (const tpsa_base<A> &a, num_t b) {  TRC("baz/num")
-  T c(a); mad_tpsa_scl(a.ptr(), 1/b, c.ptr()); return c;
+  T c(a); mad_tpsa_divn(a.ptr(), b, c.ptr()); return c;
 }
 
 template <class A>
@@ -491,7 +491,7 @@ inline T operator/ (num_t a, const tpsa_base<A> &b) {  TRC("num/baz")
 #if TPSA_USE_TMP
 
 inline T operator/ (const T &a, num_t b) {  TRC("tmp/num")
-  T c(a); mad_tpsa_scl(c.ptr(), 1/b, c.ptr()); return c;
+  T c(a); mad_tpsa_divn(c.ptr(), b, c.ptr()); return c;
 }
 
 inline T operator/ (num_t a, const T &b) {  TRC("num/tmp")
