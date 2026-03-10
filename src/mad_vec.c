@@ -167,16 +167,29 @@ void mad_vec_divv (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t n)
 { CHKXYR; ensure(n>=0, "invalid vector/matrix size %d", n);
   FOR(i,n) r[i] = x[i] / y[i]; }
 
-void mad_vec_divn (const num_t y[], num_t x, num_t r[], ssz_t n)
+void mad_vec_divn (const num_t x[], num_t y, num_t r[], ssz_t n)
+{ CHKXR; ensure(n>=0, "invalid vector/matrix size %d", n);
+  ensure(y!=0, "invalid domain (zero divide)");
+  FOR(i,n) r[i] = x[i] / y; }
+
+void mad_vec_divc (const num_t x[], cpx_t y, cpx_t r[], ssz_t n)
+{ CHKXR; ensure(n>=0, "invalid vector/matrix size %d", n);
+  ensure(y!=0, "invalid domain (zero divide)");
+  FOR(i,n) r[i] = x[i] / y; }
+
+void mad_vec_divc_r (const num_t x[], num_t y_re, num_t y_im, cpx_t r[], ssz_t n)
+{ CHKXR; mad_vec_divc(x, CPX(y), r, n); }
+
+void mad_vec_invn (const num_t y[], num_t x, num_t r[], ssz_t n)
 { CHKYR; ensure(n>=0, "invalid vector/matrix size %d", n);
   FOR(i,n) r[i] = x / y[i]; }
 
-void mad_vec_divc (const num_t y[], cpx_t x, cpx_t r[], ssz_t n)
+void mad_vec_invc (const num_t y[], cpx_t x, cpx_t r[], ssz_t n)
 { CHKYR; ensure(n>=0, "invalid vector/matrix size %d", n);
   FOR(i,n) r[i] = x / y[i]; }
 
-void mad_vec_divc_r (const num_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t n)
-{ CHKYR; mad_vec_divc(y, CPX(x), r, n); }
+void mad_vec_invc_r (const num_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t n)
+{ CHKYR; mad_vec_invc(y, CPX(x), r, n); }
 
 void mad_vec_dif (const num_t x[], const num_t y[], num_t r[], ssz_t n)
 { CHKXYR; ensure(n>=0, "invalid vector/matrix size %d", n);
@@ -577,16 +590,29 @@ void mad_cvec_divv (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t n)
 { CHKXYR; ensure(n>=0, "invalid vector/matrix size %d", n);
   FOR(i,n) r[i] = x[i] / y[i]; }
 
-void mad_cvec_divn (const cpx_t y[], num_t x, cpx_t r[], ssz_t n)
+void mad_cvec_divn (const cpx_t x[], num_t y, cpx_t r[], ssz_t n)
+{ CHKXR; ensure(n>=0, "invalid vector/matrix size %d", n);
+  ensure(y!=0, "invalid domain (zero divide)");
+  FOR(i,n) r[i] = x[i] / y; }
+
+void mad_cvec_divc (const cpx_t x[], cpx_t y, cpx_t r[], ssz_t n)
+{ CHKXR; ensure(n>=0, "invalid vector/matrix size %d", n);
+  ensure(y!=0, "invalid domain (zero divide)");
+  FOR(i,n) r[i] = x[i] / y; }
+
+void mad_cvec_divc_r (const cpx_t x[], num_t y_re, num_t y_im, cpx_t r[], ssz_t n)
+{ CHKXR; mad_cvec_divc(x, CPX(y), r, n); }
+
+void mad_cvec_invn (const cpx_t y[], num_t x, cpx_t r[], ssz_t n)
 { CHKYR; ensure(n>=0, "invalid vector/matrix size %d", n);
   FOR(i,n) r[i] = x / y[i]; }
 
-void mad_cvec_divc (const cpx_t y[], cpx_t x, cpx_t r[], ssz_t n)
+void mad_cvec_invc (const cpx_t y[], cpx_t x, cpx_t r[], ssz_t n)
 { CHKYR; ensure(n>=0, "invalid vector/matrix size %d", n);
   FOR(i,n) r[i] = x / y[i]; }
 
-void mad_cvec_divc_r (const cpx_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t n)
-{ CHKYR; mad_cvec_divc(y, CPX(x), r, n); }
+void mad_cvec_invc_r (const cpx_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t n)
+{ CHKYR; mad_cvec_invc(y, CPX(x), r, n); }
 
 void mad_cvec_dif  (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t n)
 { CHKXYR; ensure(n>=0, "invalid vector/matrix size %d", n);

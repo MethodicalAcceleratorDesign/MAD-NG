@@ -1,7 +1,9 @@
 -- Script Setup
-local fdif = false                -- use finite difference for matching
-local chrm = true                 -- compute chromatic functions
-local dh   = 1e-6                 -- finite differences step
+local reft = false                -- compute reference twiss
+local chrm = false                -- compute chromatic functions
+local cmap = true                 -- use cmaps (or not)
+local mord = 1                    -- max loop order (1 or 2)
+local dh   = 3e-4                 -- finite differences step
 local fplt = "ex-lhcb1-trkopt.pdf" -- file to output plots
 
 -- Import commands
@@ -14,6 +16,7 @@ local printf, timeit, tblcat in MAD.utility
 local pbtop=beam{particle="proton", energy=6800}
 
 MADX:load("2024_lhcb1_saved.seq", "lhcb1.mad") -- convert and save on need
+MADX:load("lhcb1_var0.mad")
 local lhcb1 in MADX
 lhcb1.beam = pbtop
 
@@ -24,8 +27,10 @@ lhcb1.beam = pbtop
 
 -- Reference Twiss ------------------------------------------------------------
 
+if reft then
+
 -- Compute the reference optic functions
-local tw = timeit(\ -> twiss {sequence=lhcb1, chrom=chrm}, "Twiss Ref")
+local tw = timeit(\ -> twiss {sequence=lhcb1, cmap=cmap}, "Twiss Ref")
 
 plot {
   title    = "Optical Functions",  -- plot title
@@ -42,6 +47,8 @@ plot {
   styles  = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
+
+end
 
 -- First and Second derivative check -------------------------------------------
 
@@ -73,8 +80,7 @@ local kopts = {
 }
 
 -- Loop over orders -------------------
-
-for ord=1,2 do
+for ord=1,mord do
 
 io.write("Checking Order ", ord, "\n")
 
@@ -88,7 +94,7 @@ local x0 = damap { nv=6, np=2, no={mo,mo,mo,mo,1,1}, po=ord, pn={"dqx", "dqy"} }
 MADX.dqx_b1_op = MADX.dqx_b1_op + x0.dqx
 MADX.dqy_b1_op = MADX.dqy_b1_op + x0.dqy
 
-local twp = timeit(\ -> twiss {sequence=lhcb1, X0=x0, trkopt=kopts[ord]}, "Twiss DA")
+local twp = timeit(\ -> twiss {sequence=lhcb1, X0=x0, trkopt=kopts[ord], chrom=chrm, cmap=cmap}, "Twiss DA")
 
 MADX.dqx_b1_op = MADX.dqx_b1_op:get0()
 MADX.dqy_b1_op = MADX.dqy_b1_op:get0()
@@ -137,16 +143,16 @@ end
 
 -- twiss with k1f as dh
 MADX.dqx_b1_op = MADX.dqx_b1_op + dh
-local twfp = timeit(\ -> twiss {sequence=lhcb1, chrom=chrm}, "Twiss FD dx+dh")
+local twfp = timeit(\ -> twiss {sequence=lhcb1, chrom=chrm, cmap=cmap}, "Twiss FD dqx+dh")
 MADX.dqx_b1_op = MADX.dqx_b1_op - 2*dh
-local twfm = timeit(\ -> twiss {sequence=lhcb1, chrom=chrm}, "Twiss FD dx-dh")
+local twfm = timeit(\ -> twiss {sequence=lhcb1, chrom=chrm, cmap=cmap}, "Twiss FD dqx-dh")
 MADX.dqx_b1_op = MADX.dqx_b1_op + dh
 
 -- twiss with k1d as dh
 MADX.dqy_b1_op = MADX.dqy_b1_op + dh
-local twdp = timeit(\ -> twiss {sequence=lhcb1, chrom=chrm}, "Twiss FD dy+dh")
+local twdp = timeit(\ -> twiss {sequence=lhcb1, chrom=chrm, cmap=cmap}, "Twiss FD dqy+dh")
 MADX.dqy_b1_op = MADX.dqy_b1_op - 2*dh
-local twdm = timeit(\ -> twiss {sequence=lhcb1, chrom=chrm}, "Twiss FD dy-dh")
+local twdm = timeit(\ -> twiss {sequence=lhcb1, chrom=chrm, cmap=cmap}, "Twiss FD dqy-dh")
 MADX.dqy_b1_op = MADX.dqy_b1_op + dh
 
 do
@@ -156,43 +162,43 @@ do
   })[ord]
 
   -- extend table with finite difference values
-  twp:addcol("beta11_vs_k1f_fd", \ri -> ((a*twfp.beta11[ri] + b*tw.beta11[ri] + c*twfm.beta11[ri])/(d*dh^e)))
-  twp:addcol("beta11_vs_k1d_fd", \ri -> ((a*twdp.beta11[ri] + b*tw.beta11[ri] + c*twdm.beta11[ri])/(d*dh^e)))
-  twp:addcol("beta22_vs_k1f_fd", \ri -> ((a*twfp.beta22[ri] + b*tw.beta22[ri] + c*twfm.beta22[ri])/(d*dh^e)))
-  twp:addcol("beta22_vs_k1d_fd", \ri -> ((a*twdp.beta22[ri] + b*tw.beta22[ri] + c*twdm.beta22[ri])/(d*dh^e)))
-  twp:addcol("alfa11_vs_k1f_fd", \ri -> ((a*twfp.alfa11[ri] + b*tw.alfa11[ri] + c*twfm.alfa11[ri])/(d*dh^e)))
-  twp:addcol("alfa11_vs_k1d_fd", \ri -> ((a*twdp.alfa11[ri] + b*tw.alfa11[ri] + c*twdm.alfa11[ri])/(d*dh^e)))
-  twp:addcol("alfa22_vs_k1f_fd", \ri -> ((a*twfp.alfa22[ri] + b*tw.alfa22[ri] + c*twfm.alfa22[ri])/(d*dh^e)))
-  twp:addcol("alfa22_vs_k1d_fd", \ri -> ((a*twdp.alfa22[ri] + b*tw.alfa22[ri] + c*twdm.alfa22[ri])/(d*dh^e)))
-  twp:addcol("gama11_vs_k1f_fd", \ri -> ((a*twfp.gama11[ri] + b*tw.gama11[ri] + c*twfm.gama11[ri])/(d*dh^e)))
-  twp:addcol("gama11_vs_k1d_fd", \ri -> ((a*twdp.gama11[ri] + b*tw.gama11[ri] + c*twdm.gama11[ri])/(d*dh^e)))
-  twp:addcol("gama22_vs_k1f_fd", \ri -> ((a*twfp.gama22[ri] + b*tw.gama22[ri] + c*twfm.gama22[ri])/(d*dh^e)))
-  twp:addcol("gama22_vs_k1d_fd", \ri -> ((a*twdp.gama22[ri] + b*tw.gama22[ri] + c*twdm.gama22[ri])/(d*dh^e)))
-  twp:addcol("mu1_vs_k1f_fd"   , \ri -> ((a*twfp.mu1   [ri] + b*tw.mu1   [ri] + c*twfm.mu1   [ri])/(d*dh^e)))
-  twp:addcol("mu1_vs_k1d_fd"   , \ri -> ((a*twdp.mu1   [ri] + b*tw.mu1   [ri] + c*twdm.mu1   [ri])/(d*dh^e)))
-  twp:addcol("mu2_vs_k1f_fd"   , \ri -> ((a*twfp.mu2   [ri] + b*tw.mu2   [ri] + c*twfm.mu2   [ri])/(d*dh^e)))
-  twp:addcol("mu2_vs_k1d_fd"   , \ri -> ((a*twdp.mu2   [ri] + b*tw.mu2   [ri] + c*twdm.mu2   [ri])/(d*dh^e)))
-  twp:addcol("dx_vs_k1f_fd"    , \ri -> ((a*twfp.dx    [ri] + b*tw.dx    [ri] + c*twfm.dx    [ri])/(d*dh^e)))
-  twp:addcol("dx_vs_k1d_fd"    , \ri -> ((a*twdp.dx    [ri] + b*tw.dx    [ri] + c*twdm.dx    [ri])/(d*dh^e)))
-  twp:addcol("dpx_vs_k1f_fd"   , \ri -> ((a*twfp.dpx   [ri] + b*tw.dpx   [ri] + c*twfm.dpx   [ri])/(d*dh^e)))
-  twp:addcol("dpx_vs_k1d_fd"   , \ri -> ((a*twdp.dpx   [ri] + b*tw.dpx   [ri] + c*twdm.dpx   [ri])/(d*dh^e)))
-  twp:addcol("dy_vs_k1f_fd"    , \ri -> ((a*twfp.dy    [ri] + b*tw.dy    [ri] + c*twfm.dy    [ri])/(d*dh^e)))
-  twp:addcol("dy_vs_k1d_fd"    , \ri -> ((a*twdp.dy    [ri] + b*tw.dy    [ri] + c*twdm.dy    [ri])/(d*dh^e)))
-  twp:addcol("dpy_vs_k1f_fd"   , \ri -> ((a*twfp.dpy   [ri] + b*tw.dpy   [ri] + c*twfm.dpy   [ri])/(d*dh^e)))
-  twp:addcol("dpy_vs_k1d_fd"   , \ri -> ((a*twdp.dpy   [ri] + b*tw.dpy   [ri] + c*twdm.dpy   [ri])/(d*dh^e)))
+  twp:addcol("beta11_vs_k1f_fd", \ri -> ((a*twfp.beta11[ri] + b*twp.beta11[ri] + c*twfm.beta11[ri])/(d*dh^e)))
+  twp:addcol("beta11_vs_k1d_fd", \ri -> ((a*twdp.beta11[ri] + b*twp.beta11[ri] + c*twdm.beta11[ri])/(d*dh^e)))
+  twp:addcol("beta22_vs_k1f_fd", \ri -> ((a*twfp.beta22[ri] + b*twp.beta22[ri] + c*twfm.beta22[ri])/(d*dh^e)))
+  twp:addcol("beta22_vs_k1d_fd", \ri -> ((a*twdp.beta22[ri] + b*twp.beta22[ri] + c*twdm.beta22[ri])/(d*dh^e)))
+  twp:addcol("alfa11_vs_k1f_fd", \ri -> ((a*twfp.alfa11[ri] + b*twp.alfa11[ri] + c*twfm.alfa11[ri])/(d*dh^e)))
+  twp:addcol("alfa11_vs_k1d_fd", \ri -> ((a*twdp.alfa11[ri] + b*twp.alfa11[ri] + c*twdm.alfa11[ri])/(d*dh^e)))
+  twp:addcol("alfa22_vs_k1f_fd", \ri -> ((a*twfp.alfa22[ri] + b*twp.alfa22[ri] + c*twfm.alfa22[ri])/(d*dh^e)))
+  twp:addcol("alfa22_vs_k1d_fd", \ri -> ((a*twdp.alfa22[ri] + b*twp.alfa22[ri] + c*twdm.alfa22[ri])/(d*dh^e)))
+  twp:addcol("gama11_vs_k1f_fd", \ri -> ((a*twfp.gama11[ri] + b*twp.gama11[ri] + c*twfm.gama11[ri])/(d*dh^e)))
+  twp:addcol("gama11_vs_k1d_fd", \ri -> ((a*twdp.gama11[ri] + b*twp.gama11[ri] + c*twdm.gama11[ri])/(d*dh^e)))
+  twp:addcol("gama22_vs_k1f_fd", \ri -> ((a*twfp.gama22[ri] + b*twp.gama22[ri] + c*twfm.gama22[ri])/(d*dh^e)))
+  twp:addcol("gama22_vs_k1d_fd", \ri -> ((a*twdp.gama22[ri] + b*twp.gama22[ri] + c*twdm.gama22[ri])/(d*dh^e)))
+  twp:addcol("mu1_vs_k1f_fd"   , \ri -> ((a*twfp.mu1   [ri] + b*twp.mu1   [ri] + c*twfm.mu1   [ri])/(d*dh^e)))
+  twp:addcol("mu1_vs_k1d_fd"   , \ri -> ((a*twdp.mu1   [ri] + b*twp.mu1   [ri] + c*twdm.mu1   [ri])/(d*dh^e)))
+  twp:addcol("mu2_vs_k1f_fd"   , \ri -> ((a*twfp.mu2   [ri] + b*twp.mu2   [ri] + c*twfm.mu2   [ri])/(d*dh^e)))
+  twp:addcol("mu2_vs_k1d_fd"   , \ri -> ((a*twdp.mu2   [ri] + b*twp.mu2   [ri] + c*twdm.mu2   [ri])/(d*dh^e)))
+  twp:addcol("dx_vs_k1f_fd"    , \ri -> ((a*twfp.dx    [ri] + b*twp.dx    [ri] + c*twfm.dx    [ri])/(d*dh^e)))
+  twp:addcol("dx_vs_k1d_fd"    , \ri -> ((a*twdp.dx    [ri] + b*twp.dx    [ri] + c*twdm.dx    [ri])/(d*dh^e)))
+  twp:addcol("dpx_vs_k1f_fd"   , \ri -> ((a*twfp.dpx   [ri] + b*twp.dpx   [ri] + c*twfm.dpx   [ri])/(d*dh^e)))
+  twp:addcol("dpx_vs_k1d_fd"   , \ri -> ((a*twdp.dpx   [ri] + b*twp.dpx   [ri] + c*twdm.dpx   [ri])/(d*dh^e)))
+  twp:addcol("dy_vs_k1f_fd"    , \ri -> ((a*twfp.dy    [ri] + b*twp.dy    [ri] + c*twfm.dy    [ri])/(d*dh^e)))
+  twp:addcol("dy_vs_k1d_fd"    , \ri -> ((a*twdp.dy    [ri] + b*twp.dy    [ri] + c*twdm.dy    [ri])/(d*dh^e)))
+  twp:addcol("dpy_vs_k1f_fd"   , \ri -> ((a*twfp.dpy   [ri] + b*twp.dpy   [ri] + c*twfm.dpy   [ri])/(d*dh^e)))
+  twp:addcol("dpy_vs_k1d_fd"   , \ri -> ((a*twdp.dpy   [ri] + b*twp.dpy   [ri] + c*twdm.dpy   [ri])/(d*dh^e)))
 if chrm then
-  twp:addcol("dmu1_vs_k1f_fd"  , \ri -> ((a*twfp.dmu1  [ri] + b*tw.dmu1  [ri] + c*twfm.dmu1  [ri])/(d*dh^e)))
-  twp:addcol("dmu1_vs_k1d_fd"  , \ri -> ((a*twdp.dmu1  [ri] + b*tw.dmu1  [ri] + c*twdm.dmu1  [ri])/(d*dh^e)))
-  twp:addcol("dmu2_vs_k1f_fd"  , \ri -> ((a*twfp.dmu2  [ri] + b*tw.dmu2  [ri] + c*twfm.dmu2  [ri])/(d*dh^e)))
-  twp:addcol("dmu2_vs_k1d_fd"  , \ri -> ((a*twdp.dmu2  [ri] + b*tw.dmu2  [ri] + c*twdm.dmu2  [ri])/(d*dh^e)))
-  twp:addcol("wx_vs_k1f_fd"    , \ri -> ((a*twfp.wx    [ri] + b*tw.wx    [ri] + c*twfm.wx    [ri])/(d*dh^e)))
-  twp:addcol("wx_vs_k1d_fd"    , \ri -> ((a*twdp.wx    [ri] + b*tw.wx    [ri] + c*twdm.wx    [ri])/(d*dh^e)))
-  twp:addcol("wxp_vs_k1f_fd"   , \ri -> ((a*twfp.phix  [ri] + b*tw.phix  [ri] + c*twfm.phix  [ri])/(d*dh^e)))
-  twp:addcol("wxp_vs_k1d_fd"   , \ri -> ((a*twdp.phix  [ri] + b*tw.phix  [ri] + c*twdm.phix  [ri])/(d*dh^e)))
-  twp:addcol("wy_vs_k1f_fd"    , \ri -> ((a*twfp.wy    [ri] + b*tw.wy    [ri] + c*twfm.wy    [ri])/(d*dh^e)))
-  twp:addcol("wy_vs_k1d_fd"    , \ri -> ((a*twdp.wy    [ri] + b*tw.wy    [ri] + c*twdm.wy    [ri])/(d*dh^e)))
-  twp:addcol("wyp_vs_k1f_fd"   , \ri -> ((a*twfp.phiy  [ri] + b*tw.phiy  [ri] + c*twfm.phiy  [ri])/(d*dh^e)))
-  twp:addcol("wyp_vs_k1d_fd"   , \ri -> ((a*twdp.phiy  [ri] + b*tw.phiy  [ri] + c*twdm.phiy  [ri])/(d*dh^e)))
+  twp:addcol("dmu1_vs_k1f_fd"  , \ri -> ((a*twfp.dmu1  [ri] + b*twp.dmu1  [ri] + c*twfm.dmu1  [ri])/(d*dh^e)))
+  twp:addcol("dmu1_vs_k1d_fd"  , \ri -> ((a*twdp.dmu1  [ri] + b*twp.dmu1  [ri] + c*twdm.dmu1  [ri])/(d*dh^e)))
+  twp:addcol("dmu2_vs_k1f_fd"  , \ri -> ((a*twfp.dmu2  [ri] + b*twp.dmu2  [ri] + c*twfm.dmu2  [ri])/(d*dh^e)))
+  twp:addcol("dmu2_vs_k1d_fd"  , \ri -> ((a*twdp.dmu2  [ri] + b*twp.dmu2  [ri] + c*twdm.dmu2  [ri])/(d*dh^e)))
+  twp:addcol("wx_vs_k1f_fd"    , \ri -> ((a*twfp.wx    [ri] + b*twp.wx    [ri] + c*twfm.wx    [ri])/(d*dh^e)))
+  twp:addcol("wx_vs_k1d_fd"    , \ri -> ((a*twdp.wx    [ri] + b*twp.wx    [ri] + c*twdm.wx    [ri])/(d*dh^e)))
+  twp:addcol("wxp_vs_k1f_fd"   , \ri -> ((a*twfp.phix  [ri] + b*twp.phix  [ri] + c*twfm.phix  [ri])/(d*dh^e)))
+  twp:addcol("wxp_vs_k1d_fd"   , \ri -> ((a*twdp.phix  [ri] + b*twp.phix  [ri] + c*twdm.phix  [ri])/(d*dh^e)))
+  twp:addcol("wy_vs_k1f_fd"    , \ri -> ((a*twfp.wy    [ri] + b*twp.wy    [ri] + c*twfm.wy    [ri])/(d*dh^e)))
+  twp:addcol("wy_vs_k1d_fd"    , \ri -> ((a*twdp.wy    [ri] + b*twp.wy    [ri] + c*twdm.wy    [ri])/(d*dh^e)))
+  twp:addcol("wyp_vs_k1f_fd"   , \ri -> ((a*twfp.phiy  [ri] + b*twp.phiy  [ri] + c*twfm.phiy  [ri])/(d*dh^e)))
+  twp:addcol("wyp_vs_k1d_fd"   , \ri -> ((a*twdp.phiy  [ri] + b*twp.phiy  [ri] + c*twdm.phiy  [ri])/(d*dh^e)))
 end
 end
 
@@ -239,8 +245,12 @@ if chrm then
 end
 end
 
+-- debug bet
+twp:write("twiss_prms_bet_"..MAD.env.version..".tfs",
+          {'name','kind','s',"beta11_vs_k1f_dif", "beta11_vs_k1f_da", "beta11_vs_k1f_fd"})
+
 -- save table
-twp:write"twiss_prms.tfs"
+twp:write("twiss_prms_"..MAD.env.version..".tfs")
 
 io.write("Making plots...\n")
 
@@ -567,6 +577,6 @@ plot {
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
-end
+end -- chrm
 
 end -- over order ord
