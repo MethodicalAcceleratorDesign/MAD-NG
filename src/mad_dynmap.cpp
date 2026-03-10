@@ -17,7 +17,7 @@
 */
 
 // control mdump code (+2.5% code size), (basic) speed and C++ tests
-#define TPSA_DBGMDUMP 0
+#define TPSA_DBGMDUMP 1
 #define TPSA_SPDTESTS 0
 #define TPSA_CPPTESTS 0
 
@@ -194,8 +194,8 @@ inline void (mdump) (cflw<M> &m, str_t s, int n)
            << p.py.set("PY")
            << p.t .set("T" )
            << p.pt.set("PT");
+    printf("\n");
   }
-  printf("\n");
 }
 
 template <typename M, typename T=M::T>
@@ -212,6 +212,7 @@ inline void (tdump) (cflw<M> &m, T &t, str_t s, str_t f, int n)
   else {
     printf(" [%p->%p->%p]\n", (void*)&t, (void*)t.ptr(), *(void**)t.ptr());
     stdout << t;
+    printf("\n");
   }
 }
 
