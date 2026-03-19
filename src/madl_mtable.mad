@@ -1024,8 +1024,9 @@ local function rem_row (tbl, key, ref_)
   rem_idx(data, ri) -- remove before update
   shf_idx(data, ri, -1)
   for ci=0,data.nc-data.ng do
-    if isa_matrix(data[ci])
-    then data[ci]:shiftv(ri, -1):seti(nr, 0):reshape(nr-1)
+    if isa_matrix(data[ci]) then
+      if ri < nr then data[ci]:shiftv(ri+1, -1) end
+      data[ci]:seti(nr, 0):reshape(nr-1)
     else table.move(data[ci], ri+1, nr, ri)[nr] = nil
   end end
   data.nr = nr-1
@@ -1059,43 +1060,44 @@ local pfalse = \p,_ ,   r,i -> p(r,i) or false
 local l2t = \l -> not is_table(l) and {[l]=true} or is_nil(l[1]) and l or lst2tbl(l)
 
 local function foreach (tbl, act, rng_, sel_, not_) -- action, range, selection, default
-  if (is_callable(rng_) or is_rawtable(rng_) and is_nil(rng_[1])) and is_nil(sel_) then
+  if is_nil(sel_) and (is_callable(rng_) or is_rawtable(rng_) and is_nil(rng_[1])) then
     sel_, rng_ = rng_, nil -- right shift [rng_: number, string, list or range]
   end
   if is_rawtable(act) then -- extract
-    if is_nil(rng_) then rng_ = act.range   end
-    if is_nil(not_) then not_ = act.default end
-    if is_nil(sel_) then sel_ = act         end
+    if is_nil(rng_) then rng_ = act.range             end
+    if is_nil(not_) then not_ = act.default == 'none' end
+    if is_nil(sel_) then sel_ = act                   end
     act = act.action
   end
 
   local data, p = tbl.__dat
   if is_rawtable(sel_) then       -- logically and'ed selections
-    if is_nil(not_) and (sel_.default == 'none' or sel_.default == true) then
-      not_ = true
-    end
     local op = not_ ~= true and ptrue or pfalse
+    local rc = sel_.refcol or tbl.refcol
     if sel_.select ~= nil then
       assert(is_callable(sel_.select), "invalid select (callable expected)")
       op, p = pand, bind2st(op, sel_.select, p)
     end
+    if sel_.pattern ~= nil then
+      assert(is_string(sel_.pattern), "invalid pattern (string expected)")
+      assertf(data.cidx[rc], "unexpected 'pattern' selection (no '%s' column)", rc)
+      op, p = pand, bind2st(op, bind2st(pnam,data[data.cidx[rc]],sel_.pattern), p)
+    end
     if sel_.list ~= nil then
-      local cname = is_table(sel_.list) and sel_.list.colname or 'name'
-      assertf(data.cidx[cname], "unexpected 'list' selection (no '%s' column)", cname)
-      op, p = pand, bind2st(op, bind2st(ptbl,data[data.cidx[cname]],l2t(sel_.list)), p)
+      local rc = is_string(sel_.list.colname) and sel_.list.colname or rc
+      assert(is_string(rc), "invalid 'list' column selection (string expected)")
+      assertf(data.cidx[rc], "unexpected 'list' selection (no '%s' column)", rc)
+      op, p = pand, bind2st(op, bind2st(ptbl,data[data.cidx[rc]],l2t(sel_.list)), p)
     end
     if sel_.table ~= nil then
-      assert(data.cidx.name, "unexpected 'table' selection (no 'name' column)")
-      op, p = pand, bind2st(op, bind2st(ptbl,data[data.cidx.name],l2t(sel_.table)), p)
+      local rc = is_string(sel_.list.colname) and sel_.list.colname or rc
+      assert(is_string(rc), "invalid 'table' column selection (string expected)")
+      assertf(data.cidx[rc], "unexpected 'table' selection (no '%s' column)", rc)
+      op, p = pand, bind2st(op, bind2st(ptbl,data[data.cidx[rc]],l2t(sel_.table)), p)
     end
     if sel_.kind ~= nil then
       assert(data.cidx.kind, "unexpected 'kind' selection (no 'kind' column)")
       op, p = pand, bind2st(op, bind2st(ptbl,data[data.cidx.kind],l2t(sel_.kind)), p)
-    end
-    if sel_.pattern ~= nil then
-      assert(is_string(sel_.pattern), "invalid pattern (string expected)")
-      assert(data.cref, "unexpected pattern selection (no reference column)")
-      op, p = pand, bind2st(op, bind2st(pnam,data[data.cref],sel_.pattern), p)
     end
     if sel_.selected ~= nil then
       assert(is_boolean(sel_.selected), "invalid selected (boolean expected)")
@@ -1105,11 +1107,16 @@ local function foreach (tbl, act, rng_, sel_, not_) -- action, range, selection,
     p = is_boolean (sel_) and bind2st(psel, data[0], sel_)         or
         is_string  (sel_) and assert(data.cref, "unexpected pattern selection (no reference column)")
                           and bind2st(pnam, data[data.cref], sel_) or
-        is_callable(sel_) and sel_                                 or
-        is_mappable(sel_) and assert(data.cidx.name, "unexpected list or table selection (no 'name' column)")
-                          and bind2st(ptbl, data[data.cidx.name], l2t(sel_)) or nil
+        is_callable(sel_) and sel_                                 or nil
   end
-  if is_nil(p) then p = (not_ ~= true or rng_) and ltrue or lfalse end
+  if is_nil(p) then
+    if is_mappable(sel_) then -- remaining case
+      assert(data.cref, "unexpected list or table selection (no reference column)")
+      p = bind2st(ptbl, data[data.cref], l2t(sel_))
+    else
+      p = (not_ ~= true or rng_) and ltrue or lfalse
+    end
+  end
 
   assert(is_mtable  (tbl), "invalid argument #1 (mtable expected)")
   assert(is_callable(act), "invalid argument #2 (callable expected)")
