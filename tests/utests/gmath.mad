@@ -42,7 +42,7 @@ local ceil, floor, frac, trunc, round, abs, sqrt,  -- (generic functions)
       sumsqr, sumabs, minabs, maxabs, sumsqrl, sumabsl,
       minabsl, maxabsl, sumsqrr, sumabsr, minabsr, maxabsr,
       randnew, xrandnew, randset, randseed, rand, randi, randn, randtn, randp in MAD.gmath   -- extra functions that relies on gmath itself
-  
+
 local deg, fmod, max, min, modf, frexp, rad, ldexp, rad, deg, randomseed, random in math
 
 local tostring, complex, matrix, totable     in MAD
@@ -654,7 +654,7 @@ function TestGmath:testCot()
     3, pi/2, pi/3, pi/4, pi/5, pi/6, 0.1
   }
   local expected = {
-    inf, 4.5035996273704960000e15, 2.2517998136852480000e15, 57.289961630759424687, 
+    inf, 4.5035996273704960000e15, 2.2517998136852480000e15, 57.289961630759424687,
     28.636253282915603551, 11.430052302761343067, 5.6712818196177095310,
     3.7320508075688772935, 1.7320508075688772935, 1.0000000000000000000,
     0.57735026918962576451, 0, -0.57735026918962576451,-1.0000000000000000000,
@@ -663,10 +663,10 @@ function TestGmath:testCot()
   for i,v in ipairs(values.rad) do
     if v > 0 then
       assertEquals      (cot( v) - -cot(-v)       , 0         )
-      assertEquals      (cot( v) - 1/tan(v)       , 0         )      
+      assertEquals      (cot( v) - 1/tan(v)       , 0         )
       assertAlmostEquals(cot( v) - cos( v)/sin( v), 0, 16*eps )
       assertAlmostEquals(cot(-v) - cos(-v)/sin(-v), 0, 16*eps )
-      if expected[i] < inf then 
+      if expected[i] < inf then
         assertAlmostEquals(   1   /tan( v), expected[i], 32*eps )
         assertAlmostEquals(cos( v)/sin( v), expected[i], 32*eps )
       end
@@ -1037,7 +1037,7 @@ function TestGmath:testAsinc()
   assertNaN( asinc( nan) )
 end
 
-function TestGmath:testAsinhc() 
+function TestGmath:testAsinhc()
   for _,v in ipairs(values.num) do
     if v < 1e-7 then
       assertEquals( asinhc( v), 1 )
@@ -1139,17 +1139,20 @@ function TestGmath:testWf()
   for _,x in ipairs(values.num) do
     for _,y in ipairs(values.num) do
       local z = x + y * 1i
-      if abs(z) < inf then
+      if cabs(z) < inf then
         assertEquals( wf(z) - erfcx(-1i*z), 0 + 0*1i)
-        if real(sqr(z)) > -700 and abs(sqr(-1i*z)) < 700 then --ln(1e308) = 709.196...  For real(sqr(z)) < -700, exp(-sqr(z)) = inf and for abs(sqr(-1i*z)) > 700, erfc(-1i*z) = 1+infi
+        if real(sqr(z)) > -700 and cabs(sqr(-1i*z)) < 700 then --ln(1e308) = 709.196...  For real(sqr(z)) < -700, exp(-sqr(z)) = inf and for |sqr(-1i*z)| > 700, erfc(-1i*z) = 1+infi
           local result = wf(z) - (exp(-sqr(z)) * erfc(-1i*z))
           assertAlmostEquals(real(result), 0, eps )
           assertAlmostEquals(imag(result), 0, eps)
         end
       end
     end
-    assertEquals( wf(complex(x, 0)) - erfcx(-1i*x), 0 + 0*1i)
-    assertEquals( wf(x) - imag(erfcx(-1i*x)), 0) --The evaluation of purely real values returns im(w(z))
+    if x < inf then
+      ! erfcx(-1i*inf) is NaN, while wf(inf) is a scalar
+      assertEquals( wf(complex(x, 0)) - erfcx(-1i*x), 0 + 0*1i)
+      assertEquals( wf(x) - real(erfcx(-1i*x)), 0) --The evaluation of purely real values returns Re(w(z))
+    end
   end
 end
 
@@ -1157,7 +1160,7 @@ function TestGmath:testErfi()
   for _,x in ipairs(values.num) do
     for _,y in ipairs(values.num) do
       local z = x + y * 1i
-      if x < 26 and abs(z) < inf then --see https://www.wolframalpha.com/input?i=erfi%2826%29
+      if x < 26 and cabs(z) < inf then --see https://www.wolframalpha.com/input?i=erfi%2826%29
         assertEquals(-1i * erf(1i*z) - erfi(z), 0+0*1i)
       end
     end
@@ -1173,13 +1176,15 @@ function TestGmath:testDawson()
         assertAlmostEquals((dawson(x) - 0.5 * sqrt(pi) * exp(-sqr(x)) * erfi(x)), 0, eps) --absolute error
       end
     end
-    
+
     for _,y in ipairs(values.num) do
       local z = x + y * 1i
-      if abs(z) < sqrt(log(huge)) then
-        local result = dawson(z) - 0.5 * sqrt(pi) * exp(-sqr(z)) * erfi(z)
-        if abs(dawson(z)) > 2 or abs(dawson(z)) < 1 and abs(dawson(z)) > 0 and real(z) ~= tiny then --for x = tiny dawson(x) = x but exp(-sqr(x)) = 0
-          result = result / dawson(z)               --relative error
+      if cabs(z) < sqrt(log(huge)) then
+        local daw = dawson(z)
+        local result = daw - 0.5 * sqrt(pi) * exp(-sqr(z)) * erfi(z)
+        local daw_abs = cabs(daw)
+        if daw_abs > 2 or daw_abs < 1 and daw_abs > 0 and real(z) ~= tiny then --for x = tiny dawson(x) = x but exp(-sqr(x)) = 0
+          result = result / daw                      --relative error
           assertAlmostEquals(real(result), 0, 16*eps)
           assertAlmostEquals(imag(result), 0, 16*eps)
         elseif real(z) ~= tiny then
@@ -1566,9 +1571,9 @@ end
 function TestGmath:testArc2len()
   for _,a in ipairs(values.rad) do
     for _,l in ipairs(values.num) do
-      assertEquals(arc2len(l, a), l*sinc(a/2)*cos(a))
-      if a ~= 0 and l > tiny and l < huge then 
-        assertAlmostEquals((arc2len(l, a) - 2*l/a * sin(a/2) * cos(a)) / arc2len(l, a), 0)
+      assertEquals(arc2len(l, a), l*sinc(a/2)*cos(a/2))
+      if a ~= 0 and l > tiny and l < huge then
+        assertAlmostEquals((arc2len(l, a) - 2*l/a * sin(a/2) * cos(a/2)) / arc2len(l, a), 0, 2*eps)
       elseif l < huge then
         assertAlmostEquals(arc2len(l, a), l)
       end
@@ -1580,7 +1585,7 @@ function TestGmath:testCord2Arc()
   for _,a in ipairs(values.rad) do
     for _,l in ipairs(values.num) do
       assertEquals(cord2arc(l, a), l/sinc(a/2))
-      if a ~= 0 and l > tiny and l < huge then 
+      if a ~= 0 and l > tiny and l < huge then
         assertAlmostEquals((cord2arc(l, a) - (l * a / 2) / sin(a/2)) / cord2arc(l, a), 0)
       elseif l < huge then --for when a == 0 and l is tiny, we get l
         assertAlmostEquals(cord2arc(l, a), l)
@@ -1592,7 +1597,7 @@ end
 function TestGmath:testCord2len()
   for _,a in ipairs(values.rad) do
     for _,l in ipairs(values.num) do
-      assertEquals(cord2len(l, a), l*cos(a))
+      assertEquals(cord2len(l, a), l*cos(a/2))
     end
   end
 end
@@ -1600,9 +1605,9 @@ end
 function TestGmath:testLen2arc()
   for _,a in ipairs(values.rad) do
     for _,l in ipairs(values.num) do
-      assertEquals(len2arc(l, a), l/(sinc(a/2)*cos(a)))
-      if a ~= 0 and l > tiny and l < huge then 
-        assertAlmostEquals((len2arc(l, a) - l / ( 2 / a * sin(a/2) * cos(a))) / len2arc(l, a), 0)
+      assertEquals(len2arc(l, a), l/(sinc(a/2)*cos(a/2)))
+      if a ~= 0 and l > tiny and l < huge then
+        assertAlmostEquals((len2arc(l, a) - l / ( 2 / a * sin(a/2) * cos(a/2))) / len2arc(l, a), 0)
       elseif l < huge then
         assertAlmostEquals(len2arc(l, a), l)
       end
@@ -1613,7 +1618,7 @@ end
 function TestGmath:testLen2cord()
   for _,a in ipairs(values.rad) do
     for _,l in ipairs(values.num) do
-      assertEquals(len2cord(l, a), l/cos(a))
+      assertEquals(len2cord(l, a), l/cos(a/2))
     end
   end
 end
@@ -1626,7 +1631,7 @@ function TestGmath:testSumsqr()
         assertEquals(sumsqr(x,-y), x^2 + y^2)
       end
     end
-    assertEquals(sumsqr(-x, 0), x*x)  
+    assertEquals(sumsqr(-x, 0), x*x)
   end
   assertEquals(sumsqr(inf, 23), inf)
   assertNaN(sumsqr(inf, nan))
@@ -1641,7 +1646,7 @@ function TestGmath:testSumabs()
         assertEquals(sumabs(x,-y), abs(x) + abs(y))
       end
     end
-    assertEquals(sumabs(-x, 0), x)  
+    assertEquals(sumabs(-x, 0), x)
   end
   assertEquals(sumabs(inf, 23), inf)
   assertNaN(sumabs(inf, nan))
@@ -2251,7 +2256,7 @@ function TestGmath:testSign1()
   assertNaN( sign1(nan) )
   --Note: The assert below is failing on Ubuntu 22.04.1 LTS specifically for -0.0
   --In a standalone c file, using the same compiling options, -0.0 gives the
-  --correct result. 
+  --correct result.
   assertEquals( sign1(-   0.0) , -1 )
 end
 
@@ -2686,26 +2691,26 @@ function TestGmath:testPowOp()
 end
 
 function TestGmath:testEmul()
-  for _, x in ipairs(values.num) do 
+  for _, x in ipairs(values.num) do
     local mat = matrix(3, 3):fill(x)
-    for _, y in ipairs(values.num) do 
+    for _, y in ipairs(values.num) do
       if x * y < inf then
-        assertAllAlmostEquals(totable(emul(mat, y)), totable(matrix(3,3):fill(x*y)), x*y*eps)
+        assertTrue(emul(mat, y):eq(matrix(3,3):fill(x*y), x*y*eps))
       end
     end
-    for i, v in ipairs(emul(mat, nan)) do 
+    for i, v in ipairs(emul(mat, nan)) do
       assertNaN(v)
     end
   end
 end
 
 function TestGmath:testEdiv()
-  for _, x in ipairs(values.num) do 
+  for _, x in ipairs(values.num) do
     local mat = matrix(3, 3):fill(x)
-    for _, y in ipairs(values.num) do 
-      if y ~= 0 and y < huge then 
+    for _, y in ipairs(values.num) do
+      if y ~= 0 and y < huge then
         if not (x / y == inf) then
-          assertAllAlmostEquals(totable(ediv(mat, y)), totable(matrix(3,3):fill(x/y)), x/y*eps)
+          assertTrue(ediv(mat, y):eq(matrix(3,3):fill(x/y), x/y*eps))
         else
           for i, v in ipairs(ediv(mat, y)) do
             assertInf(v)
@@ -2717,10 +2722,10 @@ function TestGmath:testEdiv()
 end
 
 function TestGmath:testEmod()
-  for _, x in ipairs(values.num) do 
+  for _, x in ipairs(values.num) do
     if x < inf then
       local mat = matrix(3, 3):fill(x)
-      for _, y in ipairs(values.num) do 
+      for _, y in ipairs(values.num) do
         if y ~= 0 and y < inf then
           assertEquals(emod(mat, y), matrix(3,3):fill(x%y))
         end
@@ -2730,11 +2735,11 @@ function TestGmath:testEmod()
 end
 
 function TestGmath:testEpow()
-  for _, x in ipairs(values.num) do 
+  for _, x in ipairs(values.num) do
     local mat = matrix(3, 3):fill(x)
-    for _, y in ipairs(values.num) do 
+    for _, y in ipairs(values.num) do
       if x^y < inf then
-        assertAllAlmostEquals(totable(epow(mat, y)), totable(matrix(3,3):fill(x^y)), 45 * x^y * eps) --Sometimes fails for 1e-100 at 10 eps on Linux
+        assertTrue(epow(mat, y):eq(matrix(3,3):fill(x^y), 45 * x^y * eps)) --Sometimes fails for 1e-100 at 10 eps on Linux
       else
         for _, val in ipairs(epow(mat, y)) do
           assertInf(val)
@@ -2782,7 +2787,7 @@ function TestGmath:testUnit()
   for _,x in ipairs(values.num) do
     if x > tiny and x < huge then
       assertEquals(unit(x), 1)
-      assertEquals(unit(-x), -1) 
+      assertEquals(unit(-x), -1)
     end
   end
 end
@@ -2881,15 +2886,15 @@ end
 function TestGmath:testRand()
   local actual = {}
   local expected = {
-    0.64790572115133815423, 0.63996214375622351156, 0.66062163503512216778, 
-    0.42195014423780574653, 0.50296307961382935581, 0.50501842683784370358, 
-    0.50799003979142587362, 0.33732449165468403329, 0.26206206699016920680, 
+    0.64790572115133815423, 0.63996214375622351156, 0.66062163503512216778,
+    0.42195014423780574653, 0.50296307961382935581, 0.50501842683784370358,
+    0.50799003979142587362, 0.33732449165468403329, 0.26206206699016920680,
     0.64155925876471542324, 0.88266386953719400132, 0.27554277699449758465
   }
   local expected2 = {
-    0.96211623335140106228, 0.72345516061227899129, 0.31720586678753925902, 
-    0.97106970668738279429, 0.74843939418889871007, 0.62768797702781742309, 
-    0.37922874628676139785, 0.94358733993352594815, 0.81856159186609045442, 
+    0.96211623335140106228, 0.72345516061227899129, 0.31720586678753925902,
+    0.97106970668738279429, 0.74843939418889871007, 0.62768797702781742309,
+    0.37922874628676139785, 0.94358733993352594815, 0.81856159186609045442,
     0.58755273288951737065, 0.40904885059279583182, 0.40835934685829200497,
   }
   local prng = randnew()
@@ -2912,25 +2917,25 @@ end
 function TestGmath:testXrand()
   local actual1 = {}
   local expected1 = {
-    0.54963091900000005108, 0.65469465900000001213, 0.44267782000000005516, 
-    0.99510112400000005906, 0.73531900400000005380, 0.22085843600000001907, 
-    0.65031164200000002307, 0.82019688500000009768, 0.25121093500000002408, 
+    0.54963091900000005108, 0.65469465900000001213, 0.44267782000000005516,
+    0.99510112400000005906, 0.73531900400000005380, 0.22085843600000001907,
+    0.65031164200000002307, 0.82019688500000009768, 0.25121093500000002408,
     0.90104713700000005350, 0.75053997000000005624, 0.20812389900000000109
   }
   local expected2 = {
-    0.34899324400000003576, 0.36013278900000000871, 0.02462939500000000184, 
-    0.35273848900000004392, 0.97948683900000010905, 0.36037473100000000370, 
-    0.22338015700000002361, 0.52204461000000002002, 0.81736849000000000309, 
+    0.34899324400000003576, 0.36013278900000000871, 0.02462939500000000184,
+    0.35273848900000004392, 0.97948683900000010905, 0.36037473100000000370,
+    0.22338015700000002361, 0.52204461000000002002, 0.81736849000000000309,
     0.99618244200000005684, 0.32739817000000004388, 0.99471062900000006834
   }
   local actual2 = {}
   local xprng = xrandnew()
-  for x = 1, 12 do 
+  for x = 1, 12 do
     actual1[x] = xprng:rand()
   end
   assertEquals(actual1, expected1)
   randseed(xprng, 624)
-  for x = 1, 12 do 
+  for x = 1, 12 do
     actual2[x] = xprng:rand()
   end
   assertEquals(actual2, expected2)
@@ -2940,7 +2945,7 @@ function TestGmath:testRandi()
   local expected = {
     {
       508008169, 310561559, 712407570,
-      510513574, 370982554, 535041786, 
+      510513574, 370982554, 535041786,
       299823592, 59476135 , 281578085,
       892771787, 229505970, 493508799,
     },
@@ -2970,8 +2975,8 @@ end
 
 function TestGmath:testRandn()
   local expected = {-0.59367759959787891333,  0.47214364743257331014,  1.91987525000020720078,
-                     1.41011968242511032123,  0.27280488692564197617,  0.43302395404008592328, 
-                     0.71984890346562513397,  0.45254445813950616717,  0.59272217168690422007, 
+                     1.41011968242511032123,  0.27280488692564197617,  0.43302395404008592328,
+                     0.71984890346562513397,  0.45254445813950616717,  0.59272217168690422007,
                      1.11977944494989722912, -1.28496612375013841145, -1.41819385647631701630}
   local actual = {}
   local prng = randnew()
@@ -2986,15 +2991,15 @@ function TestGmath:testRandtn()
   local actual1 = {}
   local expected1 = {
     -0.17433050961207705032,  0.91640130935937591516,  1.25264044476623825908,
-     0.09460046918422167217,  0.56264862316656683028, -0.76473539212898278272, 
-    -0.73504656819177183191, -0.88204239462497513458, -0.24998558619038196982, 
+     0.09460046918422167217,  0.56264862316656683028, -0.76473539212898278272,
+    -0.73504656819177183191, -0.88204239462497513458, -0.24998558619038196982,
     -0.30663770909688797817, -0.81735798792262825962, -0.92991061375151351509
   }
   local actual2 = {}
   local expected2 = {
      0.05751560244279935868, -1.75122425324587194240, 0.05677259742661162900,
-    -0.60996728155055912612,  0.30330420331927032684, 0.50811655426052582119, 
-    -1.91011478861435168852,  1.37878152223321959191, 1.21854317024685010473, 
+    -0.60996728155055912612,  0.30330420331927032684, 0.50811655426052582119,
+    -1.91011478861435168852,  1.37878152223321959191, 1.21854317024685010473,
      0.38248131669308188529,  1.27207118107000827223, 1.72893848985886422476,
   }
   local prng = randnew()
@@ -3111,7 +3116,7 @@ function TestGmath:testDelegation()
   mock.acosh  = \ 'mock.acosh '       assertEquals(acosh (mock), 'mock.acosh ')
   mock.atanh  = \ 'mock.atanh '       assertEquals(atanh (mock), 'mock.atanh ')
   mock.acoth  = \ 'mock.acoth '       assertEquals(acoth (mock), 'mock.acoth ')
-  
+
   mock.asinc  = \ 'mock.asinc '       assertEquals(asinc (mock), 'mock.asinc ')
   mock.asinhc = \ 'mock.asinhc'       assertEquals(asinhc(mock), 'mock.asinhc')
   mock.sinc   = \ 'mock.sinc  '       assertEquals(sinc  (mock), 'mock.sinc  ')
@@ -3133,7 +3138,7 @@ function TestGmath:testDelegation()
   mock.conj   = \ 'mock.conj  '       assertEquals(conj  (mock), 'mock.conj  ')
   mock.proj   = \ 'mock.proj  '       assertEquals(proj  (mock), 'mock.proj  ')
   mock.rect   = \ 'mock.rect  '       assertEquals(rect  (mock), 'mock.rect  ')
-  mock.reim   = \ 'mock.reim  '       assertEquals({reim  (mock)}, {'mock.real  ', 'mock.imag  '}) 
+  mock.reim   = \ 'mock.reim  '       assertEquals({reim  (mock)}, {'mock.real  ', 'mock.imag  '})
   mock.polar  = \ 'mock.polar '       assertEquals(polar (mock), 'mock.polar ')
 
   mock.hypot  = \ 'mock.hypot '       assertEquals(hypot (mock), 'mock.hypot ')
