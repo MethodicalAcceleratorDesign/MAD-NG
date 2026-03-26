@@ -187,7 +187,7 @@ inline void (mdump) (cflw<M> &m, str_t s, int n)
     printf("% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e",
              p.x[0], p.px[0],  p.y[0], p.py[0],  p.t[0], p.pt[0]);
   else if (m.dbg == 2) {
-    FOR (i,6)
+    FOR (i,7)
       printf("% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e  ",
                p.x[i], p.px[i],  p.y[i], p.py[i],  p.t[i], p.pt[i]);
   }
