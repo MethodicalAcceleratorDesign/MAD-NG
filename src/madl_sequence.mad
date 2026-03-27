@@ -36,8 +36,8 @@ local ident, second, bind1st, bind2nd, bind2st, ltrue, lfalse,
       sub, opstr, btst                                           in MAD.gfunc
 local sequence, marker, drift, changedir, changeref, flags       in MAD.element
 local minlen, eps                                                in MAD.constant
-local strtrim, strsplit, strbracket, bsearch, assertf, errorf,
-      openfile, lst2tbl                                          in MAD.utility
+local strtrim, strsplit, strbracket, bsearch, openfile,
+      printf, assertf, errorf, lst2tbl                           in MAD.utility
 local is_nil, is_boolean, is_logical, is_number, is_integer,
       is_nznatural, is_index, is_string, is_table, is_rawtable,
       is_iterable, is_mappable, is_callable, is_range, is_element,
@@ -125,13 +125,6 @@ local function check_drift (seq, idx)
   if ds < -minlen then seq_poserr("element", seq, idx, data.spos[idx]-ds) end
 end
 
--- check shared element
-local function check_shared (seq, idx)
-  local elm = seq.__dat[idx]
-  if is_nil(elm:raw_get'l') then return elm.parent end
-  seq_error("invalid shared element (l defined)", seq, idx, elm)
-end
-
 -- check sequence $start and $stop integrity
 local function check_mark (seq)
   local data = seq.__dat
@@ -216,13 +209,32 @@ local function check_index (seq)
   eidx['#s'], eidx['#e'], eidx['#S'], eidx['#E'] = s, e, S, E
 end
 
+local function check_epub (seq)
+  local env, dbg = seq.__env, option.debug
+
+  if is_nil(env) then return end
+
+  for idx,elm,s,l in seq:iter() do
+    local nam = elm.name
+    if nam:sub(1,1) ~= "$" then
+      if elm ~= env[nam] then
+        printf("publish corrupted for %-20s %5d %11.3f %7.3f  %-45s : %-45s\n",
+                nam, idx, s, l, tostring(elm), tostring(env[nam]))
+      elseif dbg >= 3 then
+        printf("publish check for %-20s %5d %11.3f %7.3f  %-45s %s\n",
+                nam, idx, s, l, tostring(elm), tostring(elm == env[nam]))
+      end
+    end
+  end
+end
+
 local function check_sequ (seq)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
   assert(seq.dir == 1 or seq.dir == -1, "invalid direction (1 or -1 expected)")
-  -- trace(2, "checking sequence '%s'", seq.name)
   check_pos  (seq)
   check_index(seq)
   check_mark (seq)
+  check_epub (seq)
   return seq
 end
 
@@ -560,9 +572,6 @@ local function build_pos (seq, sref)
       elseif data[idx].is_thin and data.ds[idx] ~= 0 then
         seq_lenerr("thin element", seq, idx, data[idx].l)
       end
-      if data[idx].shared == true then -- shared element
-        data[idx] = check_shared(seq, idx)
-      end
       pos = data.spos[idx]+data.ds[idx]
       idx = idx + 1
     else                     -- subsequence
@@ -760,6 +769,20 @@ local function clear_sub (seq, sref)
   build_idx(data)
 end
 
+-- replace "shared" element by parent
+local function clear_shr (seq)
+  local data = seq.__dat
+  for idx=2,data.ne-1 do
+    local elm = data[idx]
+    if elm.shared == true then
+      if elm:raw_get'l' then
+        seq_error("invalid shared element (l defined)", seq, idx, elm)
+      end
+      data[idx] = elm.parent
+    end
+  end
+end
+
 -- finalize sequence
 local function fini_sequ (seq)
   local data = seq.__dat
@@ -783,7 +806,7 @@ local function init_mm (seq)
   local n = seq:raw_len()
 
   -- check if sequence needs __dat
-  if n == 0 and is_nil(seq:raw_get'l') then return seq end
+  -- if n == 0 and is_nil(seq:raw_get'l') then return seq end
 
   local sref = { seq=seq, dir=seq.dir, sdir={} }
   local data = table.new(n+2,8)
@@ -802,27 +825,34 @@ local function init_mm (seq)
   data.ne   = ne
   seq.__dat = data
 
-  -- set minlen to 1e-6 [m] and check rbarc and nopub for MAD-X compatibility
-  if option.madxenv then
-    seq.minlen = 1e-6
-    if is_nil(seq.rbarc) then
-      seq.rbarc = option.madxenv.option.rbarc == true or nil
+  -- 1st build of dictionnary
+  build_idx(data)
+
+  -- check if sequence has an environment attached
+  local env = seq.__env
+  if env then
+    if env == MADX or is_instanceOf(env,MADX) then
+      seq.minlen = 1e-6
     end
+
     if is_nil(seq.nopub) then
-      seq.nopub = option.madxenv.option.nopub == true or nil
+      seq.nopub = env.option.nopub == true or nil
+    end
+
+    seq:publish{keep_pos=true} -- publish elements, must be before rbend_wrp
+
+    if is_nil(seq.rbarc) then
+      seq.rbarc = env.option.rbarc == true or nil
     end
   end
 
-  -- process MADX-like rbends
+  -- process rbarc rbends, must be before build-pos
   if seq.rbarc == true then rbend_wrp(data) end
 
-  build_idx(data)
   build_pos(seq, sref)
-  clear_sub(seq, sref)
+  clear_sub(seq, sref) -- rebuild dict
+  clear_shr(seq)
   fini_sequ(seq)
-
-  -- publish sequence elements in MADX environment
-  if option.madxenv then seq:publish(option.madxenv) end
 
   return seq
 end
@@ -1346,9 +1376,6 @@ local function replace (seq, elm, rng_, sel_)
   for i=1,nr do elem_pos(seq, idx_r[i]) end    -- recompute the positions
   for i=1,nr do
     local idx = idx_r[i]
-    if data[idx].shared == true then           -- shared element
-      data[idx] = check_shared(seq, idx)
-    end
     check_drift(seq, idx)                      -- check surrounding drifts
   end
 
@@ -1468,9 +1495,6 @@ local function install (seq, elm, rng_, sel_, cmp_)
       table.insert(data.algn, idx, nil)
       table.insert(data.elgn, idx, nil)
       data.ne = data.ne + 1
-      if data[idx].shared == true then   -- shared element
-        data[idx] = check_shared(seq, idx)
-      end
       check_drift(seq, idx)              -- check surrounding drifts
     end
   end
@@ -1481,33 +1505,44 @@ end
 
 -- special --------------------------------------------------------------------o
 
-local function publish (seq, env)
+local function publish (seq, opt_)
   assert(is_sequence(seq), "invalid argument #1 (sequence expected)")
-  assert(is_mappable(env), "invalid argument #2 (mappable expected)")
 
-  if seq.nopub == true then return seq end
+  if is_nil(seq.__env) or seq.nopub == true then return seq end
 
-  local data, wrn, dbg, par = seq.__dat
-  if env == MADX or is_instanceOf(env, MADX) then
-    if env.option.nopub == true then return seq end
-    wrn,             dbg,              par,        env.option.warn =
-    env.option.warn, env.option.debug, env.parent, false
+  local data, env, wrn, opt, dbg = seq.__dat, seq.__env
+  if env.option then
+    opt = env.option
+    if opt.nopub == true then return seq end
+    wrn, dbg, opt.warn = opt.warn, option.debug, false
   end
+
+  local keep_pos = opt_ and opt_.keep_pos or nil
 
   for idx,elm in ipairs(data) do
     local nam = elm.name
     if nam:sub(1,1) ~= "$" then
-      if not is_element(env[nam]) then
+      if is_element(env[nam]) then
+        -- already published, put original back in sequence
+        if keep_pos and elm.shared ~= true then
+          data[idx] = env[nam] (nil, {at=elm.at, from=elm.from, shared=true})
+        end
+        if dbg >= 2 then
+          io.write("element ", seq.name, "['", nam, "'] already published in '",
+                   env.name ,"', ignored\n")
+        end
+      else
+        -- not yet published, publish in the env
+        if elm.shared == true then elm = elm.parent end
         env[nam] = elm
-        if dbg then io.write("'", nam, "' published in '", par.name, "'\n") end
-      elseif dbg or wrn and is_element(par[nam]) then
-        warn("element '%s' already defined/published in '%s', ignored",
-                       nam,                              par.name)
+        if dbg >= 2 then
+          io.write("'", nam, "' published in '", env.name, "'\n")
+        end
       end
     end
   end
 
-  if wrn ~= nil then env.option.warn = wrn end
+  if wrn ~= nil then opt.warn = wrn end
   return seq
 end
 
