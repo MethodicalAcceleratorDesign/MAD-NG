@@ -1,13 +1,14 @@
 -- Script Setup
-local reft = false                -- compute reference twiss
-local chrm = false                -- compute chromatic functions
+local seq2 = true                 -- run also LHCB2
+local reft = true                 -- compute reference track & twiss
+local knbs = true                 -- check tunes knobs effectiveness
+local chrm = true                 -- compute chromatic functions
 local cmap = true                 -- use cmaps (or not)
-local mord = 1                    -- max loop order (1 or 2)
-local dh   = 3e-4                 -- finite differences step
-local fplt = "ex-lhcb1-trkopt.pdf" -- file to output plots
+local mord = 2                    -- max loop order (1 or 2)
+local fplt = "ex-lhc-trkopt_"..MAD.env.version..".pdf" -- file to output plots
 
 -- Import commands
-local beam, twiss, damap, plot in MAD
+local beam, track, twiss, damap, plot, option in MAD
 -- Import utility functions
 local printf, timeit, tblcat in MAD.utility
 
@@ -15,26 +16,47 @@ local printf, timeit, tblcat in MAD.utility
 
 local pbtop=beam{particle="proton", energy=6800}
 
+MADX.option.warn=false
 MADX:load("2024_lhcb1_saved.seq", "lhcb1.mad") -- convert and save on need
-MADX:load("lhcb1_var0.mad")
-local lhcb1 in MADX
+MADX:load("2024_lhcb2_saved.seq", "lhcb2.mad")
+MADX:load("lhc_var0.mad")
+MADX.option.warn=true
+
+local lhcb1, lhcb2 in MADX
 lhcb1.beam = pbtop
+lhcb2.beam = pbtop
+lhcb2.dir = -1 -- reverse direction
 
--- MADX:load("2024_lhcb2_saved.seq", "lhcb2.mad")
--- local lhcb2 in MADX
--- lhcb2.dir = -1 -- reverse direction
--- lhcb2.beam = pbtop
+for idx,seq in ipairs{lhcb1, seq2 and lhcb2 or nil} do
 
--- Reference Twiss ------------------------------------------------------------
+-- sequence name
+local snam = seq.name:lower()
+io.write("Running ", snam, "\n")
 
-if reft then
+-- sequence tune knobs
+local bn  = ({"b1","b2"})[idx]
+local dqx = "dqx_"..bn.."_op"
+local dqy = "dqy_"..bn.."_op"
 
--- Compute the reference optic functions
-local tw = timeit(\ -> twiss {sequence=lhcb1, cmap=cmap}, "Twiss Ref")
+-- Reference Track & Twiss -----------------------------------------------------
+
+local tk, tw
+
+if reft or knbs then
+
+local cols = {'name','kind','s','l','id','x','px','y','py','t','pt'}
+
+-- Compute the reference track
+tk = timeit(\ -> track {sequence=seq, observe=0, mapdef=1}, "Track Ref")
+tk:write(snam.."_tk_ref.tfs", cols)
+
+-- Compute the reference twiss
+tw = timeit(\ -> twiss {sequence=seq}, "Twiss Ref")
+tw:write(snam.."_tw_ref.tfs", cols)
 
 plot {
-  title    = "Optical Functions",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "Optical Functions "..snam,  -- plot title
+  sequence = seq,            -- sequence for layout
   table    = tw,               -- twiss table for plot
   x1y1    = {s = {"beta11", "beta22", "dx", "dy"}}, -- x vs y1 columns
   x1y2    = {s = {"mu1", "mu2"}},                   -- x vs y2 columns
@@ -48,7 +70,75 @@ plot {
   output   = fplt,
 }
 
-end
+end -- ref
+
+-- check knobs consistency
+if knbs then
+
+local shft = 0.01
+
+printf(" q1               = %10.7f\n",  tw.q1)
+printf(" q2               = %10.7f\n",  tw.q2)
+
+MADX[dqx] = shft
+MADX[dqy] = 0
+local twd = timeit(\ -> twiss {sequence=seq, observe=1}, "Twiss Chk")
+printf(" q1_dqx           = %10.7f\n",  twd.q1)
+printf(" q2_dqx           = %10.7f\n",  twd.q2)
+printf("(q1_dqx-q1)/shft  = %10.7f\n", (twd.q1-tw.q1)/shft)
+printf("(q2_dqx-q2)/shft  = %10.7f\n", (twd.q2-tw.q2)/shft)
+
+MADX[dqx] = 0
+MADX[dqy] = shft
+local twd = timeit(\ -> twiss {sequence=seq, observe=1}, "Twiss Chk")
+printf(" q1_dqy           = %10.7f\n",  twd.q1)
+printf(" q2_dqy           = %10.7f\n",  twd.q2)
+printf("(q1_dqy-q1)/shft  = %10.7f\n", (twd.q1-tw.q1)/shft)
+printf("(q2_dqy-q2)/shft  = %10.7f\n", (twd.q2-tw.q2)/shft)
+
+MADX[dqx] = shft
+MADX[dqy] = shft
+local twd = timeit(\ -> twiss {sequence=seq, observe=1}, "Twiss Chk")
+printf(" q1_dqxy          = %10.7f\n",  twd.q1)
+printf(" q2_dqxy          = %10.7f\n",  twd.q2)
+printf("(q1_dqxy-q1)/shft = %10.7f\n", (twd.q1-tw.q1)/shft)
+printf("(q2_dqxy-q2)/shft = %10.7f\n", (twd.q2-tw.q2)/shft)
+
+end -- knbs
+
+--[[
+MAD-X LHCB1, shft=0.01         ; MAD-NG LHCB1, shft=0.01
+q1                = 62.3100002 ;  q1               = 62.3100000
+q2                = 60.3200000 ;  q2               = 60.3200000
+q1_dqx            = 62.3200013 ;  q1_dqx           = 62.3200011
+q2_dqx            = 60.3200007 ;  q2_dqx           = 60.3200007
+(q1_dqx-q1)/shft  =  1.0001094 ; (q1_dqx-q1)/shft  =  1.0001105
+(q2_dqx-q2)/shft  =  0.0000699 ; (q2_dqx-q2)/shft  =  0.0000701
+q1_dqy            = 62.3100009 ;  q1_dqy           = 62.3100007
+q2_dqy            = 60.3300011 ;  q2_dqy           = 60.3300011
+(q1_dqy-q1)/shft  =  0.0000705 ; (q1_dqy-q1)/shft  =  0.0000705
+(q2_dqy-q2)/shft  =  1.0001113 ; (q2_dqy-q2)/shft  =  1.0001113
+q1_dqxy           = 62.3200061 ;  q1_dqxy          = 62.3200059
+q2_dqxy           = 60.3300059 ;  q2_dqxy          = 60.3300059
+(q1_dqxy-q1)/shft =  1.0005908 ; (q1_dqxy-q1)/shft =  1.0005919
+(q2_dqxy-q2)/shft =  1.0005918 ; (q2_dqxy-q2)/shft =  1.0005921
+                               ;
+MAD-X LHCB2, shft=0.01         ; MAD-NG LHCB2, shft=0.01
+q1                = 62.3100004 ;  q1               = 62.3100000
+q2                = 60.3200000 ;  q2               = 60.3200000
+q1_dqx            = 62.3200015 ;  q1_dqx           = 62.3200011
+q2_dqx            = 60.3200007 ;  q2_dqx           = 60.3200007
+(q1_dqx-q1)/shft  =  1.0001122 ; (q1_dqx-q1)/shft  =  1.0001135
+(q2_dqx-q2)/shft  =  0.0000705 ; (q2_dqx-q2)/shft  =  0.0000707
+q1_dqy            = 62.3100011 ;  q1_dqy           = 62.3100007
+q2_dqy            = 60.3300007 ;  q2_dqy           = 60.3300007
+(q1_dqy-q1)/shft  =  0.0000710 ; (q1_dqy-q1)/shft  =  0.0000710
+(q2_dqy-q2)/shft  =  1.0000691 ; (q2_dqy-q2)/shft  =  1.0000691
+q1_dqxy           = 62.3200063 ;  q1_dqxy          = 62.3200060
+q2_dqxy           = 60.3300055 ;  q2_dqxy          = 60.3300054
+(q1_dqxy-q1)/shft =  1.0005956 ; (q1_dqxy-q1)/shft =  1.0005969
+(q2_dqxy-q2)/shft =  1.0005418 ; (q2_dqxy-q2)/shft =  1.0005420
+--]]
 
 -- First and Second derivative check -------------------------------------------
 
@@ -82,7 +172,7 @@ local kopts = {
 -- Loop over orders -------------------
 for ord=1,mord do
 
-io.write("Checking Order ", ord, "\n")
+io.write("Checking Order ", ord, " for ", snam, "\n")
 
 local nk = 24+(chrm and 12 or 0)
 assert(#kopts[ord] == nk, "invalid kopts, expecting "..nk.." got "..#kopts[ord])
@@ -91,69 +181,71 @@ assert(#kopts[ord] == nk, "invalid kopts, expecting "..nk.." got "..#kopts[ord])
 local mo = ord+(chrm and 2 or 1)
 local x0 = damap { nv=6, np=2, no={mo,mo,mo,mo,1,1}, po=ord, pn={"dqx", "dqy"} }
 
-MADX.dqx_b1_op = MADX.dqx_b1_op + x0.dqx
-MADX.dqy_b1_op = MADX.dqy_b1_op + x0.dqy
+MADX[dqx] = MADX[dqx] + x0.dqx
+MADX[dqy] = MADX[dqy] + x0.dqy
 
-local twp = timeit(\ -> twiss {sequence=lhcb1, X0=x0, trkopt=kopts[ord], chrom=chrm, cmap=cmap}, "Twiss DA")
+local twp = timeit(\ -> twiss {sequence=seq, X0=x0, trkopt=kopts[ord], chrom=chrm, cmap=cmap}, "Twiss DA")
 
-MADX.dqx_b1_op = MADX.dqx_b1_op:get0()
-MADX.dqy_b1_op = MADX.dqy_b1_op:get0()
+MADX[dqx] = MADX[dqx]:get0()
+MADX[dqy] = MADX[dqy]:get0()
 
 -- extend table with parametric values
-twp:addcol("beta11_vs_k1f_da", \ri -> twp[kopts[ord][ 1]][ri])
-twp:addcol("beta11_vs_k1d_da", \ri -> twp[kopts[ord][ 2]][ri])
-twp:addcol("beta22_vs_k1f_da", \ri -> twp[kopts[ord][ 3]][ri])
-twp:addcol("beta22_vs_k1d_da", \ri -> twp[kopts[ord][ 4]][ri])
-twp:addcol("alfa11_vs_k1f_da", \ri -> twp[kopts[ord][ 5]][ri])
-twp:addcol("alfa11_vs_k1d_da", \ri -> twp[kopts[ord][ 6]][ri])
-twp:addcol("alfa22_vs_k1f_da", \ri -> twp[kopts[ord][ 7]][ri])
-twp:addcol("alfa22_vs_k1d_da", \ri -> twp[kopts[ord][ 8]][ri])
-twp:addcol("gama11_vs_k1f_da", \ri -> twp[kopts[ord][ 9]][ri])
-twp:addcol("gama11_vs_k1d_da", \ri -> twp[kopts[ord][10]][ri])
-twp:addcol("gama22_vs_k1f_da", \ri -> twp[kopts[ord][11]][ri])
-twp:addcol("gama22_vs_k1d_da", \ri -> twp[kopts[ord][12]][ri])
-twp:addcol("mu1_vs_k1f_da"   , \ri -> twp[kopts[ord][13]][ri])
-twp:addcol("mu1_vs_k1d_da"   , \ri -> twp[kopts[ord][14]][ri])
-twp:addcol("mu2_vs_k1f_da"   , \ri -> twp[kopts[ord][15]][ri])
-twp:addcol("mu2_vs_k1d_da"   , \ri -> twp[kopts[ord][16]][ri])
-twp:addcol("dx_vs_k1f_da"    , \ri -> twp[kopts[ord][17]][ri])
-twp:addcol("dx_vs_k1d_da"    , \ri -> twp[kopts[ord][18]][ri])
-twp:addcol("dpx_vs_k1f_da"   , \ri -> twp[kopts[ord][19]][ri])
-twp:addcol("dpx_vs_k1d_da"   , \ri -> twp[kopts[ord][20]][ri])
-twp:addcol("dy_vs_k1f_da"    , \ri -> twp[kopts[ord][21]][ri])
-twp:addcol("dy_vs_k1d_da"    , \ri -> twp[kopts[ord][22]][ri])
-twp:addcol("dpy_vs_k1f_da"   , \ri -> twp[kopts[ord][23]][ri])
-twp:addcol("dpy_vs_k1d_da"   , \ri -> twp[kopts[ord][24]][ri])
+twp:addcol("beta11_vs_dqx_da", \ri -> twp[kopts[ord][ 1]][ri])
+twp:addcol("beta11_vs_dqy_da", \ri -> twp[kopts[ord][ 2]][ri])
+twp:addcol("beta22_vs_dqx_da", \ri -> twp[kopts[ord][ 3]][ri])
+twp:addcol("beta22_vs_dqy_da", \ri -> twp[kopts[ord][ 4]][ri])
+twp:addcol("alfa11_vs_dqx_da", \ri -> twp[kopts[ord][ 5]][ri])
+twp:addcol("alfa11_vs_dqy_da", \ri -> twp[kopts[ord][ 6]][ri])
+twp:addcol("alfa22_vs_dqx_da", \ri -> twp[kopts[ord][ 7]][ri])
+twp:addcol("alfa22_vs_dqy_da", \ri -> twp[kopts[ord][ 8]][ri])
+twp:addcol("gama11_vs_dqx_da", \ri -> twp[kopts[ord][ 9]][ri])
+twp:addcol("gama11_vs_dqy_da", \ri -> twp[kopts[ord][10]][ri])
+twp:addcol("gama22_vs_dqx_da", \ri -> twp[kopts[ord][11]][ri])
+twp:addcol("gama22_vs_dqy_da", \ri -> twp[kopts[ord][12]][ri])
+twp:addcol("mu1_vs_dqx_da"   , \ri -> twp[kopts[ord][13]][ri])
+twp:addcol("mu1_vs_dqy_da"   , \ri -> twp[kopts[ord][14]][ri])
+twp:addcol("mu2_vs_dqx_da"   , \ri -> twp[kopts[ord][15]][ri])
+twp:addcol("mu2_vs_dqy_da"   , \ri -> twp[kopts[ord][16]][ri])
+twp:addcol("dx_vs_dqx_da"    , \ri -> twp[kopts[ord][17]][ri])
+twp:addcol("dx_vs_dqy_da"    , \ri -> twp[kopts[ord][18]][ri])
+twp:addcol("dpx_vs_dqx_da"   , \ri -> twp[kopts[ord][19]][ri])
+twp:addcol("dpx_vs_dqy_da"   , \ri -> twp[kopts[ord][20]][ri])
+twp:addcol("dy_vs_dqx_da"    , \ri -> twp[kopts[ord][21]][ri])
+twp:addcol("dy_vs_dqy_da"    , \ri -> twp[kopts[ord][22]][ri])
+twp:addcol("dpy_vs_dqx_da"   , \ri -> twp[kopts[ord][23]][ri])
+twp:addcol("dpy_vs_dqy_da"   , \ri -> twp[kopts[ord][24]][ri])
 if chrm then
-twp:addcol("dmu1_vs_k1f_da"  , \ri -> twp[kopts[ord][25]][ri])
-twp:addcol("dmu1_vs_k1d_da"  , \ri -> twp[kopts[ord][26]][ri])
-twp:addcol("dmu2_vs_k1f_da"  , \ri -> twp[kopts[ord][27]][ri])
-twp:addcol("dmu2_vs_k1d_da"  , \ri -> twp[kopts[ord][28]][ri])
-twp:addcol("wx_vs_k1f_da"    , \ri -> twp[kopts[ord][29]][ri])
-twp:addcol("wx_vs_k1d_da"    , \ri -> twp[kopts[ord][30]][ri])
-twp:addcol("wxp_vs_k1f_da"   , \ri -> twp[kopts[ord][31]][ri])
-twp:addcol("wxp_vs_k1d_da"   , \ri -> twp[kopts[ord][32]][ri])
-twp:addcol("wy_vs_k1f_da"    , \ri -> twp[kopts[ord][33]][ri])
-twp:addcol("wy_vs_k1d_da"    , \ri -> twp[kopts[ord][34]][ri])
-twp:addcol("wyp_vs_k1f_da"   , \ri -> twp[kopts[ord][35]][ri])
-twp:addcol("wyp_vs_k1d_da"   , \ri -> twp[kopts[ord][36]][ri])
+twp:addcol("dmu1_vs_dqx_da"  , \ri -> twp[kopts[ord][25]][ri])
+twp:addcol("dmu1_vs_dqy_da"  , \ri -> twp[kopts[ord][26]][ri])
+twp:addcol("dmu2_vs_dqx_da"  , \ri -> twp[kopts[ord][27]][ri])
+twp:addcol("dmu2_vs_dqy_da"  , \ri -> twp[kopts[ord][28]][ri])
+twp:addcol("wx_vs_dqx_da"    , \ri -> twp[kopts[ord][29]][ri])
+twp:addcol("wx_vs_dqy_da"    , \ri -> twp[kopts[ord][30]][ri])
+twp:addcol("wxp_vs_dqx_da"   , \ri -> twp[kopts[ord][31]][ri])
+twp:addcol("wxp_vs_dqy_da"   , \ri -> twp[kopts[ord][32]][ri])
+twp:addcol("wy_vs_dqx_da"    , \ri -> twp[kopts[ord][33]][ri])
+twp:addcol("wy_vs_dqy_da"    , \ri -> twp[kopts[ord][34]][ri])
+twp:addcol("wyp_vs_dqx_da"   , \ri -> twp[kopts[ord][35]][ri])
+twp:addcol("wyp_vs_dqy_da"   , \ri -> twp[kopts[ord][36]][ri])
 end
 
 -- Compute finite difference twiss ----
 
--- twiss with k1f as dh
-MADX.dqx_b1_op = MADX.dqx_b1_op + dh
-local twfp = timeit(\ -> twiss {sequence=lhcb1, chrom=chrm, cmap=cmap}, "Twiss FD dqx+dh")
-MADX.dqx_b1_op = MADX.dqx_b1_op - 2*dh
-local twfm = timeit(\ -> twiss {sequence=lhcb1, chrom=chrm, cmap=cmap}, "Twiss FD dqx-dh")
-MADX.dqx_b1_op = MADX.dqx_b1_op + dh
+local dh = ({5e-6, 5e-4})[ord] -- finite differences step
 
--- twiss with k1d as dh
-MADX.dqy_b1_op = MADX.dqy_b1_op + dh
-local twdp = timeit(\ -> twiss {sequence=lhcb1, chrom=chrm, cmap=cmap}, "Twiss FD dqy+dh")
-MADX.dqy_b1_op = MADX.dqy_b1_op - 2*dh
-local twdm = timeit(\ -> twiss {sequence=lhcb1, chrom=chrm, cmap=cmap}, "Twiss FD dqy-dh")
-MADX.dqy_b1_op = MADX.dqy_b1_op + dh
+-- twiss with dqx as dh
+MADX[dqx] = MADX[dqx] + dh
+local twfp = timeit(\ -> twiss {sequence=seq, chrom=chrm, cmap=cmap}, "Twiss FD dqx+dh")
+MADX[dqx] = MADX[dqx] - 2*dh
+local twfm = timeit(\ -> twiss {sequence=seq, chrom=chrm, cmap=cmap}, "Twiss FD dqx-dh")
+MADX[dqx] = MADX[dqx] + dh
+
+-- twiss with dqy as dh
+MADX[dqy] = MADX[dqy] + dh
+local twdp = timeit(\ -> twiss {sequence=seq, chrom=chrm, cmap=cmap}, "Twiss FD dqy+dh")
+MADX[dqy] = MADX[dqy] - 2*dh
+local twdm = timeit(\ -> twiss {sequence=seq, chrom=chrm, cmap=cmap}, "Twiss FD dqy-dh")
+MADX[dqy] = MADX[dqy] + dh
 
 do
   local a,b,c,d,e in ({
@@ -162,92 +254,92 @@ do
   })[ord]
 
   -- extend table with finite difference values
-  twp:addcol("beta11_vs_k1f_fd", \ri -> ((a*twfp.beta11[ri] + b*twp.beta11[ri] + c*twfm.beta11[ri])/(d*dh^e)))
-  twp:addcol("beta11_vs_k1d_fd", \ri -> ((a*twdp.beta11[ri] + b*twp.beta11[ri] + c*twdm.beta11[ri])/(d*dh^e)))
-  twp:addcol("beta22_vs_k1f_fd", \ri -> ((a*twfp.beta22[ri] + b*twp.beta22[ri] + c*twfm.beta22[ri])/(d*dh^e)))
-  twp:addcol("beta22_vs_k1d_fd", \ri -> ((a*twdp.beta22[ri] + b*twp.beta22[ri] + c*twdm.beta22[ri])/(d*dh^e)))
-  twp:addcol("alfa11_vs_k1f_fd", \ri -> ((a*twfp.alfa11[ri] + b*twp.alfa11[ri] + c*twfm.alfa11[ri])/(d*dh^e)))
-  twp:addcol("alfa11_vs_k1d_fd", \ri -> ((a*twdp.alfa11[ri] + b*twp.alfa11[ri] + c*twdm.alfa11[ri])/(d*dh^e)))
-  twp:addcol("alfa22_vs_k1f_fd", \ri -> ((a*twfp.alfa22[ri] + b*twp.alfa22[ri] + c*twfm.alfa22[ri])/(d*dh^e)))
-  twp:addcol("alfa22_vs_k1d_fd", \ri -> ((a*twdp.alfa22[ri] + b*twp.alfa22[ri] + c*twdm.alfa22[ri])/(d*dh^e)))
-  twp:addcol("gama11_vs_k1f_fd", \ri -> ((a*twfp.gama11[ri] + b*twp.gama11[ri] + c*twfm.gama11[ri])/(d*dh^e)))
-  twp:addcol("gama11_vs_k1d_fd", \ri -> ((a*twdp.gama11[ri] + b*twp.gama11[ri] + c*twdm.gama11[ri])/(d*dh^e)))
-  twp:addcol("gama22_vs_k1f_fd", \ri -> ((a*twfp.gama22[ri] + b*twp.gama22[ri] + c*twfm.gama22[ri])/(d*dh^e)))
-  twp:addcol("gama22_vs_k1d_fd", \ri -> ((a*twdp.gama22[ri] + b*twp.gama22[ri] + c*twdm.gama22[ri])/(d*dh^e)))
-  twp:addcol("mu1_vs_k1f_fd"   , \ri -> ((a*twfp.mu1   [ri] + b*twp.mu1   [ri] + c*twfm.mu1   [ri])/(d*dh^e)))
-  twp:addcol("mu1_vs_k1d_fd"   , \ri -> ((a*twdp.mu1   [ri] + b*twp.mu1   [ri] + c*twdm.mu1   [ri])/(d*dh^e)))
-  twp:addcol("mu2_vs_k1f_fd"   , \ri -> ((a*twfp.mu2   [ri] + b*twp.mu2   [ri] + c*twfm.mu2   [ri])/(d*dh^e)))
-  twp:addcol("mu2_vs_k1d_fd"   , \ri -> ((a*twdp.mu2   [ri] + b*twp.mu2   [ri] + c*twdm.mu2   [ri])/(d*dh^e)))
-  twp:addcol("dx_vs_k1f_fd"    , \ri -> ((a*twfp.dx    [ri] + b*twp.dx    [ri] + c*twfm.dx    [ri])/(d*dh^e)))
-  twp:addcol("dx_vs_k1d_fd"    , \ri -> ((a*twdp.dx    [ri] + b*twp.dx    [ri] + c*twdm.dx    [ri])/(d*dh^e)))
-  twp:addcol("dpx_vs_k1f_fd"   , \ri -> ((a*twfp.dpx   [ri] + b*twp.dpx   [ri] + c*twfm.dpx   [ri])/(d*dh^e)))
-  twp:addcol("dpx_vs_k1d_fd"   , \ri -> ((a*twdp.dpx   [ri] + b*twp.dpx   [ri] + c*twdm.dpx   [ri])/(d*dh^e)))
-  twp:addcol("dy_vs_k1f_fd"    , \ri -> ((a*twfp.dy    [ri] + b*twp.dy    [ri] + c*twfm.dy    [ri])/(d*dh^e)))
-  twp:addcol("dy_vs_k1d_fd"    , \ri -> ((a*twdp.dy    [ri] + b*twp.dy    [ri] + c*twdm.dy    [ri])/(d*dh^e)))
-  twp:addcol("dpy_vs_k1f_fd"   , \ri -> ((a*twfp.dpy   [ri] + b*twp.dpy   [ri] + c*twfm.dpy   [ri])/(d*dh^e)))
-  twp:addcol("dpy_vs_k1d_fd"   , \ri -> ((a*twdp.dpy   [ri] + b*twp.dpy   [ri] + c*twdm.dpy   [ri])/(d*dh^e)))
+  twp:addcol("beta11_vs_dqx_fd", \ri -> ((a*twfp.beta11[ri] + b*twp.beta11[ri] + c*twfm.beta11[ri])/(d*dh^e)))
+  twp:addcol("beta11_vs_dqy_fd", \ri -> ((a*twdp.beta11[ri] + b*twp.beta11[ri] + c*twdm.beta11[ri])/(d*dh^e)))
+  twp:addcol("beta22_vs_dqx_fd", \ri -> ((a*twfp.beta22[ri] + b*twp.beta22[ri] + c*twfm.beta22[ri])/(d*dh^e)))
+  twp:addcol("beta22_vs_dqy_fd", \ri -> ((a*twdp.beta22[ri] + b*twp.beta22[ri] + c*twdm.beta22[ri])/(d*dh^e)))
+  twp:addcol("alfa11_vs_dqx_fd", \ri -> ((a*twfp.alfa11[ri] + b*twp.alfa11[ri] + c*twfm.alfa11[ri])/(d*dh^e)))
+  twp:addcol("alfa11_vs_dqy_fd", \ri -> ((a*twdp.alfa11[ri] + b*twp.alfa11[ri] + c*twdm.alfa11[ri])/(d*dh^e)))
+  twp:addcol("alfa22_vs_dqx_fd", \ri -> ((a*twfp.alfa22[ri] + b*twp.alfa22[ri] + c*twfm.alfa22[ri])/(d*dh^e)))
+  twp:addcol("alfa22_vs_dqy_fd", \ri -> ((a*twdp.alfa22[ri] + b*twp.alfa22[ri] + c*twdm.alfa22[ri])/(d*dh^e)))
+  twp:addcol("gama11_vs_dqx_fd", \ri -> ((a*twfp.gama11[ri] + b*twp.gama11[ri] + c*twfm.gama11[ri])/(d*dh^e)))
+  twp:addcol("gama11_vs_dqy_fd", \ri -> ((a*twdp.gama11[ri] + b*twp.gama11[ri] + c*twdm.gama11[ri])/(d*dh^e)))
+  twp:addcol("gama22_vs_dqx_fd", \ri -> ((a*twfp.gama22[ri] + b*twp.gama22[ri] + c*twfm.gama22[ri])/(d*dh^e)))
+  twp:addcol("gama22_vs_dqy_fd", \ri -> ((a*twdp.gama22[ri] + b*twp.gama22[ri] + c*twdm.gama22[ri])/(d*dh^e)))
+  twp:addcol("mu1_vs_dqx_fd"   , \ri -> ((a*twfp.mu1   [ri] + b*twp.mu1   [ri] + c*twfm.mu1   [ri])/(d*dh^e)))
+  twp:addcol("mu1_vs_dqy_fd"   , \ri -> ((a*twdp.mu1   [ri] + b*twp.mu1   [ri] + c*twdm.mu1   [ri])/(d*dh^e)))
+  twp:addcol("mu2_vs_dqx_fd"   , \ri -> ((a*twfp.mu2   [ri] + b*twp.mu2   [ri] + c*twfm.mu2   [ri])/(d*dh^e)))
+  twp:addcol("mu2_vs_dqy_fd"   , \ri -> ((a*twdp.mu2   [ri] + b*twp.mu2   [ri] + c*twdm.mu2   [ri])/(d*dh^e)))
+  twp:addcol("dx_vs_dqx_fd"    , \ri -> ((a*twfp.dx    [ri] + b*twp.dx    [ri] + c*twfm.dx    [ri])/(d*dh^e)))
+  twp:addcol("dx_vs_dqy_fd"    , \ri -> ((a*twdp.dx    [ri] + b*twp.dx    [ri] + c*twdm.dx    [ri])/(d*dh^e)))
+  twp:addcol("dpx_vs_dqx_fd"   , \ri -> ((a*twfp.dpx   [ri] + b*twp.dpx   [ri] + c*twfm.dpx   [ri])/(d*dh^e)))
+  twp:addcol("dpx_vs_dqy_fd"   , \ri -> ((a*twdp.dpx   [ri] + b*twp.dpx   [ri] + c*twdm.dpx   [ri])/(d*dh^e)))
+  twp:addcol("dy_vs_dqx_fd"    , \ri -> ((a*twfp.dy    [ri] + b*twp.dy    [ri] + c*twfm.dy    [ri])/(d*dh^e)))
+  twp:addcol("dy_vs_dqy_fd"    , \ri -> ((a*twdp.dy    [ri] + b*twp.dy    [ri] + c*twdm.dy    [ri])/(d*dh^e)))
+  twp:addcol("dpy_vs_dqx_fd"   , \ri -> ((a*twfp.dpy   [ri] + b*twp.dpy   [ri] + c*twfm.dpy   [ri])/(d*dh^e)))
+  twp:addcol("dpy_vs_dqy_fd"   , \ri -> ((a*twdp.dpy   [ri] + b*twp.dpy   [ri] + c*twdm.dpy   [ri])/(d*dh^e)))
 if chrm then
-  twp:addcol("dmu1_vs_k1f_fd"  , \ri -> ((a*twfp.dmu1  [ri] + b*twp.dmu1  [ri] + c*twfm.dmu1  [ri])/(d*dh^e)))
-  twp:addcol("dmu1_vs_k1d_fd"  , \ri -> ((a*twdp.dmu1  [ri] + b*twp.dmu1  [ri] + c*twdm.dmu1  [ri])/(d*dh^e)))
-  twp:addcol("dmu2_vs_k1f_fd"  , \ri -> ((a*twfp.dmu2  [ri] + b*twp.dmu2  [ri] + c*twfm.dmu2  [ri])/(d*dh^e)))
-  twp:addcol("dmu2_vs_k1d_fd"  , \ri -> ((a*twdp.dmu2  [ri] + b*twp.dmu2  [ri] + c*twdm.dmu2  [ri])/(d*dh^e)))
-  twp:addcol("wx_vs_k1f_fd"    , \ri -> ((a*twfp.wx    [ri] + b*twp.wx    [ri] + c*twfm.wx    [ri])/(d*dh^e)))
-  twp:addcol("wx_vs_k1d_fd"    , \ri -> ((a*twdp.wx    [ri] + b*twp.wx    [ri] + c*twdm.wx    [ri])/(d*dh^e)))
-  twp:addcol("wxp_vs_k1f_fd"   , \ri -> ((a*twfp.phix  [ri] + b*twp.phix  [ri] + c*twfm.phix  [ri])/(d*dh^e)))
-  twp:addcol("wxp_vs_k1d_fd"   , \ri -> ((a*twdp.phix  [ri] + b*twp.phix  [ri] + c*twdm.phix  [ri])/(d*dh^e)))
-  twp:addcol("wy_vs_k1f_fd"    , \ri -> ((a*twfp.wy    [ri] + b*twp.wy    [ri] + c*twfm.wy    [ri])/(d*dh^e)))
-  twp:addcol("wy_vs_k1d_fd"    , \ri -> ((a*twdp.wy    [ri] + b*twp.wy    [ri] + c*twdm.wy    [ri])/(d*dh^e)))
-  twp:addcol("wyp_vs_k1f_fd"   , \ri -> ((a*twfp.phiy  [ri] + b*twp.phiy  [ri] + c*twfm.phiy  [ri])/(d*dh^e)))
-  twp:addcol("wyp_vs_k1d_fd"   , \ri -> ((a*twdp.phiy  [ri] + b*twp.phiy  [ri] + c*twdm.phiy  [ri])/(d*dh^e)))
+  twp:addcol("dmu1_vs_dqx_fd"  , \ri -> ((a*twfp.dmu1  [ri] + b*twp.dmu1  [ri] + c*twfm.dmu1  [ri])/(d*dh^e)))
+  twp:addcol("dmu1_vs_dqy_fd"  , \ri -> ((a*twdp.dmu1  [ri] + b*twp.dmu1  [ri] + c*twdm.dmu1  [ri])/(d*dh^e)))
+  twp:addcol("dmu2_vs_dqx_fd"  , \ri -> ((a*twfp.dmu2  [ri] + b*twp.dmu2  [ri] + c*twfm.dmu2  [ri])/(d*dh^e)))
+  twp:addcol("dmu2_vs_dqy_fd"  , \ri -> ((a*twdp.dmu2  [ri] + b*twp.dmu2  [ri] + c*twdm.dmu2  [ri])/(d*dh^e)))
+  twp:addcol("wx_vs_dqx_fd"    , \ri -> ((a*twfp.wx    [ri] + b*twp.wx    [ri] + c*twfm.wx    [ri])/(d*dh^e)))
+  twp:addcol("wx_vs_dqy_fd"    , \ri -> ((a*twdp.wx    [ri] + b*twp.wx    [ri] + c*twdm.wx    [ri])/(d*dh^e)))
+  twp:addcol("wxp_vs_dqx_fd"   , \ri -> ((a*twfp.phix  [ri] + b*twp.phix  [ri] + c*twfm.phix  [ri])/(d*dh^e)))
+  twp:addcol("wxp_vs_dqy_fd"   , \ri -> ((a*twdp.phix  [ri] + b*twp.phix  [ri] + c*twdm.phix  [ri])/(d*dh^e)))
+  twp:addcol("wy_vs_dqx_fd"    , \ri -> ((a*twfp.wy    [ri] + b*twp.wy    [ri] + c*twfm.wy    [ri])/(d*dh^e)))
+  twp:addcol("wy_vs_dqy_fd"    , \ri -> ((a*twdp.wy    [ri] + b*twp.wy    [ri] + c*twdm.wy    [ri])/(d*dh^e)))
+  twp:addcol("wyp_vs_dqx_fd"   , \ri -> ((a*twfp.phiy  [ri] + b*twp.phiy  [ri] + c*twfm.phiy  [ri])/(d*dh^e)))
+  twp:addcol("wyp_vs_dqy_fd"   , \ri -> ((a*twdp.phiy  [ri] + b*twp.phiy  [ri] + c*twdm.phiy  [ri])/(d*dh^e)))
 end
 end
 
 -- Build plots ------------------------
 
 do
-  twp:addcol("beta11_vs_k1f_dif", \ri -> twp.beta11_vs_k1f_da[ri] - twp.beta11_vs_k1f_fd[ri])
-  twp:addcol("beta11_vs_k1d_dif", \ri -> twp.beta11_vs_k1d_da[ri] - twp.beta11_vs_k1d_fd[ri])
-  twp:addcol("beta22_vs_k1f_dif", \ri -> twp.beta22_vs_k1f_da[ri] - twp.beta22_vs_k1f_fd[ri])
-  twp:addcol("beta22_vs_k1d_dif", \ri -> twp.beta22_vs_k1d_da[ri] - twp.beta22_vs_k1d_fd[ri])
-  twp:addcol("alfa11_vs_k1f_dif", \ri -> twp.alfa11_vs_k1f_da[ri] - twp.alfa11_vs_k1f_fd[ri])
-  twp:addcol("alfa11_vs_k1d_dif", \ri -> twp.alfa11_vs_k1d_da[ri] - twp.alfa11_vs_k1d_fd[ri])
-  twp:addcol("alfa22_vs_k1f_dif", \ri -> twp.alfa22_vs_k1f_da[ri] - twp.alfa22_vs_k1f_fd[ri])
-  twp:addcol("alfa22_vs_k1d_dif", \ri -> twp.alfa22_vs_k1d_da[ri] - twp.alfa22_vs_k1d_fd[ri])
-  twp:addcol("gama11_vs_k1f_dif", \ri -> twp.gama11_vs_k1f_da[ri] - twp.gama11_vs_k1f_fd[ri])
-  twp:addcol("gama11_vs_k1d_dif", \ri -> twp.gama11_vs_k1d_da[ri] - twp.gama11_vs_k1d_fd[ri])
-  twp:addcol("gama22_vs_k1f_dif", \ri -> twp.gama22_vs_k1f_da[ri] - twp.gama22_vs_k1f_fd[ri])
-  twp:addcol("gama22_vs_k1d_dif", \ri -> twp.gama22_vs_k1d_da[ri] - twp.gama22_vs_k1d_fd[ri])
-  twp:addcol("mu1_vs_k1f_dif"   , \ri -> twp.mu1_vs_k1f_da   [ri] - twp.mu1_vs_k1f_fd   [ri])
-  twp:addcol("mu1_vs_k1d_dif"   , \ri -> twp.mu1_vs_k1d_da   [ri] - twp.mu1_vs_k1d_fd   [ri])
-  twp:addcol("mu2_vs_k1f_dif"   , \ri -> twp.mu2_vs_k1f_da   [ri] - twp.mu2_vs_k1f_fd   [ri])
-  twp:addcol("mu2_vs_k1d_dif"   , \ri -> twp.mu2_vs_k1d_da   [ri] - twp.mu2_vs_k1d_fd   [ri])
-  twp:addcol("dx_vs_k1f_dif"    , \ri -> twp.dx_vs_k1f_da    [ri] - twp.dx_vs_k1f_fd    [ri])
-  twp:addcol("dx_vs_k1d_dif"    , \ri -> twp.dx_vs_k1d_da    [ri] - twp.dx_vs_k1d_fd    [ri])
-  twp:addcol("dpx_vs_k1f_dif"   , \ri -> twp.dpx_vs_k1f_da   [ri] - twp.dpx_vs_k1f_fd   [ri])
-  twp:addcol("dpx_vs_k1d_dif"   , \ri -> twp.dpx_vs_k1d_da   [ri] - twp.dpx_vs_k1d_fd   [ri])
-  twp:addcol("dy_vs_k1f_dif"    , \ri -> twp.dy_vs_k1f_da    [ri] - twp.dy_vs_k1f_fd    [ri])
-  twp:addcol("dy_vs_k1d_dif"    , \ri -> twp.dy_vs_k1d_da    [ri] - twp.dy_vs_k1d_fd    [ri])
-  twp:addcol("dpy_vs_k1f_dif"   , \ri -> twp.dpy_vs_k1f_da   [ri] - twp.dpy_vs_k1f_fd   [ri])
-  twp:addcol("dpy_vs_k1d_dif"   , \ri -> twp.dpy_vs_k1d_da   [ri] - twp.dpy_vs_k1d_fd   [ri])
+  twp:addcol("beta11_vs_dqx_dif", \ri -> twp.beta11_vs_dqx_da[ri] - twp.beta11_vs_dqx_fd[ri])
+  twp:addcol("beta11_vs_dqy_dif", \ri -> twp.beta11_vs_dqy_da[ri] - twp.beta11_vs_dqy_fd[ri])
+  twp:addcol("beta22_vs_dqx_dif", \ri -> twp.beta22_vs_dqx_da[ri] - twp.beta22_vs_dqx_fd[ri])
+  twp:addcol("beta22_vs_dqy_dif", \ri -> twp.beta22_vs_dqy_da[ri] - twp.beta22_vs_dqy_fd[ri])
+  twp:addcol("alfa11_vs_dqx_dif", \ri -> twp.alfa11_vs_dqx_da[ri] - twp.alfa11_vs_dqx_fd[ri])
+  twp:addcol("alfa11_vs_dqy_dif", \ri -> twp.alfa11_vs_dqy_da[ri] - twp.alfa11_vs_dqy_fd[ri])
+  twp:addcol("alfa22_vs_dqx_dif", \ri -> twp.alfa22_vs_dqx_da[ri] - twp.alfa22_vs_dqx_fd[ri])
+  twp:addcol("alfa22_vs_dqy_dif", \ri -> twp.alfa22_vs_dqy_da[ri] - twp.alfa22_vs_dqy_fd[ri])
+  twp:addcol("gama11_vs_dqx_dif", \ri -> twp.gama11_vs_dqx_da[ri] - twp.gama11_vs_dqx_fd[ri])
+  twp:addcol("gama11_vs_dqy_dif", \ri -> twp.gama11_vs_dqy_da[ri] - twp.gama11_vs_dqy_fd[ri])
+  twp:addcol("gama22_vs_dqx_dif", \ri -> twp.gama22_vs_dqx_da[ri] - twp.gama22_vs_dqx_fd[ri])
+  twp:addcol("gama22_vs_dqy_dif", \ri -> twp.gama22_vs_dqy_da[ri] - twp.gama22_vs_dqy_fd[ri])
+  twp:addcol("mu1_vs_dqx_dif"   , \ri -> twp.mu1_vs_dqx_da   [ri] - twp.mu1_vs_dqx_fd   [ri])
+  twp:addcol("mu1_vs_dqy_dif"   , \ri -> twp.mu1_vs_dqy_da   [ri] - twp.mu1_vs_dqy_fd   [ri])
+  twp:addcol("mu2_vs_dqx_dif"   , \ri -> twp.mu2_vs_dqx_da   [ri] - twp.mu2_vs_dqx_fd   [ri])
+  twp:addcol("mu2_vs_dqy_dif"   , \ri -> twp.mu2_vs_dqy_da   [ri] - twp.mu2_vs_dqy_fd   [ri])
+  twp:addcol("dx_vs_dqx_dif"    , \ri -> twp.dx_vs_dqx_da    [ri] - twp.dx_vs_dqx_fd    [ri])
+  twp:addcol("dx_vs_dqy_dif"    , \ri -> twp.dx_vs_dqy_da    [ri] - twp.dx_vs_dqy_fd    [ri])
+  twp:addcol("dpx_vs_dqx_dif"   , \ri -> twp.dpx_vs_dqx_da   [ri] - twp.dpx_vs_dqx_fd   [ri])
+  twp:addcol("dpx_vs_dqy_dif"   , \ri -> twp.dpx_vs_dqy_da   [ri] - twp.dpx_vs_dqy_fd   [ri])
+  twp:addcol("dy_vs_dqx_dif"    , \ri -> twp.dy_vs_dqx_da    [ri] - twp.dy_vs_dqx_fd    [ri])
+  twp:addcol("dy_vs_dqy_dif"    , \ri -> twp.dy_vs_dqy_da    [ri] - twp.dy_vs_dqy_fd    [ri])
+  twp:addcol("dpy_vs_dqx_dif"   , \ri -> twp.dpy_vs_dqx_da   [ri] - twp.dpy_vs_dqx_fd   [ri])
+  twp:addcol("dpy_vs_dqy_dif"   , \ri -> twp.dpy_vs_dqy_da   [ri] - twp.dpy_vs_dqy_fd   [ri])
 if chrm then
-  twp:addcol("dmu1_vs_k1f_dif"  , \ri -> twp.dmu1_vs_k1f_da  [ri] - twp.dmu1_vs_k1f_fd  [ri])
-  twp:addcol("dmu1_vs_k1d_dif"  , \ri -> twp.dmu1_vs_k1d_da  [ri] - twp.dmu1_vs_k1d_fd  [ri])
-  twp:addcol("dmu2_vs_k1f_dif"  , \ri -> twp.dmu2_vs_k1f_da  [ri] - twp.dmu2_vs_k1f_fd  [ri])
-  twp:addcol("dmu2_vs_k1d_dif"  , \ri -> twp.dmu2_vs_k1d_da  [ri] - twp.dmu2_vs_k1d_fd  [ri])
-  twp:addcol("wx_vs_k1f_dif"    , \ri -> twp.wx_vs_k1f_da    [ri] - twp.wx_vs_k1f_fd    [ri])
-  twp:addcol("wx_vs_k1d_dif"    , \ri -> twp.wx_vs_k1d_da    [ri] - twp.wx_vs_k1d_fd    [ri])
-  twp:addcol("wxp_vs_k1f_dif"   , \ri -> twp.wxp_vs_k1f_da   [ri] - twp.wxp_vs_k1f_fd   [ri])
-  twp:addcol("wxp_vs_k1d_dif"   , \ri -> twp.wxp_vs_k1d_da   [ri] - twp.wxp_vs_k1d_fd   [ri])
-  twp:addcol("wy_vs_k1f_dif"    , \ri -> twp.wy_vs_k1f_da    [ri] - twp.wy_vs_k1f_fd    [ri])
-  twp:addcol("wy_vs_k1d_dif"    , \ri -> twp.wy_vs_k1d_da    [ri] - twp.wy_vs_k1d_fd    [ri])
-  twp:addcol("wyp_vs_k1f_dif"   , \ri -> twp.wyp_vs_k1f_da   [ri] - twp.wyp_vs_k1f_fd   [ri])
-  twp:addcol("wyp_vs_k1d_dif"   , \ri -> twp.wyp_vs_k1d_da   [ri] - twp.wyp_vs_k1d_fd   [ri])
+  twp:addcol("dmu1_vs_dqx_dif"  , \ri -> twp.dmu1_vs_dqx_da  [ri] - twp.dmu1_vs_dqx_fd  [ri])
+  twp:addcol("dmu1_vs_dqy_dif"  , \ri -> twp.dmu1_vs_dqy_da  [ri] - twp.dmu1_vs_dqy_fd  [ri])
+  twp:addcol("dmu2_vs_dqx_dif"  , \ri -> twp.dmu2_vs_dqx_da  [ri] - twp.dmu2_vs_dqx_fd  [ri])
+  twp:addcol("dmu2_vs_dqy_dif"  , \ri -> twp.dmu2_vs_dqy_da  [ri] - twp.dmu2_vs_dqy_fd  [ri])
+  twp:addcol("wx_vs_dqx_dif"    , \ri -> twp.wx_vs_dqx_da    [ri] - twp.wx_vs_dqx_fd    [ri])
+  twp:addcol("wx_vs_dqy_dif"    , \ri -> twp.wx_vs_dqy_da    [ri] - twp.wx_vs_dqy_fd    [ri])
+  twp:addcol("wxp_vs_dqx_dif"   , \ri -> twp.wxp_vs_dqx_da   [ri] - twp.wxp_vs_dqx_fd   [ri])
+  twp:addcol("wxp_vs_dqy_dif"   , \ri -> twp.wxp_vs_dqy_da   [ri] - twp.wxp_vs_dqy_fd   [ri])
+  twp:addcol("wy_vs_dqx_dif"    , \ri -> twp.wy_vs_dqx_da    [ri] - twp.wy_vs_dqx_fd    [ri])
+  twp:addcol("wy_vs_dqy_dif"    , \ri -> twp.wy_vs_dqy_da    [ri] - twp.wy_vs_dqy_fd    [ri])
+  twp:addcol("wyp_vs_dqx_dif"   , \ri -> twp.wyp_vs_dqx_da   [ri] - twp.wyp_vs_dqx_fd   [ri])
+  twp:addcol("wyp_vs_dqy_dif"   , \ri -> twp.wyp_vs_dqy_da   [ri] - twp.wyp_vs_dqy_fd   [ri])
 end
 end
 
 -- debug bet
 twp:write("twiss_prms_bet_"..MAD.env.version..".tfs",
-          {'name','kind','s',"beta11_vs_k1f_dif", "beta11_vs_k1f_da", "beta11_vs_k1f_fd"})
+          {'name','kind','s',"beta11_vs_dqx_dif", "beta11_vs_dqx_da", "beta11_vs_dqx_fd"})
 
 -- save table
 twp:write("twiss_prms_"..MAD.env.version..".tfs")
@@ -255,206 +347,206 @@ twp:write("twiss_prms_"..MAD.env.version..".tfs")
 io.write("Making plots...\n")
 
 plot {
-  title    = "beta vs da (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "beta vs da ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"beta11_vs_k1f_da", "beta11_vs_k1d_da", "beta22_vs_k1f_da", "beta22_vs_k1d_da"}},
+  x1y1     = {s = {"beta11_vs_dqx_da", "beta11_vs_dqy_da", "beta22_vs_dqx_da", "beta22_vs_dqy_da"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "β_{x,y} [m]",                          -- y-axis label left
   y2label  = "",                                     -- y-axis label right
-  legend   = {beta11_vs_k1f_da="β_x vs k1f", beta11_vs_k1d_da="β_x vs k1d",
-              beta22_vs_k1f_da="β_y vs k1f", beta22_vs_k1d_da="β_y vs k1d"},
+  legend   = {beta11_vs_dqx_da="β_x vs dqx", beta11_vs_dqy_da="β_x vs dqy",
+              beta22_vs_dqx_da="β_y vs dqx", beta22_vs_dqy_da="β_y vs dqy"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "beta vs fd (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "beta vs fd ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"beta11_vs_k1f_fd", "beta11_vs_k1d_fd", "beta22_vs_k1f_fd", "beta22_vs_k1d_fd"}},
+  x1y1     = {s = {"beta11_vs_dqx_fd", "beta11_vs_dqy_fd", "beta22_vs_dqx_fd", "beta22_vs_dqy_fd"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "β_{x,y} [m]",                          -- y-axis label left
-  legend   = {beta11_vs_k1f_fd="β_x vs k1f", beta11_vs_k1d_fd="β_x vs k1d",
-              beta22_vs_k1f_fd="β_y vs k1f", beta22_vs_k1d_fd="β_y vs k1d"},
+  legend   = {beta11_vs_dqx_fd="β_x vs dqx", beta11_vs_dqy_fd="β_x vs dqy",
+              beta22_vs_dqx_fd="β_y vs dqx", beta22_vs_dqy_fd="β_y vs dqy"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "beta vs da and fd diff (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "beta vs da and fd diff ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"beta11_vs_k1f_dif", "beta11_vs_k1d_dif", "beta22_vs_k1f_dif", "beta22_vs_k1d_dif"}},
+  x1y1     = {s = {"beta11_vs_dqx_dif", "beta11_vs_dqy_dif", "beta22_vs_dqx_dif", "beta22_vs_dqy_dif"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "Error on β_{x,y} [m]",                 -- y-axis label left
-  legend   = {beta11_vs_k1f_dif="β_x vs k1f err", beta11_vs_k1d_dif="β_x vs k1d err",
-              beta22_vs_k1f_dif="β_y vs k1f err", beta22_vs_k1d_dif="β_y vs k1d err"},
+  legend   = {beta11_vs_dqx_dif="β_x vs dqx err", beta11_vs_dqy_dif="β_x vs dqy err",
+              beta22_vs_dqx_dif="β_y vs dqx err", beta22_vs_dqy_dif="β_y vs dqy err"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "alfa vs da (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "alfa vs da ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"alfa11_vs_k1f_da", "alfa11_vs_k1d_da", "alfa22_vs_k1f_da", "alfa22_vs_k1d_da"}},
+  x1y1     = {s = {"alfa11_vs_dqx_da", "alfa11_vs_dqy_da", "alfa22_vs_dqx_da", "alfa22_vs_dqy_da"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "α_{x,y} [m]",                          -- y-axis label left
-  legend   = {alfa11_vs_k1f_da="α_x vs k1f", alfa11_vs_k1d_da="α_x vs k1d",
-              alfa22_vs_k1f_da="α_y vs k1f", alfa22_vs_k1d_da="α_y vs k1d"},
+  legend   = {alfa11_vs_dqx_da="α_x vs dqx", alfa11_vs_dqy_da="α_x vs dqy",
+              alfa22_vs_dqx_da="α_y vs dqx", alfa22_vs_dqy_da="α_y vs dqy"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "alfa vs fd (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "alfa vs fd ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"alfa11_vs_k1f_fd", "alfa11_vs_k1d_fd", "alfa22_vs_k1f_fd", "alfa22_vs_k1d_fd"}},
+  x1y1     = {s = {"alfa11_vs_dqx_fd", "alfa11_vs_dqy_fd", "alfa22_vs_dqx_fd", "alfa22_vs_dqy_fd"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "α_{x,y} [m]",                          -- y-axis label left
-  legend   = {alfa11_vs_k1f_fd="α_x vs k1f", alfa11_vs_k1d_fd="α_x vs k1d",
-              alfa22_vs_k1f_fd="α_y vs k1f", alfa22_vs_k1d_fd="α_y vs k1d"},
+  legend   = {alfa11_vs_dqx_fd="α_x vs dqx", alfa11_vs_dqy_fd="α_x vs dqy",
+              alfa22_vs_dqx_fd="α_y vs dqx", alfa22_vs_dqy_fd="α_y vs dqy"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "alfa vs da and fd diff (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "alfa vs da and fd diff ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"alfa11_vs_k1f_dif", "alfa11_vs_k1d_dif", "alfa22_vs_k1f_dif", "alfa22_vs_k1d_dif"}},
+  x1y1     = {s = {"alfa11_vs_dqx_dif", "alfa11_vs_dqy_dif", "alfa22_vs_dqx_dif", "alfa22_vs_dqy_dif"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "Error on α_{x,y} [m]",                 -- y-axis label left
-  legend   = {alfa11_vs_k1f_dif="α_x vs k1f err", alfa11_vs_k1d_dif="α_x vs k1d err",
-              alfa22_vs_k1f_dif="α_y vs k1f err", alfa22_vs_k1d_dif="α_y vs k1d err"},
+  legend   = {alfa11_vs_dqx_dif="α_x vs dqx err", alfa11_vs_dqy_dif="α_x vs dqy err",
+              alfa22_vs_dqx_dif="α_y vs dqx err", alfa22_vs_dqy_dif="α_y vs dqy err"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "gama vs da (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "gama vs da ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"gama11_vs_k1f_da", "gama11_vs_k1d_da", "gama22_vs_k1f_da", "gama22_vs_k1d_da"}},
+  x1y1     = {s = {"gama11_vs_dqx_da", "gama11_vs_dqy_da", "gama22_vs_dqx_da", "gama22_vs_dqy_da"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "γ_{x,y} [m]",                          -- y-axis label left
-  legend   = {gama11_vs_k1f_da="γ_x vs k1f", gama11_vs_k1d_da="γ_x vs k1d",
-              gama22_vs_k1f_da="γ_y vs k1f", gama22_vs_k1d_da="γ_y vs k1d"},
+  legend   = {gama11_vs_dqx_da="γ_x vs dqx", gama11_vs_dqy_da="γ_x vs dqy",
+              gama22_vs_dqx_da="γ_y vs dqx", gama22_vs_dqy_da="γ_y vs dqy"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "gama vs fd (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "gama vs fd ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"gama11_vs_k1f_fd", "gama11_vs_k1d_fd", "gama22_vs_k1f_fd", "gama22_vs_k1d_fd"}},
+  x1y1     = {s = {"gama11_vs_dqx_fd", "gama11_vs_dqy_fd", "gama22_vs_dqx_fd", "gama22_vs_dqy_fd"}},
   xlabel   = "s [m]"   ,                             -- x-axis labellabel
   ylabel   = "γ_{x,y} [m]",                          -- y-axis label left
-  legend   = {gama11_vs_k1f_fd="γ_x vs k1f", gama11_vs_k1d_fd="γ_x vs k1d",
-              gama22_vs_k1f_fd="γ_y vs k1f", gama22_vs_k1d_fd="γ_y vs k1d"},
+  legend   = {gama11_vs_dqx_fd="γ_x vs dqx", gama11_vs_dqy_fd="γ_x vs dqy",
+              gama22_vs_dqx_fd="γ_y vs dqx", gama22_vs_dqy_fd="γ_y vs dqy"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "gama vs da and fd diff (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "gama vs da and fd diff ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"gama11_vs_k1f_dif", "gama11_vs_k1d_dif", "gama22_vs_k1f_dif", "gama22_vs_k1d_dif"}},
+  x1y1     = {s = {"gama11_vs_dqx_dif", "gama11_vs_dqy_dif", "gama22_vs_dqx_dif", "gama22_vs_dqy_dif"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "Error on γ_{x,y} [m]",                 -- y-axis label left
-  legend   = {gama11_vs_k1f_dif="γ_x vs k1f err", gama11_vs_k1d_dif="γ_x vs k1d err",
-              gama22_vs_k1f_dif="γ_y vs k1f err", gama22_vs_k1d_dif="γ_y vs k1d err"},
+  legend   = {gama11_vs_dqx_dif="γ_x vs dqx err", gama11_vs_dqy_dif="γ_x vs dqy err",
+              gama22_vs_dqx_dif="γ_y vs dqx err", gama22_vs_dqy_dif="γ_y vs dqy err"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "mu vs da (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "mu vs da ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"mu1_vs_k1f_da", "mu1_vs_k1d_da", "mu2_vs_k1f_da", "mu2_vs_k1d_da"}},
+  x1y1     = {s = {"mu1_vs_dqx_da", "mu1_vs_dqy_da", "mu2_vs_dqx_da", "mu2_vs_dqy_da"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "μ_{x,y} [m]",                          -- y-axis label left
-  legend   = {mu1_vs_k1f_da="μ_x vs k1f", mu1_vs_k1d_da="μ_x vs k1d",
-              mu2_vs_k1f_da="μ_y vs k1f", mu2_vs_k1d_da="μ_y vs k1d"},
+  legend   = {mu1_vs_dqx_da="μ_x vs dqx", mu1_vs_dqy_da="μ_x vs dqy",
+              mu2_vs_dqx_da="μ_y vs dqx", mu2_vs_dqy_da="μ_y vs dqy"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "mu vs fd (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "mu vs fd ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"mu1_vs_k1f_fd", "mu1_vs_k1d_fd", "mu2_vs_k1f_fd", "mu2_vs_k1d_fd"}},
+  x1y1     = {s = {"mu1_vs_dqx_fd", "mu1_vs_dqy_fd", "mu2_vs_dqx_fd", "mu2_vs_dqy_fd"}},
   xlabel   = "s [m]"   ,                             -- x-axis labellabel
   ylabel   = "μ_{x,y} [m]",                          -- y-axis label left
-  legend   = {mu1_vs_k1f_fd="μ_x vs k1f", mu1_vs_k1d_fd="μ_x vs k1d",
-              mu2_vs_k1f_fd="μ_y vs k1f", mu2_vs_k1d_fd="μ_y vs k1d"},
+  legend   = {mu1_vs_dqx_fd="μ_x vs dqx", mu1_vs_dqy_fd="μ_x vs dqy",
+              mu2_vs_dqx_fd="μ_y vs dqx", mu2_vs_dqy_fd="μ_y vs dqy"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "mu vs da and fd diff (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "mu vs da and fd diff ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"mu1_vs_k1f_dif", "mu1_vs_k1d_dif", "mu2_vs_k1f_dif", "mu2_vs_k1d_dif"}},
+  x1y1     = {s = {"mu1_vs_dqx_dif", "mu1_vs_dqy_dif", "mu2_vs_dqx_dif", "mu2_vs_dqy_dif"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "Error on μ_{x,y} [m]",                 -- y-axis label left
-  legend   = {mu1_vs_k1f_dif="μ_x vs k1f err", mu1_vs_k1d_dif="μ_x vs k1d err",
-              mu2_vs_k1f_dif="μ_y vs k1f err", mu2_vs_k1d_dif="μ_y vs k1d err"},
+  legend   = {mu1_vs_dqx_dif="μ_x vs dqx err", mu1_vs_dqy_dif="μ_x vs dqy err",
+              mu2_vs_dqx_dif="μ_y vs dqx err", mu2_vs_dqy_dif="μ_y vs dqy err"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "disp vs da (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "disp vs da ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"dx_vs_k1f_da", "dx_vs_k1d_da", "dy_vs_k1f_da", "dy_vs_k1d_da",
-                   "dpx_vs_k1f_da", "dpx_vs_k1d_da", "dpy_vs_k1f_da", "dpy_vs_k1d_da"}},
+  x1y1     = {s = {"dx_vs_dqx_da", "dx_vs_dqy_da", "dy_vs_dqx_da", "dy_vs_dqy_da",
+                   "dpx_vs_dqx_da", "dpx_vs_dqy_da", "dpy_vs_dqx_da", "dpy_vs_dqy_da"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "d_{x,y} or dp_{x,y} [m]",              -- y-axis label left
-  legend   = {dx_vs_k1f_da ="dx vs k1f",  dx_vs_k1d_da ="dx vs k1d",
-              dy_vs_k1f_da ="dy vs k1f",  dy_vs_k1d_da ="dy vs k1d",
-              dpx_vs_k1f_da="dpx vs k1f", dpx_vs_k1d_da="dpx vs k1d",
-              dpy_vs_k1f_da="dpy vs k1f", dpy_vs_k1d_da="dpy vs k1d",},
+  legend   = {dx_vs_dqx_da ="dx vs dqx",  dx_vs_dqy_da ="dx vs dqy",
+              dy_vs_dqx_da ="dy vs dqx",  dy_vs_dqy_da ="dy vs dqy",
+              dpx_vs_dqx_da="dpx vs dqx", dpx_vs_dqy_da="dpx vs dqy",
+              dpy_vs_dqx_da="dpy vs dqx", dpy_vs_dqy_da="dpy vs dqy",},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "disp vs fd (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "disp vs fd ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"dx_vs_k1f_fd",  "dx_vs_k1d_fd",  "dy_vs_k1f_fd",  "dy_vs_k1d_fd",
-                   "dpx_vs_k1f_fd", "dpx_vs_k1d_fd", "dpy_vs_k1f_fd", "dpy_vs_k1d_fd"}},
+  x1y1     = {s = {"dx_vs_dqx_fd",  "dx_vs_dqy_fd",  "dy_vs_dqx_fd",  "dy_vs_dqy_fd",
+                   "dpx_vs_dqx_fd", "dpx_vs_dqy_fd", "dpy_vs_dqx_fd", "dpy_vs_dqy_fd"}},
   xlabel   = "s [m]"   ,                             -- x-axis labellabel
   ylabel   = "d_{x,y} or dp_{x,y} [m]",              -- y-axis label left
-  legend   = {dx_vs_k1f_fd ="dx vs k1f",  dx_vs_k1d_fd ="dx vs k1d",
-              dy_vs_k1f_fd ="dy vs k1f",  dy_vs_k1d_fd ="dy vs k1d",
-              dpx_vs_k1f_fd="dpx vs k1f", dpx_vs_k1d_fd="dpx vs k1d",
-              dpy_vs_k1f_fd="dpy vs k1f", dpy_vs_k1d_fd="dpy vs k1d",},
+  legend   = {dx_vs_dqx_fd ="dx vs dqx",  dx_vs_dqy_fd ="dx vs dqy",
+              dy_vs_dqx_fd ="dy vs dqx",  dy_vs_dqy_fd ="dy vs dqy",
+              dpx_vs_dqx_fd="dpx vs dqx", dpx_vs_dqy_fd="dpx vs dqy",
+              dpy_vs_dqx_fd="dpy vs dqx", dpy_vs_dqy_fd="dpy vs dqy",},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "disp vs da and fd diff (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "disp vs da and fd diff ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"dx_vs_k1f_dif",  "dx_vs_k1d_dif",  "dy_vs_k1f_dif",  "dy_vs_k1d_dif",
-                   "dpx_vs_k1f_dif", "dpx_vs_k1d_dif", "dpy_vs_k1f_dif", "dpy_vs_k1d_dif"}},
+  x1y1     = {s = {"dx_vs_dqx_dif",  "dx_vs_dqy_dif",  "dy_vs_dqx_dif",  "dy_vs_dqy_dif",
+                   "dpx_vs_dqx_dif", "dpx_vs_dqy_dif", "dpy_vs_dqx_dif", "dpy_vs_dqy_dif"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "Error on d_{x,y} or dp_{x,y} [m]",     -- y-axis label left
-  legend   = {dx_vs_k1f_dif ="dx vs k1f err",  dx_vs_k1d_dif ="dx vs k1d err",
-              dy_vs_k1f_dif ="dy vs k1f err",  dy_vs_k1d_dif ="dy vs k1d err",
-              dpx_vs_k1f_dif="dpx vs k1f err", dpx_vs_k1d_dif="dpx vs k1d err",
-              dpy_vs_k1f_dif="dpy vs k1f err", dpy_vs_k1d_dif="dpy vs k1d err",},
+  legend   = {dx_vs_dqx_dif ="dx vs dqx err",  dx_vs_dqy_dif ="dx vs dqy err",
+              dy_vs_dqx_dif ="dy vs dqx err",  dy_vs_dqy_dif ="dy vs dqy err",
+              dpx_vs_dqx_dif="dpx vs dqx err", dpx_vs_dqy_dif="dpx vs dqy err",
+              dpy_vs_dqx_dif="dpy vs dqx err", dpy_vs_dqy_dif="dpy vs dqy err",},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
@@ -462,121 +554,123 @@ plot {
 if chrm then
 
 plot {
-  title    = "dmu vs da (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "dmu vs da ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"dmu1_vs_k1f_da", "dmu1_vs_k1d_da", "dmu2_vs_k1f_da", "dmu2_vs_k1d_da"}},
+  x1y1     = {s = {"dmu1_vs_dqx_da", "dmu1_vs_dqy_da", "dmu2_vs_dqx_da", "dmu2_vs_dqy_da"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "dμ_{x,y} [m]",                         -- y-axis label left
-  legend   = {dmu1_vs_k1f_da="dμ_x vs k1f", dmu1_vs_k1d_da="dμ_x vs k1d",
-              dmu2_vs_k1f_da="dμ_y vs k1f", dmu2_vs_k1d_da="dμ_y vs k1d"},
+  legend   = {dmu1_vs_dqx_da="dμ_x vs dqx", dmu1_vs_dqy_da="dμ_x vs dqy",
+              dmu2_vs_dqx_da="dμ_y vs dqx", dmu2_vs_dqy_da="dμ_y vs dqy"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "dmu vs fd (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "dmu vs fd ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"dmu1_vs_k1f_fd", "dmu1_vs_k1d_fd", "dmu2_vs_k1f_fd", "dmu2_vs_k1d_fd"}},
+  x1y1     = {s = {"dmu1_vs_dqx_fd", "dmu1_vs_dqy_fd", "dmu2_vs_dqx_fd", "dmu2_vs_dqy_fd"}},
   xlabel   = "s [m]"   ,                             -- x-axis labellabel
   ylabel   = "dμ_{x,y} [m]",                         -- y-axis label left
-  legend   = {dmu1_vs_k1f_fd="dμ_x vs k1f", dmu1_vs_k1d_fd="dμ_x vs k1d",
-              dmu2_vs_k1f_fd="dμ_y vs k1f", dmu2_vs_k1d_fd="dμ_y vs k1d"},
+  legend   = {dmu1_vs_dqx_fd="dμ_x vs dqx", dmu1_vs_dqy_fd="dμ_x vs dqy",
+              dmu2_vs_dqx_fd="dμ_y vs dqx", dmu2_vs_dqy_fd="dμ_y vs dqy"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "dmu vs da and fd diff (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "dmu vs da and fd diff ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"dmu1_vs_k1f_dif", "dmu1_vs_k1d_dif", "dmu2_vs_k1f_dif", "dmu2_vs_k1d_dif"}},
+  x1y1     = {s = {"dmu1_vs_dqx_dif", "dmu1_vs_dqy_dif", "dmu2_vs_dqx_dif", "dmu2_vs_dqy_dif"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "Error on dμ_{x,y} [m]",                -- y-axis label left
-  legend   = {dmu1_vs_k1f_dif="dμ_x vs k1f err", dmu1_vs_k1d_dif="dμ_x vs k1d err",
-              dmu2_vs_k1f_dif="dμ_y vs k1f err", dmu2_vs_k1d_dif="dμ_y vs k1d err"},
+  legend   = {dmu1_vs_dqx_dif="dμ_x vs dqx err", dmu1_vs_dqy_dif="dμ_x vs dqy err",
+              dmu2_vs_dqx_dif="dμ_y vs dqx err", dmu2_vs_dqy_dif="dμ_y vs dqy err"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "w vs da (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "w vs da ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"wx_vs_k1f_da", "wx_vs_k1d_da", "wy_vs_k1f_da", "wy_vs_k1d_da"}},
+  x1y1     = {s = {"wx_vs_dqx_da", "wx_vs_dqy_da", "wy_vs_dqx_da", "wy_vs_dqy_da"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "w_{x,y}",                              -- y-axis label left
-  legend   = {wx_vs_k1f_da ="wx vs k1f",  wx_vs_k1d_da ="wx vs k1d",
-              wy_vs_k1f_da ="wy vs k1f",  wy_vs_k1d_da ="wy vs k1d"},
+  legend   = {wx_vs_dqx_da ="wx vs dqx",  wx_vs_dqy_da ="wx vs dqy",
+              wy_vs_dqx_da ="wy vs dqx",  wy_vs_dqy_da ="wy vs dqy"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "w vs fd (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "w vs fd ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"wx_vs_k1f_fd",  "wx_vs_k1d_fd",  "wy_vs_k1f_fd",  "wy_vs_k1d_fd"}},
+  x1y1     = {s = {"wx_vs_dqx_fd",  "wx_vs_dqy_fd",  "wy_vs_dqx_fd",  "wy_vs_dqy_fd"}},
   xlabel   = "s [m]"   ,                             -- x-axis labellabel
   ylabel   = "w_{x,y}",                              -- y-axis label left
-  legend   = {wx_vs_k1f_fd ="wx vs k1f",  wx_vs_k1d_fd ="wx vs k1d",
-              wy_vs_k1f_fd ="wy vs k1f",  wy_vs_k1d_fd ="wy vs k1d"},
+  legend   = {wx_vs_dqx_fd ="wx vs dqx",  wx_vs_dqy_fd ="wx vs dqy",
+              wy_vs_dqx_fd ="wy vs dqx",  wy_vs_dqy_fd ="wy vs dqy"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "w vs da and fd diff (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "w vs da and fd diff ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"wx_vs_k1f_dif",  "wx_vs_k1d_dif",  "wy_vs_k1f_dif",  "wy_vs_k1d_dif"}},
+  x1y1     = {s = {"wx_vs_dqx_dif",  "wx_vs_dqy_dif",  "wy_vs_dqx_dif",  "wy_vs_dqy_dif"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "Error on w_{x,y}",                     -- y-axis label left
-  legend   = {wx_vs_k1f_dif ="wx vs k1f err",  wx_vs_k1d_dif ="wx vs k1d err",
-              wy_vs_k1f_dif ="wy vs k1f err",  wy_vs_k1d_dif ="wy vs k1d err"},
+  legend   = {wx_vs_dqx_dif ="wx vs dqx err",  wx_vs_dqy_dif ="wx vs dqy err",
+              wy_vs_dqx_dif ="wy vs dqx err",  wy_vs_dqy_dif ="wy vs dqy err"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "wp vs da (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "wp vs da ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"wxp_vs_k1f_da", "wxp_vs_k1d_da", "wyp_vs_k1f_da", "wyp_vs_k1d_da"}},
+  x1y1     = {s = {"wxp_vs_dqx_da", "wxp_vs_dqy_da", "wyp_vs_dqx_da", "wyp_vs_dqy_da"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "w_{x,y}p",                             -- y-axis label left
-  legend   = {wxp_vs_k1f_da="wpx vs k1f", wxp_vs_k1d_da="wpx vs k1d",
-              wyp_vs_k1f_da="wpy vs k1f", wyp_vs_k1d_da="wpy vs k1d"},
+  legend   = {wxp_vs_dqx_da="wpx vs dqx", wxp_vs_dqy_da="wpx vs dqy",
+              wyp_vs_dqx_da="wpy vs dqx", wyp_vs_dqy_da="wpy vs dqy"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "wp vs fd (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "wp vs fd ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"wxp_vs_k1f_fd", "wxp_vs_k1d_fd", "wyp_vs_k1f_fd", "wyp_vs_k1d_fd"}},
+  x1y1     = {s = {"wxp_vs_dqx_fd", "wxp_vs_dqy_fd", "wyp_vs_dqx_fd", "wyp_vs_dqy_fd"}},
   xlabel   = "s [m]"   ,                             -- x-axis labellabel
   ylabel   = "w_{x,y}p",                             -- y-axis label left
-  legend   = {wxp_vs_k1f_fd="wxp vs k1f", wxp_vs_k1d_fd="wxp vs k1d",
-              wyp_vs_k1f_fd="wyp vs k1f", wyp_vs_k1d_fd="wyp vs k1d"},
+  legend   = {wxp_vs_dqx_fd="wxp vs dqx", wxp_vs_dqy_fd="wxp vs dqy",
+              wyp_vs_dqx_fd="wyp vs dqx", wyp_vs_dqy_fd="wyp vs dqy"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 
 plot {
-  title    = "wp vs da and fd diff (order "..ord..")",  -- plot title
-  sequence = lhcb1,            -- sequence for layout
+  title    = "wp vs da and fd diff ("..snam..", order "..ord..")",  -- plot title
+  sequence = seq,             -- sequence for layout
   table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"wxp_vs_k1f_dif", "wxp_vs_k1d_dif", "wyp_vs_k1f_dif", "wyp_vs_k1d_dif"}},
+  x1y1     = {s = {"wxp_vs_dqx_dif", "wxp_vs_dqy_dif", "wyp_vs_dqx_dif", "wyp_vs_dqy_dif"}},
   xlabel   = "s [m]"   ,                             -- x-axis label
   ylabel   = "Error on w_{x,y}p",                    -- y-axis label left
-  legend   = {wxp_vs_k1f_dif="wxp vs k1f err", wxp_vs_k1d_dif="wxp vs k1d err",
-              wyp_vs_k1f_dif="wyp vs k1f err", wyp_vs_k1d_dif="wyp vs k1d err"},
+  legend   = {wxp_vs_dqx_dif="wxp vs dqx err", wxp_vs_dqy_dif="wxp vs dqy err",
+              wyp_vs_dqx_dif="wyp vs dqx err", wyp_vs_dqy_dif="wyp vs dqy err"},
   styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
 end -- chrm
 
 end -- over order ord
+
+end -- over seq
