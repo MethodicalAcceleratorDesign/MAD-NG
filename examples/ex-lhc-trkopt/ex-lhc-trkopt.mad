@@ -1,10 +1,11 @@
 -- Script Setup
-local seq2 = true                 -- run also LHCB2
+local seqs = {"lhcb1","lhcb2"}    -- list of sequences
 local reft = true                 -- compute reference track & twiss
 local knbs = true                 -- check tunes knobs effectiveness
 local chrm = true                 -- compute chromatic functions
 local cmap = true                 -- use cmaps (or not)
 local mord = 2                    -- max loop order (1 or 2)
+local tplt = ""                   -- plot title, false or ""
 local fplt = "ex-lhc-trkopt_"..MAD.env.version..".pdf" -- file to output plots
 
 -- Import commands
@@ -25,15 +26,15 @@ MADX.option.warn=true
 local lhcb1, lhcb2 in MADX
 lhcb1.beam = pbtop
 lhcb2.beam = pbtop
-lhcb2.dir = -1 -- reverse direction
+lhcb2.dir  = -1 -- reverse direction
 
-for idx,seq in ipairs{lhcb1, seq2 and lhcb2 or nil} do
+-- sequence
+for idx,snam in ipairs(seqs) do
 
--- sequence name
-local snam = seq.name:lower()
 io.write("Running ", snam, "\n")
 
--- sequence tune knobs
+-- sequence and tune knobs
+local seq = MADX[snam]
 local bn  = ({"b1","b2"})[idx]
 local dqx = "dqx_"..bn.."_op"
 local dqy = "dqy_"..bn.."_op"
@@ -55,17 +56,17 @@ tw = timeit(\ -> twiss {sequence=seq}, "Twiss Ref")
 tw:write(snam.."_tw_ref.tfs", cols)
 
 plot {
-  title    = "Optical Functions "..snam,  -- plot title
-  sequence = seq,            -- sequence for layout
-  table    = tw,               -- twiss table for plot
+  title   = tplt or "Optical Functions "..snam,     -- plot title
+  table   = tw,                                     -- twiss table for plot
+  xrange  = {0, seq.l},                             -- x range
   x1y1    = {s = {"beta11", "beta22", "dx", "dy"}}, -- x vs y1 columns
   x1y2    = {s = {"mu1", "mu2"}},                   -- x vs y2 columns
   xlabel  = "s [m]"   ,                             -- x-axis label
   ylabel  = "β_{x,y} [m], D_{x,y} [m]",             -- y-axis label left
   y2label = "μ_{x,y} [rad/2π]",                     -- y-axis label right
   legend  = {beta11="β_x", beta22="β_y",            -- column labels
-             mu1="μ_x", mu2="μ_y",                   --   idem
-             dx="D_x", dy="D_y"},                    --   idem
+             mu1="μ_x", mu2="μ_y",                  --   idem
+             dx="D_x", dy="D_y"},                   --   idem
   styles  = "lines", linewidth=1.5, fontsize=16,    -- styles
   output   = fplt,
 }
@@ -142,7 +143,7 @@ q2_dqxy           = 60.3300055 ;  q2_dqxy          = 60.3300054
 
 -- First and Second derivative check -------------------------------------------
 
--- Optical functions to check
+-- Optical functions of interest (1st and 2nd order)
 local kopts = {
   tblcat(
   {"beta11_10", "beta11_01", "beta22_10", "beta22_01", -- 1
@@ -172,12 +173,10 @@ local kopts = {
 -- Loop over orders -------------------
 for ord=1,mord do
 
-io.write("Checking Order ", ord, " for ", snam, "\n")
-
-local nk = 24+(chrm and 12 or 0)
-assert(#kopts[ord] == nk, "invalid kopts, expecting "..nk.." got "..#kopts[ord])
+io.write("Computing order ", ord, " for ", snam, "\n")
 
 -- Compute parametric twiss -----------
+
 local mo = ord+(chrm and 2 or 1)
 local x0 = damap { nv=6, np=2, no={mo,mo,mo,mo,1,1}, po=ord, pn={"dqx", "dqy"} }
 
@@ -294,7 +293,7 @@ if chrm then
 end
 end
 
--- Build plots ------------------------
+-- Add error columns -----------
 
 do
   twp:addcol("beta11_vs_dqx_dif", \ri -> twp.beta11_vs_dqx_da[ri] - twp.beta11_vs_dqx_fd[ri])
@@ -337,337 +336,257 @@ if chrm then
 end
 end
 
--- debug bet
-twp:write("twiss_prms_bet_"..MAD.env.version..".tfs",
-          {'name','kind','s',"beta11_vs_dqx_dif", "beta11_vs_dqx_da", "beta11_vs_dqx_fd"})
+-- Build plots ------------------------
 
 -- save table
 twp:write("twiss_prms_"..MAD.env.version..".tfs")
 
 io.write("Making plots...\n")
 
-plot {
-  title    = "beta vs da ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+local plt = plot { -- plot template
+  table    = twp,
+  xrange   = {0, seq.l},
+  styles   = "lines", linewidth=1.5, fontsize=16,
+  output   = fplt,
+  exec     = false
+}
+
+---------
+
+-- Beta functions
+plt {
+  title    = tplt or "Sensitivity of beta DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"beta11_vs_dqx_da", "beta11_vs_dqy_da", "beta22_vs_dqx_da", "beta22_vs_dqy_da"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "β_{x,y} [m]",                          -- y-axis label left
-  y2label  = "",                                     -- y-axis label right
-  legend   = {beta11_vs_dqx_da="β_x vs dqx", beta11_vs_dqy_da="β_x vs dqy",
-              beta22_vs_dqx_da="β_y vs dqx", beta22_vs_dqy_da="β_y vs dqy"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]"   ,
+  ylabel   = "d β_{x,y} / d q_{x,y}",
+  legend   = {beta11_vs_dqx_da="d β_x/d q_x", beta11_vs_dqy_da="d β_x/d q_y",
+              beta22_vs_dqx_da="d β_y/d q_x", beta22_vs_dqy_da="d β_y/d q_y"},
 }
-
-plot {
-  title    = "beta vs fd ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+plt {
+  title    = tplt or "Sensitivity of beta FD ("..snam..", order "..ord..")",
   x1y1     = {s = {"beta11_vs_dqx_fd", "beta11_vs_dqy_fd", "beta22_vs_dqx_fd", "beta22_vs_dqy_fd"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "β_{x,y} [m]",                          -- y-axis label left
-  legend   = {beta11_vs_dqx_fd="β_x vs dqx", beta11_vs_dqy_fd="β_x vs dqy",
-              beta22_vs_dqx_fd="β_y vs dqx", beta22_vs_dqy_fd="β_y vs dqy"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]",
+  ylabel   = "d β_{x,y} / d q_{x,y}",
+  legend   = {beta11_vs_dqx_fd="d β_x/d q_x", beta11_vs_dqy_fd="d β_x/d q_y",
+              beta22_vs_dqx_fd="d β_y/d q_x", beta22_vs_dqy_fd="d β_y/d q_y"},
 }
-
-plot {
-  title    = "beta vs da and fd diff ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+plt {
+  title    = tplt or "Sensitivity error of beta FD vs beta DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"beta11_vs_dqx_dif", "beta11_vs_dqy_dif", "beta22_vs_dqx_dif", "beta22_vs_dqy_dif"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "Error on β_{x,y} [m]",                 -- y-axis label left
-  legend   = {beta11_vs_dqx_dif="β_x vs dqx err", beta11_vs_dqy_dif="β_x vs dqy err",
-              beta22_vs_dqx_dif="β_y vs dqx err", beta22_vs_dqy_dif="β_y vs dqy err"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]"   ,
+  ylabel   = "Error on d β_{x,y} / d q_{x,y}",
+  legend   = {beta11_vs_dqx_dif="Δ d β_x/d q_x", beta11_vs_dqy_dif="Δ d β_x/d q_y",
+              beta22_vs_dqx_dif="Δ d β_y/d q_x", beta22_vs_dqy_dif="Δ d β_y/d q_y"},
 }
 
-plot {
-  title    = "alfa vs da ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+-- Alpha functions
+plt {
+  title    = tplt or "Sensitivity of alpha DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"alfa11_vs_dqx_da", "alfa11_vs_dqy_da", "alfa22_vs_dqx_da", "alfa22_vs_dqy_da"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "α_{x,y} [m]",                          -- y-axis label left
-  legend   = {alfa11_vs_dqx_da="α_x vs dqx", alfa11_vs_dqy_da="α_x vs dqy",
-              alfa22_vs_dqx_da="α_y vs dqx", alfa22_vs_dqy_da="α_y vs dqy"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]",
+  ylabel   = "d α_{x,y} / d q_{x,y}",
+  legend   = {alfa11_vs_dqx_da="d α_x/d q_x", alfa11_vs_dqy_da="d α_x/d q_y",
+              alfa22_vs_dqx_da="d α_y/d q_x", alfa22_vs_dqy_da="d α_y/d q_y"},
 }
-
-plot {
-  title    = "alfa vs fd ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+plt {
+  title    = tplt or "Sensitivity of alpha FD ("..snam..", order "..ord..")",
   x1y1     = {s = {"alfa11_vs_dqx_fd", "alfa11_vs_dqy_fd", "alfa22_vs_dqx_fd", "alfa22_vs_dqy_fd"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "α_{x,y} [m]",                          -- y-axis label left
-  legend   = {alfa11_vs_dqx_fd="α_x vs dqx", alfa11_vs_dqy_fd="α_x vs dqy",
-              alfa22_vs_dqx_fd="α_y vs dqx", alfa22_vs_dqy_fd="α_y vs dqy"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]"   ,
+  ylabel   = "d α_{x,y} / d q_{x,y}",
+  legend   = {alfa11_vs_dqx_fd="d α_x/d q_x", alfa11_vs_dqy_fd="d α_x/d q_y",
+              alfa22_vs_dqx_fd="d α_y/d q_x", alfa22_vs_dqy_fd="d α_y/d q_y"},
 }
-
-plot {
-  title    = "alfa vs da and fd diff ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+plt {
+  title    = tplt or "Sensitivity error of alpha FD vs alpha DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"alfa11_vs_dqx_dif", "alfa11_vs_dqy_dif", "alfa22_vs_dqx_dif", "alfa22_vs_dqy_dif"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "Error on α_{x,y} [m]",                 -- y-axis label left
-  legend   = {alfa11_vs_dqx_dif="α_x vs dqx err", alfa11_vs_dqy_dif="α_x vs dqy err",
-              alfa22_vs_dqx_dif="α_y vs dqx err", alfa22_vs_dqy_dif="α_y vs dqy err"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]"   ,
+  ylabel   = "Error on d α_{x,y} / d q_{x,y}",
+  legend   = {alfa11_vs_dqx_dif="Δ d α_x/d q_x", alfa11_vs_dqy_dif="Δ d α_x/d q_y",
+              alfa22_vs_dqx_dif="Δ d α_y/d q_x", alfa22_vs_dqy_dif="Δ d α_y/d q_y"},
 }
 
-plot {
-  title    = "gama vs da ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+-- Gamma functions
+plt {
+  title    = tplt or "Sensitivity of gamma DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"gama11_vs_dqx_da", "gama11_vs_dqy_da", "gama22_vs_dqx_da", "gama22_vs_dqy_da"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "γ_{x,y} [m]",                          -- y-axis label left
-  legend   = {gama11_vs_dqx_da="γ_x vs dqx", gama11_vs_dqy_da="γ_x vs dqy",
-              gama22_vs_dqx_da="γ_y vs dqx", gama22_vs_dqy_da="γ_y vs dqy"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]"   ,
+  ylabel   = "d γ_{x,y} / d q_{x,y}",
+  legend   = {gama11_vs_dqx_da="d γ_x/d q_x", gama11_vs_dqy_da="d γ_x/d q_y",
+              gama22_vs_dqx_da="d γ_y/d q_x", gama22_vs_dqy_da="d γ_y/d q_y"},
 }
-
-plot {
-  title    = "gama vs fd ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+plt {
+  title    = tplt or "Sensitivity of gamma FD ("..snam..", order "..ord..")",
   x1y1     = {s = {"gama11_vs_dqx_fd", "gama11_vs_dqy_fd", "gama22_vs_dqx_fd", "gama22_vs_dqy_fd"}},
-  xlabel   = "s [m]"   ,                             -- x-axis labellabel
-  ylabel   = "γ_{x,y} [m]",                          -- y-axis label left
-  legend   = {gama11_vs_dqx_fd="γ_x vs dqx", gama11_vs_dqy_fd="γ_x vs dqy",
-              gama22_vs_dqx_fd="γ_y vs dqx", gama22_vs_dqy_fd="γ_y vs dqy"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]"   ,
+  ylabel   = "d γ_{x,y} / d q_{x,y}",
+  legend   = {gama11_vs_dqx_fd="d γ_x/d q_x", gama11_vs_dqy_fd="d γ_x/d q_y",
+              gama22_vs_dqx_fd="d γ_y/d q_x", gama22_vs_dqy_fd="d γ_y/d q_y"},
 }
-
-plot {
-  title    = "gama vs da and fd diff ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+plt {
+  title    = tplt or "Sensitivity error of gamma FD vs gamma DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"gama11_vs_dqx_dif", "gama11_vs_dqy_dif", "gama22_vs_dqx_dif", "gama22_vs_dqy_dif"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "Error on γ_{x,y} [m]",                 -- y-axis label left
-  legend   = {gama11_vs_dqx_dif="γ_x vs dqx err", gama11_vs_dqy_dif="γ_x vs dqy err",
-              gama22_vs_dqx_dif="γ_y vs dqx err", gama22_vs_dqy_dif="γ_y vs dqy err"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]"   ,
+  ylabel   = "Error on d γ_{x,y} / d q_{x,y}",
+  legend   = {gama11_vs_dqx_dif="Δ d γ_x/d q_x", gama11_vs_dqy_dif="Δ d γ_x/d q_y",
+              gama22_vs_dqx_dif="Δ d γ_y/d q_x", gama22_vs_dqy_dif="Δ d γ_y/d q_y"},
 }
 
-plot {
-  title    = "mu vs da ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+-- Phase advance functions
+plt {
+  title    = tplt or "Sensitivity of mu DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"mu1_vs_dqx_da", "mu1_vs_dqy_da", "mu2_vs_dqx_da", "mu2_vs_dqy_da"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "μ_{x,y} [m]",                          -- y-axis label left
-  legend   = {mu1_vs_dqx_da="μ_x vs dqx", mu1_vs_dqy_da="μ_x vs dqy",
-              mu2_vs_dqx_da="μ_y vs dqx", mu2_vs_dqy_da="μ_y vs dqy"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]",
+  ylabel   = "d μ_{x,y} / d q_{x,y}",
+  legend   = {mu1_vs_dqx_da="d μ_x/d q_x", mu1_vs_dqy_da="d μ_x/d q_x",
+              mu2_vs_dqx_da="d μ_y/d q_x", mu2_vs_dqy_da="d μ_y/d q_x"},
 }
-
-plot {
-  title    = "mu vs fd ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+plt {
+  title    = tplt or "Sensitivity of mu FD ("..snam..", order "..ord..")",
   x1y1     = {s = {"mu1_vs_dqx_fd", "mu1_vs_dqy_fd", "mu2_vs_dqx_fd", "mu2_vs_dqy_fd"}},
-  xlabel   = "s [m]"   ,                             -- x-axis labellabel
-  ylabel   = "μ_{x,y} [m]",                          -- y-axis label left
-  legend   = {mu1_vs_dqx_fd="μ_x vs dqx", mu1_vs_dqy_fd="μ_x vs dqy",
-              mu2_vs_dqx_fd="μ_y vs dqx", mu2_vs_dqy_fd="μ_y vs dqy"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]",
+  ylabel   = "d μ_{x,y} / d q_{x,y}",
+  legend   = {mu1_vs_dqx_fd="d μ_x/d q_x", mu1_vs_dqy_fd="d μ_x/d q_y",
+              mu2_vs_dqx_fd="d μ_y/d q_x", mu2_vs_dqy_fd="d μ_y/d q_y"},
 }
-
-plot {
-  title    = "mu vs da and fd diff ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+plt {
+  title    = tplt or "Sensitivity error of mu FD vs mu DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"mu1_vs_dqx_dif", "mu1_vs_dqy_dif", "mu2_vs_dqx_dif", "mu2_vs_dqy_dif"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "Error on μ_{x,y} [m]",                 -- y-axis label left
-  legend   = {mu1_vs_dqx_dif="μ_x vs dqx err", mu1_vs_dqy_dif="μ_x vs dqy err",
-              mu2_vs_dqx_dif="μ_y vs dqx err", mu2_vs_dqy_dif="μ_y vs dqy err"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]",
+  ylabel   = "Error on d μ_{x,y} / d q_{x,y}",
+  legend   = {mu1_vs_dqx_dif="Δ d μ_x/d q_x", mu1_vs_dqy_dif="Δ d μ_x/d q_y",
+              mu2_vs_dqx_dif="Δ d μ_y/d q_x", mu2_vs_dqy_dif="Δ d μ_y/d q_y"},
 }
 
-plot {
-  title    = "disp vs da ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"dx_vs_dqx_da", "dx_vs_dqy_da", "dy_vs_dqx_da", "dy_vs_dqy_da",
-                   "dpx_vs_dqx_da", "dpx_vs_dqy_da", "dpy_vs_dqx_da", "dpy_vs_dqy_da"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "d_{x,y} or dp_{x,y} [m]",              -- y-axis label left
-  legend   = {dx_vs_dqx_da ="dx vs dqx",  dx_vs_dqy_da ="dx vs dqy",
-              dy_vs_dqx_da ="dy vs dqx",  dy_vs_dqy_da ="dy vs dqy",
-              dpx_vs_dqx_da="dpx vs dqx", dpx_vs_dqy_da="dpx vs dqy",
-              dpy_vs_dqx_da="dpy vs dqx", dpy_vs_dqy_da="dpy vs dqy",},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+-- Dispersion functions
+plt {
+  title    = tplt or "Sensitivity of disp DA ("..snam..", order "..ord..")",
+  x1y1     = {s = {"dx_vs_dqx_da", "dx_vs_dqy_da", "dy_vs_dqx_da", "dy_vs_dqy_da"}},
+  xlabel   = "s [m]",
+  ylabel   = "d D_{x,y} / d q_{x,y}",
+  legend   = { dx_vs_dqx_da="d D_x/d q_x", dx_vs_dqy_da="d D_x/d q_y",
+               dy_vs_dqx_da="d D_y/d q_x", dy_vs_dqy_da="d D_y/d q_y",},
+}
+plt {
+  title    = tplt or "Sensitivity of disp FD ("..snam..", order "..ord..")",
+  x1y1     = {s = {"dx_vs_dqx_fd", "dx_vs_dqy_fd", "dy_vs_dqx_fd", "dy_vs_dqy_fd"}},
+  xlabel   = "s [m]",
+  ylabel   = "D_{x,y} / d q_{x,y}",
+  legend   = { dx_vs_dqx_fd="d D_x/d q_x", dx_vs_dqy_fd="d D_x/d q_y",
+               dy_vs_dqx_fd="d D_y/d q_x", dy_vs_dqy_fd="d D_y/d q_y",},
+}
+plt {
+  title    = tplt or "Sensitivity error of disp FD vs disp DA ("..snam..", order "..ord..")",
+  x1y1     = {s = {"dx_vs_dqx_dif", "dx_vs_dqy_dif", "dy_vs_dqx_dif", "dy_vs_dqy_dif"}},
+  xlabel   = "s [m]",
+  ylabel   = "Error on d D_{x,y} / d q_{x,y}",
+  legend   = { dx_vs_dqx_dif="Δ d D_x/d q_x", dx_vs_dqy_dif="Δ d D_x/d q_y",
+               dy_vs_dqx_dif="Δ d D_y/d q_x", dy_vs_dqy_dif="Δ d D_y/d q_y",},
 }
 
-plot {
-  title    = "disp vs fd ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"dx_vs_dqx_fd",  "dx_vs_dqy_fd",  "dy_vs_dqx_fd",  "dy_vs_dqy_fd",
-                   "dpx_vs_dqx_fd", "dpx_vs_dqy_fd", "dpy_vs_dqx_fd", "dpy_vs_dqy_fd"}},
-  xlabel   = "s [m]"   ,                             -- x-axis labellabel
-  ylabel   = "d_{x,y} or dp_{x,y} [m]",              -- y-axis label left
-  legend   = {dx_vs_dqx_fd ="dx vs dqx",  dx_vs_dqy_fd ="dx vs dqy",
-              dy_vs_dqx_fd ="dy vs dqx",  dy_vs_dqy_fd ="dy vs dqy",
-              dpx_vs_dqx_fd="dpx vs dqx", dpx_vs_dqy_fd="dpx vs dqy",
-              dpy_vs_dqx_fd="dpy vs dqx", dpy_vs_dqy_fd="dpy vs dqy",},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+-- Dispersion momenta functions
+plt {
+  title    = tplt or "Sensitivity of disp DA ("..snam..", order "..ord..")",
+  x1y1     = {s = {"dpx_vs_dqx_da", "dpx_vs_dqy_da", "dpy_vs_dqx_da", "dpy_vs_dqy_da"}},
+  xlabel   = "s [m]",
+  ylabel   = "d D_{px,py} / d q_{x,y}",
+  legend   = {dpx_vs_dqx_da="d D_{px}/d q_x", dpx_vs_dqy_da="d D_{px}/d q_y",
+              dpy_vs_dqx_da="d D_{py}/d q_x", dpy_vs_dqy_da="d D_{py}/d q_y",},
 }
-
-plot {
-  title    = "disp vs da and fd diff ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
-  x1y1     = {s = {"dx_vs_dqx_dif",  "dx_vs_dqy_dif",  "dy_vs_dqx_dif",  "dy_vs_dqy_dif",
-                   "dpx_vs_dqx_dif", "dpx_vs_dqy_dif", "dpy_vs_dqx_dif", "dpy_vs_dqy_dif"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "Error on d_{x,y} or dp_{x,y} [m]",     -- y-axis label left
-  legend   = {dx_vs_dqx_dif ="dx vs dqx err",  dx_vs_dqy_dif ="dx vs dqy err",
-              dy_vs_dqx_dif ="dy vs dqx err",  dy_vs_dqy_dif ="dy vs dqy err",
-              dpx_vs_dqx_dif="dpx vs dqx err", dpx_vs_dqy_dif="dpx vs dqy err",
-              dpy_vs_dqx_dif="dpy vs dqx err", dpy_vs_dqy_dif="dpy vs dqy err",},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+plt {
+  title    = tplt or "Sensitivity of disp FD ("..snam..", order "..ord..")",
+  x1y1     = {s = {"dpx_vs_dqx_fd", "dpx_vs_dqy_fd", "dpy_vs_dqx_fd", "dpy_vs_dqy_fd"}},
+  xlabel   = "s [m]",
+  ylabel   = "d D_{px,py} / d q_{x,y}",
+  legend   = {dpx_vs_dqx_fd="d D_{px}/d q_x", dpx_vs_dqy_fd="d D_{px}/d q_y",
+              dpy_vs_dqx_fd="d D_{py}/d q_x", dpy_vs_dqy_fd="d D_{py}/d q_y",},
+}
+plt {
+  title    = tplt or "Sensitivity error of disp FD vs disp DA ("..snam..", order "..ord..")",
+  x1y1     = {s = {"dpx_vs_dqx_dif", "dpx_vs_dqy_dif", "dpy_vs_dqx_dif", "dpy_vs_dqy_dif"}},
+  xlabel   = "s [m]",
+  ylabel   = "Error on d D_{px,py} / d q_{x,y}",
+  legend   = {dpx_vs_dqx_dif="Δ d D_{px}/d q_x", dpx_vs_dqy_dif="Δ d D_{px}/d q_y",
+              dpy_vs_dqx_dif="Δ d D_{py}/d q_x", dpy_vs_dqy_dif="Δ d D_{py}/d q_y",},
 }
 
 if chrm then
 
-plot {
-  title    = "dmu vs da ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+-- Local chromaticity functions
+plt {
+  title    = tplt or "Sensitivity of dmu DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"dmu1_vs_dqx_da", "dmu1_vs_dqy_da", "dmu2_vs_dqx_da", "dmu2_vs_dqy_da"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "dμ_{x,y} [m]",                         -- y-axis label left
-  legend   = {dmu1_vs_dqx_da="dμ_x vs dqx", dmu1_vs_dqy_da="dμ_x vs dqy",
-              dmu2_vs_dqx_da="dμ_y vs dqx", dmu2_vs_dqy_da="dμ_y vs dqy"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]",
+  ylabel   = "d μ{/Symbol \\242}_{x,y} / d q_{x,y}",
+  legend   = {dmu1_vs_dqx_da="d μ{/Symbol \\242}_x / d q_x", dmu1_vs_dqy_da="d μ{/Symbol \\242}_x / d q_y",
+              dmu2_vs_dqx_da="d μ{/Symbol \\242}_y / d q_x", dmu2_vs_dqy_da="d μ{/Symbol \\242}_y / d q_y"},
 }
-
-plot {
-  title    = "dmu vs fd ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+plt {
+  title    = tplt or "Sensitivity of dmu FD ("..snam..", order "..ord..")",
   x1y1     = {s = {"dmu1_vs_dqx_fd", "dmu1_vs_dqy_fd", "dmu2_vs_dqx_fd", "dmu2_vs_dqy_fd"}},
-  xlabel   = "s [m]"   ,                             -- x-axis labellabel
-  ylabel   = "dμ_{x,y} [m]",                         -- y-axis label left
-  legend   = {dmu1_vs_dqx_fd="dμ_x vs dqx", dmu1_vs_dqy_fd="dμ_x vs dqy",
-              dmu2_vs_dqx_fd="dμ_y vs dqx", dmu2_vs_dqy_fd="dμ_y vs dqy"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]",
+  ylabel   = "d μ{/Symbol \\242}_{x,y} / d q_{x,y}",
+  legend   = {dmu1_vs_dqx_fd="d μ{/Symbol \\242}_x / d q_x", dmu1_vs_dqy_fd="d μ{/Symbol \\242}_x / d q_y",
+              dmu2_vs_dqx_fd="d μ{/Symbol \\242}_y / d q_x", dmu2_vs_dqy_fd="d μ{/Symbol \\242}_y / d q_y"},
 }
-
-plot {
-  title    = "dmu vs da and fd diff ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+plt {
+  title    = tplt or "Sensitivity error of dmu FD vs dmu DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"dmu1_vs_dqx_dif", "dmu1_vs_dqy_dif", "dmu2_vs_dqx_dif", "dmu2_vs_dqy_dif"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "Error on dμ_{x,y} [m]",                -- y-axis label left
-  legend   = {dmu1_vs_dqx_dif="dμ_x vs dqx err", dmu1_vs_dqy_dif="dμ_x vs dqy err",
-              dmu2_vs_dqx_dif="dμ_y vs dqx err", dmu2_vs_dqy_dif="dμ_y vs dqy err"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]",
+  ylabel   = "Error on d μ{/Symbol \\242}_{x,y} / d q_{x,y}",
+  legend   = {dmu1_vs_dqx_dif="Δ d μ{/Symbol \\242}_x / d q_x", dmu1_vs_dqy_dif="Δ d μ{/Symbol \\242}_x / d q_y",
+              dmu2_vs_dqx_dif="Δ d μ{/Symbol \\242}_y / d q_x", dmu2_vs_dqy_dif="Δ d μ{/Symbol \\242}_y / d q_y"},
 }
 
-plot {
-  title    = "w vs da ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+-- Chromatic functions
+plt {
+  title    = tplt or "Sensitivity of w DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"wx_vs_dqx_da", "wx_vs_dqy_da", "wy_vs_dqx_da", "wy_vs_dqy_da"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "w_{x,y}",                              -- y-axis label left
-  legend   = {wx_vs_dqx_da ="wx vs dqx",  wx_vs_dqy_da ="wx vs dqy",
-              wy_vs_dqx_da ="wy vs dqx",  wy_vs_dqy_da ="wy vs dqy"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]",
+  ylabel   = "d w_{x,y} / d q_{x,y}",
+  legend   = {wx_vs_dqx_da="d w_x/d q_x",  wx_vs_dqy_da="d w_x/d q_y",
+              wy_vs_dqx_da="d w_y/d q_x",  wy_vs_dqy_da="d w_y/d q_y"},
 }
-
-plot {
-  title    = "w vs fd ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+plt {
+  title    = tplt or "Sensitivity of w FD ("..snam..", order "..ord..")",
   x1y1     = {s = {"wx_vs_dqx_fd",  "wx_vs_dqy_fd",  "wy_vs_dqx_fd",  "wy_vs_dqy_fd"}},
-  xlabel   = "s [m]"   ,                             -- x-axis labellabel
-  ylabel   = "w_{x,y}",                              -- y-axis label left
-  legend   = {wx_vs_dqx_fd ="wx vs dqx",  wx_vs_dqy_fd ="wx vs dqy",
-              wy_vs_dqx_fd ="wy vs dqx",  wy_vs_dqy_fd ="wy vs dqy"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]",
+  ylabel   = "d w_{x,y} / d q_{x,y}",
+  legend   = {wx_vs_dqx_fd="d w_x/d q_x",  wx_vs_dqy_fd="d w_x/d q_y",
+              wy_vs_dqx_fd="d w_y/d q_x",  wy_vs_dqy_fd="d w_y/d q_y"},
 }
-
-plot {
-  title    = "w vs da and fd diff ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+plt {
+  title    = tplt or "Sensitivity error of w FD vs w DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"wx_vs_dqx_dif",  "wx_vs_dqy_dif",  "wy_vs_dqx_dif",  "wy_vs_dqy_dif"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "Error on w_{x,y}",                     -- y-axis label left
-  legend   = {wx_vs_dqx_dif ="wx vs dqx err",  wx_vs_dqy_dif ="wx vs dqy err",
-              wy_vs_dqx_dif ="wy vs dqx err",  wy_vs_dqy_dif ="wy vs dqy err"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]",
+  ylabel   = "Error on d w_{x,y} / d q_{x,y}",
+  legend   = {wx_vs_dqx_dif="Δ d w_x/d q_x",  wx_vs_dqy_dif="Δ d w_x/d q_y",
+              wy_vs_dqx_dif="Δ d w_y/d q_x",  wy_vs_dqy_dif="Δ d w_y/d q_y"},
 }
 
-plot {
-  title    = "wp vs da ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+-- Chromatic momenta functions
+plt {
+  title    = tplt or "Sensitivity of wp DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"wxp_vs_dqx_da", "wxp_vs_dqy_da", "wyp_vs_dqx_da", "wyp_vs_dqy_da"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "w_{x,y}p",                             -- y-axis label left
-  legend   = {wxp_vs_dqx_da="wpx vs dqx", wxp_vs_dqy_da="wpx vs dqy",
-              wyp_vs_dqx_da="wpy vs dqx", wyp_vs_dqy_da="wpy vs dqy"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]",
+  ylabel   = "d w_{px,py} / d q_{x,y}",
+  legend   = {wxp_vs_dqx_da="d w_{px}/d q_x", wxp_vs_dqy_da="d w_{px}/d q_y",
+              wyp_vs_dqx_da="d w_{py}/d q_x", wyp_vs_dqy_da="d w_{py}/d q_y"},
 }
-
-plot {
-  title    = "wp vs fd ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+plt {
+  title    = tplt or "Sensitivity of wp FD ("..snam..", order "..ord..")",
   x1y1     = {s = {"wxp_vs_dqx_fd", "wxp_vs_dqy_fd", "wyp_vs_dqx_fd", "wyp_vs_dqy_fd"}},
-  xlabel   = "s [m]"   ,                             -- x-axis labellabel
-  ylabel   = "w_{x,y}p",                             -- y-axis label left
-  legend   = {wxp_vs_dqx_fd="wxp vs dqx", wxp_vs_dqy_fd="wxp vs dqy",
-              wyp_vs_dqx_fd="wyp vs dqx", wyp_vs_dqy_fd="wyp vs dqy"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]",
+  ylabel   = "d w_{px,py} / d q_{x,y}",
+  legend   = {wxp_vs_dqx_fd="d w_{px}/d q_x", wxp_vs_dqy_fd="d w_{px}/d q_y",
+              wyp_vs_dqx_fd="d w_{py}/d q_x", wyp_vs_dqy_fd="d w_{py}/d q_y"},
 }
-
-plot {
-  title    = "wp vs da and fd diff ("..snam..", order "..ord..")",  -- plot title
-  sequence = seq,             -- sequence for layout
-  table    = twp,             -- twiss table for plot
+plt {
+  title    = tplt or "Sensitivity error of wp FD vs wp DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"wxp_vs_dqx_dif", "wxp_vs_dqy_dif", "wyp_vs_dqx_dif", "wyp_vs_dqy_dif"}},
-  xlabel   = "s [m]"   ,                             -- x-axis label
-  ylabel   = "Error on w_{x,y}p",                    -- y-axis label left
-  legend   = {wxp_vs_dqx_dif="wxp vs dqx err", wxp_vs_dqy_dif="wxp vs dqy err",
-              wyp_vs_dqx_dif="wyp vs dqx err", wyp_vs_dqy_dif="wyp vs dqy err"},
-  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
-  output   = fplt,
+  xlabel   = "s [m]",
+  ylabel   = "Error on d w_{px,py} / d q_{x,y}",
+  legend   = {wxp_vs_dqx_dif="Δ d w_{px}/d q_x", wxp_vs_dqy_dif="Δ d w_{px}/d q_y",
+              wyp_vs_dqx_dif="Δ d w_{py}/d q_x", wyp_vs_dqy_dif="Δ d w_{py}/d q_y"},
 }
 end -- chrm
 
