@@ -4,14 +4,16 @@
 !############################# Setting Up Lattice ############################
 !#############################################################################
 
-local beam, track, twiss, match in MAD
-local observed                  in MAD.element.flags
-local assertf, printf           in MAD.utility
-local mchklost                  in MAD.gphys
+local beam, track, twiss, cofind, match in MAD
+local observed                          in MAD.element.flags
+local assertf, printf                   in MAD.utility
+local mchklost                          in MAD.gphys
 
-MADX:load('lhc_as-built.seq', 'lhc_as-built.mad' ) -- convert and save on need
+MADX.option.warn=false
+MADX:load('lhc_as-built.seq', 'lhc_as-built.mad', true ) -- convert and save on need
 MADX:load('opticsfile.21'   , 'opticsfile.21.mad') -- ditto
 MADX:load('lhc_unset_vars.mad') -- handmade, cleaner than disabling warnings...
+MADX.option.warn=true
 
 local lhcb1, nrj in MADX
 
@@ -33,10 +35,23 @@ kqsx3_l2 = -0.0015
 kqsx3_r2 = +0.0015
 MADX:close_env()
 
+-- local tbl = track { sequence=lhcb1, observe=0, info=2, debug=0, mapdef=1, cmap=true } : write("tk_ref_c.tfs")
+-- os.exit()
+
+-- local tbl, mfl = cofind {sequence=lhcb1, mapdef=1, info=2, debug=3, save='atstd', observe=0}
+-- tbl:write("cofind_"..MAD.env.version..".tfs")
+-- mfl[1]:print()
+--
+-- local tbl, mfl = twiss {sequence=lhcb1, mapdef=1, info=2, debug=3}
+-- tbl:write("twiss_"..MAD.env.version..".tfs")
+-- mfl[1]:print()
+--
+-- os.exit()
+
 local t0 = os.clock()
 
 print("Computing/saving twiss before tune correction.")
-local tbl = twiss { sequence=lhcb1, method=4, chrom=true }
+local tbl = twiss { sequence=lhcb1, mapdef=1 }
 tbl:write"before_tune_correction_n"
 
 if true then -- enable/disable matching
@@ -45,18 +60,20 @@ print("values before matching tunes:")
 print("dQx.b1=", MADX.dqx_b1)
 print("dQy.b1=", MADX.dqy_b1)
 
+local iter = 0
+
 status, fmin, ncall = match {
-  command := mchklost(twiss {sequence=lhcb1, method=4, observe=1}),
+  command := mchklost(twiss {sequence=lhcb1, mapdef=1, observe=1}),
   variables = { rtol=1e-6, -- 1 ppm
     { var = 'MADX.dqx_b1', name='dQx.b1' },
     { var = 'MADX.dqy_b1', name='dQy.b1' },
   },
-  equalities = { tol = 1e-3,
+  equalities = { tol = 1e-6,
     { expr = \t -> t.q1-62.30980, name='q1' },
     { expr = \t -> t.q2-60.32154, name='q2' },
   },
-  objective = { fmin=1e-3 },
-  maxcall=100, info=2, !debug=2
+  objective = { fmin=1e-6 },
+  maxcall=100, info=2, debug=4
 }
 
 --[[
@@ -74,17 +91,21 @@ print("dQy.b1=", MADX.dqy_b1)
 
 else
 
-MADX.dqx_b1 = 6.65239e-04
-MADX.dqy_b1 = 3.31034e-03
+MADX.dqx_b1 = 6.65441e-04
+MADX.dqy_b1 = 3.31059e-03
 
 end
 
 print("Computing/saving twiss after tune correction.")
-local tbl = twiss { sequence=lhcb1, method=4, chrom=true }
+local tbl = twiss { sequence=lhcb1 }
 tbl:write"after_tune_correction_n"
+print("Qx=", tbl.q1)
+print("Qy=", tbl.q2)
 
 local t1 = os.clock()
 print("pre-tracking time: "..(t1-t0)..'s')
+
+os.exit()
 
 !#############################################################################
 !######## Track                                                       ########
@@ -101,7 +122,7 @@ for n=1,900 do
   local Nsigmay  = tgauss(5)
   local Nsigmapx = tgauss(5)
   local Nsigmapy = tgauss(5)
-  printf("%03d % -.5f % -.5f % -.5f % -.5f\n", n,Nsigmax,Nsigmay,Nsigmapx,Nsigmapy)
+--printf("%03d % -.5f % -.5f % -.5f % -.5f\n", n,Nsigmax,Nsigmay,Nsigmapx,Nsigmapy)
 
   local enomphysy=4e-6/(6500/0.938)
   local enomphysx=6e-6/(6500/0.938)
@@ -123,7 +144,7 @@ lhcb1['$end']:deselect(observed)
 
 local t0 = os.clock()
 tbl.IP1.t=0
-local tbl = track { sequence=lhcb1, X0=X0, O0=tbl.IP1, nturn=10, method=4 }
+local tbl = track { sequence=lhcb1, X0=X0, O0=tbl.IP1, nturn=10 }
 print("tracking time: "..(os.clock()-t1)..'s')
 
 !tbl:sort"name,turn"
