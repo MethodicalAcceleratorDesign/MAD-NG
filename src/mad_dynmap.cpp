@@ -24,7 +24,6 @@
 // --- includes ---------------------------------------------------------------o
 
 #include <type_traits>
-#include "mad_omp.h"
 #include "mad_tpsa.hpp"
 
 extern "C" {

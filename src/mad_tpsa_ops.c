@@ -460,8 +460,8 @@ FUN(mul) (const T *a, const T *b, T *r)
     // order 3+
     if (chi > 2) {
 #if !TPSA_STRICT
-      FUN(nzero0)(a,a->lo,a->hi,1);
-      FUN(nzero0)(b,b->lo,b->hi,1);
+      FUN(nzero0)((T*)a,a->lo,a->hi,1);
+      FUN(nzero0)((T*)b,b->lo,b->hi,1);
       if (a->lo > b->lo) { const T *t; SWAP(a,b,t); }
 #endif
 

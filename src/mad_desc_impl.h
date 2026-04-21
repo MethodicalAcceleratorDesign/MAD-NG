@@ -20,6 +20,7 @@
  o-----------------------------------------------------------------------------o
 */
 
+#include "mad_omp.h"
 #include "mad_log.h"
 #include "mad_bit.h"
 #include "mad_desc.h"
