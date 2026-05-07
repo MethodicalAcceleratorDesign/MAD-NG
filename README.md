@@ -23,7 +23,7 @@ Resources
 Cheatsheets
 ---
 
-- [MATLAB, Python, Julia, and MAD-NG comparison](https://methodicalacceleratordesign.github.io/MAD-NG/doc/madng-comparison-cheatsheet.html)
+- [MATLAB, Python, Julia, and MAD-NG comparison](https://methodicalacceleratordesign.github.io/MAD-NG/madng-comparison-cheatsheet.html)
 
 
 Publications and Presentations
