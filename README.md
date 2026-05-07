@@ -10,7 +10,7 @@ Methodical Accelerator Design
     /__/  /_/  /__/ /_/  /_____ /    |   licence: GNU GPL v3 (C) 2016+
                                      |   started: 2024-11-29 19:25:32
 
-The successor of MAD-X.
+The next-generation successor of MAD-X.
 
 <a href="https://zenodo.org/doi/10.5281/zenodo.7428893"><img src="https://zenodo.org/badge/37848936.svg" alt="DOI"></a>
 
