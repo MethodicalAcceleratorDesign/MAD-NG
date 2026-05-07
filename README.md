@@ -24,6 +24,7 @@ Cheatsheets
 ---
 
 - [MATLAB, Python, Julia, and MAD-NG comparison](https://methodicalacceleratordesign.github.io/MAD-NG/madng-comparison-cheatsheet.html)
+- [MAD-NG Language](https://methodicalacceleratordesign.github.io/MAD-NG/madng-cheatsheet.html)
 
 
 Publications and Presentations
@@ -31,5 +32,5 @@ Publications and Presentations
 
 - [ATS Seminar 2025](https://indico.cern.ch/event/1615996/)
 - [ICAP 2024 Paper](https://arxiv.org/abs/2412.16006)
-- [ICAP 2024 Presentation](https://indico.gsi.de/event/19249/contributions/82657/attachments/48837/70967/ld_2410-mad_icap_slides.pdf)
+- [ICAP 2024 Presentation](https://indico.gsi.de/event/19249/contributions/82657/)
 - [HB 2023 Paper (pre-v1.0)](https://proceedings.jacow.org/hb2023/papers/thbp15.pdf)
