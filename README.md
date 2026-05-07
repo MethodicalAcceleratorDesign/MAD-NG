@@ -12,15 +12,11 @@ Methodical Accelerator Design
 
 The successor of MAD-X.
 
-
-
 <a href="https://zenodo.org/doi/10.5281/zenodo.7428893"><img src="https://zenodo.org/badge/37848936.svg" alt="DOI"></a>
 
+[Releases](https://cern.ch/mad/releases/madng/)
 
 [Documentation](https://cern.ch/mad/releases/madng/html/)
-
-[Releases](https://cern.ch/mad/releases/madng/) 
-
 
 CheatSheets
 ---
