@@ -25,14 +25,16 @@ The successor of MAD-X.
 CheatSheets
 ---
 
-[MATLAB–Python–Julia–MAD-NG comparison](https://methodicalacceleratordesign.github.io/MAD-NG/cheatsheets/matlab-python-julia-madng.html)
+[MATLAB, Python, Julia, and MAD-NG comparison](https://methodicalacceleratordesign.github.io/MAD-NG/madng-comparison-cheatsheet.html)
 
 
 Publications
 ---
 
-[Presentation 2025.12](https://indico.cern.ch/event/1615996/)
+[Presentation ATS 2025](https://indico.cern.ch/event/1615996/)
 
-[Paper 2025.01](https://arxiv.org/abs/2412.16006)
+[Paper ICAP 2024](https://arxiv.org/abs/2412.16006)
 
-[Presentation 2024.12](https://indico.gsi.de/event/19249/contributions/82657/attachments/48837/70967/ld_2410-mad_icap_slides.pdf)
+[Presentation ICAP 2024](https://indico.gsi.de/event/19249/contributions/82657/attachments/48837/70967/ld_2410-mad_icap_slides.pdf)
+
+[Paper HB 2023](https://proceedings.jacow.org/hb2023/papers/thbp15.pdf)
