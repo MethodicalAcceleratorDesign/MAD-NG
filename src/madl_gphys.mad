@@ -691,7 +691,10 @@ local function nf_haml (nf, ms, ki_, ko_)
   return nf.ham[ms] or 0i
 end
 
--- coupling terms -- Edwards-Teng coupling formalism (Lebedev & Bogacz 2010)
+--[[
+Matrix R: Edwards-Teng coupling formalism (Lebedev & Bogacz 2010)
+Lin RDTs: Betatron coupling with matrix   (Calaga, Tomas & Franchi 2005)
+--]]
 
 local nf_bet, nf_alf -- forward decl
 
@@ -725,7 +728,7 @@ local function nf_cplg (a, mt_)
   res.alfx  = alfa11
   res.alfy  = alfa22
 
-  local kx2 = beta12/beta11                                         -- eq. 4.7
+  local kx2 = beta12/beta11                                          -- eq. 4.7
   local ky2 = beta21/beta22
   local kxy = kx2*ky2
 
@@ -733,65 +736,85 @@ local function nf_cplg (a, mt_)
     local alfa12 = fun and nf_alf(a, "12", nil, mt_) or a.alfa12
     local alfa21 = fun and nf_alf(a, "21", nil, mt_) or a.alfa21
     local kx, ky = sqrt(kx2), sqrt(ky2)
-    local ax = alfa11*kx - alfa12/kx                                -- eq. 4.7
+    local ax = alfa11*kx - alfa12/kx                                 -- eq. 4.7
     local ay = alfa22*ky - alfa21/ky
-    local ku = kxy*(1+(ax*ax-ay*ay)/(kx2-ky2)*(1-kxy))              -- eq. 4.8
+    local ku = kxy*(1+(ax*ax-ay*ay)/(kx2-ky2)*(1-kxy))               -- eq. 4.8
     local u = -kxy/(1-kxy)
     local s = 0
     if fval(ku) >= stab_tol then
       local su = sqrt(ku)
       s = kxy <= su and +1 or -1
-      u = u + s * su/(1-kxy)                                        -- eq. 4.8
+      u = u + s * su/(1-kxy)                                         -- eq. 4.8
     end
     local kpa = 1-u
 
-    res.betx = res.betx/kpa                                        -- eq. 7.16
+    res.betx = res.betx/kpa                                          -- eq. 7.16
     res.bety = res.bety/kpa
     res.alfx = res.alfx/kpa
     res.alfy = res.alfy/kpa
     res.kpa  = kpa
 
-    local bx  = kx*kpa + u/kx                                      -- eq. 4.10
+    local bx  = kx*kpa + u/kx                                        -- eq. 4.10
     local by  = ky*kpa + u/ky
     local cx  = kx*kpa - u/kx
     local cy  = ky*kpa - u/ky
     local evp = (ax + 1i*bx) / (ay - 1i*by)
     local evm = (ax + 1i*cx) / (ay + 1i*cy)
-    local ev1 = sqrt(evp*evm)                                      -- eq. 4.11
+    local ev1 = sqrt(evp*evm)                                        -- eq. 4.11
     local ev2 = sqrt(evp/evm)
 
-    local ev1_re, ev1_im = real(ev1), imag(ev1)
+    local ev1_re, ev1_im = real(ev1), imag(ev1)                      -- C & CTPSA
     local ev2_re, ev2_im = real(ev2), imag(ev2)
 
---  local swp = ""
+    if sign(fval(ev1_im)) ~= sign(fval(ev2_im)) then                 -- eq. 7.12
+      ev2_re, ev2_im = -ev2_re, -ev2_im
+    end
 
-    if sign(fval(ev1_im)) ~= sign(fval(ev2_im)) then               -- eq. 7.12
-      -- see discussion in paragraph after eq. 4.11
-      if fval(ev1_re) < 0
-      then ev1_re, ev1_im = -ev1_re, -ev1_im -- ; swp = "[1]"
-      else ev2_re, ev2_im = -ev2_re, -ev2_im -- ; swp = "[2]"
+    do -- Disambiguate branch of eq. 4.11 using A (same as phase_eigen)
+      local A = fun and a:get1() or a.A
+
+      -- mode 1: rotate columns (1,2) so x block becomes (sb11,0)
+      local sb11, a31 = sqrt(fval(beta11)), A:get(3,1)
+      local sb21, a32 = sqrt(fval(beta21)), A:get(3,2)
+      local    c1, s1 = A:get(1,1)/sb11, A:get(1,2)/sb11
+      local   ev1a_re = (a31*c1 + a32*s1) / sb21
+      local   ev1a_im = (a31*s1 - a32*c1) / sb21
+
+      -- mode 2: rotate columns (3,4) so y block becomes (sb22,0)
+      local sb22, a13 = sqrt(fval(beta22)), A:get(1,3)
+      local sb12, a14 = sqrt(fval(beta12)), A:get(1,4)
+      local    c2, s2 = A:get(3,3)/sb22, A:get(3,4)/sb22
+      local   ev2a_re = (a13*c2 + a14*s2) / sb12
+      local   ev2a_im = (a13*s2 - a14*c2) / sb12
+
+      -- fix only the remaining common sign (dot product)
+      local sign = fval(ev1_re)*ev1a_re + fval(ev1_im)*ev1a_im +
+                   fval(ev2_re)*ev2a_re + fval(ev2_im)*ev2a_im
+      if sign < 0 then
+        ev1_re, ev1_im = -ev1_re, -ev1_im
+        ev2_re, ev2_im = -ev2_re, -ev2_im
       end
     end
 
-    res.r11 =  sqrt(beta22/beta12) * (u*ev2_re + alfa12*ev2_im)/kpa
+    -- Coupling 2x2 matrix
+    res.r11 =  sqrt(beta22/beta12) * (u*ev2_re + alfa12*ev2_im)/kpa  -- eq. 7.11
     res.r22 = -sqrt(beta11/beta21) * (u*ev1_re + alfa21*ev1_im)/kpa
     res.r12 =  sqrt(beta11*beta21) * ev1_im/kpa
     res.r21 =  (ev2_re*(alfa12*kpa - alfa22*u) -
                 ev2_im*(alfa12*alfa22 + kpa*u)) / (kpa*sqrt(beta12*beta22))
 
---  printf("%s, %d, %- .5e, %- .5f, %- .5f, %- .5f, %- .5f, %- .5f\n",
---    swp, s, fval(u), fval(res.r12), fval(ev1_re), fval(ev1_im), fval(ev2_re), fval(ev2_im))
+    -- Linear RDTs
+    local sbetx, sbety = sqrt(res.betx), sqrt(res.bety)        -- eq. 5
+    local   ga = {1/sbetx, 0,  res.alfx/sbetx,   sbetx}        -- ga
+    local  _gb = {  sbety, 0, -res.alfy/sbety, 1/sbety}        -- gb^-1
+    local    r = {res.r22, -res.r21, -res.r12, res.r11}        -- eq. 16, -S*R*S
+    local    c = scl(r, 1/(1+det(r)))                          -- eq. 16
+    local    g = sqrt(1-det(c))                                -- |C| + g^2 = 1
+    local cbar = mul(ga, mul(c, _gb))                          -- eq. 5
+    local   cb = scl(cbar, 1/(4*g))                            -- eq. 9 & 10
 
-    local sbetx, sbety = sqrt(res.betx), sqrt(res.bety)
-    local   r  = {res.r22, -res.r12, -res.r21, res.r11}         -- -S*R*S
-    local   ga = {1/sbetx, 0,  res.alfx/sbetx,   sbetx}
-    local  _gb = {  sbety, 0, -res.alfy/sbety, 1/sbety}         -- gb^-1
-    local    c = scl(r, 1/sqrt(1+det(r)))                       -- eq. 16
-    local cbar = mul(ga, mul(c, _gb))                           -- eq. 5
-    local   cb = scl(cbar, 0.25/sqrt(1-det(cbar)))              -- eq. 9 & 10
-
-    res.f1010 = -cb[2]-cb[3] + 1i*(cb[1]-cb[4])
-    res.f1001 =  cb[2]-cb[3] + 1i*(cb[1]+cb[4])
+    res.f1001 =  cb[2]-cb[3] + 1i*(cb[1]+cb[4])                -- eq. 9
+    res.f1010 = -cb[2]-cb[3] + 1i*(cb[1]-cb[4])                -- eq. 10
   else
     res.kpa   = fun and beta11:same():set0(1) or 1
     res.r11   = fun and beta11:same()         or 0
