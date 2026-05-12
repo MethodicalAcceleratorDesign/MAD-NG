@@ -102,12 +102,12 @@ local trim = \str -> ((str:gsub("^%s*(.-)%s*$", "%1")))
 
 local BEGOFCHUNK = "do  -- BEGOFCHUNK"
 local ENDOFCHUNK = "end -- ENDOFCHUNK"
-local MINSZCHUNK = 4000
+local DFTSZCHUNK = 4000
 
 local function check_chunk (env, doit)
   local out in env
-  if out.n ~= out.nchk and (doit or out.n-out.nchk >= MINSZCHUNK) then
-    if option.debug >= 2 then io.write("chunk size=", out.n-out.nchk, "\n") end
+  if out.n ~= out.nchk and (doit or out.n-out.nchk >= env.chunksz) then
+    if option.debug >= 3 then io.write("chunk size=", out.n-out.nchk, "\n") end
     if env.cur ~= 0 then                    -- close previous bline
       out[out.n], out.n = '}', out.n+1
     end
@@ -137,7 +137,7 @@ local function close_sequ (env)
   end
 
   local nam = env[cur]
-  local str = string.format("%s = sequence '%s' { %s, %s%s }",
+  local str = string.format("%s = sequence '%s' { %s, %s%s, __env=self }",
                             nam, sln[nam].seqnam, sln[nam].seqatt, atts,
                             table.concat(sln[nam], ", "))
   env.cur, out[out.n], out.n = 0, str, out.n+1
@@ -258,7 +258,7 @@ end
 local variable_patt = "^([^:=,(]+)(:?=)%s*(.*)$"
 
 local function convert_variable (env, str, cap)
-  if option.debug >= 2 then io.write("conv-var: [", str, "]\n") end
+  if option.debug >= 3 then io.write("conv-var: [", str, "]\n") end
   assertf(env.cur == 0, "unsupported variable %s assignment inside %s, line %d",
                                              cap[1], env[env.cur], env.out.n)
   cap[1] = convert_ename(cap[1])
@@ -278,12 +278,12 @@ end
 local beamline_patt = "^([^:=]+):%s*[Ll][Ii][Nn][Ee]%s*=%s*(%b())%s*$"
 
 local function subline (str)
-  if option.debug >= 2 then io.write("conv-subl: [", str, "]\n") end
+  if option.debug >= 3 then io.write("conv-subl: [", str, "]\n") end
   return "bline { " .. str:sub(2,-2):gsub("(%b())", subline) .. " }"
 end
 
 local function convert_beamline (env, str, cap)
-  if option.debug >= 2 then io.write("conv-line: [", str, "]\n") end
+  if option.debug >= 3 then io.write("conv-line: [", str, "]\n") end
   assertf(env.cur == 0, "unsupported beamline %s assignment inside %s, line %d",
                                               cap[1], env[env.cur], env.out.n)
 
@@ -311,10 +311,10 @@ local attr = { slice='nslice', nst='nslice' }
 local function convert_attrlist (env, str_)
   local res, str, flg, opn = {}, str_ or ''
   while str ~= '' do
-    if option.debug >= 2 then io.write("attr-lst: [", str, "]\n") end
+    if option.debug >= 3 then io.write("attr-lst: [", str, "]\n") end
     local cap = capf(str:find(attribute_patt))
     if #cap == 0 then break end
-    if option.debug >= 3 then
+    if option.debug >= 4 then
       io.write(#res+1,": [",cap[1],"], [",cap[2],"], [",cap[3],
                                    "], [",cap[4],"], [",cap[5],"]\n")
     end
@@ -355,7 +355,7 @@ end
 local element_patt = "^([^:=,(]+):" .. name_patt .. attrlst_patt
 
 local function convert_element (env, str, cap)
-  if option.debug >= 2 then io.write("conv-elm: [", str, "]\n") end
+  if option.debug >= 3 then io.write("conv-elm: [", str, "]\n") end
   local nam = convert_name(cap[1])
   local cls = convert_name(cap[2])
   local out, sid, clo, pfx = env.out, env.elm[nam]
@@ -412,7 +412,7 @@ end
 local command_patt = "^" .. name_patt .. attrlst_patt
 
 local function convert_command (env, str, cap)
-  if option.debug >= 2 then io.write("conv-cmd: [", str, "]\n") end
+  if option.debug >= 3 then io.write("conv-cmd: [", str, "]\n") end
   local cmd = convert_name(cap[1])
 
   if cmd == 'endsequence' then
@@ -438,7 +438,7 @@ local function convert_command (env, str, cap)
 
   local pfx, opn, clo
   if env.cur == 0 then             -- outside sequence definition, update
-    pfx = sid > 0 and "MADX['" .. cap[1] .. "']" or cmd
+    pfx = sid > 0 and "self['" .. cap[1] .. "']" or cmd
     opn, clo = ':setvar { ', ' }'
   elseif cmdx or env.seq[cmd] then -- sharing sequence (keep only at, from, refpos)
     pfx = cmd
@@ -504,7 +504,7 @@ local function load2madx (madx, src, dst, cfg_, mad8_, rbarc_, nopub_)
   end
 
   -- options
-  local reload, mad8, rbarc, nopub in cfg_ or {}
+  local reload, mad8, rbarc, nopub, chunksz in cfg_ or {}
 
   if is_nil(rbarc) and madx.option.rbarc then rbarc = true end
   if is_nil(nopub) and madx.option.nopub then nopub = true end
@@ -512,7 +512,7 @@ local function load2madx (madx, src, dst, cfg_, mad8_, rbarc_, nopub_)
   local out = table.new(65536,2) ; out.n, out.nchk = 1, 1
   local env = { out=out, seq={}, sln={}, elm={}, cls={}, cur=0, stp=false,
                 wrn=madx.option.warn, opt=madx.option, madx=madx, mad8=mad8,
-                rbarc=rbarc, nopub=nopub }
+                rbarc=rbarc, nopub=nopub, chunksz=chunksz or DFTSZCHUNK }
 
   -- if dst (MAD-NG) is newer than src (MAD-X), use dst (no translation)
   if reload ~= true                                       -- reload not enforced
@@ -604,12 +604,11 @@ local function load2madx (madx, src, dst, cfg_, mad8_, rbarc_, nopub_)
     li, eoc = li+1, out[li] == ENDOFCHUNK
     return out[li] and out[li]..'\n' or nil
   end
-
   while li < out.n do
     local fct, err = load(loadchunk)
     if fct == nil and err ~= nil then
       local fil = is_string(src) and src or "?"
-      io.stderr:write("MADX parse error:", fil,':',li,': ', out[li], '\n')
+      io.stderr:write("MADX parse error:", fil,':',li,': "', out[li] or "", '"\n')
       error(err)
     end
     madx:load_env(assert( fct, err ))
@@ -644,7 +643,6 @@ local cord2arc, arc2cord in MAD.gmath
 -- wrap element length: from cord to arc (unused)
 local function cord2arc_w (e)
   local l = e:var_get 'l'
-  if l == cord2arc then return end
   if is_callable(l)
   then e.l = \s -> cord2arc(l(s), s.angle)
   else e.l = \s -> cord2arc(l   , s.angle)
@@ -654,7 +652,6 @@ end
 -- wrap element length: from arc to cord
 local function arc2cord_w (e)
   local l = e:var_get 'l'
-  if l == arc2cord then return end
   if is_callable(l)
   then e.l = \s -> arc2cord(l(s), s.angle)
   else e.l = \s -> arc2cord(l   , s.angle)
@@ -666,7 +663,7 @@ end
 local MADX = object 'MADX' {
   _G=_G, MAD=MAD,
   option = {
-    debug=false, info=false, warn=true, rbarc=true, nopub=false,
+    debug=false, info=false, warn=true, rbarc=false, nopub=false,
   },
 }
 

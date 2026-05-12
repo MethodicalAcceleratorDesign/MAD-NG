@@ -16,11 +16,9 @@
  o-----------------------------------------------------------------------------o
 */
 
-#include <math.h>
-#include <float.h>
-#include <complex.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <stdatomic.h>
 
 #include "mad_omp.h"
 #include "mad_num.h"
@@ -28,29 +26,48 @@
 
 // --- helpers ----------------------------------------------------------------o
 
-static inline num_t
-fact2(int n) // n!!
+static num_t f_[171] = {1, 1, 0};
+static _Atomic int fact_init_done = 0;
+
+static inline void fact_ini (void)
 {
-  static num_t f[171] = {1, 1, 0};
+#ifdef _OPENMP
+    #pragma omp critical(mad_fact_init)
+#endif
+  if (!atomic_load_explicit(&fact_init_done, memory_order_relaxed)) {
+    for (int i = 2; i < 171; ++i) f_[i] = i * f_[i-2];
+    atomic_store_explicit(&fact_init_done, 1, memory_order_release);
+  }
+}
 
-  if (!f[2])
-    for (int i=2; i < 171; ++i) f[i] = i*f[i-2];
+static inline num_t
+fact (u32_t n) // n!
+{
+  if (!atomic_load_explicit(&fact_init_done, memory_order_acquire))
+    fact_ini();
 
-  return n < 171 ? f[n] : INFINITY;
+  if (n <= 1) return 1;
+  return n < 171 ? f_[n-1]*f_[n] : INFINITY;
+}
+
+static inline num_t
+fact2 (u32_t n) // n!!
+{
+  if (!atomic_load_explicit(&fact_init_done, memory_order_acquire))
+    fact_ini();
+
+  return n < 171 ? f_[n] : INFINITY;
 }
 
 // --- implementation ---------------------------------------------------------o
 
 #define CHKR  assert( r )
 
-#define CPX(a)    CPX2(MKNAME(a,_re), MKNAME(a,_im))
-#define CPX2(a,b) (* (cpx_t*) & (num_t[2]) { a, b }) // could be CMPLX
-
 // --- num
 
 int mad_num_sign1 (num_t x)
 {
-  return ((int[]){ -1, 1 })[!signbit(x)]; // -1, 1: works for ±0, ±inf and ±NaN
+  return signbit(x) ? -1 : 1; // -1, 1: works for ±0, ±inf and ±NaN
 }
 
 int mad_num_sign (num_t x)
@@ -60,20 +77,14 @@ int mad_num_sign (num_t x)
 
 num_t mad_num_fact (int n)
 {
-  int s = 1;
-
-  if (n < 0) n = -n, s = n & 1 ? -s : s;
-
-  return n > 1 ? s*fact2(n)*fact2(n-1) : s;
+  u32_t an = iabs(n);
+  return copysign(fact(an), n);
 }
 
 num_t mad_num_fact2 (int n)
 {
-  int s = 1;
-
-  if (n < 0) n = -n, s = n & 1 ? -s : s;
-
-  return n > 1 ? s*fact2(n) : s;
+  u32_t an = iabs(n);
+  return copysign(fact2(an), n);
 }
 
 num_t mad_num_binom (int n, int k)
@@ -106,10 +117,12 @@ num_t mad_num_asinhc (num_t x)
 num_t mad_num_powi (num_t x, int n)
 {
   num_t r = 1;
-  if (n < 0) n = -n, x = 1/x;
-  for (;;) {
-    if (n &   1) r *= x;
-    if (n >>= 1) x *= x; else break;
+  u32_t an = (u32_t)n;
+  if (n < 0) { an = iabs(n); x = 1/x; }
+
+  while(an) {
+    if (an &   1) r *= x;
+    if (an >>= 1) x *= x;
   }
   return r;
 }
@@ -224,10 +237,12 @@ cpx_t mad_cpx_asinhc (cpx_t x)
 cpx_t mad_cpx_powi (cpx_t x, int n)
 {
   cpx_t r = 1;
-  if (n < 0) n = -n, x = mad_cpx_inv(x);
-  for (;;) {
-    if (n &   1) r *= x;
-    if (n >>= 1) x *= x; else break;
+  u32_t an = (u32_t)n;
+  if (n < 0) { an = iabs(n); x = mad_cpx_inv(x); }
+
+  while(an) {
+    if (an &   1) r *= x;
+    if (an >>= 1) x *= x;
   }
   return r;
 }
@@ -271,7 +286,7 @@ void mad_cpx_powi_r  (num_t x_re, num_t x_im, int n, cpx_t *r)
 { CHKR; *r = mad_cpx_powi( CPX(x), n ); }
 
 void mad_cpx_unit_r (num_t x_re, num_t x_im, cpx_t *r)
-{ CHKR; *r = CPX(x) / cabs( CPX(x) ); }
+{ CHKR; cpx_t x = CPX(x); *r = !x ? x : x / cabs(x); }
 
 void mad_cpx_rect_r (num_t rho, num_t ang, cpx_t *r)
 { CHKR; *r = CPX2( rho * cos(ang), rho * sin(ang) ); }

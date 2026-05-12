@@ -25,7 +25,16 @@
  */
 
 #include <math.h>
+#include <float.h>
+#include <complex.h>
+#include <tgmath.h>
+
 #include "mad_def.h"
+
+// --- macros -----------------------------------------------------------------o
+
+#define CPX(a)      CPX2(MKNAME(a,_re), MKNAME(a,_im))
+#define CPX2(re,im) ((re)+(im)*_Complex_I)
 
 // --- interface --------------------------------------------------------------o
 

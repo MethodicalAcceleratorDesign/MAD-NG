@@ -27,13 +27,13 @@
  o-----------------------------------------------------------------------------o
  */
 
-// --- includes --------------------------------------------------------------o
+// --- includes ---------------------------------------------------------------o
 
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
 
-// --- types -----------------------------------------------------------------o
+// --- types ------------------------------------------------------------------o
 
 typedef bool             log_t;
 typedef int32_t          idx_t;
@@ -42,15 +42,22 @@ typedef uint32_t         u32_t;
 typedef uint64_t         u64_t;
 typedef double           num_t;
 typedef double _Complex  cpx_t;
+typedef unsigned char    chr_t;
 typedef const char*      str_t;
 typedef const void*      ptr_t;
 
-// --- constants -------------------------------------------------------------o
+// --- constants --------------------------------------------------------------o
 
 #define TRUE  1
 #define FALSE 0
 
-// --- macros ----------------------------------------------------------------o
+// --- helpers ----------------------------------------------------------------o
+
+static inline u32_t iabs (int n) {
+  return n < 0 ? -(int64_t)n : n; // OK for INT_MIN
+}
+
+// --- macros -----------------------------------------------------------------o
 
 #define SQR(a)           ((a)*(a))
 #define CUB(a)           ((a)*(a)*(a))
@@ -122,7 +129,7 @@ typedef const void*      ptr_t;
     ct = (num_t)(c1-c0)/CLOCKS_PER_SEC; \
   }
 
-// --- GNU C -----------------------------------------------------------------o
+// --- GNU C ------------------------------------------------------------------o
 
 #ifndef __GNUC__
 #define __attribute__(a)
@@ -139,7 +146,7 @@ typedef const void*      ptr_t;
 // #endif
 #endif
 
-// --- POSIX & WIN -----------------------------------------------------------o
+// --- POSIX & WIN ------------------------------------------------------------o
 
 #if !defined(_WIN32) && !defined(_WIN64) && (defined(__unix__) || \
      defined(__unix) || (defined(__APPLE__) && defined(__MACH__)))
@@ -174,6 +181,6 @@ void __assert_fail(const char *assertion, const char *file, int line,
                    const char *function) __attribute__((noreturn));
 #endif
 
-// ---------------------------------------------------------------------------o
+// ----------------------------------------------------------------------------o
 
 #endif // MAD_H

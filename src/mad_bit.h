@@ -30,6 +30,8 @@
 #include <stdint.h>
 #include <assert.h>
 
+#include "mad_log.h"
+
 // --- types ------------------------------------------------------------------o
 
 typedef uint64_t bit_t;
@@ -119,43 +121,53 @@ mad_bit_mclr (bit_t b, bit_t m)
 static inline _Bool __attribute__((const))
 mad_bit_tst (bit_t b, int n)
 {
+  ensure((unsigned)n < 64u, "bit index out of range: %d", n);
   return mad_bit_mtst(b, 1ull << n);
 }
 
 static inline bit_t __attribute__((const))
 mad_bit_get (bit_t b, int n)
 {
+  ensure((unsigned)n < 64u, "bit index out of range: %d", n);
   return mad_bit_mget(b, 1ull << n);
 }
 
 static inline bit_t __attribute__((const))
 mad_bit_set (bit_t b, int n)
 {
+  ensure((unsigned)n < 64u, "bit index out of range: %d", n);
   return mad_bit_mset(b, 1ull << n);
 }
 
 static inline bit_t __attribute__((const))
 mad_bit_flp (bit_t b, int n)
 {
+  ensure((unsigned)n < 64u, "bit index out of range: %d", n);
   return mad_bit_mflp(b, 1ull << n);
 }
 
 static inline bit_t __attribute__((const))
 mad_bit_clr (bit_t b, int n)
 {
+  ensure((unsigned)n < 64u, "bit index out of range: %d", n);
   return mad_bit_mclr(b, 1ull << n);
 }
 
 static inline bit_t __attribute__((const))
 mad_bit_lcut (bit_t b, int n) // clear bits < n
 {
-  return mad_bit_mclr(b, (1ull << n)-1);
+  ensure((unsigned)n <= 64u, "bit width out of range: %d", n);
+  if (n == 0 ) return b;
+  if (n == 64) return 0;
+  return b & ~((1ull << n) - 1ull);
 }
 
 static inline bit_t __attribute__((const))
 mad_bit_hcut (bit_t b, int n) // clear bits > n
 {
-  return mad_bit_mget(b, (2ull << n)-1);
+  ensure((unsigned)n <= 64u, "bit width out of range: %d", n);
+  if (n >= 63) return b;
+  return b & ((1ull << (n+1)) - 1ull);
 }
 
 static inline bit_t __attribute__((const))
@@ -167,26 +179,26 @@ mad_bit_mask (bit_t b, int lo, int hi) // clear bits not in [lo,hi]
 static inline int __attribute__((const))
 mad_bit_lowest (bit_t b) // 0..64 (0x0 -> 64)
 {
-  return sizeof b == sizeof(uint32_t)
-         ? mad_bit_lowest32(b) : mad_bit_lowest64(b);
+  return mad_bit_lowest64(b);
 }
 
 static inline int __attribute__((const))
 mad_bit_highest (bit_t b) // -1..63 (0x0 -> -1)
 {
-  return sizeof b == sizeof(uint32_t)
-         ? mad_bit_highest32(b) : mad_bit_highest64(b);
+  return mad_bit_highest64(b);
 }
 
 static inline bit_t __attribute__((const))
 mad_bit_add (bit_t a, bit_t b, int n)
 {
+  ensure((unsigned)n <= 64u, "bit width out of range: %d", n);
   return mad_bit_hcut(a | b, n);
 }
 
 static inline bit_t __attribute__((const))
 mad_bit_mul (bit_t a, bit_t b, int n)
 {
+  ensure((unsigned)n <= 64u, "bit width out of range: %d", n);
   bit_t r = 0; a = mad_bit_hcut(a, n);
   for (; a; a >>= 1, b <<= 1) if (a&1) r |= b;
   return mad_bit_hcut(r, n);
@@ -195,7 +207,9 @@ mad_bit_mul (bit_t a, bit_t b, int n)
 static inline char*
 mad_bit_tostr (bit_t b, int n, char str[])
 {
-  assert(str && n > 0);
+  assert(str);
+  ensure((unsigned)n <= 64u, "bit width out of range: %d", n);
+  ensure(n > 0, "invalid string length %d <= 0", n);
   for (int i=0; i < n-1; b >>= 1, i++) str[i] = '0' + (b&1);
   return str[n-1] = 0, str;
 }
@@ -205,7 +219,7 @@ mad_bit_fromstr (const char str[])
 {
   assert(str);
   bit_t b = 0;
-  for (int i=0; str[i]; b <<= 1, i++) b |= str[i] == '1';
+  for (int i=0; i < 64 && str[i]; b <<= 1, i++) b |= str[i] != '0';
   return b;
 }
 

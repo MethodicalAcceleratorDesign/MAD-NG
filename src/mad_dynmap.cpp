@@ -17,14 +17,13 @@
 */
 
 // control mdump code (+2.5% code size), (basic) speed and C++ tests
-#define TPSA_DBGMDUMP 0
+#define TPSA_DBGMDUMP 1
 #define TPSA_SPDTESTS 0
 #define TPSA_CPPTESTS 0
 
 // --- includes ---------------------------------------------------------------o
 
 #include <type_traits>
-#include "mad_omp.h"
 #include "mad_tpsa.hpp"
 
 extern "C" {
@@ -171,7 +170,7 @@ using namespace mad;
 template <typename M, typename T=M::T>
 inline void (mdump) (cflw<M> &m, str_t s, int n)
 {
-  if (!m.dbg) return;
+  if (!m.dbg) return; // dbg = debug-3
 
   char fun[50];
   snprintf(fun, 50, "%s:%d", s, n);
@@ -181,12 +180,22 @@ inline void (mdump) (cflw<M> &m, str_t s, int n)
 
   M p(m,0);
   if constexpr (std::is_floating_point<T>::value)
-    printf("% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e\n",
+    printf("% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e",
                 p.x,    p.px,     p.y,    p.py,     p.t,    p.pt);
-  else if (m.dbg < 4)
-    printf("% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e\n",
+  else if (m.dbg == 1)
+    printf("% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e",
              p.x[0], p.px[0],  p.y[0], p.py[0],  p.t[0], p.pt[0]);
-  else if (n) {
+  else if (m.dbg == 2) {
+    printf("% -.16e  % -.16e  % -.16e  % -.16e  % -.16e  % -.16e  ",
+             p.x[0], p.px[0],  p.y[0], p.py[0],  p.t[0], p.pt[0]);
+    FOR(i,1,7) { printf("% -.16e  ", p. x[i]); }
+    FOR(i,1,7) { printf("% -.16e  ", p.px[i]); }
+    FOR(i,1,7) { printf("% -.16e  ", p. y[i]); }
+    FOR(i,1,7) { printf("% -.16e  ", p.py[i]); }
+    FOR(i,1,7) { printf("% -.16e  ", p. t[i]); }
+    FOR(i,1,6) { printf("% -.16e  ", p.pt[i]); } printf("% -.16e ", p.pt[6]);
+  }
+  else if (n) { // only on exit
     printf("\n");
     stdout << p.x .set("X" )
            << p.px.set("PX")
@@ -212,6 +221,7 @@ inline void (tdump) (cflw<M> &m, T &t, str_t s, str_t f, int n)
   else {
     printf(" [%p->%p->%p]\n", (void*)&t, (void*)t.ptr(), *(void**)t.ptr());
     stdout << t;
+    printf("\n");
   }
 }
 
@@ -297,7 +307,7 @@ inline void xrotation (cflw<M> &m, num_t lw, const V &dphi_)
   if (!(chck(dphi_, minang) || chck(m.ang, minang))) return;
   mdump(0);
   lw *= m.edir;
-  P a(1);
+  P a(R(m.ang));
   if (fval(dphi_)) a = lw*dphi_; else a = lw*R(m.ang);
   P sa=sin(a), ca=cos(a), ta=tan(a);
 
@@ -323,7 +333,7 @@ inline void yrotation (cflw<M> &m, num_t lw, const V &dthe_)
   if (!(chck(dthe_, minang) || chck(m.ang, minang))) return;
   mdump(0);
   lw *= -m.edir;
-  P a(1);
+  P a(R(m.ang));
   if (fval(dthe_)) a = lw*dthe_; else a = lw*R(m.ang);
   P sa=sin(a), ca=cos(a), ta=tan(a);
 
@@ -349,7 +359,7 @@ inline void srotation (cflw<M> &m, num_t lw, const V &dpsi_)
   if (!(chck(dpsi_, minang) || chck(m.ang, minang))) return;
   mdump(0);
   lw *= m.edir;
-  P a(1);
+  P a(R(m.ang));
   if (fval(dpsi_)) a = lw*dpsi_; else a = lw*R(m.ang);
   P sa=sin(a), ca=cos(a);
 
@@ -373,7 +383,7 @@ inline void translate (cflw<M> &m, num_t lw, const V &dx_, const V &dy_, const V
         chck(dy_, minlen) || chck(m.dy, minlen) ||
         chck(ds_, minlen) || chck(m.ds, minlen))) return;
   mdump(0);
-  P dx(1), dy(1), ds(1);
+  P dx(R(m.dx)), dy(R(m.dy)), ds(R(m.ds));
   if (fval(dx_)) dx = lw*m.edir*dx_; else dx = lw*m.edir*R(m.dx);
   if (fval(dy_)) dy = lw*m.edir*dy_; else dy = lw*m.edir*R(m.dy);
   if (fval(ds_)) ds = lw       *ds_; else ds = lw*       R(m.ds);
@@ -523,7 +533,7 @@ inline void drift_adj (cflw<M> &m, const P &l)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void strex_drift (cflw<M> &m, num_t lw, int is)
 {                                            (void)is;
-  P l  = R(m.el)*lw;
+  P l = R(m.el)*lw;
 
   if (!chck(l, minlen)) return;
 
@@ -548,12 +558,12 @@ inline void strex_kick (cflw<M> &m, num_t lw, int is, bool no_k0l=false)
 
   mdump(0);
   num_t wchg = lw*m.edir*m.charge;
-  P dby(1);
+  P dby(R(m.knl[0]));
   if (no_k0l) dby = R(m.knl[0]); else dby = 0.;
 
   FOR (i,m.npar) {
     M p(m,i);
-    T bx(std::max(ord(p.x),ord(p.y))), by(bx);
+    T bx(ord(p.x) >= ord(p.y) ? p.x : p.y), by(bx);
     bxby(m, p.x, p.y, bx, by);
 
     p.px -= wchg*(by-dby);
@@ -584,7 +594,7 @@ inline void strex_kicks (cflw<M> &m, num_t lw, M &p, T &pz)
   p.t  = nt  - 0.125*hss*(1/m.beta+p.pt)*(sqr(nx)+sqr(ny))*pow(_dpp,3);
 }
 
-template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+template <typename M, typename T=M::T, typename R=M::R>
 inline void strex_kickhs (cflw<M> &m, num_t lw, int is)
 {                                             (void)is;
   if (!m.charge) return;
@@ -599,7 +609,7 @@ inline void strex_kickhs (cflw<M> &m, num_t lw, int is)
     if (m.sdir == -1) strex_kicks(m, lw, p, pz);
 
     if (m.nmul > 0) {
-      T bx(std::max(ord(p.x),ord(p.y))), by(bx);
+      T bx(ord(p.x) >= ord(p.y) ? p.x : p.y), by(bx);
       bxby(m, p.x, p.y, bx, by);
 
       p.px -= wchg*by;
@@ -646,7 +656,7 @@ inline void curex_drift (cflw<M> &m, num_t lw, int is)
   mdump(1);
 }
 
-template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+template <typename M, typename T=M::T, typename R=M::R>
 inline void curex_kick (cflw<M> &m, num_t lw, int is, bool no_k0l=false)
 {                                           (void)is;
   if (!m.nmul || !m.charge) return;
@@ -656,8 +666,8 @@ inline void curex_kick (cflw<M> &m, num_t lw, int is, bool no_k0l=false)
 
   FOR(i,m.npar) {
     M p(m,i);
-    T bx(std::max(ord(p.x),ord(p.y))), by(bx);
-    T r = 1+R(m.eh)*p.x*m.edir;
+    T bx(ord(p.x) >= ord(p.y) ? p.x : p.y), by(bx);
+    T r = 1+p.x*R(m.eh)*m.edir;
 
     if (m.snm) bxbyh(m, p.x, p.y, bx, by); else bx = 0., by = R(m.knl[0]);
 
@@ -812,10 +822,10 @@ inline void quad_thick (cflw<M> &m, num_t lw, int is)
   mdump(0);
   int ws = fval(m.k1)*m.edir < 0 ? -1 : 1;
   P l = R(m.el)*lw;
-  P cx(1), sx(1), mx1(1), mx2(1);
-  P cy(1), sy(1), my1(1), my2(1);
+  P cx(R(m.k1)), sx(R(m.k1)), mx1(R(m.k1)), mx2(R(m.k1));
+  P cy(R(m.k1)), sy(R(m.k1)), my1(R(m.k1)), my2(R(m.k1));
 
-  if (fabs(m.k1) > minstr) {                                                  // k1 as prm?
+  if (fabs(m.k1) > minstr) {
     P w = sqrt(abs(R(m.k1)))*(ws*m.sdir*m.edir);
     cx = cos (w*l), sx  = sin (w*l);
     cy = cosh(w*l), sy  = sinh(w*l);
@@ -861,7 +871,7 @@ inline void quad_kick (cflw<M> &m, num_t lw, int is)
 
     FOR (i,m.npar) {
       M p(m,i);
-      T bx(std::max(ord(p.x),ord(p.y))), by(bx);
+      T bx(ord(p.x) >= ord(p.y) ? p.x : p.y), by(bx);
       bxby(m, p.x, p.y, bx, by);
 
       p.px -= wchg*(by - R(m.knl[1])*p.x);
@@ -930,7 +940,7 @@ inline void quad_kicks (cflw<M> &m, num_t lw, int is)
 
     FOR (i,m.npar) {
       M p(m,i);
-      T bx(std::max(ord(p.x),ord(p.y))), by(bx);
+      T bx(ord(p.x) >= ord(p.y) ? p.x : p.y), by(bx);
       bxby(m, p.x, p.y, bx, by);
 
       p.px -= wchg*(by - R(m.knl[1])*p.x + R(m.ksl[1])*p.y);
@@ -954,12 +964,12 @@ inline void quad_thickh (cflw<M> &m, num_t lw, int is)
   int wxs = fval(kx)*m.edir < 0 ? -1 : 1;
   int wys = fval(ky)*m.edir < 0 ? -1 : 1;
 
-  P wx(1), cx(1), sx(1), wy(1), cy(1), sy(1);
-  P mx11(1), mx12(1), mx13(1), my11(1), my12(1);
-  P mx21(1), mx22(1), mx23(1), my21(1), my22(1);
-  P mx31(1), mx32(1), mx33(1);
+  P wx(kx), cx(kx), sx(kx), wy(kx), cy(kx), sy(kx);
+  P mx11(kx), mx12(kx), mx13(kx), my11(kx), my12(kx);
+  P mx21(kx), mx22(kx), mx23(kx), my21(kx), my22(kx);
+  P mx31(kx), mx32(kx), mx33(kx);
 
-  if (fabs(kx) > minstr) {                                                    // k0 & k1 as prm?
+  if (fabs(kx) > minstr) {
     wx = sqrt(abs(kx))*(wxs*m.charge); wxs *= -m.charge;
     if (fval(wx) > 0) cx = cos (wx*l), sx = sin (wx*l);
     else              cx = cosh(wx*l), sx = sinh(wx*l);
@@ -973,7 +983,7 @@ inline void quad_thickh (cflw<M> &m, num_t lw, int is)
     mx31 = mx23, mx32 = mx13, mx33 = mx13*mx23/3;
   }
 
-  if (fabs(ky) > minstr) {                                                    // k1 as prm?
+  if (fabs(ky) > minstr) {
     wy = sqrt(abs(ky))*(wys*m.charge); wys *= -m.charge;
     if (fval(wy) > 0) cy = cos (wy*l), sy = sin (wy*l);
     else              cy = cosh(wy*l), sy = sinh(wy*l);
@@ -1020,7 +1030,7 @@ inline void quad_kickh (cflw<M> &m, num_t lw, int is)
 
     FOR (i,m.npar) {
       M p(m,i);
-      T bx(std::max(ord(p.x),ord(p.y))), by(bx);
+      T bx(ord(p.x) >= ord(p.y) ? p.x : p.y), by(bx);
       T pz = sqrt(1 + 2/m.beta*p.pt + sqr(p.pt));
 
       bxby(m, p.x, p.y, bx, by);
@@ -1116,7 +1126,7 @@ inline void esept_thick (cflw<M> &m, num_t lw, int is)
 
 // --- rfcavity ---
 
-template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+template <typename M, typename P=M::P, typename R=M::R>
 inline void rfcav_kick (cflw<M> &m, num_t lw, int is)
 {                                           (void)is;
   if (!m.charge) return;
@@ -1146,11 +1156,11 @@ inline void rfcav_kickn (cflw<M> &m, num_t lw, int is)
     M p(m,i);
     T ph = R(m.lag) - w*p.t;
     T sa = sin(ph), ca = cos(ph);
-    T f(p.x); f = 1.;
+    T f(ord(p.x) >= ord(p.y) ? p.x : p.y); f = 1.;
 
     if (chck(vl, 0)) {
       if (m.nbsl > 0) {
-        T df(p.x), r2(p.x); df = 0., r2 = 1.;
+        T df(f), r2(f); df = 0., r2 = 1.;
 
         FOR(i,1,m.nbsl+1) {
           r2  = -r2*(sqr(w)/(4*sqr(i+1)));
@@ -1168,8 +1178,7 @@ inline void rfcav_kickn (cflw<M> &m, num_t lw, int is)
     }
 
     if (m.nmul > 0) {
-      ord_t mo = std::max(ord(p.x),ord(p.y));
-      T bx(mo), by(mo), byt(mo);
+      T bx(ord(p.x) >= ord(p.y) ? p.x : p.y), by(bx), byt(bx);
       bxby(m, p.x, p.y, bx, by);
 
       p.px += wchg/m.pc*by*ca;
@@ -1201,7 +1210,7 @@ enum {
  fringe_rfcav = 8, fringe_solen = 16, fringe_comb = 1+2, fringe_combqs = 1+2+4
 };
 
-template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+template <typename M, typename P=M::P, typename R=M::R>
 inline void adjust_time (cflw<M> &m)
 {
   if (!chck(m.el, minlen)) return;
@@ -1309,7 +1318,7 @@ inline void bend_face (cflw<M> &m, num_t lw, const V &h)
 }
 #endif
 
-template <typename M, typename T=M::T, typename P=M::P, typename R=M::R, typename V>
+template <typename M, typename P=M::P, typename R=M::R, typename V>
 inline void mad8_wedge (cflw<M> &m, num_t lw, const V &e)
 {                                   (void)lw;
   if (!(chck(e, minang) || chck(m.knl[1], minstr))) return;
@@ -1328,7 +1337,7 @@ inline void mad8_wedge (cflw<M> &m, num_t lw, const V &e)
   mdump(1);
 }
 
-template <typename M, typename T=M::T, typename P=M::P, typename R=M::R, typename V>
+template <typename M, typename P=M::P, typename R=M::R, typename V>
 inline void bend_ptch (cflw<M> &m, num_t lw, const V &a)
 {                                  (void)lw;
   if (!fval(a) || !fval(m.elc)) return;
@@ -1380,7 +1389,7 @@ inline void bend_fringe (cflw<M> &m, num_t lw)
   P fh = 2*R(m.fint)*R(m.hgap);
   P b0 = R(m.knl[0])/abs(R(m.el))*(lw*m.sdir*m.edir*m.charge);
   P c2 = fh*b0;
-  P fsad(1);
+  P fsad(fh);
 
   if (fval(fh)) fsad=1/(36*fh); else fsad = 0.;
 
@@ -1440,7 +1449,7 @@ inline void bend_fringe (cflw<M> &m, num_t lw)
   P fh = 2*R(m.fint)*R(m.hgap);
   P b0 = R(m.knl[0])/abs(R(m.el))*(lw*m.sdir*m.edir*m.charge);
   P c2 = fh*b0;
-  P fsad(1);
+  P fsad(fh);
 
   if (fval(fh)) fsad=1/(36*fh); else fsad = 0.;
 
@@ -1569,17 +1578,17 @@ inline void mult_fringe (cflw<M> &m, num_t lw)
   mdump(0);
   num_t  wchg = lw*m.charge;
   int   no_k1 = m.frng & fringe_bend;
-  P     _l(1);
+  P     _l(R(m.el));
 
   if (fval(m.el)) _l = m.edir/R(m.el); else _l = m.edir;
 
   FOR (i,m.npar) {
     M p(m,i);
-    ord_t mo = std::max(ord(p.x),ord(p.y));
-    T rx(mo), ix (mo);          rx = 1., ix =0.;
-    T fx(mo), fxx(mo), fxy(mo); fx = 0., fxx=0., fxy=0.;
-    T fy(mo), fyy(mo), fyx(mo); fy = 0., fyy=0., fyx=0.;
-    T drx(mo), dix(mo), u(mo), v(mo), du(mo), dv(mo);
+    T u(ord(p.x) >= ord(p.y) ? p.x : p.y), v(u), du(u), dv(u);
+    T rx (u), ix (u);         rx = 1., ix =0.;
+    T fx (u), fxx(u), fxy(u); fx = 0., fxx=0., fxy=0.;
+    T fy (u), fyy(u), fyx(u); fy = 0., fyy=0., fyx=0.;
+    T drx(u), dix(u);
 
     T _pz = invsqrt(1 + 2/m.beta*p.pt + sqr(p.pt));
 
@@ -1631,7 +1640,7 @@ inline void mult_fringe (cflw<M> &m, num_t lw)
   mdump(1);
 }
 
-template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+template <typename M, typename R=M::R>
 inline void curex_fringe (cflw<M> &m, num_t lw)
 {
   mdump(0);
@@ -1659,7 +1668,7 @@ inline void curex_fringe (cflw<M> &m, num_t lw)
   mdump(1);
 }
 
-template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+template <typename M, typename P=M::P, typename R=M::R>
 inline void strex_fringe (cflw<M> &m, num_t lw)
 {
   mdump(0);
@@ -1691,7 +1700,7 @@ inline void strex_fringe (cflw<M> &m, num_t lw)
   mdump(1);
 }
 
-template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
+template <typename M, typename R=M::R>
 inline void rfcav_fringe (cflw<M> &m, num_t lw)
 {
   mdump(0);

@@ -1,6 +1,6 @@
 -- This is a generated file. DO NOT EDIT!
 
-assert(require("jit").version == "LuaJIT 2.1.1739192907", "LuaJIT core/library version mismatch")
+assert(require("jit").version == "LuaJIT 2.1.1769533921", "LuaJIT core/library version mismatch")
 
 return {
 
@@ -94,20 +94,15 @@ ircall = {
 "lj_vm_tointg",
 "softfp_ui2d",
 "softfp_f2d",
-"softfp_d2ui",
 "softfp_d2f",
 "softfp_i2f",
 "softfp_ui2f",
 "softfp_f2i",
-"softfp_f2ui",
 "fp64_l2d",
 "fp64_ul2d",
 "fp64_l2f",
 "fp64_ul2f",
-"fp64_d2l",
-"fp64_d2ul",
-"fp64_f2l",
-"fp64_f2ul",
+"lj_vm_num2u64",
 "lj_carith_divi64",
 "lj_carith_divu64",
 "lj_carith_modi64",

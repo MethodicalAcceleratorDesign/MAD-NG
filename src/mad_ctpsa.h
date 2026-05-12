@@ -187,6 +187,7 @@ void     mad_ctpsa_wf      (const ctpsa_t *a, ctpsa_t *c);
 
 void     mad_ctpsa_acc     (const ctpsa_t *a, cpx_t v, ctpsa_t *c); // c += v*a, aliasing OK
 void     mad_ctpsa_scl     (const ctpsa_t *a, cpx_t v, ctpsa_t *c); // c  = v*a
+void     mad_ctpsa_divn    (const ctpsa_t *a, cpx_t v, ctpsa_t *c); // c  = a/v
 void     mad_ctpsa_inv     (const ctpsa_t *a, cpx_t v, ctpsa_t *c); // c  = v/a
 void     mad_ctpsa_invsqrt (const ctpsa_t *a, cpx_t v, ctpsa_t *c); // c  = v/sqrt(a)
 
@@ -196,6 +197,7 @@ void     mad_ctpsa_hypot3  (const ctpsa_t *x, const ctpsa_t *y, const ctpsa_t *z
 // functions without complex-by-value arguments
 void     mad_ctpsa_acc_r    (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 void     mad_ctpsa_scl_r    (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
+void     mad_ctpsa_divn_r   (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 void     mad_ctpsa_inv_r    (const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 void     mad_ctpsa_invsqrt_r(const ctpsa_t *a, num_t v_re, num_t v_im, ctpsa_t *c);
 

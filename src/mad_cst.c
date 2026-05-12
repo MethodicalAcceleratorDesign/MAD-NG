@@ -23,6 +23,8 @@
 
 // --- implementation ---------------------------------------------------------o
 
+_Static_assert(sizeof(num_t) == sizeof(double), "num_t must be double");
+
 // constants for maths
 
 const num_t mad_cst_EPS      = DBL_EPSILON;
@@ -55,9 +57,9 @@ const num_t mad_cst_RAD2DEG  = M_RAD2DEG;
 
 // constants for physics
 
-const num_t mad_cst_MINLEN   = 1e-10;
-const num_t mad_cst_MINANG   = 1e-10;
-const num_t mad_cst_MINSTR   = 1e-10;
+const num_t mad_cst_MINLEN   = P_MINLEN;
+const num_t mad_cst_MINANG   = P_MINANG;
+const num_t mad_cst_MINSTR   = P_MINSTR;
 
 const num_t mad_cst_CLIGHT   = P_CLIGHT;
 const num_t mad_cst_MU0      = P_MU0;

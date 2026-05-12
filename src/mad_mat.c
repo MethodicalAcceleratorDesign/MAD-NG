@@ -16,16 +16,15 @@
  o-----------------------------------------------------------------------------o
 */
 
+#include <stddef.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <math.h>
-#include <float.h>
-#include <complex.h>
 #include <assert.h>
 
 #include "mad_log.h"
 #include "mad_mem.h"
+#include "mad_num.h"
 #include "mad_vec.h"
 #include "mad_mat.h"
 
@@ -49,6 +48,11 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 }
 #endif
 
+// --- sanity checks ----------------------------------------------------------o
+
+_Static_assert(sizeof(cpx_t) == 2*sizeof(num_t),
+               "cpx_t must be exactly 2*num_t");
+
 // --- implementation ---------------------------------------------------------o
 
 #define CHKR   assert( r )
@@ -59,8 +63,6 @@ iprint(str_t name, const idx_t a[], ssz_t m, ssz_t n)
 #define CHKXYR assert( x && y && r )
 #define CHKXRX assert( x && r && x != r)
 
-#define CPX(re,im) (* (cpx_t*) & (num_t[2]) { re, im })
-
 // --- matrix, cmatrix, imatrix
 
 struct  matrix { ssz_t nr, nc; num_t data[]; };
@@ -70,13 +72,16 @@ struct imatrix { ssz_t nr, nc; idx_t data[]; };
 // Note: matrix of zero size are forbidden
 
 void mad_mat_reshape (struct matrix *x, ssz_t m, ssz_t n)
-{ CHKX; x->nr = MAX(1,m); x->nc = MAX(1,n); }
+{ CHKX; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  x->nr = m; x->nc = n; }
 
 void mad_cmat_reshape (struct cmatrix *x, ssz_t m, ssz_t n)
-{ CHKX; x->nr = MAX(1,m); x->nc = MAX(1,n); }
+{ CHKX; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  x->nr = m; x->nc = n; }
 
 void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
-{ CHKX; x->nr = MAX(1,m); x->nc = MAX(1,n); }
+{ CHKX; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  x->nr = m; x->nc = n; }
 
 // -----
 
@@ -160,7 +165,7 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 
 // [m x n] = [m x p] * [p x n]
 #define MUL() \
-  switch(((m == 1) << 1) & (n == 1)) { \
+  switch(((m == 1) << 1) | (n == 1)) { \
     case 0: MMUL(); break; \
     case 1: MULV(); break; \
     case 2: VMUL(); break; \
@@ -248,7 +253,7 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 
 // [m x n] = [p x m]' * [p x n]
 #define TMUL(C) \
-  switch(((m == 1) << 1) & (n == 1)) { \
+  switch(((m == 1) << 1) | (n == 1)) { \
     case 0: TMMUL(C); break; \
     case 1: TMULV(C); break; \
     case 2: TVMUL(C); break; \
@@ -321,7 +326,7 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 
 // [m x n] = [m x p] * [n x p]'
 #define MULT(C) \
-  switch(((m == 1) << 1) & (n == 1)) { \
+  switch(((m == 1) << 1) | (n == 1)) { \
     case 0: MMULT(C); break; \
     case 1: MULVT(C); break; \
     case 2: VMULT(C); break; \
@@ -357,7 +362,7 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
   if (m == 1 || n == 1) { \
     if (x != r || I != C(I)) \
       FOR(i,m*n) r[i] = C(x[i]); \
-  } else if ((const void*)x != (const void*)r) { \
+  } else if (x != r) { \
     FOR(i,m) FOR(j,n) r[j*m+i] = C(x[i*n+j]); \
   } else if (m == n) { \
     FOR(i,m) FOR(j,i,n) { \
@@ -386,22 +391,47 @@ void mad_imat_reshape (struct imatrix *x, ssz_t m, ssz_t n)
 // [m x n] diagonal [+ op]
 #define DIAG(OP) FOR(i, MIN(m,n)) r[i*ldr+i] OP##= x
 
+// -----
+
+static inline log_t
+overlap(const void* a0, const void* a1, const void* b0, const void* b1) {
+  uintptr_t a_0=(uintptr_t)a0, a_1=(uintptr_t)a1;
+  uintptr_t b_0=(uintptr_t)b0, b_1=(uintptr_t)b1;
+  return !(a_1 < b_0 || b_1 < a_0);
+}
+
 // --- mat
 
 void mad_mat_eye (num_t r[], num_t v, ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; num_t x = 0; SET(); x = v; DIAG(); }
+{ CHKR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  ensure(ldr>=n, "invalid matrix stride");
+  num_t x = 0; SET(); x = v; DIAG(); }
 
-void mad_mat_copy (const num_t x[], num_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
-{ CHKXRX; CPY(); }
+void mad_mat_copy(const num_t x[], num_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
+{ CHKXR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  ensure(ldx>=n && ldr>=n, "invalid matrix strides %d,%d", ldx, ldr);
+  if (x == r && ldx == ldr) return;
+  const num_t* x1 = x + (m-1)*ldx + (n-1);
+  const num_t* r1 = r + (m-1)*ldr + (n-1);
+  if (overlap(x, x1, r, r1)) {
+    mad_alloc_tmp(num_t, t, m*n);
+    FOR(i,m) FOR(j,n) t[i*n+j] = x[i*ldx+j];
+    FOR(i,m) FOR(j,n) r[i*ldr+j] = t[i*n+j];
+    mad_free_tmp(t);
+  } else CPY();
+}
 
 void mad_mat_copym (const num_t x[], cpx_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
-{ CHKXR; CPY(); }
+{ CHKXR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  ensure(ldx>=n && ldr>=n, "invalid matrix strides %d,%d", ldx, ldr);
+  CPY(); }
 
 void mad_mat_trans (const num_t x[], num_t r[], ssz_t m, ssz_t n)
-{ CHKXR; TRANS(num_t,); }
+{ CHKXR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  TRANS(num_t,); }
 
 void mad_mat_mul (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (x != r && y != r) { MUL(); return; }
   mad_alloc_tmp(num_t, r_, m*n);
   num_t *t = r; r = r_;
@@ -411,7 +441,7 @@ void mad_mat_mul (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n,
 }
 
 void mad_mat_mulm (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (y != r) { MUL(); return; }
   mad_alloc_tmp(cpx_t, r_, m*n);
   cpx_t *t = r; r = r_;
@@ -421,7 +451,7 @@ void mad_mat_mulm (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n
 }
 
 void mad_mat_tmul (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (x != r && y != r) { TMUL(); return; }
   mad_alloc_tmp(num_t, r_, m*n);
   num_t *t = r; r = r_;
@@ -431,7 +461,7 @@ void mad_mat_tmul (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n
 }
 
 void mad_mat_tmulm (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (y != r) { TMUL(); return; }
   mad_alloc_tmp(cpx_t, r_, m*n);
   cpx_t *t = r; r = r_;
@@ -441,7 +471,7 @@ void mad_mat_tmulm (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t 
 }
 
 void mad_mat_mult (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (x != r && y != r) { MULT(); return; }
   mad_alloc_tmp(num_t, r_, m*n);
   num_t *t = r; r = r_;
@@ -451,7 +481,7 @@ void mad_mat_mult (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n
 }
 
 void mad_mat_multm (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (y != r) { MULT(conj); return; }
   mad_alloc_tmp(cpx_t, r_, m*n);
   cpx_t *t = r; r = r_;
@@ -461,7 +491,7 @@ void mad_mat_multm (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t 
 }
 
 void mad_mat_dmul (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (x != r && y != r) { DMUL(); return; }
   mad_alloc_tmp(num_t, r_, m*n);
   num_t *t = r; r = r_;
@@ -471,7 +501,7 @@ void mad_mat_dmul (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n
 }
 
 void mad_mat_dmulm (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (y != r) { DMUL(); return; }
   mad_alloc_tmp(cpx_t, r_, m*n);
   cpx_t *t = r; r = r_;
@@ -481,7 +511,7 @@ void mad_mat_dmulm (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t 
 }
 
 void mad_mat_muld (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (x != r && y != r) { MULD(); return; }
   mad_alloc_tmp(num_t, r_, m*n);
   num_t *t = r; r = r_;
@@ -491,7 +521,7 @@ void mad_mat_muld (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n
 }
 
 void mad_mat_muldm (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (y != r) { MULD(); return; }
   mad_alloc_tmp(cpx_t, r_, m*n);
   cpx_t *t = r; r = r_;
@@ -501,7 +531,8 @@ void mad_mat_muldm (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t 
 }
 
 void mad_mat_center (num_t x[], ssz_t m, ssz_t n, int d)
-{ CHKX; num_t mu;
+{ CHKX; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  num_t mu;
   switch(d) { // 0=vec, 1=row, 2=col, 3=diag
   case 0:
     mu = 0;
@@ -532,11 +563,12 @@ void mad_mat_center (num_t x[], ssz_t m, ssz_t n, int d)
 }
 
 void mad_mat_rev (num_t x[], ssz_t m, ssz_t n, int d)
-{ CHKX; num_t t;
+{ CHKX; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  num_t t;
   switch(d) { // 0=vec, 1=row, 2=col, 3=diag
-  case 0: FOR(i,(m*n)/2)        SWAP(x[i    ], x[         m*n-1-i]    , t); break;
-  case 1: FOR(i,m  ) FOR(j,n/2) SWAP(x[i*n+j], x[     i *n +n-1-j]    , t); break;
-  case 2: FOR(i,m/2) FOR(j,n  ) SWAP(x[i*n+j], x[(m-1-i)*n +    j]    , t); break;
+  case 0: FOR(i,(m*n)/2)        SWAP(x[i    ], x[         m*n-1-i    ], t); break;
+  case 1: FOR(i,m  ) FOR(j,n/2) SWAP(x[i*n+j], x[     i *n +n-1-j    ], t); break;
+  case 2: FOR(i,m/2) FOR(j,n  ) SWAP(x[i*n+j], x[(m-1-i)*n +    j    ], t); break;
   case 3: FOR(i,MIN(m,n)/2)     SWAP(x[i*n+i], x[(MIN(m,n)-1-i)*(n+1)], t); break;
   default: error("invalid direction");
   }
@@ -544,8 +576,9 @@ void mad_mat_rev (num_t x[], ssz_t m, ssz_t n, int d)
 
 void
 mad_mat_roll (num_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
-{ CHKX; mroll %= m; nroll %= n;
-  ssz_t nm = n*m, msz = n*abs(mroll), nsz = abs(nroll);
+{ CHKX; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  mroll %= m; nroll %= n;
+  ssz_t nm = n*m, msz = n*iabs(mroll), nsz = iabs(nroll);
   ssz_t sz = msz > nsz ? msz : nsz;
   mad_alloc_tmp(num_t, a, sz);
   if (mroll > 0) {
@@ -574,22 +607,39 @@ mad_mat_roll (num_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
 // -- cmat
 
 void mad_cmat_eye (cpx_t r[], cpx_t v, ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; cpx_t x = 0; SET(); x = v; DIAG(); }
+{ CHKR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  ensure(ldr>=n, "invalid matrix stride");
+  cpx_t x = 0; SET(); x = v; DIAG(); }
 
 void mad_cmat_eye_r (cpx_t r[], num_t v_re, num_t v_im, ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; mad_cmat_eye(r, CPX(v_re,v_im), m, n, ldr); }
+{ CHKR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  ensure(ldr>=n, "invalid matrix stride");
+  mad_cmat_eye(r, CPX(v), m, n, ldr); }
 
-void mad_cmat_copy (const cpx_t x[], cpx_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
-{ CHKXRX; CPY(); }
+void mad_cmat_copy(const cpx_t x[], cpx_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
+{ CHKXR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  ensure(ldx>=n && ldr>=n, "invalid matrix strides %d,%d", ldx, ldr);
+  if (x == r && ldx == ldr) return;
+  const cpx_t* x1 = x + (m-1)*ldx + (n-1);
+  const cpx_t* r1 = r + (m-1)*ldr + (n-1);
+  if (overlap(x, x1, r, r1)) {
+    mad_alloc_tmp(cpx_t, t, m*n);
+    FOR(i,m) FOR(j,n) t[i*n+j] = x[i*ldx+j];
+    FOR(i,m) FOR(j,n) r[i*ldr+j] = t[i*n+j];
+    mad_free_tmp(t);
+  } else CPY();
+}
 
 void mad_cmat_trans (const cpx_t x[], cpx_t r[], ssz_t m, ssz_t n)
-{ CHKXR; TRANS(cpx_t,); }
+{ CHKXR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  TRANS(cpx_t,); }
 
 void mad_cmat_ctrans (const cpx_t x[], cpx_t r[], ssz_t m, ssz_t n)
-{ CHKXR; TRANS(cpx_t,conj); }
+{ CHKXR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  TRANS(cpx_t,conj); }
 
 void mad_cmat_mul (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (x != r && y != r) { MUL(); return; }
   mad_alloc_tmp(cpx_t, r_, m*n);
   cpx_t *t = r; r = r_;
@@ -599,7 +649,7 @@ void mad_cmat_mul (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n
 }
 
 void mad_cmat_mulm (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (x != r) { MUL(); return; }
   mad_alloc_tmp(cpx_t, r_, m*n);
   cpx_t *t = r; r = r_;
@@ -609,7 +659,7 @@ void mad_cmat_mulm (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t m, ssz_t 
 }
 
 void mad_cmat_tmul (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (x != r && y != r) { TMUL(conj); return; }
   mad_alloc_tmp(cpx_t, r_, m*n);
   cpx_t *t = r; r = r_;
@@ -619,7 +669,7 @@ void mad_cmat_tmul (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t 
 }
 
 void mad_cmat_tmulm (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (x != r) { TMUL(conj); return; }
   mad_alloc_tmp(cpx_t, r_, m*n);
   cpx_t *t = r; r = r_;
@@ -629,7 +679,7 @@ void mad_cmat_tmulm (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t m, ssz_t
 }
 
 void mad_cmat_mult (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (x != r && y != r) { MULT(conj); return; }
   mad_alloc_tmp(cpx_t, r_, m*n);
   cpx_t *t = r; r = r_;
@@ -639,7 +689,7 @@ void mad_cmat_mult (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t 
 }
 
 void mad_cmat_multm (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (x != r) { MULT(); return; }
   mad_alloc_tmp(cpx_t, r_, m*n);
   cpx_t *t = r; r = r_;
@@ -649,7 +699,7 @@ void mad_cmat_multm (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t m, ssz_t
 }
 
 void mad_cmat_dmul (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (x != r && y != r) { DMUL(); return; }
   mad_alloc_tmp(cpx_t, r_, m*n);
   cpx_t *t = r; r = r_;
@@ -659,7 +709,7 @@ void mad_cmat_dmul (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t 
 }
 
 void mad_cmat_dmulm (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (x != r) { DMUL(); return; }
   mad_alloc_tmp(cpx_t, r_, m*n);
   cpx_t *t = r; r = r_;
@@ -669,7 +719,7 @@ void mad_cmat_dmulm (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t m, ssz_t
 }
 
 void mad_cmat_muld (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (x != r && y != r) { MULD(); return; }
   mad_alloc_tmp(cpx_t, r_, m*n);
   cpx_t *t = r; r = r_;
@@ -679,7 +729,7 @@ void mad_cmat_muld (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t 
 }
 
 void mad_cmat_muldm (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p)
-{ CHKXYR;
+{ CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   if (x != r) { MULD(); return; }
   mad_alloc_tmp(cpx_t, r_, m*n);
   cpx_t *t = r; r = r_;
@@ -689,7 +739,8 @@ void mad_cmat_muldm (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t m, ssz_t
 }
 
 void mad_cmat_center (cpx_t x[], ssz_t m, ssz_t n, int d)
-{ CHKX; cpx_t mu;
+{ CHKX; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  cpx_t mu;
   switch(d) { // 0=vec, 1=row, 2=col, 3=diag
   case 0:
     mu = 0;
@@ -720,12 +771,13 @@ void mad_cmat_center (cpx_t x[], ssz_t m, ssz_t n, int d)
 }
 
 void mad_cmat_rev (cpx_t x[], ssz_t m, ssz_t n, int d)
-{ CHKX; cpx_t t;
+{ CHKX; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  cpx_t t;
   switch(d) { // 0=vec, 1=row, 2=col, 3=diag
-  case 0: FOR(i,(m*n)/2)        SWAP(x[i     ], x[         m*n-1-i], t); break;
-  case 1: FOR(i,m  ) FOR(j,n/2) SWAP(x[i*n +j], x[     i *n +n-1-j], t); break;
-  case 2: FOR(i,m/2) FOR(j,n  ) SWAP(x[i*n +j], x[(m-1-i)*n +    j], t); break;
-  case 3: FOR(i,MIN(m,n)/2)     SWAP(x[i*n +i], x[(m-1-i)*n +    i], t); break;
+  case 0: FOR(i,(m*n)/2)        SWAP(x[i    ], x[         m*n-1-i    ], t); break;
+  case 1: FOR(i,m  ) FOR(j,n/2) SWAP(x[i*n+j], x[     i *n +n-1-j    ], t); break;
+  case 2: FOR(i,m/2) FOR(j,n  ) SWAP(x[i*n+j], x[(m-1-i)*n +    j    ], t); break;
+  case 3: FOR(i,MIN(m,n)/2)     SWAP(x[i*n+i], x[(MIN(m,n)-1-i)*(n+1)], t); break;
   default: error("invalid direction");
   }
 }
@@ -736,32 +788,50 @@ void mad_cmat_roll (cpx_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
 // --- imat
 
 void mad_imat_eye (idx_t r[], idx_t v, ssz_t m, ssz_t n, ssz_t ldr)
-{ CHKR; idx_t x = 0; SET(); x = v; DIAG(); }
+{ CHKR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  ensure(ldr>=n, "invalid matrix stride");
+  idx_t x = 0; SET(); x = v; DIAG(); }
 
-void mad_imat_copy (const idx_t x[], idx_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
-{ CHKXRX; CPY(); }
+void mad_imat_copy(const idx_t x[], idx_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
+{ CHKXR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  ensure(ldx>=n && ldr>=n, "invalid matrix strides %d,%d", ldx, ldr);
+  if (x == r && ldx == ldr) return;
+  const idx_t* x1 = x + (m-1)*ldx + (n-1);
+  const idx_t* r1 = r + (m-1)*ldr + (n-1);
+  if (overlap(x, x1, r, r1)) {
+    mad_alloc_tmp(idx_t, t, m*n);
+    FOR(i,m) FOR(j,n) t[i*n+j] = x[i*ldx+j];
+    FOR(i,m) FOR(j,n) r[i*ldr+j] = t[i*n+j];
+    mad_free_tmp(t);
+  } else CPY();
+}
 
 void mad_imat_copym (const idx_t x[], num_t r[], ssz_t m, ssz_t n, ssz_t ldx, ssz_t ldr)
-{ CHKXR; CPY(); }
+{ CHKXR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  ensure(ldx>=n && ldr>=n, "invalid matrix strides %d,%d", ldx, ldr);
+  CPY(); }
 
 void mad_imat_trans (const idx_t x[], idx_t r[], ssz_t m, ssz_t n)
-{ CHKXR; TRANS(idx_t,); }
+{ CHKXR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  TRANS(idx_t,); }
 
 void mad_imat_rev (idx_t x[], ssz_t m, ssz_t n, int d)
-{ CHKX; idx_t t;
+{ CHKX; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
+  idx_t t;
   switch(d) { // 0=vec, 1=row, 2=col, 3=diag
-  case 0: FOR(i,(m*n)/2)        SWAP(x[i     ], x[         m*n-1-i], t); break;
-  case 1: FOR(i,m  ) FOR(j,n/2) SWAP(x[i*n +j], x[     i *n +n-1-j], t); break;
-  case 2: FOR(i,m/2) FOR(j,n  ) SWAP(x[i*n +j], x[(m-1-i)*n +    j], t); break;
-  case 3: FOR(i,MIN(m,n)/2)     SWAP(x[i*n +i], x[(m-1-i)*n +    i], t); break;
+  case 0: FOR(i,(m*n)/2)        SWAP(x[i    ], x[         m*n-1-i    ], t); break;
+  case 1: FOR(i,m  ) FOR(j,n/2) SWAP(x[i*n+j], x[     i *n +n-1-j    ], t); break;
+  case 2: FOR(i,m/2) FOR(j,n  ) SWAP(x[i*n+j], x[(m-1-i)*n +    j    ], t); break;
+  case 3: FOR(i,MIN(m,n)/2)     SWAP(x[i*n+i], x[(MIN(m,n)-1-i)*(n+1)], t); break;
   default: error("invalid direction");
   }
 }
 
 void
 mad_imat_roll (idx_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
-{ CHKX; mroll %= m; nroll %= n;
-  ssz_t nm = n*m, msz = n*abs(mroll), nsz = abs(nroll);
+{ CHKX; ensure(m>0 && n>0, "invalid imatrix sizes");
+  mroll %= m; nroll %= n;
+  ssz_t nm = n*m, msz = n*iabs(mroll), nsz = iabs(nroll);
   ssz_t sz = msz > nsz ? msz : nsz;
   mad_alloc_tmp(idx_t, a, sz);
   if (mroll > 0) { // roll rows
@@ -799,7 +869,7 @@ mad_imat_roll (idx_t x[], ssz_t m, ssz_t n, int mroll, int nroll)
 // -- Symplecticity error, compute M' J M - J ---------------------------------o
 
 num_t mad_mat_symperr (const num_t x[], num_t r_[], ssz_t n, num_t *tol_)
-{ CHKX; assert(!(n & 1));
+{ CHKX; ensure(n>0 && !(n & 1),"invalid matrix sizes %d", n);
   num_t s=0, s0, s1, s2, s3;
   ssz_t nn = n*n;
   mad_alloc_tmp(num_t, r, nn);
@@ -836,8 +906,9 @@ num_t mad_mat_symperr (const num_t x[], num_t r_[], ssz_t n, num_t *tol_)
 }
 
 num_t mad_cmat_symperr (const cpx_t x[], cpx_t r_[], ssz_t n, num_t *tol_)
-{ CHKX; assert(!(n & 1));
-  cpx_t s=0, s0, s1, s2, s3;
+{ CHKX; ensure(n>0 && !(n & 1),"invalid matrix sizes %d", n);
+  num_t s=0;
+  cpx_t s0, s1, s2, s3;
   ssz_t nn = n*n;
   mad_alloc_tmp(cpx_t, r, nn);
   for (idx_t i = 0; i < n-1; i += 2) {
@@ -847,7 +918,7 @@ num_t mad_cmat_symperr (const cpx_t x[], cpx_t r_[], ssz_t n, num_t *tol_)
       s1 += conj(a_(x,k,i)) * d_(x,k,i) - b_(x,k,i) * conj(c_(x,k,i));
       s2 += conj(b_(x,k,i)) * c_(x,k,i) - a_(x,k,i) * conj(d_(x,k,i));
     }
-    s += s1*s1 + s2*s2;
+    s += creal(s1*conj(s1) + s2*conj(s2));
     b_(r,i,i) = s1, c_(r,i,i) = s2, a_(r,i,i) = d_(r,i,i) = 0;
     // i < j
     for (idx_t j = i+2; j < n-1; j += 2) {
@@ -858,7 +929,7 @@ num_t mad_cmat_symperr (const cpx_t x[], cpx_t r_[], ssz_t n, num_t *tol_)
         s2 += conj(b_(x,k,i)) * c_(x,k,j) - a_(x,k,j) * conj(d_(x,k,i));
         s3 += conj(b_(x,k,i)) * d_(x,k,j) - b_(x,k,j) * conj(d_(x,k,i));
       }
-      s += 2*(s0*s0 + s1*s1 + s2*s2 + s3*s3);
+      s += 2*creal(s0*conj(s0) + s1*conj(s1) + s2*conj(s2) + s3*conj(s3));
       a_(r,i,j) =  s0, b_(r,i,j) =  s1, c_(r,i,j) =  s2, d_(r,i,j) =  s3;
       a_(r,j,i) = -s0, b_(r,j,i) = -s2, c_(r,j,i) = -s1, d_(r,j,i) = -s3;
     }
@@ -869,13 +940,13 @@ num_t mad_cmat_symperr (const cpx_t x[], cpx_t r_[], ssz_t n, num_t *tol_)
   }
   if (r_) mad_cvec_copy(r, r_, nn);
   mad_free_tmp(r);
-  return sqrt(cabs(s));
+  return sqrt(s);
 }
 
 // -- Symplectic conjugate, compute \bar{M} = -J M' J -------------------------o
 
 void mad_mat_sympconj (const num_t x[], num_t r[], ssz_t n)
-{ CHKXR; assert(!(n & 1));
+{ CHKXR; ensure(n>0 && !(n & 1),"invalid matrix sizes %d", n);
   num_t t;
   for (idx_t i = 0; i < n-1; i += 2) {     // 2x2 blocks on diagonal
     t = a_(x,i,i),  a_(r,i,i) =  d_(x,i,i),  d_(r,i,i) = t;
@@ -891,7 +962,7 @@ void mad_mat_sympconj (const num_t x[], num_t r[], ssz_t n)
 }
 
 void mad_cmat_sympconj (const cpx_t x[], cpx_t r[], ssz_t n)
-{ CHKXR; assert(!(n & 1));
+{ CHKXR; ensure(n>0 && !(n & 1),"invalid matrix sizes %d", n);
   cpx_t t;
   for (idx_t i = 0; i < n-1; i += 2) {     // 2x2 blocks on diagonal
     t = a_(x,i,i),  a_(r,i,i) =  conj(d_(x,i,i)),  d_(r,i,i) = conj(t);
@@ -941,98 +1012,99 @@ https://github.com/numericalalgorithmsgroup/LAPACK_Examples/tree/master/examples
 // -----
 // Decompose A = LU with A[m x n] (generalized)
 // -----
-void dgetrf_ (const int *m, const int *n, num_t A[], const int *lda,
+void dgetrf_ (const int *m, const int *n, num_t *A, const int *lda,
               int *IPIV, int *info);
-void zgetrf_ (const int *m, const int *n, cpx_t A[], const int *lda,
+void zgetrf_ (const int *m, const int *n, cpx_t *A, const int *lda,
               int *IPIV, int *info);
 
 // -----
 // Solve A * X = B with A[n x n], B[n x nrhs] and X[n x nrhs]: search min |} b - Ax ||_2 using LU
 // -----
-void dgesv_ (const int *n, const int *nrhs, num_t A[], const int *lda,
-                                 int *IPIV, num_t B[], const int *ldb, int *info);
-void zgesv_ (const int *n, const int *nrhs, cpx_t A[], const int *lda,
-                                 int *IPIV, cpx_t B[], const int *ldb, int *info);
+void dgesv_ (const int *n, const int *nrhs, num_t *A, const int *lda,
+                                 int *IPIV, num_t *B, const int *ldb, int *info);
+void zgesv_ (const int *n, const int *nrhs, cpx_t *A, const int *lda,
+                                 int *IPIV, cpx_t *B, const int *ldb, int *info);
 
 // -----
 // Solve A * X = B with A[m x n], B[m x nrhs] and X[m x nrhs]: search min || b - Ax ||_2 using QR
 // -----
 void dgelsy_ (const int *m, const int *n, const int *nrhs,
-              num_t A[], const int *lda, num_t B[], const int *ldb,
-              int jpvt[], const num_t *rcond, int *rank,
-              num_t work[], const int lwork[], int *info);
+              num_t *A, const int *lda, num_t *B, const int *ldb,
+              int *jpvt, const num_t *rcond, int *rank,
+              num_t *work, const int *lwork, int *info);
 void zgelsy_ (const int *m, const int *n, const int *nrhs,
-              cpx_t A[], const int *lda, cpx_t B[], const int *ldb,
-              int jpvt[], const num_t *rcond, int *rank,
-              cpx_t work[], const int lwork[], num_t rwork[], int *info);
+              cpx_t *A, const int *lda, cpx_t *B, const int *ldb,
+              int *jpvt, const num_t *rcond, int *rank,
+              cpx_t *work, const int *lwork, num_t *rwork, int *info);
 
 // -----
 // Solve A * X = B with A[m x n], B[m x nrhs] and X[m x nrhs]: search min || b - Ax ||_2 using SVD
 // -----
 void dgelsd_ (const int *m, const int *n, const int *nrhs,
-              num_t A[], const int *lda, num_t B[], const int *ldb,
-              num_t S[], const num_t *rcond, int *rank,
-              num_t work[], int *lwork, int iwork[], int *info);
+              num_t *A, const int *lda, num_t *B, const int *ldb,
+              num_t *S, const num_t *rcond, int *rank,
+              num_t *work, int *lwork, int *iwork, int *info);
 void zgelsd_ (const int *m, const int *n, const int *nrhs,
-              cpx_t A[], const int *lda, cpx_t B[], const int *ldb,
-               num_t S[], const num_t *rcond, int *rank,
-              cpx_t work[], int *lwork, num_t rwork[], int iwork[], int *info);
+              cpx_t *A, const int *lda, cpx_t *B, const int *ldb,
+               num_t *S, const num_t *rcond, int *rank,
+              cpx_t *work, int *lwork, num_t *rwork, int *iwork, int *info);
 
 // -----
 // LS minimization: min_x || c - A*x ||_2 subject to B*x = d using QR
 // -----
 
 void dgglse_ (const int *m, const int *n, const int *p,
-              num_t A[], const int *lda, num_t B[], const int *ldb,
-              num_t C[], num_t D[], num_t X[],
-              num_t work[], int *lwork, int *info);
+              num_t *A, const int *lda, num_t *B, const int *ldb,
+              num_t *C, num_t *D, num_t *X,
+              num_t *work, int *lwork, int *info);
 void zgglse_ (const int *m, const int *n, const int *p,
-              cpx_t A[], const int *lda, cpx_t B[], const int *ldb,
-              cpx_t C[], cpx_t D[], cpx_t X[],
-              cpx_t work[], int *lwork, int *info);
+              cpx_t *A, const int *lda, cpx_t *B, const int *ldb,
+              cpx_t *C, cpx_t *D, cpx_t *X,
+              cpx_t *work, int *lwork, int *info);
 
 // -----
 // LS minimization: min_x || y ||_2 subject to A*x + B*y = d using QR
 // -----
 
 void dggglm_ (const int *m, const int *n, const int *p,
-              num_t A[], const int *lda, num_t B[], const int *ldb,
-              num_t D[], num_t X[], num_t Y[],
-              num_t work[], int *lwork, int *info);
+              num_t *A, const int *lda, num_t *B, const int *ldb,
+              num_t *D, num_t *X, num_t *Y,
+              num_t *work, int *lwork, int *info);
 void zggglm_ (const int *m, const int *n, const int *p,
-              cpx_t A[], const int *lda, cpx_t B[], const int *ldb,
-              cpx_t D[], cpx_t X[], cpx_t Y[],
-              cpx_t work[], int *lwork, int *info);
+              cpx_t *A, const int *lda, cpx_t *B, const int *ldb,
+              cpx_t *D, cpx_t *X, cpx_t *Y,
+              cpx_t *work, int *lwork, int *info);
 
 // -----
 // SVD A[m x n]
 // -----
-void dgesdd_ (str_t jobz, const int *m, const int *n, num_t A[], const int *lda,
-              num_t S[], num_t U[], const int *ldu, num_t VT[], const int *ldvt,
-              num_t work[], int *lwork, int iwork[], int *info);
-void zgesdd_ (str_t jobz, const int *m, const int *n, cpx_t A[], const int *lda,
-              num_t S[], cpx_t U[], const int *ldu, cpx_t VT[], const int *ldvt,
-              cpx_t work[], int *lwork, num_t rwork[], int iwork[], int *info);
+void dgesdd_ (str_t jobz, const int *m, const int *n, num_t *A, const int *lda,
+              num_t *S, num_t *U, const int *ldu, num_t *VT, const int *ldvt,
+              num_t *work, int *lwork, int *iwork, int *info);
+void zgesdd_ (str_t jobz, const int *m, const int *n, cpx_t *A, const int *lda,
+              num_t *S, cpx_t *U, const int *ldu, cpx_t *VT, const int *ldvt,
+              cpx_t *work, int *lwork, num_t *rwork, int *iwork, int *info);
 
 // -----
 // Eigen values/vectors A[n x n]
 // -----
-void dgeev_ (str_t jobvl, str_t jobvr, const int *n, num_t A[], const int *lda,
-             num_t WR[], num_t WI[],
-             num_t VL[], const int *ldvl, num_t VR[], const int *ldvr,
-             num_t work[], int *lwork, int *info);
-void zgeev_ (str_t jobvl, str_t jobvr, const int *n, cpx_t A[], const int *lda,
-             cpx_t W[], cpx_t VL[], const int *ldvl, cpx_t VR[], const int *ldvr,
-             cpx_t work[], int *lwork, num_t rwork[], int *info);
+void dgeev_ (str_t jobvl, str_t jobvr, const int *n, num_t *A, const int *lda,
+             num_t *WR, num_t *WI,
+             num_t *VL, const int *ldvl, num_t *VR, const int *ldvr,
+             num_t *work, int *lwork, int *info);
+void zgeev_ (str_t jobvl, str_t jobvr, const int *n, cpx_t *A, const int *lda,
+             cpx_t *W, cpx_t *VL, const int *ldvl, cpx_t *VR, const int *ldvr,
+             cpx_t *work, int *lwork, num_t *rwork, int *info);
 
 // -- determinant -------------------------------------------------------------o
 
 int
 mad_mat_det (const num_t x[], num_t *r, ssz_t n)
 {
-  CHKX;
+  CHKX; ensure(n>0,"invalid matrix sizes %d", n);
   const int nn=n;
-  int info=0, ipiv[n];
+  int info=0;
+  mad_alloc_tmp(int , ipiv, n);
   mad_alloc_tmp(num_t, a, n*n);
   mad_vec_copy(x, a, n*n);
   dgetrf_(&nn, &nn, a, &nn, ipiv, &info);
@@ -1043,7 +1115,7 @@ mad_mat_det (const num_t x[], num_t *r, ssz_t n)
   num_t det = 1;
   for (int i=0, j=0; i < n; i++, j+=n+1)
     det *= a[j], perm += ipiv[i] != i+1;
-  mad_free_tmp(a);
+  mad_free_tmp(a); mad_free_tmp(ipiv);
   *r = perm & 1 ? -det : det;
   return info;
 }
@@ -1051,9 +1123,10 @@ mad_mat_det (const num_t x[], num_t *r, ssz_t n)
 int
 mad_cmat_det (const cpx_t x[], cpx_t *r, ssz_t n)
 {
-  CHKX;
+  CHKX; ensure(n>0,"invalid matrix sizes %d", n);
   const int nn=n;
-  int info=0, ipiv[n];
+  int info=0;
+  mad_alloc_tmp(int , ipiv, n);
   mad_alloc_tmp(cpx_t, a, n*n);
   mad_cvec_copy(x, a, n*n);
   zgetrf_(&nn, &nn, a, &nn, ipiv, &info);
@@ -1064,7 +1137,7 @@ mad_cmat_det (const cpx_t x[], cpx_t *r, ssz_t n)
   cpx_t det = 1;
   for (int i=0, j=0; i < n; i++, j+=n+1)
     det *= a[j], perm += ipiv[i] != i+1;
-  mad_free_tmp(a);
+  mad_free_tmp(a); mad_free_tmp(ipiv);
   *r = perm & 1 ? -det : det;
   return info;
 }
@@ -1074,13 +1147,10 @@ mad_cmat_det (const cpx_t x[], cpx_t *r, ssz_t n)
 int
 mad_mat_invn (const num_t y[], num_t x, num_t r[], ssz_t m, ssz_t n, num_t rcond)
 {
-  CHKYR; // compute U:[n x n]/Y:[m x n]
+  CHKYR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n); // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(num_t, u, n*n);
   mad_mat_eye(u, 1, n, n, n);
-#pragma GCC diagnostic push // remove false-positive
-#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
   int rank = mad_mat_div(u, y, r, n, m, n, rcond);
-#pragma GCC diagnostic pop
   mad_free_tmp(u);
   if (x != 1) mad_vec_muln(r, x, r, m*n);
   return rank;
@@ -1088,12 +1158,12 @@ mad_mat_invn (const num_t y[], num_t x, num_t r[], ssz_t m, ssz_t n, num_t rcond
 
 int // without complex-by-value version
 mad_mat_invc_r (const num_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t m, ssz_t n, num_t rcond)
-{ return mad_mat_invc(y, CPX(x_re,x_im), r, m, n, rcond); }
+{ return mad_mat_invc(y, CPX(x), r, m, n, rcond); }
 
 int
 mad_mat_invc (const num_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcond)
 {
-  CHKYR; // compute U:[n x n]/Y:[m x n]
+  CHKYR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n); // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(num_t, t, m*n);
   mad_alloc_tmp(num_t, u, n*n);
   mad_mat_eye(u, 1, n, n, n);
@@ -1107,13 +1177,10 @@ mad_mat_invc (const num_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcond
 int
 mad_cmat_invn (const cpx_t y[], num_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcond)
 {
-  CHKYR; // compute U:[n x n]/Y:[m x n]
+  CHKYR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n); // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(cpx_t, u, n*n);
   mad_cmat_eye(u, 1, n, n, n);
-#pragma GCC diagnostic push // remove false-positive
-#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
   int rank = mad_cmat_div(u, y, r, n, m, n, rcond);
-#pragma GCC diagnostic pop
   mad_free_tmp(u);
   if (x != 1) mad_cvec_muln(r, x, r, m*n);
   return rank;
@@ -1122,13 +1189,10 @@ mad_cmat_invn (const cpx_t y[], num_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcon
 int
 mad_cmat_invc (const cpx_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcond)
 {
-  CHKYR; // compute U:[n x n]/Y:[m x n]
+  CHKYR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n); // compute U:[n x n]/Y:[m x n]
   mad_alloc_tmp(cpx_t, u, n*n);
   mad_cmat_eye(u, 1, n, n, n);
-#pragma GCC diagnostic push // remove false-positive
-#pragma GCC diagnostic ignored "-Wmaybe-uninitialized"
   int rank = mad_cmat_div(u, y, r, n, m, n, rcond);
-#pragma GCC diagnostic pop
   mad_free_tmp(u);
   if (x != 1) mad_cvec_mulc(r, x, r, m*n);
   return rank;
@@ -1136,7 +1200,7 @@ mad_cmat_invc (const cpx_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcon
 
 int
 mad_cmat_invc_r (const cpx_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t m, ssz_t n, num_t rcond)
-{ return mad_cmat_invc(y, CPX(x_re,x_im), r, m, n, rcond); }
+{ return mad_cmat_invc(y, CPX(x), r, m, n, rcond); }
 
 // -- pseudo-inverse ----------------------------------------------------------o
 
@@ -1146,7 +1210,7 @@ mad_cmat_invc_r (const cpx_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t m, ss
 int
 mad_mat_pinvn (const num_t y[], num_t x, num_t r[], ssz_t m, ssz_t n, num_t rcond, int ncond)
 {
-  CHKYR; // compute x/Y[m x n]
+  CHKYR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n); // compute x/Y[m x n]
   ssz_t mn = MIN(m,n);
   mad_alloc_tmp(num_t, s, mn );
   mad_alloc_tmp(num_t, U, m*m);
@@ -1185,12 +1249,12 @@ finalize:
 
 int // without complex-by-value version
 mad_mat_pinvc_r (const num_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t m, ssz_t n, num_t rcond, int ncond)
-{ return mad_mat_pinvc(y, CPX(x_re,x_im), r, m, n, rcond, ncond); }
+{ return mad_mat_pinvc(y, CPX(x), r, m, n, rcond, ncond); }
 
 int
 mad_mat_pinvc (const num_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcond, int ncond)
 {
-  CHKYR; // compute x/Y[m x n]
+  CHKYR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n); // compute x/Y[m x n]
   mad_alloc_tmp(num_t, rr, m*n);
   int rank = mad_mat_pinvn(y, 1, rr, m, n, rcond, ncond);
   mad_vec_mulc(rr, x, r, m*n);
@@ -1200,16 +1264,16 @@ mad_mat_pinvc (const num_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcon
 
 int
 mad_cmat_pinvc_r (const cpx_t y[], num_t x_re, num_t x_im, cpx_t r[], ssz_t m, ssz_t n, num_t rcond, int ncond)
-{ return mad_cmat_pinvc(y, CPX(x_re,x_im), r, m, n, rcond, ncond); }
+{ return mad_cmat_pinvc(y, CPX(x), r, m, n, rcond, ncond); }
 
 int
 mad_cmat_pinvn (const cpx_t y[], num_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcond, int ncond)
-{ return mad_cmat_pinvc(y, CPX(x,0), r, m, n, rcond, ncond); }
+{ return mad_cmat_pinvc(y, CPX2(x,0), r, m, n, rcond, ncond); }
 
 int
 mad_cmat_pinvc (const cpx_t y[], cpx_t x, cpx_t r[], ssz_t m, ssz_t n, num_t rcond, int ncond)
 {
-  CHKYR; // compute x/Y[m x n]
+  CHKYR; ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n); // compute x/Y[m x n]
   ssz_t mn = MIN(m,n);
   mad_alloc_tmp(num_t, s, mn );
   mad_alloc_tmp(cpx_t, U, m*m);
@@ -1258,7 +1322,7 @@ finalize:
 int
 mad_mat_div (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
 {
-  CHKXYR;
+  CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   int info=0;
   const int nm=m, nn=n, np=p;
   mad_alloc_tmp(num_t, a, n*p);
@@ -1266,9 +1330,10 @@ mad_mat_div (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_
 
   // square system (y is square, n == p), use LU decomposition
   if (n == p) {
-    int ipiv[n];
+    mad_alloc_tmp(int, ipiv, n);
     mad_vec_copy(x, r, m*p);
     dgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
+    mad_free_tmp(ipiv);
     if (!info) return mad_free_tmp(a), n;
     if (info > 0) warn("Div: singular matrix, no solution found");
   }
@@ -1276,15 +1341,16 @@ mad_mat_div (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_
   // non-square system or singular square system, use QR or LQ factorization
   num_t sz;
   int rank, ldb=MAX(nn,np), lwork=-1; // query for optimal size
-  int JPVT[nn]; memset(JPVT, 0, sizeof JPVT);
+  mad_calloc_tmp(int, jpvt, nn);
   mad_alloc_tmp(num_t, rr, ldb*nm);
   mad_mat_copy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
-  dgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank, &sz, &lwork, &info); // query
+  dgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, jpvt, &rcond, &rank, &sz, &lwork, &info); // query
+  ensure(sz >= 1, "lapack: invalid work size");
   lwork=sz;
   mad_alloc_tmp(num_t, wk, lwork);
-  dgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank,  wk, &lwork, &info); // compute
+  dgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, jpvt, &rcond, &rank,  wk, &lwork, &info); // compute
   mad_mat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
-  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(a);
+  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(jpvt); mad_free_tmp(a);
 
   if (info < 0) error("Div: invalid input argument");
   if (info > 0) error("Div: unexpected lapack error");
@@ -1295,7 +1361,7 @@ mad_mat_div (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_
 int
 mad_mat_divm (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
 {
-  CHKXYR;
+  CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   int info=0;
   const int nm=m, nn=n, np=p;
   mad_alloc_tmp(cpx_t, a, n*p);
@@ -1303,26 +1369,28 @@ mad_mat_divm (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz
 
   // square system (y is square, n == p), use LU decomposition
   if (n == p) {
-    int ipiv[n];
+    mad_alloc_tmp(int, ipiv, n);
     mad_vec_copyv(x, r, m*p);
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
+    mad_free_tmp(ipiv);
     if (!info) return mad_free_tmp(a), n;
     if (info > 0) warn("Div: singular matrix, no solution found");
   }
 
   // non-square system or singular square system, use QR or LQ factorization
   cpx_t sz;
-  num_t rwk[2*nn];
   int rank, ldb=MAX(nn,np), lwork=-1; // query for optimal size
-  int JPVT[nn]; memset(JPVT, 0, sizeof JPVT);
+  mad_calloc_tmp(int, jpvt, nn);
+  mad_alloc_tmp(num_t, rwk, 2*nm);
   mad_alloc_tmp(cpx_t, rr, ldb*nm);
   mad_mat_copym(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
-  zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank, &sz, &lwork, rwk, &info); // query
+  zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, jpvt, &rcond, &rank, &sz, &lwork, rwk, &info); // query
+  ensure(creal(sz) >= 1, "lapack: invalid work size");
   lwork=creal(sz);
   mad_alloc_tmp(cpx_t, wk, lwork);
-  zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
+  zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, jpvt, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
   mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
-  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(a);
+  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(rwk); mad_free_tmp(jpvt); mad_free_tmp(a);
 
   if (info < 0) error("Div: invalid input argument");
   if (info > 0) error("Div: unexpected lapack error");
@@ -1333,7 +1401,7 @@ mad_mat_divm (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz
 int
 mad_cmat_div (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
 {
-  CHKXYR;
+  CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   int info=0;
   const int nm=m, nn=n, np=p;
   mad_alloc_tmp(cpx_t, a, n*p);
@@ -1341,26 +1409,28 @@ mad_cmat_div (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz
 
   // square system (y is square, n == p), use LU decomposition
   if (n == p) {
-    int ipiv[n];
+    mad_alloc_tmp(int, ipiv, n);
     mad_cvec_copy(x, r, m*p);
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
+    mad_free_tmp(ipiv);
     if (!info) return mad_free_tmp(a), n;
     if (info > 0) warn("Div: singular matrix, no solution found");
   }
 
   // non-square system or singular square system, use QR or LQ factorization
   cpx_t sz;
-  num_t rwk[2*nn];
   int rank, ldb=MAX(nn,np), lwork=-1; // query for optimal size
-  int JPVT[nn]; memset(JPVT, 0, sizeof JPVT);
+  mad_calloc_tmp(int, jpvt, nn);
+  mad_alloc_tmp(num_t, rwk, 2*nm);
   mad_alloc_tmp(cpx_t, rr, ldb*nm);
   mad_cmat_copy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
-  zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank, &sz, &lwork, rwk, &info); // query
+  zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, jpvt, &rcond, &rank, &sz, &lwork, rwk, &info); // query
+  ensure(creal(sz) >= 1, "lapack: invalid work size");
   lwork=creal(sz);
   mad_alloc_tmp(cpx_t, wk, lwork);
-  zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
+  zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, jpvt, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
   mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
-  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(a);
+  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(rwk); mad_free_tmp(jpvt); mad_free_tmp(a);
 
   if (info < 0) error("Div: invalid input argument");
   if (info > 0) error("Div: unexpected lapack error");
@@ -1371,7 +1441,7 @@ mad_cmat_div (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz
 int
 mad_cmat_divm (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
 {
-  CHKXYR;
+  CHKXYR; ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   int info=0;
   const int nm=m, nn=n, np=p;
   mad_alloc_tmp(cpx_t, a, n*p);
@@ -1379,26 +1449,28 @@ mad_cmat_divm (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t m, ssz_t n, ss
 
   // square system (y is square, n == p), use LU decomposition
   if (n == p) {
-    int ipiv[n];
+    mad_alloc_tmp(int, ipiv, n);
     mad_cvec_copy(x, r, m*p);
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
+    mad_free_tmp(ipiv);
     if (!info) return mad_free_tmp(a), n;
     if (info > 0) warn("Div: singular matrix, no solution found");
   }
 
   // non-square system or singular square system, use QR or LQ factorization
   cpx_t sz;
-  num_t rwk[2*nn];
   int rank, ldb=MAX(nn,np), lwork=-1; // query for optimal size
-  int JPVT[nn]; memset(JPVT, 0, sizeof JPVT);
+  mad_calloc_tmp(int, jpvt, nn);
+  mad_alloc_tmp(num_t, rwk, 2*nm);
   mad_alloc_tmp(cpx_t, rr, ldb*nm);
   mad_cmat_copy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
-  zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank, &sz, &lwork, rwk, &info); // query
+  zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, jpvt, &rcond, &rank, &sz, &lwork, rwk, &info); // query
+  ensure(creal(sz) >= 1, "lapack: invalid work size");
   lwork=creal(sz);
   mad_alloc_tmp(cpx_t, wk, lwork);
-  zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, JPVT, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
+  zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, jpvt, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
   mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
-  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(a);
+  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(rwk); mad_free_tmp(jpvt); mad_free_tmp(a);
 
   if (info < 0) error("Div: invalid input argument");
   if (info > 0) error("Div: unexpected lapack error");
@@ -1414,20 +1486,22 @@ mad_cmat_divm (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t m, ssz_t n, ss
 int
 mad_mat_svd (const num_t x[], num_t u[], num_t s[], num_t v[], ssz_t m, ssz_t n)
 {
-  assert( x && u && s && v );
+  assert(x && u && s && v);
+  ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
   int info=0;
   const int nm=m, nn=n, mn=MIN(m,n);
 
   num_t sz;
   int lwork=-1;
-  int iwk[8*mn];
+  mad_alloc_tmp(int, iwk, 8*mn);
   mad_alloc_tmp(num_t, ra, m*n);
   mad_mat_trans(x, ra, m, n);
   dgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn, &sz, &lwork, iwk, &info); // query
+  ensure(sz >= 1, "lapack: invalid work size");
   lwork=sz;
   mad_alloc_tmp(num_t, wk, lwork);
   dgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn,  wk, &lwork, iwk, &info); // compute
-  mad_free_tmp(wk); mad_free_tmp(ra);
+  mad_free_tmp(wk); mad_free_tmp(ra); mad_free_tmp(iwk);
   mad_mat_trans(u, u, m, m);
 
   if (info < 0) error("SVD: invalid input argument");
@@ -1439,22 +1513,24 @@ mad_mat_svd (const num_t x[], num_t u[], num_t s[], num_t v[], ssz_t m, ssz_t n)
 int
 mad_cmat_svd (const cpx_t x[], cpx_t u[], num_t s[], cpx_t v[], ssz_t m, ssz_t n)
 {
-  assert( x && u && s && v );
+  assert(x && u && s && v);
+  ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
   int info=0;
   const int nm=m, nn=n, mn=MIN(m,n);
 
   cpx_t sz;
   int lwork=-1;
-  int iwk[8*mn];
   ssz_t rwk_sz = mn * MAX(5*mn+7, 2*MAX(m,n)+2*mn+1);
+  mad_alloc_tmp(int, iwk, 8*mn);
   mad_alloc_tmp(num_t, rwk, rwk_sz);
   mad_alloc_tmp(cpx_t, ra, m*n);
   mad_cmat_trans(x, ra, m, n);
   zgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn, &sz, &lwork, rwk, iwk, &info); // query
+  ensure(creal(sz) >= 1, "lapack: invalid work size");
   lwork=creal(sz);
   mad_alloc_tmp(cpx_t, wk, lwork);
   zgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn,  wk, &lwork, rwk, iwk, &info); // compute
-  mad_free_tmp(wk); mad_free_tmp(ra); mad_free_tmp(rwk);
+  mad_free_tmp(wk); mad_free_tmp(ra); mad_free_tmp(rwk); mad_free_tmp(iwk);
   mad_cmat_trans(u, u, m, m);
   mad_cvec_conj (v, v, n*n);
 
@@ -1469,26 +1545,28 @@ mad_cmat_svd (const cpx_t x[], cpx_t u[], num_t s[], cpx_t v[], ssz_t m, ssz_t n
 int
 mad_mat_solve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
 {
-  assert( a && b && x );
+  assert(a && b && x);
+  ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   int info=0;
   const int nm=m, nn=n, np=p, mn=MAX(m,n);
 
   num_t sz;
   int lwork=-1, rank;
-  int pvt[nn]; memset(pvt, 0, sizeof pvt);
+  mad_calloc_tmp(int, ipiv, nn);
   mad_alloc_tmp(num_t, ta, m*n);
   mad_alloc_tmp(num_t, tb, mn*p); mad_vec_fill(0, tb+m*p, (mn-m)*p);
   mad_vec_copy (b , tb, m*p);
   mad_mat_trans(tb, tb, mn, p);
   mad_mat_trans(a , ta, m , n);
-  dgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, pvt, &rcond, &rank, &sz, &lwork, &info); // query
+  dgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, ipiv, &rcond, &rank, &sz, &lwork, &info); // query
+  ensure(sz >= 1, "lapack: invalid work size");
   lwork=sz;
   mad_alloc_tmp(num_t, wk, lwork);
-  dgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, pvt, &rcond, &rank,  wk, &lwork, &info); // compute
+  dgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, ipiv, &rcond, &rank,  wk, &lwork, &info); // compute
   mad_mat_trans(tb, tb, p, mn);
   mad_vec_copy (tb,  x, n*p);
 
-  mad_free_tmp(wk); mad_free_tmp(ta); mad_free_tmp(tb);
+  mad_free_tmp(wk); mad_free_tmp(tb); mad_free_tmp(ta); mad_free_tmp(ipiv);
 
   if (info < 0) error("Solve: invalid input argument");
   if (info > 0) error("Solve: unexpected lapack error");
@@ -1499,27 +1577,29 @@ mad_mat_solve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ss
 int
 mad_cmat_solve (const cpx_t a[], const cpx_t b[], cpx_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond)
 {
-  assert( a && b && x );
+  assert(a && b && x);
+  ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   int info=0;
   const int nm=m, nn=n, np=p, mn=MAX(m,n);
 
   cpx_t sz;
-  num_t rwk[2*nn];
   int lwork=-1, rank;
-  int pvt[nn]; memset(pvt, 0, sizeof pvt);
+  mad_calloc_tmp(int, ipiv, nn);
+  mad_alloc_tmp(num_t, rwk, 2*nn);
   mad_alloc_tmp(cpx_t, ta, m*n);
   mad_alloc_tmp(cpx_t, tb, mn*p); mad_cvec_fill(0, tb+m*p, (mn-m)*p);
   mad_cvec_copy (b , tb, m*p);
   mad_cmat_trans(tb, tb, mn, p);
   mad_cmat_trans(a , ta, m , n);
-  zgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, pvt, &rcond, &rank, &sz, &lwork, rwk, &info); // query
+  zgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, ipiv, &rcond, &rank, &sz, &lwork, rwk, &info); // query
+  ensure(creal(sz) >= 1, "lapack: invalid work size");
   lwork=creal(sz);
   mad_alloc_tmp(cpx_t, wk, lwork);
-  zgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, pvt, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
+  zgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, ipiv, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
   mad_cmat_trans(tb, tb, p, mn);
   mad_cvec_copy (tb,  x, n*p);
 
-  mad_free_tmp(wk); mad_free_tmp(ta); mad_free_tmp(tb);
+  mad_free_tmp(wk); mad_free_tmp(tb); mad_free_tmp(ta); mad_free_tmp(rwk); mad_free_tmp(ipiv);
 
   if (info < 0) error("Solve: invalid input argument");
   if (info > 0) error("Solve: unexpected lapack error");
@@ -1530,7 +1610,8 @@ mad_cmat_solve (const cpx_t a[], const cpx_t b[], cpx_t x[], ssz_t m, ssz_t n, s
 int
 mad_mat_ssolve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, int ncond, num_t s_[])
 {
-  assert( a && b && x );
+  assert(a && b && x);
+  ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   int info=0;
   const int nm=m, nn=n, np=p, mn=MAX(m,n);
 
@@ -1552,6 +1633,7 @@ mad_mat_ssolve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, s
   mad_mat_trans(tb, tb, mn, p);
   mad_mat_trans(a , ta, m , n);
   dgelsd_(&nm, &nn, &np, ta, &nm, tb, &mn, ts, &rcond, &rank, &sz, &lwork, &isz, &info); // query
+  ensure(sz >= 1, "lapack: invalid work size");
   lwork=sz;
   mad_alloc_tmp(num_t,  wk, lwork);
   mad_alloc_tmp(int  , iwk, isz);
@@ -1573,7 +1655,8 @@ mad_mat_ssolve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, s
 int
 mad_cmat_ssolve (const cpx_t a[], const cpx_t b[], cpx_t x[], ssz_t m, ssz_t n, ssz_t p, num_t rcond, int ncond, num_t s_[])
 {
-  assert( a && b && x );
+  assert(a && b && x);
+  ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
   int info=0;
   const int nm=m, nn=n, np=p, mn=MAX(m,n);
 
@@ -1596,6 +1679,7 @@ mad_cmat_ssolve (const cpx_t a[], const cpx_t b[], cpx_t x[], ssz_t m, ssz_t n, 
   mad_cmat_trans(tb, tb, mn, p);
   mad_cmat_trans(a , ta, m , n);
   zgelsd_(&nm, &nn, &np, ta, &nm, tb, &mn, ts, &rcond, &rank, &sz, &lwork, &rsz, &isz, &info); // query
+  ensure(creal(sz) >= 1 && rsz >= 1 && isz >= 1, "lapack: invalid work size");
   lwork=creal(sz);
   mad_alloc_tmp(cpx_t,  wk, lwork);
   mad_alloc_tmp( num_t, rwk, (int)rsz);
@@ -1621,8 +1705,9 @@ int
 mad_mat_gsolve (const num_t a[], const num_t b[], const num_t c[], const num_t d[],
                 num_t x[], ssz_t m, ssz_t n, ssz_t p, num_t *nrm_)
 {
-  assert( a && b && x );
-  ensure( 0 <= p && p <= n && n <= m+p, "invalid system sizes" );
+  assert(a && b && x);
+  ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
+  ensure(p<=n && n<=m+p, "invalid system sizes");
   int info=0;
   const int nm=m, nn=n, np=p;
 
@@ -1637,6 +1722,7 @@ mad_mat_gsolve (const num_t a[], const num_t b[], const num_t c[], const num_t d
   mad_vec_copy (c, tc, m);
   mad_vec_copy (d, td, p);
   dgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x, &sz, &lwork, &info); // query
+  ensure(sz >= 1, "lapack: invalid work size");
   lwork=sz;
   mad_alloc_tmp(num_t, wk, lwork);
   dgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x,  wk, &lwork, &info); // compute
@@ -1656,8 +1742,9 @@ int
 mad_cmat_gsolve (const cpx_t a[], const cpx_t b[], const cpx_t c[], const cpx_t d[],
                  cpx_t x[], ssz_t m, ssz_t n, ssz_t p, num_t *nrm_)
 {
-  assert( a && b && x );
-  ensure( 0 <= p && p <= n && n <= m+p, "invalid system sizes" );
+  assert(a && b && x);
+  ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
+  ensure(p<=n && n<=m+p, "invalid system sizes");
   int info=0;
   const int nm=m, nn=n, np=p;
 
@@ -1672,7 +1759,8 @@ mad_cmat_gsolve (const cpx_t a[], const cpx_t b[], const cpx_t c[], const cpx_t 
   mad_cvec_copy (c, tc, m);
   mad_cvec_copy (d, td, p);
   zgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x, &sz, &lwork, &info); // query
-  lwork=sz;
+  ensure(creal(sz) >= 1, "lapack: invalid work size");
+  lwork=creal(sz);
   mad_alloc_tmp(cpx_t, wk, lwork);
   zgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x,  wk, &lwork, &info); // compute
 
@@ -1691,8 +1779,9 @@ int
 mad_mat_gmsolve (const num_t a[], const num_t b[], const num_t d[],
                  num_t x[], num_t y[], ssz_t m, ssz_t n, ssz_t p)
 {
-  assert( a && b && x );
-  ensure( 0 <= p && n <= m && m <= n+p, "invalid system sizes" );
+  assert(a && b && x);
+  ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
+  ensure(n<=m && m<=n+p, "invalid system sizes" );
   int info=0;
   const int nm=m, nn=n, np=p;
 
@@ -1705,6 +1794,7 @@ mad_mat_gmsolve (const num_t a[], const num_t b[], const num_t d[],
   mad_mat_trans(b, tb, m, p);
   mad_vec_copy (d, td, m);
   dggglm_(&nm, &nn, &np, ta, &nm, tb, &nm, td, x, y, &sz, &lwork, &info); // query
+  ensure(sz >= 1, "lapack: invalid work size");
   lwork=sz;
   mad_alloc_tmp(num_t, wk, lwork);
   dggglm_(&nm, &nn, &np, ta, &nm, tb, &nm, td, x, y,  wk, &lwork, &info); // compute
@@ -1722,8 +1812,9 @@ int
 mad_cmat_gmsolve (const cpx_t a[], const cpx_t b[], const cpx_t d[],
                   cpx_t x[], cpx_t y[], ssz_t m, ssz_t n, ssz_t p)
 {
-  assert( a && b && x );
-  ensure( 0 <= p && n <= m && m <= n+p, "invalid system sizes" );
+  assert(a && b && x);
+  ensure(m>0 && n>0 && p>0, "invalid matrix sizes %dx%dx%d", m, n, p);
+  ensure(n<=m && m<=n+p, "invalid system sizes" );
   int info=0;
   const int nm=m, nn=n, np=p;
 
@@ -1736,7 +1827,8 @@ mad_cmat_gmsolve (const cpx_t a[], const cpx_t b[], const cpx_t d[],
   mad_cmat_trans(b, tb, m, p);
   mad_cvec_copy (d, td, m);
   zggglm_(&nm, &nn, &np, ta, &nm, tb, &nm, td, x, y, &sz, &lwork, &info); // query
-  lwork=sz;
+  ensure(creal(sz) >= 1, "lapack: invalid work size");
+  lwork=creal(sz);
   mad_alloc_tmp(cpx_t, wk, lwork);
   zggglm_(&nm, &nn, &np, ta, &nm, tb, &nm, td, x, y,  wk, &lwork, &info); // compute
 
@@ -1763,9 +1855,10 @@ canon_eig(ssz_t n, num_t v[], num_t wi[])
     mad_vec_minmax(vi, TRUE, mm, n);
     if (vi[mm[1]] < 0) {
       mad_vec_muln(vi, -1, vi, n);
-      if (wi[i])
-        ensure(!vi[mm[1]+n], "dgeev: unexpected non-zero slot %d,%d", mm[1], i+1),
+      if (wi[i]) {
+        ensure(!vi[mm[1]+n], "dgeev: unexpected non-zero slot %d,%d", mm[1], i+1);
         mad_vec_muln(vi+n, -1, vi+n, n);
+      }
     }
     i += !!wi[i];
   }
@@ -1778,16 +1871,17 @@ canon_ceig(ssz_t n, cpx_t v[])
   FOR(i,n) {
     cpx_t *vi = v+i*n;
     mad_cvec_minmax(vi, mm, n);
-    if (creal(vi[mm[1]]) < 0)
-      ensure(!cimag(vi[mm[1]]), "zgeev: unexpected non-zero imag at slot %d,%d", mm[1], i),
+    if (creal(vi[mm[1]]) < 0) {
+      ensure(!cimag(vi[mm[1]]), "zgeev: unexpected non-zero imag at slot %d,%d", mm[1], i);
       mad_cvec_muln(vi, -1, vi, n);
+    }
   }
 }
 
 int
 mad_mat_eigen (const num_t x[], cpx_t w[], num_t vl_[], num_t vr_[], ssz_t n)
 {
-  assert( x && w );
+  assert(x && w); ensure(n>0,"invalid matrix sizes %d", n);
   int info=0;
   const int nn=n;
   const str_t vls = vl_ ? "V" : "N";
@@ -1800,6 +1894,7 @@ mad_mat_eigen (const num_t x[], cpx_t w[], num_t vl_[], num_t vr_[], ssz_t n)
   mad_alloc_tmp(num_t, ra, n*n);
   mad_mat_trans(x, ra, n, n);
   dgeev_(vls, vrs, &nn, ra, &nn, wr, wi, vl_, &nn, vr_, &nn, &sz, &lwork, &info); // query
+  ensure(sz >= 1, "lapack: invalid work size");
   lwork=sz;
   mad_alloc_tmp(num_t, wk, lwork);
   dgeev_(vls, vrs, &nn, ra, &nn, wr, wi, vl_, &nn, vr_, &nn,  wk, &lwork, &info); // compute
@@ -1820,7 +1915,7 @@ mad_mat_eigen (const num_t x[], cpx_t w[], num_t vl_[], num_t vr_[], ssz_t n)
 int
 mad_cmat_eigen (const cpx_t x[], cpx_t w[], cpx_t vl_[], cpx_t vr_[], ssz_t n)
 {
-  assert( x && w );
+  assert(x && w); ensure(n>0,"invalid matrix sizes %d", n);
   int info=0;
   const int nn=n;
   const str_t vls = vl_ ? "V" : "N";
@@ -1832,6 +1927,7 @@ mad_cmat_eigen (const cpx_t x[], cpx_t w[], cpx_t vl_[], cpx_t vr_[], ssz_t n)
   mad_alloc_tmp(cpx_t, ra, n*n);
   mad_cmat_trans(x, ra, n, n);
   zgeev_(vls, vrs, &nn, ra, &nn, w, vl_, &nn, vr_, &nn, &sz, &lwork, rwk, &info); // query
+  ensure(creal(sz) >= 1, "lapack: invalid work size");
   lwork=creal(sz);
   mad_alloc_tmp(cpx_t, wk, lwork);
   zgeev_(vls, vrs, &nn, ra, &nn, w, vl_, &nn, vr_, &nn,  wk, &lwork, rwk, &info); // compute
@@ -2187,41 +2283,41 @@ void mad_mat_torotq (const num_t x[NN], num_t q[4], log_t inv)
     if (m == xx) {
       rr = sqrt(1+xx-yy-zz), ss = 0.5/rr;
       q[1] = 0.5*rr;
-      q[0] = (X(3,2) - X(2,3)) * ss;
-      q[2] = (X(1,3) + X(3,1)) * ss;
-      q[3] = (X(2,1) + X(1,2)) * ss;
+      q[0] = (X(3,2) - X(2,3)) * ss;   // qw
+      q[2] = (X(1,2) + X(2,1)) * ss;   // qy
+      q[3] = (X(1,3) + X(3,1)) * ss;   // qz
     } else if (m == yy) {
       rr = sqrt(1+yy-xx-zz), ss = 0.5/rr;
       q[2] = 0.5*rr;
-      q[0] = (X(3,2) - X(2,3)) * ss;
-      q[1] = (X(1,3) - X(3,1)) * ss;
-      q[3] = (X(2,1) + X(1,2)) * ss;
+      q[0] = (X(1,3) - X(3,1)) * ss;   // qw
+      q[1] = (X(1,2) + X(2,1)) * ss;   // qx
+      q[3] = (X(2,3) + X(3,2)) * ss;   // qz
     } else {
       rr = sqrt(1+zz-xx-yy), ss = 0.5/rr;
       q[3] = 0.5*rr;
-      q[0] = (X(3,2) - X(2,3)) * ss;
-      q[1] = (X(1,3) - X(3,1)) * ss;
-      q[2] = (X(2,1) - X(1,2)) * ss;
+      q[0] = (X(2,1) - X(1,2)) * ss;   // qw
+      q[1] = (X(1,3) + X(3,1)) * ss;   // qx
+      q[2] = (X(2,3) + X(3,2)) * ss;   // qy
     }
   } else {     // transposed
     if (m == xx) {
       rr = sqrt(1+xx-yy-zz), ss = 0.5/rr;
       q[1] = 0.5*rr;
       q[0] = (X(2,3) - X(3,2)) * ss;
-      q[2] = (X(3,1) + X(1,3)) * ss;
-      q[3] = (X(1,2) + X(2,1)) * ss;
+      q[2] = (X(2,1) + X(1,2)) * ss;
+      q[3] = (X(3,1) + X(1,3)) * ss;
     } else if (m == yy) {
       rr = sqrt(1+yy-xx-zz), ss = 0.5/rr;
       q[2] = 0.5*rr;
-      q[0] = (X(2,3) - X(3,2)) * ss;
-      q[1] = (X(3,1) - X(1,3)) * ss;
-      q[3] = (X(1,2) + X(2,1)) * ss;
+      q[0] = (X(3,1) - X(1,3)) * ss;
+      q[1] = (X(2,1) + X(1,2)) * ss;
+      q[3] = (X(3,2) + X(2,3)) * ss;
     } else {
       rr = sqrt(1+zz-xx-yy), ss = 0.5/rr;
       q[3] = 0.5*rr;
-      q[0] = (X(2,3) - X(3,2)) * ss;
-      q[1] = (X(3,1) - X(1,3)) * ss;
-      q[2] = (X(1,2) - X(2,1)) * ss;
+      q[0] = (X(1,2) - X(2,1)) * ss;
+      q[1] = (X(3,1) + X(1,3)) * ss;
+      q[2] = (X(3,2) + X(2,3)) * ss;
     }
   }
 }
@@ -2235,16 +2331,18 @@ int // Matrix preconditionning using SVD, return indexes of columns to remove.
 mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
                ssz_t N, num_t rcond, num_t s_[], num_t tol)
 {
-  assert(a && c);
+  assert(a && c); ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
 
   ssz_t mn = MIN(m,n);
+  idx_t nc = 0;  // Number of columns to remove.
+  int info = 0;
 
   mad_alloc_tmp(num_t, U, m*m);
   mad_alloc_tmp(num_t, V, n*n);
   mad_alloc_tmp(num_t, S, mn );
 
-  int info = mad_mat_svd(a, U, S, V, m, n);
-  if (info != 0) return -1;
+  info = mad_mat_svd(a, U, S, V, m, n);
+  if (info != 0) goto finalize;
 
   // Backup singular values.
   if (s_) mad_vec_copy(S, s_, mn);
@@ -2258,29 +2356,29 @@ mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
   // Tolerance on keeping singular values.
   rcond = MAX(fabs(rcond), DBL_EPSILON);
 
-  // Number of columns to remove.
-  idx_t nc = 0;
-
 #define V(i,j) V[(i)*n+(j)]
 
-  // Loop over increasing singular values.
+  // Reverse loop over increasing singular values.
   RFOR(i,mn,mn-N) {
     // Singular value is large enough, stop checking.
     if (S[i] > rcond*S[0]) break;
 
     // Loop over rows of V (i.e. columns of V^T)
-    FOR(j,n-1) FOR(k,j+1,n) {
+    FOR(j,n-1) {
       num_t vj = fabs(V(j,i));
 
-      // Proceed only significant component for this singular value.
-      if (vj > 1e-4) {
-        num_t vk  = fabs(V(k,i));
-        num_t rat = fabs(vj-vk)/(vj+vk);
+      FOR(k,j+1,n) {
+        num_t vk = fabs(V(k,i));
 
-        // Discard column j with similar (or opposite) effect of column k > j.
-        if (rat <= tol) {
-          c[nc++] = j; // can hold duplicated indexes...
-          if (nc == n) goto finalize; // c is full...
+        // Proceed only significant component for this singular value.
+        if (MAX(vj, vk) > 1e-4) {
+          num_t rat = fabs(vj-vk)/(vj+vk);
+
+          // Discard column j with similar (or opposite) effect of column k > j.
+          if (rat <= tol) {
+            c[nc++] = j; // can hold duplicated indexes...
+            if (nc == n) goto finalize; // c is full...
+          }
         }
       }
     }
@@ -2293,6 +2391,8 @@ finalize:
   mad_free_tmp(U);
   mad_free_tmp(V);
   mad_free_tmp(S);
+
+  if (info != 0) return -1;
 
   // Return sorted indexes of columns to remove.
   return mad_ivec_sort(c, nc, true);
@@ -2302,15 +2402,17 @@ int // Matrix preconditionning using SVD, return indexes of columns to remove.
 mad_cmat_svdcnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
                ssz_t N, num_t rcond, num_t s_[], num_t tol)
 {
-  assert(a && c);
+  assert(a && c); ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
   ssz_t mn = MIN(m,n);
+  idx_t nc = 0;  // Number of columns to remove.
+  int info = 0;
 
   mad_alloc_tmp(cpx_t, U, m*m);
   mad_alloc_tmp(cpx_t, V, n*n);
   mad_alloc_tmp(num_t, S, mn );
 
-  int info = mad_cmat_svd(a, U, S, V, m, n);
-  if (info != 0) return -1;
+  info = mad_cmat_svd(a, U, S, V, m, n);
+  if (info != 0) goto finalize;
 
   // Backup singular values.
   if (s_) mad_vec_copy(S, s_, mn);
@@ -2324,29 +2426,29 @@ mad_cmat_svdcnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
   // Tolerance on keeping singular values.
   rcond = MAX(fabs(rcond), DBL_EPSILON);
 
-  // Number of columns to remove.
-  idx_t nc = 0;
-
 #define V(i,j) V[(i)*n+(j)]
 
-  // Loop over increasing singular values.
+  // Reverse loop over increasing singular values.
   RFOR(i,mn,mn-N) {
     // Singular value is large enough, stop checking.
     if (S[i] > rcond*S[0]) break;
 
     // Loop over rows of V (i.e. columns of V^T)
-    FOR(j,n-1) FOR(k,j+1,n) {
+    FOR(j,n-1) {
       num_t vj = cabs(V(j,i));
 
-      // Proceed only significant component for this singular value.
-      if (vj > 1e-4) {
-        num_t vk  = cabs(V(k,i));
-        num_t rat = fabs(vj-vk)/(vj+vk);
+      FOR(k,j+1,n) {
+        num_t vk = cabs(V(k,i));
 
-        // Discard column j with similar (or opposite) effect of column k > j.
-        if (rat <= tol) {
-          c[nc++] = j; // can hold duplicated indexes...
-          if (nc == n) goto finalize; // c is full...
+        // Proceed only significant component for this singular value.
+        if (MAX(vj, vk) > 1e-4) {
+          num_t rat = fabs(vj-vk)/(vj+vk);
+
+          // Discard column j with similar (or opposite) effect of column k > j.
+          if (rat <= tol) {
+            c[nc++] = j; // can hold duplicated indexes...
+            if (nc == n) goto finalize; // c is full...
+          }
         }
       }
     }
@@ -2360,6 +2462,8 @@ finalize:
   mad_free_tmp(V);
   mad_free_tmp(S);
 
+  if (info != 0) return -1;
+
   // Return sorted indexes of columns to remove.
   return mad_ivec_sort(c, nc, true);
 }
@@ -2368,16 +2472,17 @@ int // Matrix reconditionning using SVD.
 mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
                ssz_t N, num_t rcond, num_t s_[])
 {
-  assert(a && c);
+  assert(a && c); ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
   ssz_t mn = MIN(m,n);
+  int info = 0;
 
   mad_alloc_tmp(num_t, U, m*m);
   mad_alloc_tmp(num_t, V, n*n);
   mad_alloc_tmp(num_t, S, mn );
   mad_alloc_tmp(num_t, P, n  );
 
-  int info = mad_mat_svd(a, U, S, V, m, n);
-  if (info != 0) return -1;
+  info = mad_mat_svd(a, U, S, V, m, n);
+  if (info != 0) goto finalize;
 
   // Backup singular values.
   if (s_) mad_vec_copy(S, s_, mn);
@@ -2386,7 +2491,7 @@ mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
   if (N > n || N <= 0) N = n;
 
   // Tolerance on keeping singular values.
-  rcond = MAX(rcond, DBL_EPSILON);
+  rcond = MAX(fabs(rcond), DBL_EPSILON);
 
   FOR(i,N) if (S[i] <= rcond*S[0]) { N=i; break; }
 
@@ -2397,10 +2502,14 @@ mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
   // Sort projections by ascending order.
   mad_vec_sort(P, c, n);
 
+finalize:
+
   mad_free_tmp(U);
   mad_free_tmp(V);
   mad_free_tmp(S);
   mad_free_tmp(P);
+
+  if (info != 0) return -1;
 
   // Return sorted indexes of columns to remove.
   return mad_ivec_sort(c, n-N, false);
@@ -2410,8 +2519,9 @@ int // Matrix reconditionning using SVD.
 mad_cmat_pcacnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
                 ssz_t N, num_t rcond, num_t s_[])
 {
-  assert(a && c);
+  assert(a && c); ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
   ssz_t mn = MIN(m,n);
+  int info = 0;
 
   mad_alloc_tmp(cpx_t, U, m*m);
   mad_alloc_tmp(cpx_t, V, n*n);
@@ -2419,8 +2529,8 @@ mad_cmat_pcacnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
   mad_alloc_tmp(num_t, S, mn );
   mad_alloc_tmp(num_t, P, n  );
 
-  int info = mad_cmat_svd(a, U, S, V, m, n);
-  if (info != 0) return -1;
+  info = mad_cmat_svd(a, U, S, V, m, n);
+  if (info != 0) goto finalize;
 
   // Backup singular values.
   if (s_) mad_vec_copy(S, s_, mn);
@@ -2429,7 +2539,7 @@ mad_cmat_pcacnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
   if (N > n || N <= 0) N = n;
 
   // Tolerance on keeping singular values.
-  rcond = MAX(rcond, DBL_EPSILON);
+  rcond = MAX(fabs(rcond), DBL_EPSILON);
 
   FOR(i,N) if (S[i] <= rcond*S[0]) { N=i; break; }
 
@@ -2440,11 +2550,15 @@ mad_cmat_pcacnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
   // Sort projections by ascending order.
   mad_vec_sort(P, c, n);
 
+finalize:
+
   mad_free_tmp(U);
   mad_free_tmp(V);
   mad_free_tmp(R);
   mad_free_tmp(S);
   mad_free_tmp(P);
+
+  if (info != 0) return -1;
 
   // Return sorted indexes of columns to remove.
   return mad_ivec_sort(c, n-N, false);
@@ -2461,7 +2575,7 @@ int // Micado
 mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
                ssz_t N, num_t tol, num_t r_[])
 {
-  assert(a && b && x);
+  assert(a && b && x); ensure(m>0 && n>0, "invalid matrix sizes %dx%d", m, n);
 
   // Micado notes: min_x || b - Ax ||_2 using N correctors amongst n
   // a: response matrix      [m x n]
@@ -2471,9 +2585,6 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
   // N: number of correctors to use 0 < N <= n (out: actually used)
 
   mad_vec_fill(0, x, n);
-
-  // No correctors.
-  if (n == 0) return 0;
 
   if (tol < DBL_EPSILON) tol = DBL_EPSILON;
 
@@ -2530,7 +2641,10 @@ mad_mat_nsolve(const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n,
       }
 
       // Stop iterations if no suitable column are found.
-      if (idx < 0) { N=k; break; }
+      if (idx < 0) {
+        mad_vec_copy(B, R, m);
+        N=k; break;
+      }
 
       // Move the column just found to next position.
       if (idx > k) {

@@ -1,0 +1,268 @@
+-- Script Setup
+local seqs = {"lhcb1","lhcb2"}    -- list of sequences
+local reft = true                 -- compute reference track & twiss
+local knbs = true                 -- check knobs effectiveness
+local chrm = true                 -- compute chromatic functions
+local mord = 2                    -- max loop over knobs order (1 or 2)
+local tplt = false                -- plot title, false or ""
+local fplt = "ex-lhc-localchroma_"..MAD.env.version..".pdf" -- PDF for plots
+
+-- Import commands
+local beam, track, twiss, damap, plot, option in MAD
+-- Import utility functions
+local printf, timeit, tblcat in MAD.utility
+
+-- LHC Setup -------------------------------------------------------------------
+
+local pbtop=beam{particle="proton", energy=6800}
+
+MADX.option.warn=false              -- disable MADX-like warnings
+MADX:load("lhcb1.seq", "lhcb1.mad") -- convert and save on need
+MADX:load("lhcb2.seq", "lhcb2.mad")
+MADX:load("lhc_var0.mad")
+MADX.option.warn=true
+
+local lhcb1, lhcb2 in MADX
+lhcb1.beam = pbtop
+lhcb2.beam = pbtop
+lhcb2.dir  = -1 -- reverse direction
+
+-- sequence
+for idx,snam in ipairs(seqs) do
+
+io.write("Running ", snam, "\n")
+
+-- sequence and tune knobs
+local seq = MADX[snam]
+local bn  = ({"b1","b2"})[idx]
+local dqx = "dqx_"..bn.."_op"
+local dqy = "dqy_"..bn.."_op"
+
+-- Reference Track & Twiss -----------------------------------------------------
+
+local tk, tw
+
+if reft or knbs then
+
+local cols = {'name','kind','s','l','id','x','px','y','py','t','pt'}
+
+-- Compute the reference track
+tk = timeit(\ -> track {sequence=seq, observe=0, mapdef=1}, "Track Ref")
+tk:write(snam.."_tk_ref.tfs", cols)
+
+-- Compute the reference twiss
+tw = timeit(\ -> twiss {sequence=seq}, "Twiss Ref")
+tw:write(snam.."_tw_ref.tfs", cols)
+
+plot {
+  title    = tplt or "Optical Functions "..snam,     -- plot title
+--sequence = seq,                                    -- sequence for layout
+  table    = tw,                                     -- twiss table for plot
+  xrange   = {0, seq.l},                             -- x range
+  x1y1     = {s = {"beta11", "beta22", "dx", "dy"}}, -- x vs y1 columns
+  x1y2     = {s = {"mu1", "mu2"}},                   -- x vs y2 columns
+  xlabel   = "s [m]",                                -- x-axis label
+  ylabel   = "β_{x,y} [m], D_{x,y} [m]",             -- y-axis label left
+  y2label  = "μ_{x,y} [rad/2π]",                     -- y-axis label right
+  legend   = {beta11="β_x", beta22="β_y",            -- column labels
+              mu1="μ_x", mu2="μ_y",                  --   idem
+              dx="D_x", dy="D_y"},                   --   idem
+  styles   = "lines", linewidth=1.5, fontsize=16,    -- styles
+  output   = fplt,
+}
+
+end -- ref
+
+-- check knobs consistency
+if knbs then
+
+local shft = 0.01
+
+printf(" q1               = %10.7f\n",  tw.q1)
+printf(" q2               = %10.7f\n",  tw.q2)
+
+MADX[dqx] = shft
+MADX[dqy] = shft
+local twd = timeit(\ -> twiss {sequence=seq, observe=1}, "Twiss Chk")
+printf(" q1_dqxy          = %10.7f\n",  twd.q1)
+printf(" q2_dqxy          = %10.7f\n",  twd.q2)
+printf("(q1_dqxy-q1)/shft = %10.7f\n", (twd.q1-tw.q1)/shft)
+printf("(q2_dqxy-q2)/shft = %10.7f\n", (twd.q2-tw.q2)/shft)
+
+end -- knbs
+
+--[[
+MAD-X LHCB1, shft=0.01         ; MAD-NG LHCB1, shft=0.01
+q1                = 62.3100002 ;  q1               = 62.3100000
+q2                = 60.3200000 ;  q2               = 60.3200000
+q1_dqxy           = 62.3200061 ;  q1_dqxy          = 62.3200059
+q2_dqxy           = 60.3300059 ;  q2_dqxy          = 60.3300059
+(q1_dqxy-q1)/shft =  1.0005908 ; (q1_dqxy-q1)/shft =  1.0005919
+(q2_dqxy-q2)/shft =  1.0005918 ; (q2_dqxy-q2)/shft =  1.0005921
+                               ;
+MAD-X LHCB2, shft=0.01         ; MAD-NG LHCB2, shft=0.01
+q1                = 62.3100004 ;  q1               = 62.3100000
+q2                = 60.3200000 ;  q2               = 60.3200000
+q1_dqxy           = 62.3200063 ;  q1_dqxy          = 62.3200060
+q2_dqxy           = 60.3300055 ;  q2_dqxy          = 60.3300054
+(q1_dqxy-q1)/shft =  1.0005956 ; (q1_dqxy-q1)/shft =  1.0005969
+(q2_dqxy-q2)/shft =  1.0005418 ; (q2_dqxy-q2)/shft =  1.0005420
+--]]
+
+-- First and Second derivative check -------------------------------------------
+
+-- Optical functions of interest (1st and 2nd order)
+local kopts = {
+  tblcat(
+  {"beta11_10", "beta11_01", "beta22_10", "beta22_01", -- 1
+   "alfa11_10", "alfa11_01", "alfa22_10", "alfa22_01", -- 5
+   "mu1_10"   , "mu1_01"   , "mu2_10"   , "mu2_01"   , -- 9
+   "disp1_10" , "disp1_01" , "disp3_10" , "disp3_01"}, -- 13
+  not chrm and {} or
+  {"dmu1_10"  , "dmu1_01"  , "dmu2_10"  , "dmu2_01"  , -- 17
+   "wx_10"    , "wx_01"    , "wxp_10"   , "wxp_01"   , -- 21
+   "wy_10"    , "wy_01"    , "wyp_10"   , "wyp_01"  }) -- 25
+  ,
+  tblcat(
+  {"beta11_20", "beta11_02", "beta22_20", "beta22_02", -- 1
+   "alfa11_20", "alfa11_02", "alfa22_20", "alfa22_02", -- 5
+   "mu1_20"   , "mu1_02"   , "mu2_20"   , "mu2_02"   , -- 9
+   "disp1_20" , "disp1_02" , "disp3_20" , "disp3_02"}, -- 13
+  not chrm and {} or
+  {"dmu1_20"  , "dmu1_02"  , "dmu2_20"  , "dmu2_02"  , -- 17
+   "wx_20"    , "wx_02"    , "wxp_20"   , "wxp_02"   , -- 21
+   "wy_20"    , "wy_02"    , "wyp_20"   , "wyp_02"  }) -- 25
+}
+
+-- Loop over orders -------------------
+for ord=1,mord do
+
+io.write("Computing order ", ord, " for ", snam, "\n")
+
+-- Compute parametric twiss -----------
+local mo = ord+(chrm and 2 or 1)
+local x0 = damap { nv=6, np=2, no={mo,mo,mo,mo,1,1}, po=ord, pn={"dqx", "dqy"} }
+
+MADX[dqx] = MADX[dqx] + x0.dqx
+MADX[dqy] = MADX[dqy] + x0.dqy
+
+local twp = timeit(\ -> twiss {sequence=seq, X0=x0, trkopt=kopts[ord], chrom=chrm}, "Twiss Prms")
+
+MADX[dqx] = MADX[dqx]:get0()
+MADX[dqy] = MADX[dqy]:get0()
+
+-- extend table with parametric values
+twp:addcol("beta11_vs_dqx", \ri -> twp[kopts[ord][ 1]][ri])
+twp:addcol("beta11_vs_dqy", \ri -> twp[kopts[ord][ 2]][ri])
+twp:addcol("beta22_vs_dqx", \ri -> twp[kopts[ord][ 3]][ri])
+twp:addcol("beta22_vs_dqy", \ri -> twp[kopts[ord][ 4]][ri])
+twp:addcol("alfa11_vs_dqx", \ri -> twp[kopts[ord][ 5]][ri])
+twp:addcol("alfa11_vs_dqy", \ri -> twp[kopts[ord][ 6]][ri])
+twp:addcol("alfa22_vs_dqx", \ri -> twp[kopts[ord][ 7]][ri])
+twp:addcol("alfa22_vs_dqy", \ri -> twp[kopts[ord][ 8]][ri])
+twp:addcol("mu1_vs_dqx"   , \ri -> twp[kopts[ord][ 9]][ri])
+twp:addcol("mu1_vs_dqy"   , \ri -> twp[kopts[ord][10]][ri])
+twp:addcol("mu2_vs_dqx"   , \ri -> twp[kopts[ord][11]][ri])
+twp:addcol("mu2_vs_dqy"   , \ri -> twp[kopts[ord][12]][ri])
+twp:addcol("dx_vs_dqx"    , \ri -> twp[kopts[ord][13]][ri])
+twp:addcol("dx_vs_dqy"    , \ri -> twp[kopts[ord][14]][ri])
+twp:addcol("dy_vs_dqx"    , \ri -> twp[kopts[ord][15]][ri])
+twp:addcol("dy_vs_dqy"    , \ri -> twp[kopts[ord][16]][ri])
+if chrm then
+twp:addcol("dmu1_vs_dqx"  , \ri -> twp[kopts[ord][17]][ri])
+twp:addcol("dmu1_vs_dqy"  , \ri -> twp[kopts[ord][18]][ri])
+twp:addcol("dmu2_vs_dqx"  , \ri -> twp[kopts[ord][19]][ri])
+twp:addcol("dmu2_vs_dqy"  , \ri -> twp[kopts[ord][20]][ri])
+twp:addcol("wx_vs_dqx"    , \ri -> twp[kopts[ord][21]][ri])
+twp:addcol("wx_vs_dqy"    , \ri -> twp[kopts[ord][22]][ri])
+twp:addcol("wxp_vs_dqx"   , \ri -> twp[kopts[ord][23]][ri])
+twp:addcol("wxp_vs_dqy"   , \ri -> twp[kopts[ord][24]][ri])
+twp:addcol("wy_vs_dqx"    , \ri -> twp[kopts[ord][25]][ri])
+twp:addcol("wy_vs_dqy"    , \ri -> twp[kopts[ord][26]][ri])
+twp:addcol("wyp_vs_dqx"   , \ri -> twp[kopts[ord][27]][ri])
+twp:addcol("wyp_vs_dqy"   , \ri -> twp[kopts[ord][28]][ri])
+end
+
+-- Build plots ------------------------
+
+-- save table
+twp:write("twiss_prms_"..MAD.env.version..".tfs")
+
+io.write("Making plots...\n")
+
+local plt = plot { -- plot template
+--sequence = seq,
+  table    = twp,
+  xrange   = {0, seq.l},
+  styles   = "lines", linewidth=1.5, fontsize=16,
+  output   = fplt,
+  exec     = false,
+}
+
+---------
+local d_ = ord > 1 and "d^2" or "d "
+local _d = ord > 1 and "^2"  or ""
+
+plt {
+  title  = tplt or "Sensitivity of beta ("..snam..", order "..ord..")",
+  x1y1   = {s = {"beta11_vs_dqx", "beta11_vs_dqy", "beta22_vs_dqx", "beta22_vs_dqy"}},
+  xlabel = "s [m]",
+  ylabel = d_.."β_{x,y} / d q_{x,y}".._d,
+  legend = {beta11_vs_dqx=d_.."β_x/d q_x".._d, beta11_vs_dqy=d_.."β_x/d q_y".._d,
+            beta22_vs_dqx=d_.."β_y/d q_x".._d, beta22_vs_dqy=d_.."β_y/d q_y".._d},
+}
+plt {
+  title  = tplt or "Sensitivity of alpha ("..snam..", order "..ord..")",
+  x1y1   = {s = {"alfa11_vs_dqx", "alfa11_vs_dqy", "alfa22_vs_dqx", "alfa22_vs_dqy"}},
+  xlabel = "s [m]",
+  ylabel = d_.."α_{x,y} / d q_{x,y}".._d,
+  legend = {alfa11_vs_dqx=d_.."α_x/d q_x".._d, alfa11_vs_dqy=d_.."α_x/d q_y".._d,
+            alfa22_vs_dqx=d_.."α_y/d q_x".._d, alfa22_vs_dqy=d_.."α_y/d q_y".._d},
+}
+plt {
+  title  = tplt or "Sensitivity of mu ("..snam..", order "..ord..")",
+  x1y1   = {s = {"mu1_vs_dqx", "mu1_vs_dqy", "mu2_vs_dqx", "mu2_vs_dqy"}},
+  xlabel = "s [m]",
+  ylabel = d_.."μ_{x,y} / d q_{x,y}".._d,
+  legend = {mu1_vs_dqx=d_.."μ_x/d q_x".._d, mu1_vs_dqy=d_.."μ_x/d q_y".._d,
+            mu2_vs_dqx=d_.."μ_y/d q_x".._d, mu2_vs_dqy=d_.."μ_y/d q_y".._d},
+}
+plt {
+  title  = tplt or "Sensitivity of disp ("..snam..", order "..ord..")",
+  x1y1   = {s = {"dx_vs_dqx", "dx_vs_dqy", "dy_vs_dqx", "dy_vs_dqy"}},
+  xlabel = "s [m]",
+  ylabel = d_.."D_{x,y} / d q_{x,y}".._d,
+  legend = { dx_vs_dqx=d_.."D_x/d q_x".._d, dx_vs_dqy=d_.."D_x/d q_y".._d,
+             dy_vs_dqx=d_.."D_y/d q_x".._d, dy_vs_dqy=d_.."D_y/d q_y".._d,},
+}
+
+if chrm then
+
+plt {
+  title  = tplt or "Sensitivity of dmu ("..snam..", order "..ord..")",
+  x1y1   = {s = {"dmu1_vs_dqx", "dmu1_vs_dqy", "dmu2_vs_dqx", "dmu2_vs_dqy"}},
+  xlabel = "s [m]",
+  ylabel = d_.."μ{/Symbol \\242}_{x,y} / d q_{x,y}".._d,
+  legend = {dmu1_vs_dqx=d_.."μ{/Symbol \\242}_x / d q_x".._d, dmu1_vs_dqy=d_.."μ{/Symbol \\242}_x / d q_y".._d,
+            dmu2_vs_dqx=d_.."μ{/Symbol \\242}_y / d q_x".._d, dmu2_vs_dqy=d_.."μ{/Symbol \\242}_y / d q_y".._d},
+}
+plt {
+  title  = tplt or "Sensitivity of w ("..snam..", order "..ord..")",
+  x1y1   = {s = {"wx_vs_dqx", "wx_vs_dqy", "wy_vs_dqx", "wy_vs_dqy"}},
+  xlabel = "s [m]",
+  ylabel = d_.."w_{x,y} / d q_{x,y}".._d,
+  legend = {wx_vs_dqx=d_.."w_x/d q_x".._d,  wx_vs_dqy=d_.."w_x/d q_y".._d,
+            wy_vs_dqx=d_.."w_y/d q_x".._d,  wy_vs_dqy=d_.."w_y/d q_y".._d},
+}
+plt {
+  title  = tplt or "Sensitivity of wp ("..snam..", order "..ord..")",
+  x1y1   = {s = {"wxp_vs_dqx", "wxp_vs_dqy", "wyp_vs_dqx", "wyp_vs_dqy"}},
+  xlabel = "s [m]",
+  ylabel = d_.."w_{px,py} / d q_{x,y}".._d,
+  legend = {wxp_vs_dqx=d_.."w_{px}/d q_x".._d, wxp_vs_dqy=d_.."w_{px}/d q_y".._d,
+            wyp_vs_dqx=d_.."w_{py}/d q_x".._d, wyp_vs_dqy=d_.."w_{py}/d q_y".._d},
+}
+
+end -- chrm if
+end -- ord loop
+end -- seq loop

@@ -230,6 +230,7 @@ static void mad_setenv (lua_State *L, int no_env)
   char prog_name[PATH_MAX+1] = "";
   char prog_path[PATH_MAX+1] = "";
   char curr_path[PATH_MAX+1] = "";
+  char full_path[PATH_MAX+1] = "";
   char home_path[PATH_MAX+1] = "";
   char nam[PATH_MAX+4+1], buf[PATH_MAX+4+1];
   char *path, *p, nul = 0, psep = ':', dsep = '/';
@@ -264,6 +265,7 @@ static void mad_setenv (lua_State *L, int no_env)
   if (snprintf(buf, sizeof buf, "%s%c%s", curr_path, dsep, nam) > 0 &&
       realpath(buf, prog_path)) goto found; /* relative path */
   if ((path = getenv("PATH")) && *path) {   /* $PATH path */
+    path = strcpy(full_path, path);
     for(;;) {
       p = strchr(path, psep);
       if (p) *p = nul;
@@ -1083,8 +1085,10 @@ static int pmain(lua_State *L)
   }
 
   /* MAD section. */
-  mad_setsignal();
-  mad_regfunvar();
+  if ((flags & FLAGS_MADENV)) {
+    mad_setsignal();
+    mad_regfunvar();
+  }
 
   if ((flags & FLAGS_MADENV))
     dolibrary(L, "madl_main");
@@ -1122,9 +1126,37 @@ static int pmain(lua_State *L)
   return 0;
 }
 
+#if 0
+#include <execinfo.h>
+#include <signal.h>
+#include <unistd.h>
+#include <stdlib.h>
+
+static void bt_handler(int sig) {
+  void *buf[128];
+  int n = backtrace(buf, 128);
+  const char msg[] = "=== C backtrace ===\n";
+  write(2, msg, sizeof(msg)-1);
+  backtrace_symbols_fd(buf, n, 2);
+  _exit(128 + sig);
+}
+
+static void install_bt(void) {
+  struct sigaction sa;
+  sa.sa_handler = bt_handler;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_RESETHAND; /* éviter recursion */
+  sigaction(SIGSEGV, &sa, NULL);
+  sigaction(SIGBUS,  &sa, NULL);
+  sigaction(SIGILL,  &sa, NULL);
+  sigaction(SIGABRT, &sa, NULL);
+}
+#endif
+
 int main(int argc, char **argv)
 {
 //  fprintf(stderr, "main=0x%p\n", (void*)main);
+//  install_bt();
   int status;
   lua_State *L;
   if (!argv[0]) argv = empty_argv; else if (argv[0][0]) progname = argv[0];

@@ -270,8 +270,8 @@ assertf(ffi.sizeof("struct cflw_t") == _C.mad_cflw_tsize, msg, "struct cflw_t", 
 assertf(ffi.sizeof("struct cflw_p") == _C.mad_cflw_psize, msg, "struct cflw_p", "struct cflw<prm_t>")
 assertf(ffi.sizeof("union  cflw_x") == _C.mad_cflw_xsize, msg, "union cflw_x", "union cflw_x")
 
-local txflw  = { r = 'rflw' , t = 'tflw' , T = 'tflw' , p = 'pflw'  }
-local txflw_ = { r = 'rflw_', t = 'tflw_', T = 'tflw_', p = 'pflw_' }
+local txflw  = { r = 'rflw' , t = 'tflw' , p = 'pflw'  } --, T = 'tflw'
+local txflw_ = { r = 'rflw_', t = 'tflw_', p = 'pflw_' } --, T = 'tflw_'
 local  xflw  = \m -> assert(m[txflw [m.cmap]], "invalid cmap")
 local  xflw_ = \m -> assert(m[txflw_[m.cmap]], "invalid cmap")
 local  kflw  = \m => local tm = xflw(m) ; tm.knd = string.byte(m.cmap) ; return tm end
@@ -424,7 +424,7 @@ local maps = {
   },
 }
 
-maps.T = maps.t -- alias for non-parametric maps
+-- maps.T = maps.t -- alias for non-parametric maps
 
 -- multipoles -----------------------------------------------------------------o
 
@@ -432,6 +432,7 @@ local nsnm = \snm -> snm > 0 and (snm+1)*(snm+2)/2 or 0 -- see snm_max above
 
 local function get_mult (elm, m, n) -- copy multipoles from elem to mflw
   local knl, ksl, dknl, dksl in elm
+  table.clear(m.knl) ; table.clear(m.ksl)
 
   m.nmul = max(#knl, #ksl, #dknl, #dksl, n or 0)
 
@@ -466,8 +467,7 @@ local function adj_mult (elm, m) -- adjust multipoles in mflw
   end
 end
 
-local function cpy_mult (m) -- copy multipoles from mflw to cflw
-  local c = xflw(m)
+local function cpy_mult (m, c) -- copy multipoles from mflw to cflw
   c.nmul = m.nmul
   c.snm  = m.snm
 
@@ -487,6 +487,11 @@ local function cpy_mult (m) -- copy multipoles from mflw to cflw
     c.bfx[i-1] = xcpy(c.bfx[i-1], m.bfx[i])
     c.bfy[i-1] = xcpy(c.bfy[i-1], m.bfy[i])
   end
+end
+
+local function clr_mult (m,c)
+  c.nmul = 0
+  c.snm  = 0
 end
 
 -- collect tilt, misalignment, fringe -----------------------------------------o
@@ -600,7 +605,6 @@ local function ctilt (elm, m, dir)
   maps[m.cmap][tilt](xflw_(m), dir)
 end
 
-
 local function cmisalign (elm, m, dir)
   if not m.cmap then
     return misalign(elm, m, dir)
@@ -665,6 +669,18 @@ end
 
 local slc_fwd = {-1, -3, -4, -2}
 local slc_bwd = {-2, -4, -3, -1}
+
+local function trackmrk (elm, m, inter, thick_or_thin)
+  local sdir, atentry, atexit in m
+  local slc = slc_fwd
+
+  if sdir < 0 then
+    atentry, atexit, slc = atexit, atentry, slc_bwd
+  end
+
+  atentry(elm, m,  sdir, slc[1])
+  atexit (elm, m, -sdir, slc[4])
+end
 
 local function trackone (elm, m, inter, thick_or_thin)
   local sdir, atentry, atexit in m
@@ -757,7 +773,7 @@ end
   atexit (elm, m, -sdir, slc[4])
   m:xflw (true)
 
-  m.tlt, m.algn, m.frng, m.xflw = 0, nil, nil, fnil
+  m.nmul, m.tlt, m.algn, m.frng, m.xflw = 0, 0, nil, nil, fnil
   if m.cmap == 'p' then m.cmap = 't' end
 end
 
@@ -836,7 +852,7 @@ end
   atexit (elm, m, -sdir, slc[4])
   m:xflw (true)
 
-  m.tlt, m.algn, m.frng, m.xflw, m.eidx = 0, nil, nil, fnil, eidx
+  m.nmul, m.tlt, m.algn, m.frng, m.xflw, m.eidx = 0, 0, nil, nil, fnil, eidx
   if m.cmap == 'p' then m.cmap = 't' end
 end
 
@@ -853,7 +869,7 @@ local function track_slink (elm, m)
 end
 
 local function track_marker (elm, m)
-  trackone(elm, m, thinonly, fnil)
+  trackmrk(elm, m)
 end
 
 local function xflw_rot (m, clr)
@@ -1000,9 +1016,10 @@ local function xflw_mult (m, clr)
   if not clr then
     c.lrad = xcpy(c.lrad, m.lrad)
     c.ks   = xcpy(c.ks  , m.ks or 0)
-    cpy_mult(m)
+    cpy_mult(m,c)
   else
     c.ks   = xcpy(c.ks  , 0)
+    clr_mult(m,c)
   end
 end
 
@@ -1036,7 +1053,7 @@ local function track_multipole (elm, m)
   end
 
   trackelm(elm, m, thinonly, kick, nil, fnil)
-  m.ks = nil
+  m.ks, m.ksi = 0, nil
 end
 
 local track_strexgen -- fwd decl
@@ -1047,12 +1064,12 @@ local function xflw_sbend (m, clr)
     c.eh   = xcpy(c.eh  , m.eh  )
     c.el   = xcpy(c.el  , m.el  )
     c.mang = xcpy(c.mang, m.mang)
-    cpy_mult(m)
+    cpy_mult(m,c)
   else
-    c.snm  = 0
     c.eh   = xcpy(c.eh  , 0)
     c.e    = xcpy(c.e   , 0)
     c.mang = xcpy(c.mang, 0)
+    clr_mult(m,c)
   end
 end
 
@@ -1110,7 +1127,7 @@ local function track_sbend (elm, m, e1_, e2_)
 
   local track = is_nil(elm[1]) and trackelm or tracksub
   track(elm, m, inter, thick, kick, curex_fringe)
-  m.eh, m.e1, m.e2, m.mang, m.snm = 0, nil, nil, nil, 0
+  m.eh, m.e1, m.e2, m.mang, m.snm = 0, nil, nil, 0, 0
 end
 
 local function xflw_rbend (m, clr)
@@ -1122,12 +1139,13 @@ local function xflw_rbend (m, clr)
     c.ehd  = xcpy(c.ehd , m.ehd )
     c.elc  = xcpy(c.elc , m.elc )
     c.mang = xcpy(c.mang, m.mang)
-    cpy_mult(m)
+    cpy_mult(m,c)
   else
     c.pdir = 0
     c.eld  = xcpy(c.eld, 0)
     c.ehd  = xcpy(c.ehd, 0)
     c.e    = xcpy(c.e  , 0)
+    clr_mult(m,c)
   end
 end
 
@@ -1209,7 +1227,7 @@ local function track_rbend (elm, m)
   local track = is_nil(elm[1]) and trackelm or tracksub
   track(elm, m, inter, thick, kick, strex_fringe)
   m.e1, m.e2, m.elc, m.eld, m.ehd, m.mang, m.pdir =
-   nil,  nil,   nil,   nil,   nil,    nil,    nil
+   nil,  nil,     0,   nil,   nil,      0,    nil
 end
 
 local function xflw_quad (m, clr)
@@ -1220,10 +1238,11 @@ local function xflw_quad (m, clr)
     c.k1 = xcpy(c.k1, m.k1 or 0)
     c.ca = xcpy(c.ca, m.ca or 0)
     c.sa = xcpy(c.sa, m.sa or 0)
-    cpy_mult(m)
+    cpy_mult(m,c)
   else
     c.eh = xcpy(c.eh, 0)
     c.k1 = xcpy(c.k1, 0)
+    clr_mult(m,c)
   end
 end
 
@@ -1277,7 +1296,7 @@ local function track_quadrupole (elm, m)
 
   local track = is_nil(elm[1]) and trackelm or tracksub
   track(elm, m, inter, thick, kick, strex_fringe)
-  m.eh, m.k1, m.ca, m.sa = 0, nil, nil, nil
+  m.eh, m.k1, m.ca, m.sa = 0, 0, nil, nil
 end
 
 -- straigth magnets (-rbend -quad -solenoid)
@@ -1287,9 +1306,10 @@ local function xflw_strex (m, clr)
   if not clr then
     c.el = xcpy(c.el, m.el     )
     c.k1 = xcpy(c.k1, m.k1 or 0)
-    cpy_mult(m)
+    cpy_mult(m,c)
   else
     c.k1 = xcpy(c.k1, 0)
+    clr_mult(m,c)
   end
 end
 
@@ -1320,7 +1340,7 @@ function track_strexgen (elm, m, ptc_, mth_) -- see fwd decl
 
   local track = is_nil(elm[1]) and trackelm or tracksub
   track(elm, m, inter, thick, kick, fringe)
-  m.k1 = nil
+  m.k1 = 0
 end
 
 local function track_sextupole (elm, m)
@@ -1431,7 +1451,9 @@ local function xflw_wiggler (m, clr)
   local c = xflw(m)
   if not clr then
     c.el = xcpy(c.el, m.el)
-    cpy_mult(m)
+    cpy_mult(m,c)
+  else
+    clr_mult(m,c)
   end
 end
 
@@ -1481,9 +1503,10 @@ local function xflw_sol (m, clr)
   if not clr then
     c.el = xcpy(c.el, m.el     )
     c.ks = xcpy(c.ks, m.ks or 0)
-    cpy_mult(m)
+    cpy_mult(m,c)
   else
     c.ks = xcpy(c.ks, 0)
+    clr_mult(m,c)
   end
 end
 
@@ -1529,7 +1552,7 @@ local function track_solenoid (elm, m)
 
   local track = is_nil(elm[1]) and trackelm or tracksub
   track(elm, m, DKD[method], thick, kick, fringe)
-  m.ks = nil
+  m.ks = 0
 end
 
 -- eseptum
@@ -1541,9 +1564,10 @@ local function xflw_esep (m, clr)
     c.volt = xcpy(c.volt, m.volt or 0)
     c.ca   = xcpy(c.ca  , m.ca   or 0)
     c.sa   = xcpy(c.sa  , m.sa   or 0)
-    cpy_mult(m)
+    cpy_mult(m,c)
   else
     c.volt = xcpy(c.volt, 0)
+    clr_mult(m,c)
   end
 end
 
@@ -1581,7 +1605,7 @@ local function track_eseptum (elm, m)
   local inter = m.nmul == 0 and thickonly or KMK[elm.method or m.method]
   local track = is_nil(elm[1]) and trackelm or tracksub
   track(elm, m, inter, thick, strex_kick, strex_fringe)
-  m.volt = nil
+  m.volt = 0
 end
 
 -- rf cavities
@@ -1595,10 +1619,11 @@ local function xflw_cav (m, clr)
     c.volt = xcpy(c.volt, m.volt)
     c.freq = xcpy(c.freq, m.freq)
     c.lag  = xcpy(c.lag , m.lag )
-    cpy_mult(m)
+    cpy_mult(m,c)
   else
     c.volt = xcpy(c.volt, 0)
     c.freq = xcpy(c.freq, 0)
+    clr_mult(m,c)
   end
 end
 
@@ -1639,7 +1664,7 @@ local function track_rfcavgen (elm, m, crab)
 
   local track = is_nil(elm[1]) and trackelm or tracksub
   track(elm, m, inter, thick, kick, fringe)
-  m.volt, m.freq = nil, nil
+  m.volt, m.freq = 0, 0
 end
 
 local function track_rfcavity (elm, m)
@@ -1770,8 +1795,6 @@ local function track_ackicker (elm, m)
     m.spha = sin(twopi*(turn*freq + lag))
     ackick = m.vscl ~= 0 and acdip_kick or fnil
   end
-
-print(ackick, acdip_kick, acquad_kick, fnil)
 
   local model  = elm.model  or m.model
   local method = elm.method or m.method

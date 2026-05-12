@@ -47,7 +47,7 @@ void  mad_mono_copy  (ssz_t n, const ord_t a[], ord_t r[]);
 
 ord_t mad_mono_min   (ssz_t n, const ord_t a[]);
 ord_t mad_mono_max   (ssz_t n, const ord_t a[]);
-int   mad_mono_ord   (ssz_t n, const ord_t a[]); // sum of orders
+u32_t mad_mono_ord   (ssz_t n, const ord_t a[]); // sum of orders
 num_t mad_mono_ordp  (ssz_t n, const ord_t a[], idx_t stp); // product of orders
 num_t mad_mono_ordpf (ssz_t n, const ord_t a[], idx_t stp); // product of factorials of orders
 

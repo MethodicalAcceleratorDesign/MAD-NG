@@ -39,7 +39,7 @@ local abs, cabs, sqrt, exp, log, sin, cos, tan, atan2, tgamma, lgamma,
       fabs, fval                                                 in MAD.gmath
     
 local is_nil, is_boolean, is_number, is_positive, is_nonzero, is_integer,
-      is_natural, is_nznatural, is_even, is_odd, is_string, is_table,
+      is_natural, is_nznatural, is_string, is_table,
       is_mappable, is_indexable, is_monomial, is_rawtable,
       is_matrix, is_cmatrix, isa_matrix, is_vector, is_cvector,
       is_tpsa, is_damap, is_cdamap, isa_damap, wrestrict         in MAD.typeid
@@ -196,11 +196,11 @@ end
 function gphys.msort (mflw, cmp_)
   assert(typeid.is_dynmflw(mflw),"invalid argument #1 (dynamic mflow expected)")
 
-  mflw.npar = #mflw
-  if mflw.npar > 1 then table.sort(mflw, cmp_ or gphys.mcmp) end
+  if mflw.tpar > 1 then table.sort(mflw, cmp_ or gphys.mcmp) end
 
   -- adjust npar to the number of trackable particles
-  for i=mflw.npar,1,-1 do
+  mflw.npar = 0
+  for i=mflw.tpar,1,-1 do
     if mrnk[mflw[i].status] <= mrnk.stable then mflw.npar=i break end
   end
 
@@ -691,14 +691,21 @@ local function nf_haml (nf, ms, ki_, ko_)
   return nf.ham[ms] or 0i
 end
 
--- coupling terms -- Edwards-Teng coupling formalism (Lebedev & Bogacz 2010)
+--[[
+Matrix R: Edwards-Teng coupling formalism (Lebedev & Bogacz 2010)
+Lin RDTs: Betatron coupling with matrix   (Calaga, Tomas & Franchi 2005)
+--]]
 
 local nf_bet, nf_alf -- forward decl
 
 local det = \a       -> a[1]*a[4] - a[2]*a[3] -- polymorphic 2x2 matrix helpers
-local scl = \a,v     -> {a[1]*v, a[2]*v, a[3]*v, a[4]*v}
+local div = \a,v     -> {a[1]/v, a[2]/v, a[3]/v, a[4]/v}
 local dot = \a,b,i,j -> a[i]*b[j] + a[i+1]*b[j+2]
 local mul = \a,b     -> {dot(a,b,1,1),dot(a,b,1,2),dot(a,b,3,1),dot(a,b,3,2)}
+
+local cplg_tol_min = 1e20 -- uncomment function to record cplg_tol_min
+local cplg_tol_chk -- = \ io.write("min coupling=", cplg_tol_min, "\n")
+if cplg_tol_chk then MAD.utility.atexit(cplg_tol_chk) end
 
 local function nf_cplg (a, mt_)
   local fun = is_damap(a) -- either damap (functions) or beta0 block (scalars)
@@ -725,73 +732,96 @@ local function nf_cplg (a, mt_)
   res.alfx  = alfa11
   res.alfy  = alfa22
 
-  local kx2 = beta12/beta11                                         -- eq. 4.7
+  local kx2 = beta12/beta11                                          -- eq. 4.7
   local ky2 = beta21/beta22
   local kxy = kx2*ky2
+  local cpl = min(abs(fval(kx2)-fval(ky2)), abs(1-fval(kxy)))
 
-  if fabs(kx2-ky2) >= stab_tol and fabs(1-kxy) >= stab_tol then -- eq. 4.8 & 4.9
+  if cplg_tol_chk and cplg_tol_min > cpl then cplg_tol_min = cpl end
+
+  if cpl >= cplg_tol then                                       -- eq. 4.8 & 4.9
     local alfa12 = fun and nf_alf(a, "12", nil, mt_) or a.alfa12
     local alfa21 = fun and nf_alf(a, "21", nil, mt_) or a.alfa21
     local kx, ky = sqrt(kx2), sqrt(ky2)
-    local ax = alfa11*kx - alfa12/kx                                -- eq. 4.7
+    local ax = alfa11*kx - alfa12/kx                                 -- eq. 4.7
     local ay = alfa22*ky - alfa21/ky
-    local ku = kxy*(1+(ax*ax-ay*ay)/(kx2-ky2)*(1-kxy))              -- eq. 4.8
+    local ku = kxy*(1+(ax*ax-ay*ay)/(kx2-ky2)*(1-kxy))               -- eq. 4.8
     local u = -kxy/(1-kxy)
     local s = 0
     if fval(ku) >= stab_tol then
       local su = sqrt(ku)
       s = kxy <= su and +1 or -1
-      u = u + s * su/(1-kxy)                                        -- eq. 4.8
+      u = u + s * su/(1-kxy)                                         -- eq. 4.8
     end
     local kpa = 1-u
 
-    res.betx = res.betx/kpa                                        -- eq. 7.16
+    res.betx = res.betx/kpa                                          -- eq. 7.16
     res.bety = res.bety/kpa
     res.alfx = res.alfx/kpa
     res.alfy = res.alfy/kpa
     res.kpa  = kpa
 
-    local bx  = kx*kpa + u/kx                                      -- eq. 4.10
+    local bx  = kx*kpa + u/kx                                        -- eq. 4.10
     local by  = ky*kpa + u/ky
     local cx  = kx*kpa - u/kx
     local cy  = ky*kpa - u/ky
     local evp = (ax + 1i*bx) / (ay - 1i*by)
     local evm = (ax + 1i*cx) / (ay + 1i*cy)
-    local ev1 = sqrt(evp*evm)                                      -- eq. 4.11
+    local ev1 = sqrt(evp*evm)                                        -- eq. 4.11
     local ev2 = sqrt(evp/evm)
 
-    local ev1_re, ev1_im = real(ev1), imag(ev1)
+    local ev1_re, ev1_im = real(ev1), imag(ev1)                      -- C & CTPSA
     local ev2_re, ev2_im = real(ev2), imag(ev2)
 
---  local swp = ""
+    if sign(fval(ev1_im)) ~= sign(fval(ev2_im)) then                 -- eq. 7.12
+      ev2_re, ev2_im = -ev2_re, -ev2_im
+    end
 
-    if sign(fval(ev1_im)) ~= sign(fval(ev2_im)) then               -- eq. 7.12
-      -- see discussion in paragraph after eq. 4.11
-      if fval(ev1_re) < 0
-      then ev1_re, ev1_im = -ev1_re, -ev1_im -- ; swp = "[1]"
-      else ev2_re, ev2_im = -ev2_re, -ev2_im -- ; swp = "[2]"
+    do -- Disambiguate branch of eq. 4.11 using A (align with phase_eigen)
+      local A = fun and a:get1() or a.A
+
+      -- mode 1: rotate columns (1,2) so x block becomes (sb11,0)
+      local sb11, a31 = sqrt(fval(beta11)), A:get(3,1)
+      local sb21, a32 = sqrt(fval(beta21)), A:get(3,2)
+      local    c1, s1 = A:get(1,1)/sb11, A:get(1,2)/sb11
+      local   ev1a_re = (a31*c1 + a32*s1) / sb21
+      local   ev1a_im = (a31*s1 - a32*c1) / sb21
+
+      -- mode 2: rotate columns (3,4) so y block becomes (sb22,0)
+      local sb22, a13 = sqrt(fval(beta22)), A:get(1,3)
+      local sb12, a14 = sqrt(fval(beta12)), A:get(1,4)
+      local    c2, s2 = A:get(3,3)/sb22, A:get(3,4)/sb22
+      local   ev2a_re = (a13*c2 + a14*s2) / sb12
+      local   ev2a_im = (a13*s2 - a14*c2) / sb12
+
+      -- fix only the remaining common sign (scalar product)
+      local sign = fval(ev1_re)*ev1a_re + fval(ev1_im)*ev1a_im +
+                   fval(ev2_re)*ev2a_re + fval(ev2_im)*ev2a_im
+      if sign < 0 then
+        ev1_re, ev1_im = -ev1_re, -ev1_im
+        ev2_re, ev2_im = -ev2_re, -ev2_im
       end
     end
 
-    res.r11 =  sqrt(beta22/beta12) * (u*ev2_re + alfa12*ev2_im)/kpa
+    -- Coupling 2x2 matrix of real or tpsa
+    res.r11 =  sqrt(beta22/beta12) * (u*ev2_re + alfa12*ev2_im)/kpa  -- eq. 7.11
     res.r22 = -sqrt(beta11/beta21) * (u*ev1_re + alfa21*ev1_im)/kpa
     res.r12 =  sqrt(beta11*beta21) * ev1_im/kpa
     res.r21 =  (ev2_re*(alfa12*kpa - alfa22*u) -
                 ev2_im*(alfa12*alfa22 + kpa*u)) / (kpa*sqrt(beta12*beta22))
 
---  printf("%s, %d, %- .5e, %- .5f, %- .5f, %- .5f, %- .5f, %- .5f\n",
---    swp, s, fval(u), fval(res.r12), fval(ev1_re), fval(ev1_im), fval(ev2_re), fval(ev2_im))
+    -- Linear RDTs of complex or ctpsa
+    local sbetx, sbety = sqrt(res.betx), sqrt(res.bety)        -- eq. 5
+    local   ga = {1/sbetx, 0,  res.alfx/sbetx,   sbetx}        -- ga
+    local  _gb = {  sbety, 0, -res.alfy/sbety, 1/sbety}        -- gb^-1
+    local    r = {res.r22, -res.r21, -res.r12, res.r11}        -- eq. 16, -S*R*S
+    local    c = div(r, 1+det(r))                              -- eq. 16
+    local    g = sqrt(1-det(c))                                -- |C| + g^2 = 1
+    local cbar = mul(ga, mul(c, _gb))                          -- eq. 5
+    local   cb = div(cbar, 4*g)                                -- eq. 9 & 10
 
-    local sbetx, sbety = sqrt(res.betx), sqrt(res.bety)
-    local   r  = {res.r22, -res.r12, -res.r21, res.r11}         -- -S*R*S
-    local   ga = {1/sbetx, 0,  res.alfx/sbetx,   sbetx}
-    local  _gb = {  sbety, 0, -res.alfy/sbety, 1/sbety}         -- gb^-1
-    local    c = scl(r, 1/sqrt(1+det(r)))                       -- eq. 16
-    local cbar = mul(ga, mul(c, _gb))                           -- eq. 5
-    local   cb = scl(cbar, 0.25/sqrt(1-det(cbar)))              -- eq. 9 & 10
-
-    res.f1010 = -cb[2]-cb[3] + 1i*(cb[1]-cb[4])
-    res.f1001 =  cb[2]-cb[3] + 1i*(cb[1]+cb[4])
+    res.f1001 =  cb[2]-cb[3] + 1i*(cb[1]+cb[4])                -- eq. 9
+    res.f1010 = -cb[2]-cb[3] + 1i*(cb[1]-cb[4])                -- eq. 10
   else
     res.kpa   = fun and beta11:same():set0(1) or 1
     res.r11   = fun and beta11:same()         or 0
@@ -1436,7 +1466,7 @@ function normal (m, urdt_)
 
   if ustop == "linear" or m:mord() == 1 then
     if m:mord() == 1 then nf.m_n = nil end
-    nf.a = nf.a_0 * nf_a_1
+    nf.a = nf.a_0 * nf.a_1
     return nf
   end
 
@@ -1955,32 +1985,83 @@ end
   mistake to apply Eq. 7 without satisfying this...
 --]]
 
-local function is_even (m)
+local function is_ord_even (m)
   for k=1,#m do if m[k]%2 ~= 0 then return false end end
   return true
 end
 
-function gphys.beamsize(x, sig)
-  assert(is_tpsa(x), "invalid argument #1 (real TPSA expected)")
-  assert(is_indexable(sig) and #sig >= 5,
-                     "invalid argument #2 (iterable with 5+ values expected")
-  local nv, xs = x:nv(), 0
+local function beamsize(x, sig, mo)
+  local nv, xs_4, xs_5 = x:nv(), 0, 0
   local mi, mj, mm = monomial(nv), monomial(nv), monomial(nv)
 
   for i,xi in x:iter(mi)   do
   for j,xj in x:iter(mj,i) do
-    if mj >= mi and is_even(mi:add(mj,mm)) then
+    if mj >= mi and is_ord_even(mi:add(mj,mm)) and
+       mj:ord() <= mo and mi:ord() <= mo then
+
       local sk, xx = 0, (i == j and 1 or 2)*xi*xj
       for k=1,4 do
         xx = xx * sig[k]^mm[k] * tgamma((1+mm[k])/2)
         sk = sk + mm[k]
       end
       xx = xx * sig[5]^mm[6] * 2^(sk/2-mm[6]) / ((1+mm[6])*pi^2)
-      xs = xs + xx
+
+      xs_4 = xs_4 + (mm[6] == 0 and xx or 0)
+      xs_5 = xs_5 + xx
     end
   end end
+  return sqrt(xs_4), sqrt(xs_5)
+end
 
-  return sqrt(xs)
+function gphys.beamsize(x, sig, mo_)
+  assert(is_tpsa(x), "invalid argument #1 (real TPSA expected)")
+  assert(is_indexable(sig) and #sig >= 5,
+                     "invalid argument #2 (iterable with 5+ values expected)")
+
+  local mo = mo_ or x.mo
+  if mo_ then -- order is specified, could be x.mo itself
+    assert(is_number(mo) and mo <= x.mo,
+                     "invalid argument #3 (order must not exceed TPSA order)")
+    return beamsize(x, sig, mo)
+  end
+
+  local sg, st = table.new(mo,0), table.new(mo,0)
+  for i=1,mo do -- run all orders
+    sg[i], st[i] = beamsize(x, sig, i)
+  end
+  return sg, st
+end
+
+function gphys.beamsize_tbl(m, sig, p_)
+  assert(is_damap(m), "invalid argument #1 (damap expected)")
+  assert(is_indexable(sig) and #sig >= 5,
+                      "invalid argument #2 (iterable with 5+ values expected)")
+  local colnam = not p_ and -- momenta not required
+                 {"order", "x_geo", "x_tot",  "y_geo",  "y_tot"} or
+                 {"order", "x_geo", "x_tot", "px_geo", "px_tot",
+                           "y_geo", "y_tot", "py_geo", "py_tot"}
+
+  local tbl = MAD.mtable("rms beamsize", colnam)
+  local row = table.new(#colnam,0)
+  local mo  = min(m.x.mo,m.y.mo)
+
+  for i=1,mo do
+    row[1], row[2], row[3] = i, beamsize(m.x, sig, i)
+    if not p_ then
+      row[4], row[5] = beamsize(m.y , sig, i)
+    else
+      row[4], row[5] = beamsize(m.px, sig, i)
+      row[6], row[7] = beamsize(m.y , sig, i)
+      row[8], row[9] = beamsize(m.py, sig, i)
+    end
+    tbl:addrow(row)
+  end
+
+  -- add sigma (init sizes)
+  tbl.sigma = sig
+  table.insert(tbl.header, "sigma")
+
+  return tbl
 end
 
 -- env ------------------------------------------------------------------------o

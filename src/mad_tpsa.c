@@ -187,7 +187,7 @@ FUN(isnul) (const T *t)
 #if TPSA_STRICT
   return  !t->coef[0] &&  !t->hi;
 #else
-  return  !t->coef[0] && (!t->hi || FUN(nzero0)(t,t->lo,t->hi,1) < 0);
+  return  !t->coef[0] && (!t->hi || FUN(nzero0)((T*)t,t->lo,t->hi,1) < 0);
 #endif
 }
 
@@ -198,7 +198,7 @@ FUN(isval) (const T *t)
 #if TPSA_STRICT
   return !t->hi;
 #else
-  return !t->hi || FUN(nzero0)(t,t->lo,t->hi,1) < 0;
+  return !t->hi || FUN(nzero0)((T*)t,t->lo,t->hi,1) < 0;
 #endif
 }
 
@@ -285,8 +285,8 @@ void
 FUN(update) (T *t)
 {
   assert(t); DBGFUN(->);
-  if (t->hi && FUN(nzero0 )(t,t->lo,t->hi,1) >= 0 &&
-               FUN(nzero0r)(t,t->lo,t->hi,1) >= 0) {}
+  if (t->hi && FUN(nzero0 )((T*)t,t->lo,t->hi,1) >= 0 &&
+               FUN(nzero0r)((T*)t,t->lo,t->hi,1) >= 0) {}
   DBGTPSA(t); DBGFUN(<-);
 }
 
@@ -361,10 +361,10 @@ void
 FUN(clrord) (T *t, ord_t o)
 {
   assert(t); DBGFUN(->);
-  if (!o) t->coef[0] = 0;                                    else
-  if (o  > t->lo && o < t->hi) FUN(clear0)(t, o, o);         else
-  if (o == t->lo && FUN(nzero0 )(t,t->lo+1,t->hi,1) >= 0) {} else
-  if (o == t->hi && FUN(nzero0r)(t,t->lo,t->hi-1,1) >= 0) {}
+  if (!o) t->coef[0] = 0;                                        else
+  if (o  > t->lo && o < t->hi) FUN(clear0)(t, o, o);             else
+  if (o == t->lo && FUN(nzero0 )((T*)t,t->lo+1,t->hi,1) >= 0) {} else
+  if (o == t->hi && FUN(nzero0r)((T*)t,t->lo,t->hi-1,1) >= 0) {}
   DBGTPSA(t); DBGFUN(<-);
 }
 
@@ -664,8 +664,8 @@ FUN(seti) (T *t, idx_t i, NUM a, NUM b)
     t->coef[i] = v;
   } else {
     t->coef[i] = 0;
-    if (o == t->lo && FUN(nzero0 )(t,t->lo,t->hi,1) >= 0) {} else
-    if (o == t->hi && FUN(nzero0r)(t,t->lo,t->hi,1) >= 0) {}
+    if (o == t->lo && FUN(nzero0 )((T*)t,t->lo,t->hi,1) >= 0) {} else
+    if (o == t->hi && FUN(nzero0r)((T*)t,t->lo,t->hi,1) >= 0) {}
   }
   DBGTPSA(t); DBGFUN(<-);
 }
