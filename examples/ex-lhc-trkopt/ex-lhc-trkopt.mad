@@ -3,15 +3,22 @@ local seqs = {"lhcb1","lhcb2"}    -- list of sequences
 local reft = true                 -- compute reference track & twiss
 local knbs = true                 -- check tunes knobs effectiveness
 local chrm = true                 -- compute chromatic functions
+local cplg = true                 -- compute coupling  functions
+local omdp = true                 -- use some off momentum dp
 local cmap = true                 -- use cmaps (or not)
 local mord = 2                    -- max loop order (1 or 2)
 local tplt = false                -- plot title default: false or ""
 local fplt = "ex-lhc-trkopt_"..MAD.env.version..".pdf" -- file to output plots
 
+local fd = {1e-6, 1e-4} -- {5e-6, 5e-4} -- finite difference step size of 1st and 2nd orders
+local dp = 1e-3         -- delta_p value
+local cr = 5e-4         -- C- real value
+local ci = 5e-4         -- C- imag value
+
 -- Import commands
 local beam, track, twiss, damap, plot, option in MAD
 -- Import utility functions
-local printf, timeit, tblcat in MAD.utility
+local printf, timeit, tblncat in MAD.utility
 
 -- LHC Setup -------------------------------------------------------------------
 
@@ -33,11 +40,13 @@ for idx,snam in ipairs(seqs) do
 
 io.write("Running ", snam, "\n")
 
--- sequence and tune knobs
+-- sequence, tune knobs and coupling knobs
 local seq = MADX[snam]
 local bn  = ({"b1","b2"})[idx]
-local dqx = "dqx_"..bn.."_op"
-local dqy = "dqy_"..bn.."_op"
+local dqx = "dqx_" ..bn.."_op"
+local dqy = "dqy_" ..bn.."_op"
+local dcr = "cmrs_"..bn.."_op"
+local dci = "cmis_"..bn.."_op"
 
 -- Reference Track & Twiss -----------------------------------------------------
 
@@ -145,7 +154,7 @@ q2_dqxy           = 60.3300055 ;  q2_dqxy          = 60.3300054
 
 -- Optical functions of interest (1st and 2nd order)
 local kopts = {
-  tblcat(
+  tblncat(
   {"beta11_10", "beta11_01", "beta22_10", "beta22_01", -- 1
   "alfa11_10", "alfa11_01", "alfa22_10", "alfa22_01" , -- 5
   "gama11_10", "gama11_01", "gama22_10", "gama22_01" , -- 9
@@ -155,9 +164,15 @@ local kopts = {
   not chrm and {} or
   {"dmu1_10" , "dmu1_01"  , "dmu2_10"  , "dmu2_01"   , -- 25
    "wx_10"   , "wx_01"    , "wxp_10"   , "wxp_01"    , -- 29
-   "wy_10"   , "wy_01"    , "wyp_10"   , "wyp_01"  })  -- 33
+   "wy_10"   , "wy_01"    , "wyp_10"   , "wyp_01"  } , -- 33
+  not cplg and {} or
+  {"betx_10" , "betx_01"  , "bety_10"  , "bety_01"   , -- 37 or 25
+   "alfx_10" , "alfx_01"  , "alfy_10"  , "alfy_01"   , -- 41 or 29
+   "r11_0010", "r11_0001" , "r12_0010" , "r12_0001"  , -- 45 or 33
+   "r21_0010", "r21_0001" , "r22_0010" , "r22_0001"  , -- 49 or 37
+   "f1010_0010", "f1010_0001" , "f1001_0010" , "f1001_0001"}) -- 53 or 41
   ,
-  tblcat(
+  tblncat(
   {"beta11_20", "beta11_02", "beta22_20", "beta22_02", -- 1
   "alfa11_20", "alfa11_02", "alfa22_20", "alfa22_02" , -- 5
   "gama11_20", "gama11_02", "gama22_20", "gama22_02" , -- 9
@@ -167,8 +182,30 @@ local kopts = {
   not chrm and {} or
   {"dmu1_20" , "dmu1_02"  , "dmu2_20"  , "dmu2_02"   , -- 25
    "wx_20"   , "wx_02"    , "wxp_20"   , "wxp_02"    , -- 29
-   "wy_20"   , "wy_02"    , "wyp_20"   , "wyp_02"  })  -- 33
+   "wy_20"   , "wy_02"    , "wyp_20"   , "wyp_02"  } , -- 33
+  not cplg and {} or
+  {"betx_20" , "betx_02"  , "bety_20"  , "bety_02"   , -- 37 or 25
+   "alfx_20" , "alfx_02"  , "alfy_20"  , "alfy_02"   , -- 41 or 29
+   "r11_0020", "r11_0002" , "r12_0020" , "r12_0002"  , -- 45 or 33
+   "r21_0020", "r21_0002" , "r22_0020" , "r22_0002"  , -- 49 or 37
+   "f1010_0020", "f1010_0002" , "f1001_0020" , "f1001_0002"}) -- 53 or 41
 }
+
+-- Coupling setup
+if cplg then
+  MADX[dcr] = MADX[dcr] + cr
+  MADX[dci] = MADX[dci] + ci
+  io.write("Setting coupling knob C- = (", MADX[dcr], ",", MADX[dci], ")\n")
+end
+
+-- Delta_p setup
+if omdp then
+  io.write("Setting off momentum deltap = ", dp, "\n")
+else dp = nil end
+
+-- twiss setup (template)
+local twcmd = twiss {sequence=seq, deltap=dp, chrom=chrm, coupling=cplg,
+                     cmap=cmap, exec=false}
 
 -- Loop over orders -------------------
 for ord=1,mord do
@@ -177,74 +214,126 @@ io.write("Computing order ", ord, " for ", snam, "\n")
 
 -- Compute parametric twiss -----------
 
-local mo = ord+(chrm and 2 or 1)
-local x0 = damap { nv=6, np=2, no={mo,mo,mo,mo,1,1}, po=ord, pn={"dqx", "dqy"} }
+local mo = ord+((chrm or cplg) and 2 or 1)
+local pn = cplg and {"dqx","dqy","dcr","dci"} or {"dqx","dqy"}
+local x0 = damap {nv=6, np=#pn, no={mo,mo,mo,mo,1,1}, po=ord, pn=pn}
 
 MADX[dqx] = MADX[dqx] + x0.dqx
 MADX[dqy] = MADX[dqy] + x0.dqy
+if cplg then
+MADX[dcr] = MADX[dcr] + x0.dcr
+MADX[dci] = MADX[dci] + x0.dci
+end
 
-local twp = timeit(\ -> twiss {sequence=seq, X0=x0, trkopt=kopts[ord], chrom=chrm, cmap=cmap}, "Twiss DA")
+local twp = timeit(\ -> twcmd {X0=x0, trkopt=kopts[ord]}, "Twiss DA")
 
 MADX[dqx] = MADX[dqx]:get0()
 MADX[dqy] = MADX[dqy]:get0()
+if cplg then
+MADX[dcr] = MADX[dcr]:get0()
+MADX[dci] = MADX[dci]:get0()
+end
 
 -- extend table with parametric values
-twp:addcol("beta11_vs_dqx_da", \ri -> twp[kopts[ord][ 1]][ri])
-twp:addcol("beta11_vs_dqy_da", \ri -> twp[kopts[ord][ 2]][ri])
-twp:addcol("beta22_vs_dqx_da", \ri -> twp[kopts[ord][ 3]][ri])
-twp:addcol("beta22_vs_dqy_da", \ri -> twp[kopts[ord][ 4]][ri])
-twp:addcol("alfa11_vs_dqx_da", \ri -> twp[kopts[ord][ 5]][ri])
-twp:addcol("alfa11_vs_dqy_da", \ri -> twp[kopts[ord][ 6]][ri])
-twp:addcol("alfa22_vs_dqx_da", \ri -> twp[kopts[ord][ 7]][ri])
-twp:addcol("alfa22_vs_dqy_da", \ri -> twp[kopts[ord][ 8]][ri])
-twp:addcol("gama11_vs_dqx_da", \ri -> twp[kopts[ord][ 9]][ri])
-twp:addcol("gama11_vs_dqy_da", \ri -> twp[kopts[ord][10]][ri])
-twp:addcol("gama22_vs_dqx_da", \ri -> twp[kopts[ord][11]][ri])
-twp:addcol("gama22_vs_dqy_da", \ri -> twp[kopts[ord][12]][ri])
-twp:addcol("mu1_vs_dqx_da"   , \ri -> twp[kopts[ord][13]][ri])
-twp:addcol("mu1_vs_dqy_da"   , \ri -> twp[kopts[ord][14]][ri])
-twp:addcol("mu2_vs_dqx_da"   , \ri -> twp[kopts[ord][15]][ri])
-twp:addcol("mu2_vs_dqy_da"   , \ri -> twp[kopts[ord][16]][ri])
-twp:addcol("dx_vs_dqx_da"    , \ri -> twp[kopts[ord][17]][ri])
-twp:addcol("dx_vs_dqy_da"    , \ri -> twp[kopts[ord][18]][ri])
-twp:addcol("dpx_vs_dqx_da"   , \ri -> twp[kopts[ord][19]][ri])
-twp:addcol("dpx_vs_dqy_da"   , \ri -> twp[kopts[ord][20]][ri])
-twp:addcol("dy_vs_dqx_da"    , \ri -> twp[kopts[ord][21]][ri])
-twp:addcol("dy_vs_dqy_da"    , \ri -> twp[kopts[ord][22]][ri])
-twp:addcol("dpy_vs_dqx_da"   , \ri -> twp[kopts[ord][23]][ri])
-twp:addcol("dpy_vs_dqy_da"   , \ri -> twp[kopts[ord][24]][ri])
+twp:addcol("beta11_vs_dqx_da", \ri -> twp[kopts[ord][    1]][ri])
+twp:addcol("beta11_vs_dqy_da", \ri -> twp[kopts[ord][    2]][ri])
+twp:addcol("beta22_vs_dqx_da", \ri -> twp[kopts[ord][    3]][ri])
+twp:addcol("beta22_vs_dqy_da", \ri -> twp[kopts[ord][    4]][ri])
+twp:addcol("alfa11_vs_dqx_da", \ri -> twp[kopts[ord][    5]][ri])
+twp:addcol("alfa11_vs_dqy_da", \ri -> twp[kopts[ord][    6]][ri])
+twp:addcol("alfa22_vs_dqx_da", \ri -> twp[kopts[ord][    7]][ri])
+twp:addcol("alfa22_vs_dqy_da", \ri -> twp[kopts[ord][    8]][ri])
+twp:addcol("gama11_vs_dqx_da", \ri -> twp[kopts[ord][    9]][ri])
+twp:addcol("gama11_vs_dqy_da", \ri -> twp[kopts[ord][   10]][ri])
+twp:addcol("gama22_vs_dqx_da", \ri -> twp[kopts[ord][   11]][ri])
+twp:addcol("gama22_vs_dqy_da", \ri -> twp[kopts[ord][   12]][ri])
+twp:addcol("mu1_vs_dqx_da"   , \ri -> twp[kopts[ord][   13]][ri])
+twp:addcol("mu1_vs_dqy_da"   , \ri -> twp[kopts[ord][   14]][ri])
+twp:addcol("mu2_vs_dqx_da"   , \ri -> twp[kopts[ord][   15]][ri])
+twp:addcol("mu2_vs_dqy_da"   , \ri -> twp[kopts[ord][   16]][ri])
+twp:addcol("dx_vs_dqx_da"    , \ri -> twp[kopts[ord][   17]][ri])
+twp:addcol("dx_vs_dqy_da"    , \ri -> twp[kopts[ord][   18]][ri])
+twp:addcol("dpx_vs_dqx_da"   , \ri -> twp[kopts[ord][   19]][ri])
+twp:addcol("dpx_vs_dqy_da"   , \ri -> twp[kopts[ord][   20]][ri])
+twp:addcol("dy_vs_dqx_da"    , \ri -> twp[kopts[ord][   21]][ri])
+twp:addcol("dy_vs_dqy_da"    , \ri -> twp[kopts[ord][   22]][ri])
+twp:addcol("dpy_vs_dqx_da"   , \ri -> twp[kopts[ord][   23]][ri])
+twp:addcol("dpy_vs_dqy_da"   , \ri -> twp[kopts[ord][   24]][ri])
 if chrm then
-twp:addcol("dmu1_vs_dqx_da"  , \ri -> twp[kopts[ord][25]][ri])
-twp:addcol("dmu1_vs_dqy_da"  , \ri -> twp[kopts[ord][26]][ri])
-twp:addcol("dmu2_vs_dqx_da"  , \ri -> twp[kopts[ord][27]][ri])
-twp:addcol("dmu2_vs_dqy_da"  , \ri -> twp[kopts[ord][28]][ri])
-twp:addcol("wx_vs_dqx_da"    , \ri -> twp[kopts[ord][29]][ri])
-twp:addcol("wx_vs_dqy_da"    , \ri -> twp[kopts[ord][30]][ri])
-twp:addcol("wxp_vs_dqx_da"   , \ri -> twp[kopts[ord][31]][ri])
-twp:addcol("wxp_vs_dqy_da"   , \ri -> twp[kopts[ord][32]][ri])
-twp:addcol("wy_vs_dqx_da"    , \ri -> twp[kopts[ord][33]][ri])
-twp:addcol("wy_vs_dqy_da"    , \ri -> twp[kopts[ord][34]][ri])
-twp:addcol("wyp_vs_dqx_da"   , \ri -> twp[kopts[ord][35]][ri])
-twp:addcol("wyp_vs_dqy_da"   , \ri -> twp[kopts[ord][36]][ri])
+local of = 24
+twp:addcol("dmu1_vs_dqx_da"  , \ri -> twp[kopts[ord][of+ 1]][ri])
+twp:addcol("dmu1_vs_dqy_da"  , \ri -> twp[kopts[ord][of+ 2]][ri])
+twp:addcol("dmu2_vs_dqx_da"  , \ri -> twp[kopts[ord][of+ 3]][ri])
+twp:addcol("dmu2_vs_dqy_da"  , \ri -> twp[kopts[ord][of+ 4]][ri])
+twp:addcol("wx_vs_dqx_da"    , \ri -> twp[kopts[ord][of+ 5]][ri])
+twp:addcol("wx_vs_dqy_da"    , \ri -> twp[kopts[ord][of+ 6]][ri])
+twp:addcol("wxp_vs_dqx_da"   , \ri -> twp[kopts[ord][of+ 7]][ri])
+twp:addcol("wxp_vs_dqy_da"   , \ri -> twp[kopts[ord][of+ 8]][ri])
+twp:addcol("wy_vs_dqx_da"    , \ri -> twp[kopts[ord][of+ 9]][ri])
+twp:addcol("wy_vs_dqy_da"    , \ri -> twp[kopts[ord][of+10]][ri])
+twp:addcol("wyp_vs_dqx_da"   , \ri -> twp[kopts[ord][of+11]][ri])
+twp:addcol("wyp_vs_dqy_da"   , \ri -> twp[kopts[ord][of+12]][ri])
+end
+if cplg then
+local of = chrm and 36 or 24
+twp:addcol("betx_vs_dqx_da"  , \ri -> twp[kopts[ord][of+ 1]][ri])
+twp:addcol("betx_vs_dqy_da"  , \ri -> twp[kopts[ord][of+ 2]][ri])
+twp:addcol("bety_vs_dqx_da"  , \ri -> twp[kopts[ord][of+ 3]][ri])
+twp:addcol("bety_vs_dqy_da"  , \ri -> twp[kopts[ord][of+ 4]][ri])
+twp:addcol("alfx_vs_dqx_da"  , \ri -> twp[kopts[ord][of+ 5]][ri])
+twp:addcol("alfx_vs_dqy_da"  , \ri -> twp[kopts[ord][of+ 6]][ri])
+twp:addcol("alfy_vs_dqx_da"  , \ri -> twp[kopts[ord][of+ 7]][ri])
+twp:addcol("alfy_vs_dqy_da"  , \ri -> twp[kopts[ord][of+ 8]][ri])
+twp:addcol("r11_vs_dcr_da"   , \ri -> twp[kopts[ord][of+ 9]][ri])
+twp:addcol("r11_vs_dci_da"   , \ri -> twp[kopts[ord][of+10]][ri])
+twp:addcol("r12_vs_dcr_da"   , \ri -> twp[kopts[ord][of+11]][ri])
+twp:addcol("r12_vs_dci_da"   , \ri -> twp[kopts[ord][of+12]][ri])
+twp:addcol("r21_vs_dcr_da"   , \ri -> twp[kopts[ord][of+13]][ri])
+twp:addcol("r21_vs_dci_da"   , \ri -> twp[kopts[ord][of+14]][ri])
+twp:addcol("r22_vs_dcr_da"   , \ri -> twp[kopts[ord][of+15]][ri])
+twp:addcol("r22_vs_dci_da"   , \ri -> twp[kopts[ord][of+16]][ri])
+twp:addcol("f1010_vs_dcr_da" , \ri -> twp[kopts[ord][of+17]][ri])
+twp:addcol("f1010_vs_dci_da" , \ri -> twp[kopts[ord][of+18]][ri])
+twp:addcol("f1001_vs_dcr_da" , \ri -> twp[kopts[ord][of+19]][ri])
+twp:addcol("f1001_vs_dci_da" , \ri -> twp[kopts[ord][of+20]][ri])
 end
 
 -- Compute finite difference twiss ----
 
-local dh = ({5e-6, 5e-4})[ord] -- finite differences step
+local dh = fd[ord] -- finite differences step
+
+local twfp, twfm, twdp, twdm
+local twrp, twrm, twip, twim
 
 -- twiss with dqx as dh
 MADX[dqx] = MADX[dqx] + dh
-local twfp = timeit(\ -> twiss {sequence=seq, chrom=chrm, cmap=cmap}, "Twiss FD dqx+dh")
-MADX[dqx] = MADX[dqx] - 2*dh
-local twfm = timeit(\ -> twiss {sequence=seq, chrom=chrm, cmap=cmap}, "Twiss FD dqx-dh")
+twfp = timeit(\ -> twcmd {}, "Twiss FD dqx+dh")
+MADX[dqx] = MADX[dqx] - dh*2
+twfm = timeit(\ -> twcmd {}, "Twiss FD dqx-dh")
 MADX[dqx] = MADX[dqx] + dh
 
 -- twiss with dqy as dh
 MADX[dqy] = MADX[dqy] + dh
-local twdp = timeit(\ -> twiss {sequence=seq, chrom=chrm, cmap=cmap}, "Twiss FD dqy+dh")
-MADX[dqy] = MADX[dqy] - 2*dh
-local twdm = timeit(\ -> twiss {sequence=seq, chrom=chrm, cmap=cmap}, "Twiss FD dqy-dh")
+twdp = timeit(\ -> twcmd {}, "Twiss FD dqy+dh")
+MADX[dqy] = MADX[dqy] - dh*2
+twdm = timeit(\ -> twcmd {}, "Twiss FD dqy-dh")
 MADX[dqy] = MADX[dqy] + dh
+
+if cplg then
+-- twiss with dcr as dh
+MADX[dcr] = MADX[dcr] + dh
+twrp = timeit(\ -> twcmd {}, "Twiss FD dcr+dh")
+MADX[dcr] = MADX[dcr] - dh*2
+twrm = timeit(\ -> twcmd {}, "Twiss FD dcr-dh")
+MADX[dcr] = MADX[dcr] + dh
+
+-- twiss with dci as dh
+MADX[dci] = MADX[dci] + dh
+twip = timeit(\ -> twcmd {}, "Twiss FD dci+dh")
+MADX[dci] = MADX[dci] - dh*2
+twim = timeit(\ -> twcmd {}, "Twiss FD dci-dh")
+MADX[dci] = MADX[dci] + dh
+end
 
 do
   local a,b,c,d,e in ({
@@ -291,6 +380,28 @@ if chrm then
   twp:addcol("wyp_vs_dqx_fd"   , \ri -> ((a*twfp.phiy  [ri] + b*twp.phiy  [ri] + c*twfm.phiy  [ri])/(d*dh^e)))
   twp:addcol("wyp_vs_dqy_fd"   , \ri -> ((a*twdp.phiy  [ri] + b*twp.phiy  [ri] + c*twdm.phiy  [ri])/(d*dh^e)))
 end
+if cplg then
+  twp:addcol("betx_vs_dqx_fd"  , \ri -> ((a*twfp.betx  [ri] + b*twp.betx  [ri] + c*twfm.betx  [ri])/(d*dh^e)))
+  twp:addcol("betx_vs_dqy_fd"  , \ri -> ((a*twdp.betx  [ri] + b*twp.betx  [ri] + c*twdm.betx  [ri])/(d*dh^e)))
+  twp:addcol("bety_vs_dqx_fd"  , \ri -> ((a*twfp.bety  [ri] + b*twp.bety  [ri] + c*twfm.bety  [ri])/(d*dh^e)))
+  twp:addcol("bety_vs_dqy_fd"  , \ri -> ((a*twdp.bety  [ri] + b*twp.bety  [ri] + c*twdm.bety  [ri])/(d*dh^e)))
+  twp:addcol("alfx_vs_dqx_fd"  , \ri -> ((a*twfp.alfx  [ri] + b*twp.alfx  [ri] + c*twfm.alfx  [ri])/(d*dh^e)))
+  twp:addcol("alfx_vs_dqy_fd"  , \ri -> ((a*twdp.alfx  [ri] + b*twp.alfx  [ri] + c*twdm.alfx  [ri])/(d*dh^e)))
+  twp:addcol("alfy_vs_dqx_fd"  , \ri -> ((a*twfp.alfy  [ri] + b*twp.alfy  [ri] + c*twfm.alfy  [ri])/(d*dh^e)))
+  twp:addcol("alfy_vs_dqy_fd"  , \ri -> ((a*twdp.alfy  [ri] + b*twp.alfy  [ri] + c*twdm.alfy  [ri])/(d*dh^e)))
+  twp:addcol("r11_vs_dcr_fd"   , \ri -> ((a*twrp.r11   [ri] + b*twp.r11   [ri] + c*twrm.r11   [ri])/(d*dh^e)))
+  twp:addcol("r11_vs_dci_fd"   , \ri -> ((a*twip.r11   [ri] + b*twp.r11   [ri] + c*twim.r11   [ri])/(d*dh^e)))
+  twp:addcol("r12_vs_dcr_fd"   , \ri -> ((a*twrp.r12   [ri] + b*twp.r12   [ri] + c*twrm.r12   [ri])/(d*dh^e)))
+  twp:addcol("r12_vs_dci_fd"   , \ri -> ((a*twip.r12   [ri] + b*twp.r12   [ri] + c*twim.r12   [ri])/(d*dh^e)))
+  twp:addcol("r21_vs_dcr_fd"   , \ri -> ((a*twrp.r21   [ri] + b*twp.r21   [ri] + c*twrm.r21   [ri])/(d*dh^e)))
+  twp:addcol("r21_vs_dci_fd"   , \ri -> ((a*twip.r21   [ri] + b*twp.r21   [ri] + c*twim.r21   [ri])/(d*dh^e)))
+  twp:addcol("r22_vs_dcr_fd"   , \ri -> ((a*twrp.r22   [ri] + b*twp.r22   [ri] + c*twrm.r22   [ri])/(d*dh^e)))
+  twp:addcol("r22_vs_dci_fd"   , \ri -> ((a*twip.r22   [ri] + b*twp.r22   [ri] + c*twim.r22   [ri])/(d*dh^e)))
+  twp:addcol("f1010_vs_dcr_fd" , \ri -> ((a*twrp.f1010 [ri] + b*twp.f1010 [ri] + c*twrm.f1010 [ri])/(d*dh^e)))
+  twp:addcol("f1010_vs_dci_fd" , \ri -> ((a*twip.f1010 [ri] + b*twp.f1010 [ri] + c*twim.f1010 [ri])/(d*dh^e)))
+  twp:addcol("f1001_vs_dcr_fd" , \ri -> ((a*twrp.f1001 [ri] + b*twp.f1001 [ri] + c*twrm.f1001 [ri])/(d*dh^e)))
+  twp:addcol("f1001_vs_dci_fd" , \ri -> ((a*twip.f1001 [ri] + b*twp.f1001 [ri] + c*twim.f1001 [ri])/(d*dh^e)))
+end
 end
 
 -- Add error columns -----------
@@ -334,6 +445,28 @@ if chrm then
   twp:addcol("wyp_vs_dqx_dif"   , \ri -> twp.wyp_vs_dqx_da   [ri] - twp.wyp_vs_dqx_fd   [ri])
   twp:addcol("wyp_vs_dqy_dif"   , \ri -> twp.wyp_vs_dqy_da   [ri] - twp.wyp_vs_dqy_fd   [ri])
 end
+if cplg then
+  twp:addcol("betx_vs_dqx_dif"  , \ri -> twp.betx_vs_dqx_da  [ri] - twp.betx_vs_dqx_fd  [ri])
+  twp:addcol("betx_vs_dqy_dif"  , \ri -> twp.betx_vs_dqy_da  [ri] - twp.betx_vs_dqy_fd  [ri])
+  twp:addcol("bety_vs_dqx_dif"  , \ri -> twp.bety_vs_dqx_da  [ri] - twp.bety_vs_dqx_fd  [ri])
+  twp:addcol("bety_vs_dqy_dif"  , \ri -> twp.bety_vs_dqy_da  [ri] - twp.bety_vs_dqy_fd  [ri])
+  twp:addcol("alfx_vs_dqx_dif"  , \ri -> twp.alfx_vs_dqx_da  [ri] - twp.alfx_vs_dqx_fd  [ri])
+  twp:addcol("alfx_vs_dqy_dif"  , \ri -> twp.alfx_vs_dqy_da  [ri] - twp.alfx_vs_dqy_fd  [ri])
+  twp:addcol("alfy_vs_dqx_dif"  , \ri -> twp.alfy_vs_dqx_da  [ri] - twp.alfy_vs_dqx_fd  [ri])
+  twp:addcol("alfy_vs_dqy_dif"  , \ri -> twp.alfy_vs_dqy_da  [ri] - twp.alfy_vs_dqy_fd  [ri])
+  twp:addcol("r11_vs_dcr_dif"   , \ri -> twp.r11_vs_dcr_da   [ri] - twp.r11_vs_dcr_fd   [ri])
+  twp:addcol("r11_vs_dci_dif"   , \ri -> twp.r11_vs_dci_da   [ri] - twp.r11_vs_dci_fd   [ri])
+  twp:addcol("r12_vs_dcr_dif"   , \ri -> twp.r12_vs_dcr_da   [ri] - twp.r12_vs_dcr_fd   [ri])
+  twp:addcol("r12_vs_dci_dif"   , \ri -> twp.r12_vs_dci_da   [ri] - twp.r12_vs_dci_fd   [ri])
+  twp:addcol("r21_vs_dcr_dif"   , \ri -> twp.r21_vs_dcr_da   [ri] - twp.r21_vs_dcr_fd   [ri])
+  twp:addcol("r21_vs_dci_dif"   , \ri -> twp.r21_vs_dci_da   [ri] - twp.r21_vs_dci_fd   [ri])
+  twp:addcol("r22_vs_dcr_dif"   , \ri -> twp.r22_vs_dcr_da   [ri] - twp.r22_vs_dcr_fd   [ri])
+  twp:addcol("r22_vs_dci_dif"   , \ri -> twp.r22_vs_dci_da   [ri] - twp.r22_vs_dci_fd   [ri])
+  twp:addcol("f1010_vs_dcr_dif" , \ri -> twp.f1010_vs_dcr_da [ri] - twp.f1010_vs_dcr_fd [ri])
+  twp:addcol("f1010_vs_dci_dif" , \ri -> twp.f1010_vs_dci_da [ri] - twp.f1010_vs_dci_fd [ri])
+  twp:addcol("f1001_vs_dcr_dif" , \ri -> twp.f1001_vs_dcr_da [ri] - twp.f1001_vs_dcr_fd [ri])
+  twp:addcol("f1001_vs_dci_dif" , \ri -> twp.f1001_vs_dci_da [ri] - twp.f1001_vs_dci_fd [ri])
+end
 end
 
 -- Build plots ------------------------
@@ -371,7 +504,7 @@ plt {
               beta22_vs_dqx_fd="d β_y/d q_x", beta22_vs_dqy_fd="d β_y/d q_y"},
 }
 plt {
-  title    = tplt or "Sensitivity error of beta FD vs beta DA ("..snam..", order "..ord..")",
+  title    = tplt or "Sensitivity error of beta FD vs DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"beta11_vs_dqx_dif", "beta11_vs_dqy_dif", "beta22_vs_dqx_dif", "beta22_vs_dqy_dif"}},
   xlabel   = "s [m]"   ,
   ylabel   = "Error on d β_{x,y} / d q_{x,y}",
@@ -397,7 +530,7 @@ plt {
               alfa22_vs_dqx_fd="d α_y/d q_x", alfa22_vs_dqy_fd="d α_y/d q_y"},
 }
 plt {
-  title    = tplt or "Sensitivity error of alpha FD vs alpha DA ("..snam..", order "..ord..")",
+  title    = tplt or "Sensitivity error of alpha FD vs DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"alfa11_vs_dqx_dif", "alfa11_vs_dqy_dif", "alfa22_vs_dqx_dif", "alfa22_vs_dqy_dif"}},
   xlabel   = "s [m]"   ,
   ylabel   = "Error on d α_{x,y} / d q_{x,y}",
@@ -423,7 +556,7 @@ plt {
               gama22_vs_dqx_fd="d γ_y/d q_x", gama22_vs_dqy_fd="d γ_y/d q_y"},
 }
 plt {
-  title    = tplt or "Sensitivity error of gamma FD vs gamma DA ("..snam..", order "..ord..")",
+  title    = tplt or "Sensitivity error of gamma FD vs DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"gama11_vs_dqx_dif", "gama11_vs_dqy_dif", "gama22_vs_dqx_dif", "gama22_vs_dqy_dif"}},
   xlabel   = "s [m]"   ,
   ylabel   = "Error on d γ_{x,y} / d q_{x,y}",
@@ -449,7 +582,7 @@ plt {
               mu2_vs_dqx_fd="d μ_y/d q_x", mu2_vs_dqy_fd="d μ_y/d q_y"},
 }
 plt {
-  title    = tplt or "Sensitivity error of mu FD vs mu DA ("..snam..", order "..ord..")",
+  title    = tplt or "Sensitivity error of mu FD vs DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"mu1_vs_dqx_dif", "mu1_vs_dqy_dif", "mu2_vs_dqx_dif", "mu2_vs_dqy_dif"}},
   xlabel   = "s [m]",
   ylabel   = "Error on d μ_{x,y} / d q_{x,y}",
@@ -475,7 +608,7 @@ plt {
                dy_vs_dqx_fd="d D_y/d q_x", dy_vs_dqy_fd="d D_y/d q_y",},
 }
 plt {
-  title    = tplt or "Sensitivity error of disp FD vs disp DA ("..snam..", order "..ord..")",
+  title    = tplt or "Sensitivity error of disp FD vs DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"dx_vs_dqx_dif", "dx_vs_dqy_dif", "dy_vs_dqx_dif", "dy_vs_dqy_dif"}},
   xlabel   = "s [m]",
   ylabel   = "Error on d D_{x,y} / d q_{x,y}",
@@ -485,7 +618,7 @@ plt {
 
 -- Dispersion momenta functions
 plt {
-  title    = tplt or "Sensitivity of disp DA ("..snam..", order "..ord..")",
+  title    = tplt or "Sensitivity of dispp DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"dpx_vs_dqx_da", "dpx_vs_dqy_da", "dpy_vs_dqx_da", "dpy_vs_dqy_da"}},
   xlabel   = "s [m]",
   ylabel   = "d D_{px,py} / d q_{x,y}",
@@ -493,7 +626,7 @@ plt {
               dpy_vs_dqx_da="d D_{py}/d q_x", dpy_vs_dqy_da="d D_{py}/d q_y",},
 }
 plt {
-  title    = tplt or "Sensitivity of disp FD ("..snam..", order "..ord..")",
+  title    = tplt or "Sensitivity of dispp FD ("..snam..", order "..ord..")",
   x1y1     = {s = {"dpx_vs_dqx_fd", "dpx_vs_dqy_fd", "dpy_vs_dqx_fd", "dpy_vs_dqy_fd"}},
   xlabel   = "s [m]",
   ylabel   = "d D_{px,py} / d q_{x,y}",
@@ -501,7 +634,7 @@ plt {
               dpy_vs_dqx_fd="d D_{py}/d q_x", dpy_vs_dqy_fd="d D_{py}/d q_y",},
 }
 plt {
-  title    = tplt or "Sensitivity error of disp FD vs disp DA ("..snam..", order "..ord..")",
+  title    = tplt or "Sensitivity error of dispp FD vs DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"dpx_vs_dqx_dif", "dpx_vs_dqy_dif", "dpy_vs_dqx_dif", "dpy_vs_dqy_dif"}},
   xlabel   = "s [m]",
   ylabel   = "Error on d D_{px,py} / d q_{x,y}",
@@ -529,7 +662,7 @@ plt {
               dmu2_vs_dqx_fd="d μ{/Symbol \\242}_y / d q_x", dmu2_vs_dqy_fd="d μ{/Symbol \\242}_y / d q_y"},
 }
 plt {
-  title    = tplt or "Sensitivity error of dmu FD vs dmu DA ("..snam..", order "..ord..")",
+  title    = tplt or "Sensitivity error of dmu FD vs DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"dmu1_vs_dqx_dif", "dmu1_vs_dqy_dif", "dmu2_vs_dqx_dif", "dmu2_vs_dqy_dif"}},
   xlabel   = "s [m]",
   ylabel   = "Error on d μ{/Symbol \\242}_{x,y} / d q_{x,y}",
@@ -555,7 +688,7 @@ plt {
               wy_vs_dqx_fd="d w_y/d q_x",  wy_vs_dqy_fd="d w_y/d q_y"},
 }
 plt {
-  title    = tplt or "Sensitivity error of w FD vs w DA ("..snam..", order "..ord..")",
+  title    = tplt or "Sensitivity error of w FD vs DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"wx_vs_dqx_dif",  "wx_vs_dqy_dif",  "wy_vs_dqx_dif",  "wy_vs_dqy_dif"}},
   xlabel   = "s [m]",
   ylabel   = "Error on d w_{x,y} / d q_{x,y}",
@@ -581,7 +714,7 @@ plt {
               wyp_vs_dqx_fd="d w_{py}/d q_x", wyp_vs_dqy_fd="d w_{py}/d q_y"},
 }
 plt {
-  title    = tplt or "Sensitivity error of wp FD vs wp DA ("..snam..", order "..ord..")",
+  title    = tplt or "Sensitivity error of wp FD vs DA ("..snam..", order "..ord..")",
   x1y1     = {s = {"wxp_vs_dqx_dif", "wxp_vs_dqy_dif", "wyp_vs_dqx_dif", "wyp_vs_dqy_dif"}},
   xlabel   = "s [m]",
   ylabel   = "Error on d w_{px,py} / d q_{x,y}",
@@ -589,6 +722,139 @@ plt {
               wyp_vs_dqx_dif="Δ d w_{py}/d q_x", wyp_vs_dqy_dif="Δ d w_{py}/d q_y"},
 }
 end -- chrm
+
+if cplg then
+
+-- Local coupling functions
+
+-- Beta functions
+plt {
+  title    = tplt or "Sensitivity of bet DA ("..snam..", order "..ord..")",
+  x1y1     = {s = {"betx_vs_dqx_da", "betx_vs_dqy_da", "bety_vs_dqx_da", "bety_vs_dqy_da"}},
+  xlabel   = "s [m]"   ,
+  ylabel   = "d β_{x,y} / d q_{x,y}",
+  legend   = {betx_vs_dqx_da="d β_x/d q_x", betx_vs_dqy_da="d β_x/d q_y",
+              bety_vs_dqx_da="d β_y/d q_x", bety_vs_dqy_da="d β_y/d q_y"},
+}
+plt {
+  title    = tplt or "Sensitivity of bet FD ("..snam..", order "..ord..")",
+  x1y1     = {s = {"betx_vs_dqx_fd", "betx_vs_dqy_fd", "bety_vs_dqx_fd", "bety_vs_dqy_fd"}},
+  xlabel   = "s [m]",
+  ylabel   = "d β_{x,y} / d q_{x,y}",
+  legend   = {betx_vs_dqx_fd="d β_x/d q_x", betx_vs_dqy_fd="d β_x/d q_y",
+              bety_vs_dqx_fd="d β_y/d q_x", bety_vs_dqy_fd="d β_y/d q_y"},
+}
+plt {
+  title    = tplt or "Sensitivity error of bet FD vs DA ("..snam..", order "..ord..")",
+  x1y1     = {s = {"betx_vs_dqx_dif", "betx_vs_dqy_dif", "bety_vs_dqx_dif", "bety_vs_dqy_dif"}},
+  xlabel   = "s [m]"   ,
+  ylabel   = "Error on d β_{x,y} / d q_{x,y}",
+  legend   = {betx_vs_dqx_dif="Δ d β_x/d q_x", betx_vs_dqy_dif="Δ d β_x/d q_y",
+              bety_vs_dqx_dif="Δ d β_y/d q_x", bety_vs_dqy_dif="Δ d β_y/d q_y"},
+}
+
+-- Alpha functions
+plt {
+  title    = tplt or "Sensitivity of alf DA ("..snam..", order "..ord..")",
+  x1y1     = {s = {"alfx_vs_dqx_da", "alfx_vs_dqy_da", "alfy_vs_dqx_da", "alfy_vs_dqy_da"}},
+  xlabel   = "s [m]",
+  ylabel   = "d α_{x,y} / d q_{x,y}",
+  legend   = {alfx_vs_dqx_da="d α_x/d q_x", alfx_vs_dqy_da="d α_x/d q_y",
+              alfy_vs_dqx_da="d α_y/d q_x", alfy_vs_dqy_da="d α_y/d q_y"},
+}
+plt {
+  title    = tplt or "Sensitivity of alf FD ("..snam..", order "..ord..")",
+  x1y1     = {s = {"alfx_vs_dqx_fd", "alfx_vs_dqy_fd", "alfy_vs_dqx_fd", "alfy_vs_dqy_fd"}},
+  xlabel   = "s [m]"   ,
+  ylabel   = "d α_{x,y} / d q_{x,y}",
+  legend   = {alfx_vs_dqx_fd="d α_x/d q_x", alfx_vs_dqy_fd="d α_x/d q_y",
+              alfy_vs_dqx_fd="d α_y/d q_x", alfy_vs_dqy_fd="d α_y/d q_y"},
+}
+plt {
+  title    = tplt or "Sensitivity error of alf FD vs DA ("..snam..", order "..ord..")",
+  x1y1     = {s = {"alfx_vs_dqx_dif", "alfx_vs_dqy_dif", "alfy_vs_dqx_dif", "alfy_vs_dqy_dif"}},
+  xlabel   = "s [m]"   ,
+  ylabel   = "Error on d α_{x,y} / d q_{x,y}",
+  legend   = {alfx_vs_dqx_dif="Δ d α_x/d q_x", alfx_vs_dqy_dif="Δ d α_x/d q_y",
+              alfy_vs_dqx_dif="Δ d α_y/d q_x", alfy_vs_dqy_dif="Δ d α_y/d q_y"},
+}
+
+-- Rmatrix functions
+plt {
+  title    = tplt or "Sensitivity of R11,R12 DA ("..snam..", order "..ord..")",
+  x1y1     = {s = {"r11_vs_dcr_da", "r11_vs_dci_da", "r12_vs_dcr_da", "r12_vs_dci_da"}},
+  xlabel   = "s [m]",
+  ylabel   = "d r_{11,12} / d c_{r,i}",
+  legend   = {r11_vs_dcr_da="d r_{11}/d c_r", r11_vs_dci_da="d r_{11}/d c_i",
+              r12_vs_dcr_da="d r_{12}/d c_r", r12_vs_dci_da="d r_{12}/d c_i"},
+}
+plt {
+  title    = tplt or "Sensitivity of R11,R12 FD ("..snam..", order "..ord..")",
+  x1y1     = {s = {"r11_vs_dcr_fd", "r11_vs_dci_fd", "r12_vs_dcr_fd", "r12_vs_dci_fd"}},
+  xlabel   = "s [m]"   ,
+  ylabel   = "d r_{11,12} / d c_{r,i}",
+  legend   = {r11_vs_dcr_fd="d r_{11}/d c_r", r11_vs_dci_fd="d r_{11}/d c_i",
+              r12_vs_dcr_fd="d r_{12}/d c_r", r12_vs_dci_fd="d r_{12}/d c_i"},
+}
+plt {
+  title    = tplt or "Sensitivity error of R11,R12 FD vs DA ("..snam..", order "..ord..")",
+  x1y1     = {s = {"r11_vs_dcr_dif", "r11_vs_dci_dif", "r12_vs_dcr_dif", "r12_vs_dci_dif"}},
+  xlabel   = "s [m]"   ,
+  ylabel   = "Error on d r_{11,12} / d c_{r,i}",
+  legend   = {r11_vs_dcr_dif="Δ d r_{11}/d c_r", r11_vs_dci_dif="Δ d r_{11}/d c_i",
+              r12_vs_dcr_dif="Δ d r_{12}/d c_r", r12_vs_dci_dif="Δ d r_{12}/d c_i"},
+}
+plt {
+  title    = tplt or "Sensitivity of R21,R22 DA ("..snam..", order "..ord..")",
+  x1y1     = {s = {"r21_vs_dcr_da", "r21_vs_dci_da", "r22_vs_dcr_da", "r22_vs_dci_da"}},
+  xlabel   = "s [m]",
+  ylabel   = "d r_{21,22} / d c_{r,i}",
+  legend   = {r21_vs_dcr_da="d r_{21}/d c_r", r21_vs_dci_da="d r_{21}/d c_i",
+              r22_vs_dcr_da="d r_{22}/d c_r", r22_vs_dci_da="d r_{22}/d c_i"},
+}
+plt {
+  title    = tplt or "Sensitivity of R21,R22 FD ("..snam..", order "..ord..")",
+  x1y1     = {s = {"r21_vs_dcr_fd", "r21_vs_dci_fd", "r22_vs_dcr_fd", "r22_vs_dci_fd"}},
+  xlabel   = "s [m]"   ,
+  ylabel   = "d r_{21,22} / d c_{r,i}",
+  legend   = {r21_vs_dcr_fd="d r_{21}/d c_r", r21_vs_dci_fd="d r_{21}/d c_i",
+              r22_vs_dcr_fd="d r_{22}/d c_r", r22_vs_dci_fd="d r_{22}/d c_i"},
+}
+plt {
+  title    = tplt or "Sensitivity error of R21,R22 FD vs DA ("..snam..", order "..ord..")",
+  x1y1     = {s = {"r21_vs_dcr_dif", "r21_vs_dci_dif", "r22_vs_dcr_dif", "r22_vs_dci_dif"}},
+  xlabel   = "s [m]"   ,
+  ylabel   = "Error on d r_{21,22} / d c_{r,i}",
+  legend   = {r21_vs_dcr_dif="Δ d r_{21}/d c_r", r21_vs_dci_dif="Δ d r_{21}/d c_i",
+              r22_vs_dcr_dif="Δ d r_{22}/d c_r", r22_vs_dci_dif="Δ d r_{22}/d c_i"},
+}
+
+-- Linear Coupling RDTs
+plt {
+  title    = tplt or "Sensitivity of f1010,f1001 DA ("..snam..", order "..ord..")",
+  x1y1     = {s = {"f1010_vs_dcr_da", "f1010_vs_dci_da", "f1001_vs_dcr_da", "f1001_vs_dci_da"}},
+  xlabel   = "s [m]",
+  ylabel   = "d f_{1010,1001} / d c_{r,i}",
+  legend   = {f1010_vs_dcr_da="d f_{1010}/d c_r", f1010_vs_dci_da="d f_{1010}/d c_i",
+              f1001_vs_dcr_da="d f_{1001}/d c_r", f1001_vs_dci_da="d f_{1001}/d c_i"},
+}
+plt {
+  title    = tplt or "Sensitivity of f1010,f1001 FD ("..snam..", order "..ord..")",
+  x1y1     = {s = {"f1010_vs_dcr_fd", "f1010_vs_dci_fd", "f1001_vs_dcr_fd", "f1001_vs_dci_fd"}},
+  xlabel   = "s [m]"   ,
+  ylabel   = "d f_{1010,1001} / d c_{r,i}",
+  legend   = {f1010_vs_dcr_fd="d f_{1010}/d c_r", f1010_vs_dci_fd="d f_{1010}/d c_i",
+              f1001_vs_dcr_fd="d f_{1001}/d c_r", f1001_vs_dci_fd="d f_{1001}/d c_i"},
+}
+plt {
+  title    = tplt or "Sensitivity error of f1010,f1001 FD vs DA ("..snam..", order "..ord..")",
+  x1y1     = {s = {"f1010_vs_dcr_dif", "f1010_vs_dci_dif", "f1001_vs_dcr_dif", "f1001_vs_dci_dif"}},
+  xlabel   = "s [m]"   ,
+  ylabel   = "Error on d f_{1010,1001} / d c_{r,i}",
+  legend   = {f1010_vs_dcr_dif="Δ d f_{1010}/d c_r", f1010_vs_dci_dif="Δ d f_{1010}/d c_i",
+              f1001_vs_dcr_dif="Δ d f_{1001}/d c_r", f1001_vs_dci_dif="Δ d f_{1001}/d c_i"},
+}
+end -- cplg
 
 end -- over order ord
 
