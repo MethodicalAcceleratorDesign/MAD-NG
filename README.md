@@ -10,27 +10,15 @@ Methodical Accelerator Design
     /__/  /_/  /__/ /_/  /_____ /    |   licence: GNU GPL v3 (C) 2016+
                                      |   started: 2024-11-29 19:25:32
 
-The next-generation successor of MAD-X.
+The successor of MAD-X.
+
+
 
 <a href="https://zenodo.org/doi/10.5281/zenodo.7428893"><img src="https://zenodo.org/badge/37848936.svg" alt="DOI"></a>
 
-Resources
----
 
-- [Releases](https://cern.ch/mad/releases/madng/)
-- [Documentation](https://cern.ch/mad/releases/madng/html/)
+[Documentation](https://cern.ch/mad/releases/madng/html/)
 
-Cheatsheets
----
+[Releases](https://cern.ch/mad/releases/madng/) 
 
-- [MATLAB, Python, Julia, and MAD-NG comparison](https://methodicalacceleratordesign.github.io/MAD-NG/madng-comparison-cheatsheet.html)
-- [MAD-NG Language](https://methodicalacceleratordesign.github.io/MAD-NG/madng-cheatsheet.html)
-
-
-Publications and Presentations
----
-
-- [ATS Seminar 2025](https://indico.cern.ch/event/1615996/)
-- [ICAP 2024 Paper](https://arxiv.org/abs/2412.16006)
-- [ICAP 2024 Presentation](https://indico.gsi.de/event/19249/contributions/82657/)
-- [HB 2023 Paper (pre-v1.0)](https://proceedings.jacow.org/hb2023/papers/thbp15.pdf)
+[Paper](https://arxiv.org/abs/2412.16006)
