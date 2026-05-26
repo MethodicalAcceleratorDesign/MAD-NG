@@ -96,22 +96,38 @@ num_t mad_num_binom (int n, int k)
 
 num_t mad_num_sinc (num_t x)
 {
-  return fabs(x) < 1e-4 ? 1 - x*x/6 : sin(x)/x;
+  if (fabs(x) < 1e-4) {
+    num_t x2 = x*x;
+    return 1 + x2*(-1.0/6 + x2*(1.0/120 + x2*(-1.0/5040)));
+  }
+  return sin(x)/x;
 }
 
 num_t mad_num_sinhc (num_t x)
 {
-  return fabs(x) < 1e-4 ? 1 + x*x/6 : sinh(x)/x;
+  if (fabs(x) < 1e-4) {
+    num_t x2 = x*x;
+    return 1 + x2*( 1.0/6 + x2*(1.0/120 + x2*( 1.0/5040)));
+  }
+  return sinh(x)/x;
 }
 
 num_t mad_num_asinc (num_t x)
 {
-  return fabs(x) < 1e-4 ? 1 + x*x/6 : asin(x)/x;
+  if (fabs(x) < 1e-4) {
+    num_t x2 = x*x;
+    return 1 + x2*( 1.0/6 + x2*(3.0/40 + x2*( 5.0/112)));
+  }
+  return asin(x)/x;
 }
 
 num_t mad_num_asinhc (num_t x)
 {
-  return fabs(x) < 1e-4 ? 1 - x*x/6 : asinh(x)/x;
+  if (fabs(x) < 1e-4) {
+    num_t x2 = x*x;
+    return 1 + x2*(-1.0/6 + x2*(3.0/40 + x2*(-5.0/112)));
+  }
+  return asinh(x)/x;
 }
 
 num_t mad_num_powi (num_t x, int n)
