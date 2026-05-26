@@ -412,7 +412,7 @@ FUN(cot) (const T *a, T *c)                      // checked for real and complex
   ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(sin(a0) != 0, "invalid domain cot("FMT")", VAL(a0));
-  NUM f0 = tan(M_PI_2 - a0);
+  NUM f0 = NUMF(inv)(tan(a0));
 
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }
