@@ -98,7 +98,7 @@ num_t mad_num_sinc (num_t x)
 {
   if (fabs(x) < 1e-4) {
     num_t x2 = x*x;
-    return 1 + x2*(-1.0/6 + x2*(1.0/120 + x2*(-1.0/5040)));
+    return 1 + x2*(-1./6 + x2*(1./120 + x2*(-1./5040)));
   }
   return sin(x)/x;
 }
@@ -107,7 +107,7 @@ num_t mad_num_sinhc (num_t x)
 {
   if (fabs(x) < 1e-4) {
     num_t x2 = x*x;
-    return 1 + x2*( 1.0/6 + x2*(1.0/120 + x2*( 1.0/5040)));
+    return 1 + x2*( 1./6 + x2*(1./120 + x2*( 1./5040)));
   }
   return sinh(x)/x;
 }
@@ -116,7 +116,7 @@ num_t mad_num_asinc (num_t x)
 {
   if (fabs(x) < 1e-4) {
     num_t x2 = x*x;
-    return 1 + x2*( 1.0/6 + x2*(3.0/40 + x2*( 5.0/112)));
+    return 1 + x2*( 1./6 + x2*(3./40 + x2*( 5./112)));
   }
   return asin(x)/x;
 }
@@ -125,7 +125,7 @@ num_t mad_num_asinhc (num_t x)
 {
   if (fabs(x) < 1e-4) {
     num_t x2 = x*x;
-    return 1 + x2*(-1.0/6 + x2*(3.0/40 + x2*(-5.0/112)));
+    return 1 + x2*(-1./6 + x2*(3./40 + x2*(-5./112)));
   }
   return asinh(x)/x;
 }
