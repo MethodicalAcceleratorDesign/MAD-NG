@@ -226,28 +226,40 @@ cpx_t mad_cpx_inv (cpx_t x)
   return mad_cpx_div(1, x);
 }
 
-cpx_t mad_cpx_sinc  (cpx_t x)
+cpx_t mad_cpx_sinc (cpx_t x)
 {
-  return cabs(x)<1e-4 ? 1 - 0.1666666666666666666667*x*x
-                      : mad_cpx_div(csin(x), x);
+  if (cabs(x) < 1e-4) {
+    cpx_t x2 = x*x;
+    return 1 + x2*(-1./6 + x2*(1./120 + x2*(-1./5040)));
+  }
+  return mad_cpx_div(csin(x), x);
 }
 
 cpx_t mad_cpx_sinhc (cpx_t x)
 {
-  return cabs(x)<1e-4 ? 1 + 0.1666666666666666666667*x*x
-                      : mad_cpx_div(csinh(x), x);
+  if (cabs(x) < 1e-4) {
+    cpx_t x2 = x*x;
+    return 1 + x2*( 1./6 + x2*(1./120 + x2*( 1./5040)));
+  }
+  return mad_cpx_div(csinh(x), x);
 }
 
-cpx_t mad_cpx_asinc  (cpx_t x)
+cpx_t mad_cpx_asinc (cpx_t x)
 {
-  return cabs(x)<1e-4 ? 1 + 0.1666666666666666666667*x*x
-                      : mad_cpx_div(casin(x), x);
+  if (cabs(x) < 1e-4) {
+    cpx_t x2 = x*x;
+    return 1 + x2*( 1./6 + x2*(3./40 + x2*( 5./112)));
+  }
+  return mad_cpx_div(casin(x), x);
 }
 
 cpx_t mad_cpx_asinhc (cpx_t x)
 {
-  return cabs(x)<1e-4 ? 1 - 0.1666666666666666666667*x*x
-                      : mad_cpx_div(casinh(x), x);
+  if (cabs(x) < 1e-4) {
+    cpx_t x2 = x*x;
+    return 1 + x2*(-1./6 + x2*(3./40 + x2*(-5./112)));
+  }
+  return mad_cpx_div(casinh(x), x);
 }
 
 cpx_t mad_cpx_powi (cpx_t x, int n)
