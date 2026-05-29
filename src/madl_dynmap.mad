@@ -84,7 +84,8 @@ local printf                                                     in MAD.utility
 local pt2beta                                                    in MAD.gphys
 
 local abs, sqrt, invsqrt, exp, log, sin, cos, tan, asin, acos,
-      atan, atan2, sinh, cosh, sinc, sinhc, asinc, fval, fabs, fchk in MAD.gmath
+      atan, atan2, sinh, cosh, sinc, sinhc, asinc, sincosq, sincoshq,
+      fval, fabs, fchk                                           in MAD.gmath
 
 local    pi_clight =    pi/clight
 local twopi_clight = twopi/clight
@@ -881,19 +882,25 @@ function M.quad_thick (elm, m, lw, istp) -- [PUSHTKT7]                        --
   local chg = beam.charge
 
   -- [GETMAT7] TODO: cache these values as lw is the same over the slices
-  local ws = k1*edir < 0 and -1 or 1
+  local ws = fval(k1)*edir < 0 and -1 or 1
   local cx, sx, mx1, mx2
   local cy, sy, my1, my2
 
   if fabs(k1) > minstr then                                                   -- k1 as prm?
-    local w = sqrt(abs(k1))*sdir*edir*ws
-    cx, sx = cos (w*l), sin (w*l)
-    cy, sy = cosh(w*l), sinh(w*l)
-    mx1, mx2 = sx/w, -sx*w
-    my1, my2 = sy/w,  sy*w
+--  local w = sqrt(abs(k1))*ws
+--  cx, sx = cos (w*l), sin (w*l)
+--  cy, sy = cosh(w*l), sinh(w*l)
+--  mx1, mx2 = sx/w, -sx*w
+--  my1, my2 = sy/w,  sy*w
+    local w = abs(k1)
+    local wl2 = w*l^2
+    sx, cx = sincosq (wl2)
+    sy, cy = sincoshq(wl2)
+    mx1, mx2 = l*sx, -w*l*sx
+    my1, my2 = l*sy,  w*l*sy
   else
-    cx, sx, mx1, mx2 = 1, 0, l, 0
-    cy, sy, my1, my2 = 1, 0, l, 0
+    cx, sx, mx1, mx2 = 1, 0, l, 0 -- wrong with paramters!
+    cy, sy, my1, my2 = 1, 0, l, 0 -- wrong with paramters!
   end
 
   for i=1,m.npar do
@@ -954,12 +961,18 @@ function M.quad_thicks (elm, m, lw, istp) -- [PUSHTKT7]                       --
   local chg = beam.charge
 
   -- [GETMAT7]
-  local ws = k1*edir < 0 and -1 or 1
-  local w  = sqrt(abs(k1))*sdir*edir*ws
-  local cx, sx = cos (w*l), sin (w*l)
-  local cy, sy = cosh(w*l), sinh(w*l)
-  local mx1, mx2 = sx/w, -sx*w
-  local my1, my2 = sy/w,  sy*w
+  local ws = fval(k1)*edir < 0 and -1 or 1
+--local w  = sqrt(abs(k1))*sdir*edir*ws
+--local cx, sx = cos (w*l), sin (w*l)
+--local cy, sy = cosh(w*l), sinh(w*l)
+--local mx1, mx2 = sx/w, -sx*w
+--local my1, my2 = sy/w,  sy*w
+  local w  = abs(k1)
+  local wl2 = w*l^2
+  local sx, cx = sincosq (wl2)
+  local sy, cy = sincoshq(wl2)
+  local mx1, mx2 = l*sx, -w*l*sx
+  local my1, my2 = l*sy,  w*l*sy
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -1029,34 +1042,48 @@ function M.quad_thickh_new (elm, m, lw, istp) -- [PUSHTKT7]                   --
 
   local kx  = (knl[2]+eh*knl[1])/el --only absolute value used
   local ky  = -knl[2]/el            --only absolute value used
-  local wxs = kx*edir < 0 and -1 or 1
-  local wys = ky*edir < 0 and -1 or 1
   local mx11, mx12, mx13, mx21, mx22, mx23, mx31, mx32, mx33
   local my11, my12, my13, my21, my22, my23
 
-  local wx, wy = 0, 0
   if fabs(kx) > minstr then                                                   -- k0 or k1 as prm?
-    wx = sqrt(abs(kx))*sdir*edir*wxs
-    local cx, sx = cos (wx*l), sin (wx*l)
-    local cy, sy = cosh(wx*l), sinh(wx*l)
-    mx11, mx12, mx13 =  cx  , sx/w, wxs*eh*(cx-1)/wx^2
-    mx21, mx22, mx23 = -sx*w, cx  , mx12
-    mx31, mx32, mx33 =  mx23, mx13, wxs*-eh^2*(l-mx12)/wx^2
+--  local wxs = fval(kx)*edir < 0 and -1 or 1
+--  local wx = sqrt(abs(kx))*sdir*edir*wxs
+--  local cx, sx = cos (wx*l), sin (wx*l)
+--  local cy, sy = cosh(wx*l), sinh(wx*l)
+--  mx11, mx12, mx13 =  cx   , sx/wx, wxs*eh*(cx-1)/wx^2
+--  mx21, mx22, mx23 = -sx*wx, cx   , mx12
+--  mx31, mx32, mx33 =  mx23 , mx13 , wxs*-eh^2*(l-mx12)/wx^2
+    local wxs = fval(kx)*edir < 0 and -1 or 1
+    local w   = abs(kx)
+    local wl2 = w*l^2
+    local sx, cx = sincosq (wl2)
+    local sy, cy = sincoshq(wl2)
+    mx11, mx12, mx13 =      cx, l*sx,  wxs*eh*(cx-1)/w
+    mx21, mx22, mx23 = -w*l*sx,   cx,  mx12
+    mx31, mx32, mx33 =    mx23, mx13, -wxs*eh^2*(l-mx12)/w
   else
-    mx11, mx12, mx13 =  1, l, eh*l^2/2
-    mx21, mx22, mx23 =  0, 1, eh*l
-    mx31, mx32, mx33 =  mx23, mx13, mx13*mx23/3
+    mx11, mx12, mx13 =  1, l, eh*l^2/2            -- wrong with parameters!
+    mx21, mx22, mx23 =  0, 1, eh*l                -- wrong with parameters!
+    mx31, mx32, mx33 =  mx23, mx13, mx13*mx23/3   -- wrong with parameters!
   end
 
   if fabs(ky) > minstr then                                                   -- k1 as prm?
-    wy = sqrt(abs(ky))*sdir*edir*wys
-    local cx, sx = cos (wy*l), sin (wy*l)
-    local cy, sy = cosh(wy*l), sinh(wy*l)
-    my11, my12, my13 =  cy  , sy/w, 0
-    my21, my22, my23 =  sy*w, cy  , 0
+--  local wys = fval(ky)*edir < 0 and -1 or 1
+--  local wy  = sqrt(abs(ky))*sdir*edir*wys
+--  local cx, sx = cos (wy*l), sin (wy*l)
+--  local cy, sy = cosh(wy*l), sinh(wy*l)
+--  my11, my12, my13 =  cy  , sy/w, 0
+--  my21, my22, my23 =  sy*w, cy  , 0
+    local wys = fval(ky)*edir < 0 and -1 or 1
+    local w   = abs(ky)
+    local wl2 = w*l^2
+    local sx, cx = sincosq (wl2)
+    local sy, cy = sincoshq(wl2)
+    my11, my12, my13 =      cy, l*sy, 0
+    my21, my22, my23 =  w*l*sy,   cy, 0
   else
-    my11, my12, my13 =  1, l, 0
-    my21, my22, my23 =  0, 1, 0
+    my11, my12, my13 =  1, l, 0                  -- wrong with paramters!
+    my21, my22, my23 =  0, 1, 0                  -- wrong with paramters!
   end
 
   for i=1,m.npar do
@@ -1064,7 +1091,7 @@ function M.quad_thickh_new (elm, m, lw, istp) -- [PUSHTKT7]                   --
     local beta = beam and beam.beta   or beta
     local  chg = beam and beam.charge or chg
 
-    if ws ~= chg then -- swap x <-> y
+    if ws ~= chg then -- swap x <-> y            -- wrong, vertical has no eh...
       mx11, mx12, mx13, mx21, mx22, mx23,
       my11, my12, my13, my21, my22, my23,  ws =
       my11, my12, my13, my21, my22, my23,
@@ -1111,28 +1138,21 @@ function M.quad_thickh (elm, m, lw, istp) -- [PUSHTKT7]                       --
 
   -- [GETMAT7, w ~= 0]
   local kx  = (knl[2]+eh*knl[1])/el   -- No need to include sign of edir here (see below)
-  local ky  = -knl[2]/el              --only absolute value used
-  local wxs = kx*edir < 0 and -1 or 1 --w(x/y)s determines sign after sqrt
-  local wys = ky*edir < 0 and -1 or 1
-  local wx, cx, sx, wy, cy, sy
+  local ky  = -knl[2]/el              -- only absolute value used
+  local wxs = fval(kx)*edir < 0 and -1 or 1 -- w(x/y)s determines sign after sqrt
+  local wys = fval(ky)*edir < 0 and -1 or 1
   local mx11, mx12, mx13, mx21, mx22, mx23, mx31, mx32, mx33
   local my11, my12,       my21, my22
 
-  if fabs(kx) > minstr then                                                   -- k0 or k1 as prm?
-    wx = sqrt(abs(kx))*wxs -- only wxs is needed for the sign of kx
-  else
-    wx = 0
-    mx11, mx12, mx13 = 1   , l   , eh*l^2/2
-    mx21, mx22, mx23 = 0   , 1   , eh*l
-    mx31, mx32, mx33 = mx23, mx13, mx13*mx23/3
+  if fabs(kx) <= minstr then                                                  -- k0 or k1 as prm?
+    mx11, mx12, mx13 = 1   , l   , eh*l^2/2     -- wrong with parameters!
+    mx21, mx22, mx23 = 0   , 1   , eh*l         -- wrong with parameters!
+    mx31, mx32, mx33 = mx23, mx13, mx13*mx23/3  -- wrong with parameters!
   end
 
-  if fabs(ky) > minstr then                                                   -- k1 as prm?
-    wy = sqrt(abs(ky))*wys -- only wys is needed for the sign of ky
-  else
-    wy = 0
-    my11, my12 = 1, l
-    my21, my22 = 0, 1
+  if fabs(ky) <= minstr then                                                  -- k1 as prm?
+    my11, my12 = 1, l  -- wrong with paramters!
+    my21, my22 = 0, 1  -- wrong with paramters!
   end
 
   -- trig 1st GETMAT7, no need to reverse wxs and wys
@@ -1143,28 +1163,57 @@ function M.quad_thickh (elm, m, lw, istp) -- [PUSHTKT7]                       --
     local chg  = beam and beam.charge or chg
     local beta = beam and beam.beta   or beta
 
-    local cx, sx
-    if wx ~= 0 then -- [GETMAT7]
-      wx, wxs = wx*chg, -wxs*chg
-      if wx > 0
-      then cx, sx = cos (wx*l), sin (wx*l)
-      else cx, sx = cosh(wx*l), sinh(wx*l)
-      end
-      mx11, mx12, mx13 = cx       , sx/wx,  eh*    (cx-1)*wxs/wx^2
-      mx21, mx22, mx23 = wxs*wx*sx, cx   ,  eh*     mx12
-      mx31, mx32, mx33 = mx23     , mx13 , -eh^2*(l-mx12)*wxs/wx^2
+    if fabs(kx) > minstr then
+      local w   = abs(kx)
+      local wl2 = w*l^2
+      local xs  = -wxs*chg
+      local cx, sx
+
+      if xs < 0
+      then sx, cx = sincosq (wl2)
+      else sx, cx = sincoshq(wl2) end
+
+      mx11, mx12, mx13 =  cx       , l*sx,  eh*(cx-1)*xs/w
+      mx21, mx22, mx23 =  xs*w*l*sx, cx  ,  eh*mx12
+      mx31, mx32, mx33 =  mx23     , mx13, -eh^2*(l-mx12)*xs/w
     end
 
-    local cy, sy
-    if wy ~= 0 then -- [GETMAT7]
-      wy, wys = wy*chg, -wys*chg
-      if wy > 0
-      then cy, sy = cos (wy*l), sin (wy*l)
-      else cy, sy = cosh(wy*l), sinh(wy*l)
-      end
-      my11, my12 = cy       , sy/wy
-      my21, my22 = wys*wy*sy, cy
+    --if wx ~= 0 then -- [GETMAT7] OLD
+    --  local cx, sx
+    --  local wx, wxs = wx*chg, -wxs*chg
+    --  if wx > 0
+    --  then cx, sx = cos (wx*l), sin (wx*l)
+    --  else cx, sx = cosh(wx*l), sinh(wx*l)
+    --  end
+    --  mx11, mx12, mx13 = cx       , sx/wx,  eh*    (cx-1)*wxs/wx^2
+    --  mx21, mx22, mx23 = wxs*wx*sx, cx   ,  eh*     mx12
+    --  mx31, mx32, mx33 = mx23     , mx13 , -eh^2*(l-mx12)*wxs/wx^2
+    --end
+
+    if fabs(ky) > minstr then
+      local w   = abs(ky)
+      local wl2 = w*l^2
+      local ys  = -wys*chg
+      local cy, sy
+
+      if ys < 0
+      then sy, cy = sincosq (wl2)
+      else sy, cy = sincoshq(wl2) end
+
+      my11, my12 = cy       , l*sy
+      my21, my22 = ys*w*l*sy, cy
     end
+
+--    if wy ~= 0 then -- [GETMAT7] OLD
+--      local cy, sy
+--      wy, wys = wy*chg, -wys*chg
+--      if wy > 0
+--      then cy, sy = cos (wy*l), sin (wy*l)
+--      else cy, sy = cosh(wy*l), sinh(wy*l)
+--      end
+--      my11, my12 = cy       , sy/wy
+--      my21, my22 = wys*wy*sy, cy
+--    end
 
 --[[ PTC matrix form
     { cx      , sx/wx          ,  h*(cx-1)/wx2*ws     ,
@@ -1173,12 +1222,6 @@ function M.quad_thickh (elm, m, lw, istp) -- [PUSHTKT7]                       --
     { cy      , sy/wy          ,  0                   ,
       sy*wy*ws, cy             ,  0                    }
 --]]
-
-    -- print("mx11=", mx11) print("mx12=", mx12) print("mx13=", mx13)
-    -- print("mx21=", mx21) print("mx22=", mx22) print("mx23=", mx23)
-    -- print("my11=", my11) print("my12=", my12)
-    -- print("my21=", my21) print("my22=", my22)
-    -- print("mx31=", mx31) print("mx32=", mx32) print("mx33=", mx33)
 
     local nx  = x*mx11 + px*mx12 + pt*(mx13/beta)
     local npx = x*mx21 + px*mx22 + pt*(mx23/beta)
