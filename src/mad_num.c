@@ -98,7 +98,7 @@ num_t mad_num_sinc (num_t x)
 {
   if (fabs(x) < 1e-4) {
     num_t x2 = x*x;
-    return 1 + x2*(-1./6 + x2*(1./120 + x2*(-1./5040)));
+    return 1. + x2*(-1./6 + x2*(1./120 + x2*(-1./5040)));
   }
   return sin(x)/x;
 }
@@ -107,7 +107,7 @@ num_t mad_num_sinhc (num_t x)
 {
   if (fabs(x) < 1e-4) {
     num_t x2 = x*x;
-    return 1 + x2*( 1./6 + x2*(1./120 + x2*( 1./5040)));
+    return 1. + x2*( 1./6 + x2*(1./120 + x2*( 1./5040)));
   }
   return sinh(x)/x;
 }
@@ -116,7 +116,7 @@ num_t mad_num_asinc (num_t x)
 {
   if (fabs(x) < 1e-4) {
     num_t x2 = x*x;
-    return 1 + x2*( 1./6 + x2*(3./40 + x2*( 5./112)));
+    return 1. + x2*( 1./6 + x2*(3./40 + x2*( 5./112)));
   }
   return asin(x)/x;
 }
@@ -125,10 +125,37 @@ num_t mad_num_asinhc (num_t x)
 {
   if (fabs(x) < 1e-4) {
     num_t x2 = x*x;
-    return 1 + x2*(-1./6 + x2*(3./40 + x2*(-5./112)));
+    return 1. + x2*(-1./6 + x2*(3./40 + x2*(-5./112)));
   }
   return asinh(x)/x;
 }
+
+num_t mad_num_cosrt (num_t x)
+{
+  if (fabs(x) < 1e-4)
+    return 1. - x*(1./2 - x*(1./24 - x*(1./720 - x*(1./40320
+              - x*(1./3628800 - x*(1./479001600))))));
+
+  return x >= 0 ? cos(sqrt(x)) : cosh(sqrt(-x));
+}
+
+num_t mad_num_sincrt (num_t x) // sinc(sqrt(x)), analytic in x
+{
+  if (fabs(x) < 1e-4)
+    return 1. - x*(1./6 - x*(1./120 - x*(1./5040 - x*(1./362880
+              - x*(1./39916800 - x*(1./6227020800))))));
+
+  if (x >= 0) {
+    num_t r = sqrt(x);
+    return sin(r)/r;
+  } else {
+    num_t r = sqrt(-x);
+    return sinh(r)/r;
+  }
+}
+
+num_t mad_num_coshrt  (num_t x) { return mad_num_cosrt (-x); }
+num_t mad_num_sinhcrt (num_t x) { return mad_num_sincrt(-x); }
 
 num_t mad_num_powi (num_t x, int n)
 {
@@ -230,7 +257,7 @@ cpx_t mad_cpx_sinc (cpx_t x)
 {
   if (cabs(x) < 1e-4) {
     cpx_t x2 = x*x;
-    return 1 + x2*(-1./6 + x2*(1./120 + x2*(-1./5040)));
+    return 1. + x2*(-1./6 + x2*(1./120 + x2*(-1./5040)));
   }
   return mad_cpx_div(csin(x), x);
 }
@@ -239,7 +266,7 @@ cpx_t mad_cpx_sinhc (cpx_t x)
 {
   if (cabs(x) < 1e-4) {
     cpx_t x2 = x*x;
-    return 1 + x2*( 1./6 + x2*(1./120 + x2*( 1./5040)));
+    return 1. + x2*( 1./6 + x2*(1./120 + x2*( 1./5040)));
   }
   return mad_cpx_div(csinh(x), x);
 }
@@ -248,7 +275,7 @@ cpx_t mad_cpx_asinc (cpx_t x)
 {
   if (cabs(x) < 1e-4) {
     cpx_t x2 = x*x;
-    return 1 + x2*( 1./6 + x2*(3./40 + x2*( 5./112)));
+    return 1. + x2*( 1./6 + x2*(3./40 + x2*( 5./112)));
   }
   return mad_cpx_div(casin(x), x);
 }
@@ -257,10 +284,32 @@ cpx_t mad_cpx_asinhc (cpx_t x)
 {
   if (cabs(x) < 1e-4) {
     cpx_t x2 = x*x;
-    return 1 + x2*(-1./6 + x2*(3./40 + x2*(-5./112)));
+    return 1. + x2*(-1./6 + x2*(3./40 + x2*(-5./112)));
   }
   return mad_cpx_div(casinh(x), x);
 }
+
+cpx_t mad_cpx_cosrt (cpx_t x)
+{
+  if (cabs(x) < 1e-4)
+    return 1. - x*(1./2 - x*(1./24 - x*(1./720 - x*(1./40320
+              - x*(1./3628800 - x*(1./479001600))))));
+
+  return cos(sqrt(x));
+}
+
+cpx_t mad_cpx_sincrt (cpx_t x) // sinc(sqrt(x)), analytic in x
+{
+  if (cabs(x) < 1e-4)
+    return 1. - x*(1./6 - x*(1./120 - x*(1./5040 - x*(1./362880
+              - x*(1./39916800 - x*(1./6227020800))))));
+
+  cpx_t r = sqrt(x);
+  return sin(r)/r;
+}
+
+cpx_t mad_cpx_coshrt  (cpx_t x) { return mad_cpx_cosrt (-x); }
+cpx_t mad_cpx_sinhcrt (cpx_t x) { return mad_cpx_sincrt(-x); }
 
 cpx_t mad_cpx_powi (cpx_t x, int n)
 {
@@ -303,6 +352,11 @@ void mad_cpx_sinc_r  (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = mad_cpx_sin
 void mad_cpx_sinhc_r (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = mad_cpx_sinhc ( CPX(x) ); }
 void mad_cpx_asinc_r (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = mad_cpx_asinc ( CPX(x) ); }
 void mad_cpx_asinhc_r(num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = mad_cpx_asinhc( CPX(x) ); }
+
+void mad_cpx_cosrt_r  (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = mad_cpx_cosrt  ( CPX(x) ); }
+void mad_cpx_sincrt_r (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = mad_cpx_sincrt ( CPX(x) ); }
+void mad_cpx_coshrt_r (num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = mad_cpx_coshrt ( CPX(x) ); }
+void mad_cpx_sinhcrt_r(num_t x_re, num_t x_im, cpx_t *r) { CHKR; *r = mad_cpx_sinhcrt( CPX(x) ); }
 
 void mad_cpx_invsqrt_r (num_t x_re, num_t x_im, cpx_t *r)
 { CHKR; *r = csqrt(mad_cpx_inv(CPX(x))); }
