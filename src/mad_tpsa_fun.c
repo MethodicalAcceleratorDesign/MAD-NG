@@ -309,9 +309,9 @@ FUN(sincos) (const T *a, T *s, T *c)             // checked for real and complex
   ord_t sto = s->mo, cto = c->mo;
   if (!sto || !cto) {
     if (!sto) FUN(setval)(s, sa);
-    else      FUN(sin)(a,s);
+    else      FUN(sin)(a, s);
     if (!cto) FUN(setval)(c, ca);
-    else      FUN(cos)(a,c);
+    else      FUN(cos)(a, c);
     DBGFUN(<-); return;
   }
 
@@ -327,6 +327,101 @@ FUN(sincos) (const T *a, T *s, T *c)             // checked for real and complex
     cos_coef[o] = -cos_coef[o-2] / (o*(o-1.));
 
   sincos_taylor(a,s,c, sto,sin_coef, cto,cos_coef);
+  DBGFUN(<-);
+}
+
+void
+FUN(sincosq) (const T *a, T *s, T *c) // sinc(sqrt(x)) and cos(sqrt(x))
+{
+  assert(a && s && c); DBGFUN(->);
+  ensure(IS_COMPAT(a,s,c), "incompatibles GTPSA (descriptors differ)");
+
+  NUM a0 = a->coef[0], sa = NUMF(sincrt)(a0), ca = NUMF(cosrt)(a0);
+
+  if (a->hi == 0) {
+    FUN(setval)(s, sa);
+    FUN(setval)(c, ca);
+    DBGFUN(<-); return;
+  }
+
+  T *ts = s, *tc = c;
+  ord_t sto = s->mo, cto = c->mo;
+  if (!sto || !cto) {
+    if (!sto && !cto) {
+      FUN(setval)(s, sa);
+      FUN(setval)(c, ca);
+      DBGFUN(<-); return;
+    }
+    if (!sto) ts = GET_TMPX(s), sto = 1;
+    if (!cto) tc = GET_TMPX(c), cto = 1;
+  }
+
+  NUM sin_coef[sto+1], cos_coef[cto+1];
+  if (fabs(a0) < 1e-12) {
+    sin_coef[0] = 1, cos_coef[0] = 1;
+    for (ord_t o = 1; o <= sto; ++o)
+      sin_coef[o] = -sin_coef[o-1] / ((2.*o+1)*(2.*o));
+    for (ord_t o = 1; o <= cto; ++o)
+      cos_coef[o] = -cos_coef[o-1] / ((2.*o)*(2.*o-1));
+  } else
+  if (fabs(a0) < 0.75) {
+    NUM c0 = 1, s0 = 1;
+    for (ord_t o = 0; o <= cto; ++o) {
+      if (o) c0 = -c0 / ((2.*o)*(2.*o-1));   // (-1)^o/(2o)!
+
+      NUM v = c0, t = c0;
+      for (int j = 1; j < 100; ++j) {
+        num_t n = o+j;
+        t *= -a0*n / ((2*n)*(2*n-1)*j);
+        v += t;
+        if (fabs(t) <= fabs(v)*4*DBL_EPSILON) break;
+      }
+      cos_coef[o] = v;
+    }
+    for (ord_t o = 0; o <= sto; ++o) {
+      if (o) s0 = -s0 / ((2.*o+1)*(2.*o));   // (-1)^o/(2o+1)!
+
+      NUM v = s0, t = s0;
+      for (int j = 1; j < 100; ++j) {
+        num_t n = o+j;
+        t *= -a0*n / ((2*n)*(2*n+1)*j);
+        v += t;
+        if (fabs(t) <= fabs(v)*4*DBL_EPSILON) break;
+      }
+      sin_coef[o] = v;
+    }
+    cos_coef[0] = ca, sin_coef[0] = sa;
+  }
+  else {
+    NUM sv = sa, cv = ca, t;
+    sin_coef[0] = sv, cos_coef[0] = cv;
+
+    ord_t to = MAX(sto,cto);
+    for (ord_t o = 1; o <= to; ++o) {
+      t = -sv / (2.*o);
+      sv = (cv - (2.*o-1)*sv) / (2.*a0*o);
+      cv = t;
+      if (o <= cto) cos_coef[o] = cv;
+      if (o <= sto) sin_coef[o] = sv;
+    }
+  }
+
+  sincos_taylor(a,ts,tc, sto,sin_coef, cto,cos_coef);
+  if (ts != s) FUN(setval)(s, sa), REL_TMPX(ts);
+  if (tc != c) FUN(setval)(c, ca), REL_TMPX(tc);
+  DBGFUN(<-);
+}
+
+void
+FUN(sincoshq) (const T *a, T *s, T *c) // sinh(sqrt(x))/sqrt(x) and cosh(sqrt(x))
+{
+  assert(a && s && c); DBGFUN(->);
+  ensure(IS_COMPAT(a,s,c), "incompatibles GTPSA (descriptors differ)");
+
+  T *t = GET_TMPX(c);
+  FUN(scl)(a,-1,t);
+  FUN(sincosq)(t,s,c);
+  REL_TMPX(t);
   DBGFUN(<-);
 }
 

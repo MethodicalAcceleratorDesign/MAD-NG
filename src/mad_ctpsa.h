@@ -158,12 +158,14 @@ void     mad_ctpsa_sqrt    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_exp     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_log     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_sincos  (const ctpsa_t *a, ctpsa_t *s, ctpsa_t *c);
+void     mad_ctpsa_sincosq (const ctpsa_t *a, ctpsa_t *s, ctpsa_t *c); // sinc(sqrt(x)), cos(sqrt(x))
 void     mad_ctpsa_sin     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_cos     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_tan     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_cot     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_sinc    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_sincosh (const ctpsa_t *a, ctpsa_t *s, ctpsa_t *c);
+void     mad_ctpsa_sincoshq(const ctpsa_t *a, ctpsa_t *s, ctpsa_t *c); // sinhc(sqrt(x)), cosh(sqrt(x))
 void     mad_ctpsa_sinh    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_cosh    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_tanh    (const ctpsa_t *a, ctpsa_t *c);
