@@ -538,10 +538,11 @@ function M.strex_kick (elm, m, lw, istp, no_k0l) -- [KICKEX]                  --
   m.atdebug(elm, m, 'strex_kick:1')
 end
 
-local function strex_kicks(elm, m, lw, i, wchg, beta, pz)
+local function strex_kicks(elm, m, lw, i, wchg, beta)
   local ks, lrad in m
   local x, px, y, py, pt in m[i]
 
+  local   pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
   local  hss = lw*lrad*ks^2 -- 4 H(s_0)^2/ds
   local _dpp = 1/pz
   local _dp  = _dpp^2
@@ -570,34 +571,36 @@ function M.strex_kickhs (elm, m, lw, istp) -- [KICKT]                         --
   local beta = beam.beta
 
   for i=1,m.npar do
-    local x, y, t, pt, beam in m[i]
+    local beam in m[i]
     local wchg = beam and lw*edir*beam.charge or wchg
     local beta = beam and beam.beta or beta
-    local   pz = sqrt(1 + 2/beta*pt + pt^2)
 
-    if sdir == -1 then strex_kicks(elm, m, lw, i, wchg, beta, pz) end
+    if sdir == -1 then strex_kicks(elm, m, lw, i, wchg, beta) end
 
     -- multipole
     if nmul > 0 then
+      local x, y in m[i]
       local bx,by = bxby(nmul, knl, ksl, x, y)
 
       m[i].px = m[i].px - wchg*by -- With 0 el and ksi ~= 0, we get problems with the multipole
       m[i].py = m[i].py + wchg*bx
 
       if fchk(knl[1], minstr) or fchk(ksl[1], minstr) then
-        m[i].px = m[i].px + (wchg* knl[1])*pz
-        m[i].py = m[i].py - (wchg* ksl[1])*pz
-        m[i].t  = m[i].t  -  wchg*(knl[1]*x - ksl[1]*y)*(1/beta+pt)/pz
+       local px, py, t, pt in m[i]
+       local pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
+        m[i].px = px + (wchg* knl[1])*pz
+        m[i].py = py - (wchg* ksl[1])*pz
+        m[i].t  = t  -  wchg*(knl[1]*x - ksl[1]*y)*(1/beta+pt)/pz
 
         -- field curvature
-        if fabs(lrad) > minlen then                                           -- lrad as prm?
+        if fchk(lrad, minlen) then
           m[i].px = m[i].px - lw*(knl[1]^2/lrad)*x
           m[i].py = m[i].py - lw*(ksl[1]^2/lrad)*y
         end
       end
     end
 
-    if sdir == 1 then strex_kicks(elm, m, lw, i, wchg, beta, pz) end
+    if sdir == 1 then strex_kicks(elm, m, lw, i, wchg, beta) end
 
   end
 
@@ -680,58 +683,13 @@ local function curex_drift0 (elm, m, lw, i, ld, ca, sa, sa2, rho)
   m.atdebug(elm, m, 'curex_drift0:1')
 end
 
-local function sbend_thick_new (elm, m, lw, istp) -- [SSEC]                   -- checked
+local function sbend_thick_ds (elm, m, lw, istp) -- [SSEC]                    -- unchecked
   m.atdebug(elm, m, 'sbend_thick:0')
-
-  local el, eh, edir, knl, beam in m
-  local ld, ang, rho, k0 = el*lw, eh*el*lw*edir, 1/eh*edir, knl[1]/el*edir
-  local beta, k0q = beam.beta, k0*beam.charge
-  local ca, sa, sa2, s2a = cos(ang), sin(ang), sin(ang/2), sin(2*ang)
-
-  for i=1,m.npar do
-    local x, px, y, py, t, pt, beam in m[i]
-    local beta = beam and beam.beta or beta
-    local  k0q = beam and k0*beam.charge or k0q
-
-    if k0q == 0 then
-      curex_drift0 (elm, m, lw, i, ld, ca, sa, sa2, rho)
-      goto continue
-    end
-
-    local  pw2 = 1 + 2/beta*pt + pt^2 - py^2
-    local   pz = sqrt(pw2 - px^2)                                       -- PZ
-    local   xr = x+rho
-    local  pzx = pz - k0q*xr
-    local  npx = sa*pzx + ca*px                                         -- XN(2)
-    local  dpx = ca*pzx - sa*px                                         -- DPX'
-    local  pzs = sqrt(pw2 - npx^2)                                      -- PZS
-    local _ptt = invsqrt(pw2)                                           -- 1/PT
-
-    local  xt1 = -k0q*x^2 + 2*(pz*xr - (k0q*rho)*x) - k0q*rho^2
-    local   xi =  px*_ptt
-    local zeta = npx*_ptt
-    local  sxi = sqrt(1-xi^2)
-    local    w = (ca*xi + sa*sxi) * sqrt(1-zeta^2)
-    local    v = (sa*xi - ca*sxi) * zeta
-    local  xt2 = (s2a*px + sa^2*(2*pz - k0q*xr)) * xr*_ptt^2 / (w - v)
-    local  dxs = asinc(xt2*k0q)*xt2
-
-    -- Error arises from 1/(w-v) -> ["040000"] = ~1e10 then reduces to ~1e-2
-    -- leading to an error of ~1e-8
-
-    -- eq. 126 in Forest06 with modif. from Sagan
-    m[i].x  = xt1/(dpx+pzs) - rho                                       -- XN(1)
-    m[i].px = npx                                                       -- XN(2)
-    m[i].y  = y + dxs*py                                                -- XN(3)
-    m[i].t  = t - dxs*(1/beta+pt) + (1-m.T)/beta*ld                     -- XN(6)
-
-    ::continue::
-  end
-
+  error("NYI")
   m.atdebug(elm, m, 'sbend_thick:1')
 end
 
-local function sbend_thick_old (elm, m, lw, istp) -- [SSEC]                   -- checked
+local function sbend_thick (elm, m, lw, istp) -- [SSEC]                       -- checked
   m.atdebug(elm, m, 'sbend_thick:0')
 
   local el, eh, edir, knl, beam in m
@@ -770,7 +728,7 @@ local function sbend_thick_old (elm, m, lw, istp) -- [SSEC]                   --
   m.atdebug(elm, m, 'sbend_thick:1')
 end
 
-M.sbend_thick = new_bend_thick and sbend_thick_new or sbend_thick_old
+M.sbend_thick = new_bend_thick and sbend_thick_ds or sbend_thick
 M.sbend_kick  = \el,m,lw,istp -> M.curex_kick(el,m,lw,istp,true) ;            -- checked
 
 -- TKT [INTER_STREX] ----------------------------------------------------------o
@@ -791,7 +749,7 @@ local function strex_drift0 (elm, m, lw, i, l, ld)                            --
   m.atdebug(elm, m, 'strex_drift0:1')
 end
 
-local function rbend_thick_new (elm, m, lw, istp) -- [SPAR]                   -- checked
+local function rbend_thick_ds (elm, m, lw, istp) -- [SPAR]                    -- checked
   m.atdebug(elm, m, 'rbend_thick:0')
 
   local el, eld, edir, knl, beam in m
@@ -814,6 +772,7 @@ local function rbend_thick_new (elm, m, lw, istp) -- [SPAR]                   --
     local _ptt = invsqrt(pw2)
     local   pz = sqrt(pw2 - px^2)
     local  pzs = sqrt(pw2 - npx^2)
+
     local   xi =  px*_ptt
     local zeta = npx*_ptt
     local  xtd = xi*sqrt(1-zeta^2) + zeta*sqrt(1-xi^2)
@@ -832,7 +791,7 @@ local function rbend_thick_new (elm, m, lw, istp) -- [SPAR]                   --
   m.atdebug(elm, m, 'rbend_thick:1')
 end
 
-local function rbend_thick_old (elm, m, lw, istp) -- [SPAR]                   -- checked
+local function rbend_thick (elm, m, lw, istp) -- [SPAR]                       -- checked
   m.atdebug(elm, m, 'rbend_thick:0')
 
   local el, eld, edir, knl, beam in m
@@ -869,7 +828,7 @@ local function rbend_thick_old (elm, m, lw, istp) -- [SPAR]                   --
   m.atdebug(elm, m, 'rbend_thick:1')
 end
 
-M.rbend_thick = new_bend_thick and rbend_thick_new or rbend_thick_old
+M.rbend_thick = new_bend_thick and rbend_thick_ds or rbend_thick
 M.rbend_kick  = \el,m,lw,istp -> M.strex_kick(el,m,lw,istp,true)              -- checked
 
 -- TKT [INTER_TKTF] -----------------------------------------------------------o
@@ -881,12 +840,12 @@ function M.quad_thick (elm, m, lw, istp) -- [PUSHTKT7]                        --
   local l = el*lw
   local chg = beam.charge
 
-  -- [GETMAT7] TODO: cache these values as lw is the same over the slices
+  -- [GETMAT7]
   local ws = fval(k1)*edir < 0 and -1 or 1
   local cx, sx, mx1, mx2
   local cy, sy, my1, my2
 
-  if fabs(k1) > minstr then                                                   -- k1 as prm?
+  if fchk(k1, minstr) or fchk(l, minlen) then                                 -- k1 as prm
 --  local w = sqrt(abs(k1))*ws
 --  cx, sx = cos (w*l), sin (w*l)
 --  cy, sy = cosh(w*l), sinh(w*l)
@@ -896,11 +855,11 @@ function M.quad_thick (elm, m, lw, istp) -- [PUSHTKT7]                        --
     local wl2 = w*l^2
     sx, cx = sincosq (wl2)
     sy, cy = sincoshq(wl2)
-    mx1, mx2 = l*sx, -w*l*sx
-    my1, my2 = l*sy,  w*l*sy
+    mx1, mx2 = l*sx, -l*w*sx
+    my1, my2 = l*sy,  l*w*sy
   else
-    cx, sx, mx1, mx2 = 1, 0, l, 0 -- wrong with paramters!
-    cy, sy, my1, my2 = 1, 0, l, 0 -- wrong with paramters!
+    sx, cx, mx1, mx2 = 0, 1, l, 0
+    sy, cy, my1, my2 = 0, 1, l, 0
   end
 
   for i=1,m.npar do
@@ -967,12 +926,12 @@ function M.quad_thicks (elm, m, lw, istp) -- [PUSHTKT7]                       --
 --local cy, sy = cosh(w*l), sinh(w*l)
 --local mx1, mx2 = sx/w, -sx*w
 --local my1, my2 = sy/w,  sy*w
-  local w  = abs(k1)
+  local w = abs(k1)
   local wl2 = w*l^2
   local sx, cx = sincosq (wl2)
   local sy, cy = sincoshq(wl2)
-  local mx1, mx2 = l*sx, -w*l*sx
-  local my1, my2 = l*sy,  w*l*sy
+  local mx1, mx2 = l*sx, -l*w*sx
+  local my1, my2 = l*sy,  l*w*sy
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
@@ -1031,168 +990,60 @@ M.quad_kicks = \elm, m, lw, istp -> M.quad_kicks_(elm, m, lw, 0)
 
 -- curved (eh ~= 0)
 
-function M.quad_thickh_new (elm, m, lw, istp) -- [PUSHTKT7]                   -- unchecked
-  m.atdebug(elm, m, 'quad_thickh:0')
-
-  local el, eh, sdir, edir, beam in m
-  local    l = el*lw
-  local   eh = eh*edir
-  local beta = beam.beta
-  local  chg = beam.charge
-
-  local kx  = (knl[2]+eh*knl[1])/el --only absolute value used
-  local ky  = -knl[2]/el            --only absolute value used
-  local mx11, mx12, mx13, mx21, mx22, mx23, mx31, mx32, mx33
-  local my11, my12, my13, my21, my22, my23
-
-  if fabs(kx) > minstr then                                                   -- k0 or k1 as prm?
---  local wxs = fval(kx)*edir < 0 and -1 or 1
---  local wx = sqrt(abs(kx))*sdir*edir*wxs
---  local cx, sx = cos (wx*l), sin (wx*l)
---  local cy, sy = cosh(wx*l), sinh(wx*l)
---  mx11, mx12, mx13 =  cx   , sx/wx, wxs*eh*(cx-1)/wx^2
---  mx21, mx22, mx23 = -sx*wx, cx   , mx12
---  mx31, mx32, mx33 =  mx23 , mx13 , wxs*-eh^2*(l-mx12)/wx^2
-    local wxs = fval(kx)*edir < 0 and -1 or 1
-    local w   = abs(kx)
-    local wl2 = w*l^2
-    local sx, cx = sincosq (wl2)
-    local sy, cy = sincoshq(wl2)
-    mx11, mx12, mx13 =      cx, l*sx,  wxs*eh*(cx-1)/w
-    mx21, mx22, mx23 = -w*l*sx,   cx,  mx12
-    mx31, mx32, mx33 =    mx23, mx13, -wxs*eh^2*(l-mx12)/w
-  else
-    mx11, mx12, mx13 =  1, l, eh*l^2/2            -- wrong with parameters!
-    mx21, mx22, mx23 =  0, 1, eh*l                -- wrong with parameters!
-    mx31, mx32, mx33 =  mx23, mx13, mx13*mx23/3   -- wrong with parameters!
-  end
-
-  if fabs(ky) > minstr then                                                   -- k1 as prm?
---  local wys = fval(ky)*edir < 0 and -1 or 1
---  local wy  = sqrt(abs(ky))*sdir*edir*wys
---  local cx, sx = cos (wy*l), sin (wy*l)
---  local cy, sy = cosh(wy*l), sinh(wy*l)
---  my11, my12, my13 =  cy  , sy/w, 0
---  my21, my22, my23 =  sy*w, cy  , 0
-    local wys = fval(ky)*edir < 0 and -1 or 1
-    local w   = abs(ky)
-    local wl2 = w*l^2
-    local sx, cx = sincosq (wl2)
-    local sy, cy = sincoshq(wl2)
-    my11, my12, my13 =      cy, l*sy, 0
-    my21, my22, my23 =  w*l*sy,   cy, 0
-  else
-    my11, my12, my13 =  1, l, 0                  -- wrong with paramters!
-    my21, my22, my23 =  0, 1, 0                  -- wrong with paramters!
-  end
-
-  for i=1,m.npar do
-    local x, px, y, py, t, pt, beam in m[i]
-    local beta = beam and beam.beta   or beta
-    local  chg = beam and beam.charge or chg
-
-    if ws ~= chg then -- swap x <-> y            -- wrong, vertical has no eh...
-      mx11, mx12, mx13, mx21, mx22, mx23,
-      my11, my12, my13, my21, my22, my23,  ws =
-      my11, my12, my13, my21, my22, my23,
-      mx11, mx12, mx13, mx21, mx22, mx23, -ws
-    end
-
---  mx11 = cx                  ; 1
---  mx12 = sx/w                ; l
---  mx13 = ws*beta*(cx-1)/w^2  ; beta*l^2/2
---  mx21 = ws*w*sx             ; 0
---  mx22 = cx                  ; 1
---  mx23 = beta*mx12           ; beta*l
-
---  my11 = cy                  ; 1
---  my12 = sy/w                ; l
---  my13 = 0                   ; 0
---  my21 = ws*w*sy             ; 0
---  my22 = cx                  ; 1
---  my23 = 0                   ; 0
-
-    local nx  = x*mx11 + px*mx12 + (mx13/beta)*pt
-    local npx = x*mx21 + px*mx22 + (mx23/beta)*pt
-    local ny  = y*my11 + py*my12
-    local npy = y*my21 + py*my22
-    -- TODO: update t...
-
-    m[i].x  = nx
-    m[i].px = npx
-    m[i].y  = ny
-    m[i].py = npy
-  end
-
-  m.atdebug(elm, m, 'quad_thickh:1')
-end
-
 function M.quad_thickh (elm, m, lw, istp) -- [PUSHTKT7]                       -- unchecked (checked for sdir=1 and eh=0)
   m.atdebug(elm, m, 'quad_thickh:0')
 
   local el, eh, edir, knl, beam in m
   local l = el*lw
+  local l2 = l^2
   local eh = eh*edir
   local chg = beam.charge
   local beta = beam.beta
 
   -- [GETMAT7, w ~= 0]
-  local kx  = (knl[2]+eh*knl[1])/el   -- No need to include sign of edir here (see below)
-  local ky  = -knl[2]/el              -- only absolute value used
-  local wxs = fval(kx)*edir < 0 and -1 or 1 -- w(x/y)s determines sign after sqrt
+  local kx  = (knl[2]+eh*knl[1])/el
+  local ky  = -knl[2]/el
+  local wxs = fval(kx)*edir < 0 and -1 or 1
   local wys = fval(ky)*edir < 0 and -1 or 1
   local mx11, mx12, mx13, mx21, mx22, mx23, mx31, mx32, mx33
   local my11, my12,       my21, my22
 
-  if fabs(kx) <= minstr then                                                  -- k0 or k1 as prm?
-    mx11, mx12, mx13 = 1   , l   , eh*l^2/2     -- wrong with parameters!
-    mx21, mx22, mx23 = 0   , 1   , eh*l         -- wrong with parameters!
-    mx31, mx32, mx33 = mx23, mx13, mx13*mx23/3  -- wrong with parameters!
+  if not fchk(kx, minstr) then
+    mx11, mx12, mx13 = 1   , l   , eh*l2/2
+    mx21, mx22, mx23 = 0   , 1   , eh*l
+    mx31, mx32, mx33 = mx23, mx13, mx13*mx23/3
   end
 
-  if fabs(ky) <= minstr then                                                  -- k1 as prm?
-    my11, my12 = 1, l  -- wrong with paramters!
-    my21, my22 = 0, 1  -- wrong with paramters!
+  if not fchk(ky, minstr) then
+    my11, my12 = 1, l
+    my21, my22 = 0, 1
   end
-
-  -- trig 1st GETMAT7, no need to reverse wxs and wys
-  -- Removed reverse of wx and wy as they were just reversed later on
 
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
     local chg  = beam and beam.charge or chg
     local beta = beam and beam.beta   or beta
 
-    if fabs(kx) > minstr then
+    if fchk(kx, minstr) then
       local w   = abs(kx)
-      local wl2 = w*l^2
+      local wl2 = w*l2
       local xs  = -wxs*chg
-      local cx, sx
+      local cx, sx, cmx, smx
 
       if xs < 0
-      then sx, cx = sincosq (wl2)
-      else sx, cx = sincoshq(wl2) end
+      then sx , cx  = sincosq  (wl2)
+           smx, cmx = sincosmq (wl2)
+      else sx , cx  = sincoshq (wl2)
+           smx, cmx = sincoshmq(wl2) end
 
-      mx11, mx12, mx13 =  cx       , l*sx,  eh*(cx-1)*xs/w
+      mx11, mx12, mx13 =  cx       , l*sx,  eh*xs*l2*cmx
       mx21, mx22, mx23 =  xs*w*l*sx, cx  ,  eh*mx12
-      mx31, mx32, mx33 =  mx23     , mx13, -eh^2*(l-mx12)*xs/w
+      mx31, mx32, mx33 =  mx23     , mx13,  eh^2*xs*l*l2*smx
     end
 
-    --if wx ~= 0 then -- [GETMAT7] OLD
-    --  local cx, sx
-    --  local wx, wxs = wx*chg, -wxs*chg
-    --  if wx > 0
-    --  then cx, sx = cos (wx*l), sin (wx*l)
-    --  else cx, sx = cosh(wx*l), sinh(wx*l)
-    --  end
-    --  mx11, mx12, mx13 = cx       , sx/wx,  eh*    (cx-1)*wxs/wx^2
-    --  mx21, mx22, mx23 = wxs*wx*sx, cx   ,  eh*     mx12
-    --  mx31, mx32, mx33 = mx23     , mx13 , -eh^2*(l-mx12)*wxs/wx^2
-    --end
-
-    if fabs(ky) > minstr then
+    if fchk(ky, minstr) then
       local w   = abs(ky)
-      local wl2 = w*l^2
+      local wl2 = w*l2
       local ys  = -wys*chg
       local cy, sy
 
@@ -1204,18 +1055,7 @@ function M.quad_thickh (elm, m, lw, istp) -- [PUSHTKT7]                       --
       my21, my22 = ys*w*l*sy, cy
     end
 
---    if wy ~= 0 then -- [GETMAT7] OLD
---      local cy, sy
---      wy, wys = wy*chg, -wys*chg
---      if wy > 0
---      then cy, sy = cos (wy*l), sin (wy*l)
---      else cy, sy = cosh(wy*l), sinh(wy*l)
---      end
---      my11, my12 = cy       , sy/wy
---      my21, my22 = wys*wy*sy, cy
---    end
-
---[[ PTC matrix form
+--[[ PTC matrix form (linear approx of combined function with disp coupling)
     { cx      , sx/wx          ,  h*(cx-1)/wx2*ws     ,
       sx*wx*ws, cx             ,  h*sx/wx             ,
       h*sx/wx , h*(cx-1)/wx2*ws, -h^2*(l-sx/wx)/wx2*ws }
@@ -1245,20 +1085,27 @@ function M.quad_kickh_ (elm, m, lw, istp) -- [KICKTKT7]                       --
 
   m.atdebug(elm, m, 'quad_kickh:0')
   if m.nmul > 0 then
-    local eh, edir, nmul, knl, ksl, beam in m
+    local eh, edir, nmul, snm, knl, ksl, bfx, bfy, beam in m
     local   eh = eh*edir
     local beta = beam.beta
     local wchg = lw*edir*beam.charge
+    local kxl  = knl[2]+eh*knl[1]
+    local kyl  = knl[2]
 
     for i=1,m.npar do
       local x, px, y, py, t, pt, beam in m[i]
-      local  beam = beam and beam.beta or beta
+      local  beta = beam and beam.beta or beta
       local  wchg = beam and lw*edir*beam.charge or wchg
-      local    pz = sqrt(1 + 2/beta*pt + pt^2)
-      local bx,by = bxby(nmul, knl, ksl, x, y)
+      local    pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
+      local   rho = 1 + eh*x
+      local bx,by
 
-      m[i].px = px - wchg*(by - knl[2]*x) + l*eh*(pz-(1/beta*pt)) -- eh has tdir included
-      m[i].py = py + wchg*(bx - knl[2]*y)
+      if snm > 0
+      then bx,by = bxbyh(snm, bfx, bfy, x, y)
+      else bx,by = bxby (nmul,knl, ksl, x, y) end
+
+      m[i].px = px - wchg*(by*rho - kxl*x) + l*eh*(pz-(1/beta*pt))
+      m[i].py = py + wchg*(bx*rho - kyl*y)
       m[i].t  =  t - l*eh*((1/beta+pt)/pz - 1/beta)*x
     end
   end
