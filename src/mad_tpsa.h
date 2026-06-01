@@ -128,6 +128,7 @@ void    mad_tpsa_exp     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_log     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_sincos  (const tpsa_t *a, tpsa_t *s, tpsa_t *c);
 void    mad_tpsa_sincosq (const tpsa_t *a, tpsa_t *s, tpsa_t *c); // sinc(sqrt(x)), cos(sqrt(x))
+void    mad_tpsa_sincosmq(const tpsa_t *a, tpsa_t *s, tpsa_t *c); // (sinc(sqrt(x))-1)/x, (cos(sqrt(x))-1)/x
 void    mad_tpsa_sin     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_cos     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_tan     (const tpsa_t *a, tpsa_t *c);
@@ -135,6 +136,7 @@ void    mad_tpsa_cot     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_sinc    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_sincosh (const tpsa_t *a, tpsa_t *s, tpsa_t *c);
 void    mad_tpsa_sincoshq(const tpsa_t *a, tpsa_t *s, tpsa_t *c); // sinhc(sqrt(x)), cosh(sqrt(x))
+void    mad_tpsa_sincoshmq(const tpsa_t*a, tpsa_t *s, tpsa_t *c); // (sinhc(sqrt(x))-1)/x, (cosh(sqrt(x))-1)/x
 void    mad_tpsa_sinh    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_cosh    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_tanh    (const tpsa_t *a, tpsa_t *c);
