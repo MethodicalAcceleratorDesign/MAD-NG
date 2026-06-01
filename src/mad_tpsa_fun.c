@@ -402,7 +402,7 @@ FUN(sincosq) (const T *a, T *s, T *c) // sinc(sqrt(x)) and cos(sqrt(x))
 
     ord_t to = MAX(sto,cto);
     for (ord_t o = 1; o <= to; ++o) {
-      t = -sv / (2.*o);
+      t  = -sv / (2.*o);
       sv = (cv - (2.*o-1)*sv) / (2.*a0*o);
       cv = t;
       if (o <= cto) cos_coef[o] = cv;
@@ -484,26 +484,21 @@ FUN(sincosmq) (const T *a, T *s, T *c) // (sinc(sqrt(x))-1)/x and (cos(sqrt(x))-
     cos_coef[0] = ca, sin_coef[0] = sa;
   }
   else {
-    NUM sv = sa, cv = ca, sp = sv;
-    sin_coef[0] = sv, cos_coef[0] = cv;
+    NUM cv = (-0.5*(1 + a0*sa) - ca) / a0;
+    NUM sv = (ca - 3*sa) / (2*a0);
+    NUM sp = sa;
 
-    NUM cv1 = (-0.5*(1 + a0*sv) - cv) / a0;
-    NUM sv1 = (cv - 3*sv) / (2*a0);
-
-    if (1 <= cto) cos_coef[1] = cv1;
-    if (1 <= sto) sin_coef[1] = sv1;
-
-    cv = cv1, sv = sv1;
+    sin_coef[0] = sa, cos_coef[0] = ca;
+    if (1 <= cto) cos_coef[1] = cv;
+    if (1 <= sto) sin_coef[1] = sv;
 
     ord_t to = MAX(sto,cto);
     for (ord_t o = 2; o <= to; ++o) {
-      cv1 = (-0.5*(a0*sv + sp) - o*cv) / (a0*o);
-      sv1 = (cv - (2*o+1)*sv) / (2*a0*o);
-
+      NUM cv1 = (-0.5*(a0*sv + sp) - o*cv) / (a0*o);
+      NUM sv1 = (cv - (2*o+1)*sv) / (2*a0*o);
+      if (o <= cto) cos_coef[o] = cv1;
+      if (o <= sto) sin_coef[o] = sv1;
       sp = sv, cv = cv1, sv = sv1;
-
-      if (o <= cto) cos_coef[o] = cv;
-      if (o <= sto) sin_coef[o] = sv;
     }
   }
 
