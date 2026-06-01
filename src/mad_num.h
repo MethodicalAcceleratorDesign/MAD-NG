@@ -57,6 +57,10 @@ num_t mad_num_cosrt    (num_t x); // cos(sqrt(x))
 num_t mad_num_sincrt   (num_t x); // sinc(sqrt(x))
 num_t mad_num_coshrt   (num_t x); // cosh(sqrt(x))
 num_t mad_num_sinhcrt  (num_t x); // sinhc(sqrt(x))
+num_t mad_num_cosmrt   (num_t x); // (cos(sqrt(x))-1)/x
+num_t mad_num_sincmrt  (num_t x); // (sinc(sqrt(x))-1)/x
+num_t mad_num_coshmrt  (num_t x); // (cosh(sqrt(x))-1)/x
+num_t mad_num_sinhcmrt (num_t x); // (sinhc(sqrt(x))-1)/x
 
 num_t mad_num_powi     (num_t x, int n);
 
@@ -70,6 +74,10 @@ cpx_t mad_cpx_cosrt    (cpx_t x); // cos(sqrt(x))
 cpx_t mad_cpx_sincrt   (cpx_t x); // sinc(sqrt(x))
 cpx_t mad_cpx_coshrt   (cpx_t x); // cosh(sqrt(x))
 cpx_t mad_cpx_sinhcrt  (cpx_t x); // sinhc(sqrt(x))
+cpx_t mad_cpx_cosmrt   (cpx_t x); // (cos(sqrt(x))-1)/x
+cpx_t mad_cpx_sincmrt  (cpx_t x); // (sinc(sqrt(x))-1)/x
+cpx_t mad_cpx_coshmrt  (cpx_t x); // (cosh(sqrt(x))-1)/x
+cpx_t mad_cpx_sinhcmrt (cpx_t x); // (sinhc(sqrt(x))-1)/x
 cpx_t mad_cpx_powi     (cpx_t x, int n);
 
 num_t mad_cpx_abs_r    (num_t x_re, num_t x_im);
@@ -98,11 +106,15 @@ void  mad_cpx_sinc_r   (num_t x_re, num_t x_im, cpx_t *r);
 void  mad_cpx_sinhc_r  (num_t x_re, num_t x_im, cpx_t *r);
 void  mad_cpx_asinc_r  (num_t x_re, num_t x_im, cpx_t *r);
 void  mad_cpx_asinhc_r (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_cosrt_r  (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_sincrt_r (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_coshrt_r (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_sinhcrt_r(num_t x_re, num_t x_im, cpx_t *r);
 
-void  mad_cpx_cosrt_r  (num_t x_re, num_t x_im, cpx_t *r); // cos(sqrt(x))
-void  mad_cpx_sincrt_r (num_t x_re, num_t x_im, cpx_t *r); // sinc(sqrt(x))
-void  mad_cpx_coshrt_r (num_t x_re, num_t x_im, cpx_t *r); // cosh(sqrt(x))
-void  mad_cpx_sinhcrt_r(num_t x_re, num_t x_im, cpx_t *r); // sinhc(sqrt(x))
+void  mad_cpx_cosmrt_r  (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_sincmrt_r (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_coshmrt_r (num_t x_re, num_t x_im, cpx_t *r);
+void  mad_cpx_sinhcmrt_r(num_t x_re, num_t x_im, cpx_t *r);
 
 void  mad_cpx_unit_r   (num_t x_re, num_t x_im, cpx_t *r);
 void  mad_cpx_proj_r   (num_t x_re, num_t x_im, cpx_t *r);
