@@ -733,19 +733,7 @@ FUN(erfc  );
 template <class A> \
 inline std::pair<T,T> F (const tpsa_base<A> &a) {  TRC("baz") \
   T s(a), c(a); mad_tpsa_ ## F (a.ptr(), s.ptr(), c.ptr()); return {s, c}; \
-} \
-FUN_TMP(F)
-
-#if TPSA_USE_TMP
-
-#define FUN_TMP(F) \
-inline std::pair<T,T> F (const T &a) { TRC("tmp") \
-  T s(a), c(a); mad_tpsa_ ## F (a.ptr(), s.ptr(), c.ptr()); return {s, c}; \
 }
-
-#else
-#define FUN_TMP(F)
-#endif // TPSA_USE_TMP
 
 FUN(sincosq);
 FUN(sincosmq);
@@ -753,7 +741,6 @@ FUN(sincoshq);
 FUN(sincoshmq);
 
 #undef FUN
-#undef FUN_TMP
 
 } // mad
 
