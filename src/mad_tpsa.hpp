@@ -36,6 +36,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <utility>
 
 extern "C" {
 #include "mad_num.h"
@@ -581,13 +582,31 @@ inline void swap (num_t    &a, num_t    &b) { TRC("num") std::swap(a,b); }
 
 inline num_t ord    (num_t a           ) { TRC("num") return 0; (void)a; }
 inline num_t fval   (num_t a           ) { TRC("num") return a; }
-inline num_t nrm    (num_t a           ) { TRC("num") return abs(a); }
+inline num_t fabs   (num_t a           ) { TRC("num") return std::abs(a); }
+inline bool  fchk   (num_t a, num_t v  ) { TRC("num") return std::abs(a) > v; }
+inline num_t nrm    (num_t a           ) { TRC("num") return std::abs(a); }
 inline num_t sqr    (num_t a           ) { TRC("num") return a*a; }
 inline num_t inv    (num_t a, num_t v=1) { TRC("num") return v/a; }
-inline num_t invsqrt(num_t a, num_t v=1) { TRC("num") return v/sqrt(a); }
+inline num_t invsqrt(num_t a, num_t v=1) { TRC("num") return v/std::sqrt(a); }
 inline num_t sinc   (num_t a           ) { TRC("num") return mad_num_sinc (a); }
 inline num_t sinhc  (num_t a           ) { TRC("num") return mad_num_sinhc(a); }
 inline num_t asinc  (num_t a           ) { TRC("num") return mad_num_asinc(a); }
+
+inline std::pair<num_t,num_t> sincosq(num_t a) { TRC("num")
+  return { mad_num_sincrt(a), mad_num_cosrt(a) };
+}
+
+inline std::pair<num_t,num_t> sincoshq(num_t a) { TRC("num")
+  return { mad_num_sinhcrt(a), mad_num_coshrt(a) };
+}
+
+inline std::pair<num_t,num_t> sincosmq(num_t a) { TRC("num")
+  return { mad_num_sincmrt(a), mad_num_cosmrt(a) };
+}
+
+inline std::pair<num_t,num_t> sincoshmq(num_t a) { TRC("num")
+  return { mad_num_sinhcmrt(a), mad_num_coshmrt(a) };
+}
 
 inline ord_t ord (const tpsa_t *a) { TRC("tpsa")
   return mad_tpsa_ord(a, false);
@@ -608,12 +627,21 @@ inline num_t fval (const tpsa_base<A> &a) { TRC("baz")
 }
 
 inline num_t fabs (const tpsa_t *a) { TRC("tpsa")
-  return abs(mad_tpsa_geti(a,0));
+  return std::abs(mad_tpsa_geti(a,0));
 }
 
 template <class A>
 inline num_t fabs (const tpsa_base<A> &a) { TRC("baz")
-  return abs(a[0]);
+  return std::abs(a[0]);
+}
+
+inline bool fchk (const tpsa_t *a, num_t v) { TRC("tpsa")
+  return true; (void)a; (void)v;
+}
+
+template <class A>
+inline bool fchk (const tpsa_base<A> &a, num_t v) { TRC("baz")
+  return true; (void)a; (void)v;
 }
 
 template <class A>
@@ -696,11 +724,40 @@ FUN(asinhc);
 FUN(erf   );
 FUN(erfc  );
 
+#undef FUN
+#undef FUN_TMP
+
+// --- dual ---
+
+#define FUN(F) \
+template <class A> \
+inline std::pair<T,T> F (const tpsa_base<A> &a) {  TRC("baz") \
+  T s(a), c(a); mad_tpsa_ ## F (a.ptr(), s.ptr(), c.ptr()); return {s, c}; \
+} \
+FUN_TMP(F)
+
+#if TPSA_USE_TMP
+
+#define FUN_TMP(F) \
+inline std::pair<T,T> F (const T &a) { TRC("tmp") \
+  T s(a), c(a); mad_tpsa_ ## F (a.ptr(), s.ptr(), c.ptr()); return {s, c}; \
+}
+
+#else
+#define FUN_TMP(F)
+#endif // TPSA_USE_TMP
+
+FUN(sincosq);
+FUN(sincosmq);
+FUN(sincoshq);
+FUN(sincoshmq);
+
+#undef FUN
+#undef FUN_TMP
+
 } // mad
 
 #undef T
-#undef FUN
-#undef FUN_TMP
 
 #ifndef MAD_CTPSA_HPP
 #undef TRC
