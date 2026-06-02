@@ -228,8 +228,6 @@ inline void (tdump) (cflw<M> &m, T &t, str_t s, str_t f, int n)
 
 // --- constants --------------------------------------------------------------o
 
-const num_t one    = 1;
-const num_t zero   = 0;
 const num_t minlen = mad_cst_MINLEN;
 const num_t minang = mad_cst_MINANG;
 const num_t minstr = mad_cst_MINSTR;
@@ -824,7 +822,7 @@ inline void quad_thick (cflw<M> &m, num_t lw, int is)
     P w = abs(R(m.k1));
     P wl2 = w*sqr(l);
     std::tie(sx, cx) = sincosq(wl2);
-    std::tie(sy, cy) = sincosmq(wl2);
+    std::tie(sy, cy) = sincoshq(wl2);
     mx1 = l*sx, mx2 = -l*w*sx;
     my1 = l*sy, my2 =  l*w*sy;
   } else {
@@ -832,8 +830,7 @@ inline void quad_thick (cflw<M> &m, num_t lw, int is)
     sy = 0., cy = 1., my1 = l, my2 = 0.;
   }
 
-  if (ws != m.charge) // swap x <-> y
-    swap(cx,cy), swap(sx,sy), swap(mx1,my1), swap(mx2,my2);
+  if (ws != m.charge) swap(cx,cy), swap(mx1,my1), swap(mx2,my2);
 
   FOR(i,m.npar) {
     M p(m,i);
@@ -894,16 +891,13 @@ inline void quad_thicks (cflw<M> &m, num_t lw, int is)
 //P my1 = sy/w     , my2 =  sy*w;
   P w   = abs(R(m.k1));
   P wl2 = w*sqr(l);
-  auto sc  = sincosq (wl2);
-  auto scm = sincosmq(wl2);
-  P sx = sc .first, cx = sc .second;
-  P sy = scm.first, cy = scm.second;
+  auto [sx, cx] = sincosq (wl2);
+  auto [sy, cy] = sincoshq(wl2);
   P mx1 = l*sx, mx2 = -l*w*sx;
   P my1 = l*sy, my2 =  l*w*sy;
   num_t ca = m.ca, sa = m.sa;
 
-  if (ws != m.charge) // swap x <-> y
-    swap(cx,cy), swap(sx,sy), swap(mx1,my1), swap(mx2,my2);
+  if (ws != m.charge) swap(cx,cy), swap(mx1,my1), swap(mx2,my2);
 
   FOR(i,m.npar) {
     M p(m,i);
@@ -1375,7 +1369,7 @@ template <typename M, typename T=M::T, typename P=M::P, typename R=M::R, typenam
 inline void bend_wedge (cflw<M> &m, num_t lw, const V &e)
 {                                   (void)lw;
   if (!fchk(e, minang)) return;
-  if (fchk(m.knl[0], minstr)) return yrotation<M>(m,m.sdir,-e);              // k0 as prm?
+  if (mad::fabs(m.knl[0]) < minstr) return yrotation<M>(m,m.sdir,-e);
 
   mdump(0);
   P b1 = R(m.knl[0])/R(m.el)*(m.edir*m.charge);
@@ -1745,20 +1739,20 @@ inline void rfcav_fringe (cflw<M> &m, num_t lw)
 
 // --- tilt & misalignment ---
 void mad_trk_tilt_r (mflw_t *m, num_t lw) {
-  assert(m && tolower(tolower(m->rflw.knd)) == 'r');
+  assert(m && tolower(m->rflw.knd) == 'r');
   srotation<par_t>(m->rflw, lw*m->rflw.sdir, m->rflw.tlt);
 }
 void mad_trk_tilt_t (mflw_t *m, num_t lw) {
-  assert(m && tolower(tolower(m->tflw.knd)) == 't');
+  assert(m && tolower(m->tflw.knd) == 't');
   srotation<map_t>(m->tflw, lw*m->tflw.sdir, m->tflw.tlt);
 }
 void mad_trk_tilt_p (mflw_t *m, num_t lw) {
-  assert(m && tolower(tolower(m->pflw.knd)) == 'p');
+  assert(m && tolower(m->pflw.knd) == 'p');
   srotation<prm_t>(m->pflw, lw*m->pflw.sdir, tpsa_ref(m->pflw.tlt));
 }
 
 void mad_trk_misalign_r (mflw_t *m, num_t lw) {
-  assert(m && tolower(tolower(m->rflw.knd)) == 'r');
+  assert(m && tolower(m->rflw.knd) == 'r');
   misalign<par_t>(m->rflw, lw);
 }
 void mad_trk_misalign_t (mflw_t *m, num_t lw) {
@@ -1815,19 +1809,19 @@ void mad_trk_rfcav_fringe_p (mflw_t *m, num_t lw) {
 
 void mad_trk_xrotation_r (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->rflw.knd) == 'r');
-  xrotation<par_t>(m->rflw, lw, zero); (void)is;
+  xrotation<par_t>(m->rflw, lw, 0.); (void)is;
 }
 void mad_trk_yrotation_r (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->rflw.knd) == 'r');
-  yrotation<par_t>(m->rflw, lw, zero); (void)is;
+  yrotation<par_t>(m->rflw, lw, 0.); (void)is;
 }
 void mad_trk_srotation_r (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->rflw.knd) == 'r');
-  srotation<par_t>(m->rflw, lw, zero); (void)is;
+  srotation<par_t>(m->rflw, lw, 0.); (void)is;
 }
 void mad_trk_translate_r (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->rflw.knd) == 'r');
-  translate<par_t>(m->rflw, lw, zero, zero, zero); (void)is;
+  translate<par_t>(m->rflw, lw, 0., 0., 0.); (void)is;
 }
 void mad_trk_changeref_r (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->rflw.knd) == 'r');
@@ -1836,19 +1830,19 @@ void mad_trk_changeref_r (mflw_t *m, num_t lw, int is) {
 
 void mad_trk_xrotation_t (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->tflw.knd) == 't');
-  xrotation<map_t>(m->tflw, lw, zero); (void)is;
+  xrotation<map_t>(m->tflw, lw, 0.); (void)is;
 }
 void mad_trk_yrotation_t (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->tflw.knd) == 't');
-  yrotation<map_t>(m->tflw, lw, zero); (void)is;
+  yrotation<map_t>(m->tflw, lw, 0.); (void)is;
 }
 void mad_trk_srotation_t (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->tflw.knd) == 't');
-  srotation<map_t>(m->tflw, lw, zero); (void)is;
+  srotation<map_t>(m->tflw, lw, 0.); (void)is;
 }
 void mad_trk_translate_t (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->tflw.knd) == 't');
-  translate<map_t>(m->tflw, lw, zero, zero, zero); (void)is;
+  translate<map_t>(m->tflw, lw, 0., 0., 0.); (void)is;
 }
 void mad_trk_changeref_t (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->tflw.knd) == 't');
@@ -1857,19 +1851,19 @@ void mad_trk_changeref_t (mflw_t *m, num_t lw, int is) {
 
 void mad_trk_xrotation_p (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->pflw.knd) == 'p');
-  xrotation<prm_t>(m->pflw, lw, zero); (void)is;
+  xrotation<prm_t>(m->pflw, lw, 0.); (void)is;
 }
 void mad_trk_yrotation_p (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->pflw.knd) == 'p');
-  yrotation<prm_t>(m->pflw, lw, zero); (void)is;
+  yrotation<prm_t>(m->pflw, lw, 0.); (void)is;
 }
 void mad_trk_srotation_p (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->pflw.knd) == 'p');
-  srotation<prm_t>(m->pflw, lw, zero); (void)is;
+  srotation<prm_t>(m->pflw, lw, 0.); (void)is;
 }
 void mad_trk_translate_p (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->pflw.knd) == 'p');
-  translate<prm_t>(m->pflw, lw, zero, zero, zero); (void)is;
+  translate<prm_t>(m->pflw, lw, 0., 0., 0.); (void)is;
 }
 void mad_trk_changeref_p (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->pflw.knd) == 'p');
@@ -2186,7 +2180,7 @@ void mad_trk_fnil (mflw_t *m, num_t lw, int is) {
 
 void mad_trk_slice_one (mflw_t *m, num_t lw, trkfun *fun)
 {
-  fun(m, lw, zero);
+  fun(m, lw, 0.);
 }
 
 // --- track one Yoshida slice ------------------------------------------------o
