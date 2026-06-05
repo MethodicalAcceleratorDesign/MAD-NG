@@ -882,7 +882,7 @@ function M.quad_thick (elm, m, lw, istp) -- [PUSHTKT7]                        --
   m.atdebug(elm, m, 'quad_thick:1')
 end
 
-function M.quad_kick_ (elm, m, lw, istp) -- [KICKTKT7]                        -- checked
+function M.quad_kick_ (elm, m, lw, istp, no_k0l) -- [KICKTKT7]                -- checked
   local l = m.el*lw
   if istp >= 0 then drift_adj(elm, m, istp == 0 and l/2 or l) end
 
@@ -890,14 +890,15 @@ function M.quad_kick_ (elm, m, lw, istp) -- [KICKTKT7]                        --
   if m.nmul > 0 then
     local edir, nmul, knl, ksl, beam in m
     local wchg = lw*edir*beam.charge
+    local dby  = no_k0l == true and knl[1] or 0
 
     for i=1,m.npar do
       local x, px, y, py, beam in m[i]
       local  wchg = beam and lw*edir*beam.charge or wchg
       local bx,by = bxby(nmul, knl, ksl, x, y)
 
-      m[i].px = px - wchg*(by - knl[2]*x)
-      m[i].py = py + wchg*(bx - knl[2]*y)
+      m[i].px = px - wchg*(by-dby - knl[2]*x)
+      m[i].py = py + wchg*(bx     - knl[2]*y)
     end
   end
   m.atdebug(elm, m, 'quad_kick:1')
@@ -985,17 +986,16 @@ end
 
 M.quad_kicks = \elm, m, lw, istp -> M.quad_kicks_(elm, m, lw, 0)
 
--- curved (eh ~= 0)
+-- fast curved quad approx.
+-- exact for eh = 0, approx. or eh ~= 0 with k0 = eh and k1 ~= 0
 
-function M.quad_thickh (elm, m, lw, istp) -- [PUSHTKT7]                       -- unchecked (checked for sdir=1 and eh=0)
+function M.quad_thickh (elm, m, lw, istp) -- [PUSHTKT7]                       -- unchecked (checked for sdir=1)
   m.atdebug(elm, m, 'quad_thickh:0')
 
   local el, eh, edir, knl, beam in m
-  local l = el*lw
+  local l, eh = el*lw, eh*edir
+  local chg, beta = beam.charge, beam.beta
   local l2 = l^2
-  local eh = eh*edir
-  local chg = beam.charge
-  local beta = beam.beta
 
   -- [GETMAT7, w ~= 0]
   local kx  = (knl[2]+eh*knl[1])/el
@@ -1082,7 +1082,7 @@ function M.quad_kickh_ (elm, m, lw, istp) -- [KICKTKT7]                       --
 
   m.atdebug(elm, m, 'quad_kickh:0')
   if m.nmul > 0 then
-    local eh, edir, nmul, snm, knl, ksl, bfx, bfy, beam in m
+    local eh, edir, nmul, knl, ksl, beam in m
     local   eh = eh*edir
     local   lh = l*eh
     local beta = beam.beta
@@ -1092,19 +1092,21 @@ function M.quad_kickh_ (elm, m, lw, istp) -- [KICKTKT7]                       --
 
     for i=1,m.npar do
       local x, px, y, py, t, pt, beam in m[i]
-      local beta = beam and beam.beta or beta
-      local wchg = beam and lw*edir*beam.charge or wchg
-      local   pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
-      local  rho = 1 + eh*x
-      local bx,by
+      local  beta = beam and beam.beta or beta
+      local  wchg = beam and lw*edir*beam.charge or wchg
+      local    pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
+      local   _pz = 1/pz
+      local   lhx = lh*x*_pz
+      local   rho = 1 + eh*x
+      local    nx = x + px*lhx
+      local    ny = y + py*lhx
+      local bx,by = bxby(nmul, knl, ksl, x, y)
 
-      if snm > 0
-      then bx,by = bxbyh(snm, bfx, bfy, x, y)
-      else bx,by = bxby (nmul,knl, ksl, x, y) end
-
-      m[i].px = px - wchg*(by*rho - kxl*x) + lh*(pz-(1/beta*pt))
+      m[i].px = px - wchg*(by*rho - kxl*x - 0.5*eh*kyl*y^2) + lh*(pz - pt/beta)
       m[i].py = py + wchg*(bx*rho - kyl*y)
-      m[i].t  =  t - lh*((1/beta+pt)/pz - 1/beta)*x
+      m[i].t  = t - lh*((1/beta+pt)*_pz - 1/beta)*x
+      m[i].x  = nx
+      m[i].y  = ny
     end
   end
   m.atdebug(elm, m, 'quad_kickh:1')
@@ -1675,13 +1677,13 @@ function M.strex_fringe (elm, m, lw_)  -- [FRINGE_STREX]                      --
       if ftst(m.frng, fringe.mult) then mult_fringe(elm, m, 1) end
       if ftst(m.frng, fringe.qsad) then qsad_fringe(elm, m, 1) end
     end
-    if not m.pdir then                    -- ! EDGE_TRUE_PARALLEL
+    if not m.pdir then                             -- EDGE_TRUE_PARALLEL
       local a = 0.5*(m.ehd or m.eh)*(m.eld or m.el) - e1
       bend_wedge(elm, m, 1, a)
     end
   else
 --  print(lw == -1 and 'forward exit' or 'backward entry')
-    if not m.pdir then                    -- ! EDGE_TRUE_PARALLEL
+    if not m.pdir then                             -- EDGE_TRUE_PARALLEL
       local a = 0.5*(m.ehd or m.eh)*(m.eld or m.el) - e2
       bend_wedge(elm, m, -1, a)
     end
@@ -1707,7 +1709,6 @@ function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]                      --
 
   local lw = lw_ or 1
   local sdir, edir in m
-  local e, h
 
   if lw == 1 and elm.kill_ent_fringe or lw == -1 and elm.kill_exi_fringe
   then m.frng = 0
@@ -1718,11 +1719,6 @@ function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]                      --
   local h1, h2 =          elm.h1 ,          elm.h2
 
   if sdir == -1 then e1, e2, h1, h2 = e2, e1, h2, h1 end -- swap
-
---if lw == 1
---then e, h = m.e1, elm.h1
---else e, h = m.e2, elm.h2
---end
 
   if sdir*lw == 1 then
 --  print(lw == 1 and 'forward entry' or 'backward exit')
