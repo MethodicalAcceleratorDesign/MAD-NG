@@ -830,7 +830,7 @@ inline void quad_thick (cflw<M> &m, num_t lw, int is)
     sy = 0., cy = 1., my1 = l, my2 = 0.;
   }
 
-  if (ws != m.charge) swap(cx,cy), swap(mx1,my1), swap(mx2,my2);
+  if (ws != m.charge) ws = -ws, swap(cx,cy), swap(mx1,my1), swap(mx2,my2);
 
   FOR(i,m.npar) {
     M p(m,i);
@@ -848,13 +848,15 @@ inline void quad_thick (cflw<M> &m, num_t lw, int is)
 }
 
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
-inline void quad_kick (cflw<M> &m, num_t lw, int is)
+inline void quad_kick (cflw<M> &m, num_t lw, int is, bool no_k0l=false)
 {                                          (void)is;
   if (!m.charge) return;
 
   num_t dw = is == 0 ? 1./2 : 1.; // drift weight
   P l   = R(m.el)*lw;
   P ldw = l*dw;
+  P dby(R(m.knl[0]));
+  if (no_k0l) dby = R(m.knl[0]); else dby = 0.;
 
   if (is >= 0) drift_adj<M>(m, ldw);
 
@@ -867,8 +869,8 @@ inline void quad_kick (cflw<M> &m, num_t lw, int is)
       T bx(ord(p.x) >= ord(p.y) ? p.x : p.y), by(bx);
       bxby(m, p.x, p.y, bx, by);
 
-      p.px -= wchg*(by - R(m.knl[1])*p.x);
-      p.py += wchg*(bx - R(m.knl[1])*p.y);
+      p.px -= wchg*(by-dby - R(m.knl[1])*p.x);
+      p.py += wchg*(bx     - R(m.knl[1])*p.y);
     }
   }
   mdump(1);
@@ -897,7 +899,7 @@ inline void quad_thicks (cflw<M> &m, num_t lw, int is)
   P my1 = l*sy, my2 =  l*w*sy;
   num_t ca = m.ca, sa = m.sa;
 
-  if (ws != m.charge) swap(cx,cy), swap(mx1,my1), swap(mx2,my2);
+  if (ws != m.charge) ws = -ws, swap(cx,cy), swap(mx1,my1), swap(mx2,my2);
 
   FOR(i,m.npar) {
     M p(m,i);
@@ -953,8 +955,6 @@ inline void quad_kicks (cflw<M> &m, num_t lw, int is)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void quad_thickh (cflw<M> &m, num_t lw, int is)
 {                                            (void)is;
-  if (!m.charge) return strex_drift<M>(m, lw, is);
-
   mdump(0);
   P l  = R(m.el)*lw;
   P l2 = sqr(l);
@@ -1012,7 +1012,7 @@ inline void quad_thickh (cflw<M> &m, num_t lw, int is)
     T npx = p.x*mx21 + p.px*mx22 + p.pt*(mx23/m.beta);
     T ny  = p.y*my11 + p.py*my12;
     T npy = p.y*my21 + p.py*my22;
-    T dt  = p.x*(mx31/m.beta) + p.px*(mx32/m.beta) + p.pt*mx33;
+    T dt  = p.x*(mx31/m.beta) + p.px*(mx32/m.beta) + p.pt*(mx33/sqr(m.beta));
 
     p.x   = nx;
     p.y   = ny;
@@ -1026,8 +1026,6 @@ inline void quad_thickh (cflw<M> &m, num_t lw, int is)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void quad_kickh (cflw<M> &m, num_t lw, int is)
 {                                           (void)is;
-  if (!m.charge) return;
-
   num_t dw = is == 0 ? 1./2 : 1.; // drift weight
   P l   = R(m.el)*lw;
   P eh  = R(m.eh)*m.edir;
@@ -1045,14 +1043,20 @@ inline void quad_kickh (cflw<M> &m, num_t lw, int is)
     FOR (i,m.npar) {
       M p(m,i);
       T bx(ord(p.x) >= ord(p.y) ? p.x : p.y), by(bx);
-      T pz = sqrt(1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
+      T  pz = sqrt(1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
+      T _pz = 1/pz;
+      T lhx = lh*p.x*_pz;
       T rho = 1 + eh*p.x;
+      T  nx = p.px*lhx;
+      T  ny = p.py*lhx;
 
-      if (m.snm) bxbyh(m, p.x, p.y, bx, by); else bxby(m, p.x, p.y, bx, by);
+      bxby(m, p.x, p.y, bx, by);
 
-      p.px -= wchg*(by*rho - kxl*p.x) - lh*(pz-(1/m.beta*p.pt));
+      p.px -= wchg*(by*rho - kxl*p.x - 0.5*eh*kyl*sqr(p.y)) - lh*(pz - (p.pt/m.beta));
       p.py += wchg*(bx*rho - kyl*p.y);
-      p.t  -= lh*((1/m.beta+p.pt)/pz - 1/m.beta)*p.x;
+      p.t  -= lh*((1/m.beta+p.pt)*_pz - 1/m.beta)*p.x;
+      p.x  += nx;
+      p.y  += ny;
     }
   }
   mdump(1);
@@ -1655,34 +1659,6 @@ inline void mult_fringe (cflw<M> &m, num_t lw)
   mdump(1);
 }
 
-template <typename M, typename R=M::R>
-inline void curex_fringe (cflw<M> &m, num_t lw)
-{
-  mdump(0);
-  if (m.sdir*lw == 1) { // 'forward entry' or 'backward exit'
-    yrotation<M> (m, m.sdir,-R(m.e));
-    bend_face<M> (m, 1     , R(m.h));
-    if (m.frng) {
-      if (m.frng & fringe_bend) bend_fringe<M>(m, 1);
-      if (m.frng & fringe_mult) mult_fringe<M>(m, 1);
-      if (m.frng & fringe_qsad) qsad_fringe<M>(m, 1);
-    }
-    mad8_wedge<M>(m, 1, R(m.e));
-    bend_wedge<M>(m, 1,-R(m.e));
-  } else {
-    bend_wedge<M>(m,-1,-R(m.e));
-    mad8_wedge<M>(m,-1, R(m.e));
-    if (m.frng) {
-      if (m.frng & fringe_qsad) qsad_fringe<M>(m,-1);
-      if (m.frng & fringe_mult) mult_fringe<M>(m,-1);
-      if (m.frng & fringe_bend) bend_fringe<M>(m,-1);
-    }
-    bend_face<M> (m,-1     , R(m.h));
-    yrotation<M> (m,-m.sdir, R(m.e));
-  }
-  mdump(1);
-}
-
 template <typename M, typename P=M::P, typename R=M::R>
 inline void strex_fringe (cflw<M> &m, num_t lw)
 {
@@ -1711,6 +1687,34 @@ inline void strex_fringe (cflw<M> &m, num_t lw)
     bend_face<M> (m,-1     , R(m.h)  );
     bend_ptch<M> (m,-1     , R(m.a)*p);
     yrotation<M> (m,-m.sdir, R(m.e)  );
+  }
+  mdump(1);
+}
+
+template <typename M, typename R=M::R>
+inline void curex_fringe (cflw<M> &m, num_t lw)
+{
+  mdump(0);
+  if (m.sdir*lw == 1) { // 'forward entry' or 'backward exit'
+    yrotation<M> (m, m.sdir,-R(m.e));
+    bend_face<M> (m, 1     , R(m.h));
+    if (m.frng) {
+      if (m.frng & fringe_bend) bend_fringe<M>(m, 1);
+      if (m.frng & fringe_mult) mult_fringe<M>(m, 1);
+      if (m.frng & fringe_qsad) qsad_fringe<M>(m, 1);
+    }
+    mad8_wedge<M>(m, 1, R(m.e));
+    bend_wedge<M>(m, 1,-R(m.e));
+  } else {
+    bend_wedge<M>(m,-1,-R(m.e));
+    mad8_wedge<M>(m,-1, R(m.e));
+    if (m.frng) {
+      if (m.frng & fringe_qsad) qsad_fringe<M>(m,-1);
+      if (m.frng & fringe_mult) mult_fringe<M>(m,-1);
+      if (m.frng & fringe_bend) bend_fringe<M>(m,-1);
+    }
+    bend_face<M> (m,-1     , R(m.h));
+    yrotation<M> (m,-m.sdir, R(m.e));
   }
   mdump(1);
 }
