@@ -52,11 +52,12 @@ using CPX = std::complex<double>;
 template <class D>
 struct ctpsa_base {
   // getters
-  ctpsa_t* ptr () const { return static_cast<const D*>( this)->ptr(); }
-  ctpsa_t& ref () const { return static_cast<const D*>( this)->ref(); }
-  const D& self() const { return static_cast<const D&>(*this);        }
-        D& self()       { return static_cast<      D&>(*this);        }
-  ord_t    mo  () const { return mad_ctpsa_ord(ptr(), false);         }
+  ctpsa_t* ptr  () const { return static_cast<const D*>( this)->ptr(); }
+  ctpsa_t& ref  () const { return static_cast<const D*>( this)->ref(); }
+  const D& self () const { return static_cast<const D&>(*this);        }
+        D& self ()       { return static_cast<      D&>(*this);        }
+  ord_t    mo   () const { return mad_ctpsa_ord(ptr(), false);         }
+  log_t    isnul() const { return mad_ctpsa_isnul(ptr());              }
 
   // set name
   D& set(str_t              s)  { mad_ctpsa_nam(ptr(), s);             return self(); }
@@ -66,7 +67,7 @@ struct ctpsa_base {
   D& set (CPX a)                 { mad_ctpsa_setval(ptr(), C(a)      ); return self(); }
   D& set (CPX a, idx_t v)        { mad_ctpsa_setvar(ptr(), C(a), v, 0); return self(); }
   D& setp(CPX a, idx_t v)        { mad_ctpsa_setprm(ptr(), C(a), v   ); return self(); }
-  D& clr ()                      { mad_tpsa_clear  (ptr()            ); return self(); }
+  D& clr ()                      { mad_ctpsa_clear  (ptr()           ); return self(); }
 
   // debug
   log_t isvalid() const { return mad_ctpsa_isvalid(ptr()); }
@@ -632,12 +633,12 @@ inline CPX fval (const ctpsa_base<A> &a) { TRC("baz")
 }
 
 inline bool fchk (const ctpsa_t *a, num_t v) { TRC("tpsa")
-  return true; (void)a; (void)v;
+  return !mad_ctpsa_isnul(a); (void)a; (void)v;
 }
 
 template <class A>
 inline bool fchk (const ctpsa_base<A> &a, num_t v) { TRC("baz")
-  return true; (void)a; (void)v;
+  return !a.isnul(); (void)a; (void)v;
 }
 
 template <class A>

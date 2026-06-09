@@ -72,11 +72,12 @@ namespace mad_prv_ { struct tpsa_tmp_; }
 template <class D>
 struct tpsa_base {
   // getters
-  tpsa_t*  ptr () const { return static_cast<const D*>( this)->ptr(); }
-  tpsa_t&  ref () const { return static_cast<const D*>( this)->ref(); }
-  const D& self() const { return static_cast<const D&>(*this);        }
-        D& self()       { return static_cast<      D&>(*this);        }
-  ord_t    mo  () const { return mad_tpsa_ord(ptr(), false);          }
+  tpsa_t*  ptr  () const { return static_cast<const D*>( this)->ptr(); }
+  tpsa_t&  ref  () const { return static_cast<const D*>( this)->ref(); }
+  const D& self () const { return static_cast<const D&>(*this);        }
+        D& self ()       { return static_cast<      D&>(*this);        }
+  ord_t    mo   () const { return mad_tpsa_ord(ptr(), false);          }
+  log_t    isnul() const { return mad_tpsa_isnul(ptr());               }
 
   // set name
   D& set(str_t              s)         { mad_tpsa_nam(ptr(), s);          return self(); }
@@ -89,7 +90,7 @@ struct tpsa_base {
   D& clr ()                            { mad_tpsa_clear (ptr()         ); return self(); }
 
   // debug
-  log_t isvalid() const { return mad_ctpsa_isvalid(ptr()); }
+  log_t isvalid() const { return mad_tpsa_isvalid(ptr()); }
 
   template <class A>
   D& operator+=(const tpsa_base<A> &a) { TRC("baz,baz") mad_tpsa_add (ptr(),a.ptr(),ptr()); return self(); }
@@ -636,12 +637,12 @@ inline num_t fabs (const tpsa_base<A> &a) { TRC("baz")
 }
 
 inline bool fchk (const tpsa_t *a, num_t v) { TRC("tpsa")
-  return true; (void)a; (void)v;
+  return !mad_tpsa_isnul(a); (void)v;
 }
 
 template <class A>
 inline bool fchk (const tpsa_base<A> &a, num_t v) { TRC("baz")
-  return true; (void)a; (void)v;
+  return !a.isnul(); (void)v;
 }
 
 template <class A>
