@@ -39,7 +39,7 @@
 local M = {}
 
 -- settings
-local new_bend_thick = false -- true (take new maps, worst)
+local bend_exact = false -- true [Sagan]
 
 --[=[
 Notes about directions and quantities:
@@ -657,6 +657,74 @@ function M.curex_kick (elm, m, lw, istp, no_k0l) -- [SKICK]                   --
   m.atdebug(elm, m, 'curex_kick:1')
 end
 
+-- [SAGAN] exact singularity-free dipole body ---------------------------------o
+
+local function bend_thick_ds (elm, m, lw, istp)
+  m.atdebug(elm, m, 'bend_thick:0')
+
+  local el, eh, edir, knl, beam in m
+  local L     = el*lw
+  local g     = eh*edir
+  local theta = g*L
+  local k0    = knl[1]/el*edir
+  local beta0 = beam.beta
+
+  local th2 = theta^2
+  local sinc_th, cos_th = sincosq(th2)  -- sinc(theta), cos(theta)
+  local _, cosm_th      = sincosmq(th2) -- _, (cos(theta)-1)/theta^2
+  local sin_th          = theta*sinc_th
+  local cosc_th         = -cosm_th      -- (1-cos(theta))/theta^2
+
+  local sgn = lw < 0 and -1 or 1
+
+  for i=1,m.npar do
+    local x, px, y, py, t, pt, beam in m[i]
+    local beta = beam and beam.beta or beta0
+    local k0q  = beam and k0*beam.charge or k0*beam.charge
+
+    local relp = 1/beta + pt
+    local pw2  = 1 + 2/beta*pt + pt^2 - py^2
+    local pw   = sqrt(pw2)
+
+    -- phi = theta + asin(px/pw), but use atan2 for branch consistency.
+    local pz0  = sqrt(pw2 - px^2)
+    local phi0 = atan2(px, pz0)
+    local phi  = theta + phi0
+
+    local gp   = k0q / pw
+    local h    = 1 + g*x
+    local cp   = cos(phi)
+    local sp   = sin(phi)
+
+    local ahelp = h*L*sinc_th
+    local alpha = 2*h*sp*L*sinc_th - gp*ahelp^2
+    local root  = sqrt(cp^2 + gp*alpha)
+
+    local xi
+    if not fchk(gp, minstr) or fval(cp) > 0 then
+      xi = alpha/(root + cp)
+    else
+      xi = (root - cp)/gp
+    end
+
+    local lcv   = -sgn*(L*sinc_th + x*sin_th)
+    local thp   = 2*(phi - sgn*atan2(xi, -lcv))
+    local Lp    = sgn*sqrt(lcv^2 + xi^2)/sinc(thp/2)
+
+    local nx  = x*cos_th - L^2*g*cosc_th + xi
+    local npx = pw*sin(phi - thp)
+    local ny  = y + py*Lp/pw
+    local nt  = t - relp*Lp/pw + (1-m.T)/beta*L
+
+    m[i].x  = nx
+    m[i].px = npx
+    m[i].y  = ny
+    m[i].t  = nt
+  end
+
+  m.atdebug(elm, m, 'bend_thick:1')
+end
+
 -- TKT [INTER_TEAPOT] ---------------------------------------------------------o
 
 -- version for k0*charge == 0 to avoid NaN
@@ -680,12 +748,6 @@ local function curex_drift0 (elm, m, lw, i, ld, ca, sa, sa2, rho)
   m.atdebug(elm, m, 'curex_drift0:1')
 end
 
-local function sbend_thick_ds (elm, m, lw, istp) -- [SSEC]                    -- unchecked
-  m.atdebug(elm, m, 'sbend_thick:0')
-  error("NYI")
-  m.atdebug(elm, m, 'sbend_thick:1')
-end
-
 local function sbend_thick (elm, m, lw, istp) -- [SSEC]                       -- checked
   m.atdebug(elm, m, 'sbend_thick:0')
 
@@ -704,17 +766,32 @@ local function sbend_thick (elm, m, lw, istp) -- [SSEC]                       --
       goto continue
     end
 
+    -- eq. 126 in Forest06
     local  pw2 = 1 + 2/beta*pt + pt^2 - py^2
     local   pz = sqrt(pw2 - px^2)                                       -- PZ
     local  pzx = pz - k0q*(rho+x)      -- could be numerically unstable
     local  npx = sa*pzx + ca*px                                         -- XN(2)
     local  dpx = ca*pzx - sa*px                                         -- DPX'
     local  pzs = sqrt(pw2 - npx^2)                                      -- PZS
-    local _ptt = invsqrt(pw2)                                           -- PT
-    local  dxs = (ang + asin(px*_ptt) - asin(npx*_ptt))/k0q             -- XN(3)
+    local  dxs
 
-    -- eq. 126 in Forest06
+  if true then -- old
+    local _ptt = invsqrt(pw2)                                           -- PT
+           dxs = (ang + asin(px*_ptt) - asin(npx*_ptt))/k0q             -- XN(3)
+
     m[i].x  = (pzs - dpx)/k0q - rho    -- could be numerically unstable -- XN(1)
+  else
+    local dnpx = npx - px
+    local  dpz = -dnpx*(npx + px)/(pzs + pz)
+    local ddpx = -2*pzx*sa2^2 - px*sa
+    local   dx = (dpz - ddpx)/k0q
+    local   na = px*dpz - pz*dnpx
+    local   da = pz*pzs + px*npx
+    local dang = atan2(na, da)
+           dxs = (ang + dang)/k0q
+
+    m[i].x  = x + dx
+  end
     m[i].px = npx                                                       -- XN(2)
     m[i].y  = y + dxs*py                                                -- XN(3)
     m[i].t  = t - dxs*(1/beta+pt) + (1-m.T)/beta*ld                     -- XN(6)
@@ -725,7 +802,7 @@ local function sbend_thick (elm, m, lw, istp) -- [SSEC]                       --
   m.atdebug(elm, m, 'sbend_thick:1')
 end
 
-M.sbend_thick = new_bend_thick and sbend_thick_ds or sbend_thick
+M.sbend_thick = bend_exact and bend_thick_ds or sbend_thick
 M.sbend_kick  = \el,m,lw,istp -> M.curex_kick(el,m,lw,istp,true) ;            -- checked
 
 -- TKT [INTER_STREX] ----------------------------------------------------------o
@@ -746,48 +823,6 @@ local function strex_drift0 (elm, m, lw, i, l, ld)                            --
   m.atdebug(elm, m, 'strex_drift0:1')
 end
 
-local function rbend_thick_ds (elm, m, lw, istp) -- [SPAR]                    -- checked
-  m.atdebug(elm, m, 'rbend_thick:0')
-
-  local el, eld, edir, knl, beam in m
-  local l, ld, k0 = el*lw, (eld or el)*lw, knl[1]/el*edir
-  local beta, k0q, k0lq = beam.beta, k0*beam.charge, knl[1]*lw*beam.charge*edir
-
-  for i=1,m.npar do
-    local x, px, y, py, t, pt, beam in m[i]
-    local beta = beam and beam.beta or beta
-    local k0q  = beam and k0*beam.charge or k0q
-
-    if k0q == 0 then
-      strex_drift0 (elm, m, lw, i, l, ld)
-      goto continue
-    end
-
-    local k0lq = beam and knl[1]*lw*beam.charge*edir or k0lq
-    local  npx = px - k0lq
-    local  pw2 = 1 + 2/beta*pt + pt^2 - py^2
-    local _ptt = invsqrt(pw2)
-    local   pz = sqrt(pw2 - px^2)
-    local  pzs = sqrt(pw2 - npx^2)
-
-    local   xi =  px*_ptt
-    local zeta = npx*_ptt
-    local  xtd = xi*sqrt(1-zeta^2) + zeta*sqrt(1-xi^2)
-    local   xt = l*(2*px - k0lq)*_ptt^2 / xtd
-    local  dxs = asinc(xt*k0q)*xt
-
-    -- eq. 129 in Forest06 with modif. from Sagan
-    m[i].x  = x + l*(2*px - k0lq) / (pz+pzs)
-    m[i].px = npx
-    m[i].y  = y + dxs*py
-    m[i].t  = t - dxs*(1/beta+pt) + (1-m.T)/beta*ld
-
-    ::continue::
-  end
-
-  m.atdebug(elm, m, 'rbend_thick:1')
-end
-
 local function rbend_thick (elm, m, lw, istp) -- [SPAR]                       -- checked
   m.atdebug(elm, m, 'rbend_thick:0')
 
@@ -805,16 +840,28 @@ local function rbend_thick (elm, m, lw, istp) -- [SPAR]                       --
       goto continue
     end
 
+    -- eq. 129 in Forest06
     local k0lq = beam and knl[1]*lw*beam.charge*edir or k0lq
     local  npx = px - k0lq
     local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
-    local _ptt = invsqrt(pw2)
     local   pz = sqrt(pw2 - px^2)
     local  pzs = sqrt(pw2 - npx^2)
-    local  dxs = (asin(px*_ptt) - asin(npx*_ptt))/k0q
+    local  dxs
 
-    -- eq. 129 in Forest06
+  if true then -- old
+    local _ptt = invsqrt(pw2)
+           dxs = (asin(px*_ptt) - asin(npx*_ptt))/k0q
+
     m[i].x  = x + (pzs-pz)/k0q
+  else
+    local dnpx = npx - px
+    local  dpz = -dnpx*(npx + px)/(pzs + pz)
+    local   na = px*dpz - pz*dnpx
+    local   da = pz*pzs + px*npx
+           dxs = atan2(na, da)/k0q
+
+    m[i].x  = x + dpz/k0q
+  end
     m[i].px = npx
     m[i].y  = y + dxs*py
     m[i].t  = t - dxs*(1/beta+pt) + (1-m.T)/beta*ld
@@ -825,7 +872,7 @@ local function rbend_thick (elm, m, lw, istp) -- [SPAR]                       --
   m.atdebug(elm, m, 'rbend_thick:1')
 end
 
-M.rbend_thick = new_bend_thick and rbend_thick_ds or rbend_thick
+M.rbend_thick = bend_exact and bend_thick_ds or rbend_thick
 M.rbend_kick  = \el,m,lw,istp -> M.strex_kick(el,m,lw,istp,true)              -- checked
 
 -- TKT [INTER_TKTF] -----------------------------------------------------------o
@@ -1731,7 +1778,6 @@ function M.curex_fringe (elm, m, lw_) -- [FRINGE_TEAPOT]                      --
       if ftst(m.frng, fringe.mult) then mult_fringe(elm, m, 1) end
       if ftst(m.frng, fringe.qsad) then qsad_fringe(elm, m, 1) end
     end
---    if e ~= 0 then MAD.dbg() end
     mad8_wedge(elm, m, 1,  e1)
     bend_wedge(elm, m, 1, -e1)
   else
