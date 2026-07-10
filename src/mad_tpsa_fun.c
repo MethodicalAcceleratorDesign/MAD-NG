@@ -6,8 +6,8 @@
  | Methodical Accelerator Design - Copyright (c) 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
- |          C. Tomoiaga
- | Contrib: A. E. Scurria (Numerical stability for high orders)
+ | Contrib: C. Tomoiaga   (Initial feasibility implementation)
+ |          A. E. Scurria (Numerical stability for orders >6)
  |
  o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
@@ -63,27 +63,25 @@ fun_taylor (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
   if (n >= 2) acp = GET_TMPX(c), FUN(copy)(a,acp);
 
   // n=1
-  FUN(scl)(a, ord_coef[1], c);
-  FUN(seti)(c, 0, 0, ord_coef[0]); // f(a0) + f'(a0)(a-a0)
+  FUN(scl)(a,ord_coef[1],c);
+  FUN(seti)(c,0,0,ord_coef[0]);      // f(a0) + f'(a0)(a-a0)
 
   // n=2
   if (n >= 2) {
     T *pow = GET_TMPX(c);
-    FUN(seti)(acp,0,0,0);          //  a-a0
-    FUN(mul)(acp,acp,pow);         // (a-a0)^2
-    FUN(acc)(pow,ord_coef[2],c);   // f(a0) + f'(a0)(a-a0) + f"(a0)(a-a0)^2
+    FUN(seti)(acp,0,0,0);            //  a-a0
+    FUN(mul)(acp,acp,pow);           // (a-a0)^2
+    FUN(acc)(pow,ord_coef[2],c);     // f(a0) + f'(a0)(a-a0) + f"(a0)(a-a0)^2
 
     // i=3..n
     if (n >= 3) {
       T *tmp = GET_TMPX(c), *t;
-
       for (ord_t i = 3; i <= n; ++i) {
         FUN(mul)(acp,pow,tmp);
         FUN(acc)(tmp,ord_coef[i],c); // f(a0) + ... + f^(i)(a0)(a-a0)^i
         SWAP(pow,tmp,t);
       }
-
-      if (n & 1) SWAP(pow,tmp,t); // enforce even number of swaps
+      if (n & 1) SWAP(pow,tmp,t);    // enforce even number of swaps
       REL_TMPX(tmp);
     }
     REL_TMPX(pow), REL_TMPX(acp);
@@ -170,14 +168,14 @@ FUN(inv) (const T *a, NUM v, T *c) // c = v/a    // checked for real and complex
   NUM a0 = a->coef[0];
   ensure(a0 != 0, "invalid domain inv("FMT")", VAL(a0));
 
-  NUM f0 = NUMF(inv)(a0);
   ord_t to = c->mo;
-  if (!to || FUN(isval)(a)) { FUN(setval)(c,v*f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) {
+    FUN(setval)(c,NUMF(div)(v,a0)); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1];
-  ord_coef[0] = f0;
+  ord_coef[0] = NUMF(inv)(a0);
   for (ord_t o = 1; o <= to; ++o)
-    ord_coef[o] = -ord_coef[o-1] * f0;
+    ord_coef[o] = -NUMF(div)(ord_coef[o-1],a0);
 
   fun_taylor(a,c,to,ord_coef);
   if (v != 1) FUN(scl)(c,v,c);

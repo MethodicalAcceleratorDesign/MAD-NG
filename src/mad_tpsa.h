@@ -115,6 +115,7 @@ void    mad_tpsa_add     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_sub     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_mul     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_div     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
+log_t   mad_tpsa_divc    (const tpsa_t *a, const tpsa_t *b, tpsa_t *c, num_t tol_); // c = a/b by cancellation, may fail
 void    mad_tpsa_pow     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_powi    (const tpsa_t *a, int           n, tpsa_t *c);
 void    mad_tpsa_pown    (const tpsa_t *a, num_t         v, tpsa_t *c);
@@ -227,6 +228,10 @@ tpsa_t* mad_tpsa_init     (      tpsa_t *t, const desc_t *d, ord_t mo);
 
 // debug
 int     mad_tpsa_debug    (const tpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
+
+// debug divc
+void     mad_tpsa_divc_clrcnt(void);
+void     mad_tpsa_divc_getcnt(ssz_t *cnt, ssz_t *fail);
 
 // --- end --------------------------------------------------------------------o
 
