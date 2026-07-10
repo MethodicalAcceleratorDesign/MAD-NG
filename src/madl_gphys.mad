@@ -36,7 +36,7 @@ local lbool                                                      in MAD.gfunc
 local pi, twopi, rad2deg                                         in MAD.constant
 local abs, cabs, sqrt, exp, log, sin, cos, tan, atan2, tgamma, lgamma,
       sinh, cosh, real, imag, cplx, fact, rangle, hypot, sign, conj,
-      fabs, fval                                                 in MAD.gmath
+      norm, fabs, fval                                           in MAD.gmath
     
 local is_nil, is_boolean, is_number, is_positive, is_nonzero, is_integer,
       is_natural, is_nznatural, is_string, is_table,
@@ -84,7 +84,7 @@ local gphys = {
     'alfa11', 'beta11', 'gama11', 'alfa12', 'beta12', 'gama12', 'alfa13', 'beta13', 'gama13', 'mu1', 'dx', 'dpx',
     'alfa21', 'beta21', 'gama21', 'alfa22', 'beta22', 'gama22', 'alfa23', 'beta23', 'gama23', 'mu2', 'dy', 'dpy',
     'alfa31', 'beta31', 'gama31', 'alfa32', 'beta32', 'gama32', 'alfa33', 'beta33', 'gama33', 'mu3',
-    'betx'  , 'bety'  , 'alfx'  , 'alfy'  , 'kpa'   , 'r11'   , 'r12'   , 'r21'   , 'r22'   , -- Edwards-Teng
+    'betx'  , 'bety'  , 'alfx'  , 'alfy'  , 'kpa'   , 'ev1'   , 'ev2'   , 'r11'   , 'r12'   , 'r21', 'r22', -- Edwards-Teng
     'f1010' , 'f1001', -- linear RDTs
   },
 
@@ -100,7 +100,7 @@ local gphys = {
     'alfa11', 'beta11', 'gama11', 'alfa12', 'beta12', 'gama12', 'alfa13', 'beta13', 'gama13', 'mu1', 'dmu1', 'dx', 'dpx', 'Dx', 'Dpx', 'ddx', 'ddpx', 'wx', 'phix',
     'alfa21', 'beta21', 'gama21', 'alfa22', 'beta22', 'gama22', 'alfa23', 'beta23', 'gama23', 'mu2', 'dmu2', 'dy', 'dpy', 'Dy', 'Dpy', 'ddy', 'ddpy', 'wy', 'phiy',
     'alfa31', 'beta31', 'gama31', 'alfa32', 'beta32', 'gama32', 'alfa33', 'beta33', 'gama33', 'mu3', 'dmu3',
-    'betx'  , 'bety'  , 'alfx'  , 'alfy'  , 'kpa'   , 'r11'   , 'r12'   , 'r21'   , 'r22'   , -- Edwards-Teng
+    'betx'  , 'bety'  , 'alfx'  , 'alfy'  , 'kpa'   , 'ev1'   , 'ev2'   , 'r11'   , 'r12'   , 'r21', 'r22', -- Edwards-Teng
     'f1010' , 'f1001' , -- linear RDTs
   },
 }
@@ -252,7 +252,7 @@ local function is_eigsys (M, V, W, eigtol_)
     local dV1, dV2 = M*Vi-W[i-1]*Vi, M*Vc-W[i]*Vc
     if not (dV1:eq(0, tol) and dV2:eq(0, tol)) then
       warn("invalid eigensystem #%d (M*V deviates from W*V by %s)",
-           i-1, num2str(max(dV1:norm(),dV2:norm())))
+           i-1, num2str(max(norm(dV1),norm(dV2))))
       return false
     end
   end
@@ -696,15 +696,17 @@ Matrix R: Edwards-Teng coupling formalism (Lebedev & Bogacz 2010)
 Lin RDTs: Betatron coupling with matrix   (Calaga, Tomas & Franchi 2005)
 --]]
 
-local nf_bet, nf_alf -- forward decl
+local nf_A, nf_bet, nf_alf -- forward decl
 
 local det = \a       -> a[1]*a[4] - a[2]*a[3] -- polymorphic 2x2 matrix helpers
+local scl = \a,v     -> {a[1]*v, a[2]*v, a[3]*v, a[4]*v}
 local div = \a,v     -> {a[1]/v, a[2]/v, a[3]/v, a[4]/v}
 local dot = \a,b,i,j -> a[i]*b[j] + a[i+1]*b[j+2]
 local mul = \a,b     -> {dot(a,b,1,1),dot(a,b,1,2),dot(a,b,3,1),dot(a,b,3,2)}
 
-local cplg_tol_min = 1e20 -- uncomment function to record cplg_tol_min
-local cplg_tol_chk -- = \ io.write("min coupling=", cplg_tol_min, "\n")
+local cplg_tol_min = 1e8 -- uncomment function to record cplg_tol_min
+local cplg_tol_chk = \ option.debug >= 1 and
+                       io.write("min coupling encountered: ", cplg_tol_min, "\n")
 if cplg_tol_chk then MAD.utility.atexit(cplg_tol_chk) end
 
 local function nf_cplg (a, mt_)
@@ -715,7 +717,7 @@ local function nf_cplg (a, mt_)
                           "invalid argument #1 (damap or beta0 block expected)")
   assert(not is_nil(res), "invalid argument #2 (table expected)")
 
-  if fun and mt_.kpa then return end -- memoization already done
+  if fun and mt_.betx then return end -- memoization already done
 
   local bet0 = assert(a.beta or mt_.beta, "unable to retrieve beta0")
   local dpp1 = sqrt(1 + 2/bet0*a.pt + a.pt^2)
@@ -743,18 +745,63 @@ local function nf_cplg (a, mt_)
     local alfa12 = fun and nf_alf(a, "12", nil, mt_) or a.alfa12
     local alfa21 = fun and nf_alf(a, "21", nil, mt_) or a.alfa21
     local kx, ky = sqrt(kx2), sqrt(ky2)
-    local ax = alfa11*kx - alfa12/kx                                 -- eq. 4.7
+    local ax = alfa11*kx - alfa12/kx                                  -- eq. 4.7
     local ay = alfa22*ky - alfa21/ky
-    local ku = kxy*(1+(ax*ax-ay*ay)/(kx2-ky2)*(1-kxy))               -- eq. 4.8
-    local u = -kxy/(1-kxy)
-    local s = 0
-    if fval(ku) >= stab_tol then
-      local su = sqrt(ku)
-      s = kxy <= su and +1 or -1
-      u = u + s * su/(1-kxy)                                         -- eq. 4.8
+    local u
+
+    if false then
+      -- Lebedev quadratic roots (kept for debug/comparison).
+      local q  = (ax+ay)/(kx-ky) * (ax-ay)/(kx+ky)
+      local ku = kxy*(1 + q*(1-kxy))                                  -- eq. 4.8
+      local sd = 0
+      if fval(ku) >= cplg_tol then
+        local su = sqrt(ku)
+        local s = fval(kxy) <= fval(su) and +1 or -1
+        sd = s * su                                                   -- eq. 4.8
+      end
+      u = (sd-kxy)/(1-kxy)
+    else
+      -- Edwards-Teng invariants.
+      local a11 = fun and nf_A(a, "11", mt_) or a.A:get(1,1)
+      local a12 = fun and nf_A(a, "12", mt_) or a.A:get(1,2)
+      local a21 = fun and nf_A(a, "21", mt_) or a.A:get(2,1)
+      local a22 = fun and nf_A(a, "22", mt_) or a.A:get(2,2)
+      local a13 = fun and nf_A(a, "13", mt_) or a.A:get(1,3)
+      local a14 = fun and nf_A(a, "14", mt_) or a.A:get(1,4)
+      local a23 = fun and nf_A(a, "23", mt_) or a.A:get(2,3)
+      local a24 = fun and nf_A(a, "24", mt_) or a.A:get(2,4)
+      local a31 = fun and nf_A(a, "31", mt_) or a.A:get(3,1)
+      local a32 = fun and nf_A(a, "32", mt_) or a.A:get(3,2)
+      local a41 = fun and nf_A(a, "41", mt_) or a.A:get(4,1)
+      local a42 = fun and nf_A(a, "42", mt_) or a.A:get(4,2)
+      local a33 = fun and nf_A(a, "33", mt_) or a.A:get(3,3)
+      local a34 = fun and nf_A(a, "34", mt_) or a.A:get(3,4)
+      local a43 = fun and nf_A(a, "43", mt_) or a.A:get(4,3)
+      local a44 = fun and nf_A(a, "44", mt_) or a.A:get(4,4)
+
+      -- block determinants
+      local X1d = a11*a22 - a12*a21
+      local X2d = a13*a24 - a14*a23
+      local Y1d = a31*a42 - a32*a41
+      local Y2d = a33*a44 - a34*a43
+
+      local kpa_d = 0.5*(X1d + Y2d) -- kpa = gamma^2
+      local u_d   = 0.5*(X2d + Y1d) -- u = det(C)
+
+      -- Edwards-Teng constraint kpa + u = 1.
+      u = 0.5*(1 + u_d - kpa_d)
+
+      if option.debug >= 3 and fun then
+        kpa_d:print("kpa_d") ;
+        u_d  :print("u_d") ;
+        (X1d-Y2d):print("dkpa_X1_Y2") ;
+        (X2d-Y1d):print("du_X2_Y1") ;
+        (kpa_d+u_d-1):print("dkpa_plus_u") ;
+      end
     end
     local kpa = 1-u
 
+    -- back to Ripken–Mais/Lebedev-Bogacz
     res.betx = res.betx/kpa                                          -- eq. 7.16
     res.bety = res.bety/kpa
     res.alfx = res.alfx/kpa
@@ -803,27 +850,31 @@ local function nf_cplg (a, mt_)
       end
     end
 
-    -- Coupling 2x2 matrix of real or tpsa
+    -- eigen modes
+    res.ev1 = ev1_re + 1i*ev1_im
+    res.ev2 = ev2_re + 1i*ev2_im
+
+    -- Coupling 2x2 matrix of real or tpsa (eq. 7.13, R = D tan(phi))
     res.r11 =  sqrt(beta22/beta12) * (u*ev2_re + alfa12*ev2_im)/kpa  -- eq. 7.11
     res.r22 = -sqrt(beta11/beta21) * (u*ev1_re + alfa21*ev1_im)/kpa
     res.r12 =  sqrt(beta11*beta21) * ev1_im/kpa
     res.r21 =  (ev2_re*(alfa12*kpa - alfa22*u) -
                 ev2_im*(alfa12*alfa22 + kpa*u)) / (kpa*sqrt(beta12*beta22))
 
-    -- Linear RDTs of complex or ctpsa
+    -- Linear RDTs of complex or ctpsa (r = C/gamma = D^-1 tan(phi) = -S*R^t*S)
     local sbetx, sbety = sqrt(res.betx), sqrt(res.bety)        -- eq. 5
     local   ga = {1/sbetx, 0,  res.alfx/sbetx,   sbetx}        -- ga
     local  _gb = {  sbety, 0, -res.alfy/sbety, 1/sbety}        -- gb^-1
-    local    r = {res.r22, -res.r21, -res.r12, res.r11}        -- eq. 16, -S*R*S
-    local    c = div(r, 1+det(r))                              -- eq. 16
-    local    g = sqrt(1-det(c))                                -- |C| + g^2 = 1
-    local cbar = mul(ga, mul(c, _gb))                          -- eq. 5
-    local   cb = div(cbar, 4*g)                                -- eq. 9 & 10
+    local    r = {res.r22, -res.r12, -res.r21, res.r11}        -- -S*R^t*S
+    local cbar = mul(ga, mul(r, _gb))                          -- eq. 5
+    local   cb = scl(cbar, 0.25)                               -- eq. 9 & 10
 
     res.f1001 =  cb[2]-cb[3] + 1i*(cb[1]+cb[4])                -- eq. 9
     res.f1010 = -cb[2]-cb[3] + 1i*(cb[1]-cb[4])                -- eq. 10
   else
     res.kpa   = fun and beta11:same():set0(1) or 1
+    res.ev1   = fun and beta11:same()         or 0
+    res.ev2   = fun and beta11:same()         or 0
     res.r11   = fun and beta11:same()         or 0
     res.r22   = fun and beta11:same()         or 0
     res.r12   = fun and beta11:same()         or 0
@@ -837,9 +888,18 @@ end
 
 local s2p = { 1, 2, 3, ["1"]=1, ["2"]=2, ["3"]=3, x=1, y=2, t=3 }
 local s2v = { 1, 2, 3, 4, ["1"]=1, ["2"]=2, ["3"]=3, ["4"]=4, x=1, px=2, y=3, py=4 }
+local s2i = { 1, 2, 3, 4, 5, 6, ["1"]=1, ["2"]=2, ["3"]=3, ["4"]=4, ["5"]=5, ["6"]=6, x=1, px=2, y=3, py=4, t=5, pt=6 }
 local s2k = { x="x", y="y" }
 local s2f = { ["1010"]="1010", ["1001"]="1001" }
 local s2r = { ["11"]="11", ["12"]="12", ["21"]="21", ["22"]="22" }
+local s2e = { ["1"]="1", ["2"]="2" }
+
+function nf_A (a, ij, mt)
+  local i = assert(s2i[ij:sub(1,1)], "invalid map/matrix row index")
+  local j = assert(s2i[ij:sub(2,2)], "invalid map/matrix column index")
+  local aij = mt[ij] or a[i]:deriv(j) ; mt[ij] = aij
+  return aij
+end
 
 local function nf_kpa (a, _, mon_, mt)
   nf_cplg(a, mt)
@@ -848,6 +908,16 @@ local function nf_kpa (a, _, mon_, mt)
   assert(a:maxord() >= 1+mon_:ord(),
     "rmatrix: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
   return kpa:get(mon_) * mon_:ordpf()
+end
+
+local function nf_evc (a, e, mon_, mt)
+  assert(s2e[e], "invalid linear coupling eigen mode")
+  nf_cplg(a, mt)
+  local evc = mt["ev"..e]
+  if is_nil(mon_) then return evc end
+  assert(a:maxord() >= 1+mon_:ord(),
+    "eigenmode: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
+  return evc:get(mon_) * mon_:ordpf()
 end
 
 local function nf_flc (a, f, mon_, mt)
@@ -871,16 +941,20 @@ local function nf_rlc (a, r, mon_, mt)
 end
 
 function nf_bet (a, p, mon_, mt)
-  local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
-  local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
-  local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
-  local bet = mt["bet"..p1..p2] --; io.write("bet"..p1..p2, "\n")
-  if not bet then
-    local a11 = mt[v1..v2  ] or a[v1]:deriv(v2+0) ; mt[v1..v2  ] = a11
-    local a12 = mt[v1..v2+1] or a[v1]:deriv(v2+1) ; mt[v1..v2+1] = a12
-          bet = a11^2 + a12^2                     ; mt["bet"..p1..p2] = bet
+  local bet
+  if s2k[p] then
+    nf_cplg(a, mt) ; bet = mt["bet"..p]
+  else
+    local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
+    local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
+    local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
+    bet = mt["bet"..p1..p2] --; io.write("bet"..p1..p2, "\n")
+    if not bet then
+      local a11 = nf_A(a, v1..v2  , mt)
+      local a12 = nf_A(a, v1..v2+1, mt)
+            bet = a11^2 + a12^2 ; mt["bet"..p1..p2] = bet
+    end
   end
-  if s2k[p] then nf_cplg(a, mt) ; bet = mt["bet"..p] end
   if is_nil(mon_) then return bet end
   assert(a:maxord() >= 1+mon_:ord(),
     "beta: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
@@ -888,18 +962,22 @@ function nf_bet (a, p, mon_, mt)
 end
 
 function nf_alf (a, p, mon_, mt)
-  local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
-  local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
-  local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
-  local alf = mt["alf"..p1..p2] --; io.write("alf"..p1..p2, "\n")
-  if not alf then
-    local a11 = mt[v1  ..v2  ] or a[v1  ]:deriv(v2+0) ; mt[v1  ..v2  ] = a11
-    local a12 = mt[v1  ..v2+1] or a[v1  ]:deriv(v2+1) ; mt[v1  ..v2+1] = a12
-    local a21 = mt[v1+1..v2  ] or a[v1+1]:deriv(v2+0) ; mt[v1+1..v2  ] = a21
-    local a22 = mt[v1+1..v2+1] or a[v1+1]:deriv(v2+1) ; mt[v1+1..v2+1] = a22
-          alf = -(a11*a21+a12*a22)                    ; mt["alf"..p1..p2] = alf
+  local alf
+  if s2k[p] then
+    nf_cplg(a, mt) ; alf = mt["alf"..p]
+  else
+    local p1 = assertf(s2p[p:sub(1,1)], "invalid plane '%s'", p)
+    local p2 = assertf(s2p[p:sub(2,2)] or p1, "invalid plane '%s'", p)
+    local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
+    alf = mt["alf"..p1..p2] --; io.write("alf"..p1..p2, "\n")
+    if not alf then
+      local a11 = nf_A(a, v1  ..v2  , mt)
+      local a12 = nf_A(a, v1  ..v2+1, mt)
+      local a21 = nf_A(a, v1+1..v2  , mt)
+      local a22 = nf_A(a, v1+1..v2+1, mt)
+            alf = -(a11*a21+a12*a22) ; mt["alf"..p1..p2] = alf
+    end
   end
-  if s2k[p] then nf_cplg(a, mt) ; alf = mt["alf"..p] end
   if is_nil(mon_) then return alf end
   assert(a:maxord() >= 1+mon_:ord(),
     "alfa: damap order is too low %d < %d", a:maxord(), 1+mon_:ord())
@@ -912,9 +990,9 @@ local function nf_gam (a, p, mon_, mt)
   local v1, v2 = 2*(p1-1)+1, 2*(p2-1)+1
   local gam = mt["gam"..p1..p2] --; io.write("gam"..p1..p2, "\n")
   if not gam then
-    local a21 = mt[v1+1..v2  ] or a[v1+1]:deriv(v2+0) ; mt[v1+1..v2  ] = a21
-    local a22 = mt[v1+1..v2+1] or a[v1+1]:deriv(v2+1) ; mt[v1+1..v2+1] = a22
-          gam = a21^2+a22^2                           ; mt["gam"..p1..p2] = gam
+    local a21 = nf_A(a, v1+1..v2  , mt)
+    local a22 = nf_A(a, v1+1..v2+1, mt)
+          gam = a21^2+a22^2 ; mt["gam"..p1..p2] = gam
   end
   if is_nil(mon_) then return gam end
   assertf(a:maxord() >= 1+mon_:ord(),
@@ -927,9 +1005,9 @@ local function nf_pha (a, p, mt)
   local v = 2*(p-1)+1
   local pha = mt["pha"..p] --; io.write("pha"..p, "\n")
   if not pha then
-    local a11 = mt[v..v  ] or a[v]:deriv(v+0) ; mt[v..v    ] = a11
-    local a12 = mt[v..v+1] or a[v]:deriv(v+1) ; mt[v..v+1  ] = a12
-    pha = atan2(a12, a11)/twopi               ; mt["pha"..p] = pha
+    local a11 = nf_A(a, v..v  , mt)
+    local a12 = nf_A(a, v..v+1, mt)
+    pha = atan2(a12, a11)/twopi ; mt["pha"..p] = pha
   end
   return pha
 end
@@ -973,14 +1051,14 @@ end
 local function nf_wf (a, p, mt)
   local p = assertf(s2p[p], "invalid plane '%s'", p)
   local v = 2*(p-1)+1
-  local bet, alf = mt["bet"..p..p], mt["alf"..p..p] --; io.write("bet"..p..p, ", ", "alf"..p..p, "\n")
+  local bet, alf = mt["bet"..p..p], mt["alf"..p..p]
   if not (bet and alf) then
-    local a11 = mt[v  ..v  ] or a[v  ]:deriv(v+0) ; mt[v  ..v     ] = a11
-    local a12 = mt[v  ..v+1] or a[v  ]:deriv(v+1) ; mt[v  ..v+1   ] = a12
-    local a21 = mt[v+1..v  ] or a[v+1]:deriv(v+0) ; mt[v+1..v     ] = a21
-    local a22 = mt[v+1..v+1] or a[v+1]:deriv(v+1) ; mt[v+1..v+1   ] = a22
-          bet =   a11^2 + a12^2                   ; mt["bet"..p..p] = bet
-          alf = -(a11*a21+a12*a22)                ; mt["alf"..p..p] = alf
+    local a11 = nf_A(a, v  ..v  , mt)
+    local a12 = nf_A(a, v  ..v+1, mt)
+    local a21 = nf_A(a, v+1..v  , mt)
+    local a22 = nf_A(a, v+1..v+1, mt)
+          bet =   a11^2 + a12^2    ; mt["bet"..p..p] = bet
+          alf = -(a11*a21+a12*a22) ; mt["alf"..p..p] = alf
   end
   local bx, ax = mt["bx"..p], mt["ax"..p]
   if not (bx and ax) then
@@ -1018,14 +1096,15 @@ end
 
 local optfct = { alfa=nf_alf, beta=nf_bet, gama=nf_gam, disp=nf_dsp,  mu=nf_mu, dmu=nf_dmu,
                  alfx=nf_alf, betx=nf_bet, alfy=nf_alf, bety=nf_bet,   f=nf_flc,  r=nf_rlc,
-                   dx=nf_dsp,   dy=nf_dsp,  dpx=nf_dsp,  dpy=nf_dsp, kpa=nf_kpa,
+                   dx=nf_dsp,   dy=nf_dsp,  dpx=nf_dsp,  dpy=nf_dsp, kpa=nf_kpa, ev=nf_evc,
                    wx=nf_wrf,   wy=nf_wrf,  wxp=nf_wpf,  wyp=nf_wpf, }
 local optlst = { alfa="alfa", beta="beta", gama="gama", disp="disp", mu="mu", dmu="dmu",
-                 alfx="alfx", betx="betx", alfy="alfy", bety="bety", f="f", r="r", kpa="kpa",
+                 alfx="alfx", betx="betx", alfy="alfy", bety="bety",
+                 f="f", r="r", kpa="kpa", ev="ev",
                  dx="dx", dy="dy", dpx="dpx", dpy="dpy",
                  wx="wx", wy="wy", wxp="wxp", wyp="wyp" }
 local optlen = { alfa=2, beta=2, gama=2, disp=1, mu=1, dmu=1,
-                 alfx=0, betx=0, alfy=0, bety=0, f=4, r=2, kpa=0,
+                 alfx=0, betx=0, alfy=0, bety=0, f=4, r=2, ev=1, kpa=0,
                  dx=0, dy=0, dpx=0, dpy=0, wx=0, wy=0, wxp=0, wyp=0 }
 local optvar = { alfx="x", betx="x", alfy="y", bety="y", kpa="",
                  dx="1", dpx="2", dy="3", dpy="4", wx="1", wy="2", wxp="1", wyp="2" }
