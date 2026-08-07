@@ -6,8 +6,8 @@
  | Methodical Accelerator Design - Copyright (c) 2016+
  | Support: http://cern.ch/mad  - mad at cern.ch
  | Authors: L. Deniau, laurent.deniau at cern.ch
- |          C. Tomoiaga
- | Contrib: A. E. Scurria (Numerical stability for high orders)
+ | Contrib: C. Tomoiaga   (Initial feasibility implementation)
+ |          A. E. Scurria (Numerical stability for orders >6)
  |
  o-----------------------------------------------------------------------------o
  | You can redistribute this file and/or modify it under the terms of the GNU
@@ -63,27 +63,25 @@ fun_taylor (const T *a, T *c, ord_t n, const NUM ord_coef[n+1])
   if (n >= 2) acp = GET_TMPX(c), FUN(copy)(a,acp);
 
   // n=1
-  FUN(scl)(a, ord_coef[1], c);
-  FUN(seti)(c, 0, 0, ord_coef[0]); // f(a0) + f'(a0)(a-a0)
+  FUN(scl)(a,ord_coef[1],c);
+  FUN(seti)(c,0,0,ord_coef[0]);      // f(a0) + f'(a0)(a-a0)
 
   // n=2
   if (n >= 2) {
     T *pow = GET_TMPX(c);
-    FUN(seti)(acp,0,0,0);          //  a-a0
-    FUN(mul)(acp,acp,pow);         // (a-a0)^2
-    FUN(acc)(pow,ord_coef[2],c);   // f(a0) + f'(a0)(a-a0) + f"(a0)(a-a0)^2
+    FUN(seti)(acp,0,0,0);            //  a-a0
+    FUN(mul)(acp,acp,pow);           // (a-a0)^2
+    FUN(acc)(pow,ord_coef[2],c);     // f(a0) + f'(a0)(a-a0) + f"(a0)(a-a0)^2
 
     // i=3..n
     if (n >= 3) {
       T *tmp = GET_TMPX(c), *t;
-
       for (ord_t i = 3; i <= n; ++i) {
         FUN(mul)(acp,pow,tmp);
         FUN(acc)(tmp,ord_coef[i],c); // f(a0) + ... + f^(i)(a0)(a-a0)^i
         SWAP(pow,tmp,t);
       }
-
-      if (n & 1) SWAP(pow,tmp,t); // enforce even number of swaps
+      if (n & 1) SWAP(pow,tmp,t);    // enforce even number of swaps
       REL_TMPX(tmp);
     }
     REL_TMPX(pow), REL_TMPX(acp);
@@ -170,14 +168,14 @@ FUN(inv) (const T *a, NUM v, T *c) // c = v/a    // checked for real and complex
   NUM a0 = a->coef[0];
   ensure(a0 != 0, "invalid domain inv("FMT")", VAL(a0));
 
-  NUM f0 = NUMF(inv)(a0);
   ord_t to = c->mo;
-  if (!to || FUN(isval)(a)) { FUN(setval)(c,v*f0); DBGFUN(<-); return; }
+  if (!to || FUN(isval)(a)) {
+    FUN(setval)(c,NUMF(div)(v,a0)); DBGFUN(<-); return; }
 
   NUM ord_coef[to+1];
-  ord_coef[0] = f0;
+  ord_coef[0] = NUMF(inv)(a0);
   for (ord_t o = 1; o <= to; ++o)
-    ord_coef[o] = -ord_coef[o-1] * f0;
+    ord_coef[o] = -NUMF(div)(ord_coef[o-1],a0);
 
   fun_taylor(a,c,to,ord_coef);
   if (v != 1) FUN(scl)(c,v,c);
@@ -309,9 +307,9 @@ FUN(sincos) (const T *a, T *s, T *c)             // checked for real and complex
   ord_t sto = s->mo, cto = c->mo;
   if (!sto || !cto) {
     if (!sto) FUN(setval)(s, sa);
-    else      FUN(sin)(a,s);
+    else      FUN(sin)(a, s);
     if (!cto) FUN(setval)(c, ca);
-    else      FUN(cos)(a,c);
+    else      FUN(cos)(a, c);
     DBGFUN(<-); return;
   }
 
@@ -327,6 +325,212 @@ FUN(sincos) (const T *a, T *s, T *c)             // checked for real and complex
     cos_coef[o] = -cos_coef[o-2] / (o*(o-1.));
 
   sincos_taylor(a,s,c, sto,sin_coef, cto,cos_coef);
+  DBGFUN(<-);
+}
+
+void
+FUN(sincosq) (const T *a, T *s, T *c) // sinc(sqrt(x)) and cos(sqrt(x))
+{
+  assert(a && s && c); DBGFUN(->);
+  ensure(IS_COMPAT(a,s,c), "incompatibles GTPSA (descriptors differ)");
+
+  NUM a0 = a->coef[0], sa = NUMF(sincrt)(a0), ca = NUMF(cosrt)(a0);
+
+  if (a->hi == 0) {
+    FUN(setval)(s, sa);
+    FUN(setval)(c, ca);
+    DBGFUN(<-); return;
+  }
+
+  T *ts = s, *tc = c;
+  ord_t sto = s->mo, cto = c->mo;
+  if (!sto || !cto) {
+    if (!sto && !cto) {
+      FUN(setval)(s, sa);
+      FUN(setval)(c, ca);
+      DBGFUN(<-); return;
+    }
+    if (!sto) ts = GET_TMPX(s), sto = 1;
+    if (!cto) tc = GET_TMPX(c), cto = 1;
+  }
+
+  NUM sin_coef[sto+1], cos_coef[cto+1];
+
+  if (fabs(a0) < 1e-12) {
+    sin_coef[0] = 1, cos_coef[0] = 1;
+
+    for (ord_t o = 1; o <= sto; ++o)
+      sin_coef[o] = -sin_coef[o-1] / ((2.*o+1)*(2.*o));
+
+    for (ord_t o = 1; o <= cto; ++o)
+      cos_coef[o] = -cos_coef[o-1] / ((2.*o)*(2.*o-1));
+  } else
+  if (fabs(a0) < 0.75) {
+    NUM c0 = 1, s0 = 1;
+
+    for (ord_t o = 0; o <= cto; ++o) {
+      if (o) c0 = -c0 / ((2.*o)*(2.*o-1));
+
+      NUM v = c0, t = c0;
+      for (int j = 1; j < 100; ++j) {
+        num_t n = o+j;
+        t *= -a0*n / ((2*n)*(2*n-1)*j);
+        v += t;
+        if (fabs(t) <= fabs(v)*4*DBL_EPSILON) break;
+      }
+      cos_coef[o] = v;
+    }
+    for (ord_t o = 0; o <= sto; ++o) {
+      if (o) s0 = -s0 / ((2.*o+1)*(2.*o));
+
+      NUM v = s0, t = s0;
+      for (int j = 1; j < 100; ++j) {
+        num_t n = o+j;
+        t *= -a0*n / ((2*n)*(2*n+1)*j);
+        v += t;
+        if (fabs(t) <= fabs(v)*4*DBL_EPSILON) break;
+      }
+      sin_coef[o] = v;
+    }
+    cos_coef[0] = ca, sin_coef[0] = sa;
+  }
+  else {
+    NUM sv = sa, cv = ca, t;
+    sin_coef[0] = sv, cos_coef[0] = cv;
+
+    ord_t to = MAX(sto,cto);
+    for (ord_t o = 1; o <= to; ++o) {
+      t  = -sv / (2.*o);
+      sv = (cv - (2.*o-1)*sv) / (2.*a0*o);
+      cv = t;
+      if (o <= cto) cos_coef[o] = cv;
+      if (o <= sto) sin_coef[o] = sv;
+    }
+  }
+
+  sincos_taylor(a,ts,tc, sto,sin_coef, cto,cos_coef);
+  if (ts != s) FUN(setval)(s, sa), REL_TMPX(ts);
+  if (tc != c) FUN(setval)(c, ca), REL_TMPX(tc);
+  DBGFUN(<-);
+}
+
+void
+FUN(sincosmq) (const T *a, T *s, T *c) // (sinc(sqrt(x))-1)/x and (cos(sqrt(x))-1)/x
+{
+  assert(a && s && c); DBGFUN(->);
+  ensure(IS_COMPAT(a,s,c), "incompatibles GTPSA (descriptors differ)");
+
+  NUM a0 = a->coef[0], sa = NUMF(sincmrt)(a0), ca = NUMF(cosmrt)(a0);
+
+  if (a->hi == 0) {
+    FUN(setval)(s, sa);
+    FUN(setval)(c, ca);
+    DBGFUN(<-); return;
+  }
+
+  T *ts = s, *tc = c;
+  ord_t sto = s->mo, cto = c->mo;
+  if (!sto || !cto) {
+    if (!sto && !cto) {
+      FUN(setval)(s, sa);
+      FUN(setval)(c, ca);
+      DBGFUN(<-); return;
+    }
+    if (!sto) ts = GET_TMPX(s), sto = 1;
+    if (!cto) tc = GET_TMPX(c), cto = 1;
+  }
+
+  NUM sin_coef[sto+1], cos_coef[cto+1];
+
+  if (fabs(a0) < 1e-12) {
+    sin_coef[0] = -1./6, cos_coef[0] = -1./2;
+
+    for (ord_t o = 1; o <= sto; ++o)
+      sin_coef[o] = -sin_coef[o-1] / ((2.*o+3)*(2.*o+2));
+
+    for (ord_t o = 1; o <= cto; ++o)
+      cos_coef[o] = -cos_coef[o-1] / ((2.*o+2)*(2.*o+1));
+  } else
+  if (fabs(a0) < 0.75) {
+    NUM c0 = -1./2, s0 = -1./6;
+
+    for (ord_t o = 0; o <= cto; ++o) {
+      if (o) c0 = -c0 / ((2.*o+2)*(2.*o+1));
+
+      NUM v = c0, t = c0;
+      for (int j = 1; j < 100; ++j) {
+        num_t n = o+j;
+        t *= -a0*n / ((2*n+2)*(2*n+1)*j);
+        v += t;
+        if (fabs(t) <= fabs(v)*4*DBL_EPSILON) break;
+      }
+      cos_coef[o] = v;
+    }
+
+    for (ord_t o = 0; o <= sto; ++o) {
+      if (o) s0 = -s0 / ((2.*o+3)*(2.*o+2));
+
+      NUM v = s0, t = s0;
+      for (int j = 1; j < 100; ++j) {
+        num_t n = o+j;
+        t *= -a0*n / ((2*n+3)*(2*n+2)*j);
+        v += t;
+        if (fabs(t) <= fabs(v)*4*DBL_EPSILON) break;
+      }
+      sin_coef[o] = v;
+    }
+    cos_coef[0] = ca, sin_coef[0] = sa;
+  }
+  else {
+    NUM cv = (-0.5*(1 + a0*sa) - ca) / a0;
+    NUM sv = (ca - 3*sa) / (2*a0);
+    NUM sp = sa;
+
+    sin_coef[0] = sa, cos_coef[0] = ca;
+    if (1 <= cto) cos_coef[1] = cv;
+    if (1 <= sto) sin_coef[1] = sv;
+
+    ord_t to = MAX(sto,cto);
+    for (ord_t o = 2; o <= to; ++o) {
+      NUM cv1 = (-0.5*(a0*sv + sp) - o*cv) / (a0*o);
+      NUM sv1 = (cv - (2*o+1)*sv) / (2*a0*o);
+      if (o <= cto) cos_coef[o] = cv1;
+      if (o <= sto) sin_coef[o] = sv1;
+      sp = sv, cv = cv1, sv = sv1;
+    }
+  }
+
+  sincos_taylor(a,ts,tc, sto,sin_coef, cto,cos_coef);
+  if (ts != s) FUN(setval)(s, sa), REL_TMPX(ts);
+  if (tc != c) FUN(setval)(c, ca), REL_TMPX(tc);
+  DBGFUN(<-);
+}
+
+void
+FUN(sincoshq) (const T *a, T *s, T *c) // sinh(sqrt(x))/sqrt(x) and cosh(sqrt(x))
+{
+  assert(a && s && c); DBGFUN(->);
+  ensure(IS_COMPAT(a,s,c), "incompatibles GTPSA (descriptors differ)");
+
+  T *t = GET_TMPX(c);
+  FUN(scl)(a,-1,t);
+  FUN(sincosq)(t,s,c);
+  REL_TMPX(t);
+  DBGFUN(<-);
+}
+
+void
+FUN(sincoshmq) (const T *a, T *s, T *c) // (sinh(sqrt(x))/sqrt(x)-1)/x and (cosh(sqrt(x))-1)/x
+{
+  assert(a && s && c); DBGFUN(->);
+  ensure(IS_COMPAT(a,s,c), "incompatibles GTPSA (descriptors differ)");
+
+  T *t = GET_TMPX(c);
+  FUN(scl)(a,-1,t);
+  FUN(sincosmq)(t,s,c);
+  FUN(scl)(s,-1,s);
+  FUN(scl)(c,-1,c);
+  REL_TMPX(t);
   DBGFUN(<-);
 }
 
@@ -412,7 +616,7 @@ FUN(cot) (const T *a, T *c)                      // checked for real and complex
   ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
   NUM a0 = a->coef[0];
   ensure(sin(a0) != 0, "invalid domain cot("FMT")", VAL(a0));
-  NUM f0 = tan(M_PI_2 - a0);
+  NUM f0 = NUMF(inv)(tan(a0));
 
   ord_t to = c->mo;
   if (!to || FUN(isval)(a)) { FUN(setval)(c,f0); DBGFUN(<-); return; }

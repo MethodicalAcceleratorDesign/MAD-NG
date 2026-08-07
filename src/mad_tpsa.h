@@ -115,6 +115,7 @@ void    mad_tpsa_add     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_sub     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_mul     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_div     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
+log_t   mad_tpsa_divc    (const tpsa_t *a, const tpsa_t *b, tpsa_t *c, num_t tol_); // c = a/b by cancellation, may fail
 void    mad_tpsa_pow     (const tpsa_t *a, const tpsa_t *b, tpsa_t *c);
 void    mad_tpsa_powi    (const tpsa_t *a, int           n, tpsa_t *c);
 void    mad_tpsa_pown    (const tpsa_t *a, num_t         v, tpsa_t *c);
@@ -127,12 +128,16 @@ void    mad_tpsa_sqrt    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_exp     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_log     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_sincos  (const tpsa_t *a, tpsa_t *s, tpsa_t *c);
+void    mad_tpsa_sincosq (const tpsa_t *a, tpsa_t *s, tpsa_t *c); // sinc(sqrt(x)), cos(sqrt(x))
+void    mad_tpsa_sincosmq(const tpsa_t *a, tpsa_t *s, tpsa_t *c); // (sinc(sqrt(x))-1)/x, (cos(sqrt(x))-1)/x
 void    mad_tpsa_sin     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_cos     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_tan     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_cot     (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_sinc    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_sincosh (const tpsa_t *a, tpsa_t *s, tpsa_t *c);
+void    mad_tpsa_sincoshq(const tpsa_t *a, tpsa_t *s, tpsa_t *c); // sinhc(sqrt(x)), cosh(sqrt(x))
+void    mad_tpsa_sincoshmq(const tpsa_t*a, tpsa_t *s, tpsa_t *c); // (sinhc(sqrt(x))-1)/x, (cosh(sqrt(x))-1)/x
 void    mad_tpsa_sinh    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_cosh    (const tpsa_t *a, tpsa_t *c);
 void    mad_tpsa_tanh    (const tpsa_t *a, tpsa_t *c);
@@ -223,6 +228,10 @@ tpsa_t* mad_tpsa_init     (      tpsa_t *t, const desc_t *d, ord_t mo);
 
 // debug
 int     mad_tpsa_debug    (const tpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
+
+// debug divc
+void     mad_tpsa_divc_clrcnt(void);
+void     mad_tpsa_divc_getcnt(ssz_t *cnt, ssz_t *fail);
 
 // --- end --------------------------------------------------------------------o
 

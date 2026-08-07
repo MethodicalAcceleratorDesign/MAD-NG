@@ -488,27 +488,6 @@ FUN(mul) (const T *a, const T *b, T *r)
 }
 
 void
-FUN(div) (const T *a, const T *b, T *c)
-{
-  assert(a && b && c); DBGFUN(->);
-  ensure(IS_COMPAT(a,b,c), "incompatibles GTPSA (descriptors differ)");
-
-  NUM b0 = b->coef[0];
-  ensure(b0 != 0, "invalid domain");
-
-  if (FUN(isval)(b)) {
-    FUN(divn)(a, b0, c);
-    DBGFUN(<-); return;
-  }
-
-  T *t = (a == c || b == c) ? GET_TMPX(c) : FUN(reset0)(c);
-  FUN(inv)(b,1,t);
-  FUN(mul)(a,t,c);
-  if (t != c) REL_TMPX(t);
-  DBGFUN(<-);
-}
-
-void
 FUN(powi) (const T *a, int n, T *c)
 {
   assert(a && c); DBGFUN(->);

@@ -130,6 +130,7 @@ void     mad_ctpsa_add     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_sub     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_mul     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_div     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
+log_t    mad_ctpsa_divc    (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c, num_t tol_); // c = a/b by cancellation, may fail
 void     mad_ctpsa_pow     (const ctpsa_t *a, const ctpsa_t *b, ctpsa_t *c);
 void     mad_ctpsa_powi    (const ctpsa_t *a,       int      n, ctpsa_t *c);
 void     mad_ctpsa_pown    (const ctpsa_t *a,       cpx_t    v, ctpsa_t *c);
@@ -158,12 +159,16 @@ void     mad_ctpsa_sqrt    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_exp     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_log     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_sincos  (const ctpsa_t *a, ctpsa_t *s, ctpsa_t *c);
+void     mad_ctpsa_sincosq (const ctpsa_t *a, ctpsa_t *s, ctpsa_t *c); // sinc(sqrt(x)), cos(sqrt(x))
+void     mad_ctpsa_sincosmq(const ctpsa_t *a, ctpsa_t *s, ctpsa_t *c); // (sinc(sqrt(x))-1)/x, (cos(sqrt(x))-1)/x
 void     mad_ctpsa_sin     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_cos     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_tan     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_cot     (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_sinc    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_sincosh (const ctpsa_t *a, ctpsa_t *s, ctpsa_t *c);
+void     mad_ctpsa_sincoshq(const ctpsa_t *a, ctpsa_t *s, ctpsa_t *c); // sinhc(sqrt(x)), cosh(sqrt(x))
+void     mad_ctpsa_sincoshmq(const ctpsa_t*a, ctpsa_t *s, ctpsa_t *c); // (sinhc(sqrt(x))-1)/x, (cosh(sqrt(x))-1)/x
 void     mad_ctpsa_sinh    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_cosh    (const ctpsa_t *a, ctpsa_t *c);
 void     mad_ctpsa_tanh    (const ctpsa_t *a, ctpsa_t *c);
@@ -289,6 +294,10 @@ ctpsa_t* mad_ctpsa_init     (      ctpsa_t *t, const desc_t *d, ord_t mo);
 
 // debug
 int      mad_ctpsa_debug    (const ctpsa_t *t, str_t name_, str_t fnam_, int line_, FILE *stream_);
+
+// debug divc
+void     mad_ctpsa_divc_clrcnt(void);
+void     mad_ctpsa_divc_getcnt(ssz_t *cnt, ssz_t *fail);
 
 // ---------------------------------------------------------------------------o
 

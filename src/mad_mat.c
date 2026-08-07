@@ -1108,7 +1108,6 @@ mad_mat_det (const num_t x[], num_t *r, ssz_t n)
   mad_alloc_tmp(num_t, a, n*n);
   mad_vec_copy(x, a, n*n);
   dgetrf_(&nn, &nn, a, &nn, ipiv, &info);
-
   if (info < 0) error("Det: invalid input argument");
 
   int perm = 0;
@@ -1130,7 +1129,6 @@ mad_cmat_det (const cpx_t x[], cpx_t *r, ssz_t n)
   mad_alloc_tmp(cpx_t, a, n*n);
   mad_cvec_copy(x, a, n*n);
   zgetrf_(&nn, &nn, a, &nn, ipiv, &info);
-
   if (info < 0) error("Det: invalid input argument");
 
   int perm = 0;
@@ -1335,7 +1333,9 @@ mad_mat_div (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_
     dgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
     mad_free_tmp(ipiv);
     if (!info) return mad_free_tmp(a), n;
-    if (info > 0) warn("Div: singular matrix, no solution found");
+    if (info < 0) error("Div: invalid input argument");
+    if (info > 0) warn ("Div: singular matrix detected");
+    mad_vec_copy(y, a, n*p);
   }
 
   // non-square system or singular square system, use QR or LQ factorization
@@ -1345,15 +1345,16 @@ mad_mat_div (const num_t x[], const num_t y[], num_t r[], ssz_t m, ssz_t n, ssz_
   mad_alloc_tmp(num_t, rr, ldb*nm);
   mad_mat_copy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
   dgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, jpvt, &rcond, &rank, &sz, &lwork, &info); // query
+  if (info < 0) error("Div: invalid input argument");
+  if (info > 0) error("Div: unexpected lapack error");
   ensure(sz >= 1, "lapack: invalid work size");
   lwork=sz;
   mad_alloc_tmp(num_t, wk, lwork);
   dgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, jpvt, &rcond, &rank,  wk, &lwork, &info); // compute
-  mad_mat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
-  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(jpvt); mad_free_tmp(a);
-
   if (info < 0) error("Div: invalid input argument");
   if (info > 0) error("Div: unexpected lapack error");
+  mad_mat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
+  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(jpvt); mad_free_tmp(a);
 
   return rank;
 }
@@ -1374,26 +1375,29 @@ mad_mat_divm (const num_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
     mad_free_tmp(ipiv);
     if (!info) return mad_free_tmp(a), n;
-    if (info > 0) warn("Div: singular matrix, no solution found");
+    if (info < 0) error("Div: invalid input argument");
+    if (info > 0) warn ("Div: singular matrix detected");
+    mad_cvec_copy(y, a, n*p);
   }
 
   // non-square system or singular square system, use QR or LQ factorization
   cpx_t sz;
   int rank, ldb=MAX(nn,np), lwork=-1; // query for optimal size
   mad_calloc_tmp(int, jpvt, nn);
-  mad_alloc_tmp(num_t, rwk, 2*nm);
+  mad_alloc_tmp(num_t, rwk, 2*nn);
   mad_alloc_tmp(cpx_t, rr, ldb*nm);
   mad_mat_copym(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, jpvt, &rcond, &rank, &sz, &lwork, rwk, &info); // query
+  if (info < 0) error("Div: invalid input argument");
+  if (info > 0) error("Div: unexpected lapack error");
   ensure(creal(sz) >= 1, "lapack: invalid work size");
   lwork=creal(sz);
   mad_alloc_tmp(cpx_t, wk, lwork);
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, jpvt, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
-  mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
-  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(rwk); mad_free_tmp(jpvt); mad_free_tmp(a);
-
   if (info < 0) error("Div: invalid input argument");
   if (info > 0) error("Div: unexpected lapack error");
+  mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
+  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(rwk); mad_free_tmp(jpvt); mad_free_tmp(a);
 
   return rank;
 }
@@ -1414,26 +1418,29 @@ mad_cmat_div (const cpx_t x[], const cpx_t y[], cpx_t r[], ssz_t m, ssz_t n, ssz
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
     mad_free_tmp(ipiv);
     if (!info) return mad_free_tmp(a), n;
-    if (info > 0) warn("Div: singular matrix, no solution found");
+    if (info < 0) error("Div: invalid input argument");
+    if (info > 0) warn ("Div: singular matrix detected");
+    mad_cvec_copy(y, a, n*p);
   }
 
   // non-square system or singular square system, use QR or LQ factorization
   cpx_t sz;
   int rank, ldb=MAX(nn,np), lwork=-1; // query for optimal size
   mad_calloc_tmp(int, jpvt, nn);
-  mad_alloc_tmp(num_t, rwk, 2*nm);
+  mad_alloc_tmp(num_t, rwk, 2*nn);
   mad_alloc_tmp(cpx_t, rr, ldb*nm);
   mad_cmat_copy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, jpvt, &rcond, &rank, &sz, &lwork, rwk, &info); // query
+  if (info < 0) error("Div: invalid input argument");
+  if (info > 0) error("Div: unexpected lapack error");
   ensure(creal(sz) >= 1, "lapack: invalid work size");
   lwork=creal(sz);
   mad_alloc_tmp(cpx_t, wk, lwork);
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, jpvt, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
-  mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
-  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(rwk); mad_free_tmp(jpvt); mad_free_tmp(a);
-
   if (info < 0) error("Div: invalid input argument");
   if (info > 0) error("Div: unexpected lapack error");
+  mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
+  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(rwk); mad_free_tmp(jpvt); mad_free_tmp(a);
 
   return rank;
 }
@@ -1454,26 +1461,29 @@ mad_cmat_divm (const cpx_t x[], const num_t y[], cpx_t r[], ssz_t m, ssz_t n, ss
     zgesv_(&np, &nm, a, &np, ipiv, r, &np, &info);
     mad_free_tmp(ipiv);
     if (!info) return mad_free_tmp(a), n;
-    if (info > 0) warn("Div: singular matrix, no solution found");
+    if (info < 0) error("Div: invalid input argument");
+    if (info > 0) warn ("Div: singular matrix detected");
+    mad_vec_copyv(y, a, n*p);
   }
 
   // non-square system or singular square system, use QR or LQ factorization
   cpx_t sz;
   int rank, ldb=MAX(nn,np), lwork=-1; // query for optimal size
   mad_calloc_tmp(int, jpvt, nn);
-  mad_alloc_tmp(num_t, rwk, 2*nm);
+  mad_alloc_tmp(num_t, rwk, 2*nn);
   mad_alloc_tmp(cpx_t, rr, ldb*nm);
   mad_cmat_copy(x, rr, m, p, p, ldb); // input strided copy [M x NRHS]
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, jpvt, &rcond, &rank, &sz, &lwork, rwk, &info); // query
+  if (info < 0) error("Div: invalid input argument");
+  if (info > 0) error("Div: unexpected lapack error");
   ensure(creal(sz) >= 1, "lapack: invalid work size");
   lwork=creal(sz);
   mad_alloc_tmp(cpx_t, wk, lwork);
   zgelsy_(&np, &nn, &nm, a, &np, rr, &ldb, jpvt, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
-  mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
-  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(rwk); mad_free_tmp(jpvt); mad_free_tmp(a);
-
   if (info < 0) error("Div: invalid input argument");
   if (info > 0) error("Div: unexpected lapack error");
+  mad_cmat_copy(rr, r, m, n, ldb, n); // output strided copy [N x NRHS]
+  mad_free_tmp(wk); mad_free_tmp(rr); mad_free_tmp(rwk); mad_free_tmp(jpvt); mad_free_tmp(a);
 
   return rank;
 }
@@ -1497,15 +1507,15 @@ mad_mat_svd (const num_t x[], num_t u[], num_t s[], num_t v[], ssz_t m, ssz_t n)
   mad_alloc_tmp(num_t, ra, m*n);
   mad_mat_trans(x, ra, m, n);
   dgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn, &sz, &lwork, iwk, &info); // query
+  if (info < 0) error("SVD: invalid input argument");
   ensure(sz >= 1, "lapack: invalid work size");
   lwork=sz;
   mad_alloc_tmp(num_t, wk, lwork);
   dgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn,  wk, &lwork, iwk, &info); // compute
-  mad_free_tmp(wk); mad_free_tmp(ra); mad_free_tmp(iwk);
-  mad_mat_trans(u, u, m, m);
-
   if (info < 0) error("SVD: invalid input argument");
   if (info > 0) warn ("SVD: failed to converge");
+  mad_free_tmp(wk); mad_free_tmp(ra); mad_free_tmp(iwk);
+  mad_mat_trans(u, u, m, m);
 
   return info;
 }
@@ -1526,16 +1536,16 @@ mad_cmat_svd (const cpx_t x[], cpx_t u[], num_t s[], cpx_t v[], ssz_t m, ssz_t n
   mad_alloc_tmp(cpx_t, ra, m*n);
   mad_cmat_trans(x, ra, m, n);
   zgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn, &sz, &lwork, rwk, iwk, &info); // query
+  if (info < 0) error("SVD: invalid input argument");
   ensure(creal(sz) >= 1, "lapack: invalid work size");
   lwork=creal(sz);
   mad_alloc_tmp(cpx_t, wk, lwork);
   zgesdd_("A", &nm, &nn, ra, &nm, s, u, &nm, v, &nn,  wk, &lwork, rwk, iwk, &info); // compute
+  if (info < 0) error("SVD: invalid input argument");
+  if (info > 0) warn ("SVD: failed to converge");
   mad_free_tmp(wk); mad_free_tmp(ra); mad_free_tmp(rwk); mad_free_tmp(iwk);
   mad_cmat_trans(u, u, m, m);
   mad_cvec_conj (v, v, n*n);
-
-  if (info < 0) error("SVD: invalid input argument");
-  if (info > 0) warn ("SVD: failed to converge");
 
   return info;
 }
@@ -1559,17 +1569,17 @@ mad_mat_solve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, ss
   mad_mat_trans(tb, tb, mn, p);
   mad_mat_trans(a , ta, m , n);
   dgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, ipiv, &rcond, &rank, &sz, &lwork, &info); // query
+  if (info < 0) error("Solve: invalid input argument");
+  if (info > 0) error("Solve: unexpected lapack error");
   ensure(sz >= 1, "lapack: invalid work size");
   lwork=sz;
   mad_alloc_tmp(num_t, wk, lwork);
   dgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, ipiv, &rcond, &rank,  wk, &lwork, &info); // compute
-  mad_mat_trans(tb, tb, p, mn);
-  mad_vec_copy (tb,  x, n*p);
-
-  mad_free_tmp(wk); mad_free_tmp(tb); mad_free_tmp(ta); mad_free_tmp(ipiv);
-
   if (info < 0) error("Solve: invalid input argument");
   if (info > 0) error("Solve: unexpected lapack error");
+  mad_mat_trans(tb, tb, p, mn);
+  mad_vec_copy (tb,  x, n*p);
+  mad_free_tmp(wk); mad_free_tmp(tb); mad_free_tmp(ta); mad_free_tmp(ipiv);
 
   return rank;
 }
@@ -1592,17 +1602,17 @@ mad_cmat_solve (const cpx_t a[], const cpx_t b[], cpx_t x[], ssz_t m, ssz_t n, s
   mad_cmat_trans(tb, tb, mn, p);
   mad_cmat_trans(a , ta, m , n);
   zgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, ipiv, &rcond, &rank, &sz, &lwork, rwk, &info); // query
+  if (info < 0) error("Solve: invalid input argument");
+  if (info > 0) error("Solve: unexpected lapack error");
   ensure(creal(sz) >= 1, "lapack: invalid work size");
   lwork=creal(sz);
   mad_alloc_tmp(cpx_t, wk, lwork);
   zgelsy_(&nm, &nn, &np, ta, &nm, tb, &mn, ipiv, &rcond, &rank,  wk, &lwork, rwk, &info); // compute
-  mad_cmat_trans(tb, tb, p, mn);
-  mad_cvec_copy (tb,  x, n*p);
-
-  mad_free_tmp(wk); mad_free_tmp(tb); mad_free_tmp(ta); mad_free_tmp(rwk); mad_free_tmp(ipiv);
-
   if (info < 0) error("Solve: invalid input argument");
   if (info > 0) error("Solve: unexpected lapack error");
+  mad_cmat_trans(tb, tb, p, mn);
+  mad_cvec_copy (tb,  x, n*p);
+  mad_free_tmp(wk); mad_free_tmp(tb); mad_free_tmp(ta); mad_free_tmp(rwk); mad_free_tmp(ipiv);
 
   return rank;
 }
@@ -1633,11 +1643,14 @@ mad_mat_ssolve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, s
   mad_mat_trans(tb, tb, mn, p);
   mad_mat_trans(a , ta, m , n);
   dgelsd_(&nm, &nn, &np, ta, &nm, tb, &mn, ts, &rcond, &rank, &sz, &lwork, &isz, &info); // query
+  if (info < 0) error("SSolve: invalid input argument");
   ensure(sz >= 1, "lapack: invalid work size");
   lwork=sz;
   mad_alloc_tmp(num_t,  wk, lwork);
   mad_alloc_tmp(int  , iwk, isz);
   dgelsd_(&nm, &nn, &np, ta, &nm, tb, &mn, ts, &rcond, &rank,  wk, &lwork,  iwk, &info); // compute
+  if (info < 0) error("SSolve: invalid input argument");
+  if (info > 0) warn ("SSolve: failed to converge");
   mad_mat_trans(tb, tb, p, mn);
   mad_vec_copy (tb,  x, n*p);
 
@@ -1645,9 +1658,6 @@ mad_mat_ssolve (const num_t a[], const num_t b[], num_t x[], ssz_t m, ssz_t n, s
 
   mad_free_tmp(wk); mad_free_tmp(iwk);
   mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(ts);
-
-  if (info < 0) error("SSolve: invalid input argument");
-  if (info > 0) warn ("SSolve: failed to converge");
 
   return rank;
 }
@@ -1679,12 +1689,15 @@ mad_cmat_ssolve (const cpx_t a[], const cpx_t b[], cpx_t x[], ssz_t m, ssz_t n, 
   mad_cmat_trans(tb, tb, mn, p);
   mad_cmat_trans(a , ta, m , n);
   zgelsd_(&nm, &nn, &np, ta, &nm, tb, &mn, ts, &rcond, &rank, &sz, &lwork, &rsz, &isz, &info); // query
+  if (info < 0) error("SSolve: invalid input argument");
   ensure(creal(sz) >= 1 && rsz >= 1 && isz >= 1, "lapack: invalid work size");
   lwork=creal(sz);
   mad_alloc_tmp(cpx_t,  wk, lwork);
   mad_alloc_tmp( num_t, rwk, (int)rsz);
   mad_alloc_tmp( int  , iwk, isz);
   zgelsd_(&nm, &nn, &np, ta, &nm, tb, &mn, ts, &rcond, &rank,  wk, &lwork,  rwk,  iwk, &info); // compute
+  if (info < 0) error("SSolve: invalid input argument");
+  if (info > 0) warn ("SSolve: failed to converge");
   mad_cmat_trans(tb, tb, p, mn);
   mad_cvec_copy (tb,  x, n*p);
 
@@ -1692,9 +1705,6 @@ mad_cmat_ssolve (const cpx_t a[], const cpx_t b[], cpx_t x[], ssz_t m, ssz_t n, 
 
   mad_free_tmp(wk); mad_free_tmp(rwk); mad_free_tmp(iwk);
   mad_free_tmp(ta); mad_free_tmp(tb);  mad_free_tmp(ts);
-
-  if (info < 0) error("SSolve: invalid input argument");
-  if (info > 0) warn ("SSolve: failed to converge");
 
   return rank;
 }
@@ -1722,18 +1732,18 @@ mad_mat_gsolve (const num_t a[], const num_t b[], const num_t c[], const num_t d
   mad_vec_copy (c, tc, m);
   mad_vec_copy (d, td, p);
   dgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x, &sz, &lwork, &info); // query
+  if (info < 0) error("GSolve: invalid input argument");
   ensure(sz >= 1, "lapack: invalid work size");
   lwork=sz;
   mad_alloc_tmp(num_t, wk, lwork);
   dgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x,  wk, &lwork, &info); // compute
+  if (info < 0) error("GSolve: invalid input argument");
+  if (info > 0) warn ("GSolve: [B A] is singular, no solution found");
 
   if (nrm_) *nrm_ = mad_vec_nrm(tc+(n-p), m-(n-p)); // residues
 
   mad_free_tmp(wk);
   mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(tc); mad_free_tmp(td);
-
-  if (info < 0) error("GSolve: invalid input argument");
-  if (info > 0) warn ("GSolve: [B A] is singular, no solution found");
 
   return info;
 }
@@ -1759,18 +1769,18 @@ mad_cmat_gsolve (const cpx_t a[], const cpx_t b[], const cpx_t c[], const cpx_t 
   mad_cvec_copy (c, tc, m);
   mad_cvec_copy (d, td, p);
   zgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x, &sz, &lwork, &info); // query
+  if (info < 0) error("GSolve: invalid input argument");
   ensure(creal(sz) >= 1, "lapack: invalid work size");
   lwork=creal(sz);
   mad_alloc_tmp(cpx_t, wk, lwork);
   zgglse_(&nm, &nn, &np, ta, &nm, tb, &np, tc, td, x,  wk, &lwork, &info); // compute
+  if (info < 0) error("GSolve: invalid input argument");
+  if (info > 0) warn ("GSolve: [B A] is singular, no solution found");
 
   if (nrm_) *nrm_ = mad_cvec_nrm(tc+(n-p), m-(n-p)); // residues
 
   mad_free_tmp(wk);
   mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(tc); mad_free_tmp(td);
-
-  if (info < 0) error("GSolve: invalid input argument");
-  if (info > 0) warn ("GSolve: [B A] is singular, no solution found");
 
   return info;
 }
@@ -1794,16 +1804,15 @@ mad_mat_gmsolve (const num_t a[], const num_t b[], const num_t d[],
   mad_mat_trans(b, tb, m, p);
   mad_vec_copy (d, td, m);
   dggglm_(&nm, &nn, &np, ta, &nm, tb, &nm, td, x, y, &sz, &lwork, &info); // query
+  if (info < 0) error("GMSolve: invalid input argument");
   ensure(sz >= 1, "lapack: invalid work size");
   lwork=sz;
   mad_alloc_tmp(num_t, wk, lwork);
   dggglm_(&nm, &nn, &np, ta, &nm, tb, &nm, td, x, y,  wk, &lwork, &info); // compute
-
-  mad_free_tmp(wk);
-  mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(td);
-
   if (info < 0) error("GMSolve: invalid input argument");
   if (info > 0) warn ("GMSolve: [A B] is singular, no solution found");
+  mad_free_tmp(wk);
+  mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(td);
 
   return info;
 }
@@ -1827,16 +1836,16 @@ mad_cmat_gmsolve (const cpx_t a[], const cpx_t b[], const cpx_t d[],
   mad_cmat_trans(b, tb, m, p);
   mad_cvec_copy (d, td, m);
   zggglm_(&nm, &nn, &np, ta, &nm, tb, &nm, td, x, y, &sz, &lwork, &info); // query
+  if (info < 0) error("GMSolve: invalid input argument");
   ensure(creal(sz) >= 1, "lapack: invalid work size");
   lwork=creal(sz);
   mad_alloc_tmp(cpx_t, wk, lwork);
   zggglm_(&nm, &nn, &np, ta, &nm, tb, &nm, td, x, y,  wk, &lwork, &info); // compute
+  if (info < 0) error("GMSolve: invalid input argument");
+  if (info > 0) warn ("GMSolve: [A B] is singular, no solution found");
 
   mad_free_tmp(wk);
   mad_free_tmp(ta); mad_free_tmp(tb); mad_free_tmp(td);
-
-  if (info < 0) error("GMSolve: invalid input argument");
-  if (info > 0) warn ("GMSolve: [A B] is singular, no solution found");
 
   return info;
 }
@@ -1894,10 +1903,13 @@ mad_mat_eigen (const num_t x[], cpx_t w[], num_t vl_[], num_t vr_[], ssz_t n)
   mad_alloc_tmp(num_t, ra, n*n);
   mad_mat_trans(x, ra, n, n);
   dgeev_(vls, vrs, &nn, ra, &nn, wr, wi, vl_, &nn, vr_, &nn, &sz, &lwork, &info); // query
+  if (info < 0) error("Eigen: invalid input argument");
   ensure(sz >= 1, "lapack: invalid work size");
   lwork=sz;
   mad_alloc_tmp(num_t, wk, lwork);
   dgeev_(vls, vrs, &nn, ra, &nn, wr, wi, vl_, &nn, vr_, &nn,  wk, &lwork, &info); // compute
+  if (info < 0) error("Eigen: invalid input argument");
+  if (info > 0) warn ("Eigen: failed to compute all eigenvalues");
   mad_free_tmp(wk); mad_free_tmp(ra);
 
   if (vl_) canon_eig(n, vl_, wi), mad_mat_trans(vl_, vl_, n, n);
@@ -1905,9 +1917,6 @@ mad_mat_eigen (const num_t x[], cpx_t w[], num_t vl_[], num_t vr_[], ssz_t n)
 
   mad_vec_cplx(wr, wi, w, n);
   mad_free_tmp(wi); mad_free_tmp(wr);
-
-  if (info < 0) error("Eigen: invalid input argument");
-  if (info > 0) warn ("Eigen: failed to compute all eigenvalues");
 
   return info;
 }
@@ -1927,17 +1936,17 @@ mad_cmat_eigen (const cpx_t x[], cpx_t w[], cpx_t vl_[], cpx_t vr_[], ssz_t n)
   mad_alloc_tmp(cpx_t, ra, n*n);
   mad_cmat_trans(x, ra, n, n);
   zgeev_(vls, vrs, &nn, ra, &nn, w, vl_, &nn, vr_, &nn, &sz, &lwork, rwk, &info); // query
+  if (info < 0) error("Eigen: invalid input argument");
   ensure(creal(sz) >= 1, "lapack: invalid work size");
   lwork=creal(sz);
   mad_alloc_tmp(cpx_t, wk, lwork);
   zgeev_(vls, vrs, &nn, ra, &nn, w, vl_, &nn, vr_, &nn,  wk, &lwork, rwk, &info); // compute
+  if (info < 0) error("Eigen: invalid input argument");
+  if (info > 0) warn ("Eigen: failed to compute all eigenvalues");
   mad_free_tmp(wk); mad_free_tmp(ra); mad_free_tmp(rwk);
 
   if (vl_) canon_ceig(n, vl_), mad_cmat_trans(vl_, vl_, n, n);
   if (vr_) canon_ceig(n, vr_), mad_cmat_trans(vr_, vr_, n, n);
-
-  if (info < 0) error("Eigen: invalid input argument");
-  if (info > 0) warn ("Eigen: failed to compute all eigenvalues");
 
   return info;
 }
@@ -2337,9 +2346,10 @@ mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
   idx_t nc = 0;  // Number of columns to remove.
   int info = 0;
 
-  mad_alloc_tmp(num_t, U, m*m);
-  mad_alloc_tmp(num_t, V, n*n);
-  mad_alloc_tmp(num_t, S, mn );
+  mad_alloc_tmp (num_t, U, m*m);
+  mad_alloc_tmp (num_t, V, n*n);
+  mad_alloc_tmp (num_t, S, mn );
+  mad_calloc_tmp(log_t, T, n  );
 
   info = mad_mat_svd(a, U, S, V, m, n);
   if (info != 0) goto finalize;
@@ -2375,8 +2385,8 @@ mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
           num_t rat = fabs(vj-vk)/(vj+vk);
 
           // Discard column j with similar (or opposite) effect of column k > j.
-          if (rat <= tol) {
-            c[nc++] = j; // can hold duplicated indexes...
+          if (rat <= tol && !T[j]) {
+            c[nc++] = j+1, T[j] = true;
             if (nc == n) goto finalize; // c is full...
           }
         }
@@ -2388,6 +2398,7 @@ mad_mat_svdcnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
 
 finalize:
 
+  mad_free_tmp(T);
   mad_free_tmp(U);
   mad_free_tmp(V);
   mad_free_tmp(S);
@@ -2407,9 +2418,10 @@ mad_cmat_svdcnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
   idx_t nc = 0;  // Number of columns to remove.
   int info = 0;
 
-  mad_alloc_tmp(cpx_t, U, m*m);
-  mad_alloc_tmp(cpx_t, V, n*n);
-  mad_alloc_tmp(num_t, S, mn );
+  mad_alloc_tmp (cpx_t, U, m*m);
+  mad_alloc_tmp (cpx_t, V, n*n);
+  mad_alloc_tmp (num_t, S, mn );
+  mad_calloc_tmp(log_t, T, n  );
 
   info = mad_cmat_svd(a, U, S, V, m, n);
   if (info != 0) goto finalize;
@@ -2445,8 +2457,8 @@ mad_cmat_svdcnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
           num_t rat = fabs(vj-vk)/(vj+vk);
 
           // Discard column j with similar (or opposite) effect of column k > j.
-          if (rat <= tol) {
-            c[nc++] = j; // can hold duplicated indexes...
+          if (rat <= tol && !T[j]) {
+            c[nc++] = j+1, T[j] = true;
             if (nc == n) goto finalize; // c is full...
           }
         }
@@ -2458,6 +2470,7 @@ mad_cmat_svdcnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
 
 finalize:
 
+  mad_free_tmp(T);
   mad_free_tmp(U);
   mad_free_tmp(V);
   mad_free_tmp(S);
@@ -2494,6 +2507,11 @@ mad_mat_pcacnd(const num_t a[], idx_t c[], ssz_t m, ssz_t n,
   rcond = MAX(fabs(rcond), DBL_EPSILON);
 
   FOR(i,N) if (S[i] <= rcond*S[0]) { N=i; break; }
+
+  if (N == 0) {
+    FOR(i,n) c[i] = i+1;
+    goto finalize;
+  }
 
   // Compute projections on Principal Components, i.e. S V.
   mad_vec_abs(V, V, N*n);
@@ -2542,6 +2560,11 @@ mad_cmat_pcacnd(const cpx_t a[], idx_t c[], ssz_t m, ssz_t n,
   rcond = MAX(fabs(rcond), DBL_EPSILON);
 
   FOR(i,N) if (S[i] <= rcond*S[0]) { N=i; break; }
+
+  if (N == 0) {
+    FOR(i,n) c[i] = i+1;
+    goto finalize;
+  }
 
   // Compute projections on Principal Components, i.e. S V.
   mad_cvec_abs(V, R, N*n);

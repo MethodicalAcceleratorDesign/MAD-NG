@@ -52,11 +52,12 @@ using CPX = std::complex<double>;
 template <class D>
 struct ctpsa_base {
   // getters
-  ctpsa_t* ptr () const { return static_cast<const D*>( this)->ptr(); }
-  ctpsa_t& ref () const { return static_cast<const D*>( this)->ref(); }
-  const D& self() const { return static_cast<const D&>(*this);        }
-        D& self()       { return static_cast<      D&>(*this);        }
-  ord_t    mo  () const { return mad_ctpsa_ord(ptr(), false);         }
+  ctpsa_t* ptr  () const { return static_cast<const D*>( this)->ptr(); }
+  ctpsa_t& ref  () const { return static_cast<const D*>( this)->ref(); }
+  const D& self () const { return static_cast<const D&>(*this);        }
+        D& self ()       { return static_cast<      D&>(*this);        }
+  ord_t    mo   () const { return mad_ctpsa_ord(ptr(), false);         }
+  log_t    isnul() const { return mad_ctpsa_isnul(ptr());              }
 
   // set name
   D& set(str_t              s)  { mad_ctpsa_nam(ptr(), s);             return self(); }
@@ -66,7 +67,7 @@ struct ctpsa_base {
   D& set (CPX a)                 { mad_ctpsa_setval(ptr(), C(a)      ); return self(); }
   D& set (CPX a, idx_t v)        { mad_ctpsa_setvar(ptr(), C(a), v, 0); return self(); }
   D& setp(CPX a, idx_t v)        { mad_ctpsa_setprm(ptr(), C(a), v   ); return self(); }
-  D& clr ()                      { mad_tpsa_clear  (ptr()            ); return self(); }
+  D& clr ()                      { mad_ctpsa_clear  (ptr()           ); return self(); }
 
   // debug
   log_t isvalid() const { return mad_ctpsa_isvalid(ptr()); }
@@ -585,15 +586,33 @@ inline void swap (CPX       &a, CPX       &b) { TRC("cpx") std::swap(a,b); }
 
 // --- functions ---
 
-inline CPX ord    (CPX a         ) { TRC("cpx") return 0; (void)a; }
-inline CPX fval   (CPX a         ) { TRC("cpx") return a; }
-inline CPX nrm    (CPX a         ) { TRC("cpx") return std::abs(a); }
-inline CPX sqr    (CPX a         ) { TRC("cpx") return a*a; }
-inline CPX inv    (CPX a, CPX v=1) { TRC("cpx") return v/a; }
-inline CPX invsqrt(CPX a, CPX v=1) { TRC("cpx") return v/std::sqrt(a); }
-inline CPX sinc   (CPX a         ) { TRC("cpx") cpx_t r = mad_cpx_sinc (C(a)); return CPX(RE(r),IM(r)); }
-inline CPX sinhc  (CPX a         ) { TRC("cpx") cpx_t r = mad_cpx_sinhc(C(a)); return CPX(RE(r),IM(r)); }
-inline CPX asinc  (CPX a         ) { TRC("cpx") cpx_t r = mad_cpx_asinc(C(a)); return CPX(RE(r),IM(r)); }
+inline CPX  ord    (CPX a         ) { TRC("cpx") return 0; (void)a; }
+inline CPX  fval   (CPX a         ) { TRC("cpx") return a; }
+inline CPX  fabs   (CPX a         ) { TRC("cpx") return std::abs(a); }
+inline bool fchk   (CPX a, num_t v) { TRC("cpx") return std::abs(a) > v; }
+inline CPX  nrm    (CPX a         ) { TRC("cpx") return std::abs(a); }
+inline CPX  sqr    (CPX a         ) { TRC("cpx") return a*a; }
+inline CPX  inv    (CPX a, CPX v=1) { TRC("cpx") return v/a; }
+inline CPX  invsqrt(CPX a, CPX v=1) { TRC("cpx") return v/std::sqrt(a); }
+inline CPX  sinc   (CPX a         ) { TRC("cpx") cpx_t r = mad_cpx_sinc (C(a)); return CPX(RE(r),IM(r)); }
+inline CPX  sinhc  (CPX a         ) { TRC("cpx") cpx_t r = mad_cpx_sinhc(C(a)); return CPX(RE(r),IM(r)); }
+inline CPX  asinc  (CPX a         ) { TRC("cpx") cpx_t r = mad_cpx_asinc(C(a)); return CPX(RE(r),IM(r)); }
+
+inline std::pair<CPX,CPX> sincosq(CPX a) { TRC("cpx")
+  return { mad_cpx_sincrt(a), mad_cpx_cosrt(a) };
+}
+
+inline std::pair<CPX,CPX> sincoshq(CPX a) { TRC("cpx")
+  return { mad_cpx_sinhcrt(a), mad_cpx_coshrt(a) };
+}
+
+inline std::pair<CPX,CPX> sincosmq(CPX a) { TRC("cpx")
+  return { mad_cpx_sincmrt(a), mad_cpx_cosmrt(a) };
+}
+
+inline std::pair<CPX,CPX> sincoshmq(CPX a) { TRC("cpx")
+  return { mad_cpx_sinhcmrt(a), mad_cpx_coshmrt(a) };
+}
 
 inline ord_t ord (const ctpsa_t *a) { TRC("tpsa")
   return mad_ctpsa_ord(a, false);
@@ -611,6 +630,15 @@ inline CPX fval(const ctpsa_t *a) { TRC("tpsa")
 template <class A>
 inline CPX fval (const ctpsa_base<A> &a) { TRC("baz")
   return a[0];
+}
+
+inline bool fchk (const ctpsa_t *a, num_t v) { TRC("tpsa")
+  return !mad_ctpsa_isnul(a); (void)a; (void)v;
+}
+
+template <class A>
+inline bool fchk (const ctpsa_base<A> &a, num_t v) { TRC("baz")
+  return !a.isnul(); (void)a; (void)v;
 }
 
 template <class A>
@@ -692,6 +720,24 @@ FUN(asinhc);
 FUN(erf   );
 FUN(erfc  );
 
+#undef FUN
+#undef FUN_TMP
+
+// --- dual ---
+
+#define FUN(F) \
+template <class A> \
+inline std::pair<T,T> F (const tpsa_base<A> &a) {  TRC("baz") \
+  T s(a), c(a); mad_ctpsa_ ## F (a.ptr(), s.ptr(), c.ptr()); return {s, c}; \
+}
+
+FUN(sincosq);
+FUN(sincosmq);
+FUN(sincoshq);
+FUN(sincoshmq);
+
+#undef FUN
+
 } // mad
 
 #undef T
@@ -700,8 +746,6 @@ FUN(erfc  );
 #undef RE
 #undef IM
 #undef TRC
-#undef FUN
-#undef FUN_TMP
 
 //#undef TPSA_USE_TMP
 //#undef TPSA_USE_TRC

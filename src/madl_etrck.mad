@@ -32,12 +32,13 @@ Notes about directions and quantities:
 -- locals ---------------------------------------------------------------------o
 
 local type, ffi in _G
-local abs, max  in math -- ensure that abs will not work on GTPSA.
+local max in math
 
 local element, damap, symint, option, warn, _C                  in MAD
 local is_nil, is_number, is_function                            in MAD.typeid
-local fnil, fcut, ftst, bind3rd                                 in MAD.gfunc
-local fact, arc2cord, sqrt, sin, cos, atan2, fval, fabs, fchk   in MAD.gmath
+local fnil, fset, fcut, ftst, bind3rd                           in MAD.gfunc
+local fact, arc2cord, abs, sqrt, sin, cos, atan2, fval, fabs, fchk
+                                                                in MAD.gmath
 local assertf, errorf                                           in MAD.utility
 local minlen, minang, minstr, clight, mu0, twopi, pi_2          in MAD.constant
 local is_implicit                                               in element.drift
@@ -797,7 +798,7 @@ local function tracksub (elm, m, inter, thick, thin, fringe)
   end
 
   if m.cmap then
-    local cmap = map[m.cmap]
+    local cmap = maps[m.cmap]
     if not (is_function(cmap[thick]) or is_function(cmap[thin])) then
       thick, thin = cmap[thick], cmap[thin] -- ensure consistency
     end
@@ -1142,9 +1143,10 @@ local function xflw_rbend (m, clr)
     cpy_mult(m,c)
   else
     c.pdir = 0
-    c.eld  = xcpy(c.eld, 0)
-    c.ehd  = xcpy(c.ehd, 0)
-    c.e    = xcpy(c.e  , 0)
+    c.eld  = xcpy(c.eld , 0)
+    c.ehd  = xcpy(c.ehd , 0)
+    c.e    = xcpy(c.e   , 0)
+    c.mang = xcpy(c.mang, 0)
     clr_mult(m,c)
   end
 end
@@ -1168,7 +1170,7 @@ local function track_rbend (elm, m)
   end
 
   m.eld  = l
-  m.elc  = arc2cord(m.eld, angle)
+  m.elc  = arc2cord(l, angle)
   m.mang = angle
 
   if is_number(e1) and fabs(e1) > twopi then e1 = false end
@@ -1233,70 +1235,87 @@ end
 local function xflw_quad (m, clr)
   local c = xflw(m)
   if not clr then
-    c.el = xcpy(c.el, m.el     )
-    c.eh = xcpy(c.eh, m.eh     )
-    c.k1 = xcpy(c.k1, m.k1 or 0)
-    c.ca = xcpy(c.ca, m.ca or 0)
-    c.sa = xcpy(c.sa, m.sa or 0)
+    c.el   = xcpy(c.el  , m.el       )
+    c.eh   = xcpy(c.eh  , m.eh       )
+    c.k1   = xcpy(c.k1  , m.k1   or 0)
+    c.ca   = xcpy(c.ca  , m.ca   or 0)
+    c.sa   = xcpy(c.sa  , m.sa   or 0)
+    c.mang = xcpy(c.mang, m.mang or 0)
     cpy_mult(m,c)
   else
-    c.eh = xcpy(c.eh, 0)
-    c.k1 = xcpy(c.k1, 0)
+    c.eh   = xcpy(c.eh  , 0)
+    c.k1   = xcpy(c.k1  , 0)
+    c.ca   = xcpy(c.ca  , 0)
+    c.sa   = xcpy(c.sa  , 0)
+    c.e    = xcpy(c.e   , 0)
+    c.mang = xcpy(c.mang, 0)
     clr_mult(m,c)
   end
 end
 
 local function track_quadrupole (elm, m)
-  get_mult(elm, m, 2)
+  local angle in elm
 
-  local nmul, knl, ksl, ptcmodel in m
-  local l, angle, k0, k0s, k1, k1s in elm
+  if fabs(angle) > minang and (not elm.fastmap or m[1].__td and m[1].__td.mo > 2) then
+    return (elm.true_rbend and track_rbend or track_sbend)(elm, m)
+  end
+
+  get_mult(elm, m, 3)
+
+  local nmul, knl, ksl in m -- , ptcmodel
+  local l, k0, k0s, k1, k1s, k2, k2s in elm
 
   if elm.kill_body then l = elm.lrad end
 
-  if l == 0 and fabs(k1)+fabs(k1s)+fabs(k0)+fabs(k0s) > 0 then
+  if l == 0 and fabs(k1)+fabs(k1s)+fabs(k0)+fabs(k0s)+fabs(k2)+fabs(k2s) > 0 then
     warn("quadrupole '%s' defines strength with zero length", elm.name)
   end
 
-  knl[1], ksl[1] = knl[1]+k0*l, ksl[1]+k0s*l
-  knl[2], ksl[2] = knl[2]+k1*l, ksl[2]+k1s*l
+  knl[1], ksl[1] = knl[1]+k0*l  , ksl[1]+k0s*l
+  knl[2], ksl[2] = knl[2]+k1*l  , ksl[2]+k1s*l
+  knl[3], ksl[3] = knl[3]+k2*l/2, ksl[3]+k2s*l/2
   m.el = l
 
   adj_mult(elm, m)
 
-  local model  = elm.model  or m.model
-  local method = elm.method or m.method
-  local no_k1  = fabs(knl[2]) < minstr
-  local no_k1s = fabs(ksl[2]) < minstr
-  local no_ang = fabs(angle ) < minang
-  local no_tlt = ptcmodel and not no_k1s and (fabs(knl[1]) > minstr or nmul > 2 or elm.fringe > 0)
-  local inter  = ptcmodel and method > 2 and KMK[method] or TKT[method]
-  local thick, kick
+  local model  = elm.model   or m.model
+  local method = elm.method  or m.method
+  local no_k1  = not fchk(knl[2], minstr)
+  local no_k1s = not fchk(ksl[2], minstr)
+  local no_ang = not (fchk(angle , minang) or fchk(knl[1], minstr))
+  local no_tlt = false -- ptcmodel and not no_k1s and (fabs(knl[1]) > minstr or nmul > 2 or elm.fringe > 0)
+  local inter  = TKT[method] -- ptcmodel and method > 2 and KMK[method] or TKT[method]
+  local fringe, thick, kick = strex_fringe
 
   if model == 'DKD' or no_k1 and no_k1s and no_ang then
     inter, thick, kick = DKD[method], strex_drift, strex_kick
-  elseif no_k1s and no_ang or no_tlt then       -- normal thick
+  elseif no_k1s and no_ang or no_tlt then -- normal thick
     m.k1 = knl[2]/l
-    thick, kick = quad_thick, ptcmodel and quad_kick_ or quad_kick
-  elseif no_ang then                            -- skew thick
+    thick, kick = quad_thick, quad_kick -- ptcmodel and quad_kick_ or quad_kick
+  elseif no_ang then                                -- skew thick
+    local k = fabs(knl[2])+fabs(ksl[2])
     local a = -0.5*atan2(fval(ksl[2]), fval(knl[2]))
-    m.k1, m.ca, m.sa = sqrt(knl[2]^2 + ksl[2]^2)/l, cos(a), sin(a)
-    thick, kick = quad_thicks, ptcmodel and quad_kicks_ or quad_kicks
-  else                                          -- combined thick            -- unchecked
-    m.eh = angle/l
-    thick, kick = quad_thickh, ptcmodel and quad_kickh_ or quad_kickh
+    m.k1 = k > 0 and sqrt(knl[2]^2+ksl[2]^2)/l or (knl[2]+ksl[2])/l
+    m.ca, m.sa = cos(a), sin(a)
+    thick, kick = quad_thicks, quad_kicks -- ptcmodel and quad_kicks_ or quad_kicks
+  else                                              -- combined thick
+    m.eh, m.mang = angle/l, angle
+    if fabs(angle) > minang then fringe = curex_fringe end
+    thick, kick = quad_thickh, quad_kickh -- ptcmodel and quad_kickh_ or quad_kickh
   end
 
   if m.cmap then
-    if m.cmap == 't' and not (is_number(angle) and is_number(l)) then
+    if m.cmap == 't' and not (is_number(angle)  and is_number(l) and
+                              is_number(elm.e1) and is_number(elm.e2)) then
       m.cmap = 'p'
     end
     m.xflw = xflw_quad
   end
 
   local track = is_nil(elm[1]) and trackelm or tracksub
-  track(elm, m, inter, thick, kick, strex_fringe)
-  m.eh, m.k1, m.ca, m.sa = 0, 0, nil, nil
+  track(elm, m, inter, thick, kick, fringe)
+  m.eh, m.k1, m.ca, m.sa, m.e1, m.e2, m.mang =
+     0,    0,    0,    0,  nil,  nil,      0
 end
 
 -- straigth magnets (-rbend -quad -solenoid)
