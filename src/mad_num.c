@@ -156,18 +156,22 @@ num_t mad_num_sincrt (num_t x) // sinc(sqrt(x)), analytic in x
 
 num_t mad_num_cosmrt (num_t x)
 {
-  if (fabs(x) < 1e-4)
-    return -1./2 + x*(1./24 - x*(1./720 - x*(1./40320
-           - x*(1./3628800  - x*(1./479001600)))));
-
-  return (mad_num_cosrt(x)-1)/x;
+  // (cos(t)-1)/t^2 == -1/2*sinc(t/2)^2 with t = sqrt(x), i.e. x/4 = (t/2)^2.
+  // Analytic in x, so it covers the cosh branch (x < 0) too, and it is free of
+  // the cancellation in (cos(t)-1) that costs ~5 digits around |t| ~ 1e-2.
+  num_t s = mad_num_sincrt(x/4);
+  return -1./2*s*s;
 }
 
 num_t mad_num_sincmrt (num_t x)
 {
-  if (fabs(x) < 1e-4)
+  // No cancellation-free closed form here, so widen the series instead: two
+  // extra terms take it to |x| < 0.5 with <= 4e-16 relative error, where the
+  // direct form below still costs ~2*eps/x.
+  if (fabs(x) < 0.5)
     return -1./6 + x*(1./120 - x*(1./5040 - x*(1./362880
-           - x*(1./39916800  - x*(1./6227020800)))));
+           - x*(1./39916800  - x*(1./6227020800
+           - x*(1./1307674368000 - x*(1./355687428096000)))))));
 
   return (mad_num_sincrt(x)-1)/x;
 }
