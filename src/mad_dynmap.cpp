@@ -668,74 +668,61 @@ inline void curex_kick (cflw<M> &m, num_t lw, int is, bool no_k0l=false)
 // --- sbend ---
 
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
-inline void sbend_thick (cflw<M> &m, num_t lw, int is)
-{                                            (void)is;
-  if (!m.charge) return curex_drift<M>(m, lw, is);
-
-  mdump(0);
-  P ld  = R(m.el)*lw;
-  P ang = R(m.eh)*R(m.el)*lw*m.edir, rho=1/R(m.eh)*m.edir;
-  P k0q = R(m.knl[0])/R(m.el)*(m.edir*m.charge);
-  P ca  = cos(ang), sa = sin(ang);
-
-  FOR(i,m.npar) {
-    M p(m,i);
-    T  pw2 = 1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.py);
-    T  pzx = sqrt(pw2 - sqr(p.px)) - k0q*(rho+p.x); // can be numerically unstable
-    T  npx = sa*pzx + ca*p.px;
-    T  dpx = ca*pzx - sa*p.px;
-    T _ptt = invsqrt(pw2);
-    T  dxs = (ang + asin(p.px*_ptt) - asin(npx*_ptt))/k0q;
-
-    // eq. 126 in Forest06
-    p.x  = (sqrt(pw2 - sqr(npx)) - dpx)/k0q - rho;  // can be numerically unstable
-    p.px = npx;
-    p.y += dxs*p.py;
-    p.t  = p.t - dxs*(1/m.beta+p.pt) + (1-m.T)/m.beta*ld;
-  }
-  mdump(1);
-}
-
-#if 0
-template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void sbend_thick_ds (cflw<M> &m, num_t lw, int is)
 {                                               (void)is;
   if (!m.charge) return curex_drift<M>(m, lw, is);
 
   mdump(0);
-  P ld  = R(m.el)*lw;
-  P ang = R(m.eh)*R(m.el)*lw*m.edir, rho=1/R(m.eh)*m.edir;
-  P k0q = R(m.knl[0])/R(m.el)*(m.edir*m.charge);
-  P ca  = cos(ang), sa = sin(ang), s2a = sin(2*ang);
+  P L     = R(m.el)*lw;
+  P g     = R(m.eh)*m.edir;
+  P theta = g*L;
+  P k0q   = R(m.knl[0])/R(m.el)*(m.edir*m.charge);
+  P th2   = theta*theta;
+
+  auto [sinc_th, cos_th ] = sincosq (th2); // sinc(theta), cos(theta)
+  auto [sincm_th, cosm_th] = sincosmq(th2); // _, (cos(theta)-1)/theta^2
+  (void)sincm_th;
+  P sin_th  = theta*sinc_th;
+  P cosc_th = -cosm_th;                    // (1-cos(theta))/theta^2
+
+  num_t sgn = lw < 0 ? -1 : 1;
 
   FOR(i,m.npar) {
     M p(m,i);
+    T relp = 1/m.beta + p.pt;
     T  pw2 = 1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.py);
-    T   pz = sqrt(pw2 - sqr(p.px));
-    T   xr = p.x+rho;
-    T  pzx = pz - k0q*xr;
-    T  npx = sa*pzx + ca*p.px;
-    T  dpx = ca*pzx - sa*p.px;
-    T _ptt = invsqrt(pw2);
+    T   pw = sqrt(pw2);
 
-    T  xt1 = -k0q*sqr(p.x) + 2*(pz*xr - (k0q*rho)*p.x) - k0q*sqr(rho);
-    T   xi = p.px*_ptt;
-    T zeta =  npx*_ptt;
-    T  sxi = sqrt(1-sqr(xi));
-    T    w = (ca*xi + sa*sxi) * sqrt(1-sqr(zeta));
-    T    v = (sa*xi - ca*sxi) * zeta;
-    T  xt2 = (s2a*p.px + sqr(sa)*(2*pz - k0q*xr)) * xr*sqr(_ptt) / (w - v);
-    T  dxs = asinc(xt2*k0q)*xt2;
+    // phi = theta + asin(px/pw), via atan2 for branch consistency
+    T  pz0 = sqrt(pw2 - sqr(p.px));
+    T  phi = theta + atan2(p.px, pz0);
 
-    // eq. 126 in Forest06 with modif. from Sagan
-    p.x  = xt1/(dpx + sqrt(pw2 - sqr(npx))) - rho;
-    p.px = npx;
-    p.y += dxs*p.py;
-    p.t  = p.t - dxs*(1/m.beta+p.pt) + (1-m.T)/m.beta*ld;
+    T   gp = k0q/pw;
+    T    h = 1 + g*p.x;
+    T   cp = cos(phi);
+    T   sp = sin(phi);
+
+    T ahelp = h*L*sinc_th;
+    T alpha = 2*h*sp*L*sinc_th - gp*sqr(ahelp);
+    T  root = sqrt(sqr(cp) + gp*alpha);
+
+    // Two algebraically equal forms of the same root; pick whichever does not
+    // cancel.  alpha/(root+cp) is safe unless cp < 0, and (root-cp)/gp needs a
+    // nonzero gp.
+    T xi = !fchk(gp, minstr) || fval(cp) > 0 ? alpha/(root + cp)
+                                             : (root - cp)/gp;
+
+    T  lcv = -sgn*(L*sinc_th + p.x*sin_th);
+    T  thp = 2*(phi - sgn*atan2(xi, -lcv));
+    T   Lp = sgn*sqrt(sqr(lcv) + sqr(xi))/sinc(thp/2);
+
+    p.x  = p.x*cos_th - sqr(L)*g*cosc_th + xi;
+    p.px = pw*sin(phi - thp);
+    p.y  = p.y + p.py*Lp/pw;
+    p.t  = p.t - relp*Lp/pw + (1-m.T)/m.beta*L;
   }
   mdump(1);
 }
-#endif
 
 // --- rbend ---
 
@@ -753,13 +740,17 @@ inline void rbend_thick (cflw<M> &m, num_t lw, int is)
     M p(m,i);
     T  npx = p.px - k0lq;
     T  pw2 = 1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.py);
-    T _ptt = invsqrt(pw2);
     T   pz = sqrt(pw2 - sqr(p.px));
     T  pzs = sqrt(pw2 - sqr(npx));
-    T  dxs = (asin(p.px*_ptt) - asin(npx*_ptt))/k0q;
 
-    // eq. 126 in Forest06
-    p.x += (pzs-pz)/k0q;
+    // eq. 129 in Forest06 [Sagan]
+    T dnpx = npx - p.px;
+    T  dpz = -dnpx*(npx + p.px)/(pzs + pz);
+    T   na = p.px*dpz - pz*dnpx;
+    T   da = pz*pzs + p.px*npx;
+    T  dxs = atan2(na, da)/k0q;
+
+    p.x += dpz/k0q;
     p.px = npx;
     p.y += dxs*p.py;
     p.t  = p.t - dxs*(1/m.beta+p.pt) + (1-m.T)/m.beta*ld;
@@ -1948,7 +1939,7 @@ void mad_trk_curex_kick_p (mflw_t *m, num_t lw, int is) {
 
 void mad_trk_sbend_thick_r (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->rflw.knd) == 'r');
-  sbend_thick<par_t>(m->rflw,lw,is);
+  sbend_thick_ds<par_t>(m->rflw,lw,is);
 }
 void mad_trk_sbend_kick_r (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->rflw.knd) == 'r');
@@ -1957,7 +1948,7 @@ void mad_trk_sbend_kick_r (mflw_t *m, num_t lw, int is) {
 
 void mad_trk_sbend_thick_t (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->tflw.knd) == 't');
-  sbend_thick<map_t>(m->tflw,lw,is);
+  sbend_thick_ds<map_t>(m->tflw,lw,is);
 }
 void mad_trk_sbend_kick_t (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->tflw.knd) == 't');
@@ -1966,7 +1957,7 @@ void mad_trk_sbend_kick_t (mflw_t *m, num_t lw, int is) {
 
 void mad_trk_sbend_thick_p (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->pflw.knd) == 'p');
-  sbend_thick<prm_t>(m->pflw,lw,is);
+  sbend_thick_ds<prm_t>(m->pflw,lw,is);
 }
 void mad_trk_sbend_kick_p (mflw_t *m, num_t lw, int is) {
   assert(m && tolower(m->pflw.knd) == 'p');
