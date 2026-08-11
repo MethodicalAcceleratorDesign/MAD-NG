@@ -674,6 +674,10 @@ inline void sbend_thick_ds (cflw<M> &m, num_t lw, int is)
 
   mdump(0);
   P L     = R(m.el)*lw;
+  // Design (path) length.  For a straight-body rbend m.el is the CHORD while
+  // the reference time advances along the design length m.eld; for an sbend
+  // m.eld is 0 and this is exactly L.
+  P ld    = (fval(m.eld) ? R(m.eld) : R(m.el))*lw;
   P g     = R(m.eh)*m.edir;
   P theta = g*L;
   P k0q   = R(m.knl[0])/R(m.el)*(m.edir*m.charge);
@@ -728,34 +732,8 @@ inline void sbend_thick_ds (cflw<M> &m, num_t lw, int is)
 
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void rbend_thick (cflw<M> &m, num_t lw, int is)
-{                                            (void)is;
-  if (!m.charge) return strex_drift<M>(m, lw, is);
-
-  mdump(0);
-  P ld   = (fval(m.eld) ? R(m.eld) : R(m.el))*lw;
-  P k0q  = R(m.knl[0])/R(m.el)*(m.edir*m.charge);
-  P k0lq = R(m.knl[0])*(lw    * m.edir*m.charge);
-
-  FOR(i,m.npar) {
-    M p(m,i);
-    T  npx = p.px - k0lq;
-    T  pw2 = 1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.py);
-    T   pz = sqrt(pw2 - sqr(p.px));
-    T  pzs = sqrt(pw2 - sqr(npx));
-
-    // eq. 129 in Forest06 [Sagan]
-    T dnpx = npx - p.px;
-    T  dpz = -dnpx*(npx + p.px)/(pzs + pz);
-    T   na = p.px*dpz - pz*dnpx;
-    T   da = pz*pzs + p.px*npx;
-    T  dxs = atan2(na, da)/k0q;
-
-    p.x += dpz/k0q;
-    p.px = npx;
-    p.y += dxs*p.py;
-    p.t  = p.t - dxs*(1/m.beta+p.pt) + (1-m.T)/m.beta*ld;
-  }
-  mdump(1);
+{
+  return sbend_thick_ds<M>(m, lw, is);
 }
 
 #if 0
@@ -1320,7 +1298,7 @@ inline void bend_face (cflw<M> &m, num_t lw, const V &h)
     } else {
       p.t  += dxi_ddel*p.x*y2;
       p.py -= 2*xi*p.x*p.y;
-      p.x  /= 1-dxi_px*y2;
+      p.x  *= 1+dxi_px*y2;
       p.px -= xi*y2 - k0hq*sqr(p.x);
     }
   }

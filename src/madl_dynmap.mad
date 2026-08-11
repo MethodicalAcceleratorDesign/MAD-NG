@@ -661,6 +661,7 @@ local function bend_thick_ds (elm, m, lw, istp)
 
   local el, eh, edir, knl, beam in m
   local L     = el*lw
+  local ld    = (m.eld or el)*lw
   local g     = eh*edir
   local theta = g*L
   local k0    = knl[1]/el*edir
@@ -712,7 +713,7 @@ local function bend_thick_ds (elm, m, lw, istp)
     local nx  = x*cos_th - L^2*g*cosc_th + xi
     local npx = pw*sin(phi - thp)
     local ny  = y + py*Lp/pw
-    local nt  = t - relp*Lp/pw + (1-m.T)/beta*L
+    local nt  = t - relp*Lp/pw + (1-m.T)/beta*ld
 
     m[i].x  = nx
     m[i].px = npx
@@ -732,65 +733,9 @@ M.sbend_kick  = \el,m,lw,istp -> M.curex_kick(el,m,lw,istp,true) ;            --
 
 -- TKT [INTER_STREX] ----------------------------------------------------------o
 
--- version for k0*charge == 0 to avoid NaN
-
-local function strex_drift0 (elm, m, lw, i, l, ld)                            -- checked
-  m.atdebug(elm, m, 'strex_drift0:0')
-
-  local x, px, y, py, t, pt in m[i]
-  local beta = (m[i].beam or m.beam).beta
-  local l_pz = l*invsqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
-
-  m[i].x = x + px*l_pz
-  m[i].y = y + py*l_pz
-  m[i].t = t - (1/beta+pt)*l_pz + (1-m.T)/beta*ld
-
-  m.atdebug(elm, m, 'strex_drift0:1')
-end
-
-local function rbend_thick (elm, m, lw, istp) -- [SPAR]                       -- checked
-  m.atdebug(elm, m, 'rbend_thick:0')
-
-  local el, eld, edir, knl, beam in m
-  local l, ld, k0 = el*lw, (eld or el)*lw, knl[1]/el*edir
-  local beta, k0q, k0lq = beam.beta, k0*beam.charge, knl[1]*lw*beam.charge*edir
-
-  for i=1,m.npar do
-    local x, px, y, py, t, pt, beam in m[i]
-    local beta = beam and beam.beta or beta
-    local k0q  = beam and k0*beam.charge or k0q
-
-    if k0q == 0 then
-      strex_drift0 (elm, m, lw, i, l, ld)
-      goto continue
-    end
-
-    -- eq. 129 in Forest06
-    local k0lq = beam and knl[1]*lw*beam.charge*edir or k0lq
-    local  npx = px - k0lq
-    local  pw2 = 1 + 2*pt/beta + pt^2 - py^2
-    local   pz = sqrt(pw2 - px^2)
-    local  pzs = sqrt(pw2 - npx^2)
-    local dnpx = npx - px
-    local  dpz = -dnpx*(npx + px)/(pzs + pz)
-    local   na = px*dpz - pz*dnpx
-    local   da = pz*pzs + px*npx
-    local  dxs = atan2(na, da)/k0q
-
-    m[i].x  = x + dpz/k0q
-    m[i].px = npx
-    m[i].y  = y + dxs*py
-    m[i].t  = t - dxs*(1/beta+pt) + (1-m.T)/beta*ld
-
-    ::continue::
-  end
-
-  m.atdebug(elm, m, 'rbend_thick:1')
-end
-
--- Keep the Sagan body sbend-only: it does not converge under slicing for a
--- parallel frame.
-M.rbend_thick = rbend_thick
+-- A TRUE RBEND is a straight frame (eh == 0 => g == 0) carrying a dipole field,
+-- so the geometry/field.
+M.rbend_thick = bend_thick_ds
 M.rbend_kick  = \el,m,lw,istp -> M.strex_kick(el,m,lw,istp,true)              -- checked
 
 -- TKT [INTER_TKTF] -----------------------------------------------------------o
@@ -1825,7 +1770,7 @@ function bend_face (elm, m, lw, h) -- [NEWFACE]                               --
     else
       t  = t  + dxi_ddel*x*y2
       py = py - 2*xi*x*y
-      x  = x  / (1-dxi_px*y2)
+      x  = x  * (1+dxi_px*y2)
       px = px - xi*y2 + k0hq*x^2
     end
 
