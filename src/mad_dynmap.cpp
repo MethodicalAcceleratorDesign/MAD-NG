@@ -1367,6 +1367,39 @@ inline void bend_wedge (cflw<M> &m, num_t lw, const V &e)
   mdump(1);
 }
 
+// Physics model: E. Forest, S. C. Leemann and F. Schmidt,
+// "Fringe Effects in MAD, Part I: Second-Order Fringe in MAD-X for the
+// Module PTC", KEK Preprint 2005-109 (March 2006).
+template <typename T, typename X, typename Y, typename P>
+inline void bend_fringe_coefficients (const T &dpp, const X &px, const Y &py,
+                                      const P &c2, const P &b0, const T &tfac,
+                                      T &fi0, T *kx=nullptr, T *ky=nullptr,
+                                      T *kz=nullptr)
+{
+  T   pz = sqrt(dpp - sqr(px) - sqr(py));
+  T  _pz = 1/pz;
+
+  T xp = px/pz, yp = py/pz;
+  T yp2 = 1+sqr(yp);
+  T xp2 = sqr(xp), _yp2 = 1/yp2;
+
+  fi0 = atan(xp*_yp2) - c2*(1 + xp2*(1+yp2))*_pz;
+  if (kx == nullptr) return;
+
+  T xyp = xp*yp, _pz2 = sqr(_pz);
+  T co2 = b0/sqr(cos(fi0));
+  T co1 = co2/(1 + sqr(xp*_yp2))*_yp2;
+  T co3 = co2*c2;
+
+  T fi1 =    co1          - co3*2*xp*(1+yp2)*_pz;
+  T fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *_pz;
+  T fi3 =                 + co3*(1 + xp2*(1+yp2))*_pz2;
+
+  *kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp;
+  *ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp;
+  *kz = fi1*tfac*xp*_pz2 + fi2*tfac*yp*_pz2 - fi3*tfac*_pz;
+}
+
 #if 0  // version from L.D. & PTC (requires correct inversion for backtracking)
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void bend_fringe (cflw<M> &m, num_t lw)
@@ -1395,14 +1428,14 @@ inline void bend_fringe (cflw<M> &m, num_t lw)
     T xyp = xp*yp  ,  yp2 = 1+sqr(yp);
     T xp2 = sqr(xp), _yp2 = 1/yp2;
 
-    T fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*pz;
+    T fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*_pz;
     T co2 = b0/sqr(cos(fi0));
     T co1 = co2/(1 + sqr(xp*_yp2))*_yp2;
     T co3 = co2*c2;
 
-    T fi1 =    co1          - co3*2*xp*(1+yp2)*pz;
-    T fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *pz;
-    T fi3 =                 - co3*(1 + xp2*(1+yp2));
+    T fi1 =    co1          - co3*2*xp*(1+yp2)*_pz;
+    T fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *_pz;
+    T fi3 =                 + co3*(1 + xp2*(1+yp2))*_pz2;
 
     T kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp;
     T ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp;
@@ -1444,33 +1477,31 @@ inline void bend_fringe (cflw<M> &m, num_t lw)
   FOR (i,m.npar) {
     M p(m,i);
     T   dpp = 1 + 2/m.beta*p.pt + sqr(p.pt);
-    T    pz = sqrt(dpp - sqr(p.px) - sqr(p.py));
-    T   _pz = 1/pz;
-    T  _pz2 = sqr(_pz);
     T  relp = invsqrt(dpp);
     T  tfac = -1/m.beta - p.pt;
     T    c3 = fsad*sqr(b0)*relp;
-
-    T xp  = p.px/pz,  yp  = p.py/pz;
-    T xyp = xp*yp  ,  yp2 = 1+sqr(yp);
-    T xp2 = sqr(xp), _yp2 = 1/yp2;
-
-    T fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*pz;
-    T co2 = b0/sqr(cos(fi0));
-    T co1 = co2/(1 + sqr(xp*_yp2))*_yp2;
-    T co3 = co2*c2;
-
-    T fi1 =    co1          - co3*2*xp*(1+yp2)*pz;
-    T fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *pz;
-    T fi3 =                 - co3*(1 + xp2*(1+yp2));
-
-    T ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp;
-    T y  = 2*p.y / (1 + sqrt(1-2*ky*p.y));
+    T fi0(p.x), kx(p.x), ky(p.x), kz(p.x);
 
     if (m.sdir == 1) {
-      // Only calculate kx and kz once
-      T kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp;
-      T kz = fi1*tfac*xp*_pz2 + fi2*tfac*yp*_pz2 - fi3*tfac*_pz;
+      bend_fringe_coefficients<T>(dpp, p.px, p.py, c2, b0, tfac,
+                                  fi0, &kx, &ky, &kz);
+    } else {
+      T y2 = sqr(p.y);
+
+      // Recover the incoming py using only the fringe angle. The complete
+      // coefficient set is evaluated once, at the final recovered momentum.
+      bend_fringe_coefficients<T>(dpp, p.px, p.py, c2, b0, tfac, fi0);
+      for (int it = 0; it < 2; it++) {
+        T npy = p.py + (4*c3*y2 + b0*tan(fi0))*p.y;
+        bend_fringe_coefficients<T>(dpp, p.px, npy, c2, b0, tfac, fi0);
+      }
+      T npy = p.py + (4*c3*y2 + b0*tan(fi0))*p.y;
+      bend_fringe_coefficients<T>(dpp, p.px, npy, c2, b0, tfac,
+                                  fi0, &kx, &ky, &kz);
+    }
+
+    if (m.sdir == 1) {
+      T y  = 2*p.y / (1 + sqrt(1-2*ky*p.y));
       T y2 = sqr(y);
 
       p.x  += 0.5*kx*y2;
@@ -1479,29 +1510,6 @@ inline void bend_fringe (cflw<M> &m, num_t lw)
       p.y   = y;
     } else { // need to reverse y-dependence
       T y2 = sqr(p.y);
-      // recalculate kx, ky and kz with a new py (Work out what it probably was)
-      T   npy = p.py + (4*c3*y2 + b0*tan(fi0))*y;
-
-        pz = sqrt(dpp - sqr(p.px) - sqr(npy));
-       _pz = 1/pz;
-      _pz2 = sqr(_pz);
-
-      xp  = p.px/pz,  yp  = npy/pz;
-      xyp = xp*yp  ,  yp2 = 1+sqr(yp);
-      xp2 = sqr(xp), _yp2 = 1/yp2;
-
-      fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*pz;
-      co2 = b0/sqr(cos(fi0));
-      co1 = co2/(1 + sqr(xp*_yp2))*_yp2;
-      co3 = co2*c2;
-
-      fi1 =    co1          - co3*2*xp*(1+yp2)*pz;
-      fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *pz;
-      fi3 =                 - co3*(1 + xp2*(1+yp2));
-
-      T kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp;
-        ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp;
-      T kz = fi1*tfac*xp*_pz2 + fi2*tfac*yp*_pz2 - fi3*tfac*_pz;
 
       p.x  -= 0.5*kx*y2;
       p.py += (4*c3*y2 + b0*tan(fi0))*p.y;
@@ -1564,7 +1572,8 @@ inline void mult_fringe (cflw<M> &m, num_t lw)
   if (!n) return;
 
   mdump(0);
-  num_t  wchg = lw*m.charge;
+  bool reverse = m.sdir == -1;
+  num_t  wchg = lw*m.charge*m.sdir;
   int   no_k1 = m.frng & fringe_bend;
   P     _l(R(m.el));
 
@@ -1579,7 +1588,12 @@ inline void mult_fringe (cflw<M> &m, num_t lw)
     T drx(u), dix(u);
 
     T _pz = invsqrt(1 + 2/m.beta*p.pt + sqr(p.pt));
+    T _pz3 = sqr(_pz)*_pz;
 
+    auto eval_fringe_terms = [&]() {
+      rx = 1., ix = 0.;
+      fx = 0., fxx = 0., fxy = 0.;
+      fy = 0., fyy = 0., fyx = 0.;
     FOR (j,1,n+1) {
       drx = rx, dix = ix;
       rx = drx*p.x - dix*p.y;
@@ -1609,21 +1623,43 @@ inline void mult_fringe (cflw<M> &m, num_t lw)
       fyy += duy*p.y - nf* dvy*p.x + u;
       fxy += duy*p.x + nf*(dvy*p.y + v);
       fyx += dux*p.y - nf*(dvx*p.x + v);
+      }
+    };
+
+    eval_fringe_terms();
+    if (reverse) {
+      T xout(u), yout(u); xout = p.x, yout = p.y;
+      FOR (it,0,3) {
+        T a = 1-fxx*_pz, b = -fyx*_pz;
+        T c = -fxy*_pz, d = 1-fyy*_pz;
+        T det = a*d-b*c;
+        T dx = p.x-fx*_pz-xout, dy = p.y-fy*_pz-yout;
+        p.x -= (d*dx-c*dy)/det;
+        p.y -= (a*dy-b*dx)/det;
+        eval_fringe_terms();
+      }
     }
 
     T    a = 1 - fxx*_pz;
     T    b =   - fyx*_pz;
     T    c =   - fxy*_pz;
     T    d = 1 - fyy*_pz;
+    if (reverse) {
+      T px(u), py(u); px = p.px, py = p.py;
+      p.px = a*px + b*py;
+      p.py = c*px + d*py;
+      p.t -= (1/m.beta+p.pt)*(px*fx + py*fy)*_pz3;
+    } else {
     T _det = 1/(a*d - b*c);
-    T npx = (d*p.px - b*p.py)*_det; // Create variables so they do not affect each other
+      T npx = (d*p.px - b*p.py)*_det;
     T npy = (a*p.py - c*p.px)*_det;
 
     p.x  -= fx*_pz;
     p.y  -= fy*_pz;
     p.px  = npx;
     p.py  = npy;
-    p.t  += (1/m.beta+p.pt)*(p.px*fx + p.py*fy)*sqr(_pz)*_pz;
+      p.t  += (1/m.beta+p.pt)*(npx*fx + npy*fy)*_pz3;
+    }
   }
   mdump(1);
 }
