@@ -318,7 +318,9 @@ inline R imag (const ctpsa_base<A> &a) {  TRC("im(baz)")
 
 template <class A>
 inline T operator+ (const ctpsa_base<A> &a) {  TRC("+baz")
-  T c(a); return c;
+  // NB: ctpsa(const ctpsa_base<A>&) only allocates a same-shaped zero ctpsa
+  // (see operator- below), so the value must be copied explicitly.
+  T c(a); mad_ctpsa_copy(a.ptr(), c.ptr()); return c;
 }
 
 template <class A>

@@ -308,7 +308,9 @@ inline tpsa::tpsa(const tpsa_base<A> &a, const T &b) {
 
 template <class A>
 inline T operator+ (const tpsa_base<A> &a) {  TRC("+baz")
-  T c(a); return c;
+  // NB: tpsa(const tpsa_base<A>&) only allocates a same-shaped zero tpsa (see
+  // operator- below), so the value must be copied explicitly.
+  T c(a); mad_tpsa_copy(a.ptr(), c.ptr()); return c;
 }
 
 template <class A>
