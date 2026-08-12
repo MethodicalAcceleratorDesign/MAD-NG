@@ -1459,6 +1459,39 @@ inline void bend_fringe (cflw<M> &m, num_t lw)
   mdump(1);
 }
 #else  // version from J.Gray, slightly improves backtracking (review needed)
+// Physics model: E. Forest, S. C. Leemann and F. Schmidt,
+// "Fringe Effects in MAD, Part I: Second-Order Fringe in MAD-X for the
+// Module PTC", KEK Preprint 2005-109 (March 2006).
+template <typename T, typename X, typename Y, typename P>
+inline void bend_fringe_coefficients (const T &dpp, const X &px, const Y &py,
+                                      const P &c2, const P &b0, const T &tfac,
+                                      T &fi0, T *kx=nullptr, T *ky=nullptr,
+                                      T *kz=nullptr)
+{
+  T   pz = sqrt(dpp - sqr(px) - sqr(py));
+  T  _pz = 1/pz;
+
+  T xp = px/pz, yp = py/pz;
+  T yp2 = 1+sqr(yp);
+  T xp2 = sqr(xp), _yp2 = 1/yp2;
+
+  fi0 = atan(xp*_yp2) - c2*(1 + xp2*(1+yp2))*_pz;
+  if (kx == nullptr) return;
+
+  T xyp = xp*yp, _pz2 = sqr(_pz);
+  T co2 = b0/sqr(cos(fi0));
+  T co1 = co2/(1 + sqr(xp*_yp2))*_yp2;
+  T co3 = co2*c2;
+
+  T fi1 =    co1          - co3*2*xp*(1+yp2)*_pz;
+  T fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *_pz;
+  T fi3 =                 + co3*(1 + xp2*(1+yp2))*_pz2;
+
+  *kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp;
+  *ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp;
+  *kz = fi1*tfac*xp*_pz2 + fi2*tfac*yp*_pz2 - fi3*tfac*_pz;
+}
+
 template <typename M, typename T=M::T, typename P=M::P, typename R=M::R>
 inline void bend_fringe (cflw<M> &m, num_t lw)
 {
@@ -1475,33 +1508,31 @@ inline void bend_fringe (cflw<M> &m, num_t lw)
   FOR (i,m.npar) {
     M p(m,i);
     T   dpp = 1 + 2/m.beta*p.pt + sqr(p.pt);
-    T    pz = sqrt(dpp - sqr(p.px) - sqr(p.py));
-    T   _pz = 1/pz;
-    T  _pz2 = sqr(_pz);
     T  relp = invsqrt(dpp);
     T  tfac = -1/m.beta - p.pt;
     T    c3 = fsad*sqr(b0)*relp;
-
-    T xp  = p.px/pz,  yp  = p.py/pz;
-    T xyp = xp*yp  ,  yp2 = 1+sqr(yp);
-    T xp2 = sqr(xp), _yp2 = 1/yp2;
-
-    T fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*_pz;
-    T co2 = b0/sqr(cos(fi0));
-    T co1 = co2/(1 + sqr(xp*_yp2))*_yp2;
-    T co3 = co2*c2;
-
-    T fi1 =    co1          - co3*2*xp*(1+yp2)*_pz;
-    T fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *_pz;
-    T fi3 =                 + co3*(1 + xp2*(1+yp2))*_pz2;
-
-    T ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp;
-    T y  = 2*p.y / (1 + sqrt(1-2*ky*p.y));
+    T fi0(p.x), kx(p.x), ky(p.x), kz(p.x);
 
     if (m.sdir == 1) {
-      // Only calculate kx and kz once
-      T kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp;
-      T kz = fi1*tfac*xp*_pz2 + fi2*tfac*yp*_pz2 - fi3*tfac*_pz;
+      bend_fringe_coefficients<T>(dpp, p.px, p.py, c2, b0, tfac,
+                                  fi0, &kx, &ky, &kz);
+    } else {
+      T y2 = sqr(p.y);
+
+      // Recover the incoming py using only the fringe angle. The complete
+      // coefficient set is evaluated once, at the final recovered momentum.
+      bend_fringe_coefficients<T>(dpp, p.px, p.py, c2, b0, tfac, fi0);
+      for (int it = 0; it < 2; it++) {
+        T npy = p.py + (4*c3*y2 + b0*tan(fi0))*p.y;
+        bend_fringe_coefficients<T>(dpp, p.px, npy, c2, b0, tfac, fi0);
+      }
+      T npy = p.py + (4*c3*y2 + b0*tan(fi0))*p.y;
+      bend_fringe_coefficients<T>(dpp, p.px, npy, c2, b0, tfac,
+                                  fi0, &kx, &ky, &kz);
+    }
+
+    if (m.sdir == 1) {
+      T y  = 2*p.y / (1 + sqrt(1-2*ky*p.y));
       T y2 = sqr(y);
 
       p.x  += 0.5*kx*y2;
@@ -1510,29 +1541,6 @@ inline void bend_fringe (cflw<M> &m, num_t lw)
       p.y   = y;
     } else { // need to reverse y-dependence
       T y2 = sqr(p.y);
-      // recalculate kx, ky and kz with a new py (Work out what it probably was)
-      T   npy = p.py + (4*c3*y2 + b0*tan(fi0))*y;
-
-        pz = sqrt(dpp - sqr(p.px) - sqr(npy));
-       _pz = 1/pz;
-      _pz2 = sqr(_pz);
-
-      xp  = p.px/pz,  yp  = npy/pz;
-      xyp = xp*yp  ,  yp2 = 1+sqr(yp);
-      xp2 = sqr(xp), _yp2 = 1/yp2;
-
-      fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*_pz;
-      co2 = b0/sqr(cos(fi0));
-      co1 = co2/(1 + sqr(xp*_yp2))*_yp2;
-      co3 = co2*c2;
-
-      fi1 =    co1          - co3*2*xp*(1+yp2)*_pz;
-      fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *_pz;
-      fi3 =                 + co3*(1 + xp2*(1+yp2))*_pz2;
-
-      T kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp;
-        ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp;
-      T kz = fi1*tfac*xp*_pz2 + fi2*tfac*yp*_pz2 - fi3*tfac*_pz;
 
       p.x  -= 0.5*kx*y2;
       p.py += (4*c3*y2 + b0*tan(fi0))*p.y;
