@@ -1426,14 +1426,14 @@ inline void bend_fringe (cflw<M> &m, num_t lw)
     T xyp = xp*yp  ,  yp2 = 1+sqr(yp);
     T xp2 = sqr(xp), _yp2 = 1/yp2;
 
-    T fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*pz;
+    T fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*_pz;
     T co2 = b0/sqr(cos(fi0));
     T co1 = co2/(1 + sqr(xp*_yp2))*_yp2;
     T co3 = co2*c2;
 
-    T fi1 =    co1          - co3*2*xp*(1+yp2)*pz;
-    T fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *pz;
-    T fi3 =                 - co3*(1 + xp2*(1+yp2));
+    T fi1 =    co1          - co3*2*xp*(1+yp2)*_pz;
+    T fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *_pz;
+    T fi3 =                 + co3*(1 + xp2*(1+yp2))*_pz2;
 
     T kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp;
     T ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp;
@@ -1486,14 +1486,14 @@ inline void bend_fringe (cflw<M> &m, num_t lw)
     T xyp = xp*yp  ,  yp2 = 1+sqr(yp);
     T xp2 = sqr(xp), _yp2 = 1/yp2;
 
-    T fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*pz;
+    T fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*_pz;
     T co2 = b0/sqr(cos(fi0));
     T co1 = co2/(1 + sqr(xp*_yp2))*_yp2;
     T co3 = co2*c2;
 
-    T fi1 =    co1          - co3*2*xp*(1+yp2)*pz;
-    T fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *pz;
-    T fi3 =                 - co3*(1 + xp2*(1+yp2));
+    T fi1 =    co1          - co3*2*xp*(1+yp2)*_pz;
+    T fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *_pz;
+    T fi3 =                 + co3*(1 + xp2*(1+yp2))*_pz2;
 
     T ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp;
     T y  = 2*p.y / (1 + sqrt(1-2*ky*p.y));
@@ -1521,14 +1521,14 @@ inline void bend_fringe (cflw<M> &m, num_t lw)
       xyp = xp*yp  ,  yp2 = 1+sqr(yp);
       xp2 = sqr(xp), _yp2 = 1/yp2;
 
-      fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*pz;
+      fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*_pz;
       co2 = b0/sqr(cos(fi0));
       co1 = co2/(1 + sqr(xp*_yp2))*_yp2;
       co3 = co2*c2;
 
-      fi1 =    co1          - co3*2*xp*(1+yp2)*pz;
-      fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *pz;
-      fi3 =                 - co3*(1 + xp2*(1+yp2));
+      fi1 =    co1          - co3*2*xp*(1+yp2)*_pz;
+      fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *_pz;
+      fi3 =                 + co3*(1 + xp2*(1+yp2))*_pz2;
 
       T kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp;
         ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp;
