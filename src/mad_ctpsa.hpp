@@ -318,7 +318,7 @@ inline R imag (const ctpsa_base<A> &a) {  TRC("im(baz)")
 
 template <class A>
 inline T operator+ (const ctpsa_base<A> &a) {  TRC("+baz")
-  T c(a); return c;
+  return a;
 }
 
 template <class A>
