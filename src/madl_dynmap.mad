@@ -2122,32 +2122,12 @@ function qsad_fringe (elm, m, lw) -- [FRINGE2QUAD]                           -- 
   m.atdebug(elm, m, 'qsad_fringe:1')
 end
 
-function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                      -- checked
-  local fmax = elm.frngmax or m.frngmax
-  if min(m.nmul,fmax) == 0 then return end
-
-  m.atdebug(elm, m, 'mult_fringe:0')
-
-  local el, sdir, edir, nmul, knl, ksl, beam in m
-  local  beta = beam.beta
-  local  wchg = beam.charge*lw
-  local no_k1 = ftst(m.frng, fringe.bend)
-  local    _l = el ~= 0 and edir/el or edir
-
-  for i=1,m.npar do
-    local x, px, y, py, t, pt, beam in m[i]
-    local beta = beam and beam.beta or beta
-    local wchg = beam and beam.charge*lw or wchg
-    local  _pz = invsqrt(1 + 2/beta*pt + pt^2)
-
+local function mult_fringe_terms (x, y, n, knl, ksl, _l, wchg, no_k1)
     local rx, ix = 1, 0
     local fx, fxx, fxy = 0, 0, 0
     local fy, fyx, fyy = 0, 0, 0
 
-    -- NOTE: this loop is not fully time reversable to numerical precision,
-    --       because it depends on x,y and affects x,y (implicit formulation
-    --       in backtracking, not a thin lens)
-    for j=1,min(nmul,fmax) do
+  for j=1,n do
       local drx, dix = rx, ix
       rx = drx*x - dix*y
       ix = drx*y + dix*x
@@ -2186,12 +2166,65 @@ function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                      -- 
 
 !      printf("fx=% -.16e, fy=% -.16e, fxx=% -.16e, fyy=% -.16e, fxy=% -.16e, fyx=% -.16e\n",
 !              fx, fy, fxx, fyy, fxy, fyx)
+  end
+
+  return fx, fxx, fxy, fy, fyx, fyy
+end
+
+function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                      -- checked
+  local fmax = elm.frngmax or m.frngmax
+  local n = min(m.nmul,fmax)
+  if n == 0 then return end
+
+  m.atdebug(elm, m, 'mult_fringe:0')
+
+  local el, sdir, edir, knl, ksl, beam in m
+  local  beta = beam.beta
+  local reverse = sdir == -1
+  local  wchg = beam.charge*lw*sdir
+  local no_k1 = ftst(m.frng, fringe.bend)
+  local    _l = el ~= 0 and edir/el or edir
+
+  for i=1,m.npar do
+    local x, px, y, py, t, pt, beam in m[i]
+    local beta = beam and beam.beta or beta
+    local wchg = beam and beam.charge*lw*sdir or wchg
+    local  _pz = invsqrt(1 + 2/beta*pt + pt^2)
+    local _pz3 = _pz^3
+
+    local fx, fxx, fxy, fy, fyx, fyy =
+      mult_fringe_terms(x, y, n, knl, ksl, _l, wchg, no_k1)
+
+    -- q_out = q_in - f(q_in)/pz is implicit in reverse. Newton iteration
+    -- uses the same Jacobian needed by the momentum map and remains robust for
+    -- strong high-order fringes where fixed-point iteration can diverge.
+    if reverse then
+      local xout, yout = x, y
+      for _=1,3 do
+        local a, b = 1-fxx*_pz, -fyx*_pz
+        local c, d =  -fxy*_pz, 1-fyy*_pz
+        local det = a*d-b*c
+        local dx, dy = x-fx*_pz-xout, y-fy*_pz-yout
+        x, y = x-(d*dx-c*dy)/det, y-(a*dy-b*dx)/det
+        fx, fxx, fxy, fy, fyx, fyy =
+          mult_fringe_terms(x, y, n, knl, ksl, _l, wchg, no_k1)
+      end
     end
 
     local    a = 1 - fxx*_pz
     local    b =   - fyx*_pz
     local    c =   - fxy*_pz
     local    d = 1 - fyy*_pz
+    if reverse then
+      local npx = a*px + b*py
+      local npy = c*px + d*py
+      local nt = t - (1/beta+pt)*(px*fx + py*fy)*_pz3
+      m[i].x  = x
+      m[i].y  = y
+      m[i].px = npx
+      m[i].py = npy
+      m[i].t  = nt
+    else
     local _det = 1/(a*d - b*c)
     local  npx = (d*px - b*py)*_det
     local  npy = (a*py - c*px)*_det
@@ -2200,7 +2233,8 @@ function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                      -- 
     m[i].y  = y - fy*_pz
     m[i].px = npx
     m[i].py = npy
-    m[i].t  = t + (1/beta+pt)*(npx*fx + npy*fy)*_pz^3
+      m[i].t  = t + (1/beta+pt)*(npx*fx + npy*fy)*_pz3
+    end
   end
 
   m.atdebug(elm, m, 'mult_fringe:1')
