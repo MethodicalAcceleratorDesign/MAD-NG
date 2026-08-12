@@ -298,9 +298,8 @@ inline void xrotation (cflw<M> &m, num_t lw, const V &dphi_)
   FOR(i,m.npar) {
     M p(m,i);
     T   pz = sqrt(1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
-    T  _pz = 1/pz;
-    T _ptt = p.y/(1 - ta*p.py*_pz);
-    T _pzt = ta*_pz*_ptt;
+    T _ptt = p.y/(1 - ta*p.py/pz);
+    T _pzt = ta*_ptt/pz;
 
     // eq. 127 in Forest06
     p.y   = _ptt/ca;
@@ -324,9 +323,8 @@ inline void yrotation (cflw<M> &m, num_t lw, const V &dthe_)
   FOR(i,m.npar) {
     M p(m,i);
     T   pz = sqrt(1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
-    T  _pz = inv(pz);
-    T _ptt = p.x/(1 - ta*p.px*_pz);
-    T _pzt = ta*_pz*_ptt;
+    T _ptt = p.x/(1 - ta*p.px/pz);
+    T _pzt = ta*_ptt/pz;
 
     // eq. 127 in Forest06
     p.x   = _ptt/ca;
@@ -627,10 +625,9 @@ inline void curex_drift (cflw<M> &m, num_t lw, int is)
   FOR(i,m.npar) {
     M p(m,i);
     T   pz = sqrt(1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
-    T  _pz = inv(pz);
-    T  pxt = p.px*_pz;
+    T  pxt = p.px/pz;
     T _ptt = inv(ca - sa*pxt);
-    T  pst = (p.x+rho)*sa*_pz*_ptt;
+    T  pst = (p.x+rho)*sa*_ptt/pz;
 
     p.x  = (p.x + rho*(2*sqr(sa2) + sa*pxt))*_ptt;
     p.px = ca*p.px + sa*pz;
@@ -676,19 +673,28 @@ inline void sbend_thick (cflw<M> &m, num_t lw, int is)
   P ld  = R(m.el)*lw;
   P ang = R(m.eh)*R(m.el)*lw*m.edir, rho=1/R(m.eh)*m.edir;
   P k0q = R(m.knl[0])/R(m.el)*(m.edir*m.charge);
-  P ca  = cos(ang), sa = sin(ang);
+  P ca  = cos(ang), sa = sin(ang), sa2 = sin(ang/2);
 
   FOR(i,m.npar) {
     M p(m,i);
     T  pw2 = 1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.py);
-    T  pzx = sqrt(pw2 - sqr(p.px)) - k0q*(rho+p.x); // can be numerically unstable
+    T   pz = sqrt(pw2 - sqr(p.px));
+    T  pzx = pz - k0q*(rho+p.x);
     T  npx = sa*pzx + ca*p.px;
     T  dpx = ca*pzx - sa*p.px;
-    T _ptt = invsqrt(pw2);
-    T  dxs = (ang + asin(p.px*_ptt) - asin(npx*_ptt))/k0q;
+    T  pzs = sqrt(pw2 - sqr(npx));
+
+    T dnpx = npx - p.px;
+    T  dpz = -dnpx*(npx + p.px)/(pzs + pz);
+    T ddpx = -2*pzx*sqr(sa2) - p.px*sa;
+    T   dx = (dpz - ddpx)/k0q;
+    T   na = p.px*dpz - pz*dnpx;
+    T   da = pz*pzs + p.px*npx;
+    T dang = atan2(na, da);
+    T  dxs = (ang + dang)/k0q;
 
     // eq. 126 in Forest06
-    p.x  = (sqrt(pw2 - sqr(npx)) - dpx)/k0q - rho;  // can be numerically unstable
+    p.x += dx;
     p.px = npx;
     p.y += dxs*p.py;
     p.t  = p.t - dxs*(1/m.beta+p.pt) + (1-m.T)/m.beta*ld;
@@ -753,13 +759,17 @@ inline void rbend_thick (cflw<M> &m, num_t lw, int is)
     M p(m,i);
     T  npx = p.px - k0lq;
     T  pw2 = 1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.py);
-    T _ptt = invsqrt(pw2);
     T   pz = sqrt(pw2 - sqr(p.px));
     T  pzs = sqrt(pw2 - sqr(npx));
-    T  dxs = (asin(p.px*_ptt) - asin(npx*_ptt))/k0q;
+
+    T dnpx = npx - p.px;
+    T  dpz = -dnpx*(npx + p.px)/(pzs + pz);
+    T   na = p.px*dpz - pz*dnpx;
+    T   da = pz*pzs + p.px*npx;
+    T  dxs = atan2(na, da)/k0q;
 
     // eq. 126 in Forest06
-    p.x += (pzs-pz)/k0q;
+    p.x += dpz/k0q;
     p.px = npx;
     p.y += dxs*p.py;
     p.t  = p.t - dxs*(1/m.beta+p.pt) + (1-m.T)/m.beta*ld;
@@ -1044,8 +1054,7 @@ inline void quad_kickh (cflw<M> &m, num_t lw, int is)
       M p(m,i);
       T bx(ord(p.x) >= ord(p.y) ? p.x : p.y), by(bx);
       T  pz = sqrt(1 + 2/m.beta*p.pt + sqr(p.pt) - sqr(p.px) - sqr(p.py));
-      T _pz = 1/pz;
-      T lhx = lh*p.x*_pz;
+      T lhx = lh*p.x/pz;
       T rho = 1 + eh*p.x;
       T  nx = p.px*lhx;
       T  ny = p.py*lhx;
@@ -1054,7 +1063,7 @@ inline void quad_kickh (cflw<M> &m, num_t lw, int is)
 
       p.px -= wchg*(by*rho - kxl*p.x - 0.5*eh*kyl*sqr(p.y)) - lh*(pz - (p.pt/m.beta));
       p.py += wchg*(bx*rho - kyl*p.y);
-      p.t  -= lh*((1/m.beta+p.pt)*_pz - 1/m.beta)*p.x;
+      p.t  -= lh*((1/m.beta+p.pt)/pz - 1/m.beta)*p.x;
       p.x  += nx;
       p.y  += ny;
     }
