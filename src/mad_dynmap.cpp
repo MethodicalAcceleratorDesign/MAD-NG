@@ -1338,7 +1338,7 @@ inline void bend_face (cflw<M> &m, num_t lw, const V &h)
     } else {
       p.t  += dxi_ddel*p.x*y2;
       p.py -= 2*xi*p.x*p.y;
-      p.x  /= 1-dxi_px*y2;
+      p.x  *= 1+dxi_px*y2;
       p.px -= xi*y2 - k0hq*sqr(p.x);
     }
   }
