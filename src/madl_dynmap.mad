@@ -155,10 +155,9 @@ local function xrotation (elm, m, lw_, dphi_)  -- Rx(ax) [ROT_YZ]             --
     local x, px, y, py, t, pt, beam in m[i]
     local beta = beam and beam.beta or beta
     local   pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
-    local  _pz = 1/pz
-    local  ptt = 1 - ta*py*_pz
+    local  ptt = 1 - ta*py/pz
     local _ptt = y/ptt
-    local _pzt = ta*_pz*_ptt
+    local _pzt = ta*_ptt/pz
 
     -- eq. 127 in Forest06
     m[i].y  = _ptt/ca
@@ -188,10 +187,9 @@ local function yrotation (elm, m, lw_, dthe_)  -- Ry(ay) [ROT_XZ]             --
     local x, px, y, py, t, pt, beam in m[i]
     local beta = beam and beam.beta or beta
     local   pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
-    local  _pz = 1/pz
-    local  ptt = 1 - ta*px*_pz
+    local  ptt = 1 - ta*px/pz
     local _ptt = x/ptt
-    local _pzt = ta*_pz*_ptt
+    local _pzt = ta*_ptt/pz
 
     -- eq. 127 in Forest06
     m[i].x  = _ptt/ca
@@ -619,10 +617,9 @@ function M.curex_drift (elm, m, lw, istp) -- [SPROT]                          --
     local x, px, y, py, t, pt, beam in m[i]
     local beta = beam and beam.beta or beta
     local   pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
-    local  _pz = 1/pz
-    local  pxt = px*_pz
+    local  pxt = px/pz
     local _ptt = 1/(ca - sa*pxt)
-    local  pst = (x+rho)*sa*_pz*_ptt
+    local  pst = (x+rho)*sa*_ptt/pz
 
     m[i].x  = (x + rho*(2*sa2^2 + sa*pxt))*_ptt
     m[i].px = ca*px + sa*pz
@@ -680,7 +677,7 @@ local function bend_thick_ds (elm, m, lw, istp)
   for i=1,m.npar do
     local x, px, y, py, t, pt, beam in m[i]
     local beta = beam and beam.beta or beta0
-    local k0q  = beam and k0*beam.charge or k0*beam.charge
+    local k0q  = beam and k0*beam.charge or k0*m.beam.charge
 
     local relp = 1/beta + pt
     local pw2  = 1 + 2/beta*pt + pt^2 - py^2
@@ -735,10 +732,9 @@ local function curex_drift0 (elm, m, lw, i, ld, ca, sa, sa2, rho)
   local x, px, y, py, t, pt in m[i]
   local beta = (m[i].beam or m.beam).beta
   local   pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
-  local  _pz = 1/pz
-  local  pxt = px*_pz
+  local  pxt = px/pz
   local _ptt = 1/(ca - sa*pxt)
-  local  pst = (x+rho)*sa*_pz*_ptt
+  local  pst = (x+rho)*sa*_ptt/pz
 
   m[i].x  = (x + rho*(2*sa2^2 + sa*pxt))*_ptt
   m[i].px = ca*px + sa*pz
@@ -775,12 +771,6 @@ local function sbend_thick (elm, m, lw, istp) -- [SSEC]                       --
     local  pzs = sqrt(pw2 - npx^2)                                      -- PZS
     local  dxs
 
-  if true then -- old
-    local _ptt = invsqrt(pw2)                                           -- PT
-           dxs = (ang + asin(px*_ptt) - asin(npx*_ptt))/k0q             -- XN(3)
-
-    m[i].x  = (pzs - dpx)/k0q - rho    -- could be numerically unstable -- XN(1)
-  else
     local dnpx = npx - px
     local  dpz = -dnpx*(npx + px)/(pzs + pz)
     local ddpx = -2*pzx*sa2^2 - px*sa
@@ -791,7 +781,6 @@ local function sbend_thick (elm, m, lw, istp) -- [SSEC]                       --
            dxs = (ang + dang)/k0q
 
     m[i].x  = x + dx
-  end
     m[i].px = npx                                                       -- XN(2)
     m[i].y  = y + dxs*py                                                -- XN(3)
     m[i].t  = t - dxs*(1/beta+pt) + (1-m.T)/beta*ld                     -- XN(6)
@@ -848,12 +837,6 @@ local function rbend_thick (elm, m, lw, istp) -- [SPAR]                       --
     local  pzs = sqrt(pw2 - npx^2)
     local  dxs
 
-  if true then -- old
-    local _ptt = invsqrt(pw2)
-           dxs = (asin(px*_ptt) - asin(npx*_ptt))/k0q
-
-    m[i].x  = x + (pzs-pz)/k0q
-  else
     local dnpx = npx - px
     local  dpz = -dnpx*(npx + px)/(pzs + pz)
     local   na = px*dpz - pz*dnpx
@@ -861,7 +844,6 @@ local function rbend_thick (elm, m, lw, istp) -- [SPAR]                       --
            dxs = atan2(na, da)/k0q
 
     m[i].x  = x + dpz/k0q
-  end
     m[i].px = npx
     m[i].y  = y + dxs*py
     m[i].t  = t - dxs*(1/beta+pt) + (1-m.T)/beta*ld
@@ -1142,8 +1124,7 @@ function M.quad_kickh_ (elm, m, lw, istp) -- [KICKTKT7]                       --
       local  beta = beam and beam.beta or beta
       local  wchg = beam and lw*edir*beam.charge or wchg
       local    pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
-      local   _pz = 1/pz
-      local   lhx = lh*x*_pz
+      local   lhx = lh*x/pz
       local   rho = 1 + eh*x
       local    nx = px*lhx
       local    ny = py*lhx
@@ -1151,7 +1132,7 @@ function M.quad_kickh_ (elm, m, lw, istp) -- [KICKTKT7]                       --
 
       m[i].px = px - wchg*(by*rho - kxl*x - 0.5*eh*kyl*y^2) + lh*(pz - pt/beta)
       m[i].py = py + wchg*(bx*rho - kyl*y)
-      m[i].t  = t  - lh*((1/beta+pt)*_pz - 1/beta)*x
+      m[i].t  = t  - lh*((1/beta+pt)/pz - 1/beta)*x
       m[i].x  = x  + nx
       m[i].y  = y  + ny
     end
@@ -1907,7 +1888,7 @@ function bend_face (elm, m, lw, h) -- [NEWFACE]                               --
     else
       t  = t  + dxi_ddel*x*y2
       py = py - 2*xi*x*y
-      x  = x  / (1-dxi_px*y2)
+      x  = x  * (1+dxi_px*y2)
       px = px - xi*y2 + k0hq*x^2
     end
 
@@ -1981,7 +1962,7 @@ function bend_wedge (elm, m, lw_, e) -- [WEDGE] see also [sr]bend_thick       --
   m.atdebug(elm, m, 'bend_wedge:1')
 end
 
-local function bend_fringe_param (dpp, px, py, c2, b0, tfac, only_ky)
+local function bend_fringe_param (dpp, px, py, c2, b0, tfac, angle_only)
   -- This map could do with some cleaning, use of pz, _pz and _pz2 is inconsistent
   local   pz = sqrt(dpp - px^2 - py^2)
   local  _pz = 1/pz
@@ -1991,19 +1972,19 @@ local function bend_fringe_param (dpp, px, py, c2, b0, tfac, only_ky)
   local xyp, yp2 = xp*yp, 1+yp^2
   local xp2,_yp2 = xp^2 , 1/yp2
 
-  local fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*pz
+  local fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*_pz
+  if angle_only then return fi0 end
+
   local co2 = b0/cos(fi0)^2
   local co1 = co2/(1 + (xp*_yp2)^2)*_yp2
   local co3 = co2*c2
 
-  local fi1 =    co1          - co3*2*xp*(1+yp2)*pz
-  local fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *pz
-  local fi3 =                 - co3*(1 + xp2*(1+yp2))
-
-  local ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp
-  if only_ky then return fi0, nil, ky, nil end -- only ky is needed, speed up calculation
+  local fi1 =    co1          - co3*2*xp*(1+yp2)*_pz
+  local fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *_pz
+  local fi3 =                 + co3*(1 + xp2*(1+yp2))*_pz2
 
   local kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp
+  local ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp
   local kz = fi1*tfac*xp*_pz2 + fi2*tfac*yp*_pz2 - fi3*tfac*_pz
   return fi0, kx, ky, kz
 end
@@ -2034,9 +2015,10 @@ function bend_fringe (elm, m, lw) -- [FRINGE_DIPOLE]                         -- 
     local tfac = -(1/beta + pt)
     local   c3 = b0^2*fsad*relp
 
-    local fi0, kx, ky, kz = bend_fringe_param(dpp, px, py, c2, b0, tfac, sdir==-1) -- this method is not perfect.
-    local ny = 2*y / (1 + sqrt(1-2*ky*y))
+    local fi0, kx, ky, kz
     if sdir == 1 then
+      fi0, kx, ky, kz = bend_fringe_param(dpp, px, py, c2, b0, tfac)
+      local ny = 2*y / (1 + sqrt(1-2*ky*y))
       local ny2 = ny^2
 
       m[i].x  = x  + 0.5*kx*ny2
@@ -2044,10 +2026,17 @@ function bend_fringe (elm, m, lw) -- [FRINGE_DIPOLE]                         -- 
       m[i].t  = t  + (0.5*kz  + c3*ny2*relp^2*tfac)*ny2
       m[i].y  = ny
     else -- need to reverse y-dependence
-      -- This is still not fully revesible in 5thand 6th order, due to self dependance of py -> results in max error of 1e-11 and 2e-9 for 5th and 6th order respectively
-      local npy = py + (4*c3*ny^2 + b0*tan(fi0))*ny
-      fi0, kx, ky, kz = bend_fringe_param(dpp, px, npy, c2, b0, tfac) -- this method is not perfect.
       local y2 = y^2
+
+      -- Recover the incoming py from the fringe angle. The first three
+      -- evaluations only need fi0; calculate kx, ky and kz once at the end.
+      fi0 = bend_fringe_param(dpp, px, py, c2, b0, tfac, true)
+      for _ = 1, 2 do
+        local npy = py + (4*c3*y2 + b0*tan(fi0))*y
+        fi0 = bend_fringe_param(dpp, px, npy, c2, b0, tfac, true)
+      end
+      local npy = py + (4*c3*y2 + b0*tan(fi0))*y
+      fi0, kx, ky, kz = bend_fringe_param(dpp, px, npy, c2, b0, tfac)
 
       m[i].x  = x  - 0.5*kx*y2
       m[i].py = py + (4*c3*y2 + b0*tan(fi0))*y
@@ -2114,32 +2103,12 @@ function qsad_fringe (elm, m, lw) -- [FRINGE2QUAD]                           -- 
   m.atdebug(elm, m, 'qsad_fringe:1')
 end
 
-function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                      -- checked
-  local fmax = elm.frngmax or m.frngmax
-  if min(m.nmul,fmax) == 0 then return end
-
-  m.atdebug(elm, m, 'mult_fringe:0')
-
-  local el, sdir, edir, nmul, knl, ksl, beam in m
-  local  beta = beam.beta
-  local  wchg = beam.charge*lw
-  local no_k1 = ftst(m.frng, fringe.bend)
-  local    _l = el ~= 0 and edir/el or edir
-
-  for i=1,m.npar do
-    local x, px, y, py, t, pt, beam in m[i]
-    local beta = beam and beam.beta or beta
-    local wchg = beam and beam.charge*lw or wchg
-    local  _pz = invsqrt(1 + 2/beta*pt + pt^2)
-
+local function mult_fringe_terms (x, y, n, knl, ksl, _l, wchg, no_k1)
     local rx, ix = 1, 0
     local fx, fxx, fxy = 0, 0, 0
     local fy, fyx, fyy = 0, 0, 0
 
-    -- NOTE: this loop is not fully time reversable to numerical precision,
-    --       because it depends on x,y and affects x,y (implicit formulation
-    --       in backtracking, not a thin lens)
-    for j=1,min(nmul,fmax) do
+  for j=1,n do
       local drx, dix = rx, ix
       rx = drx*x - dix*y
       ix = drx*y + dix*x
@@ -2178,12 +2147,65 @@ function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                      -- 
 
 !      printf("fx=% -.16e, fy=% -.16e, fxx=% -.16e, fyy=% -.16e, fxy=% -.16e, fyx=% -.16e\n",
 !              fx, fy, fxx, fyy, fxy, fyx)
+  end
+
+  return fx, fxx, fxy, fy, fyx, fyy
+end
+
+function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                      -- checked
+  local fmax = elm.frngmax or m.frngmax
+  local n = min(m.nmul,fmax)
+  if n == 0 then return end
+
+  m.atdebug(elm, m, 'mult_fringe:0')
+
+  local el, sdir, edir, knl, ksl, beam in m
+  local  beta = beam.beta
+  local reverse = sdir == -1
+  local  wchg = beam.charge*lw*sdir
+  local no_k1 = ftst(m.frng, fringe.bend)
+  local    _l = el ~= 0 and edir/el or edir
+
+  for i=1,m.npar do
+    local x, px, y, py, t, pt, beam in m[i]
+    local beta = beam and beam.beta or beta
+    local wchg = beam and beam.charge*lw*sdir or wchg
+    local  _pz = invsqrt(1 + 2/beta*pt + pt^2)
+    local _pz3 = _pz^3
+
+    local fx, fxx, fxy, fy, fyx, fyy =
+      mult_fringe_terms(x, y, n, knl, ksl, _l, wchg, no_k1)
+
+    -- q_out = q_in - f(q_in)/pz is implicit in reverse. Newton iteration
+    -- uses the same Jacobian needed by the momentum map and remains robust for
+    -- strong high-order fringes where fixed-point iteration can diverge.
+    if reverse then
+      local xout, yout = x, y
+      for _=1,3 do
+        local a, b = 1-fxx*_pz, -fyx*_pz
+        local c, d =  -fxy*_pz, 1-fyy*_pz
+        local det = a*d-b*c
+        local dx, dy = x-fx*_pz-xout, y-fy*_pz-yout
+        x, y = x-(d*dx-c*dy)/det, y-(a*dy-b*dx)/det
+        fx, fxx, fxy, fy, fyx, fyy =
+          mult_fringe_terms(x, y, n, knl, ksl, _l, wchg, no_k1)
+      end
     end
 
     local    a = 1 - fxx*_pz
     local    b =   - fyx*_pz
     local    c =   - fxy*_pz
     local    d = 1 - fyy*_pz
+    if reverse then
+      local npx = a*px + b*py
+      local npy = c*px + d*py
+      local nt = t - (1/beta+pt)*(px*fx + py*fy)*_pz3
+      m[i].x  = x
+      m[i].y  = y
+      m[i].px = npx
+      m[i].py = npy
+      m[i].t  = nt
+    else
     local _det = 1/(a*d - b*c)
     local  npx = (d*px - b*py)*_det
     local  npy = (a*py - c*px)*_det
@@ -2192,7 +2214,8 @@ function mult_fringe (elm, m, lw) -- [MULTIPOLE_FRINGE]                      -- 
     m[i].y  = y - fy*_pz
     m[i].px = npx
     m[i].py = npy
-    m[i].t  = t + (1/beta+pt)*(npx*fx + npy*fy)*_pz^3
+      m[i].t  = t + (1/beta+pt)*(npx*fx + npy*fy)*_pz3
+    end
   end
 
   m.atdebug(elm, m, 'mult_fringe:1')
