@@ -155,10 +155,9 @@ local function xrotation (elm, m, lw_, dphi_)  -- Rx(ax) [ROT_YZ]             --
     local x, px, y, py, t, pt, beam in m[i]
     local beta = beam and beam.beta or beta
     local   pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
-    local  _pz = 1/pz
-    local  ptt = 1 - ta*py*_pz
+    local  ptt = 1 - ta*py/pz
     local _ptt = y/ptt
-    local _pzt = ta*_pz*_ptt
+    local _pzt = ta*_ptt/pz
 
     -- eq. 127 in Forest06
     m[i].y  = _ptt/ca
@@ -188,10 +187,9 @@ local function yrotation (elm, m, lw_, dthe_)  -- Ry(ay) [ROT_XZ]             --
     local x, px, y, py, t, pt, beam in m[i]
     local beta = beam and beam.beta or beta
     local   pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
-    local  _pz = 1/pz
-    local  ptt = 1 - ta*px*_pz
+    local  ptt = 1 - ta*px/pz
     local _ptt = x/ptt
-    local _pzt = ta*_pz*_ptt
+    local _pzt = ta*_ptt/pz
 
     -- eq. 127 in Forest06
     m[i].x  = _ptt/ca
@@ -619,10 +617,9 @@ function M.curex_drift (elm, m, lw, istp) -- [SPROT]                          --
     local x, px, y, py, t, pt, beam in m[i]
     local beta = beam and beam.beta or beta
     local   pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
-    local  _pz = 1/pz
-    local  pxt = px*_pz
+    local  pxt = px/pz
     local _ptt = 1/(ca - sa*pxt)
-    local  pst = (x+rho)*sa*_pz*_ptt
+    local  pst = (x+rho)*sa*_ptt/pz
 
     m[i].x  = (x + rho*(2*sa2^2 + sa*pxt))*_ptt
     m[i].px = ca*px + sa*pz
@@ -735,10 +732,9 @@ local function curex_drift0 (elm, m, lw, i, ld, ca, sa, sa2, rho)
   local x, px, y, py, t, pt in m[i]
   local beta = (m[i].beam or m.beam).beta
   local   pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
-  local  _pz = 1/pz
-  local  pxt = px*_pz
+  local  pxt = px/pz
   local _ptt = 1/(ca - sa*pxt)
-  local  pst = (x+rho)*sa*_pz*_ptt
+  local  pst = (x+rho)*sa*_ptt/pz
 
   m[i].x  = (x + rho*(2*sa2^2 + sa*pxt))*_ptt
   m[i].px = ca*px + sa*pz
@@ -775,12 +771,6 @@ local function sbend_thick (elm, m, lw, istp) -- [SSEC]                       --
     local  pzs = sqrt(pw2 - npx^2)                                      -- PZS
     local  dxs
 
-  if true then -- old
-    local _ptt = invsqrt(pw2)                                           -- PT
-           dxs = (ang + asin(px*_ptt) - asin(npx*_ptt))/k0q             -- XN(3)
-
-    m[i].x  = (pzs - dpx)/k0q - rho    -- could be numerically unstable -- XN(1)
-  else
     local dnpx = npx - px
     local  dpz = -dnpx*(npx + px)/(pzs + pz)
     local ddpx = -2*pzx*sa2^2 - px*sa
@@ -791,7 +781,6 @@ local function sbend_thick (elm, m, lw, istp) -- [SSEC]                       --
            dxs = (ang + dang)/k0q
 
     m[i].x  = x + dx
-  end
     m[i].px = npx                                                       -- XN(2)
     m[i].y  = y + dxs*py                                                -- XN(3)
     m[i].t  = t - dxs*(1/beta+pt) + (1-m.T)/beta*ld                     -- XN(6)
@@ -848,12 +837,6 @@ local function rbend_thick (elm, m, lw, istp) -- [SPAR]                       --
     local  pzs = sqrt(pw2 - npx^2)
     local  dxs
 
-  if true then -- old
-    local _ptt = invsqrt(pw2)
-           dxs = (asin(px*_ptt) - asin(npx*_ptt))/k0q
-
-    m[i].x  = x + (pzs-pz)/k0q
-  else
     local dnpx = npx - px
     local  dpz = -dnpx*(npx + px)/(pzs + pz)
     local   na = px*dpz - pz*dnpx
@@ -861,7 +844,6 @@ local function rbend_thick (elm, m, lw, istp) -- [SPAR]                       --
            dxs = atan2(na, da)/k0q
 
     m[i].x  = x + dpz/k0q
-  end
     m[i].px = npx
     m[i].y  = y + dxs*py
     m[i].t  = t - dxs*(1/beta+pt) + (1-m.T)/beta*ld
@@ -1142,8 +1124,7 @@ function M.quad_kickh_ (elm, m, lw, istp) -- [KICKTKT7]                       --
       local  beta = beam and beam.beta or beta
       local  wchg = beam and lw*edir*beam.charge or wchg
       local    pz = sqrt(1 + 2/beta*pt + pt^2 - px^2 - py^2)
-      local   _pz = 1/pz
-      local   lhx = lh*x*_pz
+      local   lhx = lh*x/pz
       local   rho = 1 + eh*x
       local    nx = px*lhx
       local    ny = py*lhx
@@ -1151,7 +1132,7 @@ function M.quad_kickh_ (elm, m, lw, istp) -- [KICKTKT7]                       --
 
       m[i].px = px - wchg*(by*rho - kxl*x - 0.5*eh*kyl*y^2) + lh*(pz - pt/beta)
       m[i].py = py + wchg*(bx*rho - kyl*y)
-      m[i].t  = t  - lh*((1/beta+pt)*_pz - 1/beta)*x
+      m[i].t  = t  - lh*((1/beta+pt)/pz - 1/beta)*x
       m[i].x  = x  + nx
       m[i].y  = y  + ny
     end
