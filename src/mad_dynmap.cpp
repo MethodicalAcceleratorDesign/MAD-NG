@@ -681,7 +681,6 @@ inline void sbend_thick (cflw<M> &m, num_t lw, int is)
     T   pz = sqrt(pw2 - sqr(p.px));
     T  pzx = pz - k0q*(rho+p.x);
     T  npx = sa*pzx + ca*p.px;
-    T  dpx = ca*pzx - sa*p.px;
     T  pzs = sqrt(pw2 - sqr(npx));
 
     T dnpx = npx - p.px;
