@@ -308,7 +308,7 @@ inline tpsa::tpsa(const tpsa_base<A> &a, const T &b) {
 
 template <class A>
 inline T operator+ (const tpsa_base<A> &a) {  TRC("+baz")
-  T c(a); return c;
+  return a;
 }
 
 template <class A>
