@@ -1603,7 +1603,8 @@ inline void mult_fringe (cflw<M> &m, num_t lw)
   if (!n) return;
 
   mdump(0);
-  num_t  wchg = lw*m.charge;
+  bool reverse = m.sdir == -1;
+  num_t  wchg = lw*m.charge*m.sdir;
   int   no_k1 = m.frng & fringe_bend;
   P     _l(R(m.el));
 
@@ -1618,7 +1619,12 @@ inline void mult_fringe (cflw<M> &m, num_t lw)
     T drx(u), dix(u);
 
     T _pz = invsqrt(1 + 2/m.beta*p.pt + sqr(p.pt));
+    T _pz3 = sqr(_pz)*_pz;
 
+    auto eval_fringe_terms = [&]() {
+      rx = 1., ix = 0.;
+      fx = 0., fxx = 0., fxy = 0.;
+      fy = 0., fyy = 0., fyx = 0.;
     FOR (j,1,n+1) {
       drx = rx, dix = ix;
       rx = drx*p.x - dix*p.y;
@@ -1648,21 +1654,43 @@ inline void mult_fringe (cflw<M> &m, num_t lw)
       fyy += duy*p.y - nf* dvy*p.x + u;
       fxy += duy*p.x + nf*(dvy*p.y + v);
       fyx += dux*p.y - nf*(dvx*p.x + v);
+      }
+    };
+
+    eval_fringe_terms();
+    if (reverse) {
+      T xout(u), yout(u); xout = p.x, yout = p.y;
+      FOR (it,0,3) {
+        T a = 1-fxx*_pz, b = -fyx*_pz;
+        T c = -fxy*_pz, d = 1-fyy*_pz;
+        T det = a*d-b*c;
+        T dx = p.x-fx*_pz-xout, dy = p.y-fy*_pz-yout;
+        p.x -= (d*dx-c*dy)/det;
+        p.y -= (a*dy-b*dx)/det;
+        eval_fringe_terms();
+      }
     }
 
     T    a = 1 - fxx*_pz;
     T    b =   - fyx*_pz;
     T    c =   - fxy*_pz;
     T    d = 1 - fyy*_pz;
+    if (reverse) {
+      T px(u), py(u); px = p.px, py = p.py;
+      p.px = a*px + b*py;
+      p.py = c*px + d*py;
+      p.t -= (1/m.beta+p.pt)*(px*fx + py*fy)*_pz3;
+    } else {
     T _det = 1/(a*d - b*c);
-    T npx = (d*p.px - b*p.py)*_det; // Create variables so they do not affect each other
+      T npx = (d*p.px - b*p.py)*_det;
     T npy = (a*p.py - c*p.px)*_det;
 
     p.x  -= fx*_pz;
     p.y  -= fy*_pz;
     p.px  = npx;
     p.py  = npy;
-    p.t  += (1/m.beta+p.pt)*(p.px*fx + p.py*fy)*sqr(_pz)*_pz;
+      p.t  += (1/m.beta+p.pt)*(npx*fx + npy*fy)*_pz3;
+    }
   }
   mdump(1);
 }
