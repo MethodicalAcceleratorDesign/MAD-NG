@@ -1981,7 +1981,7 @@ function bend_wedge (elm, m, lw_, e) -- [WEDGE] see also [sr]bend_thick       --
   m.atdebug(elm, m, 'bend_wedge:1')
 end
 
-local function bend_fringe_param (dpp, px, py, c2, b0, tfac, only_ky)
+local function bend_fringe_param (dpp, px, py, c2, b0, tfac, angle_only)
   -- This map could do with some cleaning, use of pz, _pz and _pz2 is inconsistent
   local   pz = sqrt(dpp - px^2 - py^2)
   local  _pz = 1/pz
@@ -1992,6 +1992,8 @@ local function bend_fringe_param (dpp, px, py, c2, b0, tfac, only_ky)
   local xp2,_yp2 = xp^2 , 1/yp2
 
   local fi0 = atan((xp*_yp2)) - c2*(1 + xp2*(1+yp2))*_pz
+  if angle_only then return fi0 end
+
   local co2 = b0/cos(fi0)^2
   local co1 = co2/(1 + (xp*_yp2)^2)*_yp2
   local co3 = co2*c2
@@ -2000,10 +2002,8 @@ local function bend_fringe_param (dpp, px, py, c2, b0, tfac, only_ky)
   local fi2 = -2*co1*xyp*_yp2 - co3*2*xp*xyp    *_pz
   local fi3 =                 + co3*(1 + xp2*(1+yp2))*_pz2
 
-  local ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp
-  if only_ky then return fi0, nil, ky, nil end -- only ky is needed, speed up calculation
-
   local kx = fi1*(1+xp2)*_pz  + fi2*xyp*_pz      - fi3*xp
+  local ky = fi1*xyp*_pz      + fi2*yp2*_pz      - fi3*yp
   local kz = fi1*tfac*xp*_pz2 + fi2*tfac*yp*_pz2 - fi3*tfac*_pz
   return fi0, kx, ky, kz
 end
@@ -2034,9 +2034,10 @@ function bend_fringe (elm, m, lw) -- [FRINGE_DIPOLE]                         -- 
     local tfac = -(1/beta + pt)
     local   c3 = b0^2*fsad*relp
 
-    local fi0, kx, ky, kz = bend_fringe_param(dpp, px, py, c2, b0, tfac, sdir==-1) -- this method is not perfect.
-    local ny = 2*y / (1 + sqrt(1-2*ky*y))
+    local fi0, kx, ky, kz
     if sdir == 1 then
+      fi0, kx, ky, kz = bend_fringe_param(dpp, px, py, c2, b0, tfac)
+      local ny = 2*y / (1 + sqrt(1-2*ky*y))
       local ny2 = ny^2
 
       m[i].x  = x  + 0.5*kx*ny2
@@ -2044,10 +2045,17 @@ function bend_fringe (elm, m, lw) -- [FRINGE_DIPOLE]                         -- 
       m[i].t  = t  + (0.5*kz  + c3*ny2*relp^2*tfac)*ny2
       m[i].y  = ny
     else -- need to reverse y-dependence
-      -- This is still not fully revesible in 5thand 6th order, due to self dependance of py -> results in max error of 1e-11 and 2e-9 for 5th and 6th order respectively
-      local npy = py + (4*c3*ny^2 + b0*tan(fi0))*ny
-      fi0, kx, ky, kz = bend_fringe_param(dpp, px, npy, c2, b0, tfac) -- this method is not perfect.
       local y2 = y^2
+
+      -- Recover the incoming py from the fringe angle. The first three
+      -- evaluations only need fi0; calculate kx, ky and kz once at the end.
+      fi0 = bend_fringe_param(dpp, px, py, c2, b0, tfac, true)
+      for _ = 1, 2 do
+        local npy = py + (4*c3*y2 + b0*tan(fi0))*y
+        fi0 = bend_fringe_param(dpp, px, npy, c2, b0, tfac, true)
+      end
+      local npy = py + (4*c3*y2 + b0*tan(fi0))*y
+      fi0, kx, ky, kz = bend_fringe_param(dpp, px, npy, c2, b0, tfac)
 
       m[i].x  = x  - 0.5*kx*y2
       m[i].py = py + (4*c3*y2 + b0*tan(fi0))*y
