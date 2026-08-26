@@ -828,9 +828,9 @@ inline void quad_thick (cflw<M> &m, num_t lw, int is)
 //  cy = cosh(w*l), sy  = sinh(w*l);
 //  mx1 = sx/w    , mx2 = -sx*w;
 //  my1 = sy/w    , my2 =  sy*w;
-    P w = abs(R(m.k1));
+    P w = R(m.k1)*m.edir*ws;
     P wl2 = w*sqr(l);
-    std::tie(sx, cx) = sincosq(wl2);
+    std::tie(sx, cx) = sincosq (wl2);
     std::tie(sy, cy) = sincoshq(wl2);
     mx1 = l*sx, mx2 = -l*w*sx;
     my1 = l*sy, my2 =  l*w*sy;
