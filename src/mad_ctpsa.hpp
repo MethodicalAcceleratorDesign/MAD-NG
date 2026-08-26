@@ -56,6 +56,8 @@ namespace mad {
 struct ctpsa;
 struct ctpsa_ref;
 namespace mad_prv_ { struct ctpsa_tmp_; }
+
+#undef CPX
 using CPX = std::complex<double>;
 
 // public abstract class implementing interface for ctpsa and ctpsa_ref.
@@ -317,12 +319,12 @@ inline ctpsa::ctpsa(const ctpsa_base<A> &a, const T &b) {
 
 template <class A>
 inline R real (const ctpsa_base<A> &a) {  TRC("re(baz)")
-  R c(mad_tpsa_new((tpsa_t*)a.ptr(),same)); mad_ctpsa_real(a.ptr(),c.ptr()); return c;
+  R c(tpsa_ref((tpsa_t*)a.ptr())); mad_ctpsa_real(a.ptr(),c.ptr()); return c;
 }
 
 template <class A>
 inline R imag (const ctpsa_base<A> &a) {  TRC("im(baz)")
-  R c(mad_tpsa_new((tpsa_t*)a.ptr(),same)); mad_ctpsa_imag(a.ptr(),c.ptr()); return c;
+  R c(tpsa_ref((tpsa_t*)a.ptr())); mad_ctpsa_imag(a.ptr(),c.ptr()); return c;
 }
 
 // --- unary ---
@@ -610,19 +612,23 @@ inline CPX  sinhc  (CPX a         ) { TRC("cpx") cpx_t r = mad_cpx_sinhc(C(a)); 
 inline CPX  asinc  (CPX a         ) { TRC("cpx") cpx_t r = mad_cpx_asinc(C(a)); return CPX(RE(r),IM(r)); }
 
 inline std::pair<CPX,CPX> sincosq(CPX a) { TRC("cpx")
-  return { mad_cpx_sincrt(a), mad_cpx_cosrt(a) };
+  cpx_t s = mad_cpx_sincrt(C(a)), c = mad_cpx_cosrt(C(a));
+  return { CPX(RE(s),IM(s)), CPX(RE(c),IM(c)) };
 }
 
 inline std::pair<CPX,CPX> sincoshq(CPX a) { TRC("cpx")
-  return { mad_cpx_sinhcrt(a), mad_cpx_coshrt(a) };
+  cpx_t s = mad_cpx_sinhcrt(C(a)), c = mad_cpx_coshrt(C(a));
+  return { CPX(RE(s),IM(s)), CPX(RE(c),IM(c)) };
 }
 
 inline std::pair<CPX,CPX> sincosmq(CPX a) { TRC("cpx")
-  return { mad_cpx_sincmrt(a), mad_cpx_cosmrt(a) };
+  cpx_t s = mad_cpx_sincmrt(C(a)), c = mad_cpx_cosmrt(C(a));
+  return { CPX(RE(s),IM(s)), CPX(RE(c),IM(c)) };
 }
 
 inline std::pair<CPX,CPX> sincoshmq(CPX a) { TRC("cpx")
-  return { mad_cpx_sinhcmrt(a), mad_cpx_coshmrt(a) };
+  cpx_t s = mad_cpx_sinhcmrt(C(a)), c = mad_cpx_coshmrt(C(a));
+  return { CPX(RE(s),IM(s)), CPX(RE(c),IM(c)) };
 }
 
 inline ord_t ord (const ctpsa_t *a) { TRC("tpsa")
@@ -738,7 +744,7 @@ FUN(erfc  );
 
 #define FUN(F) \
 template <class A> \
-inline std::pair<T,T> F (const tpsa_base<A> &a) {  TRC("baz") \
+inline std::pair<T,T> F (const ctpsa_base<A> &a) {  TRC("baz") \
   T s(a), c(a); mad_ctpsa_ ## F (a.ptr(), s.ptr(), c.ptr()); \
   return std::pair<T,T>(s, c); \
 }
