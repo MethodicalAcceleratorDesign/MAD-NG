@@ -31,7 +31,7 @@
 #include "mad_omp.h"
 #include "mad_mem.h"
 
-#define MAD_MEM_STD   0 // 1 -> use standard C allocator only.
+#define MAD_MEM_STD   1 // 1 -> use standard C allocator only.
 #define MAD_MEM_CLR   0 // 1 -> replace malloc by calloc & clear pooled chunk.
 #define MAD_MEM_UTEST 0 // 1 -> run standalone unit tests in main().
 #define DBGMEM(P)       // P // uncomment for verbose debugging output
@@ -52,8 +52,8 @@ void   (mad_free   ) (void*  ptr_)             { free(ptr_); }
 
 // utils
 size_t  mad_mcollect (void)                    { return 0; }
-size_t  mad_mcached  (log_t)                   { return 0; }
-void    mad_mdump    (FILE*)                   {         ; }
+size_t  mad_mcached  (log_t _)                 { return 0; (void)_; }
+void    mad_mdump    (FILE* _)                 {           (void)_; }
 
 // --- generational allocator -------------------------------------------------o
 

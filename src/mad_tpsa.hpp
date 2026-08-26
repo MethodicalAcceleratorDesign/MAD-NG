@@ -25,7 +25,7 @@
  */
 
 // set to (0/1) to (dis/en)able temporaries and traces
-#define TPSA_USE_TMP 1
+#define TPSA_USE_TMP 0
 #define TPSA_USE_TRC 0
 
 // --- includes ---------------------------------------------------------------o
@@ -45,7 +45,7 @@ extern "C" {
 
 // --- trace ------------------------------------------------------------------o
 
-#if TPSA_USE_TRC
+#if TPSA_USE_TRC && !TRC
 #define TRC(...) \
   ((void)(mad_tpsa_dbgf > 1 && ( \
     printf("%s:%3d:%12s: ", __FILE__, __LINE__, __func__), \
@@ -195,7 +195,7 @@ struct tpsa : tpsa_base<tpsa> {
                 const tpsa_base<B> &b) : t(mad_tpsa_new(a.ptr(),std::max(a.mo(), b.mo()))) { TRC("&baz,&baz! %p", (void*)t.get()) }
 
 #if !TPSA_USE_TMP
-  tpsa(tpsa &&a) : t(a.ptr()) { TRC("<tpa") } // move ctor
+  tpsa(tpsa &&a) : t(std::move(a.t)) { TRC("<tpa") } // move ctor
 #endif
 
   tpsa_t* ptr () const  { return t.get(); }
@@ -307,8 +307,8 @@ inline tpsa::tpsa(const tpsa_base<A> &a, const T &b) {
 // --- unary ---
 
 template <class A>
-inline T operator+ (const tpsa_base<A> &a) {  TRC("+baz")
-  return a;
+inline const A& operator+ (const tpsa_base<A> &a) {  TRC("+baz")
+  return static_cast<const A&>(a);
 }
 
 template <class A>
@@ -318,8 +318,8 @@ inline T operator- (const tpsa_base<A> &a) {  TRC("-baz")
 
 #if TPSA_USE_TMP
 
-inline T operator+ (const T &a) {  TRC("+tmp")
-  T c(a); return c;
+inline const T& operator+ (const T &a) {  TRC("+tmp")
+  return a;
 }
 
 inline T operator- (const T &a) {  TRC("-tmp")
@@ -353,15 +353,15 @@ inline T operator+ (const tpsa_base<A> &a, num_t b) {  TRC("baz+num")
 template <class A>
 inline T operator+ (const tpsa_base<A> &a, const T &b) {  TRC("baz+tmp")
   T c(a,b);
-  if (a.ptr()) mad_tpsa_add(a.ptr(), c.ptr(), c.ptr());
-  else         mad_tpsa_add(c.ptr(), b.ptr(), c.ptr());
+  if (b.ptr()) mad_tpsa_add(a.ptr(), b.ptr(), c.ptr());
+  else         mad_tpsa_add(a.ptr(), c.ptr(), c.ptr());
   return c;
 }
 
 template <class A>
 inline T operator+ (const T &a, const tpsa_base<A> &b) {  TRC("tmp+baz")
   T c(a,b);
-  if (a.ptr()) mad_tpsa_add(a.ptr(), c.ptr(), c.ptr());
+  if (a.ptr()) mad_tpsa_add(a.ptr(), b.ptr(), c.ptr());
   else         mad_tpsa_add(c.ptr(), b.ptr(), c.ptr());
   return c;
 }
@@ -411,15 +411,15 @@ inline T operator- (num_t a, const tpsa_base<A> &b) {  TRC("num-baz")
 template <class A>
 inline T operator- (const tpsa_base<A> &a, const T &b) {  TRC("baz-tmp")
   T c(a,b);
-  if (a.ptr()) mad_tpsa_sub(a.ptr(), c.ptr(), c.ptr());
-  else         mad_tpsa_sub(c.ptr(), b.ptr(), c.ptr());
+  if (b.ptr()) mad_tpsa_sub(a.ptr(), b.ptr(), c.ptr());
+  else         mad_tpsa_sub(a.ptr(), c.ptr(), c.ptr());
   return c;
 }
 
 template <class A>
 inline T operator- (const T &a, const tpsa_base<A> &b) {  TRC("tmp-baz")
   T c(a,b);
-  if (a.ptr()) mad_tpsa_sub(a.ptr(), c.ptr(), c.ptr());
+  if (a.ptr()) mad_tpsa_sub(a.ptr(), b.ptr(), c.ptr());
   else         mad_tpsa_sub(c.ptr(), b.ptr(), c.ptr());
   return c;
 }
@@ -550,12 +550,12 @@ inline T pow (num_t a, const T &b) {  TRC("num^tmp")
 
 template <class A, class B>
 inline T atan2 (const tpsa_base<A> &a, const tpsa_base<B> &b) {  TRC("baz,baz")
-  T c(a); mad_tpsa_atan2(a.ptr(), b.ptr(), c.ptr()); return c;
+  T c(a,b); mad_tpsa_atan2(a.ptr(), b.ptr(), c.ptr()); return c;
 }
 
 template <class A, class B>
 inline T hypot (const tpsa_base<A> &a, const tpsa_base<B> &b) {  TRC("baz,baz")
-  T c(a); mad_tpsa_hypot(a.ptr(), b.ptr(), c.ptr()); return c;
+  T c(a,b); mad_tpsa_hypot(a.ptr(), b.ptr(), c.ptr()); return c;
 }
 
 // --- I/O ---
@@ -733,7 +733,8 @@ FUN(erfc  );
 #define FUN(F) \
 template <class A> \
 inline std::pair<T,T> F (const tpsa_base<A> &a) {  TRC("baz") \
-  T s(a), c(a); mad_tpsa_ ## F (a.ptr(), s.ptr(), c.ptr()); return {s, c}; \
+  T s(a), c(a); mad_tpsa_ ## F (a.ptr(), s.ptr(), c.ptr()); \
+  return std::pair<T,T>(s, c); \
 }
 
 FUN(sincosq);
@@ -746,10 +747,7 @@ FUN(sincoshmq);
 } // mad
 
 #undef T
-
-#ifndef MAD_CTPSA_HPP
 #undef TRC
-#endif
 
 //#undef TPSA_USE_TMP
 //#undef TPSA_USE_TRC
