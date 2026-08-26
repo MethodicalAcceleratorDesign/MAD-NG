@@ -580,8 +580,10 @@ FUN(abs) (const T *a, T *c)
   assert(a && c); DBGFUN(->);
   ensure(IS_COMPAT(a,c), "incompatibles GTPSA (descriptors differ)");
 
-  if (a->coef[0] < 0) FUN(scl) (a, -1, c);
-  else if (a != c)    FUN(copy)(a, c);
+  NUM a0 = a->coef[0];
+
+  if (a0 < 0 || 1/a0 < 0) FUN(scl) (a, -1, c);
+  else FUN(copy)(a, c);
 
   DBGFUN(<-);
 }
