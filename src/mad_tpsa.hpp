@@ -25,7 +25,7 @@
  */
 
 // set to (0/1) to (dis/en)able temporaries and traces
-#define TPSA_USE_TMP 0
+#define TPSA_USE_TMP 1
 #define TPSA_USE_TRC 0
 
 // --- includes ---------------------------------------------------------------o
