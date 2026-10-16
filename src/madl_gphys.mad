@@ -2077,6 +2077,36 @@ local function is_ord_even (m)
   return true
 end
 
+local function beamsize_der(x, sig, mo)
+  local nv, xs_4, xs_5 = x:nv(), 0, 0
+  local mi, mm = monomial(nv), monomial(nv)
+  local dsc = damap{ nv=x:nv(), mo=x.mo }[1]:desc()
+
+  local i, j = 0, 0
+  repeat i, mi = dsc:nxtbyord(mi); if i < 0 then break end
+    local xi = x:deriv(mi) / mi:ordpf()
+
+  local mj = monomial(nv)
+  repeat j, mj = dsc:nxtbyord(mj); if j < 0 then break end
+    local xj = x:deriv(mj) / mj:ordpf()
+
+    if mj >= mi and is_ord_even(mi:add(mj,mm)) and
+       mj:ord() <= mo and mi:ord() <= mo then
+
+      local sk, xx = 0, (i == j and 1 or 2)*xi*xj
+      for k=1,4 do
+        xx = xx * sig[k]^mm[k] * tgamma((1+mm[k])/2)
+        sk = sk + mm[k]
+      end
+      xx = xx * sig[5]^mm[6] * 2^(sk/2-mm[6]) / ((1+mm[6])*pi^2)
+
+      xs_4 = xs_4 + (mm[6] == 0 and xx or 0)
+      xs_5 = xs_5 + xx
+    end
+  until false until false 
+  return sqrt(xs_4), sqrt(xs_5)
+end
+
 local function beamsize(x, sig, mo)
   local nv, xs_4, xs_5 = x:nv(), 0, 0
   local mi, mj, mm = monomial(nv), monomial(nv), monomial(nv)
@@ -2100,24 +2130,31 @@ local function beamsize(x, sig, mo)
   return sqrt(xs_4), sqrt(xs_5)
 end
 
-function gphys.beamsize(x, sig, mo_)
+
+function gphys.beamsize(x, sig, mo_, tpsa_)
   assert(is_tpsa(x), "invalid argument #1 (real TPSA expected)")
   assert(is_indexable(sig) and #sig >= 5,
                      "invalid argument #2 (iterable with 5+ values expected)")
+
+  local bmsz = beamsize
+  if tpsa_ then
+    bmsz = beamsize_der
+  end
 
   local mo = mo_ or x.mo
   if mo_ then -- order is specified, could be x.mo itself
     assert(is_number(mo) and mo <= x.mo,
                      "invalid argument #3 (order must not exceed TPSA order)")
-    return beamsize(x, sig, mo)
+    return bmsz(x, sig, mo)
   end
 
   local sg, st = table.new(mo,0), table.new(mo,0)
   for i=1,mo do -- run all orders
-    sg[i], st[i] = beamsize(x, sig, i)
+    sg[i], st[i] = bmsz(x, sig, i)
   end
   return sg, st
 end
+
 
 function gphys.beamsize_tbl(m, sig, p_)
   assert(is_damap(m), "invalid argument #1 (damap expected)")
